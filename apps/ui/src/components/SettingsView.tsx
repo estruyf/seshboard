@@ -708,7 +708,7 @@ export function SettingsView() {
           <div className="drag flex h-13 shrink-0 items-center justify-end px-6">
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
           </div>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (
               <div className="mx-auto min-w-0 max-w-2xl px-8">
                 <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />

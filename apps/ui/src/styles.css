@@ -595,3 +595,13 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   width: 100% !important;
   max-width: 100%;
 }
+
+/*
+ * A built-in pipeline is read only: its fields are disabled, but each control fades by its own amount (fields 70%,
+ * segments, menus and boxes 50%), which reads as broken. The notice above says it's read only; the values stay
+ * readable at one level.
+ */
+[data-built-in] [data-pipeline-steps] :is(:disabled, [aria-disabled='true']) {
+  opacity: 1 !important;
+  cursor: default;
+}

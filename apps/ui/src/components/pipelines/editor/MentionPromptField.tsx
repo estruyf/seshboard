@@ -75,7 +75,7 @@ export function MentionPromptField({
   const box = 'col-start-1 row-start-1 w-full rounded-lg px-3 py-2.5 text-body leading-6 whitespace-pre-wrap break-words';
   return (
     <div className="relative grid">
-      <div ref={behind} aria-hidden className={`${box} pointer-events-none overflow-hidden border border-transparent text-text ${readOnly ? 'opacity-70' : ''}`} data-pipeline-prompt-chips>
+      <div ref={behind} aria-hidden className={`${box} pointer-events-none overflow-hidden border border-transparent text-text`} data-pipeline-prompt-chips>
         {promptParts(value, choices).map((part, i) =>
           part.mention ? (
             // The same font and size as the text in front, so the chip sits exactly under it.
@@ -114,7 +114,7 @@ export function MentionPromptField({
         onScroll={(e) => {
           if (behind.current) behind.current.scrollTop = e.currentTarget.scrollTop;
         }}
-        className={`${box} resize-none border bg-transparent text-transparent caret-text outline-none selection:bg-accent/30 selection:text-transparent focus:border-accent-ink ${invalid ? 'border-error' : 'border-edge'}`}
+        className={`${box} resize-none overflow-hidden border bg-transparent text-transparent caret-text outline-none selection:bg-accent/30 selection:text-transparent focus:border-accent-ink ${invalid ? 'border-error' : 'border-edge'}`}
         data-pipeline-prompt
       />
       {open && list && (

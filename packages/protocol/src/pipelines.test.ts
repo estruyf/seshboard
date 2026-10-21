@@ -197,6 +197,16 @@ describe('fillStepPrompt', () => {
     expect(filled.text).toBe('Do Plan for @Add dark mode.\n\nThe task, from @Add dark mode:\n```text\nAdd dark mode\nto the remote app\n```');
   });
 
+  it('gives the task whole with a linked @parent session, since its brief may cut what was asked', () => {
+    const task = `Add a toggle. ${'More detail. '.repeat(30)}`.trim();
+    const filled = fillStepPrompt(claude('Plan', { prompt: 'Plan @parent.' }), { task, parent, steps: {} });
+    const { text } = parseBriefs(filled.text);
+    expect(text).toContain(`The task, from @Add a usage cost toggle:\n\`\`\`text\n${task}\n\`\`\``);
+    // Not twice when the prompt has it through {{task}}, and not without @parent.
+    expect(fillStepPrompt(claude('Plan', { prompt: '{{task}} for @parent' }), { task, parent, steps: {} }).text).not.toContain('The task, from');
+    expect(fillStepPrompt(claude('Plan', { prompt: 'Just plan.' }), { task, parent, steps: {} }).text).not.toContain('The task, from');
+  });
+
   it('leaves an unknown @ name as it is', () => {
     expect(fillStepPrompt(claude('A', { prompt: 'Ask @Bob' }), { task: null, parent, steps: {} }).text).toBe('Ask @Bob');
   });

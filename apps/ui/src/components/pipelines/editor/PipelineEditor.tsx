@@ -172,7 +172,7 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
         </Notice>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)_260px] items-start gap-6 @max-[700px]:grid-cols-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_260px] items-start gap-6 @max-[600px]:grid-cols-1">
         <div className="grid min-w-0 gap-3">
           {whole.length > 0 && (
             <ul className="grid gap-0.5 text-meta text-error" data-pipeline-issues>
@@ -201,6 +201,7 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
                 issues={issues.filter((i) => i.step === index).map((i) => i.message)}
                 models={models}
                 actions={actions}
+                actionsKnown={form.scope.kind === 'project'}
                 drag={dragFor(index)}
               />
             ))}

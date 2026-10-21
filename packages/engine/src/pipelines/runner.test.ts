@@ -294,6 +294,41 @@ describe('PipelineRunner', () => {
     expect(w.notices.at(-1)).toMatchObject({ kind: 'done', body: 'Done. Pull request #152 is open.' });
   });
 
+  it('checks again after a stop while the changes were with Execute: Continue starts the next Validate round, never Push', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    await w.end(w.last().id);
+    const execute = w.last();
+    await w.end(execute.id);
+    await w.end(w.last().id, 'clean', 'Verdict: changes needed\n1. Fix the tooltip.');
+    // Execute's turn with the changes fails: the run waits for you.
+    await w.end(execute.id, 'error');
+    expect(w.state(run.id).run).toMatchObject({ status: 'waiting', step: 2, sentBackTo: 1 });
+    await w.runner.continue(run.id);
+    expect(w.titles.get(w.last().id)).toBe('Validate · round 2');
+    expect(w.state(run.id).run).toMatchObject({ status: 'running', step: 2, round: 2, sentBackTo: null });
+    expect(w.pushed).toEqual([]);
+    expect(w.state(run.id).steps.filter((s) => s.step === 'Execute').map((s) => s.status)).toEqual(['done']);
+  });
+
+  it('ends the send-back when a step is skipped or run again, so Execute doesn’t stay working', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+    await w.end(w.last().id);
+    const execute = w.last();
+    await w.end(execute.id);
+    await w.end(w.last().id, 'clean', 'Verdict: changes needed\n1. Fix the tooltip.');
+    expect(w.state(run.id).run.sentBackTo).toBe(1);
+    await w.runner.retryStep(run.id);
+    expect(w.interrupted).toContain(execute.id);
+    expect(w.state(run.id).run).toMatchObject({ step: 2, sentBackTo: null });
+    expect(w.state(run.id).steps.filter((s) => s.step === 'Execute').map((s) => s.status)).toEqual(['stopped']);
+    // Execute's late turn end changes nothing: the run waits on Validate now.
+    const count = w.started.length;
+    await w.end(execute.id);
+    expect(w.started).toHaveLength(count);
+  });
+
   it('stops on a missing verdict, and when changes are still needed after the last round', async () => {
     const w = world();
     const { run } = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });

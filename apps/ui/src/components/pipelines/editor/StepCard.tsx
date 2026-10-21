@@ -48,6 +48,8 @@ export interface StepCardProps {
   models: readonly ModelOption[];
   /** The project actions "Run first" offers, by name. */
   actions: readonly string[];
+  /** Whether `actions` is one project's list: a pipeline for every project can't say an action is missing. */
+  actionsKnown: boolean;
   /** Drag to reorder: the card's own handlers, and whether it is where a drop would go. */
   drag: {
     armed: boolean;
@@ -61,7 +63,7 @@ export interface StepCardProps {
 }
 
 /** A step: folded to its one line, or open to its form. Push is a card of its own kind, always last. */
-export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemove, readOnly, issues, models, actions, drag }: StepCardProps) {
+export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemove, readOnly, issues, models, actions, actionsKnown, drag }: StepCardProps) {
   const id = useId();
   const step = form.steps[index]!;
   const push = step.kind === 'push';
@@ -146,7 +148,7 @@ export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemo
             {step.kind === 'push' ? (
               <PushForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} />
             ) : (
-              <ClaudeForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} models={models} actions={actions} id={id} />
+              <ClaudeForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} models={models} actions={actions} actionsKnown={actionsKnown} id={id} />
             )}
           </div>
         )}
@@ -181,7 +183,7 @@ function PushForm({ step, form, index, readOnly, onChange }: { step: PipelinePus
 
 const startValue = (start: PipelineClaudeStep['start']) => (typeof start === 'object' ? `fork:${start.fork}` : 'fresh');
 
-function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, id }: { step: PipelineClaudeStep; form: PipelineForm; index: number; readOnly: boolean; onChange(form: PipelineForm): void; models: readonly ModelOption[]; actions: readonly string[]; id: string }) {
+function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, actionsKnown, id }: { step: PipelineClaudeStep; form: PipelineForm; index: number; readOnly: boolean; onChange(form: PipelineForm): void; models: readonly ModelOption[]; actions: readonly string[]; actionsKnown: boolean; id: string }) {
   const update = (patch: Partial<PipelineClaudeStep>) => onChange(updateStep<PipelineClaudeStep>(form, index, patch));
   const earlier = earlierSessions(form.steps, index);
   const start = startValue(step.start);
@@ -257,7 +259,7 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, id
         <div role="group" aria-labelledby={`${id}-run-first`} className="flex flex-wrap items-center gap-1.5">
           {offered.map((name) => {
             const on = step.actionsFirst.includes(name);
-            const missing = on && !actions.includes(name);
+            const missing = actionsKnown && on && !actions.includes(name);
             return (
               <Pill
                 key={name}
@@ -266,7 +268,7 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, id
                 onClick={readOnly ? undefined : () => toggleAction(name)}
                 aria-pressed={readOnly ? undefined : on}
                 icon={on ? <Check size={11} aria-hidden /> : undefined}
-                data-tooltip={missing ? `${name} isn't one of the project's actions here. The step runs without it.` : undefined}
+                data-tooltip={missing ? `${name} isn't one of the project's actions here. The step runs without it.` : on && !actionsKnown && !actions.includes(name) ? `Runs the project's ${name} action, in projects that have one.` : undefined}
                 data-pipeline-action={name}
               >
                 {name}

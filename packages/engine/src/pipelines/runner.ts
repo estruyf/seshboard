@@ -455,8 +455,13 @@ export class PipelineRunner {
       else if (run.status === 'waiting' && run.waitingFor === 'push') {
         this.deps.runs.update(runId, { status: 'running', waitingFor: null, reason: null });
         await this.doPush(runId, commitMessage ?? null);
+      } else if (run.status === 'waiting' && run.sentBackTo !== null) {
+        // It stopped while the changes were with an earlier step: that step counts as done, and the step that sent
+        // them checks again (a new round), never the step after it.
+        this.closeSentBack(run, 'done');
+        await this.startStep({ ...run, sentBackTo: null }, run.step, run.round);
       } else if (run.status === 'waiting') {
-        const index = run.sentBackTo ?? run.step;
+        const index = run.step;
         // The step that stopped counts as done; the run goes on after the current step.
         const row = this.deps.runs.latest(runId, index);
         if (row && row.status !== 'done') this.deps.runs.updateStep(runId, row.index, row.round, { status: 'done', endedAt: row.endedAt ?? this.now() });
@@ -473,6 +478,7 @@ export class PipelineRunner {
       const run = this.need(runId);
       if (run.status === 'done') throw new Error('This run is done.');
       await this.stopWorking(run);
+      this.closeSentBack(run, 'stopped');
       const rounds = this.deps.runs.steps(runId).filter((s) => s.index === run.step);
       const round = Math.max(0, ...rounds.map((s) => s.round)) + 1;
       for (const row of rounds) if (row.status === 'working' || row.status === 'waiting') this.deps.runs.updateStep(runId, row.index, row.round, { status: 'stopped', reason: 'Ran again.', endedAt: this.now() });
@@ -490,6 +496,7 @@ export class PipelineRunner {
       const run = this.need(runId);
       if (run.status === 'done' || run.status === 'stopped') throw new Error('This run has ended.');
       await this.stopWorking(run);
+      this.closeSentBack(run, 'stopped');
       const row = this.deps.runs.steps(runId).find((s) => s.index === run.step && s.round === run.round);
       const step = run.pipeline.steps[run.step];
       if (row) this.deps.runs.updateStep(runId, row.index, row.round, { status: 'skipped', endedAt: this.now() });
@@ -513,6 +520,20 @@ export class PipelineRunner {
       this.emit(runId);
       return this.state(runId)!;
     });
+  }
+
+  /**
+   * The step changes were sent back to, when the run leaves that send-back (Continue, Run this step again, Skip this
+   * step): its row ends, so it doesn't stay working in the tree, and the run no longer waits on its session.
+   */
+  private closeSentBack(run: PipelineRun, status: 'done' | 'stopped'): void {
+    if (run.sentBackTo === null) return;
+    const row = this.deps.runs.latest(run.id, run.sentBackTo);
+    // Continue counts it as done, as it does a stopped step; leaving it stops it only if it still works or waits.
+    if (row && (status === 'done' ? row.status !== 'done' : row.status === 'working' || row.status === 'waiting')) {
+      this.deps.runs.updateStep(run.id, row.index, row.round, { status, ...(status === 'stopped' ? { reason: 'Left by you.' } : {}), endedAt: row.endedAt ?? this.now() });
+    }
+    this.deps.runs.update(run.id, { sentBackTo: null });
   }
 
   /** Stops the turn of the session the run waits on, if it works. */

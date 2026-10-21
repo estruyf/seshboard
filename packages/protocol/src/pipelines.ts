@@ -297,6 +297,9 @@ export function parseActionResults(text: string): { text: string; actions: Array
   return { text: rest.replace(/^Project actions that ran first[^\n]*\n?/m, '').replace(/\n{3,}/g, '\n\n').trim(), actions };
 }
 
+/** The most of the task a step's prompt carries with `@parent`. */
+const TASK_BLOCK_MAX = 4_000;
+
 /**
  * A step's prompt with `{{task}}` and the other blanks filled, `@parent` and `@<step>` turned into session links (the
  * same stubs the message box writes, which the engine expands into briefs), and the actions' results. The labels
@@ -325,9 +328,16 @@ export function fillStepPrompt(step: Pick<PipelineClaudeStep, 'prompt'>, ctx: St
   }
   const unique = links.filter((link, i) => links.findIndex((l) => l.sessionId === link.sessionId) === i);
   const parts = [text.trim()];
-  if (withTask && ctx.parent.kind === 'task') {
-    const fence = fenceFor(ctx.parent.text);
-    parts.push(`The task, from @${ctx.parent.label}:\n${fence}text\n${ctx.parent.text.trim()}\n${fence}`);
+  // The task goes in whole with @parent: a session's brief may cut what was asked to fit its budget. Not when the
+  // prompt already has it through {{task}}.
+  const taskText = (ctx.parent.kind === 'task' ? ctx.parent.text : ctx.task ?? '').trim();
+  const hasTaskBlank = /(^|[^\\])\{\{\s*task\s*\}\}/.test(step.prompt);
+  const parent = ctx.parent;
+  const parentLinked = parent.kind === 'session' && unique.some((l) => l.sessionId === parent.sessionId);
+  if ((withTask || parentLinked) && taskText && !hasTaskBlank) {
+    const task = taskText.length > TASK_BLOCK_MAX ? `${taskText.slice(0, TASK_BLOCK_MAX).trimEnd()}…` : taskText;
+    const fence = fenceFor(task);
+    parts.push(`The task, from @${ctx.parent.label}:\n${fence}text\n${task}\n${fence}`);
   }
   if (ctx.actions?.length) parts.push(['Project actions that ran first, with their exit codes and the end of their output:', ...ctx.actions.map(writeActionResult)].join('\n\n'));
   for (const link of unique) parts.push(writeStub(link.label, link.sessionId));
