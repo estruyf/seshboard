@@ -3558,6 +3558,10 @@ export function createEngine(options: EngineOptions): Engine {
       requireRemote().rename(deviceId, name);
       return {};
     },
+    'remote.setTheme': (theme) => {
+      remote?.setTheme(theme);
+      return {};
+    },
     'computers.status': () => computers?.status() ?? { available: false, computers: [], pairing: null },
     'computers.add': async ({ link }) => {
       await requireComputers().add(link);

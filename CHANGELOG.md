@@ -31,6 +31,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Unlock a locked worktree.** A worktree git has locked (Claude Code does this while a session runs, and a crash can leave it behind) has **Unlock worktree** in its ⋯ menu, so you can remove it.
 - **A project's own default branch.** A project's defaults have a **Default branch**, for when you work on another branch than the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it and Changes compares against it. Leave it on the remote's default branch to follow GitHub.
+- **The remote app uses your computer's theme.** Your phone now looks like Switchboard on your computer, in the theme you picked there, and changes when you pick another one or edit it. Light or dark follows your phone. Open **Theme** in the **⋯** menu to go back to **Demo Time**. With more than one computer, your phone uses one computer's theme for all your sessions, so the colours don't change when you switch: the first computer's at first, or the one you pick in **Theme**.
 
 ### Changed
 

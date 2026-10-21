@@ -13,11 +13,13 @@
  * and key in a throwaway folder, `SWITCHBOARD_DEMO_NAME` names the computer, `PORT` picks the port, and the line
  * `pairing-link: …` is the link to paste. A pairing link is good for two minutes, so with `SWITCHBOARD_DEMO_LINK_FILE`
  * a fresh one is written there every minute. New session there adds a session with the prompt as its title.
+ * `SWITCHBOARD_DEMO_THEME` names the built-in theme it shows (`catppuccin`, `nord`…; Demo Time without it).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
+import type { ThemeFile, ThemeModeFile } from '@switchboard/protocol/theme-format';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
@@ -706,6 +708,13 @@ const hub: RemoteHub = new RemoteHub({
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),
 });
+
+// The theme the demo computer shows (Theme on the phone): `SWITCHBOARD_DEMO_THEME=catppuccin` takes a built-in theme's
+// own colours (without the app's generator, which needs the renderer), else Demo Time's.
+const themeName = process.env.SWITCHBOARD_DEMO_THEME ?? 'demo-time';
+const themeFile = JSON.parse(readFileSync(new URL(`../apps/ui/src/themes/${themeName}.json`, import.meta.url), 'utf8')) as ThemeFile;
+const modeOf = (mode: ThemeModeFile | undefined) => (mode ? { ...(mode.canvas ? { bg: mode.canvas } : {}), ...(mode.accent ? { accent: mode.accent } : {}), ...mode.colors } : {});
+hub.setTheme({ name: themeFile.name, light: modeOf(themeFile.light), dark: modeOf(themeFile.dark) });
 
 await hub.configure({ enabled: true, port: PORT });
 const { url } = hub.startPairing();

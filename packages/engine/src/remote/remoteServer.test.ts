@@ -96,6 +96,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'runs.archive': noRun,
       'runs.pushPreview': noRun,
       'runs.write': noRun,
+      'theme.get': () => ({ theme: null }),
     }),
   });
   const { port } = await server.start(0);
@@ -128,7 +129,7 @@ describe('Remote server', () => {
 
     const { frames, session } = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     const remote = client<RemoteContract>(frames, session!);
-    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow'], appIcon: 'graphite' });
+    expect(await remote.call('hello', { client: { version: '1' } })).toEqual({ app: { version: '1.2.3' }, device: { id: deviceId, name: "Elio's iPhone" }, computer: { name: "Elio's iMac" }, features: ['attachments', 'usage.tokens', 'branches', 'session.markUnread', 'push.vapid', 'projects.clone', 'costs', 'limits', 'pipelines', 'session.queue.sendNow', 'theme'], appIcon: 'graphite' });
     expect((await remote.call('sessions.list', {})).prompts[0]!.input).toEqual({ command: "Elio's iPhone" });
     expect(env.server.list()).toMatchObject([{ deviceId, name: "Elio's iPhone" }]);
     await expect(remote.call('session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

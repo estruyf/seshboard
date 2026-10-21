@@ -60,7 +60,7 @@ import { ContextItems } from './context.ts';
 import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
 import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
-import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
+import { DeviceName, RemoteSettings, RemoteStatus, RemoteTheme } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
 import { ClonePlan, CloneProgress, CloneSettings } from './clone.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
@@ -1159,6 +1159,8 @@ export const contract = {
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
     /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
     'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
+    /** The theme the app shows now, resolved, for paired phones that look like this computer (`theme.get` there). */
+    'remote.setTheme': { params: RemoteTheme, result: z.object({}) },
 
     // --- Other computers: this app paired with Remote on another computer (docs/remote-access.md) -------------------
     'computers.status': { params: z.object({}), result: ComputersStatus },

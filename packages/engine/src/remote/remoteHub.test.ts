@@ -576,6 +576,23 @@ describe('Remote hub', () => {
     expect(heard).toEqual(['graphite']);
   });
 
+  it('gives the app\'s theme, kept across restarts, and tells phones only when it changes', async () => {
+    const { hub, port, on, appState } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('theme.get', {})).toEqual({ theme: null });
+    const heard: string[] = [];
+    remote.on('theme.changed', (theme) => heard.push(theme.name));
+    const github = { name: 'GitHub', light: { bg: '#ffffff', accent: '#0969da' }, dark: { bg: '#0d1117', accent: '#58a6ff' } };
+    hub.setTheme(github);
+    hub.setTheme(structuredClone(github));
+    hub.setTheme({ ...github, name: 'Nord' });
+    await until(() => heard.length === 2);
+    expect(heard).toEqual(['GitHub', 'Nord']);
+    expect(await remote.call('theme.get', {})).toEqual({ theme: { ...github, name: 'Nord' } });
+    expect(appState.get('remote.theme')).toEqual({ ...github, name: 'Nord' });
+  });
+
   it('answers token usage for the profile signed in to an account, with projects by id and name and never their folder', async () => {
     const { hub, port, on, calls } = await setup();
     await on();
