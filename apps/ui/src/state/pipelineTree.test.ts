@@ -209,6 +209,9 @@ describe('the tree in words', () => {
   it('colours a sub-session by its session first, then its step', () => {
     expect(childTone('needs-you', 'done')).toBe('needs-you');
     expect(childTone(null, 'done')).toBe('done');
+    // A step the run finished is done, read or not; a session outside a run's steps still shows unread.
+    expect(childTone('unread', 'done')).toBe('done');
+    expect(childTone('unread', null)).toBe('unread');
     expect(childTone('idle', 'working')).toBe('working');
     expect(childTone(null, null)).toBe('idle');
   });

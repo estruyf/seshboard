@@ -43,6 +43,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Right-click in the message box.** The message box on the New session page and in a session now has a right-click menu (or Shift+F10) with **Cut**, **Copy**, **Paste** and **Select all**. **Paste** works like the keyboard shortcut, so an image on the clipboard is attached too.
 - **Right-click in the terminal.** Right-click, or press Shift+F10, for **Copy**, **Paste** and **Select all**. In a session's terminal, select an error or some output and choose **Explain with Claude** or **Fix with Claude** to put it in the message box, in a code block under the question, ready to send.
 - **A pipeline's parent stops saying Needs you once you answer.** When a step asked a question or a permission, its parent showed Needs you, and kept showing it after you answered and the step was working again. The parent and the step now go back to working as soon as you answer, or as soon as the step works again after you reply to it.
+- **Finished pipeline steps are green in the sidebar.** A step the run had finished showed a blue dot under its parent until you opened it, as if it still worked. It is now green, as in the run's overview.
 - **Move back and Close window stay in reach in a narrow window.** In a session's own window at its smallest, a Create PR or Pull button no longer pushes them off the edge: under 560px it shows only its icon (and count), as it already did in four panes side by side.
 
 ## [1.0.0] - 2026-10-19
