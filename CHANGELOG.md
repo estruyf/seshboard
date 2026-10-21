@@ -32,6 +32,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Changed
 
 - **Removing many worktrees goes one by one.** The clean-up dialog removes worktrees one at a time and shows each as Removing…, Removed or the error. A slow one no longer hides the rest, and **Stop after this one** ends the run early. If one doesn't answer in time, the list is read again so it shows what is really left.
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 - **Plan usage under the message box takes less room.** The 5-hour and weekly limits now show as small rings instead of bars, next to the context ring.
 - **Stop, cancel and remove buttons are red.** Stop (Claude, agents, commands, background tasks), Cancel on a running clone or pairing, Discard on a draft, and Remove, Revoke and Forget for computers and devices now show in red like Delete, in the app and on the remote app.
 - **Claude and The unnamed themes removed.** If you used one of them, Switchboard switches to Demo Time.
@@ -42,6 +43,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Remove an offline computer.** In Settings › Remote, a paired computer with a long error line no longer pushes its Try again, Open and Remove buttons out of view. The line is cut short, so you can always remove a computer that is gone.
 - **Mod chips no longer cover the message box chips.** In a narrow message box, the prompt shield and a mod's statuses used to run over the model and mode chips. They now give way first (the shield keeps only its icon), then the chips shrink, and the footer wraps as a last resort.
 - **Pull requests always push the branch first.** Create pull request pushes the branch before it creates the pull request, so one whose remote copy was deleted (after an earlier pull request was merged) no longer stops with "you must first push the current branch".
 - **Copy error messages.** The text of a notice, such as a failed pull request, and its output can be selected and copied.
@@ -68,6 +70,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Sign in to a new Claude profile without leaving Switchboard.** **Sign in** on a profile that isn't signed in yet opens Claude Code with that profile in Switchboard's terminal, next to Settings, so you sign in there instead of copying a command to another terminal. When you add a profile, **Sign in now** does this right away (it is on by default, and skipped for a folder that is signed in already). It works the same on Windows, where the command to copy was in a form PowerShell doesn't run.
 
 ### Changed
+
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 
 - **A shorter session menu in the sidebar.** The menu you get when you right-click a session had grown long, with the project's profile, icon and pages in between the session's own items. They now sit under **Project**, a submenu with the project's **Claude profile** and **Project icon** in submenus of their own, next to **Rename project…**, **Open project**, **Worktrees…**, **Branches…** and **Project settings…**. The memories a session wrote are under **Memories**. Point at a submenu, or press → or Enter, to open it; ← or Esc goes back.
 - **The catch-up opens with its Details, so Mark as read is in sight.** **Mark as read** and the other actions were behind **Details**, so a session you had read kept its bold title. They show as soon as the banner opens; **Details** still closes them. Right-click an unread session in the sidebar and choose **Mark as read** to clear it without opening it. A session you have read has **Mark as unread** there, to come back to it later; it stays unread until you leave the session.
@@ -103,6 +107,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Turn off the fading of inactive panes.** With sessions side by side, the panes other than the active one are faded. Turn off **Fade inactive panes** in Settings › Conversation to show them as clearly as the active one, which keeps its line along the top.
 
 ### Changed
+
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 
 - **Hide the estimated cost on the usage bars only.** With **Show estimated cost** on, **Show it on the usage bars** in Settings › Usage turns the estimate after the 5-hour and weekly bars off, and keeps it in the Usage view and next to Context.
 - **The time and duration under a reply now show when you hover the reply, with its buttons.** The faint line under the last reply of a turn, such as **14:32 · 2m 14s**, stays out of the way while you read. Hover the reply, or move to its buttons with Tab, to see it. It takes the same space as before, so nothing moves.
@@ -183,6 +189,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **When a usage limit stops a session.** A notice above the message box says which limit you reached, when it resets and how long that is (*5-hour limit reached. Resets at 15:16 · in 4h 42m*). **Resume now** tells Claude to continue right away. **Resume when it resets** does it by itself, 30 seconds after the reset, also when you quit Switchboard in between, and a notification says when it did. Messages in Up next wait for the limit instead of being sent into it, the queue holds new sessions for that Claude profile until the reset, and the session's row in the sidebar says *Usage limit*. To always resume by itself, set **Resume after a usage limit resets** to **Always** in Settings › Conversation.
 
 ### Changed
+
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 
 - **Catch-up says what Claude said.** When Haiku doesn't write the catch-up (it is off, or it didn't answer in time), **What it did** starts with Claude's own account from the end of its reply, its opening sentence and the bold headings of a report, before the commands it ran. It used to list only the last few commands.
 - **Ask in the session's header.** The header's panel buttons now have **Ask** next to **Changes**, **Agents** and **Terminal**. It opens Ask on the right, brings it to the front when another panel is in front, or closes it. A blue dot on it says an answer is ready.
@@ -349,6 +357,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
+
 - Archiving a session that is open closes it. With two sessions side by side, the other one takes the full width.
 - **Projects list.** Each project shows its defaults on one line, a worktree pill, New session, ⋯ and the reorder buttons. Defaults, the profile choice and actions moved to the project's page; Remove is in the ⋯ menu.
 - **Images in your messages.** They show above the text, so Show more never hides them: one image at its own shape, two to four as thumbnails, and five or more as tiles with a +N for the rest. Hover one for its type, size and pixel size. Full size, ← and → step through all of a message's images, with a filmstrip at the bottom.
@@ -374,6 +384,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Continue in VS Code.** Under **⋯** in the session header (and in the command palette): stops the session here and opens it in Claude Code's VS Code extension, in the window for its folder.
 
 ### Changed
+
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 
 - **Shorter worktree names.** A new worktree gets a made-up name of three short words, such as `brave-humming-otter`, like Claude Code's own, instead of the first words of your prompt. You can still type your own name in New session.
 - Dropping files and folders on the message box adds them as chips instead of `@` mentions in the text.
@@ -408,6 +420,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
+
 - **Pinned sessions have their own section** in the sidebar, below Needs you and Working. A pinned session that waits on you or is working shows there, and goes back to Pinned when it's done. The menu item is now *Pin*.
 - Switchboard opens where you left it: the same display, size and position, maximized if it was. If that display is no longer connected, it opens on the main one.
 - Sessions under **Working** (in the sidebar and on Home) no longer trade places as they write: the one you last sent a message to is at the top.
@@ -440,6 +454,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - Settings → Diagnostics has a button to open the Claude Code config folder and show the cache database in Finder.
 
 ### Changed
+
+- **Pull requests go to the branch your project develops on.** A project whose worktrees start from a branch (Project settings › Worktree base) now opens pull requests into that branch, not the repository's default branch. You can still pick another in the pull request dialog.
 
 - A project action can no longer be given a shortcut Switchboard already uses: ⌘/, ⌘⇧J, ⌃↩, ⇧↩, ⇧⇥, ⇧↑, ⇧↓ and ⇧F10 are now refused like the others.
 - Project actions can no longer use ⌘B, ⌃⇥, ⌃⇧⇥ or ⌘⇧U. An action that already has one of them keeps it, and runs instead of Switchboard's shortcut.

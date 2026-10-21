@@ -31,7 +31,7 @@ export { PROJECT_NAME_MAX } from './projectConstants.ts';
 export { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';
-export { branchOfBase, isBranchBase, isWorktreeBase, worktreeRequestBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
+export { branchOfBase, isBranchBase, isWorktreeBase, projectPrBase, worktreeRequestBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
 export { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
 export type * from './context.ts';
 export * from './sessionLinks.ts';

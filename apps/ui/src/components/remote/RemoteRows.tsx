@@ -8,7 +8,7 @@ import { Button } from '../ui/Button.tsx';
 
 export function ListRow({ icon, name, status, actions, confirm, attrs }: { icon: ReactNode; name: ReactNode; status: ReactNode; actions: ReactNode; confirm?: ReactNode; attrs?: Record<`data-${string}`, string> }) {
   return (
-    <li className="grid" {...attrs}>
+    <li className="grid grid-cols-1" {...attrs}>
       <div className="flex min-h-12 items-center gap-3 px-4 py-2">
         <span className="flex shrink-0 text-muted">{icon}</span>
         <span className="min-w-0 flex-1">

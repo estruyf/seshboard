@@ -153,7 +153,7 @@ export function ProjectDefaultsEditor({
         {defaults.workspace !== 'current' && (
           <Select
             label="Worktree base"
-            tooltip="What a new worktree branches from"
+            tooltip="What a new worktree branches from. A branch here is also where pull requests go"
             className={field}
             value={defaults.baseRef ?? UNSET}
             disabled={!isGitRepo}
