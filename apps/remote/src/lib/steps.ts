@@ -1,7 +1,7 @@
-import type { RemoteBlock, RemoteMessage } from '@switchboard/protocol/remote-client';
+import { toolStepLabel, type RemoteBlock, type RemoteMessage } from '@switchboard/protocol/remote-client';
 import { visibleMessages } from './transcript.ts';
 
-type ToolUse = Extract<RemoteBlock, { type: 'tool_use' }>;
+export type ToolUse = Extract<RemoteBlock, { type: 'tool_use' }>;
 type Thinking = Extract<RemoteBlock, { type: 'thinking' }>;
 
 /**
@@ -99,4 +99,17 @@ export function runSummary(steps: ReadonlyArray<ToolUse | Thinking>): string {
   ].filter((part): part is string => Boolean(part));
   const shown = parts.slice(0, 3);
   return [count(calls.length, 'step'), shown.join(', ')].filter(Boolean).join(' · ');
+}
+
+/**
+ * A call as the app's transcript words it: its description when Claude gave one ("Merge origin/dev"), else what it
+ * does ("Read /repo/a.ts", "Run npm test"), never a long command as written. A phone has no session folder, so paths stay whole.
+ */
+export const stepText = (call: ToolUse, tense: 'past' | 'present' = 'past') => toolStepLabel(call.name, call.input, null)[tense];
+
+/** The run's line, as on the computer: the step Claude is on while it works, then what the steps did. */
+export function runLabel(steps: ReadonlyArray<ToolUse | Thinking>, live: boolean): string {
+  const last = steps.findLast((s): s is ToolUse => s.type === 'tool_use');
+  if (live && last) return stepText(last, 'present');
+  return runSummary(steps);
 }
