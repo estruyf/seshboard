@@ -290,6 +290,24 @@ export function nextStep(run: Pick<PipelineRun, 'step' | 'round' | 'sentBackTo'>
   return enterStep(steps, run.step + 1, run.autoPush);
 }
 
+/**
+ * The step a run's verdict sends changes to, when the run stopped because that verdict still asked for changes after
+ * its rounds: Another round sends them there once more, and a turn you take there starts the next round. Null otherwise.
+ */
+export function outOfRounds(state: { run: Pick<PipelineRun, 'status' | 'waitingFor' | 'sentBackTo' | 'step' | 'round' | 'pipeline'>; steps: ReadonlyArray<{ index: number; round: number; verdict: StepVerdict | null }> }): { index: number; name: string } | null {
+  const { run } = state;
+  if (run.status !== 'waiting' || run.waitingFor !== 'you' || run.sentBackTo !== null) return null;
+  const step = run.pipeline.steps[run.step];
+  if (step?.kind !== 'claude' || !step.verdict || run.round < step.verdict.rounds) return null;
+  const row = state.steps.find((s) => s.index === run.step && s.round === run.round);
+  if (row?.verdict?.kind !== 'changes') return null;
+  const index = run.pipeline.steps.findIndex((s) => s.name === step.verdict!.sendTo);
+  return index < 0 || index >= run.step ? null : { index, name: run.pipeline.steps[index]!.name };
+}
+
+/** "round 2 of 3", or "round 4" for a round you added after the pipeline's own. */
+export const roundOf = (round: number, rounds: number) => (round > rounds ? `round ${round}` : `round ${round} of ${rounds}`);
+
 // --- The prompt a step gets -------------------------------------------------------------------------------------------
 
 /** What a step's prompt is filled from. */
@@ -390,7 +408,7 @@ export function fillStepPrompt(step: Pick<PipelineClaudeStep, 'prompt'>, ctx: St
  */
 export function changesMessage(from: { name: string; sessionId: string }, verdict: StepVerdict, round: number, rounds: number): string {
   const list = verdict.items.length ? verdict.items.map((item, i) => `${i + 1}. ${item}`).join('\n') : `See the last reply of @${from.name}.`;
-  return `@${from.name} found changes needed (round ${round} of ${rounds}):\n\n${list}\n\nMake these changes, then run the tests. ${from.name} checks again when you're done.\n\n${writeStub(from.name, from.sessionId)}`;
+  return `@${from.name} found changes needed (${roundOf(round, rounds)}):\n\n${list}\n\nMake these changes, then run the tests. ${from.name} checks again when you're done.\n\n${writeStub(from.name, from.sessionId)}`;
 }
 
 // --- The run's brief, for the parent ----------------------------------------------------------------------------------

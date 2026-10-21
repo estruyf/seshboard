@@ -2892,6 +2892,7 @@ export function createEngine(options: EngineOptions): Engine {
     'runs.get': ({ runId }) => ({ state: runner!.state(runId) }),
     'runs.continue': async ({ runId, message }) => ({ state: await runAction(() => runner!.continue(runId, message ?? undefined)) }),
     'runs.retryStep': async ({ runId }) => ({ state: await runAction(() => runner!.retryStep(runId)) }),
+    'runs.anotherRound': async ({ runId }) => ({ state: await runAction(() => runner!.anotherRound(runId)) }),
     'runs.skipStep': async ({ runId }) => ({ state: await runAction(() => runner!.skipStep(runId)) }),
     'runs.stop': async ({ runId }) => ({ state: await runAction(() => runner!.stop(runId)) }),
     'runs.archive': async ({ runId, archived }) => ({ runs: await runAction(async () => runner!.archive(runId, archived)) }),

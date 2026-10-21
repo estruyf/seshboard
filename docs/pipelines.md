@@ -125,6 +125,11 @@ The run stops at the step, and the parent turns to Needs you, when:
 
 You can reply in the sub-session that stopped: when that turn ends cleanly, the run goes on by itself. Quitting Switchboard pauses a run; it resumes when the app opens again.
 
+When a verdict is still *changes needed* after its rounds, there are two ways on besides Continue (which goes on without the changes):
+
+- **Another round** sends the changes to the step the verdict names, as the rounds before did, and the step with the verdict checks again when that turn ends. Stopping again offers another round again, so each extra round is yours to start (`runs.anotherRound`, `outOfRounds`).
+- **By hand**: a turn you take in that step (Execute) starts the next round when it ends cleanly and Claude doesn't wait for you. Asking the reviewer what it needs first keeps its verdict: a reply without a verdict line doesn't replace the last one.
+
 ## Where pipelines are saved
 
 Like saved prompts and actions: **This project**, **All projects**, or **Shared with the project**, which writes them to `.switchboard.json` under `pipelines`:

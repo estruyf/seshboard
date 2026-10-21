@@ -11,10 +11,12 @@ import {
   mentionsIn,
   mostUrgent,
   nextStep,
+  outOfRounds,
   parseActionResults,
   parseRunBriefs,
   pipelineIssues,
   readVerdict,
+  roundOf,
   runProgress,
   sidebarTree,
   stepTitle,
@@ -242,6 +244,12 @@ describe('changesMessage', () => {
     expect(typed).toContain('@Validate found changes needed (round 1 of 3):\n\n1. Fix the tooltip\n2. Lint');
     expect(briefs.map((b) => b.sessionId)).toEqual(['v1']);
   });
+
+  it('drops the "of" for a round past the pipeline\'s own', () => {
+    expect(roundOf(2, 2)).toBe('round 2 of 2');
+    expect(roundOf(3, 2)).toBe('round 3');
+    expect(changesMessage({ name: 'Validate', sessionId: 'v1' }, { kind: 'changes', items: ['Lint'] }, 3, 2)).toContain('@Validate found changes needed (round 3):');
+  });
 });
 
 const runState = (over: Partial<PipelineRunState['run']> = {}, stepRows: Array<Partial<PipelineRunState['steps'][number]>> = []): PipelineRunState => ({
@@ -274,6 +282,19 @@ const runState = (over: Partial<PipelineRunState['run']> = {}, stepRows: Array<P
 });
 
 describe('runs', () => {
+  it('knows when a verdict is out of rounds, and where another round sends the changes', () => {
+    const changes = { kind: 'changes' as const, items: ['fix'] };
+    const rows = [{}, { index: 1 }, { index: 2, verdict: changes }, { index: 2, round: 2, verdict: changes }];
+    const stopped = { status: 'waiting' as const, waitingFor: 'you' as const, round: 2 };
+    expect(outOfRounds(runState(stopped, rows))).toEqual({ index: 1, name: 'Execute' });
+    // Past the pipeline's rounds too (after Another round).
+    expect(outOfRounds(runState({ ...stopped, round: 3 }, [...rows, { index: 2, round: 3, verdict: changes }]))).toEqual({ index: 1, name: 'Execute' });
+    expect(outOfRounds(runState({ ...stopped, round: 1 }, rows))).toBeNull();
+    expect(outOfRounds(runState(stopped, [...rows.slice(0, 3), { index: 2, round: 2, verdict: null }]))).toBeNull();
+    expect(outOfRounds(runState({ ...stopped, sentBackTo: 1 }, rows))).toBeNull();
+    expect(outOfRounds(runState({ round: 2 }, rows))).toBeNull();
+  });
+
   it('says where a run is', () => {
     expect(runProgress(runState().run)).toBe('Validate · 3 of 4');
     expect(runProgress(runState({ round: 2 }).run)).toBe('Validate · round 2 · 3 of 4');
