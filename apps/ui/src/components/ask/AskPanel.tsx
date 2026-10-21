@@ -58,8 +58,16 @@ export function AskPanel(props: AskPanelProps) {
   const focus = useAsk((s) => (s.focus?.sessionId === sessionId ? s.focus.nonce : 0));
   useEffect(() => {
     if (!focus) return;
+    // Ask about this (from reading mode) starts the field with the selection quoted, the caret under it.
+    const prefill = useAsk.getState().focus?.prefill;
     useAsk.setState({ focus: null });
-    requestAnimationFrame(() => fieldRef.current?.focus());
+    if (prefill) setText(prefill);
+    requestAnimationFrame(() => {
+      const field = fieldRef.current;
+      if (!field) return;
+      field.focus();
+      if (prefill) field.setSelectionRange(prefill.length, prefill.length);
+    });
   }, [focus]);
 
   // The thread sticks to the bottom while an answer comes in, unless you scrolled up to read.

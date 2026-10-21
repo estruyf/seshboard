@@ -12,6 +12,8 @@
   --sb-card: #202736;
   --sb-border: #2d3142;
   --sb-text: #d9dbe1;
+  --sb-paper: #15181f;
+  --sb-paper-text: #d9dbe1;
   --sb-muted: #9ba4b7;
   --sb-faint: #8b94a6;
   --sb-accent: #ffd43b;
@@ -101,6 +103,8 @@
   --sb-card: #ffffff;
   --sb-border: #e1e4e8;
   --sb-text: #202736;
+  --sb-paper: #fbfaf7;
+  --sb-paper-text: #1f2328;
   --sb-muted: #505869;
   --sb-faint: #687082;
   --sb-accent: #ffd43b;

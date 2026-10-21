@@ -63,6 +63,18 @@ export const markdownComponents: Components = {
 export const PROSE =
   'markdown text-body leading-relaxed select-text [&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-title [&_h1]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted';
 
+/**
+ * The same renderer in reading mode (`components/readMode/`): sizes follow the reader's choice (the text size is set on
+ * the column and everything here is relative to it), with room between paragraphs and headings in the app's font.
+ */
+export const READING_PROSE =
+  'markdown leading-[1.75] select-text [&_:is(h1,h2,h3)]:scroll-mt-6 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:leading-snug [&_:is(h1,h2,h3)]:font-semibold [&_h1]:mt-10 [&_h1]:mb-4 [&_h1]:text-[1.6em] [&_h2]:mt-9 [&_h2]:mb-3 [&_h2]:text-[1.3em] [&_h3]:mt-7 [&_h3]:mb-2 [&_h3]:text-[1.1em] [&_:is(h1,h2,h3):first-child]:mt-0 [&_li]:my-1.5 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:opacity-80 [&_p_code]:text-[0.88em] [&_li_code]:text-[0.88em]';
+
+/** `reading`: the roomier version for reading mode. */
+export type MarkdownVariant = 'chat' | 'reading';
+
+const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_PROSE : PROSE);
+
 const Block = memo(function Block({ text }: { text: string }) {
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -72,9 +84,9 @@ const Block = memo(function Block({ text }: { text: string }) {
 });
 
 /** Assistant prose. Memoised: finished messages never change, so they render once. */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
   return (
-    <div className={PROSE}>
+    <div className={proseOf(variant)}>
       <Block text={text} />
     </div>
   );
@@ -85,10 +97,10 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
  * split into blocks so only the last one re-renders per delta, and that block has its
  * unclosed markers (`**bold`, `` `code ``, half a link) closed so they never show raw.
  */
-export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { text: string }) {
+export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
   const blocks = useMemo(() => splitBlocks(text), [text]);
   return (
-    <div className={PROSE}>
+    <div className={proseOf(variant)}>
       {blocks.map((block, i) => (
         // Blocks only ever grow at the end, so the index is a stable key.
         <Block key={i} text={i === blocks.length - 1 ? healMarkdown(block) : block} />

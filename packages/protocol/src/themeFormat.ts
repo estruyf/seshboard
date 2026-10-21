@@ -18,6 +18,8 @@ export const THEME_TOKENS = [
   'overlay-border',
   'overlay-shadow',
   'text',
+  'paper',
+  'paper-text',
   'muted',
   'faint',
   'link',

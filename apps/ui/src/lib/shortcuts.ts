@@ -264,7 +264,7 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading";
 
 export interface ShortcutDef {
   id: string;
@@ -637,6 +637,84 @@ export const SHORTCUTS = [
   },
 
   // In a session
+  {
+    id: "read.toggle",
+    keys: ["mod+alt+r"],
+    action: "Read the last reply, or close reading mode",
+    section: "session",
+    context: "In a session",
+    when: inSession,
+  },
+  {
+    id: "read.previous",
+    keys: ["arrowleft"],
+    action: "Go to the previous reply",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.next",
+    keys: ["arrowright"],
+    action: "Go to the next reply",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.previous-heading",
+    keys: ["k"],
+    action: "Go to the previous heading",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.next-heading",
+    keys: ["j"],
+    action: "Go to the next heading",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.bigger",
+    keys: ["=", "plus"],
+    action: "Make the text bigger",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.smaller",
+    keys: ["-"],
+    action: "Make the text smaller",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.reply",
+    keys: ["r"],
+    action: "Reply with the selected text quoted",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
   {
     id: "find",
     keys: ["mod+f"],

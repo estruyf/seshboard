@@ -9,6 +9,7 @@ import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { useLastWritten } from '../../state/lastWrittenStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
+import { useReadMode } from '../../state/readModeStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
@@ -156,6 +157,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const path = useLastWritten.getState().paths.get(sessionId);
       if (path) useFilePreview.getState().open(path);
     },
+    // After the palette's own close, which gives focus back to where it was, so reading mode's focus on open stays.
+    readLastReply: () => void setTimeout(() => useReadMode.getState().openLast(sessionId)),
     rememberThis: () => {
       // What you selected in the conversation, else Claude's last reply.
       const { selected, from } = conversationSelection();

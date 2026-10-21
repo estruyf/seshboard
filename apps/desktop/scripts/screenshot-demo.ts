@@ -167,6 +167,70 @@ function configFolder(dir: string, email: string, organization: string): void {
   writeFileSync(join(dir, '.claude.json'), `${JSON.stringify({ oauthAccount: { emailAddress: email, organizationName: organization } }, null, 2)}\n`);
 }
 
+/** Two long replies with headings, for reading mode: each is over 400 words. */
+const READING_FIRST = [
+  'The checkout is slow for one reason: it asks the server the same questions several times in a row. Here is what I found, and the order I would fix it in.',
+  '',
+  '## Where the time goes',
+  '',
+  'A checkout page load makes eleven requests before the customer sees a price. Four of them fetch the cart, each from a different component that mounted at a different moment. Two more fetch the shipping options, once for the summary and once for the picker. None of them share a cache, so each one waits for its own round trip, and on a mobile connection every round trip costs about 300 milliseconds.',
+  '',
+  'The slowest part is the tax call. It runs after the shipping options come back, because the tax depends on the destination. That makes a chain of three requests that could be one. The customer stares at a spinner for almost two seconds while the chain runs, and the total shown at the top of the page changes twice before it settles.',
+  '',
+  'There is also a quieter cost. Every duplicate request wakes the server, and the server asks the database for the same cart each time. On a busy afternoon that adds up to a load we pay for and nobody benefits from. Fixing the page fixes that too, which is why I would start here and not with the database.',
+  '',
+  '## What I would change first',
+  '',
+  'Start with a single cart query at the top of the page and pass its result down. This removes three of the four cart requests without touching the server. It also fixes the total that jumps around, because every component reads the same number.',
+  '',
+  'Next, ask for shipping options and tax in one request. The server already knows the destination when it builds the options, so it can add the tax to each option before it answers. The page then needs one call instead of two, and the chain is gone.',
+  '',
+  '- Share one cart query between the summary, the picker and the pay button.',
+  '- Return the tax with each shipping option.',
+  '- Keep the old endpoints for one release, so the mobile app keeps working.',
+  '',
+  '## What I would leave alone',
+  '',
+  'The payment form loads its own script from the provider, and that script is slow, but it is not ours to change. Loading it earlier, while the customer is still reading the summary, hides most of the delay at no cost. I would do that last, because it is a small change with a visible effect, and it is easy to undo if the provider changes how the script loads.',
+  '',
+  'Finally, a note on measuring. I would not trust a single run on a fast office connection. The numbers above come from reading the code and counting calls, so before and after each change, record the time to a stable total on a throttled connection, three runs each. That gives us a result we can show to the team, and it tells us early if a change helps less than I expect.',
+  '',
+  'I have not changed any code yet. Do you want me to start with the shared cart query?',
+].join('\n');
+
+const READING_SECOND = [
+  'Done. The cart is fetched once, and the checkout now needs five requests instead of eleven. This is what changed and what to check.',
+  '',
+  '## The shared cart query',
+  '',
+  'The page now owns one cart query, and the summary, the shipping picker and the pay button read from it through a small hook. When the customer changes a quantity, the hook updates the cached cart straight away and sends the change in the background, so the total moves at once instead of after a round trip. If the server refuses the change, the hook puts the old value back and shows the reason next to the item.',
+  '',
+  'I kept the hook small on purpose. It exposes the cart, a loading flag and one function to change a line. Anything else, such as coupon codes, still goes through its own request, because it has its own error messages and the page should not guess at them. The hook is also the only place that knows how long a pending change may take, so the timeout and the retry live in one file and not in three components.',
+  '',
+  '## Shipping and tax together',
+  '',
+  'The shipping endpoint now returns each option with its tax. The old fields are still there, so the mobile app is not affected. On the page, choosing an option no longer triggers a tax call: the number is already known, and the total updates the moment the choice is made.',
+  '',
+  'I measured this on a throttled connection. The time until the first stable total went from 2.1 seconds to 0.8 seconds. The total no longer changes after it first appears, which was the part customers complained about most.',
+  '',
+  'One more thing changed that you did not ask for. The pay button used to read the total from the summary through a prop, and it could be a moment behind. It now reads the cart directly, so the amount it charges is always the amount on screen. I added a test that fails if the two ever differ, because that is the kind of bug a customer notices on their statement and not before.',
+  '',
+  '## What to check',
+  '',
+  'Please try these cases by hand, because the tests only cover the happy path:',
+  '',
+  '- Change a quantity while offline, then come back online.',
+  '- Switch the destination country twice quickly.',
+  '- Apply a coupon, then remove an item.',
+  '',
+  '```ts',
+  'const { cart, change } = useCart();',
+  'await change(line.id, { quantity: 3 });',
+  '```',
+  '',
+  'If all three behave, the old shipping and tax endpoints can go in the next release. I would remove them in a separate change, so that if something does go wrong, undoing it is one revert and not a search through a larger diff.',
+].join('\n');
+
 const numbered = (text: string) =>
   text
     .split('\n')
@@ -456,6 +520,16 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     [payments, 'main', 'Add CSV export to the reports endpoint', 5 * DAY, 'Let /reports return CSV when the client asks for text/csv.', '`GET /reports` now honours `Accept: text/csv` and streams the rows. JSON stays the default.'],
     [docs, 'main', 'Fix broken links after the docs move', 8 * DAY, 'Lots of links broke when we moved the API docs. Find and fix them.', 'Fixed 23 links across 9 pages and added redirects for the old `/api/v1/*` URLs.'],
   ];
+  // Two long replies with headings, for reading mode (the smoke test and the website's picture of it).
+  const reading = new Transcript(acme, 'main', now - 4 * HOUR, { scale: 1.4 })
+    .user('Why is the checkout slow? Look at what the page asks the server for, and tell me what you would change. No code yet.')
+    .tool('Grep', { pattern: 'fetchCart', path: `${acme}/src` }, 'Found 4 files')
+    .say(READING_FIRST)
+    .user('Go ahead with the shared cart query, and tell me how to check it.')
+    .tool('Read', { file_path: `${acme}/src/components/Section.tsx` }, numbered('export function Section() {}'))
+    .say(READING_SECOND);
+  reading.write(configDir, 'Speed up the checkout page');
+
   // How heavy each one was, and on which model, for the Usage view.
   const usage: Record<string, TranscriptUsage> = {
     'Refactor auth middleware': { scale: 1.6 },
@@ -485,6 +559,8 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   };
   live(working.id, payments, 'busy', now - 9 * MINUTE, workConfigDir);
   live(needsYou.id, payments, 'waiting_for_permission', now - 14 * MINUTE, workConfigDir);
+
+  written['Speed up the checkout page'] = { id: reading.id, configDir };
 
   return {
     home,

@@ -142,6 +142,10 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
   const terminalL = mode === 'dark' ? Math.min(0.18, base.l - 0.036) : 0.173;
   const terminalBg = hex({ l: Math.max(0.08, terminalL), c: Math.min(0.02, base.c + 0.004), h: hue });
 
+  // Reading mode: light themes read on a slightly warm, slightly dimmer lift of the canvas; dark ones on the canvas itself.
+  const paperHex = mode === 'dark' ? toHex(read(canvas)) : hex({ l: clampL(base.l - 0.012), c: Math.min(0.03, Math.max(base.c, 0.008)), h: base.c >= 0.012 ? base.h : 90 });
+  const paperText = mode === 'dark' ? text : solvedHex(toOklch(read(text)), [read(paperHex)], CONTRAST.text, away);
+
   const tokens: Omit<ThemeTokens, 'selected' | 'focus-ring' | 'diff-added' | 'diff-removed'> = {
     bg: toHex(read(canvas)),
     sidebar: hex(sidebar),
@@ -152,6 +156,8 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'overlay-border': hex(surface(steps.overlayBorder, 2)),
     'overlay-shadow': SHADES[mode]['overlay-shadow'],
     text,
+    paper: paperHex,
+    'paper-text': paperText,
     muted,
     faint,
     link: blue,

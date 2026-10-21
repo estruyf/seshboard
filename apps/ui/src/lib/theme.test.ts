@@ -85,7 +85,7 @@ describe('generating a theme from canvas and accent', () => {
     // white canvas get a hint of the yellow accent (Demo Time's are cool blue-grey), the diff backgrounds
     // are 14% (12%), and accent-ink and dark warn are solved to just 4.5:1.
     const greys = 0.05;
-    const LIMIT: Partial<Record<keyof ThemeTokens, number>> = { 'on-accent': 0.25, 'terminal-bg': 0.03, warn: 0.03, text: greys, muted: greys, faint: greys, selected: greys };
+    const LIMIT: Partial<Record<keyof ThemeTokens, number>> = { 'on-accent': 0.25, 'terminal-bg': 0.03, warn: 0.03, text: greys, 'paper-text': greys, muted: greys, faint: greys, selected: greys };
     const report: string[] = [];
     for (const mode of THEME_MODES) {
       const demo = DEMO_TIME_TOKENS[mode];

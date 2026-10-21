@@ -6,6 +6,10 @@
  * --demo runs it in the made-up home folder the README screenshots use (scripts/screenshot-demo.ts) instead of
  * the user's own: projects, sessions and a running one, the same on every machine. CI runs it this way
  * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
+ *
+ * --only "<pattern>" runs only the steps whose label matches (a case-insensitive regular expression; repeat it for more),
+ * plus the two that open the session the others work in: `npm run smoke -- --only "own window" --only split`. Use it
+ * while building a feature, and the full run once at the end. Steps run inside another (the projects step's) go with it.
  */
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -40,6 +44,29 @@ const command = packaged ? packagedApp() : (createRequire(import.meta.url)('elec
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
+
+// Each --only adds a pattern; a step runs when its label matches any of them.
+const patterns = process.argv.flatMap((arg, i) => (arg === '--only' ? [process.argv[i + 1] ?? ''] : arg.startsWith('--only=') ? [arg.slice('--only='.length)] : []));
+const only = patterns.length ? patterns.map((pattern) => `(?:${pattern})`).join('|') : null;
+if (only) {
+  if (patterns.some((pattern) => !pattern.trim())) {
+    console.error('✗ --only needs a pattern: npm run smoke -- --only "<part of a step label>"');
+    process.exit(1);
+  }
+  try {
+    new RegExp(only, 'i');
+  } catch (error) {
+    console.error(`✗ --only ${patterns.map((pattern) => `"${pattern}"`).join(' ')} is not a valid pattern: ${(error as Error).message}`);
+    process.exit(1);
+  }
+  childEnv.SWITCHBOARD_SMOKE_ONLY = only;
+  console.log(`only the steps matching ${patterns.map((pattern) => `"${pattern}"`).join(' or ')}`);
+}
+
+// Started from Claude Code: its own session runs in this repository, and the steps that need a session or folder
+// nobody works in skip it, so some steps fail by design. Not worth looking into; run the full smoke from a terminal.
+const insideClaude = Boolean(process.env.CLAUDECODE || process.env.CLAUDE_CODE_SESSION_ID);
+if (insideClaude && !process.argv.includes('--demo') && !only) console.log('note: started from a Claude Code session; steps that need a session or folder not in use may fail because of it');
 
 let world: DemoWorld | null = null;
 if (process.argv.includes('--demo')) {
@@ -131,4 +158,13 @@ if (result.window) console.log(`  window ${result.window.content.join('×')} on 
 if (result.reports[0]) console.log(`  claude ${result.reports[0].claudeVersion ?? 'not found'} · engine ping ${result.reports[0].pingMs}ms · electron ${result.versions.electron}`);
 if (packaged) console.log('  (packaged app)');
 if (world) console.log('  (demo home)');
-console.log(`${failed.length ? `✗ ${failed.length} of ${steps.length} steps failed` : `✓ all ${steps.length} steps passed`} in ${seconds(performance.now() - started)}, screenshots in ${outDir}`);
+if (result.only) {
+  console.log(`  (only ${patterns.map((pattern) => `"${pattern}"`).join(' or ')}: ${result.only.matched} step${result.only.matched === 1 ? '' : 's'} picked, plus the two that open the session)`);
+}
+const noMatch = result.only && !result.only.matched;
+if (noMatch) {
+  console.log('✗ no step label matches --only; labels are the step(...) lines in runSmokeStep (apps/desktop/src/main/index.ts), and steps inside "projects" run with it');
+  process.exitCode = 1;
+}
+if (insideClaude && !world && failed.length) console.log('  (started from Claude Code: failures about running sessions or their folders come from that; rerun from a terminal)');
+if (!noMatch) console.log(`${failed.length ? `✗ ${failed.length} of ${steps.length} steps failed` : `✓ all ${steps.length} steps passed`} in ${seconds(performance.now() - started)}, screenshots in ${outDir}`);

@@ -7,6 +7,9 @@
   --sb-card: #ffffff;
   --sb-border: #e1e4e8;
   --sb-text: #202736;
+  /* Reading mode: the page and its text. Warm off-white in light, the same as bg and text in dark. */
+  --sb-paper: #fbfaf7;
+  --sb-paper-text: #1f2328;
   --sb-muted: #505869;
   /* Faint is for small secondary text, so it keeps at least 4.5:1 on the background and sidebar. */
   --sb-faint: #687082;
@@ -75,6 +78,8 @@
     --sb-card: #202736;
     --sb-border: #2d3142;
     --sb-text: #d9dbe1;
+    --sb-paper: #15181f;
+    --sb-paper-text: #d9dbe1;
     --sb-muted: #9ba4b7;
     --sb-faint: #8b94a6;
     --sb-accent: #ffd43b;
@@ -128,6 +133,8 @@
   --sb-card: #202736;
   --sb-border: #2d3142;
   --sb-text: #d9dbe1;
+  --sb-paper: #15181f;
+  --sb-paper-text: #d9dbe1;
   --sb-muted: #9ba4b7;
   --sb-faint: #8b94a6;
   --sb-accent: #ffd43b;
@@ -189,6 +196,8 @@
   --color-memory: var(--sb-memory);
   --color-remote: var(--sb-remote);
   --color-trigger: var(--sb-trigger);
+  --color-paper: var(--sb-paper);
+  --color-paper-text: var(--sb-paper-text);
   --color-selected: var(--sb-selected);
   --color-profile-yellow: var(--sb-profile-yellow);
   --color-profile-blue: var(--sb-profile-blue);
@@ -536,6 +545,22 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
 }
 @media (prefers-reduced-motion: reduce) {
   .prompt-landing [data-prompt-bubble] {
+    animation: none;
+  }
+}
+
+/* Reading mode's needs-you banner slides in under the top bar. */
+.read-banner-in {
+  animation: read-banner-in 180ms ease-out;
+}
+@keyframes read-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .read-banner-in {
     animation: none;
   }
 }

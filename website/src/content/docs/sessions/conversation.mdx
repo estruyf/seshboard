@@ -174,6 +174,32 @@ The cost shows with **Show estimated cost** on, and reading it all again counts 
 
 With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Switchboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
 
+## Reading mode
+
+Reading mode shows one reply on its own, in the full window, with an outline of its headings beside it. Tool calls are folded away, so a long answer reads like a page.
+
+Open it with **Read** in a reply's actions, with <Kbd shortcut="read.toggle" />, or with *Read the last reply* in the command palette.
+
+- **In this reply.** The outline lists the reply's headings. Click one to jump there. Under it: how many tools were used and how long the reply takes to read.
+- **Aa.** Opens the text settings: **Font**, **Size**, **Width** and **Show tool calls**. Switchboard keeps them for next time.
+- **Selecting text.** A toolbar shows above the selection with **Reply with quote**, **Copy** and **Ask about this**. **Reply with quote** and **Ask about this** close reading mode and put the text in the message box.
+- **Other sessions.** <Kbd shortcut="sidebar.toggle" /> shows the session list over the page. When Claude needs you in another session, a line under the top bar says so, with **Go** to open it.
+
+Keys in reading mode:
+
+| Key | What it does |
+| --- | --- |
+| <Kbd shortcut="read.previous" /> | Previous reply |
+| <Kbd shortcut="read.next" /> | Next reply |
+| <Kbd shortcut="read.previous-heading" /> | Previous heading |
+| <Kbd shortcut="read.next-heading" /> | Next heading |
+| <Kbd shortcut="read.bigger" /> | Bigger text |
+| <Kbd shortcut="read.smaller" /> | Smaller text |
+| <Kbd shortcut="read.reply" /> | Reply with the selection quoted |
+| <Kbd keys="escape" /> | Close reading mode |
+
+**Done**, <Kbd keys="escape" /> and the back arrow all return you to the same place in the session.
+
 ## The hover toolbar
 
 Hover over a message for its toolbar:
@@ -184,6 +210,7 @@ Hover over a message for its toolbar:
   - **Copy message**, as you typed it.
 - **On Claude's replies:**
   - **Fork from here.** A new session with the conversation up to this message.
+  - **Read.** Opens the reply in [reading mode](#reading-mode).
   - **Copy as Markdown.**
   - **Copy as rich text.** Copies the reply as it looks, to paste into an email, a document, Slack or Notion with its headings, lists, bold, links, code and tables. A field that takes only plain text gets the Markdown. Links to files in the project paste as their text.
 - **On both:** **Remember this…** (the brain button) saves the message as a memory. See [Remember this](/memory/adding-memory/#remember-this).

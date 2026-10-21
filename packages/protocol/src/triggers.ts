@@ -38,6 +38,8 @@ export const TRIGGER_LOG_LINES = 300;
 export const TRIGGER_ISSUE_LIMIT = 100;
 /** Failed runs one check reads at most. */
 export const TRIGGER_RUN_LIMIT = 20;
+/** Failed runs a CI trigger remembers as seen, the ones in the last answer first: a re-run drops out while it runs. */
+export const TRIGGER_RUNS_REMEMBERED = 100;
 /** The fields of `gh issue list --json` a check reads. */
 export const ISSUE_FIELDS = 'number,title,url,labels,assignees,author,body,updatedAt';
 /** The fields of `gh run list --json` a check reads. */
@@ -115,10 +117,14 @@ export function eventKey(source: Pick<TriggerSource, 'kind'>, item: SourceItem):
 
 /**
  * What a check remembers of the last answer, by event key. `match`: it matched (an event was made, or it was there at
- * the first check). `held`: it carried a state label that keeps it out. An item that isn't in the next answer is
- * forgotten, so when it matches again (the label added again, the state label taken off) it is new.
+ * the first check). `held`: it carried a state label that keeps it out. An issue that isn't in the next answer is
+ * forgotten, so when it matches again (the label added again, the state label taken off) it is new. A failed run is
+ * remembered past its answer (`TRIGGER_RUNS_REMEMBERED`): a re-run leaves the list of failures while it runs, and
+ * when it fails again on the same commit it is the same event. `released`: its session was archived or deleted and
+ * Switchboard took its state label off; while it stays in the answer it isn't new (with an assignee alone, taking the
+ * label off would otherwise start it again), even when a read from before still shows the label.
  */
-export type SeenState = Record<string, 'match' | 'held'>;
+export type SeenState = Record<string, 'match' | 'held' | 'released'>;
 
 /** An event a check found, before it is stored. */
 export interface FoundEvent {
@@ -174,6 +180,12 @@ export function blockingStateLabel(trigger: Pick<Trigger, 'source' | 'stateLabel
   return null;
 }
 
+/**
+ * Whether a trigger assigns issues to you when it picks them up. Only with a label alone: with an assignee in the
+ * filter every issue it sees has one already, so skipping those would skip them all.
+ */
+export const assignsOnPickUp = (trigger: Pick<Trigger, 'source' | 'assignOnPickUp'>) => trigger.assignOnPickUp && trigger.source.kind === 'issues' && !trigger.source.assignee;
+
 /** Whether GitHub's association counts as a collaborator. */
 export const isCollaborator = (association: string | null | undefined) => !!association && (COLLABORATOR_ASSOCIATIONS as readonly string[]).includes(association.toUpperCase());
 
@@ -226,7 +238,7 @@ export function toEvent(trigger: Pick<Trigger, 'source'>, item: SourceItem, bran
  * new ones, these are skipped, each with why:
  * - an issue that already has a state label (picked up elsewhere), the first time it shows up;
  * - an issue opened by someone outside the collaborators, with `collaboratorsOnly`;
- * - an issue that already has an assignee, with `assignOnPickUp`.
+ * - an issue that already has an assignee, with `assignOnPickUp` on a label-only filter (`assignsOnPickUp`).
  * Items without their author's association are treated as outsiders: the engine reads it before it asks.
  */
 export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'assignOnPickUp'>, items: readonly SourceItem[], seen: SeenState, branch: string | null = null): NewEvents {
@@ -239,17 +251,17 @@ export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'ass
     if (isIssue(item) && trigger.source.kind === 'issues') {
       const held = blockingStateLabel(trigger, item);
       if (held) {
-        next[event.key] = 'held';
+        next[event.key] = before === 'released' ? 'released' : 'held';
         if (before === undefined) skipped.push({ ...event, reason: `already has the ${held} label` });
         continue;
       }
       next[event.key] = 'match';
-      if (before === 'match') continue;
+      if (before === 'match' || before === 'released') continue;
       if (trigger.source.collaboratorsOnly && !isCollaborator(item.authorAssociation)) {
         skipped.push({ ...event, reason: "opened by someone outside the repository's collaborators" });
         continue;
       }
-      if (trigger.assignOnPickUp && item.assignees.length > 0) {
+      if (assignsOnPickUp(trigger) && item.assignees.length > 0) {
         skipped.push({ ...event, reason: `already assigned to @${item.assignees[0]!.login}` });
         continue;
       }
@@ -261,6 +273,12 @@ export function newEvents(trigger: Pick<Trigger, 'source' | 'stateLabels' | 'ass
     next[event.key] = 'match';
     if (before === 'match' || twice) continue;
     events.push(event);
+  }
+  if (trigger.source.kind === 'ci') {
+    for (const [key, value] of Object.entries(seen)) {
+      if (Object.keys(next).length >= TRIGGER_RUNS_REMEMBERED) break;
+      if (!(key in next)) next[key] = value;
+    }
   }
   const byTime = (a: FoundEvent, b: FoundEvent) => a.at - b.at || a.key.localeCompare(b.key);
   return { events: events.sort(byTime), skipped: skipped.sort(byTime), seen: next };
@@ -345,12 +363,12 @@ export function nextStateLabel(state: TriggerWorkState): StateLabelKey | null {
 
 /**
  * The one `gh issue edit` arguments that move an issue to `next`: add it, take off the state label Switchboard put
- * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). Null
- * when nothing changes.
+ * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). A
+ * `next` of null takes `current` off and adds nothing. Null when nothing changes.
  */
 export function stateLabelEdit(number: number, next: string | null, current: string | null, extra: { removeTrigger?: string | null; assign?: boolean } = {}): string[] | null {
   const add = next && (!current || !sameLabel(next, current)) ? next : null;
-  const remove = [current && add ? current : null, extra.removeTrigger ?? null].filter((l): l is string => !!l);
+  const remove = [current && (add || !next) ? current : null, extra.removeTrigger ?? null].filter((l): l is string => !!l);
   if (!add && remove.length === 0 && !extra.assign) return null;
   return ['issue', 'edit', String(number), ...(add ? ['--add-label', add] : []), ...remove.flatMap((label) => ['--remove-label', label]), ...(extra.assign ? ['--add-assignee', '@me'] : [])];
 }

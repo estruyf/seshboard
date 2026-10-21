@@ -122,6 +122,7 @@ const PLANS: Record<string, Plan> = {
   'prompt-next': 'here',
   'remember-this': 'here',
   'quote-in-reply': 'here',
+  'read-last-reply': 'here',
   'copy-last-reply': 'here',
   // The preview dialog is mounted in a pop-out too.
   'preview-last-file': 'here',

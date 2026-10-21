@@ -194,6 +194,12 @@ export function GitButton({
     togglePanel(sessionId, true);
     setActive(sessionId, terminalId);
   };
+  /** Shows why a git step failed: a toast (the button's tooltip alone is easy to miss), and the tooltip keeps it until the next try. */
+  const fail = (what: string, e: unknown) => {
+    const message = `Couldn't ${what}: ${e instanceof Error ? e.message : String(e)}`;
+    setError(message);
+    toast(message, { tone: 'error', durationMs: 10_000, data: { 'data-git-error': true } });
+  };
   const run = async (step: GitStep) => {
     setError(null);
     if (step === 'pr') return setCreatingPr(true);
@@ -213,7 +219,7 @@ export function GitButton({
       const { terminalId } = await client.call('git.sync', { sessionId, cwd, action: step satisfies GitSyncAction });
       openTerminal(terminalId);
     } catch (e) {
-      setError(`Couldn't ${STEP_LABEL[step].toLowerCase()}: ${e instanceof Error ? e.message : String(e)}`);
+      fail(STEP_LABEL[step].toLowerCase(), e);
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -254,7 +260,7 @@ export function GitButton({
       if (draft.items.length) drafts.addContext(sessionId, draft.items);
       drafts.requestQuote(sessionId, draft.text, { plain: true });
     } catch (e) {
-      setError(`Couldn't read the logs of the failed checks: ${e instanceof Error ? e.message : String(e)}`);
+      fail('read the logs of the failed checks', e);
     } finally {
       setFixing(false);
     }
@@ -298,7 +304,7 @@ export function GitButton({
       openTerminal(terminalId);
       if ((await waitForExit(terminalId, 10 * 60_000)) && useTerminals.getState().terminals.get(terminalId)?.exitCode === 0) setCreatingPr(true);
     } catch (e) {
-      setError(`Couldn't pull: ${e instanceof Error ? e.message : String(e)}`);
+      fail('pull', e);
     }
   };
   const markReady = async () => {
@@ -308,7 +314,7 @@ export function GitButton({
       await client.call('git.prReady', { cwd, number: openPr.number });
       setPr({ ...openPr, draft: false });
     } catch (e) {
-      setError(`Couldn't mark #${openPr.number} ready: ${e instanceof Error ? e.message : String(e)}`);
+      fail(`mark #${openPr.number} ready`, e);
     } finally {
       setReadying(false);
     }
@@ -422,7 +428,7 @@ export function GitButton({
       aria-busy={fixing || undefined}
       data-view-pr={viewPr.number}
       data-checks={faceChecks?.summary}
-      className={`flex h-7 items-center gap-1.5 rounded-l-md border border-border px-2.5 text-ui text-text hover:bg-border/50 ${error ? 'ring-1 ring-error ring-inset' : ''}`}
+      className={`flex h-7 items-center gap-1.5 rounded-l-md border border-border px-2.5 text-ui text-text hover:bg-border/50`}
     >
       <GitPullRequest size={13} className="text-muted @max-[860px]:hidden" aria-hidden />
       <span>View PR #{viewPr.number}</span>
@@ -451,16 +457,17 @@ export function GitButton({
         data-tooltip={error ?? (starting ? startingLabel : tooltipFor(face))}
         aria-label={starting ? startingLabel : `${STEP_LABEL[face]}${count ? ` ${count}` : ''}`}
         aria-keyshortcuts={face === 'pull' ? ariaKeysFor('git.pull') : undefined}
-        className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${error ? 'ring-1 ring-error ring-inset' : ''} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
+        className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
       >
-        {/* A narrow header drops the icon first; in a pane under 420px (four side by side) the icon and the count stand
-            in for the word, which stays in the label and the tooltip. */}
+        {/* A narrow header drops the icon first; under 560px (four panes side by side, or a pop-out at its smallest,
+            which also has Move back and Close window) the icon and the count stand in for the word, which stays in the
+            label and the tooltip. */}
         {starting ? (
           <LoaderCircle size={13} className="animate-spin" aria-hidden />
         ) : (
-          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[420px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
+          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[560px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
         )}
-        <span className="@max-[420px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
+        <span className="@max-[560px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
         {!starting && count !== null && count > 0 && (
           <span className="tabular-nums" aria-hidden>
             {COUNT[face]!.prefix}

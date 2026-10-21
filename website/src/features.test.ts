@@ -9,7 +9,7 @@ import features from './content/features.json' with { type: 'json' };
 /*
  * The docs cover every feature: each palette command, shortcut, Settings section and project tab has an
  * entry in content/features.json, and every entry points at a page that exists. A new command or shortcut
- * fails this test until it is documented (see the Release checklist in CLAUDE.md).
+ * fails this test until it is documented (see the docs checklist in docs/releasing.md).
  */
 
 const here = import.meta.dirname;

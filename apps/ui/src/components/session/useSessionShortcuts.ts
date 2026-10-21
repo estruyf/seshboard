@@ -3,6 +3,7 @@ import { sessionKey, maximizeStep } from '../../lib/sessionKeys.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { popOut, popoutSession } from '../../state/popoutsStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { useReadMode } from '../../state/readModeStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { useOpenIn } from '../OpenInButton.tsx';
@@ -17,7 +18,7 @@ export interface SessionKeyTarget {
 
 /**
  * The shortcuts that act on the window's session (keys in `lib/shortcuts.ts`): the terminal (hide or show, maximize),
- * Open in editor and Open in new window. The main window and a pop-out both use it, each saying what it is showing
+ * Open in editor, Open in new window and Read the last reply. The main window and a pop-out both use it, each saying what it is showing
  * (`target`), so a pop-out's session has the same keys as a pane. The terminal passes these keys on to the window
  * (XTerm.tsx), so they work there too.
  */
@@ -49,6 +50,16 @@ export function useSessionShortcuts(target: () => SessionKeyTarget): void {
         if (!sessionId) return;
         event.preventDefault();
         popOut(sessionId);
+      } else if (key === 'read.toggle') {
+        // Reading mode closes from anywhere; otherwise it opens at the last reply of the session in view.
+        const read = useReadMode.getState();
+        if (read.open) {
+          event.preventDefault();
+          read.close();
+        } else if (sessionId) {
+          event.preventDefault();
+          read.openLast(sessionId);
+        }
       } else if (key === 'editor.open') {
         if (!sessionId) return;
         const { sessions, live } = useSessions.getState();

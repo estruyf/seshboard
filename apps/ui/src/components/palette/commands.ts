@@ -108,6 +108,7 @@ import {
   Zap,
   type LucideIcon,
   CalendarClock,
+  BookOpen,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { PromptScope } from '@switchboard/protocol/client';
@@ -185,6 +186,8 @@ export interface PaletteApi {
   copyLastReply(): void;
   /** Preview last written file: opens the previewable file Claude wrote last in the session. */
   previewLastFile(): void;
+  /** Opens reading mode at the session's last reply. */
+  readLastReply(): void;
   /** Remember this…: the selected text in the conversation, else Claude's last reply, as a memory. */
   rememberThis(): void;
   /** Quote in reply: the selected text in the conversation, else Claude's last reply, quoted in the message box. */
@@ -776,6 +779,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'use-saved-prompt', title: 'Use saved prompt…', group: 'general', icon: Bookmark, keywords: 'template snippet blanks fill prompts', when: (ctx) => ctx.composer !== null && ctx.prompts.length > 0, next: () => ({ kind: 'pick', list: 'prompt', chip: 'Saved prompt' }) },
   { id: 'new-saved-prompt', title: 'New saved prompt…', group: 'general', icon: BookmarkPlus, keywords: 'template snippet blanks create prompts', when: (ctx) => ctx.connected, run: (api) => api.newPrompt() },
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
+  { id: 'read-last-reply', title: 'Read the last reply', group: 'session', icon: BookOpen, keywords: 'reading mode focus outline full window', shortcut: keysFor('read.toggle'), when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.readLastReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
   { id: 'preview-last-file', title: 'Preview last written file', group: 'session', icon: Eye, keywords: 'markdown html code preview plan readme file open written', when: (ctx) => session(ctx) !== null && ctx.lastPreviewableFile !== null, run: (api) => api.previewLastFile() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },

@@ -50,6 +50,7 @@ import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
 import { useSessions, type MainView } from './state/sessionsStore.ts';
+import { useReadMode } from './state/readModeStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
@@ -122,7 +123,8 @@ function useShortcuts() {
       } else if (matches(event, 'session.next-needs-you')) {
         later(goToNextNeedsYou);
       } else if (matches(event, 'sidebar.toggle')) {
-        later(() => useSidebar.getState().toggle());
+        // Over reading mode the sidebar is a panel on the reading view, not the real one behind it.
+        later(() => (useReadMode.getState().open ? useReadMode.getState().toggleSidebar() : useSidebar.getState().toggle()));
       } else if (matches(event, 'home')) {
         event.preventDefault();
         useSessions.getState().goHome();
@@ -240,13 +242,15 @@ export function App() {
   // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
+  // Reading mode covers the window (a portal from the session view); the sidebar and the view stay mounted, out of reach, under it.
+  const reading = useReadMode((s) => s.open !== null);
   const adding = useProjects((s) => s.adding);
   const cloning = useClone((s) => s.dialog);
 
   return (
     <div className="flex h-full">
-      <SidebarShell />
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <SidebarShell inert={reading} />
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
         {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view, and Settings. */}
         <AppTerminalFrame view={shownView}>
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}

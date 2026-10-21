@@ -1,6 +1,7 @@
 /**
  * Recognising a turn that a plan usage limit stopped, and when to resume it. Pure, so it is tested without Claude Code.
  */
+import type { LimitsState, RemoteLimitStanding } from '@switchboard/protocol';
 
 /** The API can still refuse right at the reset: a resume waits this long after it. */
 export const RESUME_GRACE_MS = 30_000;
@@ -78,4 +79,18 @@ export function snapshotReset(meters: ReadonlyArray<{ kind: string; percent: num
   // The fullest meter of the kind is the one that stopped the turn.
   const pick = [...(matching.length ? matching : full)].sort((a, b) => b.percent - a.percent)[0];
   return pick?.resetsAt ?? null;
+}
+
+/**
+ * How a session stands with its profile's limit for a phone or another computer (the notice above the message box):
+ * null when the profile isn't at one. As `limitStanding` in the app's UI, without the profile's id.
+ */
+export function remoteLimit(state: LimitsState, sessionId: string, profileId: string): RemoteLimitStanding | null {
+  const limit = state.limits.find((l) => l.profileId === profileId);
+  if (!limit) return null;
+  const resume = state.resumes.find((r) => r.sessionId === sessionId) ?? null;
+  const gaveUp = state.gaveUp.includes(sessionId);
+  // An armed or given-up session was stopped by it too, even after its resume took it off the list.
+  const stopped = limit.sessionIds.includes(sessionId) || resume !== null || gaveUp;
+  return { stopped, kind: limit.kind, resetsAt: limit.resetsAt, resumeAt: resume?.at ?? null, gaveUp };
 }

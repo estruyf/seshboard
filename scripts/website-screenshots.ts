@@ -611,6 +611,8 @@ type Screen = { name: string; take(t: Tour): Promise<void> };
 const HERO = 'Add dark mode toggle';
 /** The finished session the catch-up pictures open (its catch-up comes with the demo, `demoCatchUps`). */
 const CATCH_UP = 'Refactor auth middleware';
+/** The session with a long reply, which the reading mode picture opens. */
+const LONG_REPLY = 'Speed up the checkout page';
 const WORKING = 'Fix rounding';
 const NEEDS_YOU = 'Upgrade Stripe';
 
@@ -718,6 +720,21 @@ const screens: Screen[] = [
       const path = join(outDir, `code-block-${t.scheme}.png`);
       await t.page.screenshot({ path, clip: { x: box.x - pad, y: box.y - pad, width: box.width + pad * 2, height: box.height + pad * 2 } });
       console.log(`  code-block-${t.scheme}.png`);
+    },
+  },
+  {
+    name: 'reading-mode',
+    async take(t) {
+      await t.openSession(LONG_REPLY);
+      // A long reply shows its Read button all the time; the last one is the newest reply.
+      const read = t.page.locator('[data-current-session] [data-read-button]').last();
+      await read.scrollIntoViewIfNeeded();
+      await read.click();
+      await t.need('[data-read-mode]', 'reading mode did not open');
+      await t.need('[data-read-outline]', 'the outline of the reply did not show');
+      await t.shot('reading-mode');
+      await t.escape();
+      await t.gone('[data-read-mode]', 'Esc did not close reading mode');
     },
   },
   {

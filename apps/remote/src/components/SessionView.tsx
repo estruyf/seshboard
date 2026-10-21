@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions, SendMode } from '@switchboard/protocol/remote-client';
+import type { CatchUp, QueuedMessage, RemoteLimitStanding, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions, SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
@@ -26,6 +26,7 @@ import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } 
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
+import { LimitNotice } from './LimitNotice.tsx';
 import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
 import { SEND_MODES, SEND_MODES_NOTE, sendKey } from '../lib/sendMode.ts';
@@ -82,6 +83,8 @@ export function SessionView({
   const [hasMore, setHasMore] = useState(false);
   const [streaming, setStreaming] = useState<Streaming>(NOT_STREAMING);
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  /** How the session stands with its profile's usage limit; null while it isn't at one. */
+  const [limit, setLimit] = useState<RemoteLimitStanding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [changes, setChanges] = useState<ChangesState | null>(null);
@@ -137,6 +140,7 @@ export function SessionView({
       }),
       client.on('session.stream', (delta) => delta.sessionId === sessionId && setStreaming((current) => applyStream(current, delta))),
       client.on('upNext.changed', (event) => event.sessionId === sessionId && setQueue(event.queue)),
+      client.on('limits.changed', (event) => event.sessionId === sessionId && setLimit(event.limit)),
       client.on('catchup.changed', (event) => event.sessionId === sessionId && setCatchUp(event.catchUp)),
     ];
     void client.call('catchup.get', { sessionId }).then((r) => live && setCatchUp(r.catchUp), () => {});
@@ -327,6 +331,9 @@ export function SessionView({
               </Button>
             </p>
           </div>
+        )}
+        {client && (
+          <LimitNotice client={client} sessionId={sessionId} limit={limit} held={queue.length} busy={working || prompts.length > 0} now={now} />
         )}
         {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}

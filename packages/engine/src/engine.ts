@@ -152,7 +152,7 @@ import { ShellEnvironment } from './system/shellEnvironment.ts';
 import { detectTerminalFont } from './system/terminalFont.ts';
 import type { ShellEnv } from './system/shellEnv.ts';
 import { LimitStore } from './usageLimit/limitStore.ts';
-import { RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
+import { remoteLimit, RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
 import { UsageLimits } from './usageLimit/usageLimits.ts';
 import pkg from '../package.json' with { type: 'json' };
 
@@ -381,6 +381,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (name === 'session.host') remote?.hostChanged(payload as SessionHostInfo);
     // Phones only hear these for the session they watch.
     if (name === 'session.stream') remote?.stream(payload as StreamDelta);
+    if (name === 'limits.changed') remote?.limitsChanged();
     if (name === 'upNext.changed') {
       const { sessionId, queue } = payload as { sessionId: string; queue: QueuedMessage[] };
       remote?.upNextChanged(sessionId, queue);
@@ -779,6 +780,8 @@ export function createEngine(options: EngineOptions): Engine {
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
+      // A session that broke (its process ended, it couldn't start) has no turn end: its issue goes to failed all the same.
+      if (info.state === 'error') triggerWatcher?.turnEnded(info.sessionId, { ok: false });
       triggerWatcher?.nudge();
     },
     onStream: (delta) => broadcast('session.stream', delta),
@@ -1065,7 +1068,12 @@ export function createEngine(options: EngineOptions): Engine {
     });
     later.started(item.id, sessionId);
     laterChanged();
-    triggerWatcher?.queuedStarted(item.id, sessionId);
+    // A trigger's event that waited in the queue gets its title now, as one that started at once does.
+    const title = triggerWatcher?.queuedStarted(item.id, sessionId);
+    if (title) {
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+    }
     return sessionId;
   };
   /** Queued items that start by themselves (#172): the engine decides, so they start once, with or without a window. */
@@ -1756,6 +1764,9 @@ export function createEngine(options: EngineOptions): Engine {
       },
       dequeue: (sessionId, id) => void hosts.dequeue(sessionId, id),
       upNext: (sessionId) => upNext.list(sessionId).map(summarise),
+      limit: (sessionId) => remoteLimit(limits.state(), sessionId, sessionProfile(sessionId)),
+      resumeLimit: (sessionId) => limits.resumeNow(sessionId),
+      armLimit: (sessionId, armed) => limits.arm(sessionId, armed),
       interrupt: (sessionId) => {
         catchUp.interrupt(sessionId);
         return hosts.interrupt(sessionId, 'continue');
@@ -1782,7 +1793,11 @@ export function createEngine(options: EngineOptions): Engine {
       },
       markRead: (sessionId) => sessions.markViewed(sessionId),
       markUnread: (sessionId) => sessions.markUnviewed(sessionId),
-      setFlags: (sessionId, flags) => sessions.setFlags(sessionId, flags),
+      setFlags: (sessionId, flags) => {
+        sessions.setFlags(sessionId, flags);
+        // Archived: a trigger's issue loses its working or needs input label.
+        if (flags.archived === true) triggerWatcher?.released(sessionId);
+      },
       setModel: (sessionId, model) => hosts.setModel(sessionId, model),
       setEffort: (sessionId, effort) => hosts.setEffort(sessionId, effort),
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
@@ -1907,6 +1922,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     limits.forget(sessionId);
+    triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
@@ -2024,6 +2040,8 @@ export function createEngine(options: EngineOptions): Engine {
         ...(pinned !== undefined ? { pinned } : {}),
         ...(archived !== undefined ? { archived } : {}),
       });
+      // Archived: a trigger's issue loses its working or needs input label.
+      if (archived === true) triggerWatcher?.released(sessionId);
       return {};
     },
     'session.delete': async ({ sessionId }) => {
@@ -2499,8 +2517,18 @@ export function createEngine(options: EngineOptions): Engine {
       return { item };
     },
     'later.remove': ({ id, startedAs }) => {
-      if (startedAs) later.started(id, startedAs);
-      else later.remove(id);
+      if (startedAs) {
+        later.started(id, startedAs);
+        // Started from New session: a trigger's event follows the session, as when the queue starts it.
+        const title = triggerWatcher?.queuedStarted(id, startedAs);
+        if (title) {
+          pendingTitles.set(startedAs, title);
+          applyTitles([startedAs]);
+        }
+      } else {
+        later.remove(id);
+        triggerWatcher?.queueRemoved(id);
+      }
       laterChanged();
       return {};
     },

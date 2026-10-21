@@ -26,7 +26,7 @@ import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx
 import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
-import { ProfileStrip, UsageCard, useUsages } from './Usage.tsx';
+import { UsageCard, useUsages } from './Usage.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
@@ -549,7 +549,6 @@ export function Connected({
         homeOpen={atRoot}
         onRefresh={reload}
         onArchived={(key) => key === currentKey && leave()}
-        homeRow={<ProfileStrip usage={usage} />}
         headerEnd={
           wide && (
             <Button variant="quiet" size="md" onClick={toggleFold} aria-label="Keep the sessions open" title={`Keep the sessions open (${keys('mod+b')})`} className="px-2!" data-remote-unfold-sidebar>
