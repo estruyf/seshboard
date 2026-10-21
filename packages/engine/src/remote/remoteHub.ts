@@ -6,6 +6,7 @@ import {
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
+  REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
   RpcError,
@@ -127,6 +128,8 @@ export interface RemoteHubOptions {
   computerName?: () => string;
   /** The remote app (`REMOTE_APP_URL`; a development build can point at its own). */
   appUrl?: string;
+  /** Also accept the preview's remote app (`REMOTE_PREVIEW_APP_URL`): development and beta builds. */
+  previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
   /**
@@ -214,6 +217,14 @@ export interface RemoteHubOptions {
   catchUpWaitMs?: number;
 }
 
+/** The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`. */
+export function remoteAppOrigins(appUrl: string, previewApp: boolean): string[] {
+  const origins = [new URL(appUrl).origin];
+  const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
+  if (previewApp && !origins.includes(preview)) origins.push(preview);
+  return origins;
+}
+
 /** What a phone watches: one transcript at a time. */
 interface Watch {
   sessionId: string;
@@ -277,7 +288,7 @@ export class RemoteHub {
       ...(options.computerName ? { computerName: options.computerName } : {}),
       appIcon: () => this.appIcon,
       // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
-      origins: [new URL(this.appUrl).origin, REMOTE_DESKTOP_ORIGIN],
+      origins: [...remoteAppOrigins(this.appUrl, options.previewApp ?? false), REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
       log: options.log,

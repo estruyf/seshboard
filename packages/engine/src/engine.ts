@@ -193,12 +193,12 @@ export interface EngineOptions {
   companion?: { appVersion: string; socketParent?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
-   * address (the website's by default). `identity` asks main for Remote's key, which it keeps in the system's
+   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds). `identity` asks main for Remote's key, which it keeps in the system's
    * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
    * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
    * way; only called once one is paired. Without it, this app can't pair with another computer.
    */
-  remote?: { appVersion: string; appUrl?: string; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
+  remote?: { appVersion: string; appUrl?: string; previewApp?: boolean; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
   /**
    * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
    * screenshots, whose made-up logins have no plan. Never set in normal use.
@@ -1740,6 +1740,7 @@ export function createEngine(options: EngineOptions): Engine {
       appState,
       appVersion: options.remote.appVersion,
       ...(options.remote.appUrl ? { appUrl: options.remote.appUrl } : {}),
+      previewApp: options.remote.previewApp ?? false,
       filesDir: join(options.dataDir, 'remote-files'),
       identity: options.remote.identity,
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),

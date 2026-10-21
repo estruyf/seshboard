@@ -500,6 +500,13 @@ export const REMOTE_DEFAULT_PORT = 47615;
 export const REMOTE_APP_URL = 'https://switchboard.struyfconsulting.com/remote/';
 
 /**
+ * The remote app on the website's preview, built from `dev` by Cloudflare Pages. Development and beta builds also
+ * accept sockets from it (`previewApp`), so the remote app's next version can be tried before it ships; a release
+ * never does, so code that is only on `dev` can't talk to anyone's computer.
+ */
+export const REMOTE_PREVIEW_APP_URL = 'https://switch-dev.struyfconsulting.com/remote/';
+
+/**
  * How a phone reaches this computer from anywhere:
  *  - `cloudflare`: a Cloudflare quick tunnel (`cloudflared`, no account; a new address each time it starts);
  *  - `ngrok`: an ngrok tunnel (an account; a fixed address with your ngrok domain);

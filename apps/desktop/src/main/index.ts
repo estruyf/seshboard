@@ -30,7 +30,7 @@ import { notificationPermission, notificationSettingsUrl } from './notificationP
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
-import { updatesDisabledReason } from './updateState.ts';
+import { channelOf, updatesDisabledReason } from './updateState.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -8865,6 +8865,7 @@ app.whenReady().then(() => {
     entry: join(here, 'engine.js'),
     dataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
+    previewRemote: !app.isPackaged || channelOf(app.getVersion()) === 'beta',
     onRequest: handleEngineRequest,
     onRestarted: () => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);
