@@ -40,11 +40,11 @@ describe('footerLevel', () => {
 
 describe('chip faces', () => {
   it('drops the profile name first, then the model version, then the effort and mode labels', () => {
-    expect(chipShape(0)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: true, profileName: true });
-    expect(chipShape(1)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: true, profileName: false });
-    expect(chipShape(2)).toEqual({ effortLabel: true, modeLabel: true, modelVersion: false, profileName: false });
-    expect(chipShape(3)).toEqual({ effortLabel: false, modeLabel: true, modelVersion: false, profileName: false });
-    expect(chipShape(4)).toEqual({ effortLabel: false, modeLabel: false, modelVersion: false, profileName: false });
+    expect(chipShape(0)).toEqual({ autoWord: true, effortLabel: true, modeLabel: true, modelVersion: true, profileName: true });
+    expect(chipShape(1)).toEqual({ autoWord: true, effortLabel: true, modeLabel: true, modelVersion: true, profileName: false });
+    expect(chipShape(2)).toEqual({ autoWord: true, effortLabel: true, modeLabel: true, modelVersion: false, profileName: false });
+    expect(chipShape(3)).toEqual({ autoWord: true, effortLabel: false, modeLabel: true, modelVersion: false, profileName: false });
+    expect(chipShape(4)).toEqual({ autoWord: false, effortLabel: false, modeLabel: false, modelVersion: false, profileName: false });
   });
 
   it('shortens model names without cutting words', () => {

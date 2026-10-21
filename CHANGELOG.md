@@ -33,6 +33,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Mod chips no longer cover the message box chips.** In a narrow message box, the prompt shield and a mod's statuses used to run over the model and mode chips. They now give way first (the shield keeps only its icon), then the chips shrink, and the footer wraps as a last resort.
 - **Copy error messages.** The text of a notice, such as a failed pull request, and its output can be selected and copied.
 - **No more 0 on the side panel's tabs.** With two or more panels open on the right, a tab shows a count only when there is something to count: Preview no longer reads 0, and Terminal, Agents and Commands show no number while nothing is running.
 - **Git errors are shown.** When Commit, Pull, Push or Fetch fails, a toast now says why, instead of only a red border on the button (which is gone).

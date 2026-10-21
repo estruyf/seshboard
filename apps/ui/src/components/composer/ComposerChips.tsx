@@ -144,12 +144,14 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       isAuto ? (
         <>
           <AutoWand />
-          <span>Auto</span>
+          {chipShape(l).autoWord && <span>Auto</span>}
           {autoPicked !== null && (
             <>
-              <span aria-hidden className="text-faint">
-                ·
-              </span>
+              {chipShape(l).autoWord && (
+                <span aria-hidden className="text-faint">
+                  ·
+                </span>
+              )}
               <span className="font-semibold text-text">{chipShape(l).modelVersion ? shortModelName(autoPicked) : modelFamily(autoPicked)}</span>
             </>
           )}
