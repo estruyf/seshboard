@@ -335,6 +335,16 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘↩ | Start the session |
 | ⌘⇧↩ | Add the prompt to the queue (Starts when you say so) |
 
+**Projects**
+
+| Shortcut | What it does |
+|---|---|
+| ⌥↑ or ⌥↓ | Previous or next project, same tab |
+| ⌥⇧↑ or ⌥⇧↓ | Move the open project up or down the list (The order the sidebar and New session use) |
+| ⌘F | Find a project in the list |
+| ⌘1 to ⌘8 | Jump to a tab (Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions, Settings) |
+| ⌘↩ | Open the project's Settings (in the project name's switcher) |
+
 **Settings**
 
 | Shortcut | What it does |

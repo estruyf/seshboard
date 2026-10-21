@@ -1322,7 +1322,8 @@ export function Sidebar() {
           selected={view === 'projects' || view === 'project'}
           aria-current={view === 'projects' || view === 'project' ? 'page' : undefined}
           data-open-projects
-          onClick={() => setView(view === 'projects' ? 'session' : 'projects')}
+          // The list and the open project are one view: a second click leaves it.
+          onClick={() => setView(view === 'projects' || view === 'project' ? 'session' : 'projects')}
         />
         <Button
           variant="quiet"

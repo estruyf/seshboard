@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { showInMain } from './popoutsStore.ts';
+import { pageAfterOpen } from './projectsNav.ts';
 import { useSessions } from './sessionsStore.ts';
 
 /** The tabs of a project's page, in order. */
@@ -7,7 +8,7 @@ export type ProjectTab = 'overview' | 'sessions' | 'triggers' | 'worktrees' | 'b
 export const PROJECT_TABS: readonly ProjectTab[] = ['overview', 'sessions', 'triggers', 'worktrees', 'branches', 'memory', 'actions', 'settings'];
 
 interface ProjectPageState {
-  /** The project the page shows (the view is `project` while it's on screen). */
+  /** The project the page shows (the view is `project` while it's on screen); kept after leaving, so Projects opens on it again. */
   root: string | null;
   tab: ProjectTab;
   /** The tab each project was last left on, while the app runs. */
@@ -40,13 +41,13 @@ export const useProjectPage = create<ProjectPageState>()((set) => ({
 export function openProject(root: string, tab?: ProjectTab): void {
   // A pop-out has no project pages: the main window shows it.
   if (showInMain({ kind: 'project', root, tab: tab ?? null })) return;
-  useProjectPage.setState((s) => {
-    const next = tab ?? s.lastTab.get(root) ?? 'overview';
-    const lastTab = new Map(s.lastTab);
-    lastTab.set(root, next);
-    return { root, tab: next, lastTab };
-  });
+  useProjectPage.setState((s) => pageAfterOpen(s.lastTab, root, tab));
   useSessions.getState().setView('project');
+}
+
+/** Shows another project on the tab on screen now: the list's arrows, ⌥↑ ⌥↓ and the name's switcher. */
+export function switchProject(root: string): void {
+  openProject(root, useProjectPage.getState().tab);
 }
 
 /** Opens a project's Worktrees tab with the clean-up confirmation for the suggested worktrees. */
