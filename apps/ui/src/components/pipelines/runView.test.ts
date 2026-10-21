@@ -41,10 +41,10 @@ describe('step rows', () => {
 describe('the run buttons and stops', () => {
   it('shows Continue only while the run waits for you, and Push keeps its own card', () => {
     const working = runButtons(state({}, [{}, { index: 1 }, { index: 2, status: 'working', endedAt: null }]));
-    expect(working).toEqual({ continue: false, skip: true, retry: true, stop: true });
+    expect(working).toEqual({ continue: false, anotherRound: false, skip: true, retry: true, stop: true });
     expect(runButtons(state({ status: 'waiting', waitingFor: 'you', reason: 'Validate has no verdict.' })).continue).toBe(true);
-    expect(runButtons(state({ status: 'waiting', waitingFor: 'push', step: 3 }))).toEqual({ continue: false, skip: false, retry: false, stop: false });
-    expect(runButtons(state({ status: 'done' }))).toEqual({ continue: false, skip: false, retry: false, stop: false });
+    expect(runButtons(state({ status: 'waiting', waitingFor: 'push', step: 3 }))).toEqual({ continue: false, anotherRound: false, skip: false, retry: false, stop: false });
+    expect(runButtons(state({ status: 'done' }))).toEqual({ continue: false, anotherRound: false, skip: false, retry: false, stop: false });
   });
 
   it('says why the run stopped and what to do', () => {
@@ -53,10 +53,25 @@ describe('the run buttons and stops', () => {
       advice: 'The run stopped. Run this step again, or reply in Execute.',
       kind: 'stop',
       index: 1,
+      anotherRound: null,
     });
     expect(stopNotice(state({ status: 'paused', reason: 'Paused: Switchboard was closed. The run goes on at the next start.' }))).toMatchObject({ title: 'Paused: Switchboard was closed', advice: 'The run goes on at the next start.', kind: 'paused' });
     expect(stopNotice(state({ status: 'waiting', waitingFor: 'push', reason: 'Push waits for you.', step: 3 }))).toBeNull();
     expect(stopNotice(state())).toBeNull();
+  });
+
+  it('offers another round when changes are still needed after the last round', () => {
+    const changes = { kind: 'changes' as const, items: ['Fix the tooltip.'] };
+    const out = state({ status: 'waiting', waitingFor: 'you', reason: 'Still changes needed after 2 rounds.', round: 2 }, [{}, { index: 1 }, { index: 2, verdict: changes }, { index: 2, round: 2, status: 'waiting', verdict: changes }]);
+    expect(runButtons(out)).toMatchObject({ continue: true, anotherRound: true });
+    expect(stopNotice(out)).toMatchObject({
+      title: 'Still changes needed after 2 rounds',
+      advice: 'Another round sends the changes to Execute. Or work on them in Execute yourself: Validate checks again when that turn ends. Continue goes on without the changes.',
+      anotherRound: 'Execute',
+    });
+    // Not while rounds are left, or once the changes went back.
+    expect(runButtons(state({ ...out.run, round: 1 }, out.steps.slice(0, 3))).anotherRound).toBe(false);
+    expect(runButtons(state({ ...out.run, status: 'running', sentBackTo: 1, round: 3 }, out.steps)).anotherRound).toBe(false);
   });
 
   it('knows the step the run waits on', () => {
@@ -101,7 +116,11 @@ describe('push, the parent and the verdict', () => {
     expect(view?.verdict).toEqual({ kind: 'changes', items: ['LimitsCard still shows the cost.', 'Two lint errors.'] });
     expect(view?.round).toBe('round 1 of 2');
     expect(view?.next).toEqual({ to: 'Execute', text: 'as round 2. Validate runs again when it finishes.' });
-    expect(verdictView(s, 2, 2, 'Verdict: changes needed')?.next?.text).toMatch(/^Still changes needed after 2 rounds/);
+    expect(verdictView(s, 2, 2, 'Verdict: changes needed')?.next?.text).toBe('Still changes needed after 2 rounds. Another round sends them to Execute. Or work on them in Execute yourself: Validate checks again when that turn ends.');
+    // Another round went on from round 2: its card says where the changes went, and round 3 has no "of".
+    const more = state({ step: 2, round: 3 }, [{}, { index: 1 }, { index: 2 }, { index: 2, round: 2 }, { index: 2, round: 3, status: 'working', endedAt: null }]);
+    expect(verdictView(more, 2, 2, 'Verdict: changes needed')?.next).toEqual({ to: 'Execute', text: 'as round 3. Validate runs again when it finishes.' });
+    expect(verdictView(more, 2, 3, 'Verdict: changes needed')?.round).toBe('round 3');
     expect(verdictView(s, 2, 1, 'Verdict: pass')?.next).toBeNull();
     expect(verdictView(s, 0, 1, 'Verdict: pass')).toBeNull();
     expect(verdictView(s, 2, 1, 'No verdict here')).toBeNull();

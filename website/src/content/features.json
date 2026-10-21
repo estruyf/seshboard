@@ -4127,6 +4127,11 @@
       "page": "sessions/pipelines"
     },
     {
+      "id": "feature:pipeline-another-round",
+      "name": "Another round when a verdict still asks for changes after its rounds",
+      "page": "sessions/pipelines"
+    },
+    {
       "id": "feature:pipeline-run-row",
       "name": "A run row for a pipeline started from New session",
       "page": "sessions/pipelines"

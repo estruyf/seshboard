@@ -1,9 +1,9 @@
 import { Fragment, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, CircleAlert, CircleCheck, CircleMinus, CircleX, Eye, ListTree } from 'lucide-react';
+import { ArrowUp, CircleAlert, CircleCheck, CircleMinus, CircleX, Eye, ListTree, Repeat } from 'lucide-react';
 import type { PipelineRunState } from '@switchboard/protocol/client';
-import { useRunOfParent, useRunOfStep } from '../../state/pipelinesStore.ts';
+import { anotherRound, usePipelines, useRunOfParent, useRunOfStep } from '../../state/pipelinesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
@@ -146,9 +146,18 @@ export function StepVerdictCard({ sessionId, items, working }: { sessionId: stri
 /** The run's stop in the step it stopped at, above its message box. */
 export function StepStopNotice({ sessionId }: { sessionId: string }) {
   const parent = useRunParent(sessionId);
+  const runId = parent?.state.run.id ?? '';
+  const busy = usePipelines((s) => s.busy.has(runId));
   if (!parent || !waitsOnStep(parent.state, parent.index, parent.round)) return null;
   const notice = stopNotice(parent.state);
-  return notice ? <RunStopNotice notice={notice} /> : null;
+  if (!notice) return null;
+  // A verdict still asking for changes after its rounds: Another round is right here, in the step that found them.
+  const actions = notice.anotherRound && (
+    <Button size="sm" icon={<Repeat size={12} aria-hidden />} onClick={() => void anotherRound(runId)} disabled={busy} aria-busy={busy || undefined} data-run-another-round>
+      {busy ? 'Sending…' : 'Another round'}
+    </Button>
+  );
+  return <RunStopNotice notice={notice} actions={actions || undefined} />;
 }
 
 /** The step tree above a run parent's conversation; it scrolls on its own when the pane is short. */

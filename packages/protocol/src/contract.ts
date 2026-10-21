@@ -1061,6 +1061,8 @@ export const contract = {
     'runs.continue': { params: z.object({ runId: z.string().min(1).max(100), message: z.string().max(5_000).nullable().default(null) }), result: z.object({ state: PipelineRunState }) },
     /** Run this step again: a new round of the current step, in a new sub-session. */
     'runs.retryStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /** Another round: a verdict still asking for changes after its rounds sends them back once more, then checks again. */
+    'runs.anotherRound': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
     /** Skip this step: the next one starts, or waits. */
     'runs.skipStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
     /** Stop the run: the step that works stops, and nothing starts after it. */

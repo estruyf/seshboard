@@ -172,7 +172,7 @@ export async function stopRunNow(runId: string): Promise<void> {
   usePipelines.getState().putRun(state);
 }
 
-type RunMethod = 'runs.retryStep' | 'runs.skipStep' | 'runs.stop';
+type RunMethod = 'runs.retryStep' | 'runs.anotherRound' | 'runs.skipStep' | 'runs.stop';
 
 async function runCall(runId: string, method: RunMethod, failed: string): Promise<void> {
   await withBusy(runId, async () => {
@@ -198,6 +198,7 @@ export async function continueRun(runId: string, message: string | null = null):
 }
 
 export const retryStep = (runId: string) => runCall(runId, 'runs.retryStep', 'Couldn’t run this step again');
+export const anotherRound = (runId: string) => runCall(runId, 'runs.anotherRound', 'Couldn’t start another round');
 export const skipStep = (runId: string) => runCall(runId, 'runs.skipStep', 'Couldn’t skip this step');
 export const stopRun = (runId: string) => runCall(runId, 'runs.stop', 'Couldn’t stop the run');
 

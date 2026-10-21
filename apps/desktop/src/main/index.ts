@@ -6380,9 +6380,21 @@ async function runPipelineStep(win: BrowserWindow): Promise<string> {
   const round2 = mine().filter((s) => s.kind === 'fresh')[2]!;
   if (!(await waitInPage(win, `(${tree}?.innerText ?? '').includes('round 2')`, 5_000))) return 'the step tree did not show round 2';
 
-  turn(round2.sessionId, 'All good.\n\nVerdict: pass');
+  // Still changes needed after the last round: the run stops and offers Another round, which sends them back once more.
+  turn(round2.sessionId, 'Verdict: changes needed\n- The tooltip still shows the cost.');
+  const another = `${tree}?.querySelector('[data-run-another-round]')`;
+  if (!(await waitInPage(win, `!!${another} && !${another}.disabled`, 5_000))) return 'the step tree did not offer Another round after the last round';
+  const sends = mine().filter((s) => s.kind === 'send' && s.sessionId === execute.sessionId).length;
+  await js(`${another}.click()`);
+  if (!(await until(() => mine().filter((s) => s.kind === 'send' && s.sessionId === execute.sessionId).length === sends + 1, 5_000))) return 'Another round did not send the changes to Execute';
+  turn(execute.sessionId, 'Fixed the tooltip.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 4, 5_000))) return 'Validate round 3 did not start after Execute’s turn';
+  const round3 = mine().filter((s) => s.kind === 'fresh')[3]!;
+  if (!(await waitInPage(win, `(${tree}?.innerText ?? '').includes('round 3')`, 5_000))) return 'the step tree did not show round 3';
+
+  turn(round3.sessionId, 'All good.\n\nVerdict: pass');
   if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'done'`, 5_000))) return `the run did not end done (${String(await js(`${tree}?.dataset.runStatus`))})`;
-  return `ok: ran Execute and validate ${parent ? 'from the ⋯ menu; Execute linked the parent' : 'from New session as a run row; Execute got the task'}, Validate linked Execute; changes went back with @Validate, round 2 ran after Execute’s turn, and a pass ended the run`;
+  return `ok: ran Execute and validate ${parent ? 'from the ⋯ menu; Execute linked the parent' : 'from New session as a run row; Execute got the task'}, Validate linked Execute; changes went back with @Validate, round 2 ran after Execute’s turn, Another round sent them back once more, and a pass in round 3 ended the run`;
 }
 
 /**
@@ -9166,7 +9178,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
-  await step('pipelines: run, @ links, a round 2, done', () => runPipelineStep(win));
+  await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
   await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
