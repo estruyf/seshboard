@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { writeStub } from '@switchboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
+import { commandKey, failedLine, pastTense, ranLine } from './commandText.ts';
 import { asksBack, fallbackSummary, needKind, replyLines, testsText, waitingNeed } from './fallback.ts';
 import { inScope, namedPaths, scopeCheck, signalsOf, testsSignal, type Signals } from './signals.ts';
 import { parseSummary, parseWhy, stubSummary, summaryInput, whyInput } from './summary.ts';
@@ -12,7 +13,7 @@ const assistant = (uuid: string, content: unknown[]): RawSessionMessage => ({ ty
 const toolUse = (id: string, name: string, input: Record<string, unknown>) => ({ type: 'tool_use', id, name, input });
 const toolResult = (id: string, content: string, isError = false) => user(`r-${id}`, [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }]);
 
-const call = (patch: Partial<ToolCall>): ToolCall => ({ id: 't', name: 'Bash', file: null, command: null, exitCode: 0, declined: false, output: '', ...patch });
+const call = (patch: Partial<ToolCall>): ToolCall => ({ id: 't', name: 'Bash', file: null, command: null, description: null, exitCode: 0, declined: false, output: '', ...patch });
 const turnOf = (patch: Partial<Turn>): Turn => ({ id: 'turn', ask: 'Fix the sidebar', finalText: 'Done.', tools: [], plan: null, ...patch });
 const signals = (patch: Partial<Signals> = {}): Signals => ({ tests: { state: 'notRun' }, diff: null, outOfScope: [], scope: null, plan: null, ...patch });
 
@@ -209,9 +210,48 @@ describe('the fallback summary', () => {
       ],
     });
     const summary = fallbackSummary(turn, signals({ tests: { state: 'passed', passed: 14, failed: 0 }, diff: { files: 2, add: 10, del: 2 } }), { state: 'finished', error: null });
-    expect(summary.did).toEqual(['Edited 2 files', 'Ran npm run lint', 'Ran npm run check', 'Read 1 file']);
-    expect(summary.skipped).toEqual(['npm run lint failed (exit 2)', 'You declined rm -rf dist']);
+    expect(summary.did).toEqual(['Edited 2 files', 'Ran the tests', 'Read 1 file']);
+    expect(summary.skipped).toEqual(['npm run lint failed', 'You declined rm -rf dist']);
     expect(summary.need).toEqual({ kind: 'commit', title: 'Commit the changes', text: 'Tests pass. Ready to commit.' });
+  });
+
+  it('says what commands did in words, never a long command or a script, and leaves out a failure that worked when run again', () => {
+    const turn = turnOf({
+      tools: [
+        call({ command: "python3 - <<'EOF'\nroot='/Users/you/repo'\nprint(root)\nEOF", exitCode: 1 }),
+        call({ command: "python3 - <<'EOF'\nprint('again')\nEOF", exitCode: 0 }),
+        call({ command: "sed -i '' 's/shrink-0 flex-col gap-1 px-6 pt-3/shrink-0 flex-col gap-1 px-4/' apps/ui/src/a.tsx", exitCode: 0 }),
+        call({ command: 'npm run website:build', description: 'Build the website', exitCode: 0 }),
+        call({ command: 'node scripts/rewrite-imports.mjs --all --verbose', description: 'Rewrite the imports', exitCode: 1 }),
+        call({ command: 'npm run lint', exitCode: 2 }),
+        call({ command: 'npm run lint -- --fix', exitCode: 0 }),
+      ],
+    });
+    const summary = fallbackSummary(turn, signals(), { state: 'finished', error: null });
+    expect(summary.did).toEqual(['Edited files with sed', 'Built the website', 'Ran npm run lint -- --fix']);
+    expect(summary.skipped).toEqual(['Couldn’t rewrite the imports']);
+  });
+
+  it('turns a command into plain words', () => {
+    expect(pastTense('Run the unit tests')).toBe('Ran the unit tests');
+    expect(pastTense('Replace the header padding')).toBe('Replaced the header padding');
+    expect(pastTense('Copy the icons')).toBe('Copied the icons');
+    expect(pastTense('Commit the fix')).toBe('Committed the fix');
+    expect(pastTense('TypeScript check')).toBe('TypeScript check');
+    expect(pastTense('Narrow the header padding')).toBe('Narrowed the header padding');
+    expect(pastTense('Stop the dev server')).toBe('Stopped the dev server');
+    expect(pastTense('Only list staged files')).toBe('Only list staged files');
+    expect(ranLine(call({ command: 'cd apps/ui && npx vitest run' }))).toBe('Ran the tests');
+    expect(ranLine(call({ command: `node -e "const pkg = require('./package.json'); console.log(pkg.version)"` }))).toBe('Ran a Node script');
+    expect(failedLine(call({ command: `awk -F, '{ total += $3 } END { print total }' apps/ui/src/data/usage.csv` }))).toBe('An awk command failed');
+    expect(ranLine(call({ command: 'git log --oneline main..HEAD -- packages/engine apps/ui | head -40' }))).toBe('Ran a git command');
+    expect(ranLine(call({ command: 'git push' }))).toBe('Ran git push');
+    expect(failedLine(call({ command: "python3 - <<'EOF'\nprint(1)\nEOF", exitCode: 1 }))).toBe('A Python script failed');
+    expect(failedLine(call({ command: 'npm run lint', description: 'Lint the UI' }))).toBe('Couldn’t lint the UI');
+    expect(failedLine(call({ command: 'npm run x', description: 'CI build' }))).toBe('Couldn’t CI build');
+    expect(commandKey('CI=1 npm run lint -- --fix')).toBe('npm run lint');
+    expect(commandKey("python3 - <<'EOF'")).toBe('python3');
+    expect(commandKey('node scripts/build.ts')).toBe('node scripts/build.ts');
   });
 
   it('says it looked around when that is all it did, and leaves a failed look-around out of skipped', () => {
@@ -226,6 +266,8 @@ describe('the fallback summary', () => {
       'Both review findings were valid, and both are fixed and pushed to #321.',
       '**Finding 1: valid, but not a regression.** I had pre-marked the page as changed.',
       '- **Finding 2: valid, and worse than described.** The error message blocked nothing.',
+      '**What’s in it**\n- A new Pipelines tab',
+      '**Choices worth checking:**\n- Runs are kept for a week',
       'Done.',
     ].join('\n\n');
     const lines = replyLines(finalText);

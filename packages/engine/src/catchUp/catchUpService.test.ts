@@ -121,7 +121,7 @@ describe('catch-up cards', () => {
     playTurn(catchUp);
     const card = await catchUp.turnEnded(SESSION, { ok: true, error: null });
     expect(asked).toEqual([]);
-    expect(card).toMatchObject({ source: 'fallback', did: ['Edited a.ts', 'Ran npx vitest run'] });
+    expect(card).toMatchObject({ source: 'fallback', did: ['Edited a.ts', 'Ran the tests'] });
   });
 
   it('never sends what was in a file to the summary', async () => {
@@ -165,7 +165,7 @@ describe('catch-up cards', () => {
       requestId: 'req-1',
       source: 'model',
       ask: 'Make a.ts shout',
-      did: ['Edited a.ts', 'Ran npx vitest run'],
+      did: ['Edited a.ts', 'Ran the tests'],
       claudeSaid: 'Now I publish it.',
       what: 'Runs npm publish. It only reads files and changes nothing.',
       why: 'Claude needs it to check its work for your ask.',
