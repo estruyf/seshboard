@@ -20,6 +20,8 @@ export interface BriefSource {
   status: 'working' | 'waiting' | null;
   catchUp: CatchUp | null;
   commits: readonly string[];
+  /** The plan you approved in it, when it was a pipeline's plan step (#179). */
+  plan?: string | null;
   lastReply: string | null;
 }
 
@@ -68,6 +70,7 @@ export function buildBrief(source: BriefSource): Brief {
     brief.skipped = [...card.skipped];
     if (card.need.kind !== 'none' && card.need.title) brief.next = card.need.title;
   }
+  brief.plan = source.plan?.trim() || null;
   brief.lastReply = source.lastReply?.trim() || null;
   return brief;
 }

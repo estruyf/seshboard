@@ -36,13 +36,23 @@ export interface Brief {
   did: string[];
   skipped: string[];
   next: string | null;
+  /**
+   * The plan you approved in it (`ExitPlanMode`'s input), for a pipeline's plan step (#179): a step that links it gets
+   * the plan. Never dropped to fit the budget, only cut when it alone is too long.
+   */
+  plan: string | null;
   lastReply: string | null;
   /** What was left out to fit the budget ("last reply left out"); null when nothing was. */
   shortened: string | null;
 }
 
 /** A brief with only its session: what the message box writes. */
-export const stubBrief = (label: string, sessionId: string): Brief => ({ label, sessionId, stub: true, fields: {}, commits: [], did: [], skipped: [], next: null, lastReply: null, shortened: null });
+export const stubBrief = (label: string, sessionId: string): Brief => ({ label, sessionId, stub: true, fields: {}, commits: [], did: [], skipped: [], next: null, plan: null, lastReply: null, shortened: null });
+
+/** The indent of a plan's lines in a brief, so the brief reads on after it. */
+const PLAN_INDENT = '  ';
+/** The shortest a plan is cut to when it alone doesn't fit. */
+const PLAN_MIN = 1_000;
 
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 
@@ -76,6 +86,7 @@ function body(brief: Brief): string {
   list('did', brief.did);
   list('skipped', brief.skipped);
   if (brief.next) lines.push(`next: ${oneLine(brief.next)}`);
+  if (brief.plan) lines.push('plan:', ...brief.plan.replace(/\n+$/, '').split('\n').map((line) => `${PLAN_INDENT}${line}`));
   if (brief.shortened) lines.push(`shortened: ${brief.shortened}`);
   // Last, since it runs to the end of the block and may have lines of its own.
   if (brief.lastReply) lines.push('last reply:', brief.lastReply.replace(/\n+$/, ''));
@@ -94,7 +105,7 @@ const cutTo = (text: string, max: number) => (text.length <= max ? text : `${tex
 /**
  * A brief as text, cut to `budget` characters by dropping, in order: the last reply (to 1,500 characters, then 600,
  * then all of it), `skipped`, `did` past its first 2 lines, `asked` past 120 characters, commits past the first 5.
- * The session and where it works are never dropped.
+ * The session, where it works and the plan are never dropped; a plan that alone doesn't fit is cut, last.
  */
 export function writeBrief(brief: Brief, budget = BRIEF_BUDGET): string {
   let current: Brief = { ...brief, shortened: null };
@@ -111,6 +122,14 @@ export function writeBrief(brief: Brief, budget = BRIEF_BUDGET): string {
     (b) => {
       const fields = Object.fromEntries(Object.entries(b.fields).filter(([key]) => KEPT.includes(key as BriefField)));
       return Object.keys(fields).length < Object.keys(b.fields).length || b.did.length || b.next ? { ...b, fields, did: [], next: null } : null;
+    },
+    // The plan, cut to what is left of the budget.
+    (b) => {
+      if (!b.plan) return null;
+      const room = Math.max(PLAN_MIN, b.plan.length - (text(b).length - budget));
+      if (room >= b.plan.length) return null;
+      dropped.push('plan cut');
+      return { ...b, plan: cutTo(b.plan, room) };
     },
   ];
   const text = (b: Brief) => render({ ...b, shortened: dropped.length ? dropped.join(', ') : null });
@@ -150,6 +169,15 @@ function readBrief(label: string | null, inner: string): Brief | null {
       brief.lastReply = lines.slice(i + 1).join('\n');
       filled = true;
       break;
+    }
+    if (line === 'plan:') {
+      // Its lines are indented; a blank line inside the plan is written as the indent alone.
+      const plan: string[] = [];
+      while (i + 1 < lines.length && lines[i + 1]!.startsWith(PLAN_INDENT)) plan.push(lines[++i]!.slice(PLAN_INDENT.length));
+      brief.plan = plan.join('\n');
+      list = null;
+      filled = true;
+      continue;
     }
     if (list && line.startsWith('- ')) {
       list.push(line.slice(2));

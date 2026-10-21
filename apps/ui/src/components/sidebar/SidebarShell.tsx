@@ -1,8 +1,13 @@
 import { useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { usePipelines } from '../../state/pipelinesStore.ts';
+import { provideTreeRuns } from '../../state/pipelineTreeStore.ts';
 import { useShownSidebar, useSidebar } from '../../state/sidebarStore.ts';
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, snapFromCollapsed, snapWidth, stepState, type SidebarSnap } from '../../state/sidebarWidth.ts';
 import { Sidebar } from './Sidebar.tsx';
 import { SidebarRail } from './SidebarRail.tsx';
+
+// The sidebar's order (⌃⇥, ⌘P) nests pipelines' sub-sessions under their runs: it reads them from the pipelines store.
+provideTreeRuns(() => usePipelines.getState().runs.values());
 
 /**
  * The sidebar's right edge (the window's left edge while it is closed). Dragging snaps between open,

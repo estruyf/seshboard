@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -8,6 +8,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
 import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
+import { PipelinesSettings } from './pipelines/editor/PipelinesSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
@@ -186,6 +187,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'prompts', label: 'Prompts', icon: Bookmark },
+  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
@@ -396,6 +398,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <SavedPromptsSettings />
         </Section>
       );
+    case 'pipelines':
+      return <PipelinesSettings />;
     case 'usage':
       return (
         <>
@@ -705,13 +709,13 @@ export function SettingsView() {
           <div className="drag flex h-13 shrink-0 items-center justify-end px-6">
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
           </div>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (
               <div className="mx-auto min-w-0 max-w-2xl px-8">
                 <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
-              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
+              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
                 <SectionPage section={section} scrollRef={scroller} />
               </div>
             )}

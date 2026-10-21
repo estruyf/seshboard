@@ -4,9 +4,10 @@ import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseBriefs, parseGithubBlocks } from '@switchboard/protocol/client';
+import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs } from '@switchboard/protocol/client';
 import { LinkedSessions } from './LinkedSessions.tsx';
 import { GithubAttached } from './GithubAttached.tsx';
+import { ActionResults, LinkedRuns } from '../pipelines/RunPromptRows.tsx';
 import { fileLinkChipLabel } from './fileLinkAction.ts';
 import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
@@ -244,12 +245,15 @@ function ToolOrMemory({ item, cwd, sessionId }: { item: ToolItem; cwd: string | 
 function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'user' }>; sessionId: string }) {
   const device = useRemote((s) => s.sentFrom.get(messageUuid(item.key)) ?? null);
   const sent = item.at !== null ? sentLine(item.at, device) : undefined;
-  // Linked sessions' briefs and attached issues show as rows under what you typed, not as code blocks in it.
-  const { text, briefs, issues } = useMemo(() => {
-    if (item.subagent) return { text: item.text, briefs: [], issues: [] };
+  // Linked sessions' briefs, attached issues, a pipeline run's brief and the project actions a step ran first show as
+  // rows under what you typed, not as code blocks in it.
+  const { text, briefs, issues, runs, actions } = useMemo(() => {
+    if (item.subagent) return { text: item.text, briefs: [], issues: [], runs: [], actions: [] };
     const github = parseGithubBlocks(item.text);
     const parsed = parseBriefs(github.text);
-    return { text: parsed.text, briefs: parsed.briefs, issues: github.blocks };
+    const run = parseRunBriefs(parsed.text);
+    const ran = parseActionResults(run.text);
+    return { text: ran.text, briefs: parsed.briefs, issues: github.blocks, runs: run.runs, actions: ran.actions };
   }, [item.text, item.subagent]);
   return (
     // Your prompt sits on the right as a card, so the conversation reads like a chat.
@@ -278,8 +282,10 @@ function PromptItem({ item, sessionId }: { item: Extract<DisplayItem, { kind: 'u
             <Markdown text={text} />
           </ClampedPrompt>
         )}
+        <ActionResults actions={actions} />
         <LinkedSessions briefs={briefs} />
-        <GithubAttached blocks={issues} at={item.at} divided={briefs.length === 0} />
+        <LinkedRuns runs={runs} divided={briefs.length === 0} />
+        <GithubAttached blocks={issues} at={item.at} divided={briefs.length === 0 && runs.length === 0} />
       </div>
     </div>
   );

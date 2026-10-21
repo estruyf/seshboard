@@ -6309,6 +6309,236 @@ async function runQueueStep(win: BrowserWindow): Promise<string> {
  * takes it off the queue (the stub never sends the prompt to Claude); after an error a second item stays, ready, and
  * says why. Both notifications are recorded.
  */
+/**
+ * Pipelines (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): nothing reaches Claude Code, no worktree is made
+ * and no command runs. Runs Execute and validate from the smoke session through its ⋯ menu, checks the step tree and
+ * that each step's first prompt links the right sessions, has Validate find changes (a round 2 starts after Execute's
+ * turn), then pass, and checks the run is done.
+ */
+async function runPipelineStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const parent = smokeSessionId;
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  type Start = { kind: 'fresh' | 'fork' | 'send'; sessionId: string; text: string };
+  const starts = (): Start[] => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as Start);
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const mine = () => starts().slice(before);
+  const turn = (sessionId: string, reply: string) => engine.send({ type: 'smokePipelineTurn', sessionId, outcome: 'clean', reply });
+  const links = (text: string, sessionId: string) => text.includes('```switchboard-session') && text.includes(`session: ${sessionId}`);
+  // With a session, the step tree is in its view; from New session, in the run row's pane.
+  const tree = parent ? "document.querySelector('[data-current-session] [data-pipeline-tree]')" : "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  const view = (name: string) => `${tree}?.querySelector('[data-pipeline-step=${JSON.stringify(name)}][data-step-view]')?.dataset.stepView`;
+
+  if (parent) {
+    await js(`document.querySelector('[data-session-id="${parent}"]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(parent)}`, 5_000))) return 'the smoke session did not open';
+    await js("document.querySelector('[data-current-session] [data-more-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-pipeline-menu]')", 3_000))) return 'the ⋯ menu has no Run pipeline ›';
+  } else {
+    // No session that is safe to use: New session in a throwaway repository, Run as › Execute and validate, a run row.
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pipeline-')));
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+    execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent('Smoke pipeline: add a usage cost toggle')}&cwd=${encodeURIComponent(folder)}`);
+    const ready = `document.querySelector('[data-new-session-view] [data-composer]')?.value === 'Smoke pipeline: add a usage cost toggle' && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`;
+    if (!(await waitInPage(win, `${ready} && !!document.querySelector('[data-new-session-view] [data-run-as]')`, 8_000))) return 'New session did not open on the throwaway repository with Run as';
+    await js("document.querySelector('[data-new-session-view] [data-run-as]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+    await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-new-session-view] [data-composer-submit]')?.dataset.startMain === 'pipeline'", 2_000))) return 'Start did not turn into Run pipeline';
+  }
+  if (parent) {
+    await js("document.querySelector('[role=menu] [data-run-pipeline-menu]').click()");
+    const item = "document.querySelector('[role=menu] [data-run-pipeline=\"builtin-execute-validate\"]')";
+    if (!(await waitInPage(win, `!!${item}`, 1_500))) {
+      await js("document.querySelector('[role=menu] [data-run-pipeline-menu]').focus()");
+      pressKey(win, 'Right');
+      if (!(await waitInPage(win, `!!${item}`, 2_000))) return 'Run pipeline › did not list Execute and validate';
+    }
+    await js(`${item}.click()`);
+  } else await js("document.querySelector('[data-new-session-view] [data-composer-submit]').click()");
+  if (!(await waitInPage(win, `!!${tree} && ${view('Execute')} === 'working'`, 10_000))) return 'the step tree did not show Execute working';
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 1, 5_000))) return 'Execute did not start';
+  const execute = mine()[0]!;
+  if (parent ? !links(execute.text, parent) : !execute.text.includes('The task, from @')) return parent ? 'Execute’s first prompt did not link the parent' : 'Execute’s first prompt did not bring the run row’s task';
+  await shot(win, 'pipeline-parent.png');
+
+  turn(execute.sessionId, 'Done. The tests pass.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 2, 5_000))) return 'Validate did not start after Execute';
+  const validate = mine().filter((s) => s.kind === 'fresh')[1]!;
+  if (!links(validate.text, execute.sessionId) || (parent && !links(validate.text, parent))) return 'Validate’s first prompt did not link Execute and the parent';
+  if (!(await waitInPage(win, `${view('Execute')} === 'done' && ${view('Validate')} === 'working'`, 5_000))) return 'the step tree did not show Execute done and Validate working';
+
+  turn(validate.sessionId, 'Mostly right.\n\nVerdict: changes needed\n- LimitsCard still shows the cost.');
+  if (!(await until(() => mine().some((s) => s.kind === 'send' && s.sessionId === execute.sessionId && s.text.includes('found changes needed') && links(s.text, validate.sessionId)), 5_000))) return 'the changes did not go to Execute with @Validate linked';
+  turn(execute.sessionId, 'Fixed.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 3, 5_000))) return 'Validate round 2 did not start after Execute’s turn';
+  const round2 = mine().filter((s) => s.kind === 'fresh')[2]!;
+  if (!(await waitInPage(win, `(${tree}?.innerText ?? '').includes('round 2')`, 5_000))) return 'the step tree did not show round 2';
+
+  turn(round2.sessionId, 'All good.\n\nVerdict: pass');
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'done'`, 5_000))) return `the run did not end done (${String(await js(`${tree}?.dataset.runStatus`))})`;
+  return `ok: ran Execute and validate ${parent ? 'from the ⋯ menu; Execute linked the parent' : 'from New session as a run row; Execute got the task'}, Validate linked Execute; changes went back with @Validate, round 2 ran after Execute’s turn, and a pass ended the run`;
+}
+
+/**
+ * Run as in New session (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): in a throwaway repository, Run as ›
+ * Execute and validate turns Start into Run pipeline with two pills under the box, ⌘↵ runs it as a run row with Execute
+ * working, and New session is back on One session. The run is stopped at the end, so later steps see none going.
+ */
+async function runRunAsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-run-as-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-run-as]')`;
+  const submit = `document.querySelector('${view} [data-composer-submit]')`;
+  const opened = (prompt: string) =>
+    `${chip} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(prompt)}`;
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open on the throwaway repository with the Run as chip';
+  if ((await js(`${chip}.dataset.runAs`)) !== 'one') return `Run as did not start on One session (${String(await js(`${chip}.dataset.runAs`))})`;
+  await js(`${chip}.click()`);
+  const option = "document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')";
+  if (!(await waitInPage(win, `!!${option} && document.querySelector('[role=menu] [data-run-as-option=\"one\"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'the Run as menu did not list One session (checked) and Execute and validate';
+  await js(`${option}.click()`);
+  if (!(await waitInPage(win, `${chip}?.dataset.runAs === 'builtin-execute-validate' && ${submit}?.dataset.startMain === 'pipeline' && ${submit}.innerText.includes('Run pipeline')`, 2_000))) return 'Start did not turn into Run pipeline';
+  if (await js(`!!document.querySelector('${view} [data-run-as-steps]')`)) return 'the steps line showed with an empty box';
+  const task = 'Smoke run as: add a usage cost toggle';
+  await setFieldValue(win, `${view} [data-composer]`, task);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-run-as-steps]')?.querySelectorAll('[data-run-as-step]').length === 2`, 2_000))) return 'the steps line did not show two pills';
+  await shot(win, 'run-as.png');
+  await js(`document.querySelector('${view} [data-composer]').focus()`);
+  pressKey(win, 'Return', ['meta']);
+  const tree = "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  if (!(await waitInPage(win, `${tree}?.querySelector('[data-pipeline-step="Execute"][data-step-view]')?.dataset.stepView === 'working'`, 10_000))) return 'the run row did not open with Execute working';
+  const runId = (await js(`${tree}.closest('[data-run-row]')?.dataset.runRow ?? ''`)) as string;
+  await js(`${tree}.querySelector('[data-run-stop-button]')?.click()`);
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'stopped'`, 5_000))) return 'Stop the run did not stop it';
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open again';
+  if ((await js(`${chip}.dataset.runAs`)) !== 'one') return 'Run as did not go back to One session after the run started';
+  return `ok: Run as › Execute and validate made Start Run pipeline with two pills, ⌘↵ ran it as a run row${runId ? ` (${runId})` : ''} with Execute working, and New session is back on One session`;
+}
+
+/**
+ * A pipeline run as one tree (#179), with stand-in steps: Execute and validate from New session in a throwaway
+ * repository, Execute's turn ends so Validate starts, Stop the run, then Archive with its 2 steps from the run row's
+ * menu moves the run row and both steps to Archived. Delete… takes it out again, so later steps never see it.
+ */
+async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  const starts = (): Array<{ kind: string; sessionId: string }> => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-archive-run-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const view = '[data-new-session-view]';
+  const task = 'Smoke archive run: tidy the settings page';
+  openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
+  await js(`document.querySelector('${view} [data-run-as]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+  await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-composer-submit]')?.dataset.startMain === 'pipeline'`, 2_000))) return 'Start did not turn into Run pipeline';
+  await js(`document.querySelector('${view} [data-composer-submit]').click()`);
+  const tree = "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  if (!(await until(() => fresh().length === 1, 8_000))) return 'Execute did not start';
+  const runId = (await waitInPage(win, `${tree}?.dataset.pipelineTree`, 5_000)) ? ((await js(`${tree}.dataset.pipelineTree`)) as string) : '';
+  if (!runId) return 'the run row did not open';
+  await engine.send({ type: 'smokePipelineTurn', sessionId: fresh()[0]!.sessionId, outcome: 'clean', reply: 'Done. The tests pass.' });
+  if (!(await until(() => fresh().length === 2, 5_000))) return 'Validate did not start after Execute';
+  const [execute, validate] = fresh().map((s) => s.sessionId);
+  await js(`${tree}.querySelector('[data-run-stop-button]')?.click()`);
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'stopped'`, 5_000))) return 'Stop the run did not stop it';
+
+  const row = `document.querySelector('[data-session-list] [data-session-id="${runId}"]')`;
+  const openMenu = async () => {
+    await js(`(() => { const row = ${row}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+  };
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the run row is not in the sidebar';
+  await openMenu();
+  const archiveItem = "document.querySelector('[role=menu] [data-run-row-action=\"archive\"]')";
+  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Archive with its 2 steps')`, 2_000))) return `the run row menu has no Archive with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
+  if (await js("!!document.querySelector('[role=menu] [data-rename-session]')")) return 'the run row menu offers Rename';
+  await js(`${archiveItem}.click()`);
+  // Archived, closed by default: open it to see the tree.
+  const opened = !(await js("!!document.querySelector('[data-session-list] [data-archived-header]')"));
+  if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
+  if (!(await waitInPage(win, `${row}?.dataset.archived === 'true'`, 5_000))) return 'the run row did not move to Archived';
+  // Put away like any archived session: its pane closes.
+  if (!(await waitInPage(win, "!document.querySelector('[data-run-row] [data-pipeline-tree]')", 2_000))) return 'the run row stayed open after Archive';
+  await js(`${row}.dataset.treeParent === 'true' || ${row}.querySelector('[data-tree-toggle]')?.click()`);
+  const stepArchived = (id: string) => `document.querySelector('[data-session-list] [data-session-id="${id}"]')?.dataset.archived === 'true'`;
+  if (!(await waitInPage(win, `${stepArchived(execute!)} && ${stepArchived(validate!)}`, 3_000))) return 'Execute and Validate did not move to Archived under the run row';
+  await shot(win, 'pipeline-archived.png');
+
+  // Delete… takes the run out again (its stand-in steps with it), so later steps see none of it.
+  await openMenu();
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-row-action=\"delete\"]')", 2_000))) return 'the run row menu has no Delete…';
+  await js("document.querySelector('[role=menu] [data-run-row-action=\"delete\"]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-run-delete-confirm]') && !!document.querySelector('[data-run-delete-keep]')", 2_000))) return 'Delete… did not ask, with Keep the sub-sessions';
+  const body = (await js("document.querySelector('[data-run-delete-confirm]').innerText")) as string;
+  if (!body.includes('The run and its 2 sub-sessions go away from Switchboard')) return `Delete… did not say what goes (${body})`;
+  await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
+  if (!(await waitInPage(win, `!${row}`, 5_000))) return 'Delete did not take the run row away';
+  if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
+  return `ok: Stop the run, then Archive with its 2 steps moved ${runId} with Execute and Validate to Archived; Delete… asked (with Keep the sub-sessions) and took it away`;
+}
+
+/**
+ * Settings › Pipelines (#179): the built-in Plan, execute, validate, push, with Validate open. Its Starts choice (Fresh,
+ * Fork of Plan, Fork of Execute) stays one row high, above the Model row, rather than wrapping out of its control.
+ */
+async function runPipelineEditorStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  // Narrow, where three choices side by side no longer fit the step card.
+  const [width, height] = win.getSize();
+  win.setSize(860, height!);
+  try {
+    return await pipelineEditorChecks(win, js);
+  } finally {
+    win.setSize(width!, height!);
+  }
+}
+
+async function pipelineEditorChecks(win: BrowserWindow, js: (code: string) => Promise<unknown>): Promise<string> {
+  await js("document.querySelector('[data-open-settings]')?.click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-settings]')", 3_000))) return 'settings did not open';
+  await js("document.querySelector('[data-settings-section=\"pipelines\"]')?.click()");
+  const row = "document.querySelector('[data-pipeline-row=\"builtin-plan-execute-validate-push\"]')";
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'Settings › Pipelines did not list Plan, execute, validate, push';
+  await js(`${row}.click()`);
+  const card = "document.querySelector('[data-pipeline-step-card=\"Validate\"]')";
+  if (!(await waitInPage(win, `!!${card}`, 3_000))) return 'the editor did not show Validate';
+  await js(`${card}.dataset.open || ${card}.querySelector('[data-pipeline-step-toggle]').click()`);
+  if (!(await waitInPage(win, `!!${card}?.querySelector('[data-pipeline-starts]') && !!${card}.querySelector('[data-pipeline-model]')`, 3_000))) return 'Validate did not open with Starts and Model';
+  const box = (await js(`(() => { const s = ${card}.querySelector('[data-pipeline-starts]').getBoundingClientRect(); const m = ${card}.querySelector('[data-pipeline-model]').getBoundingClientRect(); const spill = Math.max(0, ...[...${card}.querySelector('[data-pipeline-starts]').querySelectorAll('*')].map((el) => el.getBoundingClientRect().bottom - s.bottom)); return { height: Math.round(s.height + spill), gap: Math.round(m.top - s.bottom - spill), text: ${card}.querySelector('[data-pipeline-starts]').innerText.replace(/\\s+/g, ' ') }; })()`)) as { height: number; gap: number; text: string };
+  const overflow = (await js("(() => { const el = document.querySelector('[data-settings-page=pipelines]')?.parentElement; return el ? el.scrollWidth - el.clientWidth : 0; })()")) as number;
+  await shot(win, 'pipeline-editor.png');
+  pressKey(win, 'Escape');
+  await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000);
+  if (box.height > 32) return `Starts is ${box.height}px high: its choices wrapped (${box.text})`;
+  if (box.gap < 0) return `Starts runs into the Model row by ${-box.gap}px`;
+  if (overflow > 1) return `the Pipelines page is ${overflow}px wider than Settings`;
+  return `ok: in a narrow window the list sits above the editor, and Validate's Starts (${box.text}) is one row of ${box.height}px, above the Model row`;
+}
+
 async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
@@ -6689,7 +6919,7 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
   const group = (await js("['today', 'yesterday', 'pinned', 'working'].find((g) => document.querySelector(`[data-section-toggle=\"${g}\"][data-open=\"true\"]`)) ?? null")) as string | null;
   if (!group) return `ok: no open section to collapse (Earlier ${earlier === 'none' ? 'not shown' : 'closed'})`;
   const toggle = `document.querySelector('[data-section-toggle="${group}"]')`;
-  const rowsUnder = `(() => { const rows = [...document.querySelectorAll('[data-session-list] [role=listitem]')]; const at = rows.findIndex((r) => r.querySelector('[data-section-toggle="${group}"]')); const out = []; for (const r of rows.slice(at + 1)) { if (r.querySelector('[data-section-toggle], [data-session-group], [data-archived-toggle]')) break; const s = r.querySelector('[data-session-id]'); if (s) out.push(s.dataset.sessionId); } return out; })()`;
+  const rowsUnder = `(() => { const rows = [...document.querySelectorAll('[data-session-list] [data-list-row]')]; const at = rows.findIndex((r) => r.querySelector('[data-section-toggle="${group}"]')); const out = []; for (const r of rows.slice(at + 1)) { if (r.querySelector('[data-section-toggle], [data-session-group], [data-archived-toggle]')) break; const s = r.querySelector('[data-session-id]'); if (s) out.push(s.dataset.sessionId); } return out; })()`;
   const before = (await js(`${rowsUnder}.length`)) as number;
   const selected = (await js("document.querySelector('[data-session-list] [aria-current=\"true\"]')?.dataset.sessionId ?? null")) as string | null;
   await js(`${toggle}.click()`);
@@ -6762,7 +6992,7 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
   const header = "document.querySelector('[data-archived-header]')";
   const toggle = (where: string) => `${where}?.querySelector('[data-archived-toggle]')`;
   // Done moving: the header carries no FLIP transform and the archived rows are fully shown.
-  const landed = `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [role=listitem].opacity-0')].length`;
+  const landed = `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [data-list-row].opacity-0')].length`;
   const scheme = preferences.get().colorScheme;
   try {
     await js(`${list}.scrollTop = 0`);
@@ -6795,8 +7025,8 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
     await js(`${toggle(dock)}.click()`);
     if (!(await waitInPage(win, landed, 2_000))) return 'opening Archived did not move its header into the list';
     const open = (await js(`(() => {
-      const item = ${header}.closest('[role=listitem]'), at = Number(item.getAttribute('aria-posinset'));
-      const prev = [...document.querySelectorAll('[data-session-list] [role=listitem]')].find((r) => Number(r.getAttribute('aria-posinset')) === at - 1);
+      const item = ${header}.closest('[data-list-row]'), at = Number(item.getAttribute('data-list-row'));
+      const prev = [...document.querySelectorAll('[data-session-list] [data-list-row]')].find((r) => Number(r.getAttribute('data-list-row')) === at - 1);
       const l = ${list};
       return { gap: prev ? Math.round(item.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : 0, top: item.getBoundingClientRect().top - l.getBoundingClientRect().top, half: l.clientHeight / 2, scrolledToEnd: l.scrollTop >= l.scrollHeight - l.clientHeight - 1 };
     })()`)) as { gap: number; top: number; half: number; scrolledToEnd: boolean };
@@ -6862,10 +7092,10 @@ async function shortArchivedList(win: BrowserWindow, sidebarShot: (name: string)
     if (fit.scrolls) return 'a short list still scrolls';
     await sidebarShot('archived-short-closed.png');
     await js(`${dock}.querySelector('[data-archived-toggle]').click()`);
-    if (!(await waitInPage(win, `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [role=listitem].opacity-0')].length`, 2_000))) return 'Archived did not open on the short list';
+    if (!(await waitInPage(win, `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [data-list-row].opacity-0')].length`, 2_000))) return 'Archived did not open on the short list';
     const placed = (await js(`(() => {
-      const item = ${header}.closest('[role=listitem]'), at = Number(item.getAttribute('aria-posinset'));
-      const prev = [...document.querySelectorAll('[data-session-list] [role=listitem]')].find((r) => Number(r.getAttribute('aria-posinset')) === at - 1);
+      const item = ${header}.closest('[data-list-row]'), at = Number(item.getAttribute('data-list-row'));
+      const prev = [...document.querySelectorAll('[data-session-list] [data-list-row]')].find((r) => Number(r.getAttribute('data-list-row')) === at - 1);
       return { gap: prev ? Math.round(item.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : 0, top: item.getBoundingClientRect().top - ${list}.getBoundingClientRect().top, half: ${list}.clientHeight / 2 };
     })()`)) as { gap: number; top: number; half: number };
     await sidebarShot('archived-short-open.png');
@@ -8921,6 +9151,10 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('pipelines: run, @ links, a round 2, done', () => runPipelineStep(win));
+  await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
+  await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
+  await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });

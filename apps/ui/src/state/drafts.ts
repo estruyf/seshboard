@@ -22,6 +22,8 @@ export interface DraftForm {
   choices: Choices;
   /** A profile picked for this session only (null: the project's, else the default). */
   profileId: string | null;
+  /** The pipeline the Run as chip picked (null or missing: one session). */
+  runAs?: string | null;
 }
 
 /** What was typed (and attached) in a message box and not sent yet. */
@@ -218,6 +220,7 @@ function parseForm(value: unknown): DraftForm | undefined {
   return {
     choices: { model: str(c.model) ?? '', effort: (str(c.effort) ?? '') as Choices['effort'], permissionMode: permissionMode as Choices['permissionMode'], workspace, baseRef, branch: str(c.branch) ?? '' },
     profileId: str(value.profileId),
+    ...(str(value.runAs) ? { runAs: str(value.runAs) } : {}),
   };
 }
 

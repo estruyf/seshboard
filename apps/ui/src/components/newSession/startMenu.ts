@@ -1,7 +1,7 @@
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What New session's Start button (and the palette's prompt step) can do with the prompt. */
-export type StartAction = 'start' | 'queue' | 'schedule' | 'trigger' | 'start-worktree';
+export type StartAction = 'start' | 'start-one' | 'queue' | 'schedule' | 'trigger' | 'pipeline' | 'start-worktree';
 
 export interface StartButtonInput {
   /** Why nothing can go anywhere: connecting, no folder yet. */
@@ -35,6 +35,10 @@ export interface StartButtonInput {
   editingSchedule?: boolean;
   /** Offer Start when… (New session, with a project): the prompt and its choices in a new trigger. */
   canTrigger?: boolean;
+  /** A pipeline can run here (New session, in a git repository): the Run as chip shows, and `runAs` counts (#179). */
+  canPipeline?: boolean;
+  /** The pipeline the Run as chip picked: Start runs it with the prompt as its task. Null: one session. */
+  runAs?: { id: string; name: string } | null;
 }
 
 export interface StartMenuItem {
@@ -43,6 +47,8 @@ export interface StartMenuItem {
   /** The key that does the same without the menu. */
   shortcut?: ShortcutId;
   disabled: boolean;
+  /** Why it can't be picked now, when that isn't the whole button's reason. */
+  reason?: string;
 }
 
 export interface StartButtonState {
@@ -63,9 +69,10 @@ export interface StartButtonState {
 }
 
 /**
- * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule… and (in a git
- * repository on the current checkout) Start in a new worktree. A reason that stops everything disables
- * the whole button; one that only stops starting leaves the ▾ for Add to queue.
+ * The split Start button: the main part starts, the ▾ opens Start session, Add to queue, Schedule…, Start when… and (in a
+ * git repository on the current checkout) Start in a new worktree. A reason that stops everything disables the whole
+ * button; one that only stops starting leaves the ▾ for Add to queue. With a pipeline picked in the Run as chip, the main
+ * part is Run pipeline, and the ▾ starts with Start one session; the chip is the one place to pick a pipeline.
  */
 export function startButtonState(input: StartButtonInput): StartButtonState {
   const { blocked, sending, hasMessage, hasText, startBlocked } = input;
@@ -82,6 +89,23 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   // A trigger starts it when there is work: a CI failure, an issue for you (#180).
   if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', disabled: !canQueue });
   if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
+  // A pipeline runs with the prompt as its task, in a worktree of its own: the branch and the focus limit don't stop it
+  // (#179). The other ways ignore it: a queued item, a schedule or a trigger is one session.
+  const runAs = input.canPipeline && !input.question && !input.editingSchedule ? (input.runAs ?? null) : null;
+  if (runAs) {
+    const one: StartMenuItem = { action: 'start-one', label: 'Start one session', disabled: !canStartHere };
+    const rest = items.slice(1);
+    return {
+      main: 'pipeline',
+      shortcut: 'new-session.start',
+      label: sending ? 'Starting…' : 'Run pipeline',
+      sending,
+      disabled: !canQueue,
+      menuDisabled: [one, ...rest].every((item) => item.disabled),
+      reason: sending ? null : (blocked ?? (!hasText ? 'Type the task first' : null)),
+      items: [one, ...rest],
+    };
+  }
   if (input.scheduleFirst && input.canSchedule && !input.question) {
     const schedule = items.find((item) => item.action === 'schedule')!;
     return {

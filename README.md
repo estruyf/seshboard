@@ -237,7 +237,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⌫ | Delete the session (in the sidebar, to the Trash) |
 | ⌥-click | Open beside the current session (in the sidebar; Dragging the session onto a pane opens it there) |
 | Middle-click | Archive a finished session (in the sidebar) |
-| ← or → | Close or open a section (on a section header in the sidebar) |
+| ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |
 | ⌘E | Edit a queued item in New session (on a queued item, in the sidebar or Home) |

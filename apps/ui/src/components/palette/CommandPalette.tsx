@@ -17,6 +17,9 @@ import { nextRunLine } from '../../state/schedules.ts';
 import { deleteSchedule, runScheduleNow, setSchedulePaused, useSchedules } from '../../state/schedulesStore.ts';
 import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused, useTriggers } from '../../state/triggersStore.ts';
 import { checkedLine, pausedLine } from '../../state/triggers.ts';
+import { openPipelinesSettings, usePipelines } from '../../state/pipelinesStore.ts';
+import { pipelinesFor } from '../../state/pipelines.ts';
+import { runPipelineFrom } from '../pipelines/pipelineMenu.tsx';
 import { listedSchedules } from '../../state/upcoming.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { formatKeys, keysFor, localizeKeys, modKey, shortcutById } from '../../lib/shortcuts.ts';
@@ -107,7 +110,11 @@ const PICK_PLACEHOLDER: Record<PickList, string> = {
   'schedule-action': 'What to do with it',
   triggers: 'Pick a trigger',
   'trigger-action': 'What to do with it',
+  pipelines: 'Pick a pipeline',
+  'run-pipeline': 'Pick a pipeline to run',
 };
+/** Run pipeline…'s last choice, Edit pipelines… (pipeline ids never start with a line break). */
+const EDIT_PIPELINES = '\nedit';
 /** What a command that asks for more shows next, on its row while it's highlighted. */
 const NEXT_HINT: Record<PaletteStep['kind'], string> = { projects: 'picks a project next', prompt: 'write the prompt next', pick: 'pick one next', clone: 'paste the URL next' };
 
@@ -174,6 +181,7 @@ export function CommandPalette() {
   // One-time schedules that have run aren't offered: only Upcoming's History shows them.
   const schedules = useMemo(() => listedSchedules(allSchedules, Date.now()), [allSchedules]);
   const triggers = useTriggers((s) => s.triggers);
+  const pipelines = usePipelines((s) => s.pipelines);
   // The current project's memories, read when the Share memory step shows.
   const memoryRoot = step?.kind === 'pick' && step.list === 'memory' ? (ctx.currentProject?.root ?? null) : null;
   const { list: memoryList } = useMemoryList(memoryRoot);
@@ -283,7 +291,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers]);
+  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {
@@ -355,6 +363,19 @@ export function CommandPalette() {
           { value: 'delete', title: 'Delete', detail: 'Shows Undo' },
         ];
       }
+      case 'pipelines':
+        // Each with where it shows and its steps.
+        return pipelines.map((pipeline) => ({
+          value: pipeline.id,
+          title: pipeline.name,
+          detail: [pipeline.builtIn ? 'Built-in' : pipeline.scope.kind === 'all' ? 'Every project' : nameOf(pipeline.scope.root), pipeline.steps.map((step) => step.name).join(', ')].join(' · '),
+        }));
+      case 'run-pipeline':
+        // The ones the session's project can run, then the way to change them.
+        return [
+          ...pipelinesFor(pipelines, ctx.session?.projectRoot ?? null).map((pipeline) => ({ value: pipeline.id, title: pipeline.name, detail: pipeline.steps.map((step) => step.name).join(', ') })),
+          { value: EDIT_PIPELINES, title: 'Edit pipelines…', detail: 'Opens Settings › Pipelines' },
+        ];
       case 'schedule-action': {
         const schedule = schedules.find((s) => s.id === (step?.kind === 'pick' ? step.target : undefined));
         if (!schedule) return [];
@@ -440,6 +461,16 @@ export function CommandPalette() {
         else if (value === 'edit') openTriggerEditor({ root: trigger.projectRoot, trigger });
         else if (value === 'pause' || value === 'resume') run(value === 'pause' ? 'pause it' : 'resume it', () => setTriggerPaused(trigger, value === 'pause'));
         else if (value === 'delete') run('delete it', () => deleteTrigger(trigger));
+        return;
+      }
+      case 'pipelines':
+        openPipelinesSettings(value);
+        return;
+      case 'run-pipeline': {
+        if (value === EDIT_PIPELINES) return openPipelinesSettings(null);
+        const pipeline = pipelines.find((p) => p.id === value);
+        // The open session is the parent; a toast says it is starting, then that it started.
+        if (pipeline && sessionId) void runPipelineFrom(pipeline, sessionId);
         return;
       }
       case 'prompt': {

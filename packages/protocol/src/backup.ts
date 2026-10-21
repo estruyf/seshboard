@@ -85,6 +85,8 @@ export const SettingsFile = z.object({
    * skipped. Every trigger is imported paused, to be checked before it starts sessions here.
    */
   triggers: z.array(z.unknown()).max(1000).optional(),
+  /** Your pipelines (#179), without their runs; a list of unknowns so one bad entry is skipped. */
+  pipelines: z.array(z.unknown()).max(1000).optional(),
   /** App choices by key (default editor, New session defaults, …); only known keys are imported. */
   choices: z.record(z.string(), z.json()).optional(),
   /** Session ids are only meaningful where the same transcripts are (the same Mac, or a copied ~/.claude). */

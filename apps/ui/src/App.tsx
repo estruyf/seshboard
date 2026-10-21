@@ -17,6 +17,7 @@ import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { FilePreviewDialog } from './components/filePreview/FilePreviewDialog.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
+import { RunTreeDialogs } from './components/pipelines/RunTreeDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
 import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
@@ -38,6 +39,7 @@ import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
 import { useTriggersSync } from './state/triggersStore.ts';
+import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
@@ -218,6 +220,7 @@ export function App() {
   useLaterSync();
   useSchedulesSync();
   useTriggersSync();
+  usePipelinesSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();
@@ -283,6 +286,7 @@ export function App() {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <RunTreeDialogs />
       <FilePreviewDialog />
       <TriggerEditorHost />
       <AddContextDialogHost />

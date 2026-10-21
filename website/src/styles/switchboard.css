@@ -30,6 +30,7 @@
   /* Only for things on another computer. */
   --sb-remote: #b197fc;
   --sb-trigger: #b197fc;
+  --sb-pipeline: #9775fa;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
@@ -119,6 +120,7 @@
   --sb-memory: #8250df;
   --sb-remote: #7048e8;
   --sb-trigger: #6f42c1;
+  --sb-pipeline: #6741d9;
   --sb-selected: color-mix(in srgb, var(--sb-text) 10%, transparent);
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;

@@ -22,7 +22,8 @@ import { homedir, tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { _electron, chromium, type ElectronApplication, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
-import { createDemoWorld, type DemoWorld } from '../apps/desktop/scripts/screenshot-demo.ts';
+import { createDemoWorld, writePipelineDemo, type DemoWorld, type PipelineDemo } from '../apps/desktop/scripts/screenshot-demo.ts';
+import { BUILT_IN_PIPELINES } from '../packages/protocol/src/pipelines.ts';
 import { x25519 } from '@noble/curves/ed25519.js';
 
 const root = join(import.meta.dirname, '..');
@@ -1507,6 +1508,53 @@ const screens: Screen[] = [
     },
   },
   {
+    name: 'pipeline-parent',
+    async take(t) {
+      // The parent of a demo run with Validate in round 2, its step tree above the conversation and its steps open in
+      // the sidebar.
+      await withPipelineRun(t, async (demo) => {
+        const parent = demo.sessions.parent;
+        await openPipelineTree(t, parent);
+        await t.click(`[data-sidebar-state] [data-session-id="${parent}"]`);
+        await t.need(`[data-current-session="${parent}"] [data-pipeline-tree] [data-pipeline-step="Validate"][data-step-view="working"]`, "the parent didn't show the run's step tree");
+        await t.need(`[data-current-session="${parent}"] [data-run-rows] [data-run-step-row]`, "the parent didn't show the finished steps' rows");
+        await t.shot('pipeline-parent');
+      });
+    },
+  },
+  {
+    name: 'pipeline-step',
+    async take(t) {
+      // Validate's first round: the read-only line, its prompt with Test and Lint and the links, and its verdict.
+      await withPipelineRun(t, async (demo) => {
+        const step = demo.sessions.validate1;
+        await openPipelineTree(t, demo.sessions.parent);
+        await t.click(`[data-sidebar-state] [data-tree-child][data-session-id="${step}"]`, "Validate is not under the parent in the sidebar");
+        const pane = `[data-current-session="${step}"]`;
+        await t.need(`${pane} [data-step-read-only]`, "Validate didn't show the read-only line");
+        await t.need(`${pane} [data-step-actions] [data-step-action="Lint"][data-step-action-ok="false"]`, "Validate's prompt didn't show the actions that ran first");
+        await t.need(`${pane} [data-verdict="changes"]`, "Validate didn't show its verdict");
+        await t.shot('pipeline-step');
+      });
+    },
+  },
+  {
+    name: 'pipeline-editor',
+    async take(t) {
+      // Settings › Pipelines with the built-in Plan, execute, validate, push, its Validate step open.
+      await t.click('[data-open-settings]');
+      await t.click('[data-settings-section="pipelines"]');
+      await t.click('[data-pipelines-settings] [data-pipeline-row="builtin-plan-execute-validate-push"]', 'Settings › Pipelines has no built-in pipeline');
+      await t.need('[data-pipeline-editor="builtin-plan-execute-validate-push"]', 'the built-in pipeline did not open');
+      const validate = '[data-pipeline-editor] [data-pipeline-step-card="Validate"]';
+      if (!(await t.page.locator(`${validate}[data-open]`).count())) await t.click(`${validate} [data-pipeline-step-toggle]`);
+      await t.need(`${validate}[data-open] [data-pipeline-verdict]`, "Validate's card did not open");
+      await t.need('[data-pipeline-editor] [data-pipeline-tree]', 'the editor has no tree');
+      await t.shot('pipeline-editor');
+      await t.click('[data-close-settings]');
+    },
+  },
+  {
     name: 'memory-load-order',
     async take(t) {
       await openMemoryTab(t);
@@ -2018,6 +2066,7 @@ function demoUsage(world: DemoWorld): string {
       queueHostFile: demoQueueHostFile(world),
       schedulesFile: demoSchedulesFile(world),
       triggersFile: demoTriggersFile(world),
+      pipelinesFile: demoPipelinesFile(world),
     }),
   );
   return file;
@@ -2034,6 +2083,106 @@ const demoSchedulesFile = (world: DemoWorld) => join(world.home, '.switchboard-d
 
 /** Where the tour puts the demo triggers for their picture (see `DemoUsage.triggersFile`). */
 const demoTriggersFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-triggers.json');
+
+/** Where the tour puts the demo pipeline run for its pictures (see `DemoUsage.pipelinesFile`). */
+const demoPipelinesFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-pipelines.json');
+
+/**
+ * A demo run of the built-in "Plan, execute, validate, push" on acme-store while `take` runs: its worktree, the
+ * sessions of its steps (`writePipelineDemo`), the run from the file the engine watches, and Validate · round 2 working
+ * in Switchboard. All of it is taken away again after, so no other picture shows it.
+ */
+async function withPipelineRun(t: Tour, take: (demo: PipelineDemo) => Promise<void>): Promise<void> {
+  const acme = join(t.world.home, 'Developer', 'acme-store');
+  const branch = 'worktree-gift-wrap';
+  const tree = join(acme, '.claude', 'worktrees', 'gift-wrap');
+  git(acme, ['worktree', 'add', '-q', '-b', branch, tree, 'main']);
+  const now = Date.now();
+  const demo = writePipelineDemo(t.world.home, tree, branch, now);
+  try {
+    await t.until(`!!document.querySelector('[data-sidebar-state] [data-session-id="${demo.sessions.parent}"]')`, 'the demo run’s parent did not show in the sidebar', 30_000);
+    writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: demo.sessions.validate2, cwd: tree }));
+    writeFileSync(demoPipelinesFile(t.world), JSON.stringify([demoRun(t.world, demo, tree, now)]));
+    await t.until(`!!document.querySelector('[data-sidebar-state] [data-session-id="${demo.sessions.parent}"] [data-tree-toggle]')`, 'the demo run’s parent has no steps in the sidebar', 30_000);
+    await take(demo);
+  } finally {
+    writeFileSync(demoPipelinesFile(t.world), 'null');
+    writeFileSync(demoQueueHostFile(t.world), 'null');
+    for (const file of demo.files) rmSync(file, { force: true });
+    git(acme, ['worktree', 'remove', '--force', tree]);
+    git(acme, ['branch', '-q', '-D', branch]);
+  }
+  await t.until(`!document.querySelector('[data-session-id="${demo.sessions.parent}"]')`, 'the demo run’s sessions stayed', 30_000);
+  await t.home();
+}
+
+/** Opens a parent's steps in the sidebar with its arrow. */
+async function openPipelineTree(t: Tour, parent: string): Promise<void> {
+  const row = `[data-sidebar-state] [data-session-id="${parent}"]`;
+  if (await t.page.locator(`${row} [data-tree-toggle="false"]`).count()) await t.click(`${row} [data-tree-toggle="false"]`);
+  await t.until(`document.querySelectorAll('[data-sidebar-state] [data-tree-child="${parent}"]').length === 4`, "the parent's steps did not open in the sidebar");
+}
+
+/**
+ * The run of `writePipelineDemo`'s sessions as the runner leaves it 18 minutes in: Plan approved, Execute done (it made
+ * the changes Validate sent back), Validate's first round with changes needed, and its second round working.
+ */
+function demoRun(world: DemoWorld, demo: PipelineDemo, tree: string, now: number) {
+  const minutes = (n: number) => now - n * 60_000;
+  const builtIn = BUILT_IN_PIPELINES.find((p) => p.id === 'builtin-plan-execute-validate-push')!;
+  const runId = 'run-demo-gift-wrap';
+  const row = (step: string, index: number, round: number, sessionId: string, rest: Record<string, unknown>) => ({
+    runId,
+    step,
+    index,
+    round,
+    sessionId,
+    status: 'done',
+    outcome: 'clean',
+    verdict: null,
+    reason: null,
+    plan: null,
+    actions: [],
+    endedAt: null,
+    ...rest,
+  });
+  return {
+    run: {
+      id: runId,
+      pipelineId: builtIn.id,
+      pipeline: { ...builtIn, builtIn: true, createdAt: 0, updatedAt: 0 },
+      parentSessionId: demo.sessions.parent,
+      task: null,
+      title: demo.title,
+      projectRoot: join(world.home, 'Developer', 'acme-store'),
+      cwd: tree,
+      profileId: null,
+      status: 'running',
+      reason: null,
+      waitingFor: null,
+      hold: null,
+      step: 2,
+      round: 2,
+      sentBackTo: null,
+      pr: null,
+      createdAt: minutes(18),
+      updatedAt: minutes(2),
+      endedAt: null,
+    },
+    steps: [
+      row('Plan', 0, 1, demo.sessions.plan, { reason: 'plan approved', plan: demo.plan, startedAt: minutes(18), endedAt: minutes(14) }),
+      row('Execute', 1, 1, demo.sessions.execute, { reason: 'Round 2: changes from Validate.', startedAt: minutes(14), endedAt: minutes(3) }),
+      row('Validate', 2, 1, demo.sessions.validate1, {
+        verdict: { kind: 'changes', items: ['PayButton still charges the total from before gift wrap, so it asks €3.50 less than the summary shows.', 'Two lint errors in GiftWrap.tsx: an unused import and a missing key.'] },
+        reason: 'Changes needed: sent to Execute.',
+        actions: demo.actions.round1,
+        startedAt: minutes(9),
+        endedAt: minutes(6),
+      }),
+      row('Validate', 2, 2, demo.sessions.validate2, { status: 'working', outcome: null, actions: demo.actions.round2, startedAt: minutes(2) }),
+    ],
+  };
+}
 
 /**
  * Three triggers on acme-store as its Triggers tab shows them after a day: CI fails on main with three sessions, Issues
@@ -2401,6 +2550,8 @@ const transcriptsBefore = transcripts(world.home);
 let failed = false;
 try {
   const page = await app.firstWindow();
+  // A view that throws leaves a blank window in failed.png: say why.
+  page.on('pageerror', (error) => console.error(`renderer error: ${error.message}\n${error.stack ?? ''}`));
   await app.evaluate(({ BrowserWindow }, size) => {
     const win = BrowserWindow.getAllWindows()[0]!;
     win.setContentSize(size.width, size.height);

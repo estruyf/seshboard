@@ -16,6 +16,11 @@ import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, us
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
 import { openTriggerEditor } from '../../state/triggersStore.ts';
+import { startRun, usePipelines } from '../../state/pipelinesStore.ts';
+import { boxChoiceUse, keptRunAs, modelWord, pipelinesFor, runAsSteps } from '../../state/pipelines.ts';
+import { rememberPipeline } from '../../state/lastPipeline.ts';
+import { RunAsChip } from './RunAsChip.tsx';
+import { RunAsSteps } from './RunAsSteps.tsx';
 import { useStartAfter } from '../../state/startAfterStore.ts';
 import { autoStartBlock, busyInProject, promptLabel, queueSession, sameDraft } from '../../state/queue.ts';
 import { useLinks } from '../../state/linksStore.ts';
@@ -140,6 +145,10 @@ function LocalNewSession() {
   const [savedNote, setSavedNote] = useState<string | null>(null);
   /** A profile chosen for this session only (null: the project's, else the default). */
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
+  /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
+  const [runAsId, setRunAsId] = useState<string | null>(null);
+  /** The steps line's Change: opens the Run as menu. */
+  const [runAsMenu, setRunAsMenu] = useState(0);
   const profiles = useProfiles((s) => s.profiles);
   const defaultProfile = useProfiles((s) => s.defaultId);
   /** The folder the user changed options for: until the folder changes, late-arriving defaults never override their choices. */
@@ -623,14 +632,15 @@ function LocalNewSession() {
     touchedFor.current = cwd;
     setD(draft.form.choices);
     setProfileOverride(draft.form.profileId);
+    setRunAsId(draft.form.runAs ?? null);
   };
   const onPromptChange = useCallback((text: string) => {
     setDraftPrompt(text);
     setRestored((current) => (current && draftMessage(current) !== text ? null : current));
   }, []);
   useEffect(() => {
-    if (hasDraft && draftKey !== undefined) useDrafts.getState().setForm(draftKey, { choices: d, profileId: profileOverride });
-  }, [draftKey, hasDraft, d, profileOverride]);
+    if (hasDraft && draftKey !== undefined) useDrafts.getState().setForm(draftKey, { choices: d, profileId: profileOverride, ...(runAsId ? { runAs: runAsId } : {}) });
+  }, [draftKey, hasDraft, d, profileOverride, runAsId]);
 
   // A new folder starts from its project's defaults (again when they arrive or change, until the user changes something).
   useEffect(() => {
@@ -894,6 +904,32 @@ function LocalNewSession() {
       },
     });
   };
+  /**
+   * Run pipeline › (#179): the prompt is the run's task, in this project. Started, the box is emptied, as after Start
+   * session, and the run's row opens. The Start button says Starting… meanwhile (making the worktree takes a moment).
+   */
+  const pipelineRoot = cwd ? projectOf(cwd) : null;
+  const allPipelines = usePipelines((s) => s.pipelines);
+  const projectPipelines = useMemo(() => pipelinesFor(allPipelines, pipelineRoot), [allPipelines, pipelineRoot]);
+  // Another project without the picked pipeline, or the pipeline deleted: back to one session. Before the pipelines
+  // arrive there is nothing to check against.
+  useEffect(() => {
+    if (allPipelines.length) setRunAsId((id) => keptRunAs(id, projectPipelines));
+  }, [allPipelines, projectPipelines]);
+  /** The pipeline Start runs: only where one can run (a git repository, not a question, a queued item or a schedule). */
+  const canPipeline = canWorktree && !fromLater;
+  const runAs = canPipeline && !question && !fromSchedule ? (projectPipelines.find((p) => p.id === runAsId) ?? null) : null;
+  /** What the message box's choices are for the run: the steps that don't set their own take them. */
+  const runChoices = () => ({ model: d.model && d.model !== AUTO_MODEL ? d.model : null, effort: d.effort || null, permissionMode: d.permissionMode });
+  /** Starts the run; a failure is thrown, so the message box keeps the text and says why. */
+  const runPipelineWith = async (pipelineId: string, text: string): Promise<void | false> => {
+    if (!pipelineRoot || !text.trim()) return false;
+    const state = await startRun({ pipelineId, task: text, project: pipelineRoot, profileId, choices: runChoices() });
+    rememberPipeline(pipelineRoot, pipelineId);
+    setRunAsId(null);
+    useDrafts.getState().removeDraft(newDraftKey(cwd));
+    useSessions.getState().select(state.run.id);
+  };
   /** Saved: the box is emptied (or, for a schedule that was open, back to New session's own prompt). */
   const onScheduled = () => {
     setScheduling(null);
@@ -1023,6 +1059,7 @@ function LocalNewSession() {
       }}
       effort={{ value: d.effort, onChange: (effort) => update({ effort }) }}
       mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
+      pipeline={runAs ? boxChoiceUse(runAs) : null}
     />
   );
 
@@ -1491,45 +1528,61 @@ function LocalNewSession() {
               disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => {
                 // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
-                if (scheduleFirst && !question && !fromLater) {
+                if (scheduleFirst && !question && !fromLater && !runAs) {
                   openSchedule();
                   return false;
                 }
+                // A pipeline picked in Run as: Enter runs it, with the text as its task.
+                if (runAs) return runPipelineWith(runAs.id, text);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
-                <StartButton
-                  state={startButtonState({
-                    ...box,
-                    startBlocked,
-                    branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null),
-                    canWorktree,
-                    worktree: useWorktree,
-                    question,
-                    // Opened with Start after this one…: queueing is what it is for.
-                    queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
-                    canSchedule: true,
-                    canTrigger: !fromLater,
-                    scheduleFirst: scheduleFirst && !fromLater,
-                    editingSchedule: fromSchedule !== null,
-                  })}
-                  onAction={(action) =>
-                    action === 'queue'
-                      ? box.submitSecondary()
-                      : action === 'schedule'
-                        ? openSchedule()
-                        : action === 'trigger'
-                          ? openTrigger()
-                        : action === 'start-worktree'
-                          ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true }))
-                          : box.submit()
-                  }
-                  data={{ 'data-composer-submit': true }}
-                />
+                <>
+                  {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
+                    <RunAsChip pipelines={projectPipelines} value={runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending} />
+                  )}
+                  <StartButton
+                    state={startButtonState({
+                      ...box,
+                      startBlocked,
+                      branchBlocked: branchTaken ?? (githubPr && !useWorktree ? prCurrentBlocked : null),
+                      canWorktree,
+                      worktree: useWorktree,
+                      question,
+                      // Opened with Start after this one…: queueing is what it is for.
+                      queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
+                      canSchedule: true,
+                      canTrigger: !fromLater,
+                      canPipeline,
+                      runAs,
+                      scheduleFirst: scheduleFirst && !fromLater,
+                      editingSchedule: fromSchedule !== null,
+                    })}
+                    onAction={(action) =>
+                      action === 'queue'
+                        ? box.submitSecondary()
+                        : action === 'schedule'
+                          ? openSchedule()
+                          : action === 'trigger'
+                            ? openTrigger()
+                            : action === 'start-worktree'
+                              ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true }))
+                              : action === 'start-one'
+                                ? (setRunAsId(null), box.submitWith((text, attachments, parts) => create(text, attachments, parts)))
+                                : action === 'pipeline' && runAs
+                                  ? box.submitWith((text) => runPipelineWith(runAs.id, text))
+                                  : box.submit()
+                    }
+                    data={{ 'data-composer-submit': true }}
+                  />
+                </>
               )}
             />
           </div>
+
+          {/* What Start will run: a pipeline's steps, once there is a task. */}
+          {runAs && draftPrompt.trim() !== '' && <RunAsSteps name={runAs.name} steps={runAsSteps(runAs, modelWord(shownModel === AUTO_MODEL ? null : shownModel || null))} onChange={() => setRunAsMenu((n) => n + 1)} />}
 
           {/* A container: as the column narrows, the usage drops its reset times, then its bars. */}
           <div className="@container -mt-2 flex min-h-5 items-center justify-between gap-4 px-2 text-meta text-muted" data-tray-footer>

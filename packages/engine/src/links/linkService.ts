@@ -24,6 +24,8 @@ export interface LinkServiceDeps {
   commits(folder: string, branch: string, base: string | null): Promise<string[]>;
   /** The last reply of the session's last turn. */
   lastReply(id: string): Promise<string | null>;
+  /** The plan you approved in a session that was a pipeline's plan step (#179). */
+  plan?(id: string): string | null;
   log(level: 'debug' | 'warn', message: string): void;
 }
 
@@ -124,6 +126,7 @@ export class LinkService {
       catchUp,
       commits: warm?.commits ?? [],
       lastReply: warm?.lastReply ?? null,
+      plan: this.deps.plan?.(sessionId) ?? null,
     };
   }
 

@@ -66,6 +66,11 @@ import {
   Trigger,
   TriggerEvent,
   TriggerSession,
+  isBuiltInPipeline,
+  parseRunBriefs,
+  writeRunBrief,
+  writeRunStub,
+  PipelineRunState,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -154,6 +159,11 @@ import type { ShellEnv } from './system/shellEnv.ts';
 import { LimitStore } from './usageLimit/limitStore.ts';
 import { remoteLimit, RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
 import { UsageLimits } from './usageLimit/usageLimits.ts';
+import { PipelineStore } from './pipelines/pipelineStore.ts';
+import { isRunId, RunStore } from './pipelines/runStore.ts';
+import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
+import { findNamed, runActionsFirst, runCommand } from './pipelines/actionsFirst.ts';
+import { commitAndOpen, previewPush } from './pipelines/push.ts';
 import pkg from '../package.json' with { type: 'json' };
 
 export interface EngineOptions {
@@ -269,6 +279,12 @@ export interface DemoUsage {
    * file) takes them out again. With `stubQueueStarts` only, which keeps a start from reaching Claude Code.
    */
   triggersFile?: string;
+  /**
+   * A file the screenshot tour writes to show pipeline runs (#179), only for their pictures: a list of runs with their
+   * steps (`PipelineRunState`) puts them in as they are, with each step's session under its parent; anything else (or
+   * no file) takes them out again. With `stubQueueStarts` only, which keeps a run from starting Claude Code.
+   */
+  pipelinesFile?: string;
 }
 
 /** What one run of the clean-up of archived sessions did. */
@@ -304,6 +320,11 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away.
    */
   smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped' }): void;
+  /**
+   * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
+   * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
+   */
+  smokePipelineTurn(turn: { sessionId: string; outcome: 'clean' | 'error' | 'stopped'; reply: string }): Promise<void>;
   /** The computer woke (`powerMonitor` `resume`, from main): scheduled runs due while it slept are dealt with now. */
   wake(): void;
   /**
@@ -460,6 +481,11 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Starts queued items by themselves (set up with the queue, below); sessions and the registry poke it from here on. */
   let autoStarter: QueueAutoStarter | undefined;
+  // --- Pipelines (#179): the stores are here, since the session index reads each sub-session's parent ----------------
+  const pipelineStore = new PipelineStore(cache.db);
+  const runStore = new RunStore(cache.db);
+  /** Runs pipelines (set up with the schedules, below); sessions, limits and the registry poke it like the queue. */
+  let runner: PipelineRunner | undefined;
   /** Event triggers (#180), set up with the schedules, below. */
   let triggerWatcher: TriggerWatcher | undefined;
   /** Titles scheduled runs once their transcript is there (set up with the schedules, below). */
@@ -468,6 +494,7 @@ export function createEngine(options: EngineOptions): Engine {
     baseline,
     isOwned: (id) => owned.has(id),
     isContinued: (id) => continued.has(id),
+    parentOf: (id) => runStore.parentOf(id),
     db: cache.db,
     source,
     projectsDirs: () => profiles.runtimes().map((profile) => ({ profileId: profile.id, dir: join(profile.configDir, 'projects') })),
@@ -478,6 +505,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (change.upserted.length) titleRuns?.(change.upserted.map((s) => s.id));
       // Reading a session frees a slot under the focus limit.
       void autoStarter?.check();
+      runner?.check();
       scheduleSearchSync();
       if (change.complete) scanCompleteHook();
     },
@@ -511,6 +539,7 @@ export function createEngine(options: EngineOptions): Engine {
       return out.split('\n').map((line) => line.trim()).filter(Boolean);
     },
     lastReply: async (id) => lastTurn(await source.messages(id))?.finalText ?? null,
+    plan: (id) => runStore.planOf(id),
     log,
   });
   /** Issues and pull requests through gh: the `#` list, blanks, New session and what Claude gets share its cache. */
@@ -554,6 +583,7 @@ export function createEngine(options: EngineOptions): Engine {
         onChange: () => {
           broadcast('sessions.live', { live: liveList() });
           void autoStarter?.check();
+          runner?.check();
         },
       });
       registries.set(key, registry);
@@ -757,6 +787,7 @@ export function createEngine(options: EngineOptions): Engine {
     onChange: (state) => {
       broadcast('limits.changed', state);
       void autoStarter?.check();
+      runner?.check();
     },
     onLimitChanged: (profileId) => hosts.limitChanged(profileId),
     onResumed: (sessionId) => broadcast('limits.resumed', { sessionId }),
@@ -783,6 +814,8 @@ export function createEngine(options: EngineOptions): Engine {
       // A session that broke (its process ended, it couldn't start) has no turn end: its issue goes to failed all the same.
       if (info.state === 'error') triggerWatcher?.turnEnded(info.sessionId, { ok: false });
       triggerWatcher?.nudge();
+      runner?.onHost(info);
+      runner?.check();
     },
     onStream: (delta) => broadcast('session.stream', delta),
     onMessages: (id, messages, held) => {
@@ -793,15 +826,23 @@ export function createEngine(options: EngineOptions): Engine {
     onPermission: (request) => {
       broadcast('session.permission', request);
       quietly(catchUp.permission(request));
+      runner?.needsYou(request.sessionId, request.toolName);
     },
     onPermissionResolved: (requestId, sessionId) => {
       broadcast('session.permissionResolved', { requestId, sessionId });
       quietly(catchUp.permissionResolved(requestId, sessionId));
+      runner?.answered(sessionId);
     },
     onTurnEnd: (sessionId, outcome) => {
       autoStarter?.turnEnded(sessionId, outcome);
       triggerWatcher?.turnEnded(sessionId, outcome);
-      quietly(catchUp.turnEnded(sessionId, outcome));
+      const card = catchUp.turnEnded(sessionId, outcome);
+      quietly(card);
+      // A pipeline's step reads the catch-up (does Claude wait for you?) before the run goes on. Send now's turn has none.
+      if (!outcome.superseded) {
+        const ended = outcome.stopped ? 'stopped' : outcome.ok ? 'clean' : 'error';
+        void card.catch(() => null).then((made) => runner?.turnEnded(sessionId, ended, made)).catch((error: Error) => log('warn', `Pipelines: ${error.message}`));
+      }
     },
     onCreated: (id) => {
       owned.add(id);
@@ -836,11 +877,13 @@ export function createEngine(options: EngineOptions): Engine {
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     links: {
-      expand: (id, text) => expandMessage(text, (message, others) => links.expand(id, message, others), githubContext),
+      expand: (id, text) => expandMessage(expandRunBriefs(text), (message, others) => links.expand(id, message, others), githubContext),
       warm: async (text) => {
         await Promise.all([links.warmText(text), githubContext.warm(text)]);
       },
     },
+    readOnly: (id) => runner?.isReadOnly(id) ?? false,
+    planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
@@ -944,7 +987,11 @@ export function createEngine(options: EngineOptions): Engine {
   const catchUpOnInfo = (info: SessionHostInfo) => {
     const before = hostStates.get(info.sessionId);
     hostStates.set(info.sessionId, info.state);
-    if (info.state === 'error' && (before === 'running' || before === 'needs-you')) quietly(catchUp.turnEnded(info.sessionId, { ok: false, error: info.error }));
+    if (info.state === 'error' && (before === 'running' || before === 'needs-you')) {
+      quietly(catchUp.turnEnded(info.sessionId, { ok: false, error: info.error }));
+      // A crash ends the turn without a `result`: a pipeline's step stops on it.
+      void runner?.turnEnded(info.sessionId, 'error', null);
+    }
     if (info.state === 'closed' || info.state === 'error') catchUp.closed(info.sessionId);
   };
 
@@ -1393,6 +1440,185 @@ export function createEngine(options: EngineOptions): Engine {
   }
   // Runs due while Switchboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
   if (options.schedules !== false) scheduler.start(options.stubQueueStarts ? 0 : 5_000);
+
+  // --- Pipelines (#179) ---------------------------------------------------------------------------------------------
+  const pipelinesBroadcast = () => broadcast('pipelines.changed', { pipelines: pipelineStore.list() });
+  /** A run's button: what goes wrong comes back as a sentence the window can show. */
+  const runAction = async <T,>(work: () => Promise<T>): Promise<T> => {
+    try {
+      return await work();
+    } catch (error) {
+      throw error instanceof RpcError ? error : new RpcError('PIPELINE_FAILED', (error as Error).message);
+    }
+  };
+  /** What holds a run's next step: the focus limit (it never asks), or its profile's usage limit. */
+  const runHold = (run: { cwd: string; profileId: string | null }): StepHold | null => {
+    if (queueFocus.limit !== null && focusCount() >= queueFocus.limit) return { kind: 'focus' };
+    const hit = limits.of(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
+    return hit && limitAhead(hit) ? { kind: 'limit', resetsAt: hit.resetsAt } : null;
+  };
+  /** The project's own setup actions (npm install and the like), in a run's new worktree, before its first step. */
+  const runSetup = async (root: string, path: string, branch: string) => {
+    const setup = actions.list(root).actions.filter((a) => a.runOnWorktreeCreate && a.type === 'shell' && a.trusted);
+    if (!setup.length) return;
+    const userShell = await terminals.shell();
+    const { env } = await shell.ready;
+    const worktreeName = basename(path);
+    for (const action of setup) {
+      const command = expandCommand(action.command, { cwd: path, projectRoot: root, branch, worktreeName, sessionId: '', sessionTitle: '' }, userShell);
+      const result = await runCommand(userShell, command, action.cwd === 'project-root' ? root : path, env, 15 * 60_000);
+      if (result.code !== 0) log('warn', `Pipelines: setup action "${action.name}" exited with ${result.code}`);
+    }
+  };
+  /**
+   * The smoke test's pipeline steps (`stubQueueStarts` only): stand-in sessions, never Claude Code, with what each got
+   * written to a JSON line in the data folder, and the replies the step's turn "ended" with.
+   */
+  const smokePipelineStarts = join(options.dataDir, 'smoke-pipeline-starts.jsonl');
+  const smokeReplies = new Map<string, string>();
+  const smokeStep = (entry: { kind: 'fresh' | 'fork' | 'send'; sessionId?: string; from?: string; cwd: string; text: string }) => {
+    const sessionId = entry.sessionId ?? `smoke-step-${randomUUID()}`;
+    appendFileSync(smokePipelineStarts, `${JSON.stringify({ ...entry, sessionId })}\n`);
+    standInHost({ sessionId, cwd: entry.cwd, state: 'running' });
+    return sessionId;
+  };
+  runner = new PipelineRunner({
+    runs: runStore,
+    pipeline: (id) => pipelineStore.get(id),
+    session: (id) => sessions.get(id),
+    workspace: async ({ from, projectRoot }) => {
+      // The smoke test never touches a real repository.
+      if (options.stubQueueStarts) return from;
+      const location = resolver.resolve(from);
+      if (!location.gitDir) return from;
+      // The parent's worktree when it has one: the steps carry on its work there.
+      if (location.worktree) return from;
+      const { current } = await listBranches(from).catch(() => ({ current: null }));
+      if (!current) throw new Error('Check out a branch first: the run’s worktree starts from it.');
+      try {
+        const made = await makeWorktreeFrom(location.root ?? projectRoot, randomWorktreeName(), { branch: current }, { env: (await shell.ready).env });
+        await runSetup(location.root ?? projectRoot, made.path, made.branch);
+        return made.path;
+      } catch (error) {
+        throw new Error(error instanceof WorktreeFromError ? error.message : (error as Error).message);
+      }
+    },
+    create: async ({ cwd, prompt, profileId, model, effort, permissionMode, readOnly }) =>
+      options.stubQueueStarts
+        ? smokeStep({ kind: 'fresh', cwd, text: prompt })
+        : hosts.create({ cwd, prompt, attachments: [], model, effort, permissionMode, readOnly, worktree: null, profileId: requireProfile(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd)) }),
+    fork: async ({ from, prompt, model, effort, permissionMode, readOnly }) =>
+      options.stubQueueStarts ? smokeStep({ kind: 'fork', from, cwd: smokeHosts.get(from)?.cwd ?? options.dataDir, text: prompt }) : hosts.fork({ from, text: prompt, model, effort, permissionMode, readOnly }),
+    send: async (sessionId, text) => {
+      if (options.stubQueueStarts) {
+        smokeStep({ kind: 'send', sessionId, cwd: smokeHosts.get(sessionId)?.cwd ?? options.dataDir, text });
+        return;
+      }
+      await hosts.send({ sessionId, text, attachments: [], fork: false, mode: 'queue' });
+      sessions.wake(sessionId);
+    },
+    interrupt: async (sessionId) => {
+      catchUp.interrupt(sessionId);
+      await hosts.interrupt(sessionId);
+    },
+    title: (sessionId, title) => {
+      pendingTitles.set(sessionId, title);
+      applyTitles([sessionId]);
+    },
+    reparented: (sessionId) => sessions.republish(sessionId),
+    republishSessions: (sessionIds) => sessions.republishMany(sessionIds),
+    archiveSessions: (sessionIds, archived) => sessions.setArchivedMany(sessionIds, archived),
+    hideSessions: (sessionIds) => sessions.hide(sessionIds),
+    removed: (runId) => broadcast('runs.removed', { runId }),
+    runActions: async (run, names) => {
+      if (options.stubQueueStarts) return names.map((name) => ({ name, exitCode: 0, tail: 'Not run in the smoke test.', ms: 0 }));
+      const listed = actions.list(run.projectRoot).actions;
+      const userShell = await terminals.shell();
+      const { env } = await shell.ready;
+      const sessionId = run.parentSessionId ?? '';
+      return runActionsFirst(names, {
+        actions: listed,
+        expand: (action) => expandCommand(action.command, actionVars(sessionId, run.projectRoot, run.cwd), userShell),
+        cwd: (action) => (action.cwd === 'project-root' ? run.projectRoot : run.cwd),
+        shell: userShell,
+        env: { ...env, ...profileEnv(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd)) },
+      });
+    },
+    lastReply: async (id) => smokeReplies.get(id) ?? lastTurn(await source.messages(id))?.finalText ?? null,
+    hold: runHold,
+    busy: (id) => {
+      const state = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === id)?.state;
+      return state === 'starting' || state === 'running' ? 'working' : state === 'needs-you' ? 'waiting' : null;
+    },
+    pushPreview: async (run) => {
+      if (options.stubQueueStarts) return { message: stubCommitMessage(''), files: 0, branch: null, base: null, problem: null };
+      const profileId = run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd);
+      const about = run.parentSessionId ?? runStore.steps(run.id).findLast((s) => s.sessionId)?.sessionId ?? run.id;
+      return previewPush(run.cwd, async (context) => parseCommitMessage(await commitWriter.ask(profileId, about, commitMessageInput(context), COMMIT_SYSTEM_PROMPT)), {
+        env: (await shell.ready).env,
+        gh: defaultGh(),
+        projectBase: listProjects().find((p) => p.root === run.projectRoot)?.defaults.branch ?? null,
+      });
+    },
+    push: async (run, request) => {
+      // The smoke test never commits or pushes.
+      if (options.stubQueueStarts) return null;
+      await assertCheckoutIdle(run.cwd);
+      const pr = await commitAndOpen(run.cwd, request, { env: (await shell.ready).env, gh: defaultGh(), projectBase: listProjects().find((p) => p.root === run.projectRoot)?.defaults.branch ?? null });
+      void pullRequestsFor(run.projectRoot, true);
+      return pr;
+    },
+    changed: (state) => broadcast('runs.changed', { state }),
+    notify: (notice) => broadcast('runs.notice', { notice }),
+    log,
+  });
+  /** Turns a run's stub in a message to its parent into the run's brief, right before Claude reads it. */
+  const expandRunBriefs = (text: string) => {
+    const { runs } = parseRunBriefs(text);
+    if (!runs.some((r) => r.stub)) return text;
+    let out = text;
+    for (const block of runs.filter((r) => r.stub)) {
+      const state = runner?.state(block.runId);
+      const stub = writeRunStub(block.label, block.runId);
+      out = out.replace(stub, state ? writeRunBrief(state) : '');
+    }
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const demoPipelinesFile = options.stubQueueStarts ? options.demoUsage?.pipelinesFile : undefined;
+  /** The demo runs the screenshot tour put in, to take out again. */
+  let demoRunIds: string[] = [];
+  if (demoPipelinesFile) {
+    watchFile(demoPipelinesFile, { interval: 200 }, () => {
+      const wanted = ((): unknown => {
+        try {
+          return JSON.parse(readFileSync(demoPipelinesFile, 'utf8'));
+        } catch {
+          return null;
+        }
+      })();
+      // Taking a run out puts its sub-sessions back on their own (`remove` republishes them). Windows keep the runs
+      // they were sent, and no event takes one away: they get it once more as stopped, so nothing counts it as running.
+      for (const id of demoRunIds) {
+        const state = runner?.state(id);
+        if (state) broadcast('runs.changed', { state: { ...state, run: { ...state.run, status: 'stopped' } } });
+        runner?.remove(id);
+      }
+      demoRunIds = [];
+      for (const raw of Array.isArray(wanted) ? wanted : []) {
+        const parsed = PipelineRunState.safeParse(raw);
+        if (!parsed.success) continue;
+        // As the tour wrote it: the runner never picks it up (it only resumes runs at start), so nothing starts.
+        const state = runStore.restore(parsed.data);
+        if (!state) continue;
+        demoRunIds.push(state.run.id);
+        for (const step of state.steps) if (step.sessionId) sessions.republish(step.sessionId);
+        broadcast('runs.changed', { state });
+      }
+    });
+  }
+  // Runs that were going when Switchboard quit go on once it has settled.
+  const resumeRuns = options.schedules !== false ? setTimeout(() => void runner?.resumeAll(), options.stubQueueStarts ? 0 : 5_000) : undefined;
+  resumeRuns?.unref?.();
   /** Projects' memory and instructions: every profile's memory folder, the project's own profile first. */
   const memory = new MemoryService({
     profiles: (root) => {
@@ -1621,7 +1847,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   const defaultEditorKey = 'editor.default';
-  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules, triggers };
+  const settingsStores: SettingsStores = { db: cache.db, appState, projects, profiles, actions, schedules, triggers, pipelines: pipelineStore };
   const editorEnv = () => shell.forLookup();
 
   /** Session count and latest activity per project folder, for the project list. */
@@ -2631,6 +2857,62 @@ export function createEngine(options: EngineOptions): Engine {
       return { event: (await triggerWatcher?.startEvent(eventId)) ?? null };
     },
     'triggers.repoInfo': ({ root }) => triggerRepoInfo(root),
+    // --- Pipelines (#179) -------------------------------------------------------------------------------------------
+    'pipelines.list': ({ root }) => ({ pipelines: root ? pipelineStore.forProject(root) : pipelineStore.list() }),
+    'pipelines.save': ({ pipeline }) => {
+      if (pipeline.id && isBuiltInPipeline(pipeline.id)) throw new RpcError('READ_ONLY', 'Built-in pipelines can’t be changed. Duplicate one to start.');
+      if (pipeline.id && !pipelineStore.get(pipeline.id)) throw new RpcError('NOT_FOUND', 'That pipeline was deleted');
+      const saved = pipelineStore.save(pipeline);
+      pipelinesBroadcast();
+      return { pipeline: saved };
+    },
+    'pipelines.delete': ({ id }) => {
+      if (isBuiltInPipeline(id)) throw new RpcError('READ_ONLY', 'Built-in pipelines can’t be deleted.');
+      const pipeline = pipelineStore.remove(id);
+      pipelinesBroadcast();
+      return { pipeline };
+    },
+    'pipelines.restore': ({ pipeline }) => {
+      pipelineStore.restore(pipeline);
+      pipelinesBroadcast();
+      return { pipeline: pipelineStore.get(pipeline.id) ?? pipeline };
+    },
+    'pipelines.run': async ({ pipelineId, parentSessionId, task, project, profileId, choices }) => {
+      if (parentSessionId && isRunId(parentSessionId)) throw new RpcError('INVALID', 'Run a pipeline from a session.');
+      if (!parentSessionId && project && !statSafe(project)?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${project}`);
+      try {
+        const state = await runner!.start({ pipelineId, parentSessionId, task, ...(project ? { projectRoot: resolver.resolve(project).root ?? project } : {}), profileId, choices });
+        return { state };
+      } catch (error) {
+        throw new RpcError('PIPELINE_FAILED', (error as Error).message);
+      }
+    },
+    'runs.list': () => ({ runs: runner!.list() }),
+    'runs.get': ({ runId }) => ({ state: runner!.state(runId) }),
+    'runs.continue': async ({ runId, message }) => ({ state: await runAction(() => runner!.continue(runId, message ?? undefined)) }),
+    'runs.retryStep': async ({ runId }) => ({ state: await runAction(() => runner!.retryStep(runId)) }),
+    'runs.skipStep': async ({ runId }) => ({ state: await runAction(() => runner!.skipStep(runId)) }),
+    'runs.stop': async ({ runId }) => ({ state: await runAction(() => runner!.stop(runId)) }),
+    'runs.archive': async ({ runId, archived }) => ({ runs: await runAction(async () => runner!.archive(runId, archived)) }),
+    'runs.delete': async ({ runId, keepSubSessions }) => {
+      await runAction(() => runner!.delete(runId, keepSubSessions));
+      return {};
+    },
+    'runs.pushPreview': async ({ runId, fresh }) => ({ preview: await runAction(() => runner!.pushPreview(runId, fresh)) }),
+    'runs.write': async ({ runId, text }) => {
+      const state = runner!.state(runId);
+      if (!state) throw new RpcError('NOT_FOUND', 'That run is gone');
+      if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
+      const { run } = state;
+      // The brief of the run first, so Claude knows what the steps did.
+      const prompt = `${text.trim()}\n\n${writeRunStub(run.pipeline.name, run.id)}`;
+      const profileId = requireProfile(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
+      const sessionId = await hosts.create({ cwd: run.cwd, prompt, attachments: [], model: null, effort: null, permissionMode: 'default', worktree: null, profileId });
+      runner!.adopt(runId, sessionId);
+      pendingTitles.set(sessionId, run.title);
+      applyTitles([sessionId]);
+      return { sessionId };
+    },
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
       return {
@@ -3292,6 +3574,13 @@ export function createEngine(options: EngineOptions): Engine {
       resumeAtLimit = mode;
     },
     smokeQueueHost: standInHost,
+    smokePipelineTurn: async ({ sessionId, outcome, reply }) => {
+      if (!options.stubQueueStarts) return;
+      smokeReplies.set(sessionId, reply);
+      const cwd = smokeHosts.get(sessionId)?.cwd ?? options.dataDir;
+      standInHost({ sessionId, cwd, state: 'idle' });
+      await runner?.turnEnded(sessionId, outcome, null);
+    },
     wake: () => scheduler.wake(),
     advanceScheduleClock: (ms) => {
       if (!options.stubQueueStarts) return;
@@ -3346,11 +3635,15 @@ export function createEngine(options: EngineOptions): Engine {
       servers.clear();
       limits.close();
       autoStarter?.close();
+      // Before the hosts close: their turns end as `quit`, and the runs pause instead of stopping.
+      clearTimeout(resumeRuns);
+      runner?.close();
       scheduler.close();
       triggerWatcher?.close();
       if (demoLimitFile) unwatchFile(demoLimitFile);
       if (demoQueueFile) unwatchFile(demoQueueFile);
       if (demoTriggersFile) unwatchFile(demoTriggersFile);
+      if (demoPipelinesFile) unwatchFile(demoPipelinesFile);
       hosts.closeAll();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

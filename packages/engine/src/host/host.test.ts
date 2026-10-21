@@ -235,6 +235,8 @@ function setup(
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
     links?: HostManagerDeps['links'];
+    readOnly?: HostManagerDeps['readOnly'];
+    planApproved?: HostManagerDeps['planApproved'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -294,6 +296,8 @@ function setup(
     sessionSettings: opts.settings,
     limits: opts.limits,
     links: opts.links,
+    readOnly: opts.readOnly,
+    planApproved: opts.planApproved,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -1427,5 +1431,51 @@ describe('failureMessage', () => {
   it('keeps other errors, and this one when a claude was found', () => {
     expect(failureMessage(sdkError, '/usr/local/bin/claude')).toBe(sdkError);
     expect(failureMessage('Process exited with code 1', undefined)).toBe('Process exited with code 1');
+  });
+
+  describe('pipeline steps (#179)', () => {
+    const decide = async (query: FakeQuery, tool: string, input: Record<string, unknown>) => {
+      const hook = query.options.hooks?.PreToolUse?.[0]?.hooks[0];
+      const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
+      return out?.hookSpecificOutput?.permissionDecision ?? 'none';
+    };
+
+    it('starts a read-only step behind the read-only hook, and keeps it on a resume', async () => {
+      const t = setup({ cwds: { s1: '/work/app' }, readOnly: (id) => id === 's1' });
+      await t.manager.prewarm('/work/app', 'default');
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Check it', readOnly: true });
+      await until(() => lastState(t.infos, id) === 'idle');
+      // Not the pre-warmed process: that one started without the hook.
+      expect(t.queries[0]!.options.sessionId).toBe(id);
+      expect(await decide(t.queries[0]!, 'Read', { file_path: '/work/app/a.ts' })).toBe('allow');
+      expect(await decide(t.queries[0]!, 'Bash', { command: 'git diff main' })).toBe('allow');
+      expect(await decide(t.queries[0]!, 'Write', { file_path: '/work/app/a.ts' })).toBe('deny');
+      expect(await decide(t.queries[0]!, 'Bash', { command: 'rm -rf .' })).toBe('deny');
+
+      await t.manager.send({ sessionId: 's1', text: 'And this?', attachments: [], fork: false });
+      await until(() => t.queries.length === 2);
+      expect(await decide(t.queries[1]!, 'Edit', {})).toBe('deny');
+    });
+
+    it('forks a step with its own model and mode, in the same folder as the step it forks', async () => {
+      const t = setup({ cwds: { plan: '/work/app/.claude/worktrees/run' } });
+      const id = await t.manager.fork({ from: 'plan', text: 'Build the plan', model: 'sonnet', effort: null, permissionMode: 'acceptEdits' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.queries[0]!.options).toMatchObject({ resume: 'plan', forkSession: true, sessionId: id, cwd: '/work/app/.claude/worktrees/run', model: 'sonnet', permissionMode: 'acceptEdits' });
+      expect(t.queries[0]!.options.hooks).toBeUndefined();
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['Build the plan']);
+      expect(t.created).toEqual([id]);
+    });
+
+    it('answers an approved plan with what the pipeline says instead', async () => {
+      const approved: Array<{ id: string; plan: string }> = [];
+      const t = setup({ planApproved: (id, plan) => (approved.push({ id, plan }), 'Plan kept. Stop here.') });
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'tools:ExitPlanMode', permissionMode: 'plan' });
+      await until(() => t.permissions.length === 1);
+      t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', updatedInput: { plan: '1. Do it' } });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(approved).toEqual([{ id, plan: '1. Do it' }]);
+      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-ExitPlanMode=deny');
+    });
   });
 });

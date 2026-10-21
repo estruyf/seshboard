@@ -1,4 +1,4 @@
-import type { SessionSummary } from '@switchboard/protocol/client';
+import { parseRunBriefs, type SessionSummary } from '@switchboard/protocol/client';
 import type { DisplayItem } from '../transcript/displayItems.ts';
 import { matches } from '../../lib/shortcuts.ts';
 
@@ -127,7 +127,8 @@ export function sessionHistory(items: readonly DisplayItem[]): string[] {
   const entries: string[] = [];
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
-    const text = item.kind === 'user' && !item.subagent ? item.text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
+    // A pipeline run's brief went with a message to its parent: ↑ brings back what you typed (sending links the run again).
+    const text = item.kind === 'user' && !item.subagent ? parseRunBriefs(item.text).text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
     if (text.trim()) entries.push(text);
   }
   return withoutRepeats(entries);

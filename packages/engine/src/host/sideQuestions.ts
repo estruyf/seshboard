@@ -36,6 +36,9 @@ export function isReadOnlyTool(name: string, input: Record<string, unknown>): bo
   return READ_GIT.test(command) && !/[ \t]--output\b/.test(command);
 }
 
+/** What a read-only pipeline step (#179) is told when it tries anything else. */
+export const READ_ONLY_STEP_REASON = 'This step is read only: read files, search, and run git status, diff, log or show. Don’t try to change anything; say what should change instead.';
+
 /** What Claude is told when it tries anything else. */
 export const READ_ONLY_REASON = 'Questions about the session can only read: read files, search, and run git status, diff, log or show. Nothing else is allowed.';
 

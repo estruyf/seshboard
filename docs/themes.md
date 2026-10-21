@@ -95,7 +95,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "border": "#e1e4e8", "overlay-border": "#d1d5da", "overlay-shadow": "#15181f33",
       "text": "#202736", "muted": "#505869", "faint": "#687082", "link": "#005cc5",
       "selected": "#2027361a", "focus-ring": "#916c008c", "scrim": "#15181f59",
-      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1",
+      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1", "pipeline": "#6741d9",
       "accent": "#ffd43b", "accent-ink": "#916c00", "on-accent": "#15181f",
       "diff-added": "#00806f1f", "diff-removed": "#d73a491f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#15181f29",
@@ -112,7 +112,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "border": "#2d3142", "overlay-border": "#414861", "overlay-shadow": "#000000b3",
       "text": "#d9dbe1", "muted": "#9ba4b7", "faint": "#8b94a6", "link": "#74c0fc",
       "selected": "#d9dbe11c", "focus-ring": "#ffd43b8c", "scrim": "#00000099",
-      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc",
+      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc", "pipeline": "#9775fa",
       "accent": "#ffd43b", "accent-ink": "#ffd43b", "on-accent": "#15181f",
       "diff-added": "#51cf661f", "diff-removed": "#ff6b6b1f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#0000008c",
@@ -205,6 +205,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `memory` | Claude Code memory: MEMORY.md in What loads here | `#8250df` | `#b197fc` |
 | `remote` | only things on another computer: its chips, the badge on its project icons, the line over its sessions | `#7048e8` | `#b197fc` |
 | `trigger` | event triggers: the bolt on a session a trigger started, event fields in a trigger's prompt | `#6f42c1` | `#b197fc` |
+| `pipeline` | pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor | `#6741d9` | `#9775fa` |
 | `paper`, `paper-text` | reading mode: the page behind a reply and the text on it. Light is a warm off-white; dark is the same as `bg` and `text` | `#fbfaf7`, `#1f2328` | `#15181f`, `#d9dbe1` |
 | `accent` | primary buttons and tints (Demo Time's yellow) | `#ffd43b` | `#ffd43b` |
 | `accent-ink` | the accent as text, icons, spinners, working dots and borders | `#916c00` | `#ffd43b` |

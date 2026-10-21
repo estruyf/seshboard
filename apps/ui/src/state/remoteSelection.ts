@@ -1,3 +1,5 @@
+import { isRunRowId } from './runSelection.ts';
+
 /**
  * Which session the main area shows: one of this computer's, or one on another computer (docs/remote-access.md, Other
  * computers). A remote session is always its computer and its id together, so its id never reaches code that expects
@@ -26,7 +28,7 @@ export const isRemoteRowId = (id: string): boolean => id.startsWith(PREFIX);
  * A pane's session as code for this computer's sessions takes it (the engine, the hosts, the terminal): its id, or null
  * for a session on another computer, which can be in a pane too.
  */
-export const localSessionId = (id: string | null): string | null => (id !== null && !isRemoteRowId(id) ? id : null);
+export const localSessionId = (id: string | null): string | null => (id !== null && !isRemoteRowId(id) && !isRunRowId(id) ? id : null);
 
 /** The computer and session a remote row's key stands for; null for a local id or a key that isn't one. */
 export function parseRemoteRowId(id: string): RemoteRef | null {

@@ -55,4 +55,6 @@ export * from './schedules.ts';
 export * from './scheduleSchema.ts';
 export * from './triggers.ts';
 export * from './triggerSchema.ts';
+export * from './pipelines.ts';
+export * from './pipelineSchema.ts';
 export * from './filePreview.ts';

@@ -477,9 +477,9 @@ export const SHORTCUTS = [
   {
     id: "sidebar.section-toggle",
     keys: ["arrowleft", "arrowright"],
-    action: "Close or open a section",
+    action: "Close or open a section, or a pipeline's steps",
     section: "sessions",
-    context: "On a section header in the sidebar",
+    context: "On a section header or a pipeline's row in the sidebar",
     where: "sidebar",
   },
   {

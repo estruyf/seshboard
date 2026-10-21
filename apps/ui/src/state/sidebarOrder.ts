@@ -1,5 +1,8 @@
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SidebarSort } from '@switchboard/protocol/bridge';
+import type { PipelineRunState } from '@switchboard/protocol/client';
+import { sidebarForest } from './pipelineTree.ts';
+import { treeRuns, usePipelineTree } from './pipelineTreeStore.ts';
 import { buildSessionList, groupsFor, quickestGroups, rowStatus, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';
 
 /** A permission or question a session waits on, as far as the rail's tooltip and the needs-you pill care. */
@@ -14,13 +17,41 @@ export interface WaitingRequest {
  * The sidebar's sections and their sessions, in the order it lists them: Needs you, Working, Pinned, Today, Yesterday,
  * Earlier (Recent), or Needs review, Read, Still working (Quickest to unblock). Archived sessions are left out. The
  * minimal rail, ⌃⇥ and ⌘P all read this, so the order never differs between them.
+ *
+ * Pipelines (#179): run rows are listed, a parent sits where its most urgent child puts it, and sub-sessions follow
+ * their parent only while it is open in the sidebar (`openParents`; the rail passes none). `runs` and `openParents`
+ * default to this window's.
  */
 export function sidebarGroups(
   rows: readonly SessionRowData[],
-  options: { now: number; archiveAfterDays: number; search?: string; project?: string | null; sort?: SidebarSort; quick?: ReadonlyMap<string, QuickInfo> },
+  options: {
+    now: number;
+    archiveAfterDays: number;
+    search?: string;
+    project?: string | null;
+    sort?: SidebarSort;
+    quick?: ReadonlyMap<string, QuickInfo>;
+    runs?: Iterable<PipelineRunState>;
+    openParents?: ReadonlySet<string>;
+  },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
-  const { active } = buildSessionList(rows, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays });
-  return groupsFor(active, options.now, options.sort, options.quick);
+  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays);
+  const { active } = buildSessionList(forest.roots, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays, children: forest.children });
+  const open = options.openParents ?? usePipelineTree.getState().open;
+  return groupsFor(active, options.now, options.sort, options.quick).map(({ group, rows: inGroup }) => ({ group, rows: withOpenChildren(inGroup, forest.children, open) }));
+}
+
+/** Rows with the sub-sessions of the open parents after each, as the open sidebar lists them. */
+function withOpenChildren(rows: readonly SessionRowData[], children: ReadonlyMap<string, readonly SessionRowData[]>, open: ReadonlySet<string>, seen: Set<string> = new Set()): SessionRowData[] {
+  if (open.size === 0) return [...rows];
+  return rows.flatMap((row) => {
+    const kids = open.has(row.id) && !seen.has(row.id) ? children.get(row.id) : undefined;
+    if (!kids?.length) return [row];
+    seen.add(row.id);
+    const out = [row, ...withOpenChildren(kids, children, open, seen)];
+    seen.delete(row.id);
+    return out;
+  });
 }
 
 /** The sessions of `sidebarGroups`, one after the other. */

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CanUseTool, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
 import type {
   Effort,
@@ -20,6 +20,7 @@ import type {
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
+import { isReadOnlyTool, READ_ONLY_STEP_REASON } from './sideQuestions.ts';
 import { InputQueue } from './inputQueue.ts';
 import { sessionFolder } from './sessionFolder.ts';
 import { modsBridge } from './modsBridge.ts';
@@ -94,6 +95,8 @@ export interface HostConfig {
   showMods?: boolean;
   /** Use Claude in Chrome (Settings › General): start Claude Code with `--chrome`. Off unless said otherwise. */
   chrome?: boolean;
+  /** Only tools that read (`isReadOnlyTool`), through a PreToolUse hook: a read-only pipeline step (#179). */
+  readOnly?: boolean;
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
@@ -157,6 +160,15 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   };
   if (config.model) options.model = config.model;
   if (config.effort) options.effort = config.effort;
+  if (config.readOnly) {
+    // Every tool call goes through it, whatever the mode or the settings allow.
+    const guard: HookCallback = async (hook) => {
+      const tool = hook as { tool_name?: string; tool_input?: unknown };
+      const allowed = isReadOnlyTool(tool.tool_name ?? '', (tool.tool_input ?? {}) as Record<string, unknown>);
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny', ...(allowed ? {} : { permissionDecisionReason: READ_ONLY_STEP_REASON }) } };
+    };
+    options.hooks = { PreToolUse: [{ hooks: [guard] }] };
+  }
   if (config.mode === 'new') options.sessionId = config.sessionId;
   else if (config.mode === 'resume') options.resume = config.sessionId;
   else {
