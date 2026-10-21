@@ -6,6 +6,7 @@ import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../li
 import { setFaviconDot } from '../lib/favicon.ts';
 import { homeRoute, needsYouElsewhere } from '../lib/drawer.ts';
 import { nextNeedsYou } from '../lib/groups.ts';
+import { listTree } from '../lib/runs.ts';
 import { inView, isTypingTarget, keyAction, nextIndex } from '../lib/keys.ts';
 import { useFoldable, useWide } from '../lib/media.ts';
 import { keys, MAC } from '../lib/platform.ts';
@@ -18,6 +19,7 @@ import { KeysSheet } from './KeysSheet.tsx';
 import { NewSession, type RunOnComputer } from './NewSession.tsx';
 import { Palette, type PaletteAction, type PaletteChoice } from './Palette.tsx';
 import { SessionList, type ListComputer } from './SessionList.tsx';
+import { RunView } from './RunView.tsx';
 import { SessionView } from './SessionView.tsx';
 import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, type ComputerProps } from './ConnectionStatus.tsx';
 import { connectionOf } from './connectionOf.ts';
@@ -140,7 +142,8 @@ export function Connected({
   const listOffline = listState.kind !== 'connected';
   /** What waits on you, for the tab's title and the drawer button: not what an offline computer last said. */
   const counted = multi ? merged.sessions.filter((s) => computerOf(s.computer).online) : merged.sessions;
-  const needsYou = counted.filter((s) => s.status === 'needs-you').length;
+  // A tree counts once: a run's parent that waits at Push, or whose step asks, is one thing that needs you (#179).
+  const needsYou = useMemo(() => listTree(counted, merged.runs).roots.filter((s) => s.status === 'needs-you').length, [counted, merged.runs]);
   const push = pushComputers(computers);
   const usages = useUsages(computers.map((c) => ({ id: c.id, client: clientOf(c) })));
   const usage = useMemo(() => mergeUsage(computers.map((c) => ({ id: c.id, name: nameOf(c), usage: usages.get(c.id) ?? null }))), [computers, usages]);
@@ -162,7 +165,7 @@ export function Connected({
   }, [routeComputer, computers]);
 
   // The tab's title counts what waits on you, so it shows from another tab or the app switcher; its icon gets a dot.
-  const openTitle = route.kind === 'session' ? (sessions.sessions.find((s) => s.id === route.sessionId)?.title ?? null) : null;
+  const openTitle = route.kind === 'session' ? (sessions.sessions.find((s) => s.id === route.sessionId)?.title ?? sessions.runs?.find((r) => r.run.id === route.sessionId)?.run.title ?? null) : null;
   useEffect(() => {
     document.title = tabTitle(needsYou, openTitle);
   }, [needsYou, openTitle]);
@@ -470,8 +473,22 @@ export function Connected({
   const viewLead = wide && drawerMode ? drawerButton : null;
   const started = (on: string, sessionId: string) => swap({ kind: 'session', sessionId, computer: on });
   const runOn: RunOnComputer[] = computers.map((c) => ({ id: c.id, name: nameOf(c), state: c.state, client: clientOf(c), features: featuresOf(c), sessions: c.sessions.sessions }));
+  // A pipeline run (#179) has the session route too: a run row's id (from the list or a notification) opens the run.
+  const openRun = route.kind === 'session' && sessions.runs?.some((r) => r.run.id === route.sessionId);
   const main =
-    route.kind === 'session' ? (
+    route.kind === 'session' && openRun ? (
+      <RunView
+        key={`${id}:${route.sessionId}`}
+        client={client}
+        runId={route.sessionId}
+        sessions={sessions}
+        banner={wide ? null : banner}
+        lead={sessionLead}
+        onLeave={leave}
+        onOpenSession={(sessionId, options = {}) => (options.replace ? swap({ kind: 'session', sessionId, computer: id }) : openSession(id, sessionId))}
+        computerName={multi ? computer || 'Your computer' : undefined}
+      />
+    ) : route.kind === 'session' ? (
       <SessionView
         key={`${id}:${route.sessionId}`}
         client={client}
@@ -485,6 +502,7 @@ export function Connected({
         wide={wide}
         initialChanges={route.changes ?? false}
         computerName={multi ? computer || 'Your computer' : undefined}
+        onOpenSession={(sessionId) => openSession(id, sessionId)}
       />
     ) : route.kind === 'new' ? (
       <NewSession

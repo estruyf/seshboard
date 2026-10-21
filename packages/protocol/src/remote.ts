@@ -5,6 +5,7 @@ import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
 import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
@@ -65,8 +66,35 @@ export const RemoteSession = z.object({
    * can be stopped with `session.stopTask`. Left out by a Switchboard from before phones knew them.
    */
   background: z.array(BackgroundTask).optional(),
+  /**
+   * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
+   * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Switchboard from before phones knew runs.
+   */
+  parentId: z.string().nullable().optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
+
+/** A pipeline as a phone knows it: its steps, without where it is saved (a project's folder). */
+export const RemotePipeline = Pipeline.omit({ scope: true });
+export type RemotePipeline = z.infer<typeof RemotePipeline>;
+
+/** A pipeline run as a phone sees it: its project as an id and a name, never its folders or its profile's. */
+export const RemoteRun = PipelineRun.omit({ pipeline: true, projectRoot: true, cwd: true, profileId: true }).extend({
+  pipeline: RemotePipeline,
+  projectId: ProjectId,
+  projectName: z.string(),
+  /** Its steps work in a worktree, not the project's folder. */
+  worktree: z.boolean(),
+});
+export type RemoteRun = z.infer<typeof RemoteRun>;
+
+/** One round of one step, without the approved plan and the output of the actions that ran first. */
+export const RemoteRunStep = PipelineRunStep.omit({ plan: true, actions: true });
+export type RemoteRunStep = z.infer<typeof RemoteRunStep>;
+
+/** A run with its steps, as the app's `PipelineRunState`. */
+export const RemoteRunState = z.object({ run: RemoteRun, steps: z.array(RemoteRunStep) });
+export type RemoteRunState = z.infer<typeof RemoteRunState>;
 
 /** A permission prompt, question or plan waiting for an answer, as the card on the Mac shows it. */
 export const RemotePrompt = z.object({
@@ -87,6 +115,11 @@ export const RemoteSessions = z.object({
   sessions: z.array(RemoteSession),
   /** What those sessions wait on you for, oldest first. */
   prompts: z.array(RemotePrompt),
+  /**
+   * The pipeline runs of the sessions listed, and the run rows (runs started from New session) the sidebar lists,
+   * newest first. With `REMOTE_FEATURE_PIPELINES`.
+   */
+  runs: z.array(RemoteRunState).optional(),
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
 
@@ -254,6 +287,10 @@ export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
+
+const RunId = z.string().min(1).max(100);
+const RunParams = z.object({ runId: RunId });
+const RunResult = z.object({ state: RemoteRunState });
 
 /** The most messages one `transcript.get` returns. */
 export const REMOTE_PAGE_LIMIT = 200;
@@ -427,6 +464,43 @@ export const remoteContract = {
     /** Clones and adds the project there; `projects.cloneProgress` reports to this connection, as on the computer. */
     'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
     'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** The pipelines a project can run there: the built-ins (unless hidden there), every project's, and its own. With `REMOTE_FEATURE_PIPELINES`. */
+    'pipelines.list': { params: z.object({ projectId: ProjectId }), result: z.object({ pipelines: z.array(RemotePipeline) }) },
+    /**
+     * Runs a pipeline, as on the computer: from a session the list shows (it becomes the parent), or from New session
+     * with a task in a project (a run row is the parent), with images and files as `session.create` takes them and the
+     * message box's choices for the steps that don't set their own. With `REMOTE_FEATURE_PIPELINES`.
+     */
+    'pipelines.run': {
+      params: z
+        .object({
+          pipelineId: z.string().min(1).max(100),
+          parentSessionId: SessionId.optional(),
+          projectId: ProjectId.optional(),
+          task: Prompt.optional(),
+          images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+          files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+        })
+        .extend(RemoteSessionOptions.pick({ profileId: true, model: true, effort: true, permissionMode: true }).shape)
+        .refine((p) => (p.parentSessionId ? !p.projectId && !p.task : p.projectId && p.task), 'From a session, or with a project and a task'),
+      result: RunResult,
+    },
+    /** Continue: the step that waits for you starts (Push, with `message` as the commit message when given), or the run goes on after a stop. */
+    'runs.continue': { params: RunParams.extend({ message: z.string().trim().min(1).max(5_000).optional() }), result: RunResult },
+    /** Run this step again: a new round of the current step, in a new sub-session. */
+    'runs.retryStep': { params: RunParams, result: RunResult },
+    /** Another round: a verdict still asking for changes after its rounds sends them once more. */
+    'runs.anotherRound': { params: RunParams, result: RunResult },
+    /** Skip this step: the next one starts, or waits. */
+    'runs.skipStep': { params: RunParams, result: RunResult },
+    /** Stop the run: the step that works stops, and nothing starts after it. */
+    'runs.stop': { params: RunParams, result: RunResult },
+    /** Archives a run's tree (its parent and every sub-session) or unarchives it; refused while the run goes on. */
+    'runs.archive': { params: RunParams.extend({ archived: z.boolean() }), result: z.object({}) },
+    /** Push's card: the commit message Haiku wrote from the diff (once per run, unless `fresh`), the files and the branches. */
+    'runs.pushPreview': { params: RunParams.extend({ fresh: z.boolean().default(false) }), result: z.object({ preview: PushPreview }) },
+    /** Writes in a run row: the run gets a session of its own, in its folder, with the run's brief first. */
+    'runs.write': { params: RunParams.extend({ text: Prompt }), result: z.object({ sessionId: z.string() }) },
     /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
     'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
     /**
