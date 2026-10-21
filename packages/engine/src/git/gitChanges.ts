@@ -97,6 +97,15 @@ export async function listBranches(cwd: string, run: typeof git = git): Promise<
   return { current, branches, checkedOutElsewhere };
 }
 
+/** Remote branches, most recently committed first, as `origin/dev`; each remote's `HEAD` is left out. `run` is git itself, swapped in tests. */
+export async function listRemoteBranches(cwd: string, run: typeof git = git): Promise<string[]> {
+  const refs = await run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/remotes']).catch(() => '');
+  return refs
+    .split('\n')
+    .filter((ref) => ref.startsWith('refs/remotes/') && !ref.endsWith('/HEAD'))
+    .map((ref) => ref.slice('refs/remotes/'.length));
+}
+
 /**
  * The same lines as `listBranches` asks for, for a git older than 2.23, which has no `%(worktreepath)` and rejects
  * the whole format. The branches come without it, and their worktrees from `git worktree list` (git 2.7); without

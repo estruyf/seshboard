@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
-import { git } from './gitChanges.ts';
+import { git, listRemoteBranches } from './gitChanges.ts';
 import { GithubOriginStore } from './githubOrigins.ts';
 import { checkoutPullRequest, PrCheckoutError } from './prCheckout.ts';
 import type { GhCommand } from './pullRequest.ts';
@@ -67,6 +67,43 @@ describe('worktrees from a branch and from a pull request', () => {
     expect((await git(local.path, ['rev-parse', 'HEAD'])).trim()).toBe((await git(repo, ['rev-parse', 'local-branch'])).trim());
     const remote = await makeWorktreeFrom(repo, 'from-remote', { branch: 'remote-only' });
     expect((await git(remote.path, ['log', '-1', '--format=%s'])).trim()).toBe('remote work');
+    // Neither tracks the branch it started from, so a push can't land on it.
+    for (const made of [local, remote]) expect(await git(made.path, ['rev-parse', '--abbrev-ref', '@{upstream}'], { allowExitCodes: [128] }).catch(() => '')).toBe('');
+  });
+
+  it('starts from the remote’s copy when asked, fetched first, while a local branch is behind', async () => {
+    await git(repo, ['branch', 'remote-only', 'main']);
+    await git(origin, ['switch', '-q', 'remote-only']);
+    await commit(origin, 'later remote work');
+    await git(origin, ['switch', '-q', 'main']);
+    const made = await makeWorktreeFrom(repo, 'from-origin', { branch: 'remote-only', remote: 'origin' });
+    expect((await git(made.path, ['log', '-1', '--format=%s'])).trim()).toBe('later remote work');
+    await expect(makeWorktreeFrom(repo, 'nope', { branch: 'local-branch', remote: 'origin' })).rejects.toThrow('There is no branch local-branch on origin.');
+  });
+
+  it('lists the remote branches, without the remote HEAD', async () => {
+    expect((await listRemoteBranches(repo)).sort()).toEqual(['origin/feat/issue-start', 'origin/main', 'origin/remote-only']);
+  });
+
+  it('starts from a branch that is checked out in another folder', async () => {
+    const made = await makeWorktreeFrom(repo, 'from-main', { branch: 'main' });
+    expect((await git(made.path, ['rev-parse', 'HEAD'])).trim()).toBe((await git(repo, ['rev-parse', 'main'])).trim());
+  });
+
+  it('copies the git-ignored files .worktreeinclude lists, and nothing else', async () => {
+    writeFileSync(join(repo, '.git', 'info', 'exclude'), '.env*\nsecrets/\n');
+    writeFileSync(join(repo, '.worktreeinclude'), '.env\nsecrets/\nnotes.txt\n');
+    writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
+    writeFileSync(join(repo, '.env.local'), 'not listed\n');
+    mkdirSync(join(repo, 'secrets'));
+    writeFileSync(join(repo, 'secrets', 'key.pem'), 'key\n');
+    // Listed but not ignored: an untracked file of yours stays behind, as in Claude Code.
+    writeFileSync(join(repo, 'notes.txt'), 'mine\n');
+    const made = await makeWorktreeFrom(repo, 'with-env', { branch: 'local-branch' });
+    expect(readFileSync(join(made.path, '.env'), 'utf8')).toBe('TOKEN=1\n');
+    expect(readFileSync(join(made.path, 'secrets', 'key.pem'), 'utf8')).toBe('key\n');
+    expect(existsSync(join(made.path, '.env.local'))).toBe(false);
+    expect(existsSync(join(made.path, 'notes.txt'))).toBe(false);
   });
 
   it('refuses a taken name and a missing branch, with one line', async () => {

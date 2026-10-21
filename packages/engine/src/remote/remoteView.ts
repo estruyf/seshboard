@@ -19,6 +19,7 @@ import {
   type TranscriptMessage,
   type RemoteUsageBreakdown,
   type UsageBreakdown,
+  type WorktreeBase,
 } from '@switchboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
@@ -200,7 +201,7 @@ export interface SessionChoice {
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
-  baseRef: 'fresh' | 'head';
+  baseRef: WorktreeBase;
   /** A branch to check out in the project's folder first; null keeps what is checked out. */
   checkoutBranch: string | null;
 }
@@ -219,7 +220,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
 }
 
 /** A project's or a profile's defaults as a phone gets them. */
-export const remoteDefaults = (defaults: ProfileDefaults) => ({
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>) => ({
   model: defaults.model,
   effort: defaults.effort,
   permissionMode: defaults.permissionMode,

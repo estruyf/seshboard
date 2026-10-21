@@ -33,6 +33,7 @@ import {
   type UsageSnapshot,
   type TokenCounts,
   randomWorktreeName,
+  worktreeRequestBase,
   isLocalAbsolutePath,
   DAY_MS,
   dueForDeletion,
@@ -79,7 +80,7 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -1108,7 +1109,7 @@ export function createEngine(options: EngineOptions): Engine {
       model: item.model,
       permissionMode: item.permissionMode,
       effort: item.effort,
-      worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: item.baseRef } : null,
+      worktree: item.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(item.baseRef) } : null,
       profileId: item.profileId,
       // A queued prompt on Auto is routed now, when it starts, not when it was added.
       checkoutBranch: item.workspace === 'worktree' ? null : item.branch,
@@ -1259,7 +1260,7 @@ export function createEngine(options: EngineOptions): Engine {
       model: draft.model ?? null,
       permissionMode: draft.permissionMode ?? 'default',
       effort: draft.effort ?? null,
-      worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: draft.baseRef ?? 'fresh' } : null,
+      worktree: draft.workspace === 'worktree' ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(draft.baseRef ?? 'fresh') } : null,
       profileId: draft.profileId && profiles.has(draft.profileId) ? draft.profileId : null,
       checkoutBranch: draft.workspace === 'worktree' ? null : (draft.branch ?? null),
     });
@@ -2009,7 +2010,7 @@ export function createEngine(options: EngineOptions): Engine {
           model: choice.model,
           permissionMode: choice.permissionMode,
           effort: choice.effort,
-          worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: choice.baseRef } : null,
+          worktree: choice.worktree ? { name: randomWorktreeName(), baseRef: worktreeRequestBase(choice.baseRef) } : null,
           profileId: choice.profileId,
           checkoutBranch: choice.checkoutBranch,
         }),
@@ -2941,9 +2942,10 @@ export function createEngine(options: EngineOptions): Engine {
       }
     },
     'git.branches': async ({ cwd }) => {
-      if (!resolver.resolve(cwd).gitDir) return { current: null, branches: [] };
+      if (!resolver.resolve(cwd).gitDir) return { current: null, branches: [], remoteBranches: [] };
       try {
-        return await listBranches(cwd);
+        const [local, remoteBranches] = await Promise.all([listBranches(cwd), listRemoteBranches(cwd)]);
+        return { ...local, remoteBranches };
       } catch (error) {
         throw new RpcError('GIT_FAILED', (error as Error).message);
       }

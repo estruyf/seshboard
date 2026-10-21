@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isBranchName } from './githubRepo.ts';
 import { UsageLimitHit } from './usageLimit.ts';
+import { isWorktreeBase, type WorktreeBase } from './worktreeBase.ts';
 
 /** Permission modes the UI can switch between (bypassPermissions is deliberately not offered). */
 export const PermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']);
@@ -199,11 +200,19 @@ export type ModelOption = z.infer<typeof ModelOption>;
  */
 export const WorktreeBranchBase = z.object({
   branch: z.string().min(1).max(250).refine(isBranchName, 'Not a branch name git takes'),
+  /** Start from this remote's copy of the branch (`origin/dev`), fetched first, rather than the local branch. */
+  remote: z.string().regex(/^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$/, 'Not a remote name').optional(),
   pullRequest: z.number().int().positive().optional(),
   /** The pull request is from a fork: its branch isn't on this repository's remote, so the worktree tracks nothing. */
   fork: z.boolean().optional(),
 });
 export type WorktreeBranchBase = z.infer<typeof WorktreeBranchBase>;
+
+/**
+ * A worktree base as New session, a project's defaults, the queue and triggers keep it: `fresh`, `head`, or a branch's
+ * full ref (`refs/heads/dev`, `refs/remotes/origin/dev`). `worktreeRequestBase` turns it into what `session.create` takes.
+ */
+export const WorktreeBaseSchema = z.custom<WorktreeBase>(isWorktreeBase, 'Choose fresh, head or a branch');
 
 export const WorktreeRequest = z.object({
   name: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/, 'Use letters, digits, dot, dash or underscore'),
