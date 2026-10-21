@@ -23,7 +23,7 @@ const project = (root: string, added: boolean): ProjectInfo => ({
   added,
   exists: true,
   order: added ? 0 : null,
-  defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null },
+  defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null },
   profileId: null,
   sessionCount: 2,
   lastActivity: 10,

@@ -45,7 +45,7 @@ const FIRST = '/work/api';
 const SEEN_ONLY = '/work/scratch';
 /** The `accountKey` the fake engine has a profile for. */
 const ACCOUNT = 'ab'.repeat(32);
-const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 const SESSION = '11111111-1111-4111-8111-111111111111';
 /** A browser's push subscription (the keys from RFC 8291's example). */
 const PUSH = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4', auth: 'BTBZMqHH6r4Tts7J_aSIgg' } };
@@ -152,7 +152,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     archiveAfterDays: () => 7,
     scope: () => 'switchboard',
     projects: () => [
-      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null }, profileId: null },
+      { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null }, profileId: null },
       // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
       { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS, profileId: null },
       { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS, profileId: 'work' },
@@ -221,7 +221,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     changes: async () => listChanges(repo, 'uncommitted'),
     diff: async (_id, path) => fileDiff(repo, 'uncommitted', path),
     commit: async (_id, message) => commitAll(repo, message, {}),
-    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
+    clonePlan: async (url, name) => ({ state: 'free', repo: { owner: 'o', name: 'n', branch: null, defaultBranch: null }, name: name ?? 'n', where: `~/Developer/${name ?? 'n'}` }),
     clone: async (jobId, url, name, onProgress) => {
       calls.push(`clone ${jobId} ${url} ${name}`);
       const progress = { jobId, phase: null, percent: null, root: null, reused: false, brings: null, error: null };
@@ -926,7 +926,7 @@ describe('what a phone sees', () => {
   });
 
   it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {
-    const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null };
+    const defaults = { model: 'opus', effort: 'low' as const, permissionMode: 'acceptEdits' as const, workspace: 'worktree' as const, baseRef: 'head' as const, branch: null, defaultBranch: null };
     const none = { id: 'default', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } };
     expect(sessionChoice({}, defaults, none)).toEqual({ profileId: 'default', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
     expect(sessionChoice({ model: null, effort: null, permissionMode: 'plan', worktree: false }, defaults, none)).toEqual({ profileId: 'default', model: null, effort: null, permissionMode: 'plan', worktree: false, baseRef: 'head', checkoutBranch: null });

@@ -42,11 +42,12 @@ export function worktreeRequestBase(base: WorktreeBase): 'fresh' | 'head' | { br
 }
 
 /**
- * The branch a project's pull requests go into, from its defaults: the branch it checks out, else the branch its
- * worktrees start from (a remote one without the remote's name: `origin/dev` is `dev`). Null when the project names none,
- * so the remote's default branch applies.
+ * The branch a project's pull requests go into, from its defaults: its own default branch, else the branch it checks
+ * out, else the branch its worktrees start from (a remote one without the remote's name: `origin/dev` is `dev`). Null
+ * when the project names none, so the remote's default branch applies.
  */
-export function projectPrBase(defaults: { branch?: string | null; baseRef?: WorktreeBase | null }): string | null {
+export function projectPrBase(defaults: { defaultBranch?: string | null; branch?: string | null; baseRef?: WorktreeBase | null }): string | null {
+  if (defaults.defaultBranch) return defaults.defaultBranch;
   if (defaults.branch) return defaults.branch;
   const base = defaults.baseRef;
   if (!isBranchBase(base)) return null;

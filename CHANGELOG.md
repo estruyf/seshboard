@@ -28,6 +28,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Start a worktree from any branch.** The **Branch from** menu of a new worktree offered only the remote's default branch, such as `origin/main`, and your local HEAD. It now lists every other branch too, local and remote, such as `dev` or `origin/release`, with **Search branches** to find one. Claude Code can't start a worktree from those, so Switchboard makes it, in the same `.claude/worktrees` folder and with the same `worktree-` branch, and starts Claude in it. A remote branch is fetched first. The new branch doesn't track the one it started from, so a push never lands on `dev` itself. Git-ignored files your `.worktreeinclude` lists, such as `.env`, are copied in. A project can keep a branch as its default under **Worktree base** on its Settings tab, or with **Save as project default**; queued items, scheduled sessions and triggers in that project start from it too.
 
 - **Unlock a locked worktree.** A worktree git has locked (Claude Code does this while a session runs, and a crash can leave it behind) has **Unlock worktree** in its ⋯ menu, so you can remove it.
+- **A project's own default branch.** A project's defaults have a **Default branch**, for when you work on another branch than the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it and Changes compares against it. Leave it on the remote's default branch to follow GitHub.
 
 ### Changed
 

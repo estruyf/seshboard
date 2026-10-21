@@ -62,8 +62,25 @@ function folderProblem(cwd: string): string | null {
   }
 }
 
-/** The branch a worktree or feature branch would merge into: origin's default branch, else main/master. */
+/** The default branch a project sets for itself, by the folder asked about; the engine fills it in from the project's defaults. */
+let projectDefaultBranch: (cwd: string) => string | null = () => null;
+
+/** Lets the engine name a project's own default branch, which `baseBranch` prefers to the remote's. */
+export function setProjectDefaultBranch(lookup: (cwd: string) => string | null): void {
+  projectDefaultBranch = lookup;
+}
+
+/**
+ * The branch a worktree or feature branch would merge into: the project's own default branch while it still exists
+ * (here or on origin), else origin's default branch, else main/master.
+ */
 export async function baseBranch(cwd: string): Promise<string | null> {
+  const chosen = projectDefaultBranch(cwd);
+  if (chosen) {
+    const exists = await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${chosen}`], { allowExitCodes: [1, 128] }).catch(() => '');
+    const onOrigin = exists.trim() ? exists : await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${chosen}`], { allowExitCodes: [1, 128] }).catch(() => '');
+    if (onOrigin.trim()) return chosen;
+  }
   const remoteHead = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { allowExitCodes: [1, 128] }).catch(() => '');
   if (remoteHead.trim()) return remoteHead.trim().replace(/^origin\//, '');
   for (const name of ['main', 'master', 'trunk', 'develop']) {

@@ -135,7 +135,7 @@ describe('settings export and import', () => {
     before.stores.projects.setIcon(web, { kind: 'file', path: iconFile });
     before.stores.projects.setIcon(api, { kind: 'emoji', value: '🚀' });
     before.stores.projects.rename(api, 'Backend');
-    before.stores.projects.setDefaults(api, { model: 'opus', effort: null, permissionMode: 'plan', workspace: null, baseRef: null, branch: null });
+    before.stores.projects.setDefaults(api, { model: 'opus', effort: null, permissionMode: 'plan', workspace: null, baseRef: null, branch: null, defaultBranch: null });
     before.stores.actions.save(null, action({ id: 'lint', command: 'npm run lint' }));
     before.stores.actions.save(null, action({ id: 'review', type: 'prompt', command: 'Review the diff' }));
     before.stores.actions.save(web, action({ id: 'dev', command: 'npm run dev', shortcut: 'cmd+shift+d', runOnWorktreeCreate: true }));

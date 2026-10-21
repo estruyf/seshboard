@@ -82,7 +82,7 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -463,6 +463,10 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where quick questions run: never one of the projects, so it is left out of every project list. */
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
+  /** A project's own default branch, for any folder in it (its worktrees fold into it); null follows the remote's. */
+  const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
+  // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
+  setProjectDefaultBranch(projectDefaultBranch);
   // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
   /** Clones started from a phone or another computer, by job id: their progress goes back to that connection too. */
   const cloneListeners = new Map<string, (progress: CloneProgress) => void>();
@@ -1934,6 +1938,19 @@ export function createEngine(options: EngineOptions): Engine {
     if (asked && typeof asked.baseRef === 'object') {
       try {
         const made = await makeWorktreeFrom(resolver.resolve(params.cwd).root, asked.name, asked.baseRef, { env: (await shell.ready).env });
+        cwd = made.path;
+        setupBranch = made.branch;
+      } catch (error) {
+        if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
+        throw error;
+      }
+    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
+      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
+      const branch = projectDefaultBranch(params.cwd)!;
+      const root = resolver.resolve(params.cwd).root;
+      const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+      try {
+        const made = await makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env: (await shell.ready).env });
         cwd = made.path;
         setupBranch = made.branch;
       } catch (error) {

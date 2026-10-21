@@ -7,13 +7,13 @@ const form = (over = {}) => ({ ...newTriggerForm(ROOT, null), ...over });
 
 describe('the trigger editor', () => {
   it('starts on issues for you, with the project defaults and a worktree', () => {
-    const f = newTriggerForm(ROOT, { model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: null, baseRef: null, branch: null });
+    const f = newTriggerForm(ROOT, { model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: null, baseRef: null, branch: null, defaultBranch: null });
     expect(f).toMatchObject({ kind: 'issues', which: 'both', label: 'switchboard', assignee: '@me', collaboratorsOnly: true, model: 'sonnet', permissionMode: 'acceptEdits', workspace: 'worktree', maxAtOnce: 3, maxWaiting: 10, name: 'Issues for you', prompt: DEFAULT_PROMPTS.issues });
     expect(newTriggerForm(ROOT, null, { prompt: 'Fix it' }).prompt).toBe('Fix it');
   });
 
   it('never takes bypass permissions from the project or New session', () => {
-    expect(newTriggerForm(ROOT, { model: null, effort: null, permissionMode: 'bypassPermissions', workspace: null, baseRef: null, branch: null }).permissionMode).toBe('default');
+    expect(newTriggerForm(ROOT, { model: null, effort: null, permissionMode: 'bypassPermissions', workspace: null, baseRef: null, branch: null, defaultBranch: null }).permissionMode).toBe('default');
     expect(newTriggerForm(ROOT, null, { permissionMode: 'bypassPermissions' }).permissionMode).toBe('default');
     expect(formProblem(form({ permissionMode: 'bypassPermissions' }))).toMatch(/never bypasses/);
     expect(formToSave(form({ permissionMode: 'bypassPermissions' })).draft?.permissionMode).toBe('default');

@@ -767,7 +767,7 @@ function LocalNewSession() {
   /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
   const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
-  const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace });
+  const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace }, isProject ? project!.defaults.defaultBranch : null);
   const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
   const trayBranch = branchLabel({
     worktree: useWorktree,

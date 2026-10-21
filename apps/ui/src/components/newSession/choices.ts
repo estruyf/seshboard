@@ -45,6 +45,7 @@ export function layeredDefaults(project: ProjectDefaults | null | undefined, pro
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,
     branch: project?.branch ?? null,
+    defaultBranch: project?.defaultBranch ?? null,
   };
 }
 
@@ -97,8 +98,8 @@ export function globalPatch(patch: Partial<Choices>, project: ProjectDefaults | 
   return out;
 }
 
-/** The choices as a project's defaults ("Save as project default"). */
-export function toProjectDefaults(choices: Choices): ProjectDefaults {
+/** The choices as a project's defaults ("Save as project default"), keeping the project's default branch, which New session doesn't choose. */
+export function toProjectDefaults(choices: Choices, defaultBranch: string | null = null): ProjectDefaults {
   return {
     model: choices.model || null,
     effort: choices.effort || null,
@@ -107,6 +108,7 @@ export function toProjectDefaults(choices: Choices): ProjectDefaults {
     baseRef: choices.baseRef,
     // A branch only applies to the current folder; a worktree gets its own.
     branch: choices.workspace === 'current' ? choices.branch || null : null,
+    defaultBranch,
   };
 }
 

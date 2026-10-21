@@ -11,7 +11,7 @@ const project = (root: string, name: string, added: boolean, order: number | nul
   added,
   exists: true,
   order,
-  defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null },
+  defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null },
   profileId: null,
   sessionCount: 0,
   lastActivity: null,

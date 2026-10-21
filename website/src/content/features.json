@@ -2777,6 +2777,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "feature:project-default-branch",
+      "name": "A project's own default branch",
+      "page": "new-session/form"
+    },
+    {
       "id": "feature:project-filter",
       "name": "Project filter",
       "page": "sessions/sidebar"
