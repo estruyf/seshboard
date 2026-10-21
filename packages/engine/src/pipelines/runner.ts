@@ -1,5 +1,6 @@
 import {
   changesMessage,
+  type ImageAttachment,
   enterStep,
   fillStepPrompt,
   linkLabel,
@@ -48,7 +49,7 @@ export interface RunnerDeps {
    */
   workspace(input: { from: string; projectRoot: string; parentSessionId: string | null; name: string }): Promise<string>;
   /** Starts a new session in `cwd` with the prompt; its id. */
-  create(params: StepSettings & { cwd: string; prompt: string; profileId: string | null }): Promise<string>;
+  create(params: StepSettings & { cwd: string; prompt: string; attachments: ImageAttachment[]; profileId: string | null }): Promise<string>;
   /** Forks a session (its context and cache) with the prompt as the fork's first message; the fork's id. */
   fork(params: StepSettings & { from: string; prompt: string }): Promise<string>;
   /** Sends a message to a session (it resumes when it isn't running). */
@@ -171,7 +172,7 @@ export class PipelineRunner {
    * Starts a run: from a session (it is the parent), or from New session with a task (a run row is the parent). Its
    * folder is made now; the first step starts (or waits) right after.
    */
-  async start(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; projectRoot?: string; profileId?: string | null; choices?: RunChoices | null }): Promise<PipelineRunState> {
+  async start(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; attachments?: ImageAttachment[]; projectRoot?: string; profileId?: string | null; choices?: RunChoices | null }): Promise<PipelineRunState> {
     const saved = this.deps.pipeline(input.pipelineId);
     if (!saved) throw new Error('That pipeline was deleted.');
     // The run keeps its own copy: New session's choices go into what each step leaves open.
@@ -185,7 +186,7 @@ export class PipelineRunner {
     const title = parent?.title || linkLabel(task ?? pipeline.name);
     const from = parent?.cwd ?? projectRoot;
     const cwd = await this.deps.workspace({ from, projectRoot, parentSessionId: parent?.id ?? null, name: title });
-    const run = this.deps.runs.create({ pipeline, parentSessionId: parent?.id ?? null, task, title, projectRoot, cwd, profileId: parent?.profileId ?? input.profileId ?? null });
+    const run = this.deps.runs.create({ pipeline, parentSessionId: parent?.id ?? null, task, title, projectRoot, cwd, profileId: parent?.profileId ?? input.profileId ?? null, attachments: input.attachments });
     this.deps.log('info', `Pipelines: started “${pipeline.name}” for “${title}” in ${cwd}`);
     await this.serial(run.id, () => this.apply(run.id, enterStep(pipeline.steps, 0, pipeline.autoPush)));
     return this.state(run.id)!;
@@ -430,7 +431,7 @@ export class PipelineRunner {
         const from = sessions[step.start.fork];
         if (!from) throw new Error(`${step.start.fork} has no session to fork.`);
         sessionId = await this.deps.fork({ ...settings, from, prompt: filled.text });
-      } else sessionId = await this.deps.create({ ...settings, cwd: run.cwd, prompt: filled.text, profileId: run.profileId });
+      } else sessionId = await this.deps.create({ ...settings, cwd: run.cwd, prompt: filled.text, attachments: this.deps.runs.attachments(run.id), profileId: run.profileId });
       this.deps.runs.updateStep(run.id, index, round, { sessionId });
       this.deps.runs.setParent(sessionId, run.parentSessionId ?? run.id, run.id);
       this.deps.reparented(sessionId);

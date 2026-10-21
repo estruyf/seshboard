@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { Pipeline, StepActionResult, StepVerdict, type PipelineRun, type PipelineRunState, type PipelineRunStatus, type PipelineRunStep, type PipelineStepStatus, type PipelineWait, type SessionOutcome } from '@switchboard/protocol';
+import { ImageAttachment, Pipeline, StepActionResult, StepVerdict, type PipelineRun, type PipelineRunState, type PipelineRunStatus, type PipelineRunStep, type PipelineStepStatus, type PipelineWait, type SessionOutcome } from '@switchboard/protocol';
 import { z } from 'zod';
 
 interface RunRow {
@@ -48,7 +48,7 @@ export const RUN_ID_PREFIX = 'run-';
 export const isRunId = (id: string | null | undefined): id is string => !!id?.startsWith(RUN_ID_PREFIX);
 
 /** What a new run starts with. */
-export type NewRun = Pick<PipelineRun, 'pipeline' | 'parentSessionId' | 'task' | 'title' | 'projectRoot' | 'cwd' | 'profileId'>;
+export type NewRun = Pick<PipelineRun, 'pipeline' | 'parentSessionId' | 'task' | 'title' | 'projectRoot' | 'cwd' | 'profileId'> & { attachments?: ImageAttachment[] };
 
 const json = <T>(text: string | null, schema: z.ZodType<T>, fallback: T): T => {
   if (!text) return fallback;
@@ -89,6 +89,8 @@ export class RunStore {
         INSERT OR REPLACE INTO pipeline_runs (id, pipeline_id, pipeline_json, parent_session_id, task, title, project_root, cwd, profile_id, status, reason, waiting_for, step, round, sent_back_to, pr_json, created_at, updated_at, ended_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
       removeRun: db.prepare('DELETE FROM pipeline_runs WHERE id = ?'),
+      setAttachments: db.prepare('UPDATE pipeline_runs SET attachments_json = ? WHERE id = ?'),
+      attachments: db.prepare('SELECT attachments_json FROM pipeline_runs WHERE id = ?'),
       archiveRun: db.prepare('UPDATE pipeline_runs SET archived_at = ?, restored_at = ? WHERE id = ?'),
       steps: db.prepare('SELECT * FROM pipeline_run_steps WHERE run_id = ? ORDER BY idx, round'),
       stepBySession: db.prepare('SELECT * FROM pipeline_run_steps WHERE session_id = ? ORDER BY started_at DESC LIMIT 1'),
@@ -110,7 +112,14 @@ export class RunStore {
     const id = `${RUN_ID_PREFIX}${randomUUID()}`;
     const now = this.now();
     this.statements.insertRun.run(id, input.pipeline.id, JSON.stringify(input.pipeline), input.parentSessionId, input.task, input.title, input.projectRoot, input.cwd, input.profileId, now, now);
+    if (input.attachments?.length) this.statements.setAttachments.run(JSON.stringify(input.attachments), id);
     return this.get(id)!;
+  }
+
+  /** The images sent with the run's task (not part of the run's state: they are large). */
+  attachments(id: string): ImageAttachment[] {
+    const row = this.statements.attachments.get(id) as unknown as { attachments_json: string | null } | undefined;
+    return json(row?.attachments_json ?? null, z.array(ImageAttachment), []);
   }
 
   get(id: string): PipelineRun | null {

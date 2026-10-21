@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { Pipeline, PipelineRunState, PipelineSave, PushPreview, RunChoices } from '@switchboard/protocol/client';
+import type { ImageAttachment, Pipeline, PipelineRunState, PipelineSave, PushPreview, RunChoices } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -121,7 +121,7 @@ async function withBusy<T>(runId: string, work: () => Promise<T>): Promise<T | n
   }
 }
 
-type RunInput = { pipelineId: string; parentSessionId?: string | null; task?: string | null; project?: string | null; profileId?: string | null; choices?: RunChoices | null };
+type RunInput = { pipelineId: string; parentSessionId?: string | null; task?: string | null; attachments?: ImageAttachment[]; project?: string | null; profileId?: string | null; choices?: RunChoices | null };
 
 /** Starts a run and keeps it; throws what went wrong (New session shows it where Start's errors go). */
 export async function startRun(input: RunInput): Promise<PipelineRunState> {
@@ -129,6 +129,7 @@ export async function startRun(input: RunInput): Promise<PipelineRunState> {
     pipelineId: input.pipelineId,
     parentSessionId: input.parentSessionId ?? null,
     task: input.task ?? null,
+    attachments: input.attachments ?? [],
     project: input.project ?? null,
     profileId: input.profileId ?? null,
     choices: input.choices ?? null,
