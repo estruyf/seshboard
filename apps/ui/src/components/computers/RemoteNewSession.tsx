@@ -9,6 +9,7 @@ import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
 import { canClone, planLine } from '../clone/cloneModel.ts';
 import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { remoteNewDraftKey, useRemoteDrafts } from '../../state/remoteDraftsStore.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -39,7 +40,7 @@ const TILE = 'flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left 
  * `session.create` and opens it here. Profile, model, effort, mode and where only show when that computer answers
  * `options.get` (an older Switchboard doesn't); they start from the project's defaults, then its profile's, and only
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
- * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
+ * (`RemoteAttachments.tsx`); what you typed and attached stays until it starts (`remoteDraftsStore.ts`). In the current checkout, the branch checked out there shows, and another one picked is
  * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
  * are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
  * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there.
@@ -48,7 +49,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [prompt, setPrompt] = useState('');
+  // What you typed and attached stays when you go elsewhere and come back (`remoteDraftsStore.ts`), one box per computer.
+  const draftKey = remoteNewDraftKey(computer.id);
+  const prompt = useRemoteDrafts((s) => s.drafts[draftKey]?.text ?? '');
+  const setPrompt = (text: string) => useRemoteDrafts.getState().update(draftKey, { text });
   const [starting, setStarting] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
@@ -61,7 +65,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const composer = useRef<HTMLDivElement>(null);
   const name = computer.name;
   const connected = computer.state === 'connected';
-  const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
+  const attachments = useRemoteAttachments({ computer, rootRef: composer, draftKey, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
   // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
   const options = useRemoteOptions(client, computer);
   // Clone from GitHub, on that computer: the same form as here (kept when Run on changes), the clone there.

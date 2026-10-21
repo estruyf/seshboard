@@ -8,6 +8,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **The catch-up says what Claude did in words, not in commands.** When Haiku didn't write the catch-up, its lines could be a line of a `sed` command, a Python script or a heading of Claude's reply, such as "What's in it". Now a command shows as what Claude said it does, such as **Built the website**, or what it was, such as **Ran the tests** or **Ran a Python script**, and a heading of the reply is left out. **Skipped or not finished** says **Couldn't rewrite the imports** instead of the command that failed, and leaves out a command that failed and worked when Claude ran it again. A command that failed is no longer under **What it did** too. Haiku now gets what each command does, and is told never to copy a command into the card.
 
+### Fixed
+
+- **A message to another computer stays when you look elsewhere.** In New session with **Run on** set to another computer, and in a session on another computer, what you typed and the images and files you attached were gone as soon as you opened another session, for example to copy something from it. They now stay until you send them, as in your own sessions. They are kept while Switchboard runs, not after it quits.
+
 ## [1.0.0] - 2026-10-19
 
 ### Added

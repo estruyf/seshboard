@@ -1,6 +1,7 @@
 import { useRef, useState, type ClipboardEvent, type RefObject } from 'react';
 import { FileText, Paperclip, X } from 'lucide-react';
 import { REMOTE_FEATURE_ATTACHMENTS, type Computer, type RemoteFile, type RemoteImage } from '@switchboard/protocol/client';
+import { remoteDraft, useRemoteDrafts } from '../../state/remoteDraftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { AttachmentThumbs } from '../composer/Attachments.tsx';
 import { useDropTarget, type DropState } from '../composer/useDropTarget.ts';
@@ -8,6 +9,7 @@ import { Button } from '../ui/Button.tsx';
 import { fileSize, placeFor, readBase64, readRemoteImage, remoteDropVerdict, remoteFileName, type Accepts, type RemoteAttachment } from './remoteAttachments.ts';
 
 let nextId = 1;
+const NO_ITEMS: RemoteAttachment[] = [];
 
 export interface RemoteAttachmentsState {
   items: RemoteAttachment[];
@@ -26,12 +28,15 @@ export interface RemoteAttachmentsState {
 /**
  * The images and files of a message to another computer: picked, pasted or dropped on the view around `rootRef`.
  * `session.send` takes images on every version; files, and images for a new session, need `REMOTE_FEATURE_ATTACHMENTS`.
+ * They are kept under `draftKey` (`remoteDraftsStore.ts`), so they are still there when you come back, and one still
+ * being read when you leave lands there too.
  */
-export function useRemoteAttachments({ computer, rootRef, newSession = false, disabledReason }: { computer: Computer; rootRef: RefObject<HTMLElement | null>; newSession?: boolean; disabledReason: string | null }): RemoteAttachmentsState {
-  const [items, setItems] = useState<RemoteAttachment[]>([]);
+export function useRemoteAttachments({ computer, rootRef, draftKey, newSession = false, disabledReason }: { computer: Computer; rootRef: RefObject<HTMLElement | null>; draftKey: string; newSession?: boolean; disabledReason: string | null }): RemoteAttachmentsState {
+  const items = useRemoteDrafts((s) => s.drafts[draftKey]?.items ?? NO_ITEMS);
   const [reading, setReading] = useState(0);
-  const latest = useRef(items);
-  latest.current = items;
+  /** The items now, also between the awaits of `add`. */
+  const current = () => remoteDraft(draftKey).items;
+  const put = (next: RemoteAttachment[]) => useRemoteDrafts.getState().update(draftKey, { items: next });
   const full = computer.features.includes(REMOTE_FEATURE_ATTACHMENTS);
   const accepts: Accepts = { images: full || !newSession, files: full };
 
@@ -40,7 +45,7 @@ export function useRemoteAttachments({ computer, rootRef, newSession = false, di
     setReading((n) => n + 1);
     try {
       for (const file of files) {
-        const place = placeFor(file, latest.current, accepts, computer.name);
+        const place = placeFor(file, current(), accepts, computer.name);
         if ('skip' in place) {
           skipped.add(place.skip);
           continue;
@@ -50,8 +55,7 @@ export function useRemoteAttachments({ computer, rootRef, newSession = false, di
             place.as === 'image'
               ? { id: nextId++, kind: 'image', image: await readRemoteImage(file) }
               : { id: nextId++, kind: 'file', file: { name: remoteFileName(file.name), data: await readBase64(file) }, size: file.size };
-          latest.current = [...latest.current, item];
-          setItems(latest.current);
+          put([...current(), item]);
         } catch (e) {
           skipped.add(e instanceof Error ? e.message : `${file.name} couldn't be read.`);
         }
@@ -71,21 +75,15 @@ export function useRemoteAttachments({ computer, rootRef, newSession = false, di
 
   const drop = useDropTarget(
     rootRef,
-    (drag) => remoteDropVerdict(drag, { items: latest.current, accepts, computer: computer.name, disabledReason: disabledReason ?? (accepts.images || accepts.files ? null : `Update Switchboard on ${computer.name} to send images and files.`) }),
+    (drag) => remoteDropVerdict(drag, { items: current(), accepts, computer: computer.name, disabledReason: disabledReason ?? (accepts.images || accepts.files ? null : `Update Switchboard on ${computer.name} to send images and files.`) }),
     (files, directories) => {
       if (directories.some(Boolean)) toast(`Folders can't go to ${computer.name}. Drop the files in it instead.`);
       void add(files.filter((_, i) => !directories[i]));
     },
   );
 
-  const remove = (id: number) => {
-    latest.current = latest.current.filter((a) => a.id !== id);
-    setItems(latest.current);
-  };
-  const clear = () => {
-    latest.current = [];
-    setItems([]);
-  };
+  const remove = (id: number) => put(current().filter((a) => a.id !== id));
+  const clear = () => put([]);
 
   return {
     items,

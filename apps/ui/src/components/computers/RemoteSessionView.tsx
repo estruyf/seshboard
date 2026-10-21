@@ -4,6 +4,7 @@ import { blanksOf, promptPreview, type Computer, type Contract, type PermissionD
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
+import { remoteSessionDraftKey, useRemoteDrafts } from '../../state/remoteDraftsStore.ts';
 import { onlyThereLine, remoteRowStatus } from '../../state/remoteRows.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
@@ -437,10 +438,13 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
  * The message box, in the local layout: the computer's chip where the profile chip is, the session's profile (it keeps
  * it, as a local one does), and model, effort and mode chips that change them there while it runs in Switchboard, as
  * in the remote app. A computer too old for `options.get` shows them as text. Stop while Claude works, and a `remote` border. Images and files go with the
- * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
+ * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them. What you typed and attached
+ * stays when you go to another session and come back (`remoteDraftsStore.ts`).
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
-  const [draft, setDraft] = useState('');
+  const draftKey = remoteSessionDraftKey(computer.id, session.id);
+  const draft = useRemoteDrafts((s) => s.drafts[draftKey]?.text ?? '');
+  const setDraft = (text: string) => useRemoteDrafts.getState().update(draftKey, { text });
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -451,7 +455,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const [menu, setMenu] = useState<{ start: number; items: SavedPrompt[]; active: number } | null>(null);
   const connected = computer.state === 'connected';
   const name = computer.name;
-  const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
+  const attachments = useRemoteAttachments({ computer, rootRef: root, draftKey, disabledReason: connected ? null : `${name} is not connected` });
   const options = useRemoteOptions(client, computer);
   // Only a session that runs in Switchboard there has a mode, and only then can its model, effort and mode change.
   const running = session.permissionMode != null;
