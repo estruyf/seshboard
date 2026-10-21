@@ -4875,10 +4875,8 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
     win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
     await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
     const visibility = (await js(`${buttons}.map((b) => ({ words: (b.closest('[data-message-key]')?.innerText ?? '').split(/\\s+/).filter(Boolean).length, opacity: getComputedStyle(b).opacity }))`)) as Array<{ words: number; opacity: string }>;
-    const longHidden = visibility.find((v) => v.words >= 450 && v.opacity !== '1');
-    if (longHidden) return `the Read button of a reply of ${longHidden.words} words is hidden (opacity ${longHidden.opacity}) without hover or focus`;
-    const shortShown = visibility.find((v) => v.words <= 300 && v.opacity !== '0');
-    if (shortShown) return `the Read button of a reply of ${shortShown.words} words shows (opacity ${shortShown.opacity}) without hover or focus`;
+    const shown = visibility.find((v) => v.opacity !== '0');
+    if (shown) return `the Read button of a reply of ${shown.words} words shows (opacity ${shown.opacity}) without hover or focus`;
     const longOnes = visibility.filter((v) => v.words >= 450).length;
     if (demoRow && longOnes === 0) return 'failed: the demo session has no reply of 450 words or more with a Read button';
 
@@ -5005,7 +5003,7 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
     }
     const restored = (await js(`document.querySelector('${box}')?.value ?? null`)) as string | null;
     if (restored !== draft) return `the message box was not put back as it was (${JSON.stringify(restored?.slice(0, 40))})`;
-    return `ok: Read opens "${opened.position}"${headings ? ` with an outline of ${outline}` : ''}, Esc at the same reply leaves the scroll and focuses its button, leaving at another reply scrolls to it, ← → move between replies, ${keysTried} (and the box is put back)${longOnes ? `, ${longOnes} long reply buttons always show` : ''}`;
+    return `ok: Read opens "${opened.position}"${headings ? ` with an outline of ${outline}` : ''}, Esc at the same reply leaves the scroll and focuses its button, leaving at another reply scrolls to it, ← → move between replies, ${keysTried} (and the box is put back)${longOnes ? `, ${longOnes} long reply buttons hide until hover` : ''}`;
   } finally {
     if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
     await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
