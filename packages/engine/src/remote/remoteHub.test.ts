@@ -186,6 +186,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     watchTranscript: () => () => {},
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
+    sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
     limit: (sessionId) => limitOf[sessionId] ?? null,
     resumeLimit: async (sessionId) => void calls.push(`resume ${sessionId}`),
     armLimit: (sessionId, armed) => void calls.push(`arm ${sessionId} ${armed}`),
@@ -664,6 +665,16 @@ describe('Remote hub', () => {
     await until(() => heard.length >= 2);
     expect(heard).toEqual([`${SESSION}:Then the tests`, `${SESSION}:Then the tests`]);
     expect(calls).toContain(`dequeue ${SESSION} gone`);
+  });
+
+  it('sends a message from Up next now, only for a session in the list', async () => {
+    const { hub, port, on, calls } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('session.queue.sendNow', { sessionId: SESSION, id: 'q1' });
+    expect(calls).toContain(`send now ${SESSION} q1`);
+    await expect(remote.call('session.queue.sendNow', { sessionId: HIDDEN, id: 'q1' })).rejects.toBeDefined();
+    expect(calls).not.toContain(`send now ${HIDDEN} q1`);
   });
 
   it('gives a phone how a session stands with its usage limit, and lets it resume or arm only a session in the list', async () => {

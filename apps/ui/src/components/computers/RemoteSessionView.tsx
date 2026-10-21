@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
+import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt, type SendMode } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -30,6 +30,8 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { RemoteLimitNotice } from './RemoteLimitNotice.tsx';
 import { RemoteUpNext } from './RemoteUpNext.tsx';
+import { QueueButton } from '../composer/QueueButton.tsx';
+import { queueButtonState, sendKeyMode } from '../composer/queueButton.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
@@ -498,7 +500,10 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     setFill(null);
     requestAnimationFrame(() => areaRef.current?.focus());
   };
-  const send = () => {
+  // While Claude works there, Enter queues or steers (Settings › Conversation, this computer's), as for a local session.
+  const whileWorking = usePreferences((p) => p.prefs.whileWorking);
+  const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  const send = (mode: SendMode = whileWorking) => {
     if (fillState && left.length) return fillerRef.current?.focusBlank(left[0]);
     const sentFill = fillState;
     const text = (sentFill ? fillMessage(sentFill, draft) : draft).trim();
@@ -506,7 +511,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     setSending(true);
     onSent();
     const { images, files } = attachments;
-    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode: 'queue', images, ...(files.length ? { files } : {}) })
+    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode, images, ...(files.length ? { files } : {}) })
       .then(
         ({ queued }) => {
           // Also when you went to another session while it was sending.
@@ -537,15 +542,23 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
         return setMenu(null);
       }
     }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    const mode = event.nativeEvent.isComposing ? null : sendKeyMode(event.nativeEvent, working, whileWorking);
+    if (mode) {
       event.preventDefault();
-      send();
+      send(mode);
     } else if (working && matches(event.nativeEvent, 'claude.stop') && !document.querySelector(OVERLAY_SELECTOR)) {
       event.preventDefault();
       onStop();
     }
   };
-  const placeholder = !connected ? `${name} is not connected` : working ? `Message Claude on ${name} (queued until this turn ends)` : `Message Claude on ${name}`;
+  const placeholder = !connected
+    ? `${name} is not connected`
+    : working
+      ? whileWorking === 'queue'
+        ? `Message Claude on ${name}. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.`
+        : `Message Claude on ${name}. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`
+      : `Message Claude on ${name}`;
+  const blocked = !connected ? `${name} is not connected` : attachments.reading ? 'Reading the attachments' : null;
   return (
     <div ref={root} className={`relative rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
       <DropOverlay drop={attachments.drop} />
@@ -576,7 +589,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       )}
       {fillState && (
         <>
-          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={send} onLeave={() => areaRef.current?.focus()} />
+          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={() => send()} onLeave={() => areaRef.current?.focus()} />
           <div aria-hidden className="my-2 border-t border-dashed border-edge" />
         </>
       )}
@@ -641,7 +654,11 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
               Stop
             </Button>
           )}
-          <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label={working ? 'Add to Up next' : 'Send'} disabled={!connected || sending || attachments.reading || !hasMessage} onClick={send} data-computer-send />
+          {working ? (
+            <QueueButton state={queueButtonState({ blocked, sending, hasMessage, whileWorking })} onAction={(action) => send(action === 'send-now' ? 'now' : action)} />
+          ) : (
+            <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label="Send" disabled={!connected || sending || attachments.reading || !hasMessage} onClick={() => send()} data-computer-send />
+          )}
         </div>
       </div>
     </div>

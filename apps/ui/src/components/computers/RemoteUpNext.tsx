@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
-import { withoutContext, type Computer, type Contract, type QueuedMessage, type RpcClient } from '@switchboard/protocol/client';
+import { X, Zap } from 'lucide-react';
+import { REMOTE_FEATURE_QUEUE_SEND_NOW, withoutContext, type Computer, type Contract, type QueuedMessage, type RpcClient } from '@switchboard/protocol/client';
 import { toast } from '../../state/toastStore.ts';
 import { attachmentLabel, firstLine, holdNote, upNextTitle } from '../composer/upNext.ts';
 import { Button } from '../ui/Button.tsx';
@@ -8,8 +8,9 @@ import { callComputer } from './callComputer.ts';
 
 /**
  * The messages waiting in the Up next of a session on another computer, above the message box as for a local session.
- * The remote contract only takes one back (`session.queue.remove`): editing, moving and Send now stay on that
- * computer. While its profile is at a usage limit the list says they are held.
+ * Send now (from a computer with `REMOTE_FEATURE_QUEUE_SEND_NOW`) stops Claude there and sends it, and the remote
+ * contract takes one back (`session.queue.remove`); editing and moving stay on that computer. While its profile is at
+ * a usage limit the list says they are held.
  */
 export function RemoteUpNext({ client, computer, sessionId, queue, limited }: {
   client: RpcClient<Contract>;
@@ -22,6 +23,9 @@ export function RemoteUpNext({ client, computer, sessionId, queue, limited }: {
   const note = holdNote(null, queue.length, limited);
   const remove = (message: QueuedMessage) =>
     void callComputer(client, computer.id, 'session.queue.remove', { sessionId, id: message.id }).catch((e: Error) => toast(e.message));
+  const sendNow = computer.features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW)
+    ? (message: QueuedMessage) => void callComputer(client, computer.id, 'session.queue.sendNow', { sessionId, id: message.id }).catch((e: Error) => toast(`Could not send the message: ${e.message}`))
+    : null;
   return (
     <section aria-label="Up next" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5" data-queue>
       <SectionHeader count={queue.length}>Up next</SectionHeader>
@@ -44,7 +48,14 @@ export function RemoteUpNext({ client, computer, sessionId, queue, limited }: {
                 <span className="min-w-0 truncate text-ui text-text/90">{text || <span className="text-muted">{attachments ?? 'Message'}</span>}</span>
                 {text && attachments && <span className="shrink-0 rounded-full bg-border/60 px-1.5 text-meta text-muted">{attachments}</span>}
               </span>
-              <Button variant="quiet" size="sm" iconOnly icon={<X size={12} aria-hidden />} aria-label={`Remove from Up next: ${text || 'message'}`} onClick={() => remove(message)} className="opacity-0 group-hover/up:opacity-100 focus-visible:opacity-100" />
+              <div className="flex shrink-0 items-center gap-0.5">
+                {sendNow && (
+                  <Button variant="quiet" size="sm" icon={<Zap size={11} aria-hidden />} onClick={() => sendNow(message)} data-tooltip={`Stop Claude on ${computer.name} and send this now`} aria-label={`Send now: ${text || 'message'}`} data-queue-send-now={message.id}>
+                    Send now
+                  </Button>
+                )}
+                <Button variant="quiet" size="sm" iconOnly icon={<X size={12} aria-hidden />} aria-label={`Remove from Up next: ${text || 'message'}`} onClick={() => remove(message)} className="opacity-0 group-hover/up:opacity-100 focus-visible:opacity-100" />
+              </div>
             </li>
           );
         })}
