@@ -33,6 +33,7 @@ export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';
 export { branchOfBase, isBranchBase, isWorktreeBase, projectPrBase, worktreeRequestBase, type BranchBase, type WorktreeBase } from './worktreeBase.ts';
 export { expandHome, isAbsolutePath, isLocalAbsolutePath, isSameOrInside, joinPath, pathInside, separatorOf, trimTrailingSeparators } from './paths.ts';
+export { gerund, mcpLabel, toolStepLabel, type StepLabel } from './toolSteps.ts';
 export type * from './context.ts';
 export * from './sessionLinks.ts';
 export type * from './github.ts';
