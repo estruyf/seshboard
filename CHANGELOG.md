@@ -20,6 +20,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **Plan usage under the message box takes less room.** The 5-hour and weekly limits now show as small rings instead of bars, next to the context ring.
 - **Claude and The unnamed themes removed.** If you used one of them, Switchboard switches to Demo Time.
 - **Home in the remote app.** In the remote app, Home is now the first row under Sessions, in the sidebar and the sessions drawer, above your computers and the search. In the sidebar it was a small button next to the title. The drawer's Home row no longer shows each profile's usage; Home itself has it.
 - **Stop and steer from your phone.** In the remote app, **Stop** is now next to the send button while Claude works, not hidden in the **⋯** menu. Stopping from your phone lets Up next carry on, so the next queued message goes at once. The arrow next to the send button offers **Queue**, **Steer** (Claude reads your message at its next step) and **Send now** (stops Claude first).
