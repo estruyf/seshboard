@@ -146,7 +146,7 @@ function ToolCard({ item, cwd, sessionId }: { item: ToolItem; cwd: string | null
         </div>
       )}
       {!open && failed && item.result && (
-        <p className="mt-0.5 ml-6 line-clamp-2 font-mono text-meta text-error">
+        <p className="mt-0.5 ml-6 line-clamp-2 font-mono text-meta text-error select-text">
           <span className="sr-only">Failed: </span>
           {item.result.text}
         </p>

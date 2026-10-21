@@ -170,7 +170,7 @@ function StepRow({ state, index, current, now }: { state: PipelineRunState; inde
             ),
           )}
         </div>
-        {detail && <p className={`mt-0.5 text-meta [overflow-wrap:anywhere] ${view === 'failed' ? 'text-error' : view === 'needsYou' ? 'text-warn' : 'text-muted'}`}>{detail}</p>}
+        {detail && <p className={`mt-0.5 text-meta [overflow-wrap:anywhere] select-text ${view === 'failed' ? 'text-error' : view === 'needsYou' ? 'text-warn' : 'text-muted'}`}>{detail}</p>}
       </div>
       <span className="flex h-5 shrink-0 items-center gap-2">
         {duration && <span className="text-meta text-muted tabular-nums">{duration}</span>}

@@ -1095,7 +1095,7 @@ function LocalNewSession() {
   // One notice at a time, the most pressing first: a missing folder, a prompt from a link, a saved default.
   const notice =
     cwd && ((inspection && !inspection.exists) || (!inspection && inspectError)) ? (
-      <span className="min-w-0 truncate text-error" data-route-hint>
+      <span className="min-w-0 truncate text-error select-text" data-route-hint>
         {folderProblem}
       </span>
     ) : linkPrompt !== null ? (

@@ -60,7 +60,7 @@ export const statsText = (draft: Pick<PrDraft, 'commits' | 'files'>) => `${plura
 export function pushLine(draft: Pick<PrDraft, 'ahead' | 'hasUpstream' | 'remote' | 'branch'>): string {
   if (draft.ahead > 0) return `Pushes ${plural(draft.ahead, 'commit', 'commits')} to ${draft.remote} first`;
   if (!draft.hasUpstream) return `Publishes ${draft.branch} to ${draft.remote} first`;
-  return 'Already pushed';
+  return `Makes sure ${draft.branch} is on ${draft.remote} first`;
 }
 
 /** What a notice offers: each is a button. */
