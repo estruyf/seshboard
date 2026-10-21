@@ -2888,7 +2888,10 @@ async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<st
     return `ok (view ${width}px${madeRoom ? ', sidebar closed for the list' : ''}): a click opened the Overview, the hovered gear Settings, ⌥↓ the next project on Settings, the switcher another on the same tab, ⌥⇧↑ moved it and said so, a drag to the top reached the sidebar menu`;
   } finally {
     for (const folder of extra) await removeProjectInProjects(win, folder);
-    // Back on the project under test, with the sidebar as it was, as the steps after this one expect.
+    // Back on the project under test, with the sidebar as it was, as the steps after this one expect. With the sidebar
+    // open again the view may be narrow, the list folded away: the header's ‹ shows it.
+    await js("document.querySelector('[data-project-list]') || document.querySelector('[data-project-show-list]')?.click()");
+    await waitInPage(win, rowOf(root), 3_000);
     await js(`${rowOf(root)}?.click()`);
     await waitInPage(win, pageOf(root), 3_000);
     if (madeRoom && !(await js("!!document.querySelector('[data-sidebar-open]')"))) {
