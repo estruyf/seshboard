@@ -191,6 +191,8 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
   // A fork of a step that isn't before it any more still shows, so the issue has something to point at.
   if (!startSegments.some((s) => s.value === start)) startSegments.push({ value: start, label: `Fork of ${start.slice(5)}`, data: { 'data-pipeline-start': start.slice(5) } });
 
+  const setStart = (value: string) => update({ start: value === 'fresh' ? 'fresh' : { fork: value.slice(5) } });
+
   const modelOptions = [
     { value: '', label: 'Default model' },
     ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
@@ -213,15 +215,28 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
   return (
     <>
       <Row label="Starts" labelId={`${id}-starts`}>
-        <SegmentedControl
-          mode="radio"
-          label="Starts"
-          value={start}
-          onChange={(value) => update({ start: value === 'fresh' ? 'fresh' : { fork: value.slice(5) } })}
-          segments={startSegments.map((s) => ({ ...s, disabled: readOnly }))}
-          className="max-w-full flex-wrap"
-          data-pipeline-starts
-        />
+        {/* Fresh and one fork fit side by side; more earlier steps would wrap out of the track, so they get a menu. */}
+        {startSegments.length <= 2 ? (
+          <SegmentedControl
+            mode="radio"
+            label="Starts"
+            value={start}
+            onChange={(value) => setStart(value)}
+            segments={startSegments.map((s) => ({ ...s, disabled: readOnly }))}
+            data-pipeline-starts
+          />
+        ) : (
+          <Select
+            label="Starts"
+            className={CHIP}
+            value={start}
+            disabled={readOnly}
+            onChange={(value) => setStart(value)}
+            options={startSegments.map((s) => ({ value: s.value, label: s.label }))}
+            menuWidth={220}
+            dataAttrs={{ 'data-pipeline-starts': true }}
+          />
+        )}
       </Row>
       <Row label="Model" labelId={`${id}-model`}>
         <div role="group" aria-labelledby={`${id}-model`} className="flex flex-wrap items-center gap-1.5">

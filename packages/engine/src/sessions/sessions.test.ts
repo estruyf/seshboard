@@ -163,6 +163,32 @@ describe('SessionIndex', () => {
     expect(again.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
   });
 
+  it('archives a pipeline tree in one change, and hides sessions until they have new activity', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A), info(ID_B)], db);
+    await t.index.refresh();
+    t.index.setFlags(ID_A, { pinned: true });
+    const before = t.changes.length;
+    t.index.setArchivedMany([ID_A, ID_B], true);
+    expect(t.changes).toHaveLength(before + 1);
+    expect(t.changes.at(-1)!.upserted.map((s) => s.id).sort()).toEqual([ID_A, ID_B].sort());
+    expect(t.index.get(ID_A)).toMatchObject({ pinned: false });
+    expect(t.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
+    t.index.setArchivedMany([ID_A, ID_B], false);
+    expect(t.index.get(ID_B)).toMatchObject({ archivedAt: null });
+
+    t.index.hide([ID_B]);
+    expect(t.changes.at(-1)).toMatchObject({ upserted: [], removed: [ID_B] });
+    expect(t.index.snapshot().sessions.map((s) => s.id)).toEqual([ID_A]);
+    expect(t.index.get(ID_B)).not.toHaveProperty('hiddenAt');
+    t.index.stop();
+    const again = setup([info(ID_A), info(ID_B, { lastModified: Date.now() + 60_000 })], db);
+    expect(again.index.snapshot().sessions.map((s) => s.id)).toEqual([ID_A]);
+    // Resumed in Claude Code: it comes back.
+    await again.index.refresh();
+    expect(again.index.snapshot().sessions.map((s) => s.id).sort()).toEqual([ID_A, ID_B].sort());
+  });
+
   it('brings an archived session back when the user writes to it', async () => {
     const t = setup([info(ID_A), info(ID_B)]);
     await t.index.refresh();

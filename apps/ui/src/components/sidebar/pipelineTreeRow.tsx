@@ -73,6 +73,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   beside,
   tabbable,
   waitingFor,
+  archived = false,
   onClick,
   onMenu,
   onMiddleClick,
@@ -89,6 +90,8 @@ export const PipelineStepRow = memo(function PipelineStepRow({
   tabbable: boolean;
   /** What it waits for, when it needs you ("Permission: Bash"). */
   waitingFor: string | null;
+  /** Under an archived parent, in Archived. */
+  archived?: boolean;
   onClick(event: MouseEvent, data: SessionRowData): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
@@ -122,6 +125,7 @@ export const PipelineStepRow = memo(function PipelineStepRow({
         tabIndex={tabbable ? 0 : -1}
         data-session-id={data.id}
         data-tree-child={data.summary?.parentId ?? ''}
+        data-archived={archived || undefined}
         data-indexed={data.summary !== null}
         data-tooltip={[data.title, line].filter(Boolean).join('\n')}
         onClick={(e) => onClick(e, data)}

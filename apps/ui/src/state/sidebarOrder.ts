@@ -35,7 +35,7 @@ export function sidebarGroups(
     openParents?: ReadonlySet<string>;
   },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
-  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now);
+  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays);
   const { active } = buildSessionList(forest.roots, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays, children: forest.children });
   const open = options.openParents ?? usePipelineTree.getState().open;
   return groupsFor(active, options.now, options.sort, options.quick).map(({ group, rows: inGroup }) => ({ group, rows: withOpenChildren(inGroup, forest.children, open) }));

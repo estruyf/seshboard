@@ -7,6 +7,7 @@ import {
   readVerdict,
   stepTitle,
   withoutBriefs,
+  withRunChoices,
   type CatchUp,
   type Effort,
   type NextStep,
@@ -18,6 +19,7 @@ import {
   type PipelineRunState,
   type PipelineRunStep,
   type PushPreview,
+  type RunChoices,
   type SessionOutcome,
   type SessionHostInfo,
   type SessionSummary,
@@ -57,6 +59,14 @@ export interface RunnerDeps {
   title(sessionId: string, title: string): void;
   /** A session's parent changed: send it again. */
   reparented(sessionId: string): void;
+  /** Sessions' parents changed (a run deleted, its sub-sessions kept): send them again, in one change. */
+  republishSessions(sessionIds: readonly string[]): void;
+  /** Archives or unarchives sessions (a run's tree), in one change. */
+  archiveSessions(sessionIds: readonly string[], archived: boolean): void;
+  /** Takes sessions out of Switchboard (a run's tree deleted); their transcripts stay. */
+  hideSessions(sessionIds: readonly string[]): void;
+  /** A run was deleted: the windows drop it. */
+  removed(runId: string): void;
   /** Runs project actions by name in the run's folder, one after the other. */
   runActions(run: PipelineRun, names: readonly string[]): Promise<StepActionResult[]>;
   /** The last reply of a session's last turn. */
@@ -161,9 +171,11 @@ export class PipelineRunner {
    * Starts a run: from a session (it is the parent), or from New session with a task (a run row is the parent). Its
    * folder is made now; the first step starts (or waits) right after.
    */
-  async start(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; projectRoot?: string; profileId?: string | null }): Promise<PipelineRunState> {
-    const pipeline = this.deps.pipeline(input.pipelineId);
-    if (!pipeline) throw new Error('That pipeline was deleted.');
+  async start(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; projectRoot?: string; profileId?: string | null; choices?: RunChoices | null }): Promise<PipelineRunState> {
+    const saved = this.deps.pipeline(input.pipelineId);
+    if (!saved) throw new Error('That pipeline was deleted.');
+    // The run keeps its own copy: New session's choices go into what each step leaves open.
+    const pipeline = withRunChoices(saved, input.choices ?? null);
     const parent = input.parentSessionId ? this.deps.session(input.parentSessionId) : null;
     if (input.parentSessionId && !parent) throw new Error('That session is gone.');
     const task = input.task?.trim() || null;
@@ -666,6 +678,48 @@ export class PipelineRunner {
     this.emit(runId);
   }
 
+  /**
+   * A run's tree, as the sidebar shows it: its parent (a session, or the run row), every run started from that parent,
+   * and every sub-session under it.
+   */
+  tree(runId: string): { parentSessionId: string | null; runs: PipelineRun[]; children: string[] } {
+    const run = this.need(runId);
+    const runs = run.parentSessionId ? this.deps.runs.list().filter((r) => r.parentSessionId === run.parentSessionId) : [run];
+    return { parentSessionId: run.parentSessionId, runs, children: this.deps.runs.childrenOf(run.parentSessionId ?? run.id) };
+  }
+
+  /**
+   * Archives (or unarchives) a run's tree in one go: the parent session or the run row, and every sub-session under it.
+   * A run that goes on is never archived: stop it first.
+   */
+  archive(runId: string, archived: boolean): PipelineRunState[] {
+    const tree = this.tree(runId);
+    if (archived && tree.runs.some(goesOn)) throw new Error('The run is still going. Stop it first.');
+    this.deps.archiveSessions([...(tree.parentSessionId ? [tree.parentSessionId] : []), ...tree.children], archived);
+    if (!tree.parentSessionId) this.deps.runs.setArchived(runId, archived);
+    for (const run of tree.runs) this.emit(run.id);
+    return tree.runs.map((run) => this.state(run.id)!);
+  }
+
+  /**
+   * Deletes a run's tree: its runs (stopped first, if they go on) and, unless `keepSubSessions`, its sub-sessions. A
+   * parent session goes too. Sessions only leave Switchboard: their transcripts stay. Kept sub-sessions show on their own.
+   */
+  async delete(runId: string, keepSubSessions: boolean): Promise<void> {
+    const tree = this.tree(runId);
+    for (const run of tree.runs) if (goesOn(run)) await this.stop(run.id);
+    const hidden = [...(tree.parentSessionId ? [tree.parentSessionId] : []), ...(keepSubSessions ? [] : tree.children)];
+    for (const run of tree.runs) {
+      this.holds.delete(run.id);
+      this.previews.delete(run.id);
+      this.deps.runs.remove(run.id);
+      this.deps.removed(run.id);
+      this.deps.log('info', `Pipelines: deleted the run ${run.id}${keepSubSessions ? ', its sub-sessions kept' : ''}`);
+    }
+    if (hidden.length) this.deps.hideSessions(hidden);
+    if (keepSubSessions && tree.children.length) this.deps.republishSessions(tree.children);
+  }
+
   /** Forgets runs (a deleted parent): their sub-sessions stay, on their own. */
   remove(runId: string): void {
     const children = this.deps.runs.childrenOf(runId);
@@ -683,3 +737,6 @@ export class PipelineRunner {
 }
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** A run that goes on by itself (or at the next start): archiving it would hide work still being done. */
+const goesOn = (run: PipelineRun) => run.status === 'running' || run.status === 'waiting' || run.status === 'paused';

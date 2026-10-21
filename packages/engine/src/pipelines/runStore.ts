@@ -23,6 +23,8 @@ interface RunRow {
   created_at: number;
   updated_at: number;
   ended_at: number | null;
+  archived_at: number | null;
+  restored_at: number | null;
 }
 
 interface StepRow {
@@ -87,6 +89,7 @@ export class RunStore {
         INSERT OR REPLACE INTO pipeline_runs (id, pipeline_id, pipeline_json, parent_session_id, task, title, project_root, cwd, profile_id, status, reason, waiting_for, step, round, sent_back_to, pr_json, created_at, updated_at, ended_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
       removeRun: db.prepare('DELETE FROM pipeline_runs WHERE id = ?'),
+      archiveRun: db.prepare('UPDATE pipeline_runs SET archived_at = ?, restored_at = ? WHERE id = ?'),
       steps: db.prepare('SELECT * FROM pipeline_run_steps WHERE run_id = ? ORDER BY idx, round'),
       stepBySession: db.prepare('SELECT * FROM pipeline_run_steps WHERE session_id = ? ORDER BY started_at DESC LIMIT 1'),
       upsertStep: db.prepare(`
@@ -161,6 +164,13 @@ export class RunStore {
       if (step.sessionId) this.setParent(step.sessionId, run.parentSessionId ?? run.id, run.id);
     }
     return this.state(run.id);
+  }
+
+  /** Archives a run row by hand, or unarchives it (it then stays up until it has new activity). */
+  setArchived(id: string, archived: boolean): PipelineRun | null {
+    const now = this.now();
+    this.statements.archiveRun.run(archived ? now : null, archived ? null : now, id);
+    return this.get(id);
   }
 
   remove(id: string): void {
@@ -272,6 +282,8 @@ function toRun(row: RunRow): PipelineRun | null {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     endedAt: row.ended_at,
+    archivedAt: row.archived_at ?? null,
+    restoredAt: row.restored_at ?? null,
   };
 }
 

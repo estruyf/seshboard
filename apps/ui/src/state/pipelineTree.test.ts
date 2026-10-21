@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUILT_IN_PIPELINES, type LiveSession, type PipelineRunState, type SessionSummary } from '@switchboard/protocol/client';
-import { asksWords, childTone, listedRunRows, parentRunLine, pipelinesRunning, runRowLine, sidebarForest, stepMeta, treeNeedsYouLine } from './pipelineTree.ts';
+import { asksWords, childTone, parentRunLine, pipelinesRunning, runRowLine, sidebarForest, stepMeta, treeNeedsYouLine } from './pipelineTree.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { buildListRows, buildSessionList, groupSessions, isActive, rowStatus } from './sidebarRows.ts';
 import { sidebarGroups } from './sidebarOrder.ts';
@@ -30,7 +30,7 @@ const row = (id: string, over: Partial<SessionRowData> = {}, parentId: string | 
 const live = (status: LiveSession['status']) => ({ status, origin: 'app' }) as LiveSession;
 
 const run = (over: Partial<PipelineRunState['run']> = {}, steps: Array<Partial<PipelineRunState['steps'][number]>> = []): PipelineRunState => ({
-  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'parent', task: null, title: 'Add a usage cost toggle', projectRoot: '/work/app', cwd: '/work/app', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, createdAt: NOW - HOUR, updatedAt: NOW - HOUR, endedAt: null, ...over },
+  run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: 'parent', task: null, title: 'Add a usage cost toggle', projectRoot: '/work/app', cwd: '/work/app', profileId: null, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, createdAt: NOW - HOUR, updatedAt: NOW - HOUR, endedAt: null, archivedAt: null, restoredAt: null, ...over },
   steps: steps.map((s) => ({ runId: over.id ?? 'run-1', step: 'Plan', index: 0, round: 1, sessionId: null, status: 'done', outcome: 'clean', verdict: null, reason: null, plan: null, actions: [], startedAt: 0, endedAt: null, ...s })),
 });
 
@@ -80,19 +80,56 @@ describe('sidebarForest', () => {
     expect(isActive(forest.roots[0]!, NOW, 2)).toBe(true);
   });
 
-  it('adds run rows while they go on and for a day after, with their sub-sessions under them', () => {
+  it('adds run rows with their sub-sessions under them, and archives a quiet one as a tree', () => {
     const active = run({ id: 'run-a', parentSessionId: null, title: 'Add dark mode' }, [{ step: 'Plan', index: 0, sessionId: 'plan', status: 'working' }]);
     const recent = run({ id: 'run-b', parentSessionId: null, status: 'done', endedAt: NOW - 2 * HOUR });
-    const stale = run({ id: 'run-c', parentSessionId: null, status: 'stopped', endedAt: NOW - 30 * HOUR });
-    expect(listedRunRows([active, recent, stale], NOW).map((s) => s.run.id)).toEqual(['run-a', 'run-b']);
-    const forest = sidebarForest([row('plan', { live: live('running') }, 'run-a'), row('late', {}, 'run-c')], [active, recent, stale], NOW);
-    // The stale run's sub-session shows on its own.
-    expect(ids(forest.roots)).toEqual(['late', 'run-a', 'run-b']);
+    const stale = run({ id: 'run-c', parentSessionId: null, status: 'stopped', endedAt: NOW - 30 * HOUR, updatedAt: NOW - 30 * HOUR });
+    const rows = [row('plan', { live: live('running') }, 'run-a'), row('late', { updatedAt: NOW - 30 * HOUR }, 'run-c')];
+    const forest = sidebarForest(rows, [active, recent, stale], NOW, 1);
+    expect(ids(forest.roots)).toEqual(['run-a', 'run-b', 'run-c']);
     expect(ids(forest.children.get('run-a')!)).toEqual(['plan']);
+    expect(ids(forest.children.get('run-c')!)).toEqual(['late']);
     const runRow = forest.roots.find((r) => r.id === 'run-a')!;
     expect(runRow).toMatchObject({ title: 'Add dark mode', projectRoot: '/work/app', summary: null });
     expect(rowStatus(runRow)).toBe('running');
-    expect(isActive(runRow, NOW, 2)).toBe(true);
+    expect(isActive(runRow, NOW, 1)).toBe(true);
+    // Quiet for longer than the archive days: the stale run row goes to Archived, with its sub-session under it.
+    const { active: up, archived } = buildSessionList(forest.roots, { search: '', project: null, now: NOW, archiveAfterDays: 1, children: forest.children });
+    expect(ids(up)).toEqual(['run-a', 'run-b']);
+    expect(ids(archived)).toEqual(['run-c']);
+  });
+
+  it('auto-archives a tree by its newest activity, never while its run goes on', () => {
+    const old = NOW - 5 * 24 * HOUR;
+    const parent = row('parent', { updatedAt: old });
+    // A sub-session written to an hour ago keeps the whole tree up.
+    const fresh = sidebarForest([parent, row('exec', { updatedAt: old }, 'parent'), row('val', {}, 'parent')], [run({ status: 'stopped' })], NOW, 2);
+    expect(isActive(fresh.roots[0]!, NOW, 2)).toBe(true);
+    expect(ids(fresh.children.get('parent')!)).toEqual(['exec', 'val']);
+    // Quiet everywhere: the parent goes, its sub-sessions with it.
+    const quiet = sidebarForest([parent, row('exec', { updatedAt: old }, 'parent')], [run({ status: 'done' })], NOW, 2);
+    expect(isActive(quiet.roots[0]!, NOW, 2)).toBe(false);
+    expect(ids(quiet.children.get('parent')!)).toEqual(['exec']);
+    // A run that waits for you keeps a quiet tree up.
+    const waiting = sidebarForest([parent, row('exec', { updatedAt: old }, 'parent')], [run({ status: 'waiting', waitingFor: 'push', updatedAt: old })], NOW, 2);
+    expect(isActive(waiting.roots[0]!, NOW, 2)).toBe(true);
+  });
+
+  it('archives and unarchives a tree together, and lets one sub-session leave it', () => {
+    const at = NOW - 10 * 60_000;
+    const archivedTree = sidebarForest([row('parent', { archivedAt: at }), row('exec', { archivedAt: at }, 'parent'), row('val', { archivedAt: at }, 'parent')], [run({ status: 'stopped' })], NOW, 2);
+    expect(ids(archivedTree.roots)).toEqual(['parent']);
+    expect(isActive(archivedTree.roots[0]!, NOW, 2)).toBe(false);
+    expect(ids(archivedTree.children.get('parent')!)).toEqual(['exec', 'val']);
+    const restored = sidebarForest([row('parent', { restoredAt: at }), row('exec', { restoredAt: at }, 'parent'), row('val', { restoredAt: at }, 'parent')], [run({ status: 'stopped' })], NOW, 2);
+    expect(isActive(restored.roots[0]!, NOW, 2)).toBe(true);
+    expect(ids(restored.children.get('parent')!)).toEqual(['exec', 'val']);
+    // One sub-session archived alone: it leaves the tree for Archived; the parent and the other step stay.
+    const one = sidebarForest([row('parent'), row('exec', { archivedAt: at }, 'parent'), row('val', {}, 'parent')], [run({ status: 'stopped' })], NOW, 2);
+    expect(ids(one.roots)).toEqual(['parent', 'exec']);
+    expect(ids(one.children.get('parent')!)).toEqual(['val']);
+    const { active, archived } = buildSessionList(one.roots, { search: '', project: null, now: NOW, archiveAfterDays: 2, children: one.children });
+    expect([ids(active), ids(archived)]).toEqual([['parent'], ['exec']]);
   });
 
   it('lets a search find a parent through its sub-sessions', () => {

@@ -1518,6 +1518,10 @@ export function createEngine(options: EngineOptions): Engine {
       applyTitles([sessionId]);
     },
     reparented: (sessionId) => sessions.republish(sessionId),
+    republishSessions: (sessionIds) => sessions.republishMany(sessionIds),
+    archiveSessions: (sessionIds, archived) => sessions.setArchivedMany(sessionIds, archived),
+    hideSessions: (sessionIds) => sessions.hide(sessionIds),
+    removed: (runId) => broadcast('runs.removed', { runId }),
     runActions: async (run, names) => {
       if (options.stubQueueStarts) return names.map((name) => ({ name, exitCode: 0, tail: 'Not run in the smoke test.', ms: 0 }));
       const listed = actions.list(run.projectRoot).actions;
@@ -2845,11 +2849,11 @@ export function createEngine(options: EngineOptions): Engine {
       pipelinesBroadcast();
       return { pipeline: pipelineStore.get(pipeline.id) ?? pipeline };
     },
-    'pipelines.run': async ({ pipelineId, parentSessionId, task, project, profileId }) => {
+    'pipelines.run': async ({ pipelineId, parentSessionId, task, project, profileId, choices }) => {
       if (parentSessionId && isRunId(parentSessionId)) throw new RpcError('INVALID', 'Run a pipeline from a session.');
       if (!parentSessionId && project && !statSafe(project)?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${project}`);
       try {
-        const state = await runner!.start({ pipelineId, parentSessionId, task, ...(project ? { projectRoot: resolver.resolve(project).root ?? project } : {}), profileId });
+        const state = await runner!.start({ pipelineId, parentSessionId, task, ...(project ? { projectRoot: resolver.resolve(project).root ?? project } : {}), profileId, choices });
         return { state };
       } catch (error) {
         throw new RpcError('PIPELINE_FAILED', (error as Error).message);
@@ -2861,6 +2865,11 @@ export function createEngine(options: EngineOptions): Engine {
     'runs.retryStep': async ({ runId }) => ({ state: await runAction(() => runner!.retryStep(runId)) }),
     'runs.skipStep': async ({ runId }) => ({ state: await runAction(() => runner!.skipStep(runId)) }),
     'runs.stop': async ({ runId }) => ({ state: await runAction(() => runner!.stop(runId)) }),
+    'runs.archive': async ({ runId, archived }) => ({ runs: await runAction(async () => runner!.archive(runId, archived)) }),
+    'runs.delete': async ({ runId, keepSubSessions }) => {
+      await runAction(() => runner!.delete(runId, keepSubSessions));
+      return {};
+    },
     'runs.pushPreview': async ({ runId, fresh }) => ({ preview: await runAction(() => runner!.pushPreview(runId, fresh)) }),
     'runs.write': async ({ runId, text }) => {
       const state = runner!.state(runId);

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { PipelineSave, type PipelineClaudeStep, type PipelineRunState, type PipelineStep } from './pipelineSchema.ts';
 import {
   BUILT_IN_PIPELINES,
+  choicesLeftOpen,
+  stepsTakingChoices,
+  withRunChoices,
   changesMessage,
   enterStep,
   fillStepPrompt,
@@ -263,6 +266,8 @@ const runState = (over: Partial<PipelineRunState['run']> = {}, stepRows: Array<P
     createdAt: 0,
     updatedAt: 0,
     endedAt: null,
+    archivedAt: null,
+    restoredAt: null,
     ...over,
   },
   steps: stepRows.map((row, i) => ({ runId: 'run-1', step: 'Plan', index: i, round: 1, sessionId: `s${i}`, status: 'done', outcome: 'clean', verdict: null, reason: null, plan: null, actions: [], startedAt: 0, endedAt: null, ...row })),
@@ -331,5 +336,34 @@ describe('sidebarTree', () => {
     const state = runState({ status: 'waiting', waitingFor: 'push' }, [{ sessionId: 'plan' }]);
     const tree = sidebarTree([row('parent', null), row('plan', 'parent', 'idle')], [state], (s) => (s.run.status === 'waiting' ? 'needsYou' : null));
     expect(tree.status.get('parent')).toBe('needsYou');
+  });
+});
+
+describe("New session's choices in a run", () => {
+  const [full] = BUILT_IN_PIPELINES;
+  const choices = { model: 'haiku', effort: 'low' as const, permissionMode: 'auto' as const };
+
+  it('says which choices a step leaves to the box, a read-only step keeping its mode', () => {
+    const [plan, execute, validate] = full!.steps as PipelineClaudeStep[];
+    expect(choicesLeftOpen(plan!)).toEqual([]);
+    expect(choicesLeftOpen(execute!)).toEqual(['effort']);
+    expect(choicesLeftOpen(validate!)).toEqual([]);
+    expect(choicesLeftOpen({ ...plan!, model: null, effort: null, permissionMode: null })).toEqual(['model', 'effort', 'permissionMode']);
+  });
+
+  it('names the steps that take the box’s choices, never Push', () => {
+    expect(stepsTakingChoices(full!)).toEqual(['Execute']);
+    const own = { steps: full!.steps.map((s) => (s.kind === 'claude' ? { ...s, effort: s.effort ?? 'medium' } : s)) };
+    expect(stepsTakingChoices(own)).toEqual([]);
+  });
+
+  it('fills in only what a step leaves open', () => {
+    const run = withRunChoices(full!, choices);
+    const [plan, execute, validate, push] = run.steps;
+    expect(plan).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'plan' });
+    expect(execute).toMatchObject({ model: 'sonnet', effort: 'low', permissionMode: 'acceptEdits' });
+    expect(validate).toMatchObject({ model: 'opus', effort: 'high', permissionMode: null, readOnly: true });
+    expect(push).toEqual(full!.steps[3]);
+    expect(withRunChoices(full!, null)).toBe(full);
   });
 });

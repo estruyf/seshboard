@@ -3,7 +3,8 @@
 // refuses. Shared: the engine decides, and the UI shows the same words. The stored shapes are in `pipelineSchema.ts`.
 
 import { fencedBlocks, fenceFor } from './contextBlocks.ts';
-import type { PipelineClaudeStep, PipelineRun, PipelineRunState, PipelineScope, PipelineStep, StepActionResult, StepVerdict } from './pipelineSchema.ts';
+import type { Effort, PermissionMode } from './host.ts';
+import type { Pipeline, PipelineClaudeStep, PipelineRun, PipelineRunState, PipelineScope, PipelineStep, StepActionResult, StepVerdict } from './pipelineSchema.ts';
 import type { SessionOutcome } from './later.ts';
 import { writeStub } from './sessionLinks.ts';
 
@@ -87,6 +88,45 @@ export const BUILT_IN_PIPELINES: ReadonlyArray<{ id: string; name: string; scope
 ];
 
 export const isBuiltInPipeline = (id: string) => BUILT_IN_PIPELINES.some((p) => p.id === id);
+
+// --- New session's choices ------------------------------------------------------------------------------------------
+
+/** The model, effort and mode New session's message box has: a run's steps that don't set their own take these. */
+export interface RunChoices {
+  model: string | null;
+  effort: Effort | null;
+  permissionMode: PermissionMode | null;
+}
+
+/** Which of the box's choices a step leaves to it: what it doesn't set. A read-only step sets its mode. */
+export function choicesLeftOpen(step: PipelineClaudeStep): Array<keyof RunChoices> {
+  const open: Array<keyof RunChoices> = [];
+  if (step.model === null) open.push('model');
+  if (step.effort === null) open.push('effort');
+  if (step.permissionMode === null && !step.readOnly) open.push('permissionMode');
+  return open;
+}
+
+/** The steps that take the box's choices: the Claude steps that leave at least one to it, by name. */
+export function stepsTakingChoices(pipeline: Pick<Pipeline, 'steps'>): string[] {
+  return pipeline.steps.filter((s): s is PipelineClaudeStep => s.kind === 'claude' && choicesLeftOpen(s).length > 0).map((s) => s.name);
+}
+
+/** A run's copy of its pipeline, with the box's choices in what each step leaves open. */
+export function withRunChoices<P extends Pick<Pipeline, 'steps'>>(pipeline: P, choices: RunChoices | null): P {
+  if (!choices) return pipeline;
+  const steps = pipeline.steps.map((step): PipelineStep => {
+    if (step.kind !== 'claude') return step;
+    const open = choicesLeftOpen(step);
+    return {
+      ...step,
+      model: open.includes('model') ? choices.model : step.model,
+      effort: open.includes('effort') ? choices.effort : step.effort,
+      permissionMode: open.includes('permissionMode') ? choices.permissionMode : step.permissionMode,
+    };
+  });
+  return { ...pipeline, steps };
+}
 
 // --- What an editor refuses -------------------------------------------------------------------------------------------
 

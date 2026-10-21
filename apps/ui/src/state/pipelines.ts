@@ -1,4 +1,4 @@
-import { mentionsIn, PARENT_MENTION, type Pipeline, type PipelineClaudeStep, type PipelineRunState, type PipelineRunStep, type PipelineStep, type TreeStatus } from '@switchboard/protocol/client';
+import { mentionsIn, PARENT_MENTION, choicesLeftOpen, type Pipeline, type PipelineClaudeStep, type PipelineRunState, type PipelineRunStep, type PipelineStep, type TreeStatus } from '@switchboard/protocol/client';
 import { MODE_LABEL } from '../lib/modes.ts';
 
 // Pipelines (#179) in the window: the words the step tree, the sidebar and the editor show, without React or the
@@ -171,4 +171,70 @@ export function duplicateOf(pipeline: Pipeline, root: string | null): { name: st
 /** The `@` choices in a step's prompt: the parent, then the steps before it that are sessions. */
 export function mentionChoices(steps: readonly PipelineStep[], index: number): string[] {
   return [PARENT_MENTION, ...steps.slice(0, index).filter((s) => s.kind === 'claude').map((s) => s.name)];
+}
+
+// --- New session's Run as chip ---------------------------------------------------------------------------------------
+
+/**
+ * What each step uses, on one line, under a pipeline's name in the Run as menu: "Plan: Opus · Execute: Sonnet ·
+ * Validate: Opus · Push".
+ */
+export function pipelineMeta(pipeline: Pick<Pipeline, 'steps'>): string {
+  return pipeline.steps.map((step) => (step.kind === 'push' ? step.name : `${step.name}: ${modelWord(step.model)}`)).join(' · ');
+}
+
+/** The Run as menu's order: the pipeline last used in this project, then the built-ins, then the rest by name. */
+export function runAsOrder<P extends Pick<Pipeline, 'id' | 'name' | 'builtIn'>>(pipelines: readonly P[], lastUsed: string | null): P[] {
+  const rank = (p: P) => (p.id === lastUsed ? 0 : p.builtIn ? 1 : 2);
+  // Built-ins keep their own order; the rest go by name.
+  return pipelines
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => rank(a.p) - rank(b.p) || (rank(a.p) === 2 ? a.p.name.localeCompare(b.p.name) : a.i - b.i))
+    .map(({ p }) => p);
+}
+
+/** The pipeline still picked after the project or the pipelines changed: null once the project can't run it. */
+export function keptRunAs(runAs: string | null, pipelines: ReadonlyArray<Pick<Pipeline, 'id'>>): string | null {
+  return runAs && pipelines.some((p) => p.id === runAs) ? runAs : null;
+}
+
+/** A step in the line under the message box: its name, and who does it ("Opus", "you" for Push). */
+export interface RunAsStep {
+  name: string;
+  who: string;
+}
+
+/** The steps a picked pipeline runs, for the line under the message box. `boxModel`: the box's model, for steps without their own. */
+export function runAsSteps(pipeline: Pick<Pipeline, 'steps' | 'autoPush'>, boxModel: string | null = null): RunAsStep[] {
+  return pipeline.steps.map((step) => ({
+    name: step.name,
+    who: step.kind === 'push' ? (pipeline.autoPush ? 'by itself' : 'you') : step.model ? modelWord(step.model) : (boxModel ?? modelWord(null)),
+  }));
+}
+
+/** What a screen reader hears for that line: "Runs as Execute and validate: Execute with Sonnet, then Validate with Opus". */
+export function runAsLabel(name: string, steps: readonly RunAsStep[]): string {
+  const parts = steps.map((s, i) => {
+    const what = s.who === 'you' || s.who === 'by itself' ? s.name : `${s.name} with ${s.who}`;
+    return i > 0 && i === steps.length - 1 ? `then ${what}` : what;
+  });
+  return `Runs as ${name}: ${parts.join(', ')}`;
+}
+
+/** A message box chip while a pipeline is picked: dimmed when no step uses it, and what its tooltip adds. */
+export interface BoxChoiceUse {
+  dim: boolean;
+  note: string;
+}
+
+/**
+ * The model, effort and mode chips while a pipeline is picked: each applies only to the steps that don't set their own.
+ * A chip no step uses is dimmed (it stays usable); one some steps use names them.
+ */
+export function boxChoiceUse(pipeline: Pick<Pipeline, 'steps'>): Record<'model' | 'effort' | 'permissionMode', BoxChoiceUse> {
+  const use = (choice: 'model' | 'effort' | 'permissionMode'): BoxChoiceUse => {
+    const names = pipeline.steps.filter((s): s is PipelineClaudeStep => s.kind === 'claude' && choicesLeftOpen(s).includes(choice)).map((s) => s.name);
+    return names.length ? { dim: false, note: `Used by steps without their own: ${names.join(', ')}.` } : { dim: true, note: 'The pipeline sets this for each step.' };
+  };
+  return { model: use('model'), effort: use('effort'), permissionMode: use('permissionMode') };
 }

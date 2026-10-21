@@ -64,6 +64,7 @@ import { runIsActive } from '../../state/pipelines.ts';
 import { parentRunLine, pipelinesRunning, runRowLine, sidebarForest, treeNeedsYouLine } from '../../state/pipelineTree.ts';
 import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
+import { askDeleteTree } from '../pipelines/RunTreeDialogs.tsx';
 import { PipelineStepRow, PipelineTile, TreeChevron } from './pipelineTreeRow.tsx';
 
 const SESSION_ROW_HEIGHT: Record<SidebarStyle, number> = { large: 52, standard: 48, compact: 34 };
@@ -594,7 +595,7 @@ export function Sidebar() {
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now), [merged, runs, now]);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays), [merged, runs, now, archiveAfterDays]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),
@@ -937,6 +938,11 @@ export function Sidebar() {
       // Like ⌘A, the focused row wins over the open one.
       const focused = (event.target as HTMLElement).closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? selectedId;
       const selected = rows.find((r) => r.kind === 'session' && r.data.id === focused);
+      // A run row or the parent of a run deletes its tree (#179).
+      if (!multi && selected?.kind === 'session' && askDeleteTree(selected.data.id, selected.data.title)) {
+        event.preventDefault();
+        return;
+      }
       const targets = multi ? pickedRows.filter((row) => row.summary) : selected?.kind === 'session' && selected.data.summary ? [selected.data] : [];
       if (targets.length) {
         event.preventDefault();
@@ -1020,8 +1026,6 @@ export function Sidebar() {
   };
 
   const sessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
-    // A run row isn't a session yet: its run has its own controls in its pane.
-    if (isRunRowId(data.id)) return;
     if (multi && picked.has(data.id)) return pickedMenu(at);
     setPicks(NO_PICKS);
     menus.openSessionMenu(at, data);
@@ -1029,9 +1033,7 @@ export function Sidebar() {
 
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
-  const middleClick = (data: SessionRowData) => {
-    if (!isRunRowId(data.id)) menus.middleClick(data);
-  };
+  const middleClick = (data: SessionRowData) => menus.middleClick(data);
   const running = useMemo(() => pipelinesRunning(runs.values()), [runs]);
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
@@ -1182,6 +1184,7 @@ export function Sidebar() {
                     <PipelineStepRow
                       data={row.data}
                       parentTitle={titleOf(row.child.parentId)}
+                      archived={row.archived}
                       level={row.child.level}
                       position={row.child.position}
                       count={row.child.count}

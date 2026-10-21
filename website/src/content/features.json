@@ -4097,8 +4097,13 @@
       "page": "sessions/pipelines"
     },
     {
-      "id": "feature:pipeline-new-session",
-      "name": "Start ▾ › Run pipeline › in New session",
+      "id": "feature:pipeline-run-as",
+      "name": "Run as chip in New session: pick a pipeline, and Start runs it",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-archive-tree",
+      "name": "Archive or delete a pipeline run with its sub-sessions",
       "page": "sessions/pipelines"
     },
     {

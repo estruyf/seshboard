@@ -26,6 +26,7 @@ import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
 import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
 import { CommandPalette } from '../palette/CommandPalette.tsx';
 import { PaletteDialogs } from '../palette/PaletteDialogs.tsx';
+import { RunTreeDialogs } from '../pipelines/RunTreeDialogs.tsx';
 import { useOverlayShortcuts } from '../palette/useOverlayShortcuts.ts';
 import { ShortcutsSheet } from '../shortcuts/ShortcutsSheet.tsx';
 import { useSavedPromptsSync } from '../savedPrompts/savedPromptsStore.ts';
@@ -98,6 +99,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <RunTreeDialogs />
       <AddContextDialogHost />
       {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}
       <FocusGateDialog />

@@ -1019,6 +1019,8 @@ export const contract = {
         task: z.string().max(MAX_PROMPT_LENGTH).nullable().default(null),
         project: AbsolutePath.nullable().default(null),
         profileId: z.string().min(1).max(100).nullable().default(null),
+        /** New session's model, effort and mode: the steps that don't set their own take them. Null: none. */
+        choices: z.object({ model: z.string().max(200).nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable() }).nullable().default(null),
       }),
       result: z.object({ state: PipelineRunState }),
     },
@@ -1036,6 +1038,16 @@ export const contract = {
     'runs.skipStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
     /** Stop the run: the step that works stops, and nothing starts after it. */
     'runs.stop': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /**
+     * Archives or unarchives a run's tree in one go: the parent session (or the run row) and every sub-session under
+     * it. Refuses while a run in it goes on (stop it first). The runs of the tree, after.
+     */
+    'runs.archive': { params: z.object({ runId: z.string().min(1).max(100), archived: z.boolean() }), result: z.object({ runs: z.array(PipelineRunState) }) },
+    /**
+     * Deletes a run's tree from Switchboard: its runs (stopped first), the parent session, and the sub-sessions unless
+     * `keepSubSessions` (they then show on their own). Transcripts stay on disk.
+     */
+    'runs.delete': { params: z.object({ runId: z.string().min(1).max(100), keepSubSessions: z.boolean().default(false) }), result: z.object({}) },
     /** Push's card: the commit message Haiku writes from the diff (once per run, unless `fresh`), the files and the branches. */
     'runs.pushPreview': { params: z.object({ runId: z.string().min(1).max(100), fresh: z.boolean().default(false) }), result: z.object({ preview: PushPreview }) },
     /**
@@ -1429,6 +1441,8 @@ export const contract = {
     'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
     /** A run changed: a step started or ended, it waits for you, or it ended. */
     'runs.changed': z.object({ state: PipelineRunState }),
+    /** A run was deleted (`runs.delete`). */
+    'runs.removed': z.object({ runId: z.string() }),
     /** A step needs you, a run stopped, or one is done: main's notifier says so. */
     'runs.notice': z.object({ notice: PipelineNotice }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */

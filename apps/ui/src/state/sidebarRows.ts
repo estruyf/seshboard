@@ -1,6 +1,5 @@
 import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@switchboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
-import { isRunRowId } from './runSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
 
@@ -70,9 +69,9 @@ export function rowListing(row: SessionRowData): ListingState {
  * then the days count from there.
  */
 export function isActive(row: SessionRowData, now: number, archiveAfterDays: number): boolean {
-  // Another computer only lists what its own sidebar does, outside Archived. A pipeline's run row is only there while
-  // it counts (`listedRunRows`).
-  if (row.remote || isRunRowId(row.id)) return true;
+  // Another computer only lists what its own sidebar does, outside Archived. A pipeline's run row follows the same rule
+  // as a session, with its tree's newest activity (`sidebarForest`).
+  if (row.remote) return true;
   return listedInMainList(rowListing(row), now, archiveAfterDays);
 }
 

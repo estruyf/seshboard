@@ -16,6 +16,7 @@ import { useCompanionSync } from './state/useCompanionSync.ts';
 import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx';
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
+import { RunTreeDialogs } from './components/pipelines/RunTreeDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
 import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
@@ -284,6 +285,7 @@ export function App() {
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
       <PaletteDialogs />
+      <RunTreeDialogs />
       <TriggerEditorHost />
       <AddContextDialogHost />
       <UnsentList />

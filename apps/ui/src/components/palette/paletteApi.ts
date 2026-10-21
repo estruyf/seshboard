@@ -50,6 +50,7 @@ import { newSessionOn } from '../computers/remoteActions.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { onlySource, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import type { PaletteContext } from './paletteContext.ts';
+import { archiveTree } from '../pipelines/RunTreeDialogs.tsx';
 
 /** Says why a command didn't work: the palette has closed by then, so it can't say it itself. */
 const failed = (what: string) => (error: unknown) => toast(`Couldn't ${what}: ${error instanceof Error ? error.message : String(error)}`);
@@ -140,6 +141,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         useCatchUp.getState().setCollapsed(catchUp, false);
       }),
     setFlags: (change) => {
+      // The parent of a pipeline run archives with its sub-sessions, as one tree (#179).
+      if (change.archived !== undefined && session && archiveTree(sessionId, change.archived, session.title)) return;
       const apply = () => call('change the session', (c) => c.call('sessions.setFlags', { sessionId, ...change }));
       // Archiving a session with an unsent message asks first.
       if (change.archived && session) archiveSessions([{ id: sessionId, title: session.title }], apply);

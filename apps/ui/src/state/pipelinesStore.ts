@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { Pipeline, PipelineRunState, PipelineSave, PushPreview } from '@switchboard/protocol/client';
+import type { Pipeline, PipelineRunState, PipelineSave, PushPreview, RunChoices } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -24,6 +24,8 @@ interface PipelinesState {
   setPipelines(pipelines: Pipeline[]): void;
   setRuns(runs: PipelineRunState[]): void;
   putRun(state: PipelineRunState): void;
+  /** A run was deleted (`runs.removed`). */
+  dropRun(runId: string): void;
 }
 
 export const usePipelines = create<PipelinesState>()((set) => ({
@@ -36,6 +38,13 @@ export const usePipelines = create<PipelinesState>()((set) => ({
   setPipelines: (pipelines) => set({ pipelines }),
   setRuns: (runs) => set({ runs: new Map(runs.map((r) => [r.run.id, r])), loaded: true }),
   putRun: (state) => set((s) => ({ runs: new Map(s.runs).set(state.run.id, state) })),
+  dropRun: (runId) =>
+    set((s) => {
+      if (!s.runs.has(runId)) return {};
+      const runs = new Map(s.runs);
+      runs.delete(runId);
+      return { runs };
+    }),
 }));
 
 /** Loads pipelines and runs once per connection and follows changes from every window. */
@@ -46,11 +55,13 @@ export function usePipelinesSync(): void {
     if (!client) return;
     const offPipelines = client.on('pipelines.changed', ({ pipelines }) => usePipelines.getState().setPipelines(pipelines));
     const offRuns = client.on('runs.changed', ({ state }) => usePipelines.getState().putRun(state));
+    const offRemoved = client.on('runs.removed', ({ runId }) => usePipelines.getState().dropRun(runId));
     void client.call('pipelines.list', { root: null }).then(({ pipelines }) => usePipelines.getState().setPipelines(pipelines), () => {});
     void client.call('runs.list', {}).then(({ runs }) => usePipelines.getState().setRuns(runs), () => {});
     return () => {
       offPipelines();
       offRuns();
+      offRemoved();
     };
   }, [client]);
 }
@@ -110,19 +121,54 @@ async function withBusy<T>(runId: string, work: () => Promise<T>): Promise<T | n
   }
 }
 
+type RunInput = { pipelineId: string; parentSessionId?: string | null; task?: string | null; project?: string | null; profileId?: string | null; choices?: RunChoices | null };
+
+/** Starts a run and keeps it; throws what went wrong (New session shows it where Start's errors go). */
+export async function startRun(input: RunInput): Promise<PipelineRunState> {
+  const { state } = await clientNow().call('pipelines.run', {
+    pipelineId: input.pipelineId,
+    parentSessionId: input.parentSessionId ?? null,
+    task: input.task ?? null,
+    project: input.project ?? null,
+    profileId: input.profileId ?? null,
+    choices: input.choices ?? null,
+  });
+  usePipelines.getState().putRun(state);
+  return state;
+}
+
 /**
  * Runs a pipeline: from a session (it becomes the parent), or from New session with a task and a project (a run
  * row). Says what went wrong in a toast; the run, else null.
  */
-export async function runPipeline(input: { pipelineId: string; parentSessionId?: string | null; task?: string | null; project?: string | null; profileId?: string | null }): Promise<PipelineRunState | null> {
+export async function runPipeline(input: RunInput): Promise<PipelineRunState | null> {
   try {
-    const { state } = await clientNow().call('pipelines.run', { pipelineId: input.pipelineId, parentSessionId: input.parentSessionId ?? null, task: input.task ?? null, project: input.project ?? null, profileId: input.profileId ?? null });
-    usePipelines.getState().putRun(state);
-    return state;
+    return await startRun(input);
   } catch (error) {
     toast(`Couldn't run the pipeline: ${describe(error)}`, { data: { 'data-pipeline-error-toast': true } });
     return null;
   }
+}
+
+/**
+ * Archives or unarchives a run's tree: the parent (a session, or the run row) and its sub-sessions, in one go. Throws
+ * what went wrong (a run that still goes on is refused).
+ */
+export async function archiveRunTree(runId: string, archived: boolean): Promise<void> {
+  const { runs } = await clientNow().call('runs.archive', { runId, archived });
+  for (const state of runs) usePipelines.getState().putRun(state);
+}
+
+/** Deletes a run's tree from Switchboard (stopped first); its sub-sessions stay on their own with `keepSubSessions`. */
+export async function deleteRunTree(runId: string, keepSubSessions: boolean): Promise<void> {
+  await clientNow().call('runs.delete', { runId, keepSubSessions });
+  usePipelines.getState().dropRun(runId);
+}
+
+/** Stops a run and waits for it: throws what went wrong. */
+export async function stopRunNow(runId: string): Promise<void> {
+  const { state } = await clientNow().call('runs.stop', { runId });
+  usePipelines.getState().putRun(state);
 }
 
 type RunMethod = 'runs.retryStep' | 'runs.skipStep' | 'runs.stop';

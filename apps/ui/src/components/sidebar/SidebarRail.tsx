@@ -307,8 +307,8 @@ export function SidebarRail() {
   }, [permissions]);
   const menus = useSessionMenu(order);
   // A run row isn't a session yet: no session menu, and a middle-click doesn't archive it.
-  const railMenu = useCallback((at: { x: number; y: number }, data: SessionRowData) => !isRunRowId(data.id) && menus.openSessionMenu(at, data), [menus]);
-  const railMiddleClick = useCallback((data: SessionRowData) => !isRunRowId(data.id) && menus.middleClick(data), [menus]);
+  const railMenu = useCallback((at: { x: number; y: number }, data: SessionRowData) => menus.openSessionMenu(at, data), [menus]);
+  const railMiddleClick = useCallback((data: SessionRowData) => menus.middleClick(data), [menus]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({

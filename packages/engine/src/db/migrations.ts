@@ -739,4 +739,12 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX session_parents_parent ON session_parents (parent_id);
   `,
+
+  // v38: Pipelines (#179). A run row archived and unarchived by hand, like a session, and sessions taken out of
+  // Switchboard with their run (Delete… on a run), whose transcripts stay. User choices: keep them.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN archived_at INTEGER;
+  ALTER TABLE pipeline_runs ADD COLUMN restored_at INTEGER;
+  ALTER TABLE session_flags ADD COLUMN hidden_at INTEGER;
+  `,
 ];

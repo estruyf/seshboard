@@ -1,7 +1,8 @@
-import { ListTree } from 'lucide-react';
+import { Ellipsis, ListTree } from 'lucide-react';
 import { runProgress } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
+import { runRowData } from '../../state/pipelineTree.ts';
 import { usePipelines, writeInRun } from '../../state/pipelinesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -9,6 +10,7 @@ import { Composer } from '../composer/Composer.tsx';
 import { Button } from '../ui/Button.tsx';
 import { paneHandle, paneHeader, type PaneProps } from '../computers/ComputerView.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
+import { useSessionMenu } from '../sidebar/useSessionMenu.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { StepTreeCard } from './StepTree.tsx';
 import { PARENT_PLACEHOLDER } from './runView.ts';
@@ -28,8 +30,11 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
   const handle = paneHandle(pane);
   const run = state?.run ?? null;
   const projectName = run ? (project?.name ?? basename(run.projectRoot)) : null;
+  // The run row's menu, as in the sidebar: Open, Stop the run, Archive with its steps, Delete….
+  const menus = useSessionMenu([]);
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-run-row={runId}>
+      {menus.overlays}
       <header
         className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${pane.tiled && pane.active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
         {...paneHeader(pane)}
@@ -49,6 +54,21 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
             </p>
           )}
         </div>
+        {state && (
+          <Button
+            variant="quiet"
+            iconOnly
+            icon={<Ellipsis size={15} aria-hidden />}
+            aria-label="Run options"
+            data-tooltip="Run options"
+            className="no-drag shrink-0"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              menus.openSessionMenu({ x: rect.left, y: rect.bottom + 4 }, runRowData(state));
+            }}
+            data-run-row-more
+          />
+        )}
         <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip="Close and go Home (the run goes on)" />
       </header>
       {!state ? (

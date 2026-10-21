@@ -1,19 +1,12 @@
 import { runProgress, sidebarTree, stepStateWord, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@switchboard/protocol/client';
 import { isRunRow, modelWord, modeWord, runIsActive, runTreeStatus } from './pipelines.ts';
 import type { SessionRowData } from './sessionsStore.ts';
-import { rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
+import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
 
 // Pipelines (#179) in the sidebar: sub-sessions nest under their parent, a run started from New session is a row of
-// its own (a run row), and a parent takes the most urgent state of its own and its children's. The open sidebar, the
-// rail and the sidebar's order (⌃⇥, ⌘P) all go through `sidebarForest`, so they never disagree. Pure, so it can be
-// tested; the nesting and the parent's state are the protocol's rule (`sidebarTree`).
-
-const DAY = 24 * 60 * 60 * 1000;
-
-/** The run rows the sidebar lists: runs started from New session, while they go on and for a day after they end. */
-export function listedRunRows(runs: Iterable<PipelineRunState>, now: number): PipelineRunState[] {
-  return [...runs].filter((state) => isRunRow(state) && (runIsActive(state) || (state.run.endedAt ?? state.run.updatedAt) >= now - DAY));
-}
+// its own (a run row), and a parent takes the most urgent state of its own and its children's. A tree goes to Archived
+// as one. The open sidebar, the rail and the sidebar's order (⌃⇥, ⌘P) all go through `sidebarForest`, so they never
+// disagree. Pure, so it can be tested; the nesting and the parent's state are the protocol's rule (`sidebarTree`).
 
 /** A run row as the sidebar's rows hold it: keyed by the run's id, with no session (yet) behind it. */
 export function runRowData(state: PipelineRunState): SessionRowData {
@@ -29,8 +22,8 @@ export function runRowData(state: PipelineRunState): SessionRowData {
     live: null,
     summary: null,
     pinned: false,
-    archivedAt: null,
-    restoredAt: null,
+    archivedAt: run.archivedAt,
+    restoredAt: run.restoredAt,
     unread: false,
     inApp: true,
     error: false,
@@ -58,38 +51,57 @@ export interface SidebarForest {
  * The sidebar's tree over `rows`: run rows are added, sub-sessions move under their parent (a session, or a run row by
  * its run id), and a parent takes the most urgent state of its own, its children's and its run's (waiting at Push or
  * after a stop counts as needs you). A child whose parent isn't listed shows on its own.
+ *
+ * A tree is archived as one (`archiveAfterDays`, and Archive on the parent): the parent carries the newest activity in
+ * its tree, so it goes to Archived once the whole tree is quiet, never while its run works or waits, and its
+ * sub-sessions go with it. A sub-session archived on its own leaves the tree while the parent stays up.
  */
-export function sidebarForest(rows: readonly SessionRowData[], runs: Iterable<PipelineRunState>, now: number): SidebarForest {
+export function sidebarForest(rows: readonly SessionRowData[], runs: Iterable<PipelineRunState>, now: number, archiveAfterDays = Number.POSITIVE_INFINITY): SidebarForest {
   const all = [...runs];
-  const runRows = listedRunRows(all, now);
-  const listed = new Set(runRows.map((state) => state.run.id));
-  // A run row that is no longer listed doesn't hold its sub-sessions: they show on their own.
-  const counted = all.filter((state) => !isRunRow(state) || listed.has(state.run.id));
+  const runRows = all.filter(isRunRow);
+  // A step's session goes under its run's parent before its transcript says so (a session still starting).
+  const stepParent = new Map<string, string>();
+  for (const { run, steps } of all) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
   const nodes = [...rows, ...runRows.map(runRowData)].map((row) => ({
     id: row.id,
-    parentId: row.summary?.parentId ?? null,
+    parentId: row.summary ? (row.summary.parentId ?? null) : (stepParent.get(row.id) ?? null),
     status: toTreeStatus(rowStatus(row)),
     createdAt: row.summary?.createdAt ?? null,
     row,
   }));
-  const tree = sidebarTree(nodes, counted, runTreeStatus);
-  const lift = (row: SessionRowData): SessionRowData => {
+  const tree = sidebarTree(nodes, all, runTreeStatus);
+  const lift = (row: SessionRowData, kids: readonly SessionRowData[] = []): SessionRowData => {
     const status = tree.status.get(row.id);
-    if (!status) return row;
+    // The tree's newest activity: what its listing (and Archive's "until new activity") goes by.
+    const updatedAt = Math.max(row.updatedAt, ...kids.map((kid) => kid.updatedAt));
     const own = rowStatus(row);
     // Idle children leave the parent as it is (a background task, say).
-    const lifted = status === 'idle' ? own : ROW_OF[status];
-    if (lifted === own) return row;
-    const parent: SessionRowData & TreeFacts = { ...row, treeStatus: lifted };
+    const lifted = !status || status === 'idle' ? own : ROW_OF[status];
+    if (lifted === own && updatedAt === row.updatedAt) return row;
+    const parent: SessionRowData & TreeFacts = { ...row, updatedAt, ...(lifted !== own ? { treeStatus: lifted } : {}) };
     return parent;
   };
   const children = new Map<string, SessionRowData[]>();
   const parentOf = new Map<string, string>();
-  for (const [parent, kids] of tree.children) {
-    children.set(parent, kids.map((kid) => lift(kid.row)));
-    for (const kid of kids) parentOf.set(kid.id, parent);
-  }
-  return { roots: tree.roots.map((node) => lift(node.row)), children, parentOf };
+  const roots: SessionRowData[] = [];
+  /** Sub-sessions archived by hand under a parent that stays up: they leave the tree, for Archived. */
+  const left: SessionRowData[] = [];
+  const liftAll = (node: { id: string; row: SessionRowData }): SessionRowData => {
+    const kids = tree.children.get(node.id);
+    if (!kids) return lift(node.row);
+    const rows = kids.map(liftAll);
+    const parent = lift(node.row, rows);
+    const up = isActive(parent, now, archiveAfterDays);
+    const stay = up ? rows.filter((kid) => isActive(kid, now, Number.POSITIVE_INFINITY)) : rows;
+    if (stay.length !== rows.length) left.push(...rows.filter((kid) => !stay.includes(kid)));
+    if (stay.length) {
+      children.set(node.id, stay);
+      for (const kid of stay) parentOf.set(kid.id, node.id);
+    }
+    return parent;
+  };
+  for (const node of tree.roots) roots.push(liftAll(node));
+  return { roots: [...roots, ...left], children, parentOf };
 }
 
 /** The run and round a sub-session is, from the runs. */

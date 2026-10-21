@@ -94,50 +94,53 @@ export function PipelinesSettings() {
   };
 
   return (
-    <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-6 py-6" data-pipelines-settings>
-      <nav aria-label="Pipelines" className="grid gap-3">
-        <Button variant="primary" icon={<Plus size={14} aria-hidden />} onClick={() => go({ kind: 'new', scope: { kind: 'all' } })} className="w-full" data-pipeline-new>
-          New pipeline
-        </Button>
-        {groups.map((group) => (
-          <div key={group.key} className="grid gap-0.5" data-pipeline-group={group.key}>
-            <SectionHeader className="px-2.5 pb-1">{group.label}</SectionHeader>
-            {group.pipelines.map((p) => {
-              const selected = selection?.kind === 'saved' && selection.id === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => !selected && go({ kind: 'saved', id: p.id })}
-                  aria-current={selected ? 'true' : undefined}
-                  className={`grid rounded-md px-2.5 py-1.5 text-left ${selected ? 'bg-selected' : 'hover:bg-border/45'}`}
-                  data-pipeline-row={p.id}
-                >
-                  <span className={`truncate text-ui ${selected ? 'font-semibold text-text' : 'text-text'}`}>{p.name}</span>
-                  <span className="truncate text-meta text-muted">{pipelineRowDetail(p)}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-        {selection?.kind === 'new' && <p className="px-2.5 text-meta text-muted">The new pipeline shows here once you save it.</p>}
-      </nav>
-      {initial && <PipelineEditor key={editorKey} initial={initial} saved={selection?.kind === 'new' ? null : current} defaultRoot={defaultRoot} onDirty={setDirty} onSave={save} onDuplicate={duplicate} onDelete={remove} />}
-      {discard && (
-        <ConfirmDialog
-          title="Discard your changes?"
-          body="The pipeline you're editing has changes you haven't saved."
-          confirmLabel="Discard"
-          danger
-          onConfirm={async () => {
-            const next = discard;
-            setDiscard(null);
-            next();
-          }}
-          onClose={() => setDiscard(null)}
-          data={{ 'data-pipeline-discard': true }}
-        />
-      )}
+    // A container: in a narrow window (the sidebar and Settings' own list beside it) the list goes above the editor.
+    <div className="@container py-6">
+      <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-6 @max-[640px]:grid-cols-1" data-pipelines-settings>
+        <nav aria-label="Pipelines" className="grid gap-3">
+          <Button variant="primary" icon={<Plus size={14} aria-hidden />} onClick={() => go({ kind: 'new', scope: { kind: 'all' } })} className="w-full" data-pipeline-new>
+            New pipeline
+          </Button>
+          {groups.map((group) => (
+            <div key={group.key} className="grid gap-0.5" data-pipeline-group={group.key}>
+              <SectionHeader className="px-2.5 pb-1">{group.label}</SectionHeader>
+              {group.pipelines.map((p) => {
+                const selected = selection?.kind === 'saved' && selection.id === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => !selected && go({ kind: 'saved', id: p.id })}
+                    aria-current={selected ? 'true' : undefined}
+                    className={`grid rounded-md px-2.5 py-1.5 text-left ${selected ? 'bg-selected' : 'hover:bg-border/45'}`}
+                    data-pipeline-row={p.id}
+                  >
+                    <span className={`truncate text-ui ${selected ? 'font-semibold text-text' : 'text-text'}`}>{p.name}</span>
+                    <span className="truncate text-meta text-muted">{pipelineRowDetail(p)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+          {selection?.kind === 'new' && <p className="px-2.5 text-meta text-muted">The new pipeline shows here once you save it.</p>}
+        </nav>
+        {initial && <PipelineEditor key={editorKey} initial={initial} saved={selection?.kind === 'new' ? null : current} defaultRoot={defaultRoot} onDirty={setDirty} onSave={save} onDuplicate={duplicate} onDelete={remove} />}
+        {discard && (
+          <ConfirmDialog
+            title="Discard your changes?"
+            body="The pipeline you're editing has changes you haven't saved."
+            confirmLabel="Discard"
+            danger
+            onConfirm={async () => {
+              const next = discard;
+              setDiscard(null);
+              next();
+            }}
+            onClose={() => setDiscard(null)}
+            data={{ 'data-pipeline-discard': true }}
+          />
+        )}
+      </div>
     </div>
   );
 }

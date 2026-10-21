@@ -142,6 +142,9 @@ export const PipelineRun = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
   endedAt: z.number().nullable(),
+  /** A run row archived by hand (with its tree), and unarchived: as a session's flags. A parent session has its own. */
+  archivedAt: z.number().nullable().default(null),
+  restoredAt: z.number().nullable().default(null),
 });
 export type PipelineRun = z.infer<typeof PipelineRun>;
 

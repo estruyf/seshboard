@@ -86,6 +86,11 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const titles = new Map<string, string>();
   const interrupted: string[] = [];
   const pushed: Array<{ message: string; title: string; body: string }> = [];
+  /** What the session index was told: archived and hidden sessions, deleted runs. */
+  const archived = new Set<string>();
+  const hidden = new Set<string>();
+  const removed: string[] = [];
+  const republished: string[][] = [];
   let hold = options.hold ?? (() => null);
   let next = 0;
   const add = (entry: Omit<Started, 'id' | 'sent'>) => {
@@ -112,6 +117,10 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     },
     title: (sessionId, title) => titles.set(sessionId, title),
     reparented: () => {},
+    republishSessions: (ids) => republished.push([...ids]),
+    archiveSessions: (ids, on) => ids.forEach((id) => (on ? archived.add(id) : archived.delete(id))),
+    hideSessions: (ids) => ids.forEach((id) => hidden.add(id)),
+    removed: (runId) => removed.push(runId),
     runActions: async (_run, names) => (options.actions ?? []).filter((a) => names.includes(a.name)),
     lastReply: async (id) => replies.get(id) ?? null,
     hold: () => hold(),
@@ -134,6 +143,10 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     interrupted,
     pushed,
     replies,
+    archived,
+    hidden,
+    removed,
+    republished,
     setHold(next: () => StepHold | null) {
       hold = next;
     },
@@ -207,6 +220,59 @@ describe('PipelineRunner', () => {
     w.runner.adopt(run.id, 'parent');
     expect(w.runs.parentOf(execute.id)).toBe('parent');
     expect(w.state(run.id).run.parentSessionId).toBe('parent');
+  });
+
+  it('gives the steps that leave them open New session’s model, effort and mode', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, task: 'Add dark mode', projectRoot: ROOT, choices: { model: 'haiku', effort: 'low', permissionMode: 'auto' } });
+    // Execute sets its model and mode, not its effort; Validate sets all three (read only).
+    expect(w.last().settings).toMatchObject({ model: 'sonnet', effort: 'low', permissionMode: 'acceptEdits' });
+    expect(run.pipeline.steps[1]).toMatchObject({ model: 'opus', effort: 'high', permissionMode: null, readOnly: true });
+  });
+
+  it('archives and unarchives a run’s tree in one go, never while it goes on', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });
+    const execute = w.last();
+    expect(() => w.runner.archive(run.id, true)).toThrow(/Stop it first/);
+    await w.runner.stop(run.id);
+    w.runner.archive(run.id, true);
+    expect([...w.archived].sort()).toEqual([execute.id, 'parent'].sort());
+    w.runner.archive(run.id, false);
+    expect(w.archived.size).toBe(0);
+  });
+
+  it('archives a run row itself, with its sub-sessions', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, task: 'Add dark mode', projectRoot: ROOT });
+    const execute = w.last();
+    await w.end(execute.id, 'clean', 'Done.');
+    const validate = w.last();
+    await w.runner.stop(run.id);
+    const [state] = w.runner.archive(run.id, true);
+    expect(state!.run.archivedAt).not.toBeNull();
+    expect([...w.archived].sort()).toEqual([execute.id, validate.id].sort());
+    const [back] = w.runner.archive(run.id, false);
+    expect(back!.run).toMatchObject({ archivedAt: null, restoredAt: expect.any(Number) });
+  });
+
+  it('deletes a run’s tree, stopping it first, with or without its sub-sessions', async () => {
+    const w = world();
+    const { run } = await w.runner.start({ pipelineId: executeValidate, task: 'Add dark mode', projectRoot: ROOT });
+    const execute = w.last();
+    await w.runner.delete(run.id, false);
+    expect(w.interrupted).toContain(execute.id);
+    expect(w.runner.state(run.id)).toBeNull();
+    expect(w.removed).toEqual([run.id]);
+    expect([...w.hidden]).toEqual([execute.id]);
+
+    const kept = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });
+    const second = w.last();
+    await w.runner.delete(kept.run.id, true);
+    expect(w.runs.parentOf(second.id)).toBeNull();
+    // The parent goes; its sub-session stays, on its own.
+    expect([...w.hidden]).toEqual([execute.id, 'parent']);
+    expect(w.republished).toEqual([[second.id]]);
   });
 
   it('stops on an error, and goes on when a reply in that step ends cleanly', async () => {
