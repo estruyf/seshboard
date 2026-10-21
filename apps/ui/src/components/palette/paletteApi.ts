@@ -155,7 +155,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     previewLastFile: () => {
       const path = useLastWritten.getState().paths.get(sessionId);
-      if (path) useFilePreview.getState().open(path);
+      if (path) useFilePreview.getState().open(path, { sessionId });
     },
     // After the palette's own close, which gives focus back to where it was, so reading mode's focus on open stays.
     readLastReply: () => void setTimeout(() => useReadMode.getState().openLast(sessionId)),

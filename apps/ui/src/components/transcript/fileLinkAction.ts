@@ -38,18 +38,22 @@ export function clickAction(setting: FileLinkClick, shift: boolean, { fileManage
 /** The editor's name for a sentence: "VS Code", or "your editor" when it isn't known. */
 const editorName = (names: FileLinkNames) => names.editor ?? 'your editor';
 
-/** `src/a.ts:12` for the editor, which jumps to the line; the plain path for the file manager, which can't. */
-export function fileLinkTarget(path: string, line: number | undefined, action: FileLinkAction): string {
-  return action === 'editor' && line ? `${path}:${line}` : path;
+/**
+ * `src/a.ts:12` for the editor, which jumps to the line, and for the preview, which also marks a range (`src/a.ts:12-20`);
+ * the plain path for the file manager, which can't.
+ */
+export function fileLinkTarget(path: string, line: number | undefined, action: FileLinkAction, endLine?: number): string {
+  if (!line || action === 'show') return path;
+  return action === 'preview' && endLine && endLine > line ? `${path}:${line}-${endLine}` : `${path}:${line}`;
 }
 
 /**
  * The tooltip (and the description for screen readers) of a file link: what a click does, then what `otherKeys`
  * (the Shift-click, written by the shortcuts registry) does instead. Without a file manager there is nothing else to offer.
  */
-export function fileLinkTooltip({ setting, path, line, names, otherKeys, fileManagerAvailable = true, previewable = false }: { setting: FileLinkClick; path: string; line?: number; names: FileLinkNames; otherKeys: string } & FileLinkContext): string {
+export function fileLinkTooltip({ setting, path, line, endLine, names, otherKeys, fileManagerAvailable = true, previewable = false }: { setting: FileLinkClick; path: string; line?: number; endLine?: number; names: FileLinkNames; otherKeys: string } & FileLinkContext): string {
   const action = clickAction(setting, false, { fileManagerAvailable, previewable });
-  const target = fileLinkTarget(path, line, action);
+  const target = fileLinkTarget(path, line, action, endLine);
   if (action === 'preview') return `Preview ${target} in Switchboard. ${otherKeys} opens it in ${editorName(names)}`;
   if (action === 'show') return `Show ${target} in ${names.fileManager}. ${otherKeys} opens it in ${editorName(names)}`;
   return fileManagerAvailable ? `Open ${target} in ${editorName(names)}. ${otherKeys} shows it in ${names.fileManager}` : `Open ${target} in ${editorName(names)}`;

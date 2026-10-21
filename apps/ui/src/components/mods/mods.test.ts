@@ -117,7 +117,7 @@ describe('the message box, for Claude Code', () => {
 });
 
 describe('pane tabs', () => {
-  const none = { changes: false, ask: false, agents: false, commands: false, terminal: false };
+  const none = { changes: false, ask: false, agents: false, commands: false, preview: false, terminal: false };
 
   it('puts mods’ panes after Ask', () => {
     expect(rightPanel({ ...none, changes: true, ask: true, agents: true }, modPaneTab('agents'), ['agents']).open).toEqual(['changes', 'ask', 'mod:agents', 'agents']);

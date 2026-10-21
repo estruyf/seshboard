@@ -2227,6 +2227,11 @@
       "page": "sessions/file-preview"
     },
     {
+      "id": "feature:file-preview-panel",
+      "name": "File preview in the side panel or a dialog, with line numbers and the linked lines marked",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "feature:file-link-click",
       "name": "Clicking a file link: open in Switchboard, show in the file manager or open in the editor (Settings, Conversation)",
       "page": "settings"

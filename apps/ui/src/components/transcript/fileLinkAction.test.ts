@@ -44,10 +44,13 @@ describe('what a click on a file link does', () => {
 });
 
 describe('the target of a file link', () => {
-  it('keeps the line for the editor only', () => {
+  it('keeps the line for the editor and the preview, the range for the preview only', () => {
     expect(fileLinkTarget('C:\\a\\b.ts', 12, 'editor')).toBe('C:\\a\\b.ts:12');
     expect(fileLinkTarget('C:\\a\\b.ts', 12, 'show')).toBe('C:\\a\\b.ts');
-    expect(fileLinkTarget('C:\\a\\b.md', 12, 'preview')).toBe('C:\\a\\b.md');
+    expect(fileLinkTarget('C:\\a\\b.md', 12, 'preview')).toBe('C:\\a\\b.md:12');
+    expect(fileLinkTarget('/a/b.ts', 12, 'preview', 20)).toBe('/a/b.ts:12-20');
+    expect(fileLinkTarget('/a/b.ts', 12, 'editor', 20)).toBe('/a/b.ts:12');
+    expect(fileLinkTarget('/a/b.ts', 12, 'show', 20)).toBe('/a/b.ts');
     expect(fileLinkTarget('/a/b.ts', undefined, 'editor')).toBe('/a/b.ts');
   });
 });

@@ -9,7 +9,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTh
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
-import type { ScheduleRunEvent } from '@switchboard/protocol/client';
+import { previewKind, type ScheduleRunEvent } from '@switchboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
@@ -3721,7 +3721,7 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   };
 
   // Every built-in, in light and dark: the open sidebar, a code block, and the rail. A mode the theme
-  // doesn't have (Nord and The unnamed are dark only) shows Demo Time's.
+  // doesn't have (Nord is dark only) shows Demo Time's.
   for (const { id, raw } of BUILT_IN_THEMES) {
     if (!(await pick(id))) return `could not pick ${id}`;
     for (const mode of ['light', 'dark'] as const) {
@@ -4095,8 +4095,8 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
- * click does is the setting Clicking a file link (Open in Switchboard by default: Markdown and HTML files preview there, the
- * rest show in the file manager): the label and tooltip say it and what Shift-click does instead, and the right-click and
+ * click does is the setting Clicking a file link (Open in Switchboard by default: Markdown, HTML and code files preview there,
+ * the rest show in the file manager): the label and tooltip say it and what Shift-click does instead, and the right-click and
  * Shift+F10 menus list every way and Copy path above the message's Quote and Remember this…. Switching the setting in
  * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder, the preview or the user's
  * editor. The menus are only opened and closed with Escape, and the setting is put back at the end.
@@ -4109,7 +4109,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const LINK = "[data-transcript] [data-file-link]";
   const shiftClick = /(Shift\+click|⇧-click) (opens|shows) it in /;
-  const previewable = (path: string) => /\.(md|markdown|html?)$/i.test(path);
+  const previewable = (path: string) => previewKind(path) !== null;
   type Mode = 'switchboard' | 'file-manager' | 'editor';
 
   /** The links and chips on screen, as they read, once a path has been looked up. */
@@ -4133,7 +4133,8 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     for (const link of shown.links) {
       const path = link.target.replace(/:\d+$/, '');
       const expectedAction = actionFor(mode, path);
-      const start = expectedAction === 'preview' ? `Preview ${path} in Switchboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
+      // The preview and the editor go to the line; the file manager can't.
+      const start = expectedAction === 'preview' ? `Preview ${link.target} in Switchboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
       if (!link.href.startsWith('file:///') || !isAbsolutePath(path)) return `a file link is wrong: ${JSON.stringify(link)}`;
       if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || link.action !== expectedAction) return `with ${mode} set, a link to ${path} says "${link.tooltip}" (${link.action})`;
       if (expectedAction === 'editor' && !link.tooltip.includes(`shows it in ${fileManager}`)) return `with ${mode} set, a link says "${link.tooltip}"`;
@@ -4141,7 +4142,8 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     }
     for (const chip of shown.chips) {
       const expectedAction = actionFor(mode, chip.path);
-      const start = expectedAction === 'preview' ? `Preview ${chip.path} in Switchboard. ` : expectedAction === 'show' ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
+      // A chip for a Read from a line names the line after the path.
+      const start = expectedAction === 'preview' ? `Preview ${chip.path}` : expectedAction === 'show' ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
       const text = expectedAction === 'preview' ? 'Preview ↗' : expectedAction === 'show' ? 'Show ↗' : 'Open ↗';
       if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== text || chip.action !== expectedAction) {
         return `with ${mode} set, a file chip for ${chip.path} says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
@@ -4233,8 +4235,9 @@ const SMOKE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD
  * File preview (#181), on throwaway files in a folder of their own: a Markdown file opens in the dialog with its heading,
  * a GitHub alert and a details block rendered, a script and the picture beside it handled (the script is dropped, the
  * picture loads through the engine), Source shows the raw text, and Reload picks up a change. An HTML file opens in a
- * sandboxed frame whose page has the CSP and the picture inlined. A file over 2 MB says so. Escape closes the dialog and the
- * session stays. The preview is opened through a window event the dialog listens for, as no conversation has to link to
+ * sandboxed frame whose page has the CSP and the picture inlined. A code file has numbered lines. Opened from the session, a
+ * file goes to its side panel with the linked lines marked, moves to the dialog and back. A file over 2 MB says so. Escape
+ * closes the dialog and the session stays. The preview is opened through a window event the dialog listens for, as no conversation has to link to
  * these files. The folder is removed at the end.
  */
 async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
@@ -4252,7 +4255,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     writeFileSync(join(dir, 'logo.png'), SMOKE_PNG);
     writeFileSync(md, '# Smoke heading\n\n> [!NOTE]\n> Smoke alert text.\n\n<details><summary>More</summary>\n\nHidden body\n\n</details>\n\n<script>document.title = "pwned"</script>\n\n![the logo](logo.png)\n\n[next](other.md)\n');
     writeFileSync(html, '<!doctype html><html><head><title>Page</title></head><body><h1>Smoke page</h1><img src="logo.png"><script>document.title = "pwned"</script></body></html>');
-    writeFileSync(code, `const smoke = '${'long '.repeat(80)}';\n`);
+    writeFileSync(code, `const smoke = '${'long '.repeat(80)}';\n${Array.from({ length: 79 }, (_, i) => `const line${i + 2} = ${i + 2};`).join('\n')}\n`);
     writeFileSync(big, `# Big\n\n${'x'.repeat(3 * 1024 * 1024)}\n`);
 
     await open(md);
@@ -4294,14 +4297,40 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 500));
     await shot(win, 'file-preview-html.png');
 
-    // A code file is its source only, with its long lines wrapped until the toggle says otherwise.
+    // A code file is its source only, with a number on each line and its long lines wrapped until the toggle says otherwise.
     await open(code);
     if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'code' && document.querySelector('[data-file-preview-source]')?.innerText.includes('const smoke') && !document.querySelector('[data-file-preview-view]')`, 5_000))) return 'the code file did not open as its source';
-    const wrapped = (path: string) => `getComputedStyle(document.querySelector('[data-file-preview-source] ${path}')).whiteSpace`;
-    if (!(await waitInPage(win, `${wrapped('pre')}.startsWith('pre-wrap')`, 3_000))) return 'long lines did not wrap by default';
+    const numbers = (await js("[...document.querySelectorAll('[data-file-preview-source] [data-line]')].slice(0, 3).map((row) => row.firstElementChild.innerText).join(',')")) as string;
+    if (numbers !== '1,2,3') return `the lines are numbered "${numbers}"`;
+    const wrapped = `getComputedStyle(document.querySelector('[data-file-preview-source] [data-line="1"]').lastElementChild).whiteSpace`;
+    if (!(await waitInPage(win, `${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'true'`, 3_000))) return 'long lines did not wrap by default, or the wrap button does not show it is on';
     await js("document.querySelector('[data-file-preview-wrap]').click()");
-    if (!(await waitInPage(win, `!${wrapped('pre')}.startsWith('pre-wrap')`, 3_000))) return 'the wrap toggle did not turn wrapping off';
+    if (!(await waitInPage(win, `!${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'false'`, 3_000))) return 'the wrap toggle did not turn wrapping off';
     await js("document.querySelector('[data-file-preview-wrap]').click()");
+
+    // From a session, a file opens in its side panel, at the lines the link named (20 to 24), marked and scrolled to.
+    let panel = 'no session open, so the side panel was not tried';
+    if (session) {
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-file-preview-place="panel"]')`;
+      await js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
+      // Detached in an earlier run of this window, it would open in the dialog: dock it first.
+      if (await waitInPage(win, `${DIALOG}?.querySelector('[data-file-preview-dock]')`, 1_000)) await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
+      if (!(await waitInPage(win, `${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the side panel with lines 20 to 24 marked';
+      const shown = (await js(
+        `(() => { const box = ${PANEL}.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = ${PANEL}.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
+      )) as boolean;
+      if (!shown) return 'line 20 is not scrolled into view in the side panel';
+      await shot(win, 'file-preview-panel.png');
+      await js(`${PANEL}.querySelector('[data-file-preview-detach]').click()`);
+      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${PANEL}`, 3_000))) return 'Open in a dialog did not move the preview to the dialog';
+      await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
+      if (!(await waitInPage(win, `!${DIALOG} && ${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the preview back to the panel';
+      await js(`${PANEL}.querySelector('[data-file-preview-close]').click()`);
+      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the side panel did not close';
+      panel = 'from a session it opens in the side panel at the lines a link names, marked and in view, moves to a dialog and back';
+    }
 
     await open(big);
     if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Switchboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
@@ -4309,9 +4338,10 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
     if (session && !(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]')`, 2_000))) return 'the session went away when the preview closed';
-    return 'ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its source with wrapping you can toggle, a 3 MB file says it is over the limit, and Escape closes it';
+    return `ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its numbered source with wrapping you can toggle, ${panel}, a 3 MB file says it is over the limit, and Escape closes it`;
   } finally {
     if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click()");
     rmSync(dir, { recursive: true, force: true });
   }
 }

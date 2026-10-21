@@ -7,6 +7,7 @@ import { clickKeysFor, formatKeys } from '../../lib/shortcuts.ts';
 import { useFilePreview } from '../../state/filePreviewStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { PreviewOpenerContext } from '../filePreview/previewOpener.ts';
 import { MessageMenuContext } from '../memory/RememberLayer.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
@@ -37,14 +38,16 @@ export interface FileLinkActions {
  * Shows the file in the file manager or opens it in the editor, as the Clicking a file link setting says (Shift-click
  * does the other), and lists both, with Copy path, in a context menu: the message's own menu (with Quote and Remember this…)
  * for a link in a reply, a menu of its own elsewhere. A file that is gone fails like any other open: the
- * engine says so, and the link shows it. `path` is absolute and exists as far as the engine told us.
+ * engine says so, and the link shows it. `path` is absolute and exists as far as the engine told us. A preview opens where
+ * `PreviewOpenerContext` says, at `line` (marking the range to `endLine`).
  */
-export function useFileLinkActions(path: string, line?: number): FileLinkActions {
+export function useFileLinkActions(path: string, line?: number, endLine?: number): FileLinkActions {
   const setting = usePreferences((s) => s.prefs.fileLinkClick);
   const editors = useHosts((s) => s.editors);
   const defaultId = useHosts((s) => s.defaultEditorId);
   const openIn = useOpenIn();
   const openMessageMenu = useContext(MessageMenuContext);
+  const openPreview = useContext(PreviewOpenerContext);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [menu, setMenu] = useState<ContextMenuPoint | null>(null);
@@ -58,7 +61,7 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
 
   const run = (what: FileLinkAction) => {
     setError(null);
-    if (what === 'preview') return useFilePreview.getState().open(path);
+    if (what === 'preview') return openPreview ? openPreview(path, line, endLine) : useFilePreview.getState().open(path, { line, endLine });
     const target = fileLinkTarget(path, line, what);
     const done = what === 'show' ? openIn(path, { editorId: fileManager?.id ?? 'finder' }) : openIn(path, line ? { line } : {});
     done.catch((e: unknown) => setError(fileLinkError(what, target, names, e instanceof Error ? e.message : String(e))));
@@ -108,7 +111,7 @@ export function useFileLinkActions(path: string, line?: number): FileLinkActions
 
   return {
     action,
-    tooltip: fileLinkTooltip({ setting, path, ...(line ? { line } : {}), names, otherKeys: formatKeys(clickKeysFor('transcript.file-link-other')), fileManagerAvailable, previewable }),
+    tooltip: fileLinkTooltip({ setting, path, ...(line ? { line } : {}), ...(endLine ? { endLine } : {}), names, otherKeys: formatKeys(clickKeysFor('transcript.file-link-other')), fileManagerAvailable, previewable }),
     error,
     handlers: {
       onClick: (event) => {

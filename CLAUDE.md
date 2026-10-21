@@ -6,7 +6,7 @@ AGENTS.md (imported above, so there is no need to read it again) has the archite
 
 ## While building a feature
 
-- Run the related tests (`npx vitest run <files>`), the typecheck and `npm run smoke:demo -- --only "<step label>"` after each step. The full `npm run check` and `npm run smoke:demo` run once, at the end.
+- Run the related tests (`npx vitest run <files>`), the typecheck and `npm run smoke:demo -- --only "<step label>"` after each step. `npm run check` runs once, at the end. Don't run the full `npm run smoke:demo` locally: the pull request runs it (`check.yml`), and so does the release.
 - Per feature, the docs need only its `CHANGELOG.md` line and its entry in `website/src/content/features.json` (the coverage test in `npm run check` requires it). Pages and screenshots wait for the release.
 
 ## Releases

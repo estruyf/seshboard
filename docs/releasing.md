@@ -7,10 +7,11 @@ How a Switchboard release is prepared and published, and the docs checklist that
 Releases are built by `.github/workflows/release.yml`, which runs when a release is published on GitHub. Prepare it on `dev`:
 
 1. Rename the `## [Unreleased]` section of `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD` (or add that section, written for people using the app), and set `version` in `apps/desktop/package.json` to match.
-2. Retake the README screenshots with `npm run screenshots` and look at every image in `docs/screenshots` against the README's alt text and the CHANGELOG section. If the tour fails, a view it drives has changed: fix `apps/desktop/src/main/screenshotTour.ts` (or the demo world in `scripts/screenshot-demo.ts`) rather than skipping it. If a released feature belongs in a picture that doesn't show it yet, update the demo world or add a view. Commit the new images with the release.
-3. Go through the [docs checklist](#docs-checklist): docs pages, `features.json`, website screenshots and `npm run website:build`. A release is not done until the docs are updated.
-4. Merge `dev` into `main` (`git checkout main && git merge --ff-only dev`) and push both.
-5. Publish a GitHub release with tag `vX.Y.Z` on `main` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
+2. Run `npm run check` and the full `npm run smoke:demo` on `dev`, and look at the latest `Check` run of the pull requests merged since the last release. Features are only checked step by step while they are built, so this is where one breaking another shows up. Fix what fails before you go on.
+3. Retake the README screenshots with `npm run screenshots` and look at every image in `docs/screenshots` against the README's alt text and the CHANGELOG section. If the tour fails, a view it drives has changed: fix `apps/desktop/src/main/screenshotTour.ts` (or the demo world in `scripts/screenshot-demo.ts`) rather than skipping it. If a released feature belongs in a picture that doesn't show it yet, update the demo world or add a view. Commit the new images with the release.
+4. Go through the [docs checklist](#docs-checklist): docs pages, `features.json`, website screenshots and `npm run website:build`. A release is not done until the docs are updated.
+5. Merge `dev` into `main` (`git checkout main && git merge --ff-only dev`) and push both.
+6. Publish a GitHub release with tag `vX.Y.Z` on `main` (only when the user asks). The notes may be left empty; the workflow fills them from the CHANGELOG section.
 
 **Hotfix.** A fix that can't wait for the next release: commit it on `main`, add its `## [X.Y.Z]` section and version, release it from `main`, then merge `main` back into `dev`.
 
@@ -22,7 +23,7 @@ The VS Code companion is released separately by `.github/workflows/release-vscod
 
 ## Docs checklist
 
-The website (`website/`, published at https://switchboard.struyfconsulting.com/) documents every feature. Do these before every release, as step 3 of the release above:
+The website (`website/`, published at https://switchboard.struyfconsulting.com/) documents every feature. Do these before every release, as step 4 of the release above:
 
 1. For every user-facing change since the last release (the `## [Unreleased]` section of `CHANGELOG.md`), check that its docs page in `website/src/content/docs/` is updated. Add a page if the feature is new, and add it to the sidebar in `website/src/sidebar.mjs`.
 2. Update `website/src/content/features.json` (one entry per feature, with the page that covers it) and make sure the coverage test passes: `npx vitest run website` (it is part of `npm run check`). It fails when a palette command, a shortcut, a Settings section or a project tab has no entry, or when an entry points at a page that doesn't exist.
