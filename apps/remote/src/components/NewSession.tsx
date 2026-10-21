@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronLeft, KeyboardOff, Search } from 'lucide-react';
-import { REMOTE_FEATURE_BRANCHES, type RemoteBranches, type RemoteOptions, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Check, ChevronLeft, KeyboardOff, ListTree, Search } from 'lucide-react';
+import { keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
+import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
+import { ChoiceChip } from './ChoiceChip.tsx';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
@@ -68,6 +70,9 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   /** The project folder's branches (null: not read yet, or the computer can't say), and one picked to check out first. */
   const [branches, setBranches] = useState<RemoteBranches | null>(null);
   const [branch, setBranch] = useState<string | null>(null);
+  /** The project's pipelines (`REMOTE_FEATURE_PIPELINES`), and the one Run as picked: Start runs it with the prompt as its task. */
+  const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
+  const [runAs, setRunAs] = useState<string | null>(null);
   const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
   const wide = useWide();
@@ -130,6 +135,28 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     };
   }, [client, projectId, takesBranch]);
 
+  // Another project has its own pipelines; the one picked stays while this project can run it too.
+  const takesPipelines = features.includes(REMOTE_FEATURE_PIPELINES);
+  useEffect(() => {
+    if (!client || !projectId || !takesPipelines) {
+      setPipelines([]);
+      setRunAs(null);
+      return;
+    }
+    let current = true;
+    void client.call('pipelines.list', { projectId }).then(
+      (result) => {
+        if (!current) return;
+        setPipelines(result.pipelines);
+        setRunAs((picked) => keptRunAs(picked, result.pipelines));
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, projectId, takesPipelines]);
+
   // With a keyboard, the box is ready to type in; on a phone the keyboard waits for a tap.
   useEffect(() => {
     if (fine) box.current?.focus();
@@ -158,18 +185,34 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const checkout = checkoutBranch(branch, branches, choice.worktree);
   const withBranch = checkout ? { checkoutBranch: checkout } : {};
   const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading);
+  const pipeline = pipelines.find((p) => p.id === runAs) ?? null;
+  /** Run as a pipeline: the prompt is its task, and the box's choices go to the steps that don't set their own. */
+  const startRun = async (picked: RemotePipeline) => {
+    const { worktree: _worktree, ...choices } = changedFrom(choice, defaults, baseProfile);
+    const { state } = await client!.call('pipelines.run', { pipelineId: picked.id, projectId: projectId!, task: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...choices });
+    rememberPipeline(computer, projectId!, picked.id);
+    return state.run.id;
+  };
   const start = async () => {
     if (!ready) return;
     setBusy(true);
     setError(null);
     try {
+      if (pipeline) {
+        const runId = await startRun(pipeline);
+        rememberProject(computer, projectId!);
+        if (runOn) rememberRunOn(computer);
+        clearDraft(DRAFT);
+        onStarted(computer, runId);
+        return;
+      }
       const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
       rememberProject(computer, projectId!);
       if (runOn) rememberRunOn(computer);
       clearDraft(DRAFT);
       onStarted(computer, sessionId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The session didn't start.");
+      setError(e instanceof Error ? e.message : pipeline ? "The pipeline didn't start." : "The session didn't start.");
       setBusy(false);
     }
   };
@@ -356,16 +399,22 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
             {options && picked && !typing && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
+                  {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} />}
                   <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} />
-                  <ModelChip options={options} value={choice.model} offerAuto={autoOn(options)} onPick={(model) => change({ model })} />
+                  <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} />
                   {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
                   <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
-                  <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} />
-                  {!choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} />}
+                  {/* A run makes its own worktree for its steps. */}
+                  {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} />}
+                  {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} />}
                 </div>
-                <p className="text-meta text-faint">
-                  Uses {picked.name}'s defaults. Change them here for this session only.
-                </p>
+                {pipeline ? (
+                  <RunAsSteps pipeline={pipeline} boxModel={choice.model} />
+                ) : (
+                  <p className="text-meta text-faint">
+                    Uses {picked.name}'s defaults. Change them here for this session only.
+                  </p>
+                )}
               </div>
             )}
           </form>
@@ -398,17 +447,67 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               'Pick a project first.'
             ) : null}
           </span>
-          {projectBusy && (
+          {projectBusy && !pipeline && (
             <Button onClick={() => void queue()} onMouseDown={keepFocus} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
               Queue for later
             </Button>
           )}
-          <Button type="submit" form="new-session" variant="primary" onMouseDown={keepFocus} disabled={!ready} data-remote-start className="flex-1 sm:flex-none">
-            Start session
+          <Button type="submit" form="new-session" variant="primary" onMouseDown={keepFocus} disabled={!ready} aria-busy={busy || undefined} data-remote-start={pipeline ? 'pipeline' : 'session'} className="flex-1 sm:flex-none">
+            {pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : 'Start session'}
             <Kbd shortcut="mod+enter" tone="on-accent" />
           </Button>
         </div>
       </footer>
+    </div>
+  );
+}
+
+/** The value for one session in Run as's list. */
+const ONE_SESSION = '';
+
+/**
+ * Run as (#179), as on the computer: one session, or a pipeline with the prompt as its task. The pipeline last run in
+ * this project from this device comes first. Picked, Start becomes Run pipeline and the steps show under the chips.
+ */
+function RunAsChip({ pipelines, value, onPick }: { pipelines: readonly RemotePipeline[]; value: string | null; onPick: (pipelineId: string | null) => void }) {
+  const picked = pipelines.find((p) => p.id === value);
+  return (
+    <ChoiceChip
+      label="Run as"
+      face={picked?.name ?? 'One session'}
+      icon={<ListTree className={`size-3.5 ${picked ? 'text-pipeline' : 'text-muted'}`} aria-hidden />}
+      selected={value ?? ONE_SESSION}
+      hook="run-as"
+      options={[{ value: ONE_SESSION, label: 'One session', description: 'default', separatorAfter: true }, ...pipelines.map((p) => ({ value: p.id, label: p.name, description: pipelineMeta(p) }))]}
+      onPick={(id) => onPick(id === ONE_SESSION ? null : id)}
+    />
+  );
+}
+
+/** What Run pipeline will run: a pill per step with who does it ("Plan Opus → Execute Sonnet → Push you"). */
+function RunAsSteps({ pipeline, boxModel }: { pipeline: RemotePipeline; boxModel: string | null }) {
+  const steps = runAsSteps(pipeline, boxModel);
+  return (
+    <div className="flex min-w-0 items-start gap-2 rounded-lg border border-dashed border-pipeline/35 px-2.5 py-1.5" data-remote-run-as-steps={steps.length}>
+      <span className="flex h-6 shrink-0 items-center gap-1.5 text-meta text-muted">
+        <ListTree className="size-3.5 text-pipeline" aria-hidden />
+        Runs as
+      </span>
+      <ol aria-label={runAsLabel(pipeline.name, steps)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1">
+        {steps.map((step, i) => (
+          <Fragment key={`${i}-${step.name}`}>
+            {i > 0 && (
+              <span aria-hidden className="text-meta text-faint">
+                →
+              </span>
+            )}
+            <li className="inline-flex h-6 items-center gap-1 rounded-full border border-edge bg-card px-2 text-meta whitespace-nowrap">
+              <span className="text-text">{step.name}</span>
+              <span className="text-muted">{step.who}</span>
+            </li>
+          </Fragment>
+        ))}
+      </ol>
     </div>
   );
 }

@@ -2,9 +2,10 @@
 // the prompt a step gets (with `@parent` and `@<step>` as session links), the sidebar's tree and what an editor
 // refuses. Shared: the engine decides, and the UI shows the same words. The stored shapes are in `pipelineSchema.ts`.
 
-import { fencedBlocks, fenceFor } from './contextBlocks.ts';
+import { fencedBlocks, fenceFor, RUN_FENCE } from './contextBlocks.ts';
 import type { Effort, PermissionMode } from './host.ts';
 import type { Pipeline, PipelineClaudeStep, PipelineRun, PipelineRunState, PipelineScope, PipelineStep, StepActionResult, StepVerdict } from './pipelineSchema.ts';
+import type { RunView } from './pipelineView.ts';
 import type { SessionOutcome } from './later.ts';
 import { writeStub } from './sessionLinks.ts';
 
@@ -25,8 +26,8 @@ export const ACTION_TAIL_LINES = 40;
 /** The fence of a project action's result in a step's prompt; its label line says which action. */
 export const ACTION_FENCE = 'switchboard-action';
 const ACTION_LABEL = 'Action: ';
-/** The fence of a run's brief in the parent's messages; its label line names the pipeline. */
-export const RUN_FENCE = 'switchboard-run';
+/** The fence of a run's brief in the parent's messages (`contextBlocks.ts`); its label line names the pipeline. */
+export { RUN_FENCE };
 const RUN_LABEL = 'Pipeline run: ';
 
 /** The word in a step's prompt that links the parent. */
@@ -296,7 +297,7 @@ export function nextStep(run: Pick<PipelineRun, 'step' | 'round' | 'sentBackTo'>
  * The step a run's verdict sends changes to, when the run stopped because that verdict still asked for changes after
  * its rounds: Another round sends them there once more, and a turn you take there starts the next round. Null otherwise.
  */
-export function outOfRounds(state: { run: Pick<PipelineRun, 'status' | 'waitingFor' | 'sentBackTo' | 'step' | 'round' | 'pipeline'>; steps: ReadonlyArray<{ index: number; round: number; verdict: StepVerdict | null }> }): { index: number; name: string } | null {
+export function outOfRounds(state: { run: Pick<PipelineRun, 'status' | 'waitingFor' | 'sentBackTo' | 'step' | 'round'> & { pipeline: Pick<Pipeline, 'steps'> }; steps: ReadonlyArray<{ index: number; round: number; verdict: StepVerdict | null }> }): { index: number; name: string } | null {
   const { run } = state;
   if (run.status !== 'waiting' || run.waitingFor !== 'you' || run.sentBackTo !== null) return null;
   const step = run.pipeline.steps[run.step];
@@ -496,7 +497,7 @@ export function writeRunBrief(state: PipelineRunState, budget = 4_000): string {
 // --- Progress and the sidebar's tree ----------------------------------------------------------------------------------
 
 /** "Validate · 3 of 4": where a run is, for the parent's row. */
-export function runProgress(run: Pick<PipelineRun, 'pipeline' | 'step' | 'round' | 'status'>): string {
+export function runProgress(run: Pick<PipelineRun, 'step' | 'round' | 'status'> & { pipeline: Pick<Pipeline, 'steps'> }): string {
   const steps = run.pipeline.steps;
   if (run.status === 'done') return `Done · ${steps.length} of ${steps.length}`;
   const step = steps[Math.min(run.step, steps.length - 1)];
@@ -536,7 +537,7 @@ export interface SidebarTree<T extends TreeRow> {
  * `runs` order the children and stand in for a run row (a parent that is a run, not a session); `runStatus` is a
  * run's own state (it waits for you at Push with no child waiting).
  */
-export function sidebarTree<T extends TreeRow>(rows: readonly T[], runs: readonly PipelineRunState[] = [], runStatus: (state: PipelineRunState) => TreeStatus | null = () => null): SidebarTree<T> {
+export function sidebarTree<T extends TreeRow, R extends Pick<RunView, 'run' | 'steps'> = PipelineRunState>(rows: readonly T[], runs: readonly R[] = [], runStatus: (state: R) => TreeStatus | null = () => null): SidebarTree<T> {
   const ids = new Set(rows.map((r) => r.id));
   const runIds = new Set(runs.map((r) => r.run.id));
   const order = new Map<string, number>();
@@ -555,7 +556,7 @@ export function sidebarTree<T extends TreeRow>(rows: readonly T[], runs: readonl
   }
   const status = new Map<string, TreeStatus>();
   const own = new Map(rows.map((r) => [r.id, r.status]));
-  const runOf = new Map<string, PipelineRunState>();
+  const runOf = new Map<string, R>();
   for (const state of runs) runOf.set(state.run.parentSessionId ?? state.run.id, state);
   for (const [parent, list] of children) {
     const state = runOf.get(parent);

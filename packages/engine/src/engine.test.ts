@@ -907,6 +907,37 @@ describe('Claude profiles', () => {
     expect(existsSync(join(work, '.claude.json'))).toBe(true);
   }, 30_000);
 
+  it("starts fresh worktrees from a project's own default branch, and compares against it", async () => {
+    const created: Array<{ cwd?: string; worktree?: string | null }> = [];
+    const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-default-branch-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    const run = (...args: string[]) => git(repo, args);
+    await run('init', '-q', '-b', 'main');
+    await run('config', 'user.email', 'test@example.com');
+    await run('config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    await run('add', '.');
+    await run('commit', '-qm', 'initial');
+    await run('switch', '-qc', 'dev');
+    writeFileSync(join(repo, 'a.txt'), 'on dev\n');
+    await run('commit', '-qam', 'dev');
+    await run('switch', '-q', 'main');
+    const dev = (await run('rev-parse', 'dev')).trim();
+
+    await client.call('projects.add', { path: repo });
+    expect((await client.call('worktree.status', { cwd: repo })).baseBranch).toBe('main');
+    await client.call('projects.setDefaults', { root: repo, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: 'dev' } });
+    expect((await client.call('worktree.status', { cwd: repo })).baseBranch).toBe('dev');
+
+    // Switchboard makes the worktree itself, from dev, instead of asking Claude Code for one from origin's HEAD.
+    await client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'from-dev', baseRef: 'fresh' } });
+    await until(async () => created.length === 1);
+    expect(created[0]!.worktree).toBeUndefined();
+    expect(created[0]!.cwd).toBe(join(repo, '.claude', 'worktrees', 'from-dev'));
+    expect((await git(created[0]!.cwd!, ['rev-parse', 'HEAD'])).trim()).toBe(dev);
+  });
+
   it('switches the branch of a checkout, keeps uncommitted work and refuses while Claude works there', async () => {
     const { client, dataDir } = connect();
     const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-switch-')));

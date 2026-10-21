@@ -25,6 +25,7 @@ import {
   REMOTE_FEATURE_COSTS,
   REMOTE_FEATURE_LIMITS,
   REMOTE_FEATURE_MARK_UNREAD,
+  REMOTE_FEATURE_PIPELINES,
   REMOTE_FEATURE_PUSH_KEY,
   REMOTE_FEATURE_USAGE_TOKENS,
 } from '@switchboard/protocol';
@@ -253,7 +254,7 @@ export class RemoteServer {
       transport,
       {
         ...this.options.handlers(known),
-        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() }, features: [REMOTE_FEATURE_ATTACHMENTS, REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PUSH_KEY, REMOTE_FEATURE_CLONE, REMOTE_FEATURE_COSTS, REMOTE_FEATURE_LIMITS], appIcon: this.options.appIcon?.() ?? DEFAULT_APP_ICON }),
+        hello: () => ({ app: { version: this.options.appVersion }, device: { id: known.id, name: known.name }, computer: { name: this.computerName() }, features: [REMOTE_FEATURE_ATTACHMENTS, REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PUSH_KEY, REMOTE_FEATURE_CLONE, REMOTE_FEATURE_COSTS, REMOTE_FEATURE_LIMITS, REMOTE_FEATURE_PIPELINES], appIcon: this.options.appIcon?.() ?? DEFAULT_APP_ICON }),
       },
       { onUnexpectedError: (method, error) => this.options.log('error', `Remote ${method} failed: ${error instanceof Error ? error.message : String(error)}`) },
     );

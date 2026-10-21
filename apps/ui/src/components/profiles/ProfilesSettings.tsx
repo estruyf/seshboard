@@ -99,9 +99,9 @@ function ProfileDefaultsSection({ profile, onError }: { profile: ClaudeProfile; 
   const client = connection.status === 'connected' ? connection.client : null;
   const [open, setOpen] = useState(false);
   // The editor works on a project's shape; a profile has no branch. Kept stable so quick changes build on each other.
-  const defaults = useMemo<ProjectDefaults>(() => ({ ...profile.defaults, branch: null }), [profile.defaults]);
+  const defaults = useMemo<ProjectDefaults>(() => ({ ...profile.defaults, branch: null, defaultBranch: null }), [profile.defaults]);
   // Without a repository the editor offers no branch to start a worktree from.
-  const save = ({ branch: _branch, baseRef, ...next }: ProjectDefaults) =>
+  const save = ({ branch: _branch, defaultBranch: _defaultBranch, baseRef, ...next }: ProjectDefaults) =>
     void client?.call('profiles.setDefaults', { id: profile.id, defaults: { ...next, baseRef: baseRef === 'fresh' || baseRef === 'head' ? baseRef : null } }).catch((e: Error) => onError(e.message));
   return (
     <div className="grid min-w-0 gap-2.5 border-t border-border pt-2" data-profile-defaults={profile.id}>

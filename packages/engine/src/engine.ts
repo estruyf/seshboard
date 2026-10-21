@@ -74,6 +74,7 @@ import {
   writeRunStub,
   PipelineRunState,
   projectPrBase,
+  type PipelineNotice,
 } from '@switchboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -82,7 +83,7 @@ import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
 import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
-import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
+import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
 import { SearchIndex } from './sessions/searchIndex.ts';
@@ -415,6 +416,9 @@ export function createEngine(options: EngineOptions): Engine {
       remote?.catchUpChanged(sessionId, card);
     }
     if (name === 'session.ask') remote?.askEvent(payload as AskEvent);
+    // Pipeline runs are part of a phone's list, and what they say is a push.
+    if (name === 'runs.changed' || name === 'runs.removed') remote?.sessionsChanged();
+    if (name === 'runs.notice') remote?.runNotice((payload as { notice: PipelineNotice }).notice);
     if (name === 'usage.changed') {
       const { profileId, usage } = payload as { profileId: string; usage: UsageSnapshot | null };
       remote?.usageChanged(profileId, usage);
@@ -463,6 +467,10 @@ export function createEngine(options: EngineOptions): Engine {
   /** Where quick questions run: never one of the projects, so it is left out of every project list. */
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
+  /** A project's own default branch, for any folder in it (its worktrees fold into it); null follows the remote's. */
+  const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
+  // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
+  setProjectDefaultBranch(projectDefaultBranch);
   // --- Clone from GitHub: Settings › Projects ----------------------------------------------------------------------
   /** Clones started from a phone or another computer, by job id: their progress goes back to that connection too. */
   const cloneListeners = new Map<string, (progress: CloneProgress) => void>();
@@ -1590,6 +1598,21 @@ export function createEngine(options: EngineOptions): Engine {
     notify: (notice) => broadcast('runs.notice', { notice }),
     log,
   });
+  /** You wrote in a run row (here or from a phone): it gets a session of its own, in the run's folder. */
+  const writeInRun = async (runId: string, text: string): Promise<{ sessionId: string }> => {
+    const state = runner!.state(runId);
+    if (!state) throw new RpcError('NOT_FOUND', 'That run is gone');
+    if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
+    const { run } = state;
+    // The brief of the run first, so Claude knows what the steps did.
+    const prompt = `${text.trim()}\n\n${writeRunStub(run.pipeline.name, run.id)}`;
+    const profileId = requireProfile(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
+    const sessionId = await hosts.create({ cwd: run.cwd, prompt, attachments: [], model: null, effort: null, permissionMode: 'default', worktree: null, profileId });
+    runner!.adopt(runId, sessionId);
+    pendingTitles.set(sessionId, run.title);
+    applyTitles([sessionId]);
+    return { sessionId };
+  };
   /** Turns a run's stub in a message to its parent into the run's brief, right before Claude reads it. */
   const expandRunBriefs = (text: string) => {
     const { runs } = parseRunBriefs(text);
@@ -1940,6 +1963,19 @@ export function createEngine(options: EngineOptions): Engine {
         if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
         throw error;
       }
+    } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
+      // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
+      const branch = projectDefaultBranch(params.cwd)!;
+      const root = resolver.resolve(params.cwd).root;
+      const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+      try {
+        const made = await makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env: (await shell.ready).env });
+        cwd = made.path;
+        setupBranch = made.branch;
+      } catch (error) {
+        if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
+        throw error;
+      }
     } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
     const setup = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
     const sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
@@ -2101,6 +2137,17 @@ export function createEngine(options: EngineOptions): Engine {
         }
       },
       cancelClone: (jobId) => clones.cancel(jobId),
+      pipelines: {
+        runs: () => runner?.list() ?? [],
+        list: (root) => pipelineStore.forProject(root),
+        run: (input) => runAction(() => runner!.start({ ...input, projectRoot: input.projectRoot ? (resolver.resolve(input.projectRoot).root ?? input.projectRoot) : undefined })),
+        act: (action, runId, message) => runAction(() => (action === 'continue' ? runner!.continue(runId, message ?? undefined) : runner![action](runId))),
+        archive: async (runId, archived) => {
+          await runAction(async () => runner!.archive(runId, archived));
+        },
+        pushPreview: (runId, fresh) => runAction(() => runner!.pushPreview(runId, fresh)),
+        write: writeInRun,
+      },
       onStatus: (status) => broadcast('remote.changed', status),
       onFromDevice: (event) => broadcast('remote.fromDevice', event),
       log,
@@ -2938,20 +2985,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'runs.pushPreview': async ({ runId, fresh }) => ({ preview: await runAction(() => runner!.pushPreview(runId, fresh)) }),
-    'runs.write': async ({ runId, text }) => {
-      const state = runner!.state(runId);
-      if (!state) throw new RpcError('NOT_FOUND', 'That run is gone');
-      if (state.run.parentSessionId) throw new RpcError('INVALID', 'This run has a session already');
-      const { run } = state;
-      // The brief of the run first, so Claude knows what the steps did.
-      const prompt = `${text.trim()}\n\n${writeRunStub(run.pipeline.name, run.id)}`;
-      const profileId = requireProfile(run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd));
-      const sessionId = await hosts.create({ cwd: run.cwd, prompt, attachments: [], model: null, effort: null, permissionMode: 'default', worktree: null, profileId });
-      runner!.adopt(runId, sessionId);
-      pendingTitles.set(sessionId, run.title);
-      applyTitles([sessionId]);
-      return { sessionId };
-    },
+    'runs.write': ({ runId, text }) => writeInRun(runId, text),
     'search.query': async ({ query, limit, scope, only, memoryTypes, memoryScope }) => {
       if (only !== 'conversations') syncMemorySearch(1_000);
       return {

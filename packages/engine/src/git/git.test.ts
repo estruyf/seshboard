@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { baseBranch, commitAll, countNewLines, fileDiff, git, insideRepo, listBranches, listChanges, removeWorktree, revert, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './gitChanges.ts';
+import { baseBranch, commitAll, countNewLines, fileDiff, git, insideRepo, listBranches, listChanges, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, updateCheckout, worktreeStatus } from './gitChanges.ts';
 
 let repo: string;
 const write = (path: string, text: string) => writeFileSync(join(repo, path), text);
@@ -59,6 +59,18 @@ describe('listChanges', () => {
       ['a.txt', 'modified', 1, 0],
       ['b.txt', 'modified', 1, 1],
     ]);
+  });
+});
+
+describe('baseBranch', () => {
+  afterEach(() => setProjectDefaultBranch(() => null));
+
+  it("prefers the project's own default branch while it exists, else the usual one", async () => {
+    await run('branch', 'dev');
+    setProjectDefaultBranch((cwd) => (cwd === repo ? 'dev' : null));
+    expect(await baseBranch(repo)).toBe('dev');
+    setProjectDefaultBranch(() => 'gone');
+    expect(await baseBranch(repo)).toBe('main');
   });
 });
 

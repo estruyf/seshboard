@@ -3,7 +3,7 @@ import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
 import { globalPatch, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
 
-const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
 describe('new session choices', () => {
   it('start from the project defaults and fall back to the global ones', () => {
@@ -67,8 +67,10 @@ describe('new session choices', () => {
 
   it('save as project defaults, dropping the branch for worktrees', () => {
     const choices = { ...INITIAL_CHOICES, model: '', effort: 'high' as const, branch: 'develop' };
-    expect(toProjectDefaults(choices)).toEqual({ model: null, effort: 'high', permissionMode: 'default', workspace: 'current', baseRef: 'fresh', branch: 'develop' });
+    expect(toProjectDefaults(choices)).toEqual({ model: null, effort: 'high', permissionMode: 'default', workspace: 'current', baseRef: 'fresh', branch: 'develop', defaultBranch: null });
     expect(toProjectDefaults({ ...choices, workspace: 'worktree' }).branch).toBeNull();
+    // The project's default branch isn't a New session choice: saving keeps it.
+    expect(toProjectDefaults(choices, 'dev').defaultBranch).toBe('dev');
     expect(sameDefaults(toProjectDefaults(choices), toProjectDefaults(choices))).toBe(true);
     expect(sameDefaults(unset, toProjectDefaults(choices))).toBe(false);
   });
@@ -98,7 +100,7 @@ const project = (root: string, extra: Partial<ProjectInfo>): ProjectInfo => ({
 
 describe('the permission mode for new sessions', () => {
   const globals = { ...INITIAL_CHOICES, permissionMode: 'plan' as const };
-  const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null });
+  const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null, defaultBranch: null });
 
   it('starts in the mode picked last, unless Settings sets one', () => {
     expect(startingChoices(withNewSessionMode(globals, 'last'), null).permissionMode).toBe('plan');

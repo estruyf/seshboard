@@ -21,6 +21,7 @@ describe('worktree bases', () => {
   });
 
   it('sends a project\'s pull requests to its checked out branch, else the branch its worktrees start from', () => {
+    expect(projectPrBase({ defaultBranch: 'develop', branch: 'dev', baseRef: 'refs/heads/next' })).toBe('develop');
     expect(projectPrBase({ branch: 'dev', baseRef: 'refs/heads/next' })).toBe('dev');
     expect(projectPrBase({ baseRef: 'refs/heads/dev' })).toBe('dev');
     expect(projectPrBase({ baseRef: 'refs/remotes/origin/release/2' })).toBe('release/2');

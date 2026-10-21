@@ -21,3 +21,6 @@ export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';
 export { parseBriefs, withoutBriefs, type Brief } from './sessionLinks.ts';
 export { parseGithubBlocks, withoutContext, type GithubBlock } from './githubContext.ts';
+export type { Pipeline, PipelineClaudeStep, PipelinePushStep, PipelineRunStatus, PipelineStep, PipelineStepStatus, PipelineWait, PushPreview, StepVerdict } from './pipelineSchema.ts';
+export { mostUrgent, outOfRounds, roundOf, runProgress, sidebarTree, stepStateWord, stepTitle, type SidebarTree, type TreeRow, type TreeStatus } from './pipelines.ts';
+export * from './pipelineView.ts';
