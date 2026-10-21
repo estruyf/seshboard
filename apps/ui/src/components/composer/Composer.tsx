@@ -1,5 +1,5 @@
 import { ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -9,6 +9,7 @@ import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContex
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
+import { besideChipRow } from './footerMeasure.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -536,6 +537,32 @@ export function Composer(props: ComposerProps) {
     useComposerTargets.getState().register({ key: draftKey, cwd });
     return () => useComposerTargets.getState().unregister(draftKey);
   }, [draftKey, cwd]);
+  // The footer's left side never gets less than the attach buttons and the chip row at its smallest level, so when the
+  // right side (mods' chips, Ask, Stop, Send) leaves less than that, the right side wraps to its own line and nothing
+  // overlaps. It doesn't depend on the level the row shows now, so the footer can't flip between one line and two.
+  const footerStartRef = useRef<HTMLDivElement>(null);
+  const hasControls = Boolean(props.controls);
+  useLayoutEffect(() => {
+    const start = footerStartRef.current;
+    if (!start) return;
+    const measure = () => {
+      const smallest = start.querySelector<HTMLElement>('[data-composer-chips] > [aria-hidden] > div:last-child');
+      if (!smallest) return;
+      start.style.minWidth = `${Math.ceil(besideChipRow(start) + smallest.getBoundingClientRect().width)}px`;
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(start);
+    const smallest = start.querySelector('[data-composer-chips] > [aria-hidden] > div:last-child');
+    if (smallest) resize.observe(smallest);
+    // A chip row that mounts or changes after this runs.
+    const mutation = new MutationObserver(measure);
+    mutation.observe(start, { childList: true, subtree: true });
+    return () => {
+      resize.disconnect();
+      mutation.disconnect();
+    };
+  }, [hasControls]);
   // Claude Code may read this box, fill it or show a suggestion in it, for a mod. Never sends.
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const textNow = useRef(text);
@@ -1201,12 +1228,12 @@ export function Composer(props: ComposerProps) {
             {notice}
           </p>
         )}
-        <div className="mt-1.5 flex items-center justify-between gap-2" data-composer-footer>
+        <div className={`mt-1.5 flex items-center justify-between gap-x-2 ${props.controls ? 'flex-wrap gap-y-1.5' : ''}`} data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}
           </span>
           {props.controls ? (
-            <div className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
+            <div ref={footerStartRef} className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
               {/* What goes into the message comes first; a thin line, then the chips that set how it runs. */}
               <div className="flex shrink-0 items-center gap-0.5">{attach}</div>
               <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
@@ -1229,7 +1256,7 @@ export function Composer(props: ComposerProps) {
               )}
             </span>
           )}
-          <div className="flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {/* Said when it changes; empty (but there) once every required blank is filled. */}
             <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
               {left.length ? blanksLeftText(left.length) : ''}

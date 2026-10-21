@@ -33,6 +33,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Mod chips no longer cover the message box chips.** In a narrow message box, the prompt shield and a mod's statuses used to run over the model and mode chips. They now give way first (the shield keeps only its icon), then the chips shrink, and the footer wraps as a last resort.
 - **Pull requests always push the branch first.** Create pull request pushes the branch before it creates the pull request, so one whose remote copy was deleted (after an earlier pull request was merged) no longer stops with "you must first push the current branch".
 - **Copy error messages.** The text of a notice, such as a failed pull request, and its output can be selected and copied.
 - **No more 0 on the side panel's tabs.** With two or more panels open on the right, a tab shows a count only when there is something to count: Preview no longer reads 0, and Terminal, Agents and Commands show no number while nothing is running.

@@ -4,7 +4,7 @@ import { bumpVersions, drawsOf, instanceKey, type SessionMods } from '../../stat
 import { modPaneTab, paneOfTab, readTab, rightPanel } from '../ask/askWidth.ts';
 import type { RenderItem } from '../transcript/displayItems.ts';
 import { filled } from './modComposer.ts';
-import { fitStatuses, screenedBy } from './modFooter.ts';
+import { fitModChips, fitStatuses, screenedBy } from './modFooter.ts';
 import { drawnByLine, replaceableOf } from './modReplace.ts';
 import { promptStack } from './modStack.ts';
 import { modShown, shownMods, withModShown } from './modVisibility.ts';
@@ -27,6 +27,32 @@ describe('status chips in the footer', () => {
     expect(fitStatuses([80, 60, 70], 107, plus)).toBe(0);
     // Two chips without a +N need no room for it.
     expect(fitStatuses([80, 60], 144, plus)).toBe(2);
+  });
+
+  it('counts the shield: the statuses fold first, then the shield keeps only its icon', () => {
+    const shield = { full: 70, icon: 24 };
+    // Shield + two chips + "+1": 70 + 4 + 80 + 4 + 60 + 4 + 24.
+    expect(fitModChips(shield, [80, 60, 70], 246, plus)).toEqual({ shown: 2, shieldIconOnly: false });
+    expect(fitModChips(shield, [80, 60, 70], 245, plus)).toEqual({ shown: 1, shieldIconOnly: false });
+    // The shield and "+3" alone: 70 + 4 + 24.
+    expect(fitModChips(shield, [80, 60, 70], 98, plus)).toEqual({ shown: 0, shieldIconOnly: false });
+    // Less than that: the word goes, the "+3" stays.
+    expect(fitModChips(shield, [80, 60, 70], 52, plus)).toEqual({ shown: 0, shieldIconOnly: true });
+    // One status that doesn't fit folds into "+1" before the shield loses its word.
+    expect(fitModChips(shield, [80], 110, plus)).toEqual({ shown: 0, shieldIconOnly: false });
+  });
+
+  it('shows the shield alone when there are no statuses, and gives up its word when even that does not fit', () => {
+    const shield = { full: 70, icon: 24 };
+    expect(fitModChips(shield, [], 70, plus)).toEqual({ shown: 0, shieldIconOnly: false });
+    expect(fitModChips(shield, [], 69, plus)).toEqual({ shown: 0, shieldIconOnly: true });
+    expect(fitModChips(shield, [], 0, plus)).toEqual({ shown: 0, shieldIconOnly: true });
+  });
+
+  it('without a shield it fits the statuses as before', () => {
+    expect(fitModChips(null, [80, 60, 70], 172, plus)).toEqual({ shown: 2, shieldIconOnly: false });
+    expect(fitModChips(null, [80, 60, 70], 171, plus)).toEqual({ shown: 1, shieldIconOnly: false });
+    expect(fitModChips(null, [], 0, plus)).toEqual({ shown: 0, shieldIconOnly: false });
   });
 
   it('names who checks prompts when only one mod could', () => {

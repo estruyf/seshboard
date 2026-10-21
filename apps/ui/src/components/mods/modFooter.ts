@@ -22,6 +22,25 @@ export function fitStatuses(widths: readonly number[], available: number, plusWi
   return 0;
 }
 
+/**
+ * What fits of the mods' chips in `available` pixels, the shield (when a mod checks prompts) counted with the
+ * statuses. They give way in order: the statuses fold into "+N" one by one (down to "+N" alone), then the shield drops
+ * its word and keeps its icon. Zero shown with the icon-only shield is the last step: the footer wraps after that.
+ */
+export function fitModChips(shield: { full: number; icon: number } | null, widths: readonly number[], available: number, plusWidth: (hidden: number) => number, gap = 4): { shown: number; shieldIconOnly: boolean } {
+  const n = widths.length;
+  for (const shieldIconOnly of shield ? [false, true] : [false]) {
+    const front = shield ? (shieldIconOnly ? shield.icon : shield.full) + (n > 0 ? gap : 0) : 0;
+    for (let shown = Math.min(MAX_STATUS_CHIPS, n); shown >= 0; shown--) {
+      const hidden = n - shown;
+      const parts = [...widths.slice(0, shown), ...(hidden > 0 ? [plusWidth(hidden)] : [])];
+      const need = front + parts.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, parts.length - 1);
+      if (need <= available + 0.5) return { shown, shieldIconOnly };
+    }
+  }
+  return { shown: 0, shieldIconOnly: shield !== null };
+}
+
 /** The label of the chip that holds the rest. */
 export const plusLabel = (hidden: number) => `+${hidden}`;
 

@@ -9001,6 +9001,23 @@ async function runModsStep(win: BrowserWindow): Promise<string> {
       10_000,
     );
   if (!(await status('ready'))) return 'failed: the status chip did not show';
+  // A narrow message box: the chips under it must not run under anything on the right of the footer (the mods' chips,
+  // Ask, Stop, Send), side by side or on a line of their own. Measured once the footer has settled at that width.
+  const squeeze = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = '380px'; return !!f; })()";
+  const release = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = ''; })()";
+  const clear = `(() => {
+    const f = document.querySelector('[data-composer-footer]');
+    const chips = [...document.querySelectorAll('[data-composer-chips] [data-chip]')].map((c) => c.getBoundingClientRect());
+    const right = [...(document.querySelector('[data-composer-footer-end]')?.children ?? [])].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1);
+    if (!f || f.getBoundingClientRect().width > 381 || chips.length === 0 || right.length === 0) return false;
+    return !chips.some((c) => right.some((r) => c.right > r.left + 0.5 && c.left < r.right - 0.5 && c.bottom > r.top + 0.5 && c.top < r.bottom - 0.5));
+  })()`;
+  if (!(await js(squeeze))) return 'failed: no message box footer to narrow';
+  try {
+    if (!(await waitInPage(win, clear, 5_000))) return "failed: at a narrow width the chips under the message box run under the mods' chips or the buttons on the right";
+  } finally {
+    await js(release);
+  }
   await js("document.querySelector('[data-mod-status-list]') && document.querySelector('[data-mod-status-more]').click()");
   if (!(await js("!!document.querySelector('[data-mods-chip]')"))) return 'failed: no mods chip in the header';
   await js(`document.querySelector('${band} [data-mod-button="press"]').click()`);
