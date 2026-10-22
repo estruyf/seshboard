@@ -58,7 +58,6 @@ import { waitForEntries } from '../queue/queueMenu.tsx';
 import { Menu, useMenu } from '../Menu.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
-import { projectHistory } from '../composer/promptHistory.ts';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
@@ -819,8 +818,6 @@ function LocalNewSession() {
   }, [paletteRequest]);
 
   const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
-  /** The first prompts of your sessions in this project, for ↑ in the message box. */
-  const promptHistory = useMemo(() => (cwd ? projectHistory(sessions.values(), cwd) : []), [sessions, cwd]);
 
   /** The prompt and its images with this folder and these choices, for the queue. */
   const laterDraft = (text: string, attachments: ImageAttachment[], parts?: SentParts): LaterDraft | null =>
@@ -1523,7 +1520,6 @@ function LocalNewSession() {
               github={{ root: cwd && !question ? cwd : null }}
               onDraftLoaded={onDraftLoaded}
               restored={restored !== null}
-              history={promptHistory}
               onTextChange={onPromptChange}
               onAttachmentsChange={setDraftAttachments}
               cwd={cwd}
