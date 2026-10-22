@@ -1,12 +1,12 @@
 ---
 title: Switchboard
-description: A fast app for macOS and Windows that runs and keeps track of your Claude Code sessions, across all your Claude accounts.
+description: A fast app for macOS, Windows and Linux that runs and keeps track of your Claude Code sessions, across all your Claude accounts.
 template: splash
 tableOfContents: false
 editUrl: false
 hero:
   title: All your Claude Code sessions, in one window.
-  tagline: Run several sessions at once and always know which one needs you, which one is working and what each one did. With the Claude Code you already have, on Mac and Windows.
+  tagline: Run several sessions at once and always know which one needs you, which one is working and what each one did. With the Claude Code you already have, on Mac, Windows and Linux.
 ---
 
 import CopyCommand from '../../components/CopyCommand.astro';
@@ -27,7 +27,7 @@ import Related from '../../components/Related.astro';
   </div>
   <div>
     <h2>Free and open source</h2>
-    <p>MIT licensed and built in the open on GitHub. Signed builds for Mac and Windows that update themselves.</p>
+    <p>MIT licensed and built in the open on GitHub. Signed builds for Mac and Windows, and packages for Linux, that update themselves.</p>
   </div>
 </section>
 
@@ -59,6 +59,25 @@ import Related from '../../components/Related.astro';
   - [Queue](/new-session/queue/)
   - [Split view](/sessions/split-view/)
   - [Sessions in their own window](/sessions/own-window/)
+</Feature>
+
+<Feature eyebrow="Pipelines" title="Plan, build, check and push in one run" shot="pipeline-parent" focus="62% 20%" alt="A pipeline run under its session: Plan approved on Opus, Execute on Sonnet, Validate checking a second round, and Push waiting for you, each step a sub-session in the sidebar" href="/sessions/pipelines/" linkText="How pipelines work" flip>
+  <p>Give one task to a pipeline and each step runs in its own sub-session under it: plan with one model, build with another, have a fresh session check the work, then push. Each step gets what the one before it did.</p>
+  <p>When the check still asks for changes, **Another round** sends them back to the build step. Start a run from New session's **Run as**, from a session's menu, or from your phone.</p>
+
+  - [Set up a pipeline](/sessions/pipelines/)
+  - [New session](/new-session/form/)
+  - [Remote access](/remote-access/)
+</Feature>
+
+<Feature eyebrow="On its own" title="Work that starts by itself" shot="upcoming" focus="45% 30%" alt="Upcoming: the queue with one prompt ready to start, the scheduled runs of the next 7 days, the schedules with their switches, and the history of the last runs" href="/sessions/upcoming/" linkText="See Upcoming">
+  <p>Schedule a prompt for once, every weekday or every month. Let a trigger start a session, or a whole pipeline, when CI fails on a branch or an issue is assigned to you. A queued prompt starts by itself when the session it waits for is done.</p>
+  <p>**Upcoming** shows all of it in one place, across your projects: what is queued, the runs of the next 7 days, and how the last ones went.</p>
+
+  - [Schedules](/new-session/schedules/)
+  - [Triggers](/projects/triggers/)
+  - [Queue](/new-session/queue/)
+  - [Start from a GitHub issue](/sessions/github-issues/)
 </Feature>
 
 <Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Switchboard" flip>
@@ -124,7 +143,7 @@ import Related from '../../components/Related.astro';
 <section class="sb-more not-content">
   <h2>And a lot more</h2>
   <p>Small things that save you time every day. Each card opens its page.</p>
-  <Related pages={['sessions/saved-prompts', 'new-session/quick-questions', 'sessions/unsent-drafts', 'links', 'projects/clone-from-github', 'sessions/commands', 'sessions/mods', 'sessions/search', 'themes/built-in', 'settings/backup', 'permissions', 'new-session/auto-model']} />
+  <Related pages={['sessions/github-issues', 'sessions/file-preview', 'sessions/saved-prompts', 'new-session/quick-questions', 'sessions/unsent-drafts', 'links', 'projects/clone-from-github', 'sessions/commands', 'sessions/mods', 'sessions/search', 'themes/built-in', 'settings/backup', 'permissions', 'new-session/auto-model']} />
   <div class="sb-more-links">
     <a class="sb-button secondary" href="/features/">See all features</a>
   </div>
@@ -150,6 +169,7 @@ import Related from '../../components/Related.astro';
     <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/switchboard/releases/latest">Download for Windows</a>
     <a class="sb-button secondary large" href="/getting-started/install/">Install guide</a>
   </div>
+  <p class="sb-cta-linux">On Linux? Get the AppImage, <code>.deb</code> or <code>.rpm</code>: <a href="/getting-started/install/#install-on-linux">install on Linux</a>.</p>
   <div class="sb-os-mac sb-cta-brew"><CopyCommand command="brew install --cask estruyf/tap/switchboard" /></div>
 </section>
 
@@ -173,6 +193,7 @@ import Related from '../../components/Related.astro';
   .sb-companion-id { font-size: var(--sb-text-meta); }
   .sb-cta { padding-bottom: 2rem; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--sb-accent) 10%, transparent), transparent 60%); }
   .sb-cta-brew { margin-top: 1rem; max-width: 100%; }
+  .sb-cta .sb-cta-linux { margin-top: 1rem; font-size: var(--sb-text-ui); }
   @media (max-width: 40rem) {
     .sb-proof { margin-top: 2.5rem; gap: 0.75rem; }
     .sb-proof > div { padding: 0.9rem 1rem; }

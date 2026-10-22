@@ -34,7 +34,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Switchboard',
-      description: 'A fast app for Mac and Windows for running and keeping track of your Claude Code sessions.',
+      description: 'A fast app for Mac, Windows and Linux for running and keeping track of your Claude Code sessions.',
       logo: { src: './src/assets/logo.svg', alt: 'Switchboard' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/switchboard' }],
