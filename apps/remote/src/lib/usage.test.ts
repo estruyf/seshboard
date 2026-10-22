@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
-import { countdown, levelOf, limitName, spokenLimit, usageMessage, visibleLimits, withUsage } from './usage.ts';
+import { countdown, levelOf, limitName, onComputers, spokenLimit, usageMessage, visibleLimits, withUsage } from './usage.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();
 const MINUTE = 60_000;
@@ -44,5 +44,10 @@ describe('plan usage on Home', () => {
     expect(withUsage(list, 'b', next)[1]).toEqual({ ...list[1], usage: next, error: null });
     expect(withUsage(list, 'a', null)).toEqual(list);
     expect(withUsage(list, 'c', next)).toEqual(list);
+  });
+
+  it('says which computers a profile is on', () => {
+    expect(onComputers(['mystic', 'studio'])).toBe('On mystic and studio');
+    expect(onComputers(['mystic', 'studio', 'laptop'])).toBe('On mystic, studio and laptop');
   });
 });

@@ -12,6 +12,7 @@ import remoteSettings from '../remote/RemoteSettings.tsx?raw';
 import modsSettings from '../mods/ModsSettings.tsx?raw';
 import usageSettings from '../usage/UsageSettings.tsx?raw';
 import cloneSettings from '../clone/CloneSettings.tsx?raw';
+import appIconSettings from '../theme/AppIconSettings.tsx?raw';
 import { settingsIndex } from './settingsIndex.ts';
 import { searchSettings } from './searchSettings.ts';
 
@@ -54,6 +55,7 @@ describe('the settings index', () => {
       ...rowLabels(modsSettings, ['Toggle']),
       ...rowLabels(usageSettings, ['Toggle']),
       ...rowLabels(cloneSettings, ['Toggle']),
+      ...rowLabels(appIconSettings, ['Toggle']),
     ];
     expect(rows.length).toBeGreaterThan(10);
     expect(rows.filter((label) => !labels.has(label))).toEqual([]);
@@ -68,6 +70,14 @@ describe('the settings index', () => {
   it('finds the prompt outline by the words people use for it', () => {
     for (const query of ['outline', 'prompts', 'rail']) {
       expect(searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.id)).toContain('prompt-outline');
+    }
+  });
+
+  it('finds the app icon by the words people use for it', () => {
+    for (const platform of ['darwin', 'win32']) {
+      for (const query of ['icon', 'app icon', 'dock', 'taskbar', 'logo']) {
+        expect(searchSettings(query, entries, (page) => page, platform).map((match) => match.entry.id)).toContain('app-icon');
+      }
     }
   });
 

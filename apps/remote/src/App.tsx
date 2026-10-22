@@ -7,8 +7,11 @@ import { PairScreen } from './components/PairScreen.tsx';
 import { Computers, keepDisconnected, pushComputers, pushTarget } from './lib/computers.ts';
 import { computerId, currentComputer, startFrom, type Paired } from './lib/link.ts';
 import { STANDALONE } from './lib/platform.ts';
+import { showAppIcon } from './lib/favicon.ts';
 import { forgetPush, resync } from './lib/push.ts';
 import { forgetComputer, lastComputer, loadComputers, rememberComputer, saveComputer } from './lib/storage.ts';
+import { themeComputer } from './lib/theme.ts';
+import { cacheTheme, showTheme, subscribeThemeChoice, themeChoice } from './lib/themeApply.ts';
 
 type Screen =
   | { kind: 'loading' }
@@ -57,6 +60,21 @@ export function App() {
       }),
   );
   const list = useSyncExternalStore(computers.subscribe, computers.list);
+  // The icons follow the computer on screen (its Settings › Theme › App icon); offline, the last one stays.
+  const onScreen = list.find((computer) => computer.id === currentId);
+  const appIcon = onScreen?.state.kind === 'connected' ? onScreen.state.appIcon : null;
+  useEffect(() => {
+    if (appIcon) showAppIcon(appIcon);
+  }, [appIcon]);
+
+  // The theme of the computer picked in Theme (the first one paired, by default). While the pairings are still read,
+  // the one from last time stays.
+  const themeFrom = themeComputer(useSyncExternalStore(subscribeThemeChoice, themeChoice), list.map((c) => c.id));
+  const theme = list.find((c) => c.id === themeFrom)?.theme ?? null;
+  const reading = screen.kind === 'loading' || (screen.kind === 'connected' && list.length === 0);
+  useEffect(() => {
+    if (!reading) showTheme(theme);
+  }, [reading, theme]);
 
   const choose = useCallback((id: string) => {
     rememberComputer(id);
@@ -135,6 +153,7 @@ export function App() {
     const rest = list.filter((c) => c.id !== computer.id);
     await forgetPush(pushTarget(computer), pushComputers(rest)).catch(() => {});
     keepDisconnected(computer.id, false);
+    cacheTheme(computer.id, null);
     await forgetComputer(computer.paired).catch(() => {});
     const remaining = pairings.filter((p) => !same(p, computer.paired));
     setPairings(remaining);

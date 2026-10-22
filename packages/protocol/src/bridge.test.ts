@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
+import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, FILE_LINK_CLICK_REVISION, mergePreferences, resolveSound, sanitizePreferences, type SoundList, type SoundPrefs } from './bridge.ts';
 
 describe('contextWarning preference', () => {
   it('warns about a large context from 60%, and asks on quitting only once until turned on', () => {
@@ -42,20 +42,39 @@ describe('sidebarCollapsed preference', () => {
 });
 
 describe('fileLinkClick preference', () => {
-  it('shows the file in the file manager by default', () => {
-    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('file-manager');
+  const REV = FILE_LINK_CLICK_REVISION;
+
+  it('opens files in Switchboard by default, on the current revision', () => {
+    expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('switchboard');
+    expect(DEFAULT_PREFERENCES.fileLinkClickRevision).toBe(REV);
   });
 
-  it('keeps the two choices, and drops anything else', () => {
+  it('keeps the editor and Switchboard, whatever the revision, and drops anything else', () => {
     expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
-    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({ fileLinkClick: 'file-manager' });
-    expect(sanitizePreferences({ fileLinkClick: 'finder' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: 'editor', fileLinkClickRevision: 1 })).toEqual({ fileLinkClick: 'editor' });
+    expect(sanitizePreferences({ fileLinkClick: 'switchboard' })).toEqual({ fileLinkClick: 'switchboard' });
+    expect(sanitizePreferences({ fileLinkClick: 'finder', fileLinkClickRevision: REV })).toEqual({});
     expect(sanitizePreferences({ fileLinkClick: true })).toEqual({});
     expect(sanitizePreferences({ fileLinkClick: null })).toEqual({});
   });
 
+  it('reads a saved "file-manager" without the revision as the old default, not a choice', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager' })).toEqual({});
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager', fileLinkClickRevision: 1 })).toEqual({});
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'file-manager' }) }.fileLinkClick).toBe('switchboard');
+  });
+
+  it('keeps "file-manager" once it was picked on the current revision', () => {
+    expect(sanitizePreferences({ fileLinkClick: 'file-manager', fileLinkClickRevision: REV })).toEqual({ fileLinkClick: 'file-manager' });
+  });
+
+  it('keeps a pick from Settings: the change merges onto the current revision', () => {
+    const merged = sanitizePreferences(mergePreferences(DEFAULT_PREFERENCES, { fileLinkClick: 'file-manager' }));
+    expect(merged.fileLinkClick).toBe('file-manager');
+  });
+
   it('falls back to the default for an unknown saved value, and to the last good one for an unknown change', () => {
-    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('file-manager');
+    expect({ ...DEFAULT_PREFERENCES, ...sanitizePreferences({ fileLinkClick: 'reveal' }) }.fileLinkClick).toBe('switchboard');
     const editor = { ...DEFAULT_PREFERENCES, fileLinkClick: 'editor' as const };
     expect({ ...editor, ...sanitizePreferences(mergePreferences(editor, { fileLinkClick: 'reveal' })) }.fileLinkClick).toBe('editor');
   });
@@ -74,16 +93,33 @@ describe('fadeInactivePanes preference', () => {
   });
 });
 
+describe('keepAwake preference', () => {
+  it('lets the computer sleep by default', () => {
+    expect(DEFAULT_PREFERENCES.keepAwake).toBe(false);
+  });
+
+  it('keeps on and off, and drops anything else', () => {
+    expect(sanitizePreferences({ keepAwake: true })).toEqual({ keepAwake: true });
+    expect(sanitizePreferences({ keepAwake: false })).toEqual({ keepAwake: false });
+    expect(sanitizePreferences({ keepAwake: 'yes' })).toEqual({});
+    expect(sanitizePreferences({ keepAwake: 1 })).toEqual({});
+  });
+});
+
 describe('newSessionMode preference', () => {
-  it('starts new sessions in the mode picked last by default', () => {
-    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');
+  it("starts new sessions in the project's default by default", () => {
+    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('project');
   });
 
   it('keeps the offered modes, and drops bypass and anything else', () => {
-    for (const mode of ['last', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
+    for (const mode of ['project', 'remember', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
     expect(sanitizePreferences({ newSessionMode: 'bypassPermissions' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: 'dontAsk' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: null })).toEqual({});
+  });
+
+  it("drops the old 'last', so it becomes the project's default", () => {
+    expect(sanitizePreferences({ newSessionMode: 'last' })).toEqual({});
   });
 });
 

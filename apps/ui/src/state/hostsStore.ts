@@ -1,9 +1,8 @@
 import { create } from 'zustand';
+import { HOST_TO_LIVE } from '@switchboard/protocol/client';
 import type {
   EditorInfo,
-  HostState,
   LiveSession,
-  LiveStatus,
   ModelOption,
   PermissionRequest,
   SessionHostInfo,
@@ -102,8 +101,8 @@ export const useHosts = create<HostsState>()((set) => ({
   bumpCommands: () => set((state) => ({ commandsVersion: state.commandsVersion + 1 })),
 }));
 
-/** How a host's state reads as a status dot (closed and failed hosts have none). */
-export const HOST_TO_LIVE: Partial<Record<HostState, LiveStatus>> = { running: 'running', starting: 'running', 'needs-you': 'needs-you', idle: 'idle' };
+// How a host's state reads as a status dot, and whether it is still going: shared with the engine's focus count.
+export { HOST_TO_LIVE, isActiveHost } from '@switchboard/protocol/client';
 
 /** Shapes a running host like a registry entry, so the sidebar and dots treat both the same. */
 export function hostAsLive(host: SessionHostInfo): LiveSession | null {
@@ -126,6 +125,3 @@ export function hostAsLive(host: SessionHostInfo): LiveSession | null {
     background: host.backgroundTasks.map((t) => t.description),
   };
 }
-
-export const isActiveHost = (host: SessionHostInfo | undefined): host is SessionHostInfo =>
-  !!host && host.state !== 'closed' && host.state !== 'error';

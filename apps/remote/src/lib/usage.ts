@@ -47,6 +47,11 @@ export function levelOf(percent: number): Level {
 export const LEVEL_FILL: Record<Level, string> = { ok: 'bg-ok', caution: 'bg-caution', high: 'bg-error' };
 export const LEVEL_TEXT: Record<Level, string> = { ok: '', caution: 'text-caution', high: 'text-error' };
 
+/** "On mystic and studio", "On mystic, studio and laptop": the computers a profile's account is on. */
+export function onComputers(names: readonly string[]): string {
+  return names.length < 2 ? `On ${names[0] ?? ''}` : `On ${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
 /** What a card says while it has no bars to show. */
 export function usageMessage(entry: Pick<RemoteProfileUsage, 'usage' | 'error'>): string {
   if (entry.error && !entry.usage) return 'Usage unavailable';

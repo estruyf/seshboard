@@ -1,5 +1,8 @@
 import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
+import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
+import { openAtLoginDetail } from '../general/openAtLogin.ts';
+import { appIconDetail } from '../theme/appIconCopy.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -13,13 +16,15 @@ export function settingsIndex(): SettingEntry[] {
   const trash = trashName();
   return [
     // General
+    { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
+    { id: 'keep-awake', page: 'general', label: keepAwakeLabel(), detail: keepAwakeDetail(), keywords: 'caffeinate sleep awake power insomnia prevent idle lid battery vm virtual machine schedules triggers remote', target: '[data-keep-awake]' },
     {
       id: 'new-session-mode',
       page: 'general',
       label: 'Permission mode',
-      detail: 'What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.',
-      keywords: 'new session default ask first accept edits plan auto mode permissions',
+      detail: 'What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.',
+      keywords: 'new session default ask first accept edits plan auto mode permissions project default remember last override',
       target: '[data-new-session-mode]',
     },
     {
@@ -37,6 +42,17 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'theme', page: 'theme', label: 'Theme', detail: 'Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.', keywords: 'color colors palette syntax', target: '[data-theme-picker]' },
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
     { id: 'theme-folder', page: 'theme', label: 'Open themes folder', detail: 'Where imported themes are kept.', keywords: 'theme files', target: '[data-theme-folder]' },
+    { id: 'app-icon', page: 'theme', label: 'App icon', detail: appIconDetail(), keywords: 'icon dock taskbar logo app switcher colourway colorway', target: '[data-app-icon-picker]' },
+    {
+      id: 'app-icon-remote',
+      page: 'theme',
+      label: 'Use it on your phone too',
+      detail: "The remote app's icon and the browser tab. On a phone, add it to the Home Screen again to see the change.",
+      keywords: 'app icon logo remote phone home screen favicon tab',
+      target: '[data-app-icon-remote]',
+      // Only with Remote set up.
+      fallback: '[data-app-icon-picker]',
+    },
 
     // Sidebar
     { id: 'sidebar-style', page: 'sidebar', label: 'Sidebar style', detail: 'Large icons, Standard or Compact. Large icons makes each session’s project easy to spot.', keywords: 'density rows size', target: '[data-sidebar-style]' },
@@ -160,8 +176,8 @@ export function settingsIndex(): SettingEntry[] {
       id: 'file-link-click',
       page: 'conversation',
       label: 'Clicking a file link',
-      detail: `What a click does on a file in Claude’s replies. ${formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.`,
-      keywords: `file link path click open show reveal editor ${fileManagerName()} finder explorer shift context menu`,
+      detail: `What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in ${fileManagerName()}. ${formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.`,
+      keywords: `file link path click open show reveal preview markdown html switchboard editor ${fileManagerName()} finder explorer shift context menu`,
       target: '[data-file-link-click]',
     },
     {
@@ -355,6 +371,48 @@ export function settingsIndex(): SettingEntry[] {
     // Prompts
     { id: 'prompts-new', page: 'prompts', label: 'New prompt', detail: 'Prompts with blanks you fill in when you use them. Type / in any message box.', keywords: 'prompts templates snippets saved blanks create add', target: '[data-saved-prompts-new]' },
     { id: 'prompts-list', page: 'prompts', label: 'Saved prompts', detail: 'Every project, just for you, or shared with the project.', keywords: 'prompts templates snippets saved blanks share move delete edit', target: '[data-saved-prompts-settings]', fallback: '[data-settings-page="prompts"] section' },
+
+    // Pipelines
+    {
+      id: 'pipelines',
+      page: 'pipelines',
+      label: 'Pipelines',
+      detail: 'Steps Switchboard runs for one task, each as a sub-session under the session you run it from.',
+      keywords: 'pipeline workflow plan execute validate push steps sub-session chain automate',
+      target: '[data-pipelines-settings]',
+    },
+    { id: 'pipelines-new', page: 'pipelines', label: 'New pipeline', detail: 'Start your own, for this project or all projects.', keywords: 'pipeline create add workflow', target: '[data-pipeline-new]', fallback: '[data-pipelines-settings]' },
+    {
+      id: 'pipelines-duplicate',
+      page: 'pipelines',
+      label: 'Duplicate',
+      detail: 'Built-in pipelines are read only. Duplicate one to change it.',
+      keywords: 'pipeline copy built in edit',
+      target: '[data-pipeline-duplicate]',
+      fallback: '[data-pipelines-settings]',
+    },
+    {
+      id: 'pipelines-steps',
+      page: 'pipelines',
+      label: 'Steps',
+      detail: 'Fresh or a fork of an earlier step, with its model, effort, mode and prompt. @ links the parent or an earlier step.',
+      keywords: 'pipeline step fork fresh model effort mode read only prompt @parent mention add reorder',
+      target: '[data-pipeline-steps]',
+      fallback: '[data-pipelines-settings]',
+    },
+    { id: 'pipelines-run-first', page: 'pipelines', label: 'Run first', detail: 'Project actions a step runs before Claude starts. Their results go in the prompt.', keywords: 'pipeline actions test lint before', target: '[data-pipeline-run-first]', fallback: '[data-pipeline-steps]' },
+    {
+      id: 'pipelines-verdict',
+      page: 'pipelines',
+      label: 'Ends with a verdict',
+      detail: 'Changes go back to an earlier step, up to a number of rounds.',
+      keywords: 'pipeline review validate pass changes needed rounds loop',
+      target: '[data-pipeline-verdict]',
+      fallback: '[data-pipeline-steps]',
+    },
+    { id: 'pipelines-confirm', page: 'pipelines', label: 'Wait for me before this step', detail: 'The run waits for you to continue before the step starts.', keywords: 'pipeline confirm pause hold continue', target: '[data-pipeline-confirm]', fallback: '[data-pipeline-steps]' },
+    { id: 'pipelines-auto-push', page: 'pipelines', label: 'Push without asking', detail: 'Push commits, pushes and opens the pull request by itself. Only for your own pipelines.', keywords: 'pipeline push commit pull request pr auto', target: '[data-pipeline-auto-push]', fallback: '[data-pipeline-steps]' },
+    { id: 'pipelines-tree', page: 'pipelines', label: 'The tree it makes', detail: 'Each step is a sub-session under the session you run it from.', keywords: 'pipeline tree sub-sessions parent preview', target: '[data-pipeline-tree]', fallback: '[data-pipelines-settings]' },
 
     // VS Code
     {

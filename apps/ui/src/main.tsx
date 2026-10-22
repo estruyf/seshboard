@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
+import { SELECTABLE } from './lib/selectable.ts';
 import { popoutSession } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
@@ -18,6 +19,17 @@ window.addEventListener('keydown', (event) => {
   root.setAttribute('data-keyboard-nav', '');
 });
 window.addEventListener('pointerdown', () => root.removeAttribute('data-keyboard-nav'), true);
+
+// The body is `user-select: none`, and Chromium keeps a selection when you press on such an element. So a press
+// outside the text people can select (`.select-text`, messages, code, fields) clears it, as it would on a normal page.
+window.addEventListener(
+  'mousedown',
+  (event) => {
+    if (event.target instanceof Element && event.target.closest(`${SELECTABLE}, input, textarea, [contenteditable]`)) return;
+    window.getSelection()?.removeAllRanges();
+  },
+  true,
+);
 
 // A pop-out opens with the panels its session had open in the main window, from its first paint.
 if (popoutSession) receiveSessionView(popoutSession, window.switchboard?.popoutView);

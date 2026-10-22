@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
-import { Check, ChevronDown, Ellipsis, FolderCog, FolderDown, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Ellipsis, FolderCog, FolderDown, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X, Zap } from 'lucide-react';
 import { isAbsolutePath, type ProjectIconChoice } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -137,7 +137,7 @@ export function manage(root: string | null = null): void {
 /**
  * Menu entries to rename a project, change its icon or remove it, and the emoji picker, rename dialog and remove confirmation they open (`overlays`).
  * `remove: false` leaves out "Remove from Switchboard…", for menus about something else (a session); `identity: true`
- * keeps only what the project is (profile, icon, name, folder), for the icon button on a project's row and page;
+ * keeps only what the project is (profile, icon, name, folder) and Remove, for the ⋯ on a project's page;
  * `nested: true` puts the profile and icon choices in submenus, for a menu where the project is one of several things.
  */
 export function useProjectIconEntries() {
@@ -207,10 +207,14 @@ export function useProjectIconEntries() {
       ...(isAbsolutePath(root) ? [{ label: 'Rename project…', icon: <Pencil size={13} />, onSelect: () => setRenaming(root), data: { 'data-rename-project': true } } satisfies MenuEntry] : []),
       { label: 'Open folder in editor', icon: <FolderOpen size={13} />, disabled: !project?.exists, onSelect: () => void openIn(root).catch(() => {}) },
       ...(identity
-        ? []
+        ? // A project's own page: everything about what it is, and removing it, but no links to its own tabs.
+          project?.added && remove
+          ? (['separator', { label: 'Remove from Switchboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] satisfies MenuEntry[])
+          : []
         : project?.added
           ? ([
               { label: 'Open project', icon: <FolderCog size={13} />, onSelect: () => openProject(root), data: { 'data-open-project': true } },
+              { label: 'Triggers…', icon: <Zap size={13} />, onSelect: () => openProject(root, 'triggers'), data: { 'data-open-triggers': true } },
               { label: 'Worktrees…', icon: <FolderGit2 size={13} />, disabled: !project.exists, onSelect: () => openProject(root, 'worktrees'), data: { 'data-open-worktrees': true } },
               { label: 'Branches…', icon: <GitBranch size={13} />, disabled: !project.exists, onSelect: () => openProject(root, 'branches'), data: { 'data-open-branches': true } },
               { label: 'Project settings…', icon: <SlidersHorizontal size={13} />, onSelect: () => manage(root) },
@@ -238,7 +242,7 @@ function filterItems(menu: HTMLElement | null): HTMLElement[] {
   return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[data-filter-item]')) : [];
 }
 
-/** "All projects ⌄": filter the list to one of your projects, add one, or manage them. */
+/** "All projects ⌄": filter the list to one of your projects, open one (›), manage them or add one. */
 /** A computer in "Show sessions from": this one or a paired one, with how many sessions it has and how many need you. */
 export interface SourceSummary {
   source: string;
@@ -373,6 +377,7 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
               selected={filter === project.root}
               onSelect={() => choose(() => setFilter(project.root))}
               onMore={(el) => more(project.root, el)}
+              onOpen={() => choose(() => openProject(project.root))}
               icon={<ProjectIcon project={project} root={project.root} />}
               label={project.name}
               title={project.root}
@@ -396,9 +401,9 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
             </p>
           )}
           <div role="separator" className="mx-2 my-1 border-t border-edge" />
-          <FilterRow onSelect={() => choose(() => showAdd(true))} icon={<FolderPlus size={14} aria-hidden />} label="Add project…" />
+          <FilterRow onSelect={() => choose(() => manage())} icon={<FolderCog size={14} aria-hidden />} label="Manage projects…" data={{ 'data-manage-projects': true }} />
+          <FilterRow onSelect={() => choose(() => showAdd(true))} icon={<FolderPlus size={14} aria-hidden />} label="Add a project folder…" />
           {cloneEnabled && <FilterRow onSelect={() => choose(() => useClone.getState().showDialog(true))} icon={<FolderDown size={14} aria-hidden />} label="Clone from GitHub…" />}
-          <FilterRow onSelect={() => choose(() => manage())} icon={<FolderCog size={14} aria-hidden />} label="Manage projects…" />
         </FilterPopover>
       )}
       {submenu && (
@@ -481,7 +486,20 @@ function SourceRow({ source, checked, onToggle }: { source: SourceSummary; check
   );
 }
 
-function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void; onMore?(el: HTMLElement): void; icon: ReactNode; label: string; title?: string; count?: number; chip?: ReactNode }) {
+function FilterRow(props: {
+  selected?: boolean;
+  root?: string;
+  onSelect(): void;
+  onMore?(el: HTMLElement): void;
+  /** The row's ›: opens the project's page (the row itself filters the sidebar). */
+  onOpen?(): void;
+  icon: ReactNode;
+  label: string;
+  title?: string;
+  count?: number;
+  chip?: ReactNode;
+  data?: Record<`data-${string}`, boolean>;
+}) {
   const radio = props.selected !== undefined;
   return (
     <div role="none" className="group flex items-center pr-1 hover:bg-accent/10 focus-within:bg-accent/10" data-tooltip={props.title}>
@@ -492,6 +510,7 @@ function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void;
         tabIndex={-1}
         data-filter-item
         data-project-root={props.onMore ? props.root : undefined}
+        {...props.data}
         onClick={props.onSelect}
         onContextMenu={
           props.onMore
@@ -527,6 +546,19 @@ function FilterRow(props: { selected?: boolean; root?: string; onSelect(): void;
           data-project-more={props.root}
         >
           <Ellipsis size={14} aria-hidden />
+        </button>
+      )}
+      {props.onOpen && (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={props.onOpen}
+          className="flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-text"
+          aria-label={`Open ${props.label}`}
+          data-tooltip="Open the project"
+          data-project-open-page={props.root}
+        >
+          <ChevronRight size={14} aria-hidden />
         </button>
       )}
     </div>

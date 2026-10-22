@@ -1,11 +1,13 @@
-/** A file a reply points at: the path as written, and the line to open it at. */
+/** A file a reply points at: the path as written, the line to open it at, and the last line of a range (`a.ts:10-14`). */
 export interface FileRef {
   path: string;
   line?: number;
+  /** Only after `line`, and only when it is past it. */
+  endLine?: number;
 }
 
-/** `:69`, `:69:5`, `:69-80`, or GitHub's `#L69`, `#L69C5`, `#L69-L80` after a path. */
-const LINE_SUFFIX = /(?::(\d+)(?:[:-]\d+)*|#L(\d+)(?:C\d+)?(?:-L?\d+(?:C\d+)?)?)$/;
+/** `:69`, `:69:5`, `:69-80`, or GitHub's `#L69`, `#L69C5`, `#L69-L80` after a path. Groups: the line and the range's end, for each form. */
+const LINE_SUFFIX = /(?::(\d+)(?::\d+)?(?:-(\d+)(?::\d+)?)?(?:[:-]\d+)*|#L(\d+)(?:C\d+)?(?:-L?(\d+)(?:C\d+)?)?)$/;
 /** What a path may be made of: `/` and, for Windows paths, `\` between the parts. */
 const PATH_CHARS = /^[\p{L}\p{N}_~./\\@+-]+$/u;
 /** `C:\` or `C:/` at the start: a Windows drive path, whose colon is not a line number. */
@@ -23,14 +25,16 @@ export function parseFileRef(text: string): FileRef | null {
   if (!value || value.length > 1024 || /\s/.test(value)) return null;
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) return null;
   const suffix = LINE_SUFFIX.exec(value);
-  const line = suffix ? Number(suffix[1] ?? suffix[2]) : 0;
+  const line = suffix ? Number(suffix[1] ?? suffix[3]) : 0;
+  const endLine = suffix ? Number(suffix[2] ?? suffix[4] ?? 0) : 0;
   if (suffix) value = value.slice(0, suffix.index);
   const drive = DRIVE.exec(value)?.[0] ?? '';
   const rest = value.slice(drive.length);
   if (!value || !PATH_CHARS.test(rest) || /^\.+$/.test(value) || /^[\\/]+$/.test(value)) return null;
   const base = value.slice(Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\')) + 1);
   if (!/[\\/]/.test(value) && !EXTENSION.test(base)) return null;
-  return line > 0 ? { path: value, line } : { path: value };
+  if (line <= 0) return { path: value };
+  return endLine > line ? { path: value, line, endLine } : { path: value, line };
 }
 
 /**

@@ -15,6 +15,14 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('leads with Add to queue when opened to follow a session, with starting in the menu', () => {
+    const state = startButtonState({ ...ready, queueFirst: true });
+    expect(state).toMatchObject({ main: 'queue', shortcut: 'new-session.queue', label: 'Add to queue', disabled: false, reason: null });
+    expect(state.items.map((i) => i.action)).toEqual(['queue', 'start', 'start-worktree']);
+    expect(startButtonState({ ...ready, queueFirst: true, hasText: false, hasMessage: false })).toMatchObject({ disabled: true, reason: 'Type a message first' });
+    expect(startButtonState(ready)).toMatchObject({ main: 'start', shortcut: 'new-session.start' });
+  });
+
   it('keeps a new worktree and the queue when the branch is checked out in another worktree', () => {
     const reason = 'feature is checked out in another worktree. Pick another branch, or start in a new worktree.';
     const state = startButtonState({ ...ready, branchBlocked: reason });
@@ -26,9 +34,74 @@ describe('the Start button', () => {
     ]);
   });
 
+  it('never offers Run pipeline in the menu: the Run as chip picks a pipeline', () => {
+    const state = startButtonState({ ...ready, canSchedule: true, canTrigger: true, canPipeline: true });
+    expect(state.items.map((i) => i.action)).toEqual(['start', 'queue', 'schedule', 'trigger', 'start-worktree']);
+    expect(state).toMatchObject({ main: 'start', label: 'Start' });
+    const picked = startButtonState({ ...ready, canSchedule: true, canTrigger: true, canPipeline: true, runAs: { id: 'p', name: 'Plan' } });
+    expect(picked.items.some((i) => i.action === 'pipeline')).toBe(false);
+  });
+
+  it('runs the pipeline the Run as chip picked, with Start one session first in the menu', () => {
+    const runAs = { id: 'builtin-execute-validate', name: 'Execute and validate' };
+    const state = startButtonState({ ...ready, canSchedule: true, canTrigger: true, canPipeline: true, runAs });
+    expect(state).toMatchObject({ main: 'pipeline', shortcut: 'new-session.start', label: 'Run pipeline', disabled: false, reason: null });
+    expect(state.items.map((i) => [i.action, i.label, i.disabled])).toEqual([
+      ['start-one', 'Start one session', false],
+      ['queue', 'Add to queue', false],
+      ['schedule', 'Schedule…', false],
+      ['trigger', 'Start when…', false],
+      ['start-worktree', 'Start in a new worktree', false],
+    ]);
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, sending: true })).toMatchObject({ label: 'Starting…', disabled: true, reason: null });
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, hasText: false, hasMessage: false })).toMatchObject({ disabled: true, reason: 'Type the task first' });
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, blocked: 'Choose a folder first' })).toMatchObject({ disabled: true, reason: 'Choose a folder first' });
+    // A pipeline runs in its own worktree: the branch and the focus limit stop only one session.
+    const branchBlocked = 'feature is checked out in another worktree.';
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, branchBlocked, startBlocked: 'At the limit' })).toMatchObject({ main: 'pipeline', disabled: false, reason: null });
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, branchBlocked }).items[0]).toMatchObject({ action: 'start-one', disabled: true });
+  });
+
+  it('never runs a pipeline for a question, while a schedule is open, or where none can run', () => {
+    const runAs = { id: 'p', name: 'Plan' };
+    expect(startButtonState({ ...ready, canPipeline: true, runAs, question: true })).toMatchObject({ main: 'start', label: 'Ask' });
+    expect(startButtonState({ ...ready, canSchedule: true, canPipeline: true, runAs, editingSchedule: true })).toMatchObject({ main: 'start', label: 'Start' });
+    expect(startButtonState({ ...ready, canPipeline: false, runAs })).toMatchObject({ main: 'start' });
+    for (const state of [startButtonState({ ...ready, canPipeline: true, runAs, question: true }), startButtonState({ ...ready, canSchedule: true, canPipeline: true, runAs, editingSchedule: true })]) {
+      expect(state.items.some((i) => i.action === 'pipeline' || i.action === 'start-one')).toBe(false);
+    }
+  });
+
   it('offers a new worktree only on the current checkout of a git repository', () => {
     expect(startButtonState({ ...ready, worktree: true }).items.map((i) => i.action)).toEqual(['start', 'queue']);
     expect(startButtonState({ ...ready, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
+  });
+
+  it('offers Schedule… after Add to queue in New session, and Save schedule while a schedule is open', () => {
+    const state = startButtonState({ ...ready, canSchedule: true });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['start', 'Start session'],
+      ['queue', 'Add to queue'],
+      ['schedule', 'Schedule…'],
+      ['start-worktree', 'Start in a new worktree'],
+    ]);
+    expect(startButtonState({ ...ready, canSchedule: true, editingSchedule: true }).items[2]).toMatchObject({ action: 'schedule', label: 'Save schedule', disabled: false });
+    expect(startButtonState({ ...ready, canSchedule: true, hasText: false, hasMessage: false }).items[2]!.disabled).toBe(true);
+    expect(startButtonState({ ...ready, canSchedule: true, question: true, canWorktree: false }).items.map((i) => i.action)).toEqual(['start', 'queue']);
+  });
+
+  it('offers Start when… after Schedule…, not for a question or while a schedule is open', () => {
+    const state = startButtonState({ ...ready, canSchedule: true, canTrigger: true });
+    expect(state.items.map((i) => [i.action, i.label])).toEqual([
+      ['start', 'Start session'],
+      ['queue', 'Add to queue'],
+      ['schedule', 'Schedule…'],
+      ['trigger', 'Start when…'],
+      ['start-worktree', 'Start in a new worktree'],
+    ]);
+    expect(startButtonState({ ...ready, canSchedule: true, canTrigger: true, hasText: false, hasMessage: false }).items[3]).toMatchObject({ action: 'trigger', disabled: true });
+    expect(startButtonState({ ...ready, canTrigger: true, question: true }).items.some((i) => i.action === 'trigger')).toBe(false);
+    expect(startButtonState({ ...ready, canSchedule: true, canTrigger: true, editingSchedule: true }).items.some((i) => i.action === 'trigger')).toBe(false);
   });
 
   it('asks for a quick question', () => {
@@ -91,5 +164,16 @@ describe('submitKey', () => {
 
   it('does nothing on ⌘⇧↵ without a second action', () => {
     expect(submitKey(press('Enter', { meta: true, shift: true }))).toBeNull();
+  });
+});
+
+describe('Schedule a session', () => {
+  it('puts Schedule… on the main part, without a key, and starting in the menu', () => {
+    const state = startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: false, canSchedule: true, scheduleFirst: true });
+    expect(state).toMatchObject({ main: 'schedule', label: 'Schedule…', shortcut: null, disabled: false });
+    expect(state.items.map((i) => i.action)).toEqual(['schedule', 'start', 'queue']);
+    expect(startButtonState({ blocked: null, sending: false, hasMessage: false, hasText: false, startBlocked: null, canWorktree: false, worktree: false, question: false, canSchedule: true, scheduleFirst: true })).toMatchObject({ main: 'schedule', disabled: true, reason: 'Type a message first' });
+    // A quick question can't be scheduled: Ask stays.
+    expect(startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: true, canSchedule: true, scheduleFirst: true }).main).toBe('start');
   });
 });

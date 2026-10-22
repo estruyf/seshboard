@@ -7,6 +7,9 @@
   --sb-card: #ffffff;
   --sb-border: #e1e4e8;
   --sb-text: #202736;
+  /* Reading mode: the page and its text. Warm off-white in light, the same as bg and text in dark. */
+  --sb-paper: #fbfaf7;
+  --sb-paper-text: #1f2328;
   --sb-muted: #505869;
   /* Faint is for small secondary text, so it keeps at least 4.5:1 on the background and sidebar. */
   --sb-faint: #687082;
@@ -26,6 +29,10 @@
   --sb-memory: #8250df;
   /* Only for things on another computer (its chips, badges, the line over its sessions): no state uses violet. */
   --sb-remote: #7048e8;
+  /* Event triggers: the bolt on a session a trigger started, event fields in a trigger's prompt. Never a state. */
+  --sb-trigger: #6f42c1;
+  /* Pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor. Never a state. */
+  --sb-pipeline: #6741d9;
   /*
    * The selected row in a list: a neutral fill (a yellow tint disappears on the light sidebar). A tint
    * of the text colour rather than a fixed grey, so it shows on every surface: sidebar, card, dialog.
@@ -73,6 +80,8 @@
     --sb-card: #202736;
     --sb-border: #2d3142;
     --sb-text: #d9dbe1;
+    --sb-paper: #15181f;
+    --sb-paper-text: #d9dbe1;
     --sb-muted: #9ba4b7;
     --sb-faint: #8b94a6;
     --sb-accent: #ffd43b;
@@ -86,6 +95,8 @@
     --sb-caution: #ffa94d;
     --sb-memory: #b197fc;
     --sb-remote: #b197fc;
+    --sb-trigger: #b197fc;
+    --sb-pipeline: #9775fa;
     --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
     --sb-profile-yellow: #ffd43b;
     --sb-profile-blue: #74c0fc;
@@ -125,6 +136,8 @@
   --sb-card: #202736;
   --sb-border: #2d3142;
   --sb-text: #d9dbe1;
+  --sb-paper: #15181f;
+  --sb-paper-text: #d9dbe1;
   --sb-muted: #9ba4b7;
   --sb-faint: #8b94a6;
   --sb-accent: #ffd43b;
@@ -138,6 +151,8 @@
   --sb-caution: #ffa94d;
   --sb-memory: #b197fc;
   --sb-remote: #b197fc;
+  --sb-trigger: #b197fc;
+  --sb-pipeline: #9775fa;
   --sb-selected: color-mix(in srgb, var(--sb-text) 11%, transparent);
   --sb-profile-yellow: #ffd43b;
   --sb-profile-blue: #74c0fc;
@@ -184,6 +199,10 @@
   --color-caution: var(--sb-caution);
   --color-memory: var(--sb-memory);
   --color-remote: var(--sb-remote);
+  --color-trigger: var(--sb-trigger);
+  --color-pipeline: var(--sb-pipeline);
+  --color-paper: var(--sb-paper);
+  --color-paper-text: var(--sb-paper-text);
   --color-selected: var(--sb-selected);
   --color-profile-yellow: var(--sb-profile-yellow);
   --color-profile-blue: var(--sb-profile-blue);
@@ -370,9 +389,15 @@ body {
    * Text people can select (messages, code, diffs) gets the browser's own cursor back: the I-beam over
    * the text and the arrow over the space around it, instead of the body's arrow everywhere.
    */
-  .select-text {
+  .select-text,
+  :is([role='alert'], [role='status'], pre, code):not(button *) {
     cursor: auto;
   }
+}
+
+/* Error and status messages and code blocks can be selected and copied, like `.select-text` (see lib/selectable.ts). */
+:is([role='alert'], [role='status'], pre, code):not(button *) {
+  user-select: text;
 }
 
 /*
@@ -535,6 +560,22 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   }
 }
 
+/* Reading mode's needs-you banner slides in under the top bar. */
+.read-banner-in {
+  animation: read-banner-in 180ms ease-out;
+}
+@keyframes read-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .read-banner-in {
+    animation: none;
+  }
+}
+
 /* The prompt outline's marks draw their focus ring around the mark itself, not around the rail-wide hit area. */
 html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   outline: none;
@@ -559,4 +600,14 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
 [data-narrow-panel] > aside {
   width: 100% !important;
   max-width: 100%;
+}
+
+/*
+ * A built-in pipeline is read only: its fields are disabled, but each control fades by its own amount (fields 70%,
+ * segments, menus and boxes 50%), which reads as broken. The notice above says it's read only; the values stay
+ * readable at one level.
+ */
+[data-built-in] [data-pipeline-steps] :is(:disabled, [aria-disabled='true']) {
+  opacity: 1 !important;
+  cursor: default;
 }

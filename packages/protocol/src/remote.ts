@@ -5,11 +5,15 @@ import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
 import { AutoTierSchema, BackgroundTask, Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, QueuedMessage, SendMode, StreamDelta } from './host.ts';
+import { Pipeline, PipelineRun, PipelineRunStep, PushPreview } from './pipelineSchema.ts';
 import { ProfileColor } from './profiles.ts';
 import { MAX_PROMPT_LENGTH } from './promptConstants.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { COLOR_PATTERN } from './color.ts';
+import { THEME_NAME_MAX, THEME_TOKENS } from './themeFormat.ts';
 import { REMOTE_ATTACHMENT_BYTES, REMOTE_DEVICE_NAME_MAX, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from './remoteConstants.ts';
+import { RemoteLimitStanding } from './usageLimit.ts';
 import { UsageBreakdown, UsageGroup, UsagePeriod, UsageRow, UsageSnapshot, WindowCost } from './usage.ts';
 
 /**
@@ -64,8 +68,35 @@ export const RemoteSession = z.object({
    * can be stopped with `session.stopTask`. Left out by a Switchboard from before phones knew them.
    */
   background: z.array(BackgroundTask).optional(),
+  /**
+   * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
+   * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Switchboard from before phones knew runs.
+   */
+  parentId: z.string().nullable().optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
+
+/** A pipeline as a phone knows it: its steps, without where it is saved (a project's folder). */
+export const RemotePipeline = Pipeline.omit({ scope: true });
+export type RemotePipeline = z.infer<typeof RemotePipeline>;
+
+/** A pipeline run as a phone sees it: its project as an id and a name, never its folders or its profile's. */
+export const RemoteRun = PipelineRun.omit({ pipeline: true, projectRoot: true, cwd: true, profileId: true }).extend({
+  pipeline: RemotePipeline,
+  projectId: ProjectId,
+  projectName: z.string(),
+  /** Its steps work in a worktree, not the project's folder. */
+  worktree: z.boolean(),
+});
+export type RemoteRun = z.infer<typeof RemoteRun>;
+
+/** One round of one step, without the approved plan and the output of the actions that ran first. */
+export const RemoteRunStep = PipelineRunStep.omit({ plan: true, actions: true });
+export type RemoteRunStep = z.infer<typeof RemoteRunStep>;
+
+/** A run with its steps, as the app's `PipelineRunState`. */
+export const RemoteRunState = z.object({ run: RemoteRun, steps: z.array(RemoteRunStep) });
+export type RemoteRunState = z.infer<typeof RemoteRunState>;
 
 /** A permission prompt, question or plan waiting for an answer, as the card on the Mac shows it. */
 export const RemotePrompt = z.object({
@@ -86,6 +117,11 @@ export const RemoteSessions = z.object({
   sessions: z.array(RemoteSession),
   /** What those sessions wait on you for, oldest first. */
   prompts: z.array(RemotePrompt),
+  /**
+   * The pipeline runs of the sessions listed, and the run rows (runs started from New session) the sidebar lists,
+   * newest first. With `REMOTE_FEATURE_PIPELINES`.
+   */
+  runs: z.array(RemoteRunState).optional(),
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
 
@@ -103,6 +139,19 @@ export const RemoteBlock = z.discriminatedUnion('type', [
 ]);
 export type RemoteBlock = z.infer<typeof RemoteBlock>;
 
+/**
+ * The tokens of the API response an assistant message came from, as the computer counts them. Claude Code writes one
+ * message per content block with the same `id` and usage, so the phone counts each `id` once per turn.
+ */
+export const RemoteUsage = z.object({
+  id: z.string(),
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+});
+export type RemoteUsage = z.infer<typeof RemoteUsage>;
+
 export const RemoteMessage = z.object({
   uuid: z.string(),
   role: z.enum(['user', 'assistant', 'system']),
@@ -111,6 +160,8 @@ export const RemoteMessage = z.object({
   blocks: z.array(RemoteBlock),
   /** The paired phone that sent it, for your own messages sent from a phone. */
   device: z.string().optional(),
+  /** Claude's tokens for this message, when the computer reported them (an older computer doesn't: no tokens shown). */
+  usage: RemoteUsage.nullable().optional(),
 });
 export type RemoteMessage = z.infer<typeof RemoteMessage>;
 
@@ -225,6 +276,12 @@ export const RemoteProfileUsage = z.object({
   /** Null without a claude.ai plan, or before the first check. */
   usage: UsageSnapshot.nullable(),
   error: z.string().nullable(),
+  /**
+   * The account it signs in to as `accountTag` (never the account, nor the key `usage.tokens` takes): the same on
+   * every computer, so Home shows a profile once when several computers sign in to it. Null without an account; left
+   * out by a Switchboard from before.
+   */
+  account: z.string().nullable().optional(),
 });
 export type RemoteProfileUsage = z.infer<typeof RemoteProfileUsage>;
 
@@ -245,8 +302,22 @@ export type RemoteUsageBreakdown = z.infer<typeof RemoteUsageBreakdown>;
 export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ projectId: ProjectId.nullable() });
 export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
+/** One mode of the computer's theme, every token worked out (`--sb-*` names without the prefix). Colours only. */
+const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80).regex(new RegExp(COLOR_PATTERN)));
+
+/**
+ * The theme in use on the computer, resolved there (what it leaves out generated from its canvas and accent), so the
+ * phone can look the same without the generator. The phone picks the mode it is in. With `REMOTE_FEATURE_THEME`.
+ */
+export const RemoteTheme = z.object({ name: z.string().max(THEME_NAME_MAX), light: RemoteThemeTokens, dark: RemoteThemeTokens });
+export type RemoteTheme = z.infer<typeof RemoteTheme>;
+
 /** The most lines `changes.diff` returns. */
 export const REMOTE_DIFF_LINES = 2_000;
+
+const RunId = z.string().min(1).max(100);
+const RunParams = z.object({ runId: RunId });
+const RunResult = z.object({ state: RemoteRunState });
 
 /** The most messages one `transcript.get` returns. */
 export const REMOTE_PAGE_LIMIT = 200;
@@ -263,6 +334,11 @@ export const remoteContract = {
         computer: z.object({ name: z.string() }),
         /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`); missing from an older one. */
         features: z.array(z.string().max(50)).max(50).default([]),
+        /**
+         * The app icon colourway the remote app shows (`AppIconKey`; Settings › Theme › App icon there), Graphite
+         * while "Use it on your phone too" is off. Missing from an older one, and a key the phone doesn't know, is Graphite.
+         */
+        appIcon: z.string().max(50).optional(),
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
@@ -300,6 +376,8 @@ export const remoteContract = {
       result: z.object({ queued: z.boolean() }),
     },
     'session.queue.remove': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
+    /** Sends one message from Up next now, stopping Claude's turn first; the rest keep waiting. With `REMOTE_FEATURE_QUEUE_SEND_NOW`. */
+    'session.queue.sendNow': { params: z.object({ sessionId: SessionId, id: z.string().min(1).max(200) }), result: z.object({}) },
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (`RemoteSession.background`); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },
@@ -415,6 +493,43 @@ export const remoteContract = {
     /** Clones and adds the project there; `projects.cloneProgress` reports to this connection, as on the computer. */
     'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
     'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** The pipelines a project can run there: the built-ins (unless hidden there), every project's, and its own. With `REMOTE_FEATURE_PIPELINES`. */
+    'pipelines.list': { params: z.object({ projectId: ProjectId }), result: z.object({ pipelines: z.array(RemotePipeline) }) },
+    /**
+     * Runs a pipeline, as on the computer: from a session the list shows (it becomes the parent), or from New session
+     * with a task in a project (a run row is the parent), with images and files as `session.create` takes them and the
+     * message box's choices for the steps that don't set their own. With `REMOTE_FEATURE_PIPELINES`.
+     */
+    'pipelines.run': {
+      params: z
+        .object({
+          pipelineId: z.string().min(1).max(100),
+          parentSessionId: SessionId.optional(),
+          projectId: ProjectId.optional(),
+          task: Prompt.optional(),
+          images: z.array(RemoteImage).max(REMOTE_MAX_IMAGES).default([]),
+          files: z.array(RemoteFile).max(REMOTE_MAX_FILES).default([]),
+        })
+        .extend(RemoteSessionOptions.pick({ profileId: true, model: true, effort: true, permissionMode: true }).shape)
+        .refine((p) => (p.parentSessionId ? !p.projectId && !p.task : p.projectId && p.task), 'From a session, or with a project and a task'),
+      result: RunResult,
+    },
+    /** Continue: the step that waits for you starts (Push, with `message` as the commit message when given), or the run goes on after a stop. */
+    'runs.continue': { params: RunParams.extend({ message: z.string().trim().min(1).max(5_000).optional() }), result: RunResult },
+    /** Run this step again: a new round of the current step, in a new sub-session. */
+    'runs.retryStep': { params: RunParams, result: RunResult },
+    /** Another round: a verdict still asking for changes after its rounds sends them once more. */
+    'runs.anotherRound': { params: RunParams, result: RunResult },
+    /** Skip this step: the next one starts, or waits. */
+    'runs.skipStep': { params: RunParams, result: RunResult },
+    /** Stop the run: the step that works stops, and nothing starts after it. */
+    'runs.stop': { params: RunParams, result: RunResult },
+    /** Archives a run's tree (its parent and every sub-session) or unarchives it; refused while the run goes on. */
+    'runs.archive': { params: RunParams.extend({ archived: z.boolean() }), result: z.object({}) },
+    /** Push's card: the commit message Haiku wrote from the diff (once per run, unless `fresh`), the files and the branches. */
+    'runs.pushPreview': { params: RunParams.extend({ fresh: z.boolean().default(false) }), result: z.object({ preview: PushPreview }) },
+    /** Writes in a run row: the run gets a session of its own, in its folder, with the run's brief first. */
+    'runs.write': { params: RunParams.extend({ text: Prompt }), result: z.object({ sessionId: z.string() }) },
     /** The engine's VAPID public key, for `pushManager.subscribe` (made the first time a phone asks). */
     'push.key': { params: z.object({}), result: z.object({ publicKey: z.string() }) },
     /**
@@ -427,8 +542,19 @@ export const remoteContract = {
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },
+    /**
+     * How a session stands with its profile's usage limit (null: not at one). With `REMOTE_FEATURE_LIMITS`;
+     * `limits.changed` follows each change for the session the phone watches.
+     */
+    'limits.get': { params: z.object({ sessionId: SessionId }), result: z.object({ limit: RemoteLimitStanding.nullable() }) },
+    /** Resume now: sends the session its resume message at once, as on the computer. */
+    'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /** Resume when it resets, on or off. */
+    'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
     /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
     'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
+    /** The theme in use on the computer (null until the app showed one); `theme.changed` follows each change. With `REMOTE_FEATURE_THEME`. */
+    'theme.get': { params: z.object({}), result: z.object({ theme: RemoteTheme.nullable() }) },
   },
   events: {
     'sessions.changed': RemoteSessions,
@@ -439,10 +565,16 @@ export const remoteContract = {
     'session.ask': AskEvent,
     /** A profile's plan usage changed (a new check on the computer). */
     'usage.changed': z.object({ profileId: z.string(), usage: UsageSnapshot.nullable() }),
+    /** The usage limit standing of the session the phone watches changed. */
+    'limits.changed': z.object({ sessionId: z.string(), limit: RemoteLimitStanding.nullable() }),
     /** The catch-up of the session the phone watches changed. */
     'catchup.changed': z.object({ sessionId: z.string(), catchUp: CatchUp.nullable() }),
     /** A clone this connection started moved on (`projects.clone`). */
     'projects.cloneProgress': RemoteCloneProgress,
+    /** The app icon colourway changed on the computer (as `appIcon` in hello): the open tab swaps its icons. */
+    'app.icon': z.object({ key: z.string().max(50) }),
+    /** Someone picked another theme on the computer, or edited the one in use. */
+    'theme.changed': RemoteTheme,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;
@@ -473,6 +605,13 @@ export const REMOTE_DEFAULT_PORT = 47615;
  * from this origin.
  */
 export const REMOTE_APP_URL = 'https://switchboard.struyfconsulting.com/remote/';
+
+/**
+ * The remote app on the website's preview, built from `dev` by Cloudflare Pages. Development and beta builds also
+ * accept sockets from it (`previewApp`), so the remote app's next version can be tried before it ships; a release
+ * never does, so code that is only on `dev` can't talk to anyone's computer.
+ */
+export const REMOTE_PREVIEW_APP_URL = 'https://switch-dev.struyfconsulting.com/remote/';
 
 /**
  * How a phone reaches this computer from anywhere:

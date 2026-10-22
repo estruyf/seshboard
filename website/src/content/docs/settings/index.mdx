@@ -5,6 +5,7 @@ description: Every section of Settings and what each control does.
 
 import Kbd from '../../../components/Kbd.astro';
 import Os from '../../../components/Os.astro';
+import OnlyOn from '../../../components/OnlyOn.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
@@ -30,9 +31,11 @@ Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd
 
 ## General
 
-<Screenshot name="settings-general" alt="Settings on General: On startup with Home, The last session and New session, the permission mode for new sessions, and the Ask before quitting switch" />
+<Screenshot name="settings-general" alt="Settings on General: On startup with the Open at login switch, Home, The last session and New session, the Keep this Mac awake switch under Sleep, the permission mode for new sessions, and the Ask before quitting switch" />
 
 ### On startup
+
+**Open at login** (off by default): Switchboard opens when you <Os mac="log in to your Mac" windows="sign in to Windows" />. Turn it on for a computer that restarts without you, such as a virtual machine, so Switchboard is running again after a restart. The setting is the system's own: you can also change it in <Os mac="System Settings › General › Login Items" windows="Settings › Apps › Startup" />, and Settings shows what you set there. When macOS asks you to allow Switchboard first, Settings says so: click **Open System Settings** and turn it on under Login Items. On Linux the switch is greyed out: add Switchboard to your desktop's startup applications instead.
 
 What Switchboard shows when it opens:
 
@@ -40,14 +43,19 @@ What Switchboard shows when it opens:
 - **The last session**: the session you had open, if the sidebar lists it. Otherwise New session.
 - **New session**: ready for a new prompt.
 
+### Sleep
+
+**<Os mac="Keep this Mac awake" windows="Keep this PC awake" />** (off by default) stops your computer from sleeping while Switchboard is open, so [schedules](/new-session/schedules/), [triggers](/projects/triggers/) and [remote access](/remote-access/) keep working. The display can still sleep. On a Mac, it only holds sleep off while the Mac is on power. While it holds sleep off, a line under the switch says **<Os mac="Keeping this Mac awake" windows="Keeping this PC awake" />**. On Linux the switch is called **Keep this PC awake**, as on Windows.
+
 ### New sessions
 
 **Permission mode** sets the mode a new session starts in, in New session and in the command palette's New session step:
 
-- **The last one you picked** (the default): the mode you chose for the last new session.
-- **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**: always that one. Picking another mode for one session doesn't change it.
+- **Use project default** (the default): the project's own default mode (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), else Ask before edits.
+- **Remember last**: the mode you picked last in New session or the palette.
+- **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**: always that one, even in a project that sets its own default mode. Picking another mode for one session doesn't change it.
 
-A project's own default mode comes first (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions). A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
+A session started by a link never starts in Auto mode and only takes the project's or profile's mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
 **Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Switchboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
 
@@ -64,6 +72,28 @@ A project's own default mode comes first (its [Settings tab](/projects/settings/
 - **Open themes folder** shows where imported themes are kept, and **Import…** (or the **Drop a theme .json here** card) adds a theme file.
 
 See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [Code and terminal colours](/themes/syntax-colours/).
+
+### App icon
+
+<Screenshot name="settings-app-icon" alt="The App icon section: nine icon tiles with Signal yellow chosen, Reset to Graphite, and a note on where the original icon stays" />
+
+Pick one of nine colourways of the Switchboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
+
+<OnlyOn os="mac">
+
+The icon shows in the Dock and the app switcher. macOS shows it while Switchboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
+
+</OnlyOn>
+
+<OnlyOn os="windows">
+
+The icon shows on Switchboard's windows, in the taskbar and on notifications. Pinned shortcuts and the Start menu keep the original icon.
+
+</OnlyOn>
+
+Switchboard doesn't change the app's own files or your shortcuts for this, so it applies the icon again each time it opens.
+
+**Use it on your phone too** (on by default) shows once [Remote](/remote-access/) is set up. The remote app then takes the same icon, for its browser tab and for **Add to Home Screen**. A phone keeps the icon an app had when you added it to the Home Screen: to see the new one there, remove Switchboard Remote from the Home Screen and add it again. Off, the remote app keeps Graphite.
 
 ## Sidebar
 
@@ -126,10 +156,11 @@ See [How long a turn took](/sessions/conversation/#how-long-a-turn-took).
 
 **Clicking a file link** sets what a click does on a file in Claude's replies:
 
-- **Show in <Os mac="Finder" windows="File Explorer" />** (the default): the file is selected in its folder.
-- **Open in editor**: the file opens in your default editor, at its line.
+- **Open in Switchboard** (the default): a Markdown, HTML or code file opens in a [preview](/sessions/file-preview/). Other files are selected in <Os mac="Finder" windows="File Explorer" />.
+- **Show in <Os mac="Finder" windows="File Explorer" />**: every file is selected in its folder.
+- **Open in editor**: the file opens in your default editor, at its line. If you had chosen this before, it stays chosen.
 
-<Kbd shortcut="transcript.file-link-other" /> on a link does the other one, and its right-click menu lists both, with **Copy path**.
+<Kbd shortcut="transcript.file-link-other" /> on a link opens it in your editor (or, with **Open in editor** set, shows it in <Os mac="Finder" windows="File Explorer" />). Its right-click menu lists every way, with **Copy path**.
 
 **Usage limits** has **Resume after a usage limit resets**:
 
@@ -195,8 +226,8 @@ How much of your plan's 5-hour and weekly limits you have used.
 <Screenshot name="settings-usage" alt="Settings on Usage: Open usage, the Show estimated cost and Show it on the usage bars switches, Currency set to US dollar, and under Large context the Warn about a large context switch, Large from at 60%, Notify before the cache expires and Warn when quitting" />
 
 - **Usage view**: **Open usage** opens the [Usage view](/usage/), which shows what used your plan.
-- **Show estimated cost** (on by default): what your tokens would cost at Anthropic's API prices: after the 5-hour and weekly bars, such as *5h 38% ≈$4.10*, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge. See [Estimated cost](/usage/#estimated-cost).
-- **Show it on the usage bars** (on by default): whether the estimate also shows after the 5-hour and weekly bars. Turn it off to keep the estimate in the Usage view and next to Context. It needs **Show estimated cost**.
+- **Show estimated cost** (on by default): what your tokens would cost at Anthropic's API prices: after the 5-hour and weekly limits, such as *5h 38% ≈$4.10*, next to Context under a session's message box, and in the Usage view. Your plan is not billed per token, so this is never a charge. See [Estimated cost](/usage/#estimated-cost).
+- **Show it on the usage bars** (on by default): whether the estimate also shows after the 5-hour and weekly limits, under a session's message box and in New session. Turn it off to keep the estimate in the Usage view and next to Context. It needs **Show estimated cost**.
 - **Currency**: the currency the estimate is shown in, such as US dollar, Euro, British pound or Japanese yen. The estimate is worked out in US dollars and converted at fixed exchange rates; the line under it says which day they are from.
 
 ### Large context
@@ -225,6 +256,10 @@ See [Claude Code memory](/memory/overview/).
 ## Prompts
 
 Your [saved prompts](/sessions/saved-prompts/): prompts with blanks you fill in when you use them. **New prompt** makes one. The list is grouped by where each prompt is kept: **Every project**, then per project **just for you** and **shared with the project**. Each row's **⋯** menu has **Edit…**, **Duplicate**, where to use it, and **Delete**.
+
+## Pipelines
+
+Your [pipelines](/sessions/pipelines/): the built-in ones, those for all projects, and those for each project. **New pipeline** makes one, and a click opens one in the editor. **Built-in pipelines** (on by default) shows the pipelines that come with Switchboard; turn it off to see only your own. See [Make your own](/sessions/pipelines/#make-your-own).
 
 ## VS Code
 

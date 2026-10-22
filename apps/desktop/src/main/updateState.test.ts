@@ -79,6 +79,8 @@ describe('update state', () => {
     expect(updatesDisabledReason({ ...release, packaged: false, devServer: true })).toBe('Updates are turned off in development builds.');
     expect(updatesDisabledReason({ ...release, packaged: false })).toMatch(/aren’t packaged/);
     expect(updatesDisabledReason({ ...release, hasFeed: false })).toMatch(/no update feed/);
+    expect(updatesDisabledReason({ ...release, installer: false })).toMatch(/AppImage, \.deb or \.rpm/);
+    expect(updatesDisabledReason({ ...release, installer: true })).toBeNull();
     // The mock server works from a development build too.
     expect(updatesDisabledReason({ ...release, packaged: false, devServer: true, hasFeed: false, mockFeed: true })).toBeNull();
   });

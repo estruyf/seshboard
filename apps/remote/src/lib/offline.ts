@@ -36,25 +36,9 @@ export function offlineReason({ online, address, failure }: { online: boolean; a
   return isQuickTunnel(address) ? 'address' : 'tunnel';
 }
 
-/** The banner's line. */
-export function offlineLine(reason: OfflineReason, computer: string): string | null {
-  switch (reason) {
-    case 'address':
-      return `Can't reach ${computer}. Its tunnel address changed.`;
-    case 'tunnel':
-      return `Can't reach ${computer}. Is Switchboard running, with Remote on?`;
-    case 'asleep':
-      return `Can't reach ${computer}. Is it asleep or offline?`;
-    case 'no-network':
-      return 'This phone is offline.';
-    case 'unknown':
-      return null;
-  }
-}
-
-/** "Reconnecting…", with the attempt only once it has taken a few. */
-export function reconnectingLine(attempt: number): string {
-  return attempt > 3 ? `Reconnecting… (try ${attempt})` : 'Reconnecting…';
+/** The banner's line, short enough for one line in the sidebar: the why is in the Help sheet. */
+export function offlineLine(reason: OfflineReason, computer: string): string {
+  return reason === 'no-network' ? 'This phone is offline' : `Can't reach ${computer}`;
 }
 
 /** The Help sheet: what happened and what to do, in two or three short sentences. */

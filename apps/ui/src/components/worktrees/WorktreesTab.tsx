@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
+import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, LockOpen, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@switchboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
@@ -219,6 +219,18 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
     }
   };
 
+  const unlock = async (entry: WorktreeEntry) => {
+    if (!client) return;
+    toast(`Unlocking ${entry.name}…`);
+    try {
+      await client.call('worktrees.unlock', { root, path: entry.path });
+      toast(`Unlocked ${entry.name}`);
+      void loadWorktrees(client, root);
+    } catch (e) {
+      toast(`Couldn't unlock ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const menuEntries = (row: WorktreeRow): MenuEntry[] => {
     const { entry } = row;
     const session = newestSession(entry);
@@ -258,6 +270,7 @@ export function WorktreesTab({ root, name, scrollRef }: { root: string; name: st
       'separator',
       { label: `Merge into ${baseName}…`, icon: <GitMerge size={13} />, disabled: mergeBlocked !== null, onSelect: () => session && setMerging({ entry, sessionId: session }) },
       { label: 'Push branch', icon: <ArrowUp size={13} />, disabled: pushBlocked !== null, onSelect: () => void push(entry) },
+      ...(entry.isLocked ? [{ label: 'Unlock worktree', icon: <LockOpen size={13} />, disabled: !client, onSelect: () => void unlock(entry), data: { 'data-worktree-unlock': true } } satisfies MenuEntry] : []),
       { label: 'Remove worktree…', icon: <Trash2 size={13} />, danger: true, disabled: row.locked !== null, onSelect: () => setCleanup([entry]), data: { 'data-worktree-remove-one': true } },
       ...(why.length ? (['separator', ...why.map((note) => ({ note }))] as MenuEntry[]) : []),
     ];

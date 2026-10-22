@@ -1,4 +1,4 @@
-import { AUTO_MODEL, type ImageAttachment, type PermissionMode } from '@switchboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@switchboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
@@ -29,6 +29,11 @@ export interface NewSessionStart {
   saveForLater?: () => Promise<unknown>;
   /** Auto model is on in Settings. Off, a model of Auto starts on the default model, without routing. */
   autoEnabled?: boolean;
+  /**
+   * Filled in from an issue or pull request: kept with the session (`origin`). For a pull request, the worktree starts
+   * from its branch (`worktreeFrom`), or Current checkout checks it out first (`checkoutPullRequest`).
+   */
+  github?: { origin: GithubOrigin; worktreeFrom?: WorktreeBranchBase; checkoutPullRequest?: { number: number; repo: string } };
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -68,9 +73,11 @@ export interface SessionCreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Exclude<Choices['effort'], ''> | null;
-  worktree: { name: string; baseRef: Choices['baseRef'] } | null;
+  worktree: { name: string; baseRef: 'fresh' | 'head' | WorktreeBranchBase } | null;
   checkoutBranch: string | null;
   profileId: string;
+  checkoutPullRequest?: { number: number; repo: string };
+  github?: GithubOrigin;
 }
 
 export type StartOutcome = { kind: 'started'; sessionId: string } | { kind: 'saved' } | { kind: 'stopped' };
@@ -95,8 +102,12 @@ export function branchBlocked(checkoutBranch: string | null, checkedOutElsewhere
 
 /** What `session.create` gets: a worktree with a made-up name unless you named it. */
 export function sessionCreateParams(start: NewSessionStart): SessionCreateParams {
-  const { choices } = start;
+  const { choices, github } = start;
+  // A pull request: its own branch, in a new worktree or checked out here; never another branch as well.
+  const fromPr = github && (github.worktreeFrom || github.checkoutPullRequest);
   return {
+    ...(github ? { github: github.origin } : {}),
+    ...(github?.checkoutPullRequest && !start.worktree ? { checkoutPullRequest: github.checkoutPullRequest } : {}),
     cwd: start.cwd,
     prompt: start.prompt,
     attachments: start.attachments ?? [],
@@ -105,8 +116,8 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
-    worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: choices.baseRef } : null,
-    checkoutBranch: checkoutBranchFor(choices, start.worktree, start.currentBranch),
+    worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || worktreeRequestBase(choices.baseRef) } : null,
+    checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
   };
 }

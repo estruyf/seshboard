@@ -1,15 +1,18 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type NotificationPermission, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
+import { previewKind, type ScheduleRunEvent } from '@switchboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
+import { AppIcon } from './appIcon.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -22,11 +25,13 @@ import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
 import { SoundPlayer } from './sounds.ts';
+import { KeepAwake } from './keepAwake.ts';
+import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
-import { updatesDisabledReason } from './updateState.ts';
+import { channelOf, updatesDisabledReason } from './updateState.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -70,6 +75,8 @@ if (scripted) {
   process.env.SWITCHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
   process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  // Queued items that start by themselves leave the queue without sending their prompt to Claude.
+  process.env.SWITCHBOARD_STUB_QUEUE = '1';
   // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
   process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
@@ -97,6 +104,13 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // Electron's own path in development, where no Start menu entry carries one.
 const appUserModelId = app.isPackaged ? 'dev.switchboard.app' : process.execPath;
 if (process.platform === 'win32') app.setAppUserModelId(appUserModelId);
+
+// On Linux, Chromium picks the keychain from the desktop's name: one it doesn't know (Hyprland, Sway, i3) gets no
+// keychain at all, even with gnome-keyring or KeePassXC running, and Remote can't keep its keys. Ask for the Secret
+// Service there; KDE keeps KWallet, and a --password-store the user passes wins.
+if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store') && !/KDE/i.test(process.env.XDG_CURRENT_DESKTOP ?? '')) {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
+}
 
 // SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
 const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
@@ -129,6 +143,9 @@ const updater = new Updater({
     devServer: Boolean(process.env.ELECTRON_RENDERER_URL),
     hasFeed: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
     mockFeed: Boolean(mockFeedUrl),
+    // On Linux electron-updater replaces the AppImage it runs from, or installs the .deb or .rpm the build marked
+    // in package-type; the unpacked folder is neither.
+    installer: process.platform !== 'linux' || Boolean(process.env.APPIMAGE) || (app.isPackaged && existsSync(join(process.resourcesPath, 'package-type'))),
   }),
   markerFile: join(app.getPath('userData'), 'update-marker.json'),
   ...(mockFeedUrl ? { mockFeedUrl } : {}),
@@ -147,9 +164,41 @@ ipcMain.on(IpcChannel.updateCommand, (_event, command: unknown) => {
   if (command === 'check' || command === 'download' || command === 'install' || command === 'retry' || command === 'dismiss') updater.run(command satisfies UpdateCommand);
 });
 
+/**
+ * Settings › Theme › App icon, in the Dock or on the windows; applied on `ready`, before the first window, and on every
+ * change. The colourways ship with the app (extraResources), from resources/app-icons in development.
+ */
+const appIcon = new AppIcon({
+  platform: process.platform,
+  dir: app.isPackaged ? join(process.resourcesPath, 'app-icons') : join(here, '../../resources/app-icons'),
+  bundled: app.isPackaged,
+  dock: app.dock,
+  windows: () => BrowserWindow.getAllWindows(),
+  exists: existsSync,
+});
+/**
+ * Settings › General › Keep awake: `caffeinate` on macOS, Electron's sleep blocker elsewhere. Applied on `ready` and on
+ * every change; let go on quit.
+ */
+const keepAwake = new KeepAwake({
+  platform: process.platform,
+  pid: process.pid,
+  spawn: (file, args) => spawn(file, args, { stdio: 'ignore' }),
+  blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
+});
+ipcMain.handle(IpcChannel.keepAwakeStatus, () => keepAwake.active);
+
+/** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
+const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
+  const icon = appIcon.windowIcon();
+  return icon ? { icon } : {};
+};
+
 /** Applies a change from any window or the menu bar, and tells every window. */
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
+  if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
+  keepAwake.apply(next.keepAwake);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
   const item = Menu.getApplicationMenu()?.getMenuItemById(`scheme-${next.colorScheme}`);
@@ -173,6 +222,10 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
+  engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
+  // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
+  engine?.sendStanding({ type: 'appIcon', key: prefs.appIconOnRemote ? prefs.appIcon : DEFAULT_PREFERENCES.appIcon });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -286,6 +339,8 @@ function sessionOnScreen(): string | null {
   return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
 }
 const recordedNotifications: RecordedAlert[] = [];
+/** Scheduled runs the engine reported (the smoke run's schedules step reads their titles). */
+const recordedScheduleRuns: ScheduleRunEvent[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
@@ -306,6 +361,31 @@ ipcMain.on(IpcChannel.openNotificationSettings, () => {
   });
 });
 ipcMain.on(IpcChannel.testNotification, () => notifier?.test());
+
+/** Open at login for scripted runs, which never add Switchboard to the real login items. */
+let scriptedOpenAtLogin: OpenAtLogin = 'off';
+/** How Open at login stands. A development build would add Electron itself, and Electron has no login items on Linux. */
+function readOpenAtLogin(): OpenAtLogin {
+  if (scripted) return scriptedOpenAtLogin;
+  if (!app.isPackaged || !loginItemsSettingsUrl(process.platform)) return 'unavailable';
+  return openAtLoginFrom(app.getLoginItemSettings(), process.platform);
+}
+ipcMain.handle(IpcChannel.getOpenAtLogin, () => readOpenAtLogin());
+ipcMain.handle(IpcChannel.setOpenAtLogin, (_event, on: unknown) => {
+  if (typeof on !== 'boolean' || readOpenAtLogin() === 'unavailable') return readOpenAtLogin();
+  if (scripted) return (scriptedOpenAtLogin = on ? 'on' : 'off');
+  try {
+    // On Windows `enabled` also turns it back on when Task Manager or Startup apps turned it off.
+    app.setLoginItemSettings({ openAtLogin: on, enabled: on });
+  } catch {
+    // The answer below says how it really stands.
+  }
+  return readOpenAtLogin();
+});
+ipcMain.on(IpcChannel.openLoginItemsSettings, () => {
+  const url = loginItemsSettingsUrl(process.platform);
+  if (url && !scripted) void shell.openExternal(url);
+});
 
 /**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
@@ -612,6 +692,7 @@ function createWindow(): BrowserWindow {
     enableLargerThanScreen: scripted,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -658,7 +739,11 @@ function createWindow(): BrowserWindow {
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
 function loadRenderer(win: BrowserWindow, popout?: string): void {
   const contentsId = win.webContents.id;
-  win.webContents.on('did-start-loading', () => readyRenderers.delete(contentsId));
+  // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
+  // and the page says it is ready only once, so it would never count as ready again.
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) readyRenderers.delete(contentsId);
+  });
   // A crashed page leaves the window blank: reload it, unless it keeps crashing.
   const reloads = new ReloadLimiter();
   win.webContents.on('render-process-gone', (_event, details) => {
@@ -720,6 +805,7 @@ function popOut(sessionId: string, view: unknown = null): void {
     minHeight: POPOUT_MIN.height,
     show: false,
     ...titleBar(),
+    ...windowIcon(),
     backgroundColor: windowBackground(),
     webPreferences: webPreferences(),
   });
@@ -795,7 +881,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -846,6 +932,10 @@ ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
+});
+
+ipcMain.handle(IpcChannel.pasteClipboard, (event) => {
+  event.sender.paste();
 });
 
 ipcMain.handle(IpcChannel.pickImage, async (event, defaultPath: unknown) => {
@@ -1059,6 +1149,10 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(win, `!document.querySelector('${session} [data-auto-choosing]')`, 5_000))) return 'Stop session left Auto choosing';
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
       if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open again';
+      // A choice applies to that prompt only: the next New session starts from the defaults again, so pick Auto anew.
+      // Wait for its folder first: the project's defaults arrive with it and would replace an earlier pick.
+      if (!(await waitInPage(win, `!!document.querySelector('${view} [data-folder-select]')?.dataset.value && document.querySelector('${view} [data-model-select]')?.dataset.value === ${JSON.stringify(previousModel)}`, 3_000))) return 'New session remembered Auto instead of starting from the defaults';
+      if (!(await chooseChoice(win, 'model', 'auto', view))) return 'could not pick Auto again';
       choosing = 'Start opened the session while Auto chose';
     }
 
@@ -1335,7 +1429,10 @@ let crashedAt = 0;
 let smokeSessionId: string | null = null;
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
-const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined) });
+// npm run smoke -- --only "<pattern>": only the steps whose label matches (case-insensitive), to check one while building.
+const smokeOnly = process.env.SWITCHBOARD_SMOKE_ONLY ? new RegExp(process.env.SWITCHBOARD_SMOKE_ONLY, 'i') : null;
+const RESTART_STEP = 'engine restarted and renderer reconnected';
+const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined), only: smokeOnly });
 
 /**
  * Adds a project action through the editor (saving closes it, says "Action saved" and adds its pill),
@@ -2097,6 +2194,19 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await section('projects');
   await click('[data-project-order="yours"]');
   await section('general');
+  // Open at login goes to the faked login item (scripted runs never touch the real one), and back off.
+  const loginSwitch = "document.querySelector('[data-open-at-login]')";
+  const loginReady = await waitInPage(win, `${loginSwitch} && !${loginSwitch}.disabled && ${loginSwitch}.getAttribute('aria-checked') === 'false'`, 3_000);
+  await click('[data-open-at-login]');
+  const loginOn = loginReady && (await until(() => scriptedOpenAtLogin === 'on', 2_000)) && (await waitInPage(win, `${loginSwitch}.getAttribute('aria-checked') === 'true'`, 2_000));
+  await click('[data-open-at-login]');
+  const loginOff = await until(() => scriptedOpenAtLogin === 'off', 2_000);
+  // Keep awake holds sleep off for real (caffeinate on macOS, the sleep blocker elsewhere) and lets go when turned off.
+  const awakeStatus = "document.querySelector('[data-keep-awake-status]')";
+  await click('[data-keep-awake]');
+  const awakeOn = (await until(() => preferences.get().keepAwake && keepAwake.active, 2_000)) && (await waitInPage(win, awakeStatus, 2_000));
+  await click('[data-keep-awake]');
+  const awakeOff = (await until(() => !preferences.get().keepAwake && !keepAwake.active, 2_000)) && (await waitInPage(win, `!${awakeStatus}`, 2_000));
   await click('[data-startup-view="new"]');
   await click('[data-confirm-quit]');
   await until(() => !preferences.get().confirmQuit);
@@ -2119,6 +2229,10 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-tool-activity="summary"]');
   await until(() => preferences.get().toolActivity === 'summary');
   const restored = preferences.get();
+  if (!loginOn) return 'Open at login did not turn on';
+  if (!loginOff) return 'Open at login did not turn off again';
+  if (!awakeOn) return `Keep awake did not turn on, or showed no status (saved ${preferences.get().keepAwake}, active ${keepAwake.active})`;
+  if (!awakeOff) return `Keep awake did not let go (saved ${preferences.get().keepAwake}, active ${keepAwake.active})`;
   if (!scoped) return 'other apps\' sessions stayed in the sidebar with the setting off';
   if (!quitWithoutAsking) return '⌘Q still asked with the prompt turned off';
   if (saved.colorScheme !== 'dark' || saved.sidebarStyle !== 'compact' || saved.toolActivity !== 'steps' || saved.confirmQuit !== false || saved.sessionScope !== 'switchboard' || saved.startupView !== 'new' || saved.projectOrder !== 'yours') return `not saved: ${JSON.stringify(saved)}`;
@@ -2333,21 +2447,24 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Settings › General › Permission mode: a fixed mode is what New session's mode chip starts on, and The last one
- * you picked brings back the remembered one. Runs before any step types in New session, since an unsent prompt there
- * keeps the choices it was written with. Starts no session; only the throwaway profile's preference changes, and it
- * is put back, with the session that was open.
+ * Settings › General › Permission mode: Use project default (the default) doesn't keep a mode picked in New session,
+ * Remember last brings it back, and a fixed mode is what New session's mode chip starts on. Runs before any step
+ * types in New session, since an unsent prompt there keeps the choices it was written with. Starts no session; only
+ * the throwaway profile's preference changes, and it is put back, with the session that was open.
  */
 async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const chip = "document.querySelector('[data-new-session-view] [data-mode-select]')";
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-mode-select]')`;
   const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
-  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on. */
+  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on, once it has settled. */
   const freshMode = async () => {
     await js("document.querySelector('[data-go-home]')?.click()");
     await waitInPage(win, `!${chip}`, 2_000);
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
-    return (await waitInPage(win, `${chip}?.dataset.value`, 5_000)) ? ((await js(`${chip}.dataset.value`)) as string) : null;
+    if (!(await waitInPage(win, `${chip}?.dataset.value`, 5_000))) return null;
+    await settle(win);
+    return (await js(`${chip}.dataset.value`)) as string;
   };
   const setMode = async (mode: string) => {
     await js("document.querySelector('[data-open-settings]').click()");
@@ -2355,26 +2472,34 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-settings-section=\"general\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-new-session-mode]')", 2_000))) return false;
     const picked = await chooseOption(win, '[data-new-session-mode]', mode);
-    if (mode !== 'last') await shot(win, 'settings-new-session-mode.png');
+    if (mode === 'remember') await shot(win, 'settings-new-session-mode.png');
     await js("document.querySelector('[data-close-settings]').click()");
     return picked && (await until(() => preferences.get().newSessionMode === mode));
   };
 
-  if (preferences.get().newSessionMode !== 'last') return `the preference started as ${preferences.get().newSessionMode}, not The last one you picked`;
+  if (preferences.get().newSessionMode !== 'project') return `the preference started as ${preferences.get().newSessionMode}, not Use project default`;
+  const base = await freshMode();
+  if (!base) return 'New session has no mode chip';
+  // Picked in New session: for this prompt only while the setting is Use project default.
+  const picked = base === 'plan' ? 'acceptEdits' : 'plan';
+  if (!(await chooseChoice(win, 'mode', picked, view))) return `could not pick ${picked} in New session's mode chip`;
+  const afterPick = await freshMode();
+  if (afterPick !== base) return `with Use project default, New session kept ${afterPick} instead of starting on ${base}`;
+  if (!(await setMode('remember'))) return 'could not set Permission mode to Remember last in Settings › General';
   const remembered = await freshMode();
-  if (!remembered) return 'New session has no mode chip';
-  const fixed = remembered === 'plan' ? 'acceptEdits' : 'plan';
+  if (remembered !== picked) return `with Remember last, New session's mode chip starts on ${remembered}, not ${picked}`;
+  const fixed = [base, picked].includes('acceptEdits') ? 'default' : 'acceptEdits';
   if (!(await setMode(fixed))) return `could not set Permission mode to ${fixed} in Settings › General`;
   const withFixed = await freshMode();
   if (withFixed !== fixed) return `with ${fixed} set, New session's mode chip starts on ${withFixed}`;
-  if (!(await setMode('last'))) return 'could not set Permission mode back to The last one you picked';
+  if (!(await setMode('project'))) return 'could not set Permission mode back to Use project default';
   const again = await freshMode();
-  if (again !== remembered) return `back on The last one you picked, the chip starts on ${again}, not ${remembered}`;
+  if (again !== base) return `back on Use project default, the chip starts on ${again}, not ${base}`;
   if (open) {
     openSession(open);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
   }
-  return `ok: ${fixed} from Settings, then ${remembered} again as the one picked last`;
+  return `ok: ${picked} picked was not kept on Use project default (${base}), came back with Remember last; ${fixed} from Settings`;
 }
 
 /**
@@ -2519,6 +2644,41 @@ async function runFocusStep(win: BrowserWindow): Promise<string> {
   return `ok (light ${light}, dark ${dark})`;
 }
 
+/** Opens Projects unless it is on screen (its sidebar button leaves the view when it is). */
+async function openProjectsView(win: BrowserWindow): Promise<boolean> {
+  await win.webContents.executeJavaScript("document.querySelector('[data-projects-view]') || document.querySelector('[data-open-projects]')?.click()");
+  return waitInPage(win, "document.querySelector('[data-projects-view]')", 3_000);
+}
+
+/** A right-click on a project's row in Projects, which opens the row menu (Rename…, Remove…). False without the row. */
+function openProjectRowMenu(win: BrowserWindow, root: string): Promise<boolean> {
+  return win.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)});
+    if (!row) return false;
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 10 }));
+    return true;
+  })()`) as Promise<boolean>;
+}
+
+/**
+ * Takes a project off the throwaway profile's list again, the way someone would: Projects, a right-click on its row,
+ * Remove from Switchboard…, Remove. Nothing on disk changes. Returns what went wrong, or null.
+ */
+async function removeProjectInProjects(win: BrowserWindow, root: string): Promise<string | null> {
+  if (!(await openProjectsView(win))) return 'Projects did not open';
+  // A narrow view folds the list away: the header's ‹ shows it.
+  await win.webContents.executeJavaScript("document.querySelector('[data-project-list]') || document.querySelector('[data-project-show-list]')?.click()");
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)})`, 3_000))) return 'the project is not in Projects';
+  await openProjectRowMenu(win, root);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "no Remove in the project's row menu";
+  await win.webContents.executeJavaScript("document.querySelector('[role=menu] [data-remove-project]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000))) return 'no confirmation before removing';
+  await win.webContents.executeJavaScript("document.querySelector('[data-confirm]').click()");
+  if (!(await waitInPage(win, `!document.querySelector(${JSON.stringify(`[data-project-row=${JSON.stringify(root)}]`)})`, 3_000))) return 'the project was not removed';
+  return null;
+}
+
 /**
  * Projects are added by hand: the throwaway profile starts with none, the Add project dialog offers the
  * folders Claude Code has sessions for, and a project's defaults reach the New session view. Only the
@@ -2529,8 +2689,9 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-sidebar-onboarding]')", 3_000))) return 'a new profile did not offer to add a project';
   await click('[data-open-projects]');
-  if (!(await waitInPage(win, "document.querySelector('[data-project-manager] [data-no-projects]')", 3_000))) return 'the Projects view did not open empty';
-  await click('[data-manager-add]');
+  if (!(await waitInPage(win, "document.querySelector('[data-projects-view] [data-no-projects]')", 3_000))) return 'the Projects view did not open empty';
+  const viewWidth = (await js("Math.round(document.querySelector('[data-projects-view]').getBoundingClientRect().width)")) as number;
+  await click('[data-empty-add-project]');
   if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders with sessions offered';
   const known = (await js("document.querySelectorAll('[data-known-project]').length")) as number;
   // Switchboard's own repository when Claude Code has sessions there (a git repository, so the Worktrees tab has
@@ -2570,37 +2731,40 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('project branches', () => runProjectBranchesStep(win, root), { cleanup: false });
   await smokeRun.step('project memory and share dialog', () => runProjectMemoryStep(win, root), { cleanup: false });
   await smokeRun.step('settings › memory', () => runMemorySettingsStep(win, root), { cleanup: false });
+  await smokeRun.step('projects view: a row opens its Overview, the gear its Settings, ⌥↓ the next project on Settings, the switcher, ⌥⇧↑ and drag to reorder', () => runProjectsViewStep(win, root), { cleanup: false });
 
-  // The Projects list shows the saved default (and a worktree pill when the project has worktrees).
-  await click('[data-project-breadcrumb]');
-  if (!(await waitInPage(win, `${row('[data-defaults-summary]')}?.innerText.includes('high effort')`, 3_000))) return 'the effort default was not saved';
+  // The Overview says how sessions start here, with the saved default.
+  await js(`${page('[data-project-tab="overview"]')}.click()`);
+  if (!(await waitInPage(win, `${page('[data-overview-defaults]')}?.innerText.includes('high effort')`, 3_000))) return 'the effort default was not saved';
   await shot(win, 'projects.png');
 
-  // Renaming only changes the name Switchboard shows; it reaches the sidebar filter too.
+  // Renaming only changes the name Switchboard shows, in place on the Settings tab; it reaches the list and the sidebar filter too.
   const renameDialog = "document.querySelector('[data-rename-project-dialog]')";
   const folder = basename(root);
-  await js(`${row('[data-project-open]')}.click()`);
-  if (!(await waitInPage(win, page('[data-project-tab="settings"]'), 3_000))) return 'a click on the project did not open its page';
   await js(`${page('[data-project-tab="settings"]')}.click()`);
-  if (!(await waitInPage(win, page('[data-project-rename]'), 3_000))) return 'no Rename… on the Settings tab';
-  await js(`${page('[data-project-rename]')}.click()`);
-  if (!(await waitInPage(win, `${renameDialog} && document.activeElement?.matches('[data-rename-project-input]') && document.activeElement.value === ${JSON.stringify(folder)}`, 3_000))) return "Rename… did not open with the folder's name";
-  await setFieldValue(win, '[data-rename-project-input]', 'Smoke project');
-  await js("document.querySelector('[data-rename-project-save]').click()");
-  if (!(await waitInPage(win, `!${renameDialog} && ${page('[data-project-name]')}.innerText.includes('Smoke project')`, 3_000))) return 'the new name did not reach the project page';
+  if (!(await waitInPage(win, `${page('[data-project-name-input]')}?.value === ${JSON.stringify(folder)}`, 3_000))) return "no Name field with the folder's name on the Settings tab";
+  await js(`${page('[data-project-name-input]')}.focus()`);
+  await setFieldValue(win, `${pageSelector} [data-project-name-input]`, 'Smoke project');
+  pressKey(win, 'Return');
+  // The list is folded away in a narrow window.
+  if (!(await waitInPage(win, `${page('[data-project-name]')}.innerText.includes('Smoke project') && (!${row()} || ${row()}.innerText.includes('Smoke project'))`, 3_000))) return 'the new name did not reach the project page and the list';
 
   // A project's ⋯ menu in the sidebar filter: one real click outside closes the filter and the menu.
   const more = `[data-project-filter-menu] [data-project-more=${JSON.stringify(root)}]`;
   await click('[data-project-filter]');
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(more)})`, 2_000))) return 'the project is not in the sidebar filter';
   if ((await js(`document.querySelector(${JSON.stringify(more)}).getAttribute('aria-label')`)) !== 'Options for Smoke project') return 'the sidebar filter does not show the new name';
+  if (!(await js(`!!document.querySelector(${JSON.stringify(`[data-project-filter-menu] [data-project-open-page=${JSON.stringify(root)}]`)}) && !!document.querySelector('[data-project-filter-menu] [data-manage-projects]')`))) return 'the sidebar filter has no › on the project or no Manage projects…';
   await click(more);
   if (!(await waitInPage(win, "document.querySelectorAll('[role=menu]').length === 2", 2_000))) return 'the project options menu did not open from the filter';
   const outside = (await js("(() => { const r = document.querySelector('[data-project-page]').getBoundingClientRect(); return { x: Math.round(r.right - 24), y: Math.round(r.bottom - 24) }; })()")) as { x: number; y: number };
   win.webContents.sendInputEvent({ type: 'mouseDown', x: outside.x, y: outside.y, button: 'left', clickCount: 1 });
   win.webContents.sendInputEvent({ type: 'mouseUp', x: outside.x, y: outside.y, button: 'left', clickCount: 1 });
   if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'a click outside left the project options menu open';
-  await js(`${page('[data-project-rename]')}.click()`);
+  // The header's ⋯ (like the row's right-click menu) keeps Rename…, with Use folder name.
+  await js(`${page('[data-project-more]')}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-rename-project]')", 2_000))) return "no Rename… in the project's ⋯ menu";
+  await click('[role=menu] [data-rename-project]');
   if (!(await waitInPage(win, "document.querySelector('[data-rename-project-reset]')", 3_000))) return 'no Use folder name for a renamed project';
   await click('[data-rename-project-reset]');
   if (!(await waitInPage(win, `!${renameDialog} && ${page('[data-project-name]')}.innerText.startsWith(${JSON.stringify(folder)})`, 3_000))) return 'Use folder name did not bring back the folder name';
@@ -2638,17 +2802,140 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
 
+  // Projects opens on the project last open; its Settings show the default saved from New session.
   await click('[data-open-projects]');
-  if (!(await waitInPage(win, `${row('[data-defaults-summary]')}?.innerText.includes('low effort')`, 3_000))) return 'the saved default did not reach the Projects view';
-  // Removing is in the row's ⋯ menu (it only takes the project off Switchboard's list).
-  await js(`${row('[data-project-more-button]')}.click()`);
-  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "no Remove in the project's ⋯ menu";
-  await click('[role=menu] [data-remove-project]');
+  if (!(await waitInPage(win, page('[data-project-tab="settings"]'), 3_000))) return 'Projects did not open on the project last open';
+  await js(`${page('[data-project-tab="settings"]')}.click()`);
+  if (!(await waitInPage(win, `${page('[data-default-effort]')}?.dataset.value === 'low'`, 3_000))) return 'the saved default did not reach the Projects view';
+  // Removing is on the Settings tab too (it only takes the project off Switchboard's list).
+  await js(`${page('[data-project-remove]')}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000))) return 'no confirmation before removing';
   await click('[data-confirm]');
-  if (!(await waitInPage(win, "document.querySelector('[data-no-projects]')", 3_000))) return 'the project was not removed';
+  if (!(await waitInPage(win, "document.querySelector('[data-projects-view] [data-no-projects]')", 3_000))) return 'the project was not removed';
   await click('[data-open-projects]');
-  return `ok: ${known} folders offered; added one and its page opened (${pageResult.startsWith('ok') ? 'tabs checked' : 'page step failed'}), dropdown keyboard and Escape, renamed it and back, an outside click closed its filter menus, its defaults reached New session (git button: ${catchUp}), saved a change back, removed it`;
+  return `ok: ${known} folders offered (view ${viewWidth}px wide); added one and its page opened (${pageResult.startsWith('ok') ? 'tabs checked' : 'page step failed'}), dropdown keyboard and Escape, renamed it in place and back from its row menu, an outside click closed its filter menus, its defaults reached New session (git button: ${catchUp}), saved a change back, removed it from Settings`;
+}
+
+/**
+ * The Projects view with three projects (the one under test and two more folders offered, removed again): a click on a
+ * row opens its Overview, the gear on a hovered row its Settings, ⌥↓ the next project on the same tab, the name's
+ * switcher another one, ⌥⇧↑ moves the open project with an announcement, and dragging the third project to the top
+ * changes the order the sidebar's project menu shows. Only the throwaway profile's project list changes.
+ */
+async function runProjectsViewStep(win: BrowserWindow, root: string): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const listed = () => js("[...document.querySelectorAll('[data-project-list] [data-project-row]')].map((e) => e.dataset.projectRow)") as Promise<string[]>;
+  const pageOf = (r: string) => `document.querySelector(${JSON.stringify(`[data-project-page=${JSON.stringify(r)}]`)})`;
+  const onTab = (r: string, tab: string) => `${pageOf(r)}?.querySelector('[data-project-tab="${tab}"]')?.getAttribute('aria-selected') === 'true'`;
+  const rowOf = (r: string) => `document.querySelector(${JSON.stringify(`[data-project-list] [data-project-row=${JSON.stringify(r)}]`)})`;
+  /** Clicks the element `expression` finds; false when there is none. */
+  const press = (expression: string) => js(`(() => { const el = ${expression}; el?.click(); return !!el; })()`) as Promise<boolean>;
+
+  // Two more projects, from the folders Claude Code has sessions for.
+  if (!(await openProjectsView(win))) return 'Projects did not open';
+  // A narrow view folds the list away (the header's ‹ shows it): with the sidebar open, make room by closing it.
+  const width = (await js("Math.round(document.querySelector('[data-projects-view]').getBoundingClientRect().width)")) as number;
+  const madeRoom = (await js("!!document.querySelector('[data-projects-view][data-narrow]') && !!document.querySelector('[data-sidebar-open]')")) as boolean;
+  if (madeRoom) {
+    if (!(await press("document.querySelector('[data-projects-view] [data-sidebar-toggle]')"))) return 'no sidebar toggle in the narrow Projects view';
+    if (!(await waitInPage(win, "!document.querySelector('[data-projects-view][data-narrow]') && document.querySelector('[data-project-list]')", 3_000))) return `the list did not show with the sidebar closed (view ${width}px wide)`;
+  }
+  if (!(await press("document.querySelector('[data-manager-add]')"))) return `no + in the list (view ${width}px wide, narrow: ${String(await js("!!document.querySelector('[data-projects-view][data-narrow]')"))})`;
+  if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders offered';
+  const extra = (await js("[...document.querySelectorAll('[data-known-project][data-added=\"false\"]')].slice(0, 2).map((e) => e.dataset.knownProject)")) as string[];
+  for (const folder of extra) {
+    await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(folder)}]`)}).click()`);
+    await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(folder)}]`)})?.dataset.added === 'true'`, 3_000);
+  }
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000))) return 'the Add project dialog did not close';
+  try {
+    if (extra.length < 2) return `ok: skipped, only ${extra.length + 1} folders to make projects of`;
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-project-list] [role=listbox] [data-project-row]').length === 3", 3_000))) return 'the list does not show the three projects';
+    let order = await listed();
+
+    // 1. A click on a project not opened yet: its Overview.
+    // Closing the dialog opened the last folder added (on Settings); the other new one has no tab of its own yet.
+    const open = (await js("document.querySelector('[data-project-list] [data-project-row][aria-selected=true]')?.dataset.projectRow ?? null")) as string | null;
+    const unopened = extra.find((r) => r !== open) ?? extra[0]!;
+    if (!(await press(rowOf(unopened)))) return 'the project not opened yet is not in the list';
+    if (!(await waitInPage(win, `${onTab(unopened, 'overview')} && ${pageOf(unopened)}.querySelector('[data-project-overview]') && ${rowOf(unopened)}.getAttribute('aria-selected') === 'true'`, 3_000))) return 'a click on a row did not open its Overview';
+
+    // 2. The gear on a hovered row (the first): that project's Settings.
+    const first = order[0]!;
+    const box = (await js(`(() => { const r = ${rowOf(first)}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: box.x, y: box.y });
+    const gear = `${rowOf(first)}.querySelector('[data-project-row-settings]')`;
+    if (!(await waitInPage(win, `${gear}?.offsetParent !== null`, 2_000))) return 'no gear on the hovered row';
+    const at = (await js(`(() => { const r = ${gear}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    if (!(await waitInPage(win, onTab(first, 'settings'), 3_000))) return "the gear did not open the project's Settings";
+
+    // 3. ⌥↓: the next project in the list, still on Settings.
+    pressKey(win, 'Down', ['alt']);
+    if (!(await waitInPage(win, onTab(order[1]!, 'settings'), 3_000))) return '⌥↓ did not open the next project on Settings';
+    if (!(await js(`document.querySelector('[data-project-panel-heading]')?.innerText.includes('Settings')`))) return "the tab panel's heading does not say where it is";
+
+    // 4. The name's switcher: part of a name, ↩, and that project opens on the same tab.
+    const target = order[2]!;
+    const name = (await js(`${rowOf(target)}.querySelector('[data-project-open] span').innerText`)) as string;
+    if (!(await press(`${pageOf(order[1]!)}?.querySelector('[data-project-switcher-button]')`))) return "no switcher on the project's name";
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-project-switcher] [role=combobox]')", 2_000))) return 'the switcher did not open with its search field';
+    await setFieldValue(win, '[data-project-switcher-search]', name.slice(0, Math.max(3, name.length - 2)));
+    const picked = (await js("document.querySelector('[data-project-switcher] [role=option][aria-selected=true]')?.dataset.projectSwitcherOption ?? null")) as string | null;
+    if (!picked) return `the switcher found nothing for "${name}"`;
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, `!document.querySelector('[data-project-switcher]') && ${onTab(picked, 'settings')}`, 3_000))) return '↩ in the switcher did not open the project on the same tab';
+
+    // 5. ⌥⇧↑ moves the open project up one place and says so.
+    const position = order.indexOf(picked);
+    if (position > 0) {
+      pressKey(win, 'Up', ['alt', 'shift']);
+      if (!(await waitInPage(win, `(document.querySelector('[data-project-announcement]')?.innerText ?? '').includes('moved to position ${position} of 3')`, 3_000))) return '⌥⇧↑ did not announce the move';
+      if (!(await waitInPage(win, `[...document.querySelectorAll('[data-project-list] [data-project-row]')].map((e) => e.dataset.projectRow).indexOf(${JSON.stringify(picked)}) === ${position - 1}`, 3_000))) return '⌥⇧↑ did not move the project';
+    }
+
+    // 6. Drag the third project to the top: the sidebar's project menu follows.
+    order = await listed();
+    const dragged = order[2]!;
+    await js(`(() => {
+      const source = ${rowOf(dragged)};
+      const target = ${rowOf(order[0]!)};
+      const data = new DataTransfer();
+      const r = target.getBoundingClientRect();
+      source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data, clientX: r.left + 20, clientY: r.top + 4 }));
+      source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data }));
+    })()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-project-list] [data-project-row]')?.dataset.projectRow === ${JSON.stringify(dragged)}`, 3_000))) return 'dragging the third project to the top did not move it';
+    await shot(win, 'projects-view.png');
+    if (madeRoom) {
+      await press("document.querySelector('[data-sidebar-toggle]')");
+      if (!(await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000))) return 'the sidebar did not open again';
+    }
+    if (!(await press("document.querySelector('[data-project-filter]')"))) return 'no project menu in the sidebar';
+    const menuOrder = `[...document.querySelectorAll('[data-project-filter-menu] [data-project-root]')].map((e) => e.dataset.projectRoot)`;
+    const expected = [dragged, ...order.filter((r) => r !== dragged)];
+    const followed = await waitInPage(win, `JSON.stringify(${menuOrder}) === ${JSON.stringify(JSON.stringify(expected))}`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[data-project-filter-menu]')", 2_000);
+    if (!followed) return `the sidebar's project menu did not follow the drag (${String(await js(`JSON.stringify(${menuOrder})`))})`;
+    return `ok (view ${width}px${madeRoom ? ', sidebar closed for the list' : ''}): a click opened the Overview, the hovered gear Settings, ⌥↓ the next project on Settings, the switcher another on the same tab, ⌥⇧↑ moved it and said so, a drag to the top reached the sidebar menu`;
+  } finally {
+    for (const folder of extra) await removeProjectInProjects(win, folder);
+    // Back on the project under test, with the sidebar as it was, as the steps after this one expect. With the sidebar
+    // open again the view may be narrow, the list folded away: the header's ‹ shows it.
+    await js("document.querySelector('[data-project-list]') || document.querySelector('[data-project-show-list]')?.click()");
+    await waitInPage(win, rowOf(root), 3_000);
+    await js(`${rowOf(root)}?.click()`);
+    await waitInPage(win, pageOf(root), 3_000);
+    if (madeRoom && !(await js("!!document.querySelector('[data-sidebar-open]')"))) {
+      await js("document.querySelector('[data-sidebar-toggle]')?.click()");
+      await waitInPage(win, "document.querySelector('[data-sidebar-open]')", 3_000);
+    }
+  }
 }
 
 /** The main checkout of the repository this app was built from, when it runs from source (the smoke test does). */
@@ -2673,11 +2960,11 @@ async function runProjectPageStep(win: BrowserWindow, root: string): Promise<str
   const tab = async (id: string) => js(`${q(`[data-project-tab="${id}"]`)}.click()`);
   if (!(await waitInPage(win, `${q('[data-project-name]')} && ${q('[data-project-tab="worktrees"]')}`, 3_000))) return 'the project page has no header or tabs';
 
-  // The header's icon opens the icon choices (only opened and closed: picking an image needs the system dialog).
-  await js(`${q('[data-project-icon-button]')}.click()`);
-  if (!(await waitInPage(win, "[...document.querySelectorAll('[role=menu] [role=menuitem]')].some((e) => e.innerText.includes('Choose image'))", 2_000))) return "the project's icon did not open its icon menu";
+  // The header's ⋯ opens the icon choices, the name and Remove (only opened and closed: picking an image needs the system dialog).
+  await js(`${q('[data-project-more]')}.click()`);
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[role=menu] [role=menuitem]')].some((e) => e.innerText.includes('Choose image')) && !!document.querySelector('[role=menu] [data-remove-project]')", 2_000))) return "the project's ⋯ did not open its menu";
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
-  if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the icon menu';
+  if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return 'Escape did not close the ⋯ menu';
 
   await tab('overview');
   if (!(await waitInPage(win, `document.querySelectorAll(${JSON.stringify(`${pageSelector} [data-overview-card]`)}).length >= 3`, 3_000))) return 'the Overview cards did not show';
@@ -2868,7 +3155,7 @@ async function runProjectMemoryStep(win: BrowserWindow, root: string): Promise<s
     if (!(await waitInPage(win, `${legend}.includes('MEMORY.md') && ${legend}.includes('CLAUDE.md')`, 5_000))) return `What loads here did not list the sandbox profile's files (${String(await js(legend))})`;
     await shot(win, 'memory-load-order.png');
     // Search finds the sandbox memory in its own Memory group above the conversations. Nothing is opened.
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: ['meta', 'shift'] });
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER, 'shift'] });
     if (!(await waitInPage(win, "document.querySelector('[data-search] input[role=combobox]')", 3_000))) return 'search did not open';
     await setFieldValue(win, '[data-search] input[role=combobox]', 'smoke share');
     if (!(await waitInPage(win, "document.querySelector('[data-search-memory-group] [data-search-memory-hit]')", 5_000))) return 'search did not find the sandbox memory';
@@ -3419,7 +3706,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
   await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
-  await click('[data-remote-new-session] [data-remote-project]');
+  // tideline by name, not the first tile: tiles follow that computer's activity, and harbor-api's profile (Work) starts
+  // in a new worktree, which shows no branch.
+  const tideline = `[data-remote-new-session] [data-remote-project][data-tooltip="tideline"]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})`, 3_000))) return `New session on the other computer has no tideline tile (${await js("[...document.querySelectorAll('[data-remote-new-session] [data-remote-project]')].map((t) => t.dataset.tooltip).join(', ')")})`;
+  await click(tideline);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})?.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'New session on the other computer did not pick tideline';
   // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
   const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
   if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
@@ -3633,7 +3925,7 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   };
 
   // Every built-in, in light and dark: the open sidebar, a code block, and the rail. A mode the theme
-  // doesn't have (Nord and The unnamed are dark only) shows Demo Time's.
+  // doesn't have (Nord is dark only) shows Demo Time's.
   for (const { id, raw } of BUILT_IN_THEMES) {
     if (!(await pick(id))) return `could not pick ${id}`;
     for (const mode of ['light', 'dark'] as const) {
@@ -3649,6 +3941,56 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   smokeThemeFile = null;
   return `ok (${cards.length} themes, 2 imported and removed)`;
+}
+
+/**
+ * Settings › Theme › App icon: pick Signal yellow (checked, saved, applied in main), the keys, both modes, the saved
+ * file as the next launch reads it, then Reset to Graphite.
+ */
+async function runAppIconStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const checked = (key: string) => waitInPage(win, `document.querySelector('[data-app-icon="${key}"][aria-checked="true"][data-app-icon-selected]') && document.querySelectorAll('[data-app-icon-picker] [aria-checked="true"]').length === 1`, 2_000);
+  const key = (name: string) => js(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(name)}, bubbles: true }))`);
+  const saved = () => sanitizePreferences(JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8'))).appIcon ?? 'graphite';
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="theme"]');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-app-icon-picker] [data-app-icon]').length === 9", 3_000))) return 'failed: the picker has no nine tiles';
+  if (!(await js("document.querySelector('[data-app-icon-picker]').closest('[role=radiogroup]')?.getAttribute('aria-label') === 'App icon'"))) return 'failed: the tiles are not a radio group named App icon';
+  if (!(await checked('graphite')) || (await js("Boolean(document.querySelector('[data-app-icon-reset]'))"))) return 'failed: Graphite is not the one checked, or Reset shows for it';
+  const broken = (await js("[...document.querySelectorAll('[data-app-icon] img')].filter((img) => !img.complete || img.naturalWidth === 0).length")) as number;
+  if (broken) return `failed: ${broken} tiles have no image`;
+
+  await click('[data-app-icon="signal"]');
+  if (!(await checked('signal'))) return 'failed: Signal yellow is not checked after a click';
+  if (!(await until(() => preferences.get().appIcon === 'signal' && appIcon.key === 'signal' && saved() === 'signal', 2_000))) return `failed: not saved and applied (preferences ${preferences.get().appIcon}, main ${appIcon.key}, file ${saved()})`;
+  if (process.platform !== 'darwin' && !appIcon.windowIcon()?.includes('signal')) return `failed: new windows would get ${appIcon.windowIcon()}`;
+  if (!(await waitInPage(win, "document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: no Reset to Graphite';
+
+  // Arrow keys move and pick, as in any radio group.
+  await js("document.querySelector('[data-app-icon=\"signal\"]').focus()");
+  await key('ArrowRight');
+  if (!(await checked('forest')) || !(await until(() => preferences.get().appIcon === 'forest', 2_000))) return 'failed: → did not pick Forest';
+  await key('ArrowLeft');
+  if (!(await checked('signal'))) return 'failed: ← did not go back to Signal yellow';
+
+  for (const mode of ['light', 'dark'] as const) {
+    await click(`[data-color-scheme="${mode}"]`);
+    if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: ${mode})').matches`, 2_000))) return `failed: ${mode} did not apply`;
+    const frame = (await js("getComputedStyle(document.querySelector('[data-app-icon=\"signal\"]')).borderTopColor")) as string;
+    if (!frame || frame === 'rgba(0, 0, 0, 0)') return `failed: the chosen tile has no frame in ${mode} mode`;
+    await shot(win, `app-icon-${mode}.png`);
+  }
+  await click('[data-color-scheme="system"]');
+
+  // A restart: launch reads the saved file before the first window.
+  const atLaunch = saved();
+  await click('[data-app-icon-reset]');
+  if (!(await checked('graphite')) || !(await until(() => preferences.get().appIcon === 'graphite' && appIcon.key === 'graphite' && saved() === 'graphite', 2_000))) return 'failed: Reset to Graphite did not apply';
+  if (!(await waitInPage(win, "!document.querySelector('[data-app-icon-reset]')", 2_000))) return 'failed: Reset still shows for Graphite';
+  await click('[data-close-settings]');
+  return atLaunch === 'signal' ? 'ok (Signal yellow saved for the next launch, keys, light and dark, reset)' : `failed: the next launch would read ${atLaunch}`;
 }
 
 /** Tool calls are summarised by default: open the last finished group and count its steps. */
@@ -3911,7 +4253,7 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
     if (!/^[\d,]+ \/ 65,536$/.test((await js(`${inDialog('[data-pr-counter]')}.innerText`)) as string)) return 'the counter is wrong';
     if ((await js(`${inDialog('[data-pr-draft]')}.getAttribute('aria-checked')`)) !== 'false') return 'Draft was on when the dialog opened';
     const pushLine = (await js(`document.querySelector('[data-pr-push-line]')?.innerText ?? ''`)) as string;
-    if (!/^(Pushes \d+ commits? to |Publishes |Already pushed)/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
+    if (!/^(Pushes \d+ commits? to |Publishes |Makes sure )/.test(pushLine)) return `no push line in the footer ("${pushLine}")`;
     const notice = (await js(`${inDialog('[data-pr-notice]')}?.dataset.prNotice ?? null`)) as string | null;
     await shot(win, 'pr-dialog.png');
 
@@ -3957,19 +4299,22 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
- * click does is the setting Clicking a file link (the file manager by default): the label and tooltip say it and what
- * Shift-click does instead, and the right-click and Shift+F10 menus list both ways and Copy path above the message's Quote and
- * Remember this…. Switching the setting in Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder or the user's editor. The
- * menus are only opened and closed with Escape, and the setting is put back at the end.
+ * click does is the setting Clicking a file link (Open in Switchboard by default: Markdown, HTML and code files preview there,
+ * the rest show in the file manager): the label and tooltip say it and what Shift-click does instead, and the right-click and
+ * Shift+F10 menus list every way and Copy path above the message's Quote and Remember this…. Switching the setting in
+ * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder, the preview or the user's
+ * editor. The menus are only opened and closed with Escape, and the setting is put back at the end.
  */
 async function runFileLinksStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const fileManager = process.platform === 'win32' ? 'File Explorer' : process.platform === 'darwin' ? 'Finder' : 'Files';
   const original = preferences.get().fileLinkClick;
-  if (original !== 'file-manager') return `the setting started as ${original}, not Show in ${fileManager}`;
+  if (original !== 'switchboard') return `the setting started as ${original}, not Open in Switchboard`;
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const LINK = "[data-transcript] [data-file-link]";
   const shiftClick = /(Shift\+click|⇧-click) (opens|shows) it in /;
+  const previewable = (path: string) => previewKind(path) !== null;
+  type Mode = 'switchboard' | 'file-manager' | 'editor';
 
   /** The links and chips on screen, as they read, once a path has been looked up. */
   const read = async () => {
@@ -3984,21 +4329,29 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     return { links, chips };
   };
 
-  /** What each link and chip must say when a click does `mode`'s action. Null when all is right. */
-  const check = (shown: Awaited<ReturnType<typeof read>>, mode: 'file-manager' | 'editor'): string | null => {
-    const show = mode === 'file-manager';
-    const expectedAction = show ? 'show' : 'editor';
+  /** What a click does on the file at `path` in `mode`. */
+  const actionFor = (mode: Mode, path: string) => (mode === 'switchboard' ? (previewable(path) ? 'preview' : 'show') : mode === 'file-manager' ? 'show' : 'editor');
+
+  /** What each link and chip must say when the setting is `mode`. Null when all is right. */
+  const check = (shown: Awaited<ReturnType<typeof read>>, mode: Mode): string | null => {
     for (const link of shown.links) {
       const path = link.target.replace(/:\d+$/, '');
-      const start = show ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
-      const second = show ? 'opens it in ' : `shows it in ${fileManager}`;
+      const expectedAction = actionFor(mode, path);
+      // The preview and the editor go to the line; the file manager can't.
+      const start = expectedAction === 'preview' ? `Preview ${link.target} in Switchboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
       if (!link.href.startsWith('file:///') || !isAbsolutePath(path)) return `a file link is wrong: ${JSON.stringify(link)}`;
-      if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || !link.tooltip.includes(second) || link.action !== expectedAction) return `with ${mode} set, a link says "${link.tooltip}" (${link.action})`;
+      if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || link.action !== expectedAction) return `with ${mode} set, a link to ${path} says "${link.tooltip}" (${link.action})`;
+      if (expectedAction === 'editor' && !link.tooltip.includes(`shows it in ${fileManager}`)) return `with ${mode} set, a link says "${link.tooltip}"`;
       if (link.described !== link.tooltip) return `a link's description for screen readers is not its tooltip: ${JSON.stringify(link)}`;
     }
     for (const chip of shown.chips) {
-      const start = show ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
-      if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== (show ? 'Show ↗' : 'Open ↗') || chip.action !== expectedAction) return `with ${mode} set, a file chip says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
+      const expectedAction = actionFor(mode, chip.path);
+      // A chip for a Read from a line names the line after the path.
+      const start = expectedAction === 'preview' ? `Preview ${chip.path}` : expectedAction === 'show' ? `Show ${chip.path} in ${fileManager}. ` : 'Open ';
+      const text = expectedAction === 'preview' ? 'Preview ↗' : expectedAction === 'show' ? 'Show ↗' : 'Open ↗';
+      if (!chip.tooltip.startsWith(start) || !shiftClick.test(chip.tooltip) || chip.label !== chip.tooltip || chip.text !== text || chip.action !== expectedAction) {
+        return `with ${mode} set, a file chip for ${chip.path} says "${chip.text}" / "${chip.tooltip}" (${chip.action})`;
+      }
     }
     return null;
   };
@@ -4012,6 +4365,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
       pressKey(win, 'F10', ['shift']);
     }
     if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-file-link-menu-item]')", 2_000))) return `the ${how} menu did not open`;
+    const target = (await js(`document.querySelector('${LINK}').dataset.fileLink`)) as string;
     const items = (await js("[...document.querySelectorAll('[role=menu] [data-file-link-menu-item]')].map((b) => ({ id: b.dataset.fileLinkMenuItem, label: b.textContent.trim() }))")) as Array<{ id: string; label: string }>;
     const inside = (await js("!!document.activeElement?.closest('[role=menu]')")) as boolean;
     const message = (await js("!!document.querySelector('[role=menu] [data-quote-menu]') && !!document.querySelector('[role=menu] [data-remember-menu]')")) as boolean;
@@ -4020,32 +4374,39 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000))) return `Escape did not close the ${how} menu`;
     const ids = items.map((item) => item.id).join(',');
-    if (ids !== 'show,editor,copy') return `the ${how} menu lists ${ids}, not show,editor,copy`;
-    if (items[0]!.label !== `Show in ${fileManager}` || !items[1]!.label.startsWith('Open in ') || items[2]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
+    const expected = previewable(target.replace(/:\d+$/, '')) ? 'preview,show,editor,copy' : 'show,editor,copy';
+    if (ids !== expected) return `the ${how} menu on ${target} lists ${ids}, not ${expected}`;
+    const labels = expected.startsWith('preview') ? ['Open in Switchboard', `Show in ${fileManager}`] : [`Show in ${fileManager}`];
+    const rest = items.slice(labels.length);
+    if (items.slice(0, labels.length).some((item, i) => item.label !== labels[i]) || !rest[0]!.label.startsWith('Open in ') || rest[1]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
     if (!inside) return `focus did not move into the ${how} menu`;
     if (!message) return `the ${how} menu on a link in a reply has no Quote or Remember this…`;
     return items;
   };
 
-  const setInSettings = async (value: 'file-manager' | 'editor') => {
+  const setInSettings = async (value: Mode) => {
     await js("document.querySelector('[data-open-settings]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"conversation\"]')", 3_000))) return 'Settings did not open';
     await js("document.querySelector('[data-settings-section=\"conversation\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-file-link-click]')", 2_000))) return 'Settings › Conversation has no Clicking a file link';
     const shownValue = (await js("document.querySelector('[data-file-link-click]').dataset.value")) as string;
     const text = (await js("document.querySelector('[data-file-link-click]').innerText")) as string;
-    const expectedText = shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
+    const expectedText = shownValue === 'switchboard' ? 'Open in Switchboard' : shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
     if (!text.includes(expectedText)) return `the setting reads "${text}", not "${expectedText}"`;
     await shot(win, 'settings-file-link-click.png');
     if (!(await chooseOption(win, '[data-file-link-click]', value))) return `could not choose ${value}`;
     await js("document.querySelector('[data-close-settings]').click()");
     if (!(await until(() => preferences.get().fileLinkClick === value))) return `${value} was not saved`;
+    if (session) {
+      openSession(session);
+      if (!(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session after Settings';
+    }
     return null;
   };
 
   try {
     const first = await read();
-    const wrong = check(first, 'file-manager');
+    const wrong = check(first, 'switchboard');
     if (wrong) return wrong;
     let menus = 'no file link on screen to open a menu on';
     if (first.links.length > 0) {
@@ -4053,24 +4414,139 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
         const items = await menuOf(how);
         if (typeof items === 'string') return items;
       }
-      menus = 'right-click and Shift+F10 list Show, Open and Copy path, then Quote and Remember this…';
+      menus = 'right-click and Shift+F10 list every way and Copy path, then Quote and Remember this…';
     }
 
-    const failed = await setInSettings('editor');
-    if (failed) return failed;
-    if (session) {
-      openSession(session);
-      if (!(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session after Settings';
+    for (const mode of ['file-manager', 'editor'] as const) {
+      const failed = await setInSettings(mode);
+      if (failed) return failed;
+      const wrongToo = check(await read(), mode);
+      if (wrongToo) return wrongToo;
     }
-    const second = await read();
-    const wrongToo = check(second, 'editor');
-    if (wrongToo) return wrongToo;
-    return `ok: ${first.links.length} links and ${first.chips.length} chips say Show in ${fileManager} with Shift-click for the editor, and the other way round with Open in editor; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
+    return `ok: ${first.links.length} links and ${first.chips.length} chips preview Markdown and HTML in Switchboard and show the rest in ${fileManager} (Shift-click for the editor), then show in ${fileManager} and open in the editor as set; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
   } finally {
     // Put the setting back for the steps after this one (and close Settings if a failure left it open).
     if (await js("!!document.querySelector('[data-close-settings]')")) await js("document.querySelector('[data-close-settings]').click()");
     if (await js("!!document.querySelector('[role=menu]')")) pressKey(win, 'Escape');
     if (preferences.get().fileLinkClick !== original) updatePreferences({ fileLinkClick: original });
+  }
+}
+
+/** A 1x1 PNG, for the pictures next to the throwaway files the preview step opens. */
+const SMOKE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * File preview (#181), on throwaway files in a folder of their own: a Markdown file opens in the dialog with its heading,
+ * a GitHub alert and a details block rendered, a script and the picture beside it handled (the script is dropped, the
+ * picture loads through the engine), Source shows the raw text, and Reload picks up a change. An HTML file opens in a
+ * sandboxed frame whose page has the CSP and the picture inlined. A code file has numbered lines. Opened from the session, a
+ * file goes to its side panel with the linked lines marked, moves to the dialog and back. A file over 2 MB says so. Escape
+ * closes the dialog and the session stays. The preview is opened through a window event the dialog listens for, as no conversation has to link to
+ * these files. The folder is removed at the end.
+ */
+async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-preview-')));
+  const md = join(dir, 'notes.md');
+  const html = join(dir, 'page.html');
+  const big = join(dir, 'big.md');
+  const code = join(dir, 'main.ts');
+  const open = (path: string) => js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: ${JSON.stringify(path)} }))`);
+  const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
+  const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  const title = (await js('document.title')) as string;
+  try {
+    writeFileSync(join(dir, 'logo.png'), SMOKE_PNG);
+    writeFileSync(md, '# Smoke heading\n\n> [!NOTE]\n> Smoke alert text.\n\n<details><summary>More</summary>\n\nHidden body\n\n</details>\n\n<script>document.title = "pwned"</script>\n\n![the logo](logo.png)\n\n[next](other.md)\n');
+    writeFileSync(html, '<!doctype html><html><head><title>Page</title></head><body><h1>Smoke page</h1><img src="logo.png"><script>document.title = "pwned"</script></body></html>');
+    writeFileSync(code, `const smoke = '${'long '.repeat(80)}';\n${Array.from({ length: 79 }, (_, i) => `const line${i + 2} = ${i + 2};`).join('\n')}\n`);
+    writeFileSync(big, `# Big\n\n${'x'.repeat(3 * 1024 * 1024)}\n`);
+
+    await open(md);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'markdown' && document.querySelector('[data-file-preview-markdown] h1')`, 5_000))) return 'the Markdown file did not open in the preview';
+    const rendered = (await js(
+      `({ heading: document.querySelector('[data-file-preview-markdown] h1').innerText, alert: document.querySelector('[data-file-preview-markdown] [data-alert="note"]')?.innerText ?? null, details: !!document.querySelector('[data-file-preview-markdown] details summary'), scripts: document.querySelectorAll('[data-file-preview-markdown] script').length, title: document.title, name: ${DIALOG}.getAttribute('aria-labelledby') && document.getElementById(${DIALOG}.getAttribute('aria-labelledby')).innerText, link: document.querySelector('[data-file-preview-markdown] [data-file-link]')?.dataset.fileLinkAction ?? null })`,
+    )) as { heading: string; alert: string | null; details: boolean; scripts: number; title: string; name: string; link: string | null };
+    if (rendered.heading !== 'Smoke heading') return `the heading reads "${rendered.heading}"`;
+    if (!rendered.alert?.includes('Note') || !rendered.alert.includes('Smoke alert text.') || rendered.alert.includes('[!NOTE]')) return `the alert reads ${JSON.stringify(rendered.alert)}`;
+    if (!rendered.details) return 'the details block did not render';
+    if (rendered.scripts !== 0 || rendered.title !== title) return `a script in the Markdown survived (${rendered.scripts} script elements, title "${rendered.title}")`;
+    if (rendered.name !== 'notes.md') return `the dialog is named "${rendered.name}"`;
+    if (rendered.link !== 'preview') return `a relative Markdown link does ${rendered.link}, not preview`;
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] img[data-file-preview-image=\"loaded\"]')?.src.startsWith('data:image/png')", 5_000))) return 'the picture next to the Markdown file did not load';
+    await shot(win, 'file-preview-markdown.png');
+
+    await js("document.querySelector('[data-file-preview-view=\"source\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-source]')?.innerText.includes('# Smoke heading') && document.querySelector('[data-file-preview-source]').innerText.includes('<script>')", 5_000))) return 'Source did not show the raw text';
+    await js("document.querySelector('[data-file-preview-view=\"preview\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] h1')", 3_000))) return 'Preview did not come back from Source';
+
+    writeFileSync(md, '# Second heading\n');
+    await js("document.querySelector('[data-file-preview-reload]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-markdown] h1')?.innerText === 'Second heading'", 5_000))) return 'Reload did not show the changed file';
+
+    // Opening another file replaces this one.
+    await open(html);
+    // HTML opens on its source, which always shows; the page itself is one click away.
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'html' && document.querySelector('[data-file-preview-source]')?.innerText.includes('<title>') && !document.querySelector('iframe[data-file-preview-frame]')`, 5_000))) return 'the HTML file did not open on its source';
+    await js("document.querySelector('[data-file-preview-view=\"preview\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('iframe[data-file-preview-frame]')", 3_000))) return 'the HTML page did not render from Preview';
+    const frame = (await js(
+      "(() => { const f = document.querySelector('iframe[data-file-preview-frame]'); return { sandbox: f.getAttribute('sandbox'), srcdoc: f.getAttribute('srcdoc') }; })()",
+    )) as { sandbox: string | null; srcdoc: string };
+    if (frame.sandbox !== '') return `the frame's sandbox is ${JSON.stringify(frame.sandbox)}, not empty`;
+    if (!frame.srcdoc.includes('http-equiv="Content-Security-Policy"') || frame.srcdoc.indexOf('Content-Security-Policy') > frame.srcdoc.indexOf('<title>')) return 'the page has no Content-Security-Policy before its content';
+    if (!frame.srcdoc.includes('src="data:image/png;base64,')) return 'the picture next to the HTML file was not inlined';
+    // The page is in a frame of its own, which nothing in this page can tell has painted: give it a moment before the picture.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await shot(win, 'file-preview-html.png');
+
+    // A code file is its source only, with a number on each line and its long lines wrapped until the toggle says otherwise.
+    await open(code);
+    if (!(await waitInPage(win, `${DIALOG}?.dataset.filePreviewKind === 'code' && document.querySelector('[data-file-preview-source]')?.innerText.includes('const smoke') && !document.querySelector('[data-file-preview-view]')`, 5_000))) return 'the code file did not open as its source';
+    const numbers = (await js("[...document.querySelectorAll('[data-file-preview-source] [data-line]')].slice(0, 3).map((row) => row.firstElementChild.innerText).join(',')")) as string;
+    if (numbers !== '1,2,3') return `the lines are numbered "${numbers}"`;
+    const wrapped = `getComputedStyle(document.querySelector('[data-file-preview-source] [data-line="1"]').lastElementChild).whiteSpace`;
+    if (!(await waitInPage(win, `${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'true'`, 3_000))) return 'long lines did not wrap by default, or the wrap button does not show it is on';
+    await js("document.querySelector('[data-file-preview-wrap]').click()");
+    if (!(await waitInPage(win, `!${wrapped}.startsWith('pre-wrap') && document.querySelector('[data-file-preview-wrap]').getAttribute('aria-pressed') === 'false'`, 3_000))) return 'the wrap toggle did not turn wrapping off';
+    await js("document.querySelector('[data-file-preview-wrap]').click()");
+
+    // From a session, a file opens in its side panel, at the lines the link named (20 to 24), marked and scrolled to.
+    let panel = 'no session open, so the side panel was not tried';
+    if (session) {
+      pressKey(win, 'Escape');
+      if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+      const PANEL = `document.querySelector('[data-current-session="${session}"] [data-file-preview-place="panel"]')`;
+      await js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
+      // Detached in an earlier run of this window, it would open in the dialog: dock it first.
+      if (await waitInPage(win, `${DIALOG}?.querySelector('[data-file-preview-dock]')`, 1_000)) await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
+      if (!(await waitInPage(win, `${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the side panel with lines 20 to 24 marked';
+      const shown = (await js(
+        `(() => { const box = ${PANEL}.querySelector('[data-file-preview-source]').getBoundingClientRect(); const row = ${PANEL}.querySelector('[data-line="20"]').getBoundingClientRect(); return row.top >= box.top && row.bottom <= box.bottom; })()`,
+      )) as boolean;
+      if (!shown) return 'line 20 is not scrolled into view in the side panel';
+      await shot(win, 'file-preview-panel.png');
+      await js(`${PANEL}.querySelector('[data-file-preview-detach]').click()`);
+      if (!(await waitInPage(win, `${DIALOG}?.querySelectorAll('[data-line-marked]').length === 5 && !${PANEL}`, 3_000))) return 'Open in a dialog did not move the preview to the dialog';
+      await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
+      if (!(await waitInPage(win, `!${DIALOG} && ${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 3_000))) return 'Dock to the side did not move the preview back to the panel';
+      await js(`${PANEL}.querySelector('[data-file-preview-close]').click()`);
+      if (!(await waitInPage(win, `!${PANEL}`, 3_000))) return 'the side panel did not close';
+      panel = 'from a session it opens in the side panel at the lines a link names, marked and in view, moves to a dialog and back';
+    }
+
+    await open(big);
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Switchboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
+
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
+    if (session && !(await waitInPage(win, `document.querySelector('[data-current-session="${session}"]')`, 2_000))) return 'the session went away when the preview closed';
+    return `ok: Markdown renders its heading, alert, details and picture without its script, Source shows the text, Reload picks up a change, HTML opens on its source and renders in an empty sandbox with the CSP and its picture inlined, a code file shows its numbered source with wrapping you can toggle, ${panel}, a 3 MB file says it is over the limit, and Escape closes it`;
+  } finally {
+    if (await js(`!!${DIALOG}`)) pressKey(win, 'Escape');
+    await js("document.querySelector('[data-file-preview-close]')?.click()");
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -4536,6 +5012,212 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Reading mode, from the Read button to leaving it. A session with two replies that have a Read button (the demo home
+ * has one: npm run smoke:demo) opens a reply full window, checks the outline, the position and the buttons, then
+ * closes with Esc and with the back button: at the same reply the conversation is exactly where it was and the reply's
+ * Read button has the focus; at another reply the conversation scrolls to that one and focus goes to its button.
+ * Read-only: it only clicks, scrolls and presses Esc, never types or sends, and a session found among the others is
+ * never one that is running in Claude Code.
+ */
+async function runReadModeStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const transcript = `document.querySelector('${view} [data-transcript]')`;
+  const buttons = `[...document.querySelectorAll('${view} [data-read-button]')]`;
+  const back = smokeSessionId;
+  let borrowed: string | null = null;
+  let keysTried = '';
+  // Scrolls up from the end until two Read buttons (of two replies) have been on screen (the list is virtualised).
+  const twoReads = async (): Promise<boolean> => {
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    const seen = new Set<string>();
+    for (let page = 0; page < 25 && seen.size < 2; page++) {
+      await waitInPage(win, `${buttons}.length > 0`, page === 0 ? 1_500 : 300);
+      for (const key of (await js(`${buttons}.map((b) => b.dataset.turnKey ?? '')`)) as string[]) if (key) seen.add(key);
+      if (seen.size >= 2) break;
+      const top = (await js(`(() => { const el = ${transcript}; if (!el || el.scrollTop === 0) return true; el.scrollTop -= el.clientHeight * 0.8; return false; })()`)) as boolean;
+      if (top) break;
+    }
+    return seen.size >= 2;
+  };
+  const state = `(() => ({
+    open: Boolean(document.querySelector('[data-read-mode]')),
+    position: document.querySelector('[data-read-position]')?.textContent?.trim() ?? '',
+    focus: document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-read-button]') ? document.activeElement.dataset.turnKey : null,
+    scroll: ${transcript}?.scrollTop ?? -1,
+  }))()`;
+  type ReadState = { open: boolean; position: string; focus: string | null; scroll: number };
+  try {
+    // The demo home has a session with two long replies and headings: that is the one to read.
+    const demoRow = process.env.SWITCHBOARD_SMOKE_DEMO
+      ? ((await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null)
+      : null;
+    if (demoRow) {
+      await js(`document.querySelector('[data-session-id="${demoRow}"]')?.click()`);
+      await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(demoRow)} && document.querySelector('${view} [data-transcript-item]')`, 5_000);
+      borrowed = demoRow;
+      if (!(await twoReads())) return 'failed: the demo session with two long replies shows fewer than two Read buttons';
+    } else if (!(await twoReads())) {
+      const running = await runningSessions();
+      if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+      const rows = (await js("[...document.querySelectorAll('[data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+      for (const id of [...new Set(rows)].filter((id) => id !== back && !running.ids.has(id)).slice(0, 12)) {
+        await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+        if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(id)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) continue;
+        if (await twoReads()) {
+          borrowed = id;
+          break;
+        }
+      }
+      if (!borrowed) return 'ok: no session with two replies to read among the newest (the demo home has one: npm run smoke:demo)';
+    }
+    // A wheel up, as you would: the view stops following the end, so rows being measured don't move it between looks.
+    await js(`${transcript}?.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }))`);
+    await settle(win);
+
+    // Hidden until hover or focus, except for a long reply: the button of a reply of 450 words or more always shows.
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 4, y: 4 });
+    await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
+    const visibility = (await js(`${buttons}.map((b) => ({ words: (b.closest('[data-message-key]')?.innerText ?? '').split(/\\s+/).filter(Boolean).length, opacity: getComputedStyle(b).opacity }))`)) as Array<{ words: number; opacity: string }>;
+    const shown = visibility.find((v) => v.opacity !== '0');
+    if (shown) return `the Read button of a reply of ${shown.words} words shows (opacity ${shown.opacity}) without hover or focus`;
+    const longOnes = visibility.filter((v) => v.words >= 450).length;
+    if (demoRow && longOnes === 0) return 'failed: the demo session has no reply of 450 words or more with a Read button';
+
+    // Opens the first reply in view; the conversation's scroll is noted first.
+    const open = async (): Promise<{ key: string; scroll: number } | string> => {
+      const target = (await js(`(() => { const b = ${buttons}[0]; if (!b) return null; const el = ${transcript}; const r = { key: b.dataset.turnKey, scroll: el.scrollTop }; b.click(); return r; })()`)) as { key: string; scroll: number } | null;
+      if (!target) return 'the Read button went out of view before it was clicked';
+      if (!(await waitInPage(win, "document.querySelector('[data-read-mode]') && document.querySelector('[data-read-text]')", 4_000))) return 'clicking Read did not open reading mode';
+      return target;
+    };
+    const first = await open();
+    if (typeof first === 'string') return first;
+    const label = (await js("document.querySelector('[data-read-mode]').getAttribute('aria-label')")) as string;
+    if (!/^Reading: .+, reply \d+ of \d+$/.test(label)) return `reading mode is labelled "${label}"`;
+    const opened = (await js(state)) as ReadState;
+    if (!/^Reply \d+ of \d+$/.test(opened.position)) return `the position reads "${opened.position}"`;
+    const outline = (await js(`(() => { const nav = document.querySelector('[data-read-outline]'); return nav ? nav.querySelectorAll('a, button').length : 0; })()`)) as number;
+    const headings = (await js("document.querySelectorAll('[data-read-text] > .markdown > :is(h1, h2, h3)').length")) as number;
+    if (demoRow && headings === 0) return 'failed: the demo session\'s reply has no headings to outline';
+    if (headings > 0 && outline === 0) return `the reply has ${headings} headings and no outline`;
+    if (headings > 0 && !(await waitInPage(win, "document.querySelector('[data-read-outline]')", 1_000))) return 'the outline is missing';
+    await shot(win, 'reading-mode.png');
+
+    // Aa: the settings popover changes the size at once; Esc closes the popover first.
+    const sizeNow = () => js("getComputedStyle(document.querySelector('[data-read-column]')).fontSize") as Promise<string>;
+    const sizeBefore = await sizeNow();
+    await js("document.querySelector('[data-read-settings-button]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-read-settings]')", 2_000))) return 'the Aa button did not open the settings';
+    const sizes = (await js("[...document.querySelectorAll('[data-read-settings] [data-read-size] button')].length")) as number;
+    if (sizes !== 4) return `the settings show ${sizes} sizes, not 4`;
+    await js(`document.querySelectorAll('[data-read-settings] [data-read-size] button')[${sizeBefore === '21.5px' ? 0 : 3}].click()`);
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize !== ${JSON.stringify(sizeBefore)}`, 2_000))) return 'picking a size in the settings did not change the text';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-settings]')", 2_000))) return 'Esc did not close the settings';
+    if (!(await js("Boolean(document.querySelector('[data-read-mode]'))"))) return 'Esc with the settings open also closed reading mode';
+    // The keys: = makes the text bigger, - smaller.
+    pressKey(win, '-');
+    pressKey(win, '-');
+    pressKey(win, '-');
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize === '15.5px'`, 2_000))) return `the - key did not make the text smallest (${await sizeNow()})`;
+    pressKey(win, '=');
+    if (!(await waitInPage(win, `getComputedStyle(document.querySelector('[data-read-column]')).fontSize === '17.5px'`, 2_000))) return `the = key did not make the text bigger (${await sizeNow()})`;
+    // The session list over the page (the sidebar key), outside the inert parts; Esc hides it before reading mode.
+    pressKey(win, 'B', ['meta']);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-sidebar] [data-session-list]')", 2_000))) return 'the sidebar key did not show the session list over reading mode';
+    const reachable = (await js("(() => { const panel = document.querySelector('[data-read-sidebar]'); return !panel.closest('[inert]') && Boolean(document.querySelector('[data-read-scrim]')); })()")) as boolean;
+    if (!reachable) return 'the session list over reading mode is inert or has no scrim';
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-sidebar]')", 2_000))) return 'Esc did not hide the session list';
+    if (!(await js("Boolean(document.querySelector('[data-read-mode]'))"))) return 'Esc closed reading mode with the session list open';
+    await js("document.querySelector('[data-read-scroll]').focus()");
+
+    // Esc at the same reply: the conversation is where it was, and the reply's Read button has the focus.
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'Esc did not close reading mode';
+    if (!(await waitInPage(win, `(${state}).focus === ${JSON.stringify(first.key)}`, 3_000))) return `after Esc the focus is not on the Read button of the reply (${JSON.stringify(await js(state))})`;
+    const same = (await js(state)) as ReadState;
+    if (Math.abs(same.scroll - first.scroll) > 2) return `Esc at the same reply moved the conversation from ${Math.round(first.scroll)} to ${Math.round(same.scroll)}`;
+
+    // Another reply, then the back button: the conversation scrolls to that reply and its button has the focus.
+    const second = await open();
+    if (typeof second === 'string') return second;
+    // The arrow keys go to the next reply (or the previous, at the last one), as the buttons do.
+    const before = (await js("document.querySelector('[data-read-position]').textContent")) as string;
+    const canNext = (await js("!document.querySelector('[data-read-next]').disabled")) as boolean;
+    if (!canNext && (await js("document.querySelector('[data-read-previous]').disabled"))) return 'reading mode has no other reply to go to';
+    pressKey(win, canNext ? 'Right' : 'Left');
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent !== ${JSON.stringify(before)}`, 3_000))) return `the ${canNext ? '→' : '←'} key did not move to another reply`;
+    // The buttons do the same: one step back from there.
+    const moved = (await js("document.querySelector('[data-read-position]').textContent")) as string;
+    await js(`document.querySelector('[data-read-${canNext ? 'previous' : 'next'}]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(before)}`, 3_000))) return 'the arrow buttons did not move back to the first reply';
+    pressKey(win, canNext ? 'Right' : 'Left');
+    if (!(await waitInPage(win, `document.querySelector('[data-read-position]')?.textContent === ${JSON.stringify(moved)}`, 3_000))) return 'the arrow key did not return to the other reply';
+    await js("document.querySelector('[data-read-back]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'the back button did not close reading mode';
+    const landed = await waitInPage(win, `(() => { const s = ${state}; return s.focus !== null && s.focus !== ${JSON.stringify(second.key)}; })()`, 4_000);
+    if (!landed) return `after leaving at another reply the focus is not on that reply's Read button (${JSON.stringify(await js(state))})`;
+    const where = `(() => { const b = document.activeElement; const box = ${transcript}.getBoundingClientRect(); const r = b.getBoundingClientRect(); return b.matches('[data-read-button]') && r.bottom > box.top && r.top < box.bottom; })()`;
+    if (!(await waitInPage(win, where, 4_000))) {
+      return `after leaving at another reply its Read button is not in the conversation's view (${JSON.stringify(await js(`(() => { const b = document.activeElement; const r = b.getBoundingClientRect(); const box = ${transcript}.getBoundingClientRect(); return { tag: b.tagName, button: b.matches('[data-read-button]'), top: Math.round(r.top), bottom: Math.round(r.bottom), view: [Math.round(box.top), Math.round(box.bottom)], scroll: Math.round(${transcript}.scrollTop) }; })()`))})`;
+    }
+
+    // Reply with quote: select text in the column, the popover offers it, and it closes reading mode with the quote in
+    // the message box. The box is put back exactly as it was; nothing is sent.
+    const box = `${view} [data-composer]`;
+    const draft = (await js(`document.querySelector('${box}')?.value ?? null`)) as string | null;
+    if (draft === null) return 'failed: the session has no message box to quote into';
+    try {
+      const third = await open();
+      if (typeof third === 'string') return third;
+      // Selected by dragging the mouse over its first line, as a reader would: a press in reading mode must not start
+      // anything else (a sidebar row's drag into the panes once cleared the selection on the first move).
+      const line = (await js(`(() => {
+        const p = [...document.querySelectorAll('[data-read-text] p')].find((el) => el.textContent.trim().length > 20 && el.getClientRects().length > 0);
+        if (!p) return null;
+        p.scrollIntoView({ block: 'center' });
+        window.getSelection().removeAllRanges();
+        const r = p.getClientRects()[0];
+        return { left: Math.round(r.left + 2), right: Math.round(r.right - 2), y: Math.round(r.top + r.height / 2) };
+      })()`)) as { left: number; right: number; y: number } | null;
+      if (!line) return 'failed: reading mode shows no paragraph to select';
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: line.left, y: line.y, button: 'left', clickCount: 1 });
+      for (let i = 1; i <= 8; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(line.left + ((line.right - line.left) * i) / 8), y: line.y, button: 'left' });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: line.right, y: line.y, button: 'left', clickCount: 1 });
+      if (!(await waitInPage(win, "window.getSelection().toString().trim().length > 10", 2_000))) return 'dragging over a paragraph in reading mode selected nothing';
+      const picked = ((await js('window.getSelection().toString()')) as string).trim();
+      const toolbar = "document.querySelector('[data-read-selection][data-side]')";
+      if (!(await waitInPage(win, toolbar, 3_000))) return 'no popover over the selection in reading mode';
+      const labels = (await js(`[...${toolbar}.querySelectorAll('button')].map((b) => b.textContent.trim())`)) as string[];
+      if (labels.join(',') !== 'Reply with quote,CopyCopied,Ask about this') return `the reading popover holds ${JSON.stringify(labels)}`;
+      if (!(await js(`!!${toolbar}.querySelector('[data-read-quote]') && !!${toolbar}.querySelector('[data-read-ask]')`))) return 'the reading popover lacks its data-read-quote or data-read-ask hook';
+      await js(`${toolbar}.querySelector('[data-read-quote]').click()`);
+      if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'Reply with quote did not close reading mode';
+      if (!(await waitInPage(win, `document.querySelector('${box}').value.includes('> ')`, 3_000))) return `Reply with quote left the message box without a quote (${JSON.stringify(await js(`document.querySelector('${box}').value.slice(0, 60)`))})`;
+      const value = (await js(`document.querySelector('${box}').value`)) as string;
+      const firstLine = picked.split('\n')[0]!.trim();
+      if (!value.includes(`> ${firstLine}`)) return `the message box does not hold the selection as a quote ("${value.slice(0, 40)}")`;
+      keysTried = 'Reply with quote put the selection in the message box';
+    } finally {
+      await js('window.getSelection().removeAllRanges()');
+      if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
+      await setFieldValue(win, box, draft).catch(() => {});
+    }
+    const restored = (await js(`document.querySelector('${box}')?.value ?? null`)) as string | null;
+    if (restored !== draft) return `the message box was not put back as it was (${JSON.stringify(restored?.slice(0, 40))})`;
+    return `ok: Read opens "${opened.position}"${headings ? ` with an outline of ${outline}` : ''}, Esc at the same reply leaves the scroll and focuses its button, leaving at another reply scrolls to it, ← → move between replies, ${keysTried} (and the box is put back)${longOnes ? `, ${longOnes} long reply buttons hide until hover` : ''}`;
+  } finally {
+    if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
+    await js('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    await settle(win);
+    if (borrowed && back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
  * Shell code blocks in the conversation have a Run button and other blocks don't. Read-only: Run is
  * never clicked, since it would run the command in a real project.
  */
@@ -4945,15 +5627,8 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, added, 5_000))) return `↩ did not add and pick the folder (${String(await js(`${one('[data-folder-select]')}?.dataset.value`))})`;
 
   // Clean up: off the throwaway profile's projects again, and New session back on its folder.
-  await js(`${one('[data-open-projects]')}.click()`);
-  const row = one(`[data-project-row=${JSON.stringify(dir)}] [data-project-more-button]`);
-  if (!(await waitInPage(win, row, 3_000))) return 'the added folder is not in Projects';
-  await js(`${row}.click()`);
-  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return "no Remove in the project's ⋯ menu";
-  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
-  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return 'no confirmation before removing';
-  await js(`${one('[data-confirm]')}.click()`);
-  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(dir)}]`)}`, 3_000))) return 'the project was not removed';
+  const removed = await removeProjectInProjects(win, dir);
+  if (removed) return removed === 'the project is not in Projects' ? 'the added folder is not in Projects' : removed;
   if (before) {
     openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
@@ -4986,8 +5661,14 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   const folder = join(sandbox, 'Developer');
   const target = join(folder, 'smoke-clone');
   const cleanUp = () => {
-    rmSync(sandbox, { recursive: true, force: true });
-    rmSync(bare, { recursive: true, force: true });
+    // On Windows a folder can't be removed while a process still runs in it: try for a while, then leave it in temp.
+    for (const path of [sandbox, bare]) {
+      try {
+        rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch (error) {
+        console.log(`[smoke] could not remove ${path}: ${(error as Error).message}`);
+      }
+    }
   };
   // "GitHub": acme/smoke-clone, a bare repository whose project settings bring a hook.
   const work = join(sandbox, 'work');
@@ -5058,15 +5739,8 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   // Clean up: the form closed, the project removed, the setting off, the folders gone.
   await js(`${one('[data-clone-close]')}.click()`);
   if (!(await waitInPage(win, `!${one('[data-clone-repo]')} && ${one(`[data-folder-option=${JSON.stringify(target)}]`)}`, 3_000))) return fail('Done did not show the clone as a project tile');
-  await js(`${one('[data-open-projects]')}.click()`);
-  const row = one(`[data-project-row=${JSON.stringify(target)}] [data-project-more-button]`);
-  if (!(await waitInPage(win, row, 3_000))) return fail('the clone is not in Projects');
-  await js(`${row}.click()`);
-  if (!(await waitInPage(win, one('[role=menu] [data-remove-project]'), 2_000))) return fail("no Remove in the project's ⋯ menu");
-  await js(`${one('[role=menu] [data-remove-project]')}.click()`);
-  if (!(await waitInPage(win, one('[data-confirm]'), 3_000))) return fail('no confirmation before removing');
-  await js(`${one('[data-confirm]')}.click()`);
-  if (!(await waitInPage(win, `!${one(`[data-project-row=${JSON.stringify(target)}]`)}`, 3_000))) return fail('the clone was not removed from the projects');
+  const removed = await removeProjectInProjects(win, target);
+  if (removed) return fail(removed === 'the project is not in Projects' ? 'the clone is not in Projects' : removed);
   if (!(await turnOff())) return (cleanUp(), 'Clone from GitHub did not turn off again');
   cleanUp();
   return 'ok: Settings › Projects asked for the folder and turned it on, a URL in the folder field offered the clone, ↩ cloned the local repository and picked it without a worktree, Start asked about its hook and Cancel kept the prompt; removed and turned off again';
@@ -5170,6 +5844,212 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
  * but sends nothing; a bad link shows why and changes nothing; a repo with no checkout leaves the folder
  * empty; a session link opens the session under test again.
  */
+/** The made-up repository the smoke's fake gh answers for (tests/fixtures/fake-gh.cjs). */
+const SMOKE_GITHUB_REPO = 'smoke-owner/smoke-repo';
+let smokeGithubFolder: string | null = null;
+/**
+ * A throwaway git repository whose remote is on GitHub (the made-up smoke-owner/smoke-repo), for the # list steps: one
+ * commit on main, nothing pushed or fetched. Made once per run, in the temporary folder.
+ */
+function smokeGithubCheckout(): string {
+  if (smokeGithubFolder) return smokeGithubFolder;
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-gh-')));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(dir, 'README.md'), '# Smoke repo\n');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'Initial commit');
+  git('remote', 'add', 'origin', `https://github.com/${SMOKE_GITHUB_REPO}.git`);
+  smokeGithubFolder = dir;
+  return dir;
+}
+
+/** Opens New session on the smoke's GitHub checkout with an empty box; false when it didn't get there. */
+async function newSessionOnSmokeGithub(win: BrowserWindow): Promise<string | null> {
+  const root = smokeGithubCheckout();
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}`);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(root)} && ${composer} && !${composer}.disabled`, 8_000))) return null;
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  return root;
+}
+
+/**
+ * The # list, read-only, with the smoke's fake gh (never GitHub) on a throwaway repository whose remote is on GitHub:
+ * `#` lists Issues, then Pull requests, with the repository in the header; typing narrows it; ↩ adds the chip and
+ * takes `#…` out of the text; Esc keeps what was typed as text; `C#` opens nothing. Then, where the demo world has
+ * one, a message that attached an issue shows its Attached row, and What Claude got shows the block as Claude read
+ * it, marked as context. Nothing is sent.
+ */
+async function runGithubListStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const box = '[data-new-session-view] [data-composer]';
+  const composer = `document.querySelector(${JSON.stringify(box)})`;
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const chip = "document.querySelector('[data-new-session-view] [data-github-chip=\"issue:32\"]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const clear = async () => {
+    if (await js(`!!${list}`)) pressKey(win, 'Escape');
+    if (await js(`!!${chip}`)) await js(`${chip}.querySelector('[data-context-chip-remove]').click()`);
+    await setFieldValue(win, box, '');
+  };
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('can you look at #');
+  if (!(await waitInPage(win, `${list}?.querySelector('[data-github-option]')`, 8_000))) return (await clear(), `# opened no list (${String(await js(`${list}?.innerText ?? 'no list'`))})`);
+  const headings = (await js(`[...${list}.querySelectorAll('[role=group]')].map((g) => document.getElementById(g.getAttribute('aria-labelledby'))?.innerText.trim().toLowerCase())`)) as string[];
+  if (headings.join(',') !== 'issues,pull requests') return (await clear(), `the groups are ${JSON.stringify(headings)}`);
+  const repo = (await js(`${list}.querySelector('[data-github-list-repo]')?.innerText ?? ''`)) as string;
+  if (!repo.includes(SMOKE_GITHUB_REPO)) return (await clear(), `the header says ${JSON.stringify(repo)}`);
+  if (!(await js(`!!${list}.querySelector('[data-github-option="pr:149"] [data-github-fork]')`))) return (await clear(), 'the fork pull request has no fork flag');
+  await shot(win, 'github-list.png');
+  await win.webContents.insertText('start');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32' && !${list}.querySelector('[data-github-option="issue:118"]')`, 5_000))) {
+    return (await clear(), 'typing did not narrow the list to #32 first');
+  }
+  const label = (await js(`${list}.querySelector('[role=option][aria-selected=true]').getAttribute('aria-label')`)) as string;
+  if (!label.startsWith('Issue 32, Start a session from a GitHub issue or pull request, open, enhancement')) return (await clear(), `the row reads ${JSON.stringify(label)}`);
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `${chip} && ${composer}.value === 'can you look at ' && !${list}`, 3_000))) return (await clear(), `↩ did not add the chip and take #start out (${JSON.stringify(await js(`${composer}.value`))})`);
+  const chipLabel = (await js(`${chip}.querySelector('button').getAttribute('aria-label')`)) as string;
+  if (chipLabel !== 'Issue 32 attached, open on GitHub') return (await clear(), `the chip is labelled ${JSON.stringify(chipLabel)}`);
+  // The chip's detail comes from gh: its label and comments.
+  if (!(await waitInPage(win, `${chip}.innerText.includes('enhancement · 4 comments')`, 5_000))) return (await clear(), `the chip shows ${JSON.stringify(await js(`${chip}.innerText`))}`);
+  await shot(win, 'github-chip.png');
+  // Esc keeps typing: the list stays closed for that word.
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, list, 5_000))) return (await clear(), 'a second # opened no list');
+  pressKey(win, 'Escape');
+  await win.webContents.insertText('11');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'the list came back after Esc while typing the same word');
+  if (!(await js(`${composer}.value === 'can you look at #11' && !!${chip}`))) return (await clear(), 'Esc changed the text or the chip');
+  // # in the middle of a word is text.
+  await setFieldValue(win, box, 'written in C');
+  await js(`${composer}.focus(); ${composer}.setSelectionRange(12, 12)`);
+  await win.webContents.insertText('#');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  if (await js(`!!${list}`)) return (await clear(), 'C# opened the list');
+  await clear();
+  if (!(await waitInPage(win, `!${chip} && ${composer}.value === ''`, 3_000))) return 'could not take the chip and the text out again';
+  const attached = await attachedRowInDemo(win);
+  if (attached.startsWith('failed')) return attached;
+  return `ok: # listed Issues then Pull requests for ${SMOKE_GITHUB_REPO} (fork flagged), typing narrowed it, ↩ added #32 as a chip with its labels and comments, Esc kept typing, C# stayed text; ${attached}`;
+}
+
+/** Takes New session's box back to empty after a GitHub step: the chips out, no text. */
+async function emptyNewSessionBox(win: BrowserWindow): Promise<void> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (await js("!!document.querySelector('[role=menu], [data-menu]')")) pressKey(win, 'Escape');
+  await js("[...document.querySelectorAll('[data-new-session-view] [data-context-chip] [data-context-chip-remove]')].forEach((b) => b.click())");
+  await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+}
+
+/**
+ * New session from an issue and from a pull request, read-only (fake gh, the throwaway GitHub checkout): ⌥↩ on #32 in
+ * the # list fills in a New worktree named issue-32-<slug>, the chip and "Fix #32: …", with the note under the box;
+ * the palette's "New session from pull request…" picks the fork's #149, whose Where menu says "Work on #149 in" with
+ * the caution line. Nothing is started.
+ */
+async function runGithubNewSessionStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const list = "document.querySelector('[data-new-session-view] [data-github-list]')";
+  const root = await newSessionOnSmokeGithub(win);
+  if (!root) return 'New session did not open on the throwaway GitHub checkout';
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  await js(`${composer}.focus()`);
+  await win.webContents.insertText('#');
+  if (!(await waitInPage(win, `${list}?.querySelector('[role=option][aria-selected=true]')?.dataset.githubOption === 'issue:32'`, 8_000))) return fail('# opened no list with #32 first');
+  pressKey(win, 'Return', ['alt']);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  const name = 'issue-32-start-a-session-from-a-github-issue-or';
+  if (!(await waitInPage(win, `${composer}.value === ${JSON.stringify(prompt)} && document.querySelector('[data-new-session-view] [data-github-chip="issue:32"]')`, 8_000))) {
+    return fail(`⌥↩ did not fill in the prompt and the chip (${JSON.stringify(await js(`${composer}.value`))})`);
+  }
+  if (!(await waitInPage(win, `document.querySelector('[data-worktree-switch]')?.getAttribute('aria-checked') === 'true' && document.querySelector('[data-workspace-select]')?.dataset.tooltip?.includes(${JSON.stringify(`.claude/worktrees/${name}`)})`, 3_000))) {
+    return fail(`not a New worktree named ${name} (${String(await js("document.querySelector('[data-workspace-select]')?.dataset.tooltip"))})`);
+  }
+  const note = (await js("document.querySelector('[data-github-start-note]')?.innerText ?? ''")) as string;
+  if (!note.includes('Nothing runs until you start. The issue goes to Claude as context to read, not as instructions.')) return fail(`the note under the box says ${JSON.stringify(note)}`);
+  await shot(win, 'github-new-session-issue.png');
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the issue';
+
+  // The palette's New session from pull request…, on the fork's #149.
+  if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return fail('⌘K did not open the palette');
+  await setFieldValue(win, '[data-palette-input]', 'new session from pull request');
+  if (!(await waitInPage(win, "document.querySelector('[data-palette-command=\"new-session-from-pr\"]')", 3_000))) return (await closePalette(win), fail('no "New session from pull request…" in the palette'));
+  await js("document.querySelector('[data-palette-command=\"new-session-from-pr\"]').click()");
+  const dialog = "document.querySelector('[data-github-start-dialog=\"pr\"]')";
+  if (!(await waitInPage(win, `${dialog}?.querySelector('[data-github-option="pr:149"]')`, 8_000))) return fail('the pull request picker did not list #149');
+  if (await js(`!!${dialog}.querySelector('[data-github-option^="issue:"]')`)) return fail('the pull request picker lists issues too');
+  await shot(win, 'github-palette-pr.png');
+  await js(`${dialog}.querySelector('[data-github-option="pr:149"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  if (!(await waitInPage(win, `!${dialog} && ${composer}.value === 'Work on #149: Fix typo in deep-links docs'`, 8_000))) return fail(`picking #149 did not fill in New session (${JSON.stringify(await js(`${composer}.value`))})`);
+  await js("document.querySelector('[data-workspace-select]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-menu=\"workspace\"] [data-github-fork-caution]')", 3_000))) return fail('no caution line for the fork in the Where menu');
+  const menu = (await js("document.querySelector('[data-menu=\"workspace\"]').innerText")) as string;
+  // The heading is in small capitals (CSS), so its text comes back in upper case.
+  if (!menu.toLowerCase().includes('work on #149 in') || !menu.includes('New worktree from the pull request') || !menu.includes("#149 is from a fork. Claude can change it here, but Switchboard can't push it back.")) {
+    return fail(`the Where menu reads ${JSON.stringify(menu)}`);
+  }
+  await shot(win, 'github-pr-where.png');
+  pressKey(win, 'Escape');
+  await waitInPage(win, "!document.querySelector('[data-menu=\"workspace\"]')", 2_000);
+  if (await js("!!document.querySelector('[data-current-session]')")) return 'a session started from the pull request';
+  await emptyNewSessionBox(win);
+  return `ok: ⌥↩ on #32 filled in worktree-${name}, its chip, "${prompt}" and the note; the palette picked the fork's #149 with "Work on #149 in" and the caution line; nothing started`;
+}
+
+/**
+ * A link with an issue, read-only: `issue=32&autostart=1` fills in New session the same way, with the banner and the
+ * line that such links never start on their own; nothing starts. An issue of another repository is refused.
+ */
+async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
+  if (process.platform === 'win32') return 'ok: skipped on Windows, where the smoke test has no fake gh';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const root = smokeGithubCheckout();
+  const fail = async (why: string) => (await emptyNewSessionBox(win), why);
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=32&autostart=1`);
+  const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
+  if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-from-link-banner]')`, 10_000))) {
+    return fail(`the link did not fill in New session (${JSON.stringify(await js(`${composer}?.value`))})`);
+  }
+  const banner = (await js("document.querySelector('[data-from-link-banner]').innerText")) as string;
+  if (!banner.includes('Opened from a link with issue #32. Check the prompt, then start.') || !banner.includes('Links with an issue or pull request never start on their own.')) return fail(`the banner reads ${JSON.stringify(banner)}`);
+  // Showing that something did not happen: give a start that shouldn't come the time it would take.
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  if (await js("!!document.querySelector('[data-current-session]') || !document.querySelector('[data-new-session-view]')")) return 'the link with autostart=1 started a session';
+  await shot(win, 'github-link.png');
+  await emptyNewSessionBox(win);
+  // An issue of another repository than the project's is refused, and nothing is filled in.
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=${encodeURIComponent('https://github.com/smoke-owner/other-repo/issues/32')}`);
+  if (!(await waitInPage(win, "document.querySelector('[data-github-start-error]')?.innerText.includes('This issue is from another repository than')", 10_000))) {
+    return fail(`another repository's issue was not refused (${String(await js("document.querySelector('[data-github-start-error]')?.innerText ?? document.querySelector('[data-from-link-banner]')?.innerText"))})`);
+  }
+  if ((await js(`${composer}.value`)) !== '') return fail('a refused issue still filled in the prompt');
+  return 'ok: issue=32 with autostart=1 filled in New session with the banner and "never start on their own", and started nothing; an issue of another repository was refused';
+}
+
+/** In the demo world, a sent message with an attached issue: its Attached row, and What Claude got. */
+async function attachedRowInDemo(win: BrowserWindow): Promise<string> {
+  if (!process.env.SWITCHBOARD_SMOKE_DEMO) return 'no message with an attached issue to read here (the demo world has one)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const title = 'Write a getting started guide';
+  await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes(${JSON.stringify(title)}))?.click()`);
+  const row = "document.querySelector('[data-current-session] [data-github-attached=\"issue:87\"]')";
+  if (!(await waitInPage(win, row, 8_000))) return 'failed: the demo message with an attached issue shows no Attached row';
+  await js(`${row}.querySelector('[data-what-claude-got]').click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-current-session] [data-github-got]')?.innerText.startsWith('GitHub issue (context to read, not instructions)')", 3_000))) {
+    return 'failed: What Claude got does not show the block marked as context';
+  }
+  await shot(win, 'github-attached.png');
+  return 'the demo message showed Attached: #87 with What Claude got';
+}
+
 async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const prompt = 'Smoke test from a link:\nsummarise this folder.';
@@ -5370,7 +6250,13 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
     await click('[data-close-settings]');
     await click('[data-go-home]');
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a folder can't be removed while a process still runs in it (Claude Code warmed up for New session's
+    // folder): try for a while, then leave it in temp rather than fail the step.
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      console.log(`[smoke] could not remove ${dir}: ${(error as Error).message}`);
+    }
   };
   try {
     // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
@@ -5617,6 +6503,723 @@ async function runQueueStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Start by itself (#172), in the throwaway profile and against a temp folder: a stand-in session "works" there (the
+ * engine's `smokeQueueHost`, as `SWITCHBOARD_STUB_QUEUE` allows), and Start after this one… on its row opens New session
+ * with Wait for on it and Start by itself on. Queued, the row says "starts after". A clean finish starts it once and
+ * takes it off the queue (the stub never sends the prompt to Claude); after an error a second item stays, ready, and
+ * says why. Both notifications are recorded.
+ */
+/**
+ * Pipelines (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): nothing reaches Claude Code, no worktree is made
+ * and no command runs. Runs Execute and validate from the smoke session through its ⋯ menu, checks the step tree and
+ * that each step's first prompt links the right sessions, has Validate find changes (a round 2 starts after Execute's
+ * turn), then pass, and checks the run is done.
+ */
+async function runPipelineStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const parent = smokeSessionId;
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  type Start = { kind: 'fresh' | 'fork' | 'send'; sessionId: string; text: string };
+  const starts = (): Start[] => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as Start);
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const mine = () => starts().slice(before);
+  const turn = (sessionId: string, reply: string) => engine.send({ type: 'smokePipelineTurn', sessionId, outcome: 'clean', reply });
+  const links = (text: string, sessionId: string) => text.includes('```switchboard-session') && text.includes(`session: ${sessionId}`);
+  // With a session, the step tree is in its view; from New session, in the run row's pane.
+  const tree = parent ? "document.querySelector('[data-current-session] [data-pipeline-tree]')" : "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  const view = (name: string) => `${tree}?.querySelector('[data-pipeline-step=${JSON.stringify(name)}][data-step-view]')?.dataset.stepView`;
+
+  if (parent) {
+    await js(`document.querySelector('[data-session-id="${parent}"]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session]')?.dataset.currentSession === ${JSON.stringify(parent)}`, 5_000))) return 'the smoke session did not open';
+    await js("document.querySelector('[data-current-session] [data-more-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-pipeline-menu]')", 3_000))) return 'the ⋯ menu has no Run pipeline ›';
+  } else {
+    // No session that is safe to use: New session in a throwaway repository, Run as › Execute and validate, a run row.
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pipeline-')));
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+    execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent('Smoke pipeline: add a usage cost toggle')}&cwd=${encodeURIComponent(folder)}`);
+    const ready = `document.querySelector('[data-new-session-view] [data-composer]')?.value === 'Smoke pipeline: add a usage cost toggle' && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`;
+    if (!(await waitInPage(win, `${ready} && !!document.querySelector('[data-new-session-view] [data-run-as]')`, 8_000))) return 'New session did not open on the throwaway repository with Run as';
+    await js("document.querySelector('[data-new-session-view] [data-run-as]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+    await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-new-session-view] [data-composer-submit]')?.dataset.startMain === 'pipeline'", 2_000))) return 'Start did not turn into Run pipeline';
+  }
+  if (parent) {
+    await js("document.querySelector('[role=menu] [data-run-pipeline-menu]').click()");
+    const item = "document.querySelector('[role=menu] [data-run-pipeline=\"builtin-execute-validate\"]')";
+    if (!(await waitInPage(win, `!!${item}`, 1_500))) {
+      await js("document.querySelector('[role=menu] [data-run-pipeline-menu]').focus()");
+      pressKey(win, 'Right');
+      if (!(await waitInPage(win, `!!${item}`, 2_000))) return 'Run pipeline › did not list Execute and validate';
+    }
+    await js(`${item}.click()`);
+  } else await js("document.querySelector('[data-new-session-view] [data-composer-submit]').click()");
+  if (!(await waitInPage(win, `!!${tree} && ${view('Execute')} === 'working'`, 10_000))) return 'the step tree did not show Execute working';
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 1, 5_000))) return 'Execute did not start';
+  const execute = mine()[0]!;
+  if (parent ? !links(execute.text, parent) : !execute.text.includes('The task, from @')) return parent ? 'Execute’s first prompt did not link the parent' : 'Execute’s first prompt did not bring the run row’s task';
+  await shot(win, 'pipeline-parent.png');
+
+  turn(execute.sessionId, 'Done. The tests pass.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 2, 5_000))) return 'Validate did not start after Execute';
+  const validate = mine().filter((s) => s.kind === 'fresh')[1]!;
+  if (!links(validate.text, execute.sessionId) || (parent && !links(validate.text, parent))) return 'Validate’s first prompt did not link Execute and the parent';
+  if (!(await waitInPage(win, `${view('Execute')} === 'done' && ${view('Validate')} === 'working'`, 5_000))) return 'the step tree did not show Execute done and Validate working';
+
+  turn(validate.sessionId, 'Mostly right.\n\nVerdict: changes needed\n- LimitsCard still shows the cost.');
+  if (!(await until(() => mine().some((s) => s.kind === 'send' && s.sessionId === execute.sessionId && s.text.includes('found changes needed') && links(s.text, validate.sessionId)), 5_000))) return 'the changes did not go to Execute with @Validate linked';
+  turn(execute.sessionId, 'Fixed.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 3, 5_000))) return 'Validate round 2 did not start after Execute’s turn';
+  const round2 = mine().filter((s) => s.kind === 'fresh')[2]!;
+  if (!(await waitInPage(win, `(${tree}?.innerText ?? '').includes('round 2')`, 5_000))) return 'the step tree did not show round 2';
+
+  // Still changes needed after the last round: the run stops and offers Another round, which sends them back once more.
+  turn(round2.sessionId, 'Verdict: changes needed\n- The tooltip still shows the cost.');
+  const another = `${tree}?.querySelector('[data-run-another-round]')`;
+  if (!(await waitInPage(win, `!!${another} && !${another}.disabled`, 5_000))) return 'the step tree did not offer Another round after the last round';
+  const sends = mine().filter((s) => s.kind === 'send' && s.sessionId === execute.sessionId).length;
+  await js(`${another}.click()`);
+  if (!(await until(() => mine().filter((s) => s.kind === 'send' && s.sessionId === execute.sessionId).length === sends + 1, 5_000))) return 'Another round did not send the changes to Execute';
+  turn(execute.sessionId, 'Fixed the tooltip.');
+  if (!(await until(() => mine().filter((s) => s.kind === 'fresh').length === 4, 5_000))) return 'Validate round 3 did not start after Execute’s turn';
+  const round3 = mine().filter((s) => s.kind === 'fresh')[3]!;
+  if (!(await waitInPage(win, `(${tree}?.innerText ?? '').includes('round 3')`, 5_000))) return 'the step tree did not show round 3';
+
+  turn(round3.sessionId, 'All good.\n\nVerdict: pass');
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'done'`, 5_000))) return `the run did not end done (${String(await js(`${tree}?.dataset.runStatus`))})`;
+  return `ok: ran Execute and validate ${parent ? 'from the ⋯ menu; Execute linked the parent' : 'from New session as a run row; Execute got the task'}, Validate linked Execute; changes went back with @Validate, round 2 ran after Execute’s turn, Another round sent them back once more, and a pass in round 3 ended the run`;
+}
+
+/**
+ * Run as in New session (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): in a throwaway repository, Run as ›
+ * Execute and validate turns Start into Run pipeline with two pills under the box, ⌘↵ runs it as a run row with Execute
+ * working, and New session is back on One session. The run is stopped at the end, so later steps see none going.
+ */
+async function runRunAsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-run-as-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-run-as]')`;
+  const submit = `document.querySelector('${view} [data-composer-submit]')`;
+  const opened = (prompt: string) =>
+    `${chip} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(prompt)}`;
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open on the throwaway repository with the Run as chip';
+  if ((await js(`${chip}.dataset.runAs`)) !== 'one') return `Run as did not start on One session (${String(await js(`${chip}.dataset.runAs`))})`;
+  await js(`${chip}.click()`);
+  const option = "document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')";
+  if (!(await waitInPage(win, `!!${option} && document.querySelector('[role=menu] [data-run-as-option=\"one\"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'the Run as menu did not list One session (checked) and Execute and validate';
+  await js(`${option}.click()`);
+  if (!(await waitInPage(win, `${chip}?.dataset.runAs === 'builtin-execute-validate' && ${submit}?.dataset.startMain === 'pipeline' && ${submit}.innerText.includes('Run pipeline')`, 2_000))) return 'Start did not turn into Run pipeline';
+  if (await js(`!!document.querySelector('${view} [data-run-as-steps]')`)) return 'the steps line showed with an empty box';
+  const task = 'Smoke run as: add a usage cost toggle';
+  await setFieldValue(win, `${view} [data-composer]`, task);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-run-as-steps]')?.querySelectorAll('[data-run-as-step]').length === 2`, 2_000))) return 'the steps line did not show two pills';
+  await shot(win, 'run-as.png');
+  await js(`document.querySelector('${view} [data-composer]').focus()`);
+  pressKey(win, 'Return', ['meta']);
+  const tree = "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  if (!(await waitInPage(win, `${tree}?.querySelector('[data-pipeline-step="Execute"][data-step-view]')?.dataset.stepView === 'working'`, 10_000))) return 'the run row did not open with Execute working';
+  const runId = (await js(`${tree}.closest('[data-run-row]')?.dataset.runRow ?? ''`)) as string;
+  await js(`${tree}.querySelector('[data-run-stop-button]')?.click()`);
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'stopped'`, 5_000))) return 'Stop the run did not stop it';
+  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open again';
+  if ((await js(`${chip}.dataset.runAs`)) !== 'one') return 'Run as did not go back to One session after the run started';
+  return `ok: Run as › Execute and validate made Start Run pipeline with two pills, ⌘↵ ran it as a run row${runId ? ` (${runId})` : ''} with Execute working, and New session is back on One session`;
+}
+
+/**
+ * A pipeline run as one tree (#179), with stand-in steps: Execute and validate from New session in a throwaway
+ * repository, Execute's turn ends so Validate starts, Stop the run, then Archive with its 2 steps from the run row's
+ * menu moves the run row and both steps to Archived. Delete… takes it out again, so later steps never see it.
+ */
+async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  const starts = (): Array<{ kind: string; sessionId: string }> => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-archive-run-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const view = '[data-new-session-view]';
+  const task = 'Smoke archive run: tidy the settings page';
+  openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
+  await js(`document.querySelector('${view} [data-run-as]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+  await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-composer-submit]')?.dataset.startMain === 'pipeline'`, 2_000))) return 'Start did not turn into Run pipeline';
+  await js(`document.querySelector('${view} [data-composer-submit]').click()`);
+  const tree = "document.querySelector('[data-run-row] [data-pipeline-tree]')";
+  if (!(await until(() => fresh().length === 1, 8_000))) return 'Execute did not start';
+  const runId = (await waitInPage(win, `${tree}?.dataset.pipelineTree`, 5_000)) ? ((await js(`${tree}.dataset.pipelineTree`)) as string) : '';
+  if (!runId) return 'the run row did not open';
+  await engine.send({ type: 'smokePipelineTurn', sessionId: fresh()[0]!.sessionId, outcome: 'clean', reply: 'Done. The tests pass.' });
+  if (!(await until(() => fresh().length === 2, 5_000))) return 'Validate did not start after Execute';
+  const [execute, validate] = fresh().map((s) => s.sessionId);
+  await js(`${tree}.querySelector('[data-run-stop-button]')?.click()`);
+  if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'stopped'`, 5_000))) return 'Stop the run did not stop it';
+
+  const row = `document.querySelector('[data-session-list] [data-session-id="${runId}"]')`;
+  const openMenu = async () => {
+    await js(`(() => { const row = ${row}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+  };
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the run row is not in the sidebar';
+  await openMenu();
+  const archiveItem = "document.querySelector('[role=menu] [data-run-row-action=\"archive\"]')";
+  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Archive with its 2 steps')`, 2_000))) return `the run row menu has no Archive with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
+  if (await js("!!document.querySelector('[role=menu] [data-rename-session]')")) return 'the run row menu offers Rename';
+  await js(`${archiveItem}.click()`);
+  // Archived, closed by default: open it to see the tree.
+  const opened = !(await js("!!document.querySelector('[data-session-list] [data-archived-header]')"));
+  if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
+  if (!(await waitInPage(win, `${row}?.dataset.archived === 'true'`, 5_000))) return 'the run row did not move to Archived';
+  // Put away like any archived session: its pane closes.
+  if (!(await waitInPage(win, "!document.querySelector('[data-run-row] [data-pipeline-tree]')", 2_000))) return 'the run row stayed open after Archive';
+  await js(`${row}.dataset.treeParent === 'true' || ${row}.querySelector('[data-tree-toggle]')?.click()`);
+  const stepArchived = (id: string) => `document.querySelector('[data-session-list] [data-session-id="${id}"]')?.dataset.archived === 'true'`;
+  if (!(await waitInPage(win, `${stepArchived(execute!)} && ${stepArchived(validate!)}`, 3_000))) return 'Execute and Validate did not move to Archived under the run row';
+  await shot(win, 'pipeline-archived.png');
+
+  // Delete… takes the run out again (its stand-in steps with it), so later steps see none of it.
+  await openMenu();
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-row-action=\"delete\"]')", 2_000))) return 'the run row menu has no Delete…';
+  await js("document.querySelector('[role=menu] [data-run-row-action=\"delete\"]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-run-delete-confirm]') && !!document.querySelector('[data-run-delete-keep]')", 2_000))) return 'Delete… did not ask, with Keep the sub-sessions';
+  const body = (await js("document.querySelector('[data-run-delete-confirm]').innerText")) as string;
+  if (!body.includes('The run and its 2 sub-sessions go away from Switchboard')) return `Delete… did not say what goes (${body})`;
+  await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
+  if (!(await waitInPage(win, `!${row}`, 5_000))) return 'Delete did not take the run row away';
+  if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
+  return `ok: Stop the run, then Archive with its 2 steps moved ${runId} with Execute and Validate to Archived; Delete… asked (with Keep the sub-sessions) and took it away`;
+}
+
+/**
+ * Settings › Pipelines (#179): the built-in Plan, execute, validate, push, with Validate open. Its Starts choice (Fresh,
+ * Fork of Plan, Fork of Execute) stays one row high, above the Model row, rather than wrapping out of its control.
+ */
+async function runPipelineEditorStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  // Narrow, where three choices side by side no longer fit the step card.
+  const [width, height] = win.getSize();
+  win.setSize(860, height!);
+  try {
+    return await pipelineEditorChecks(win, js);
+  } finally {
+    win.setSize(width!, height!);
+  }
+}
+
+async function pipelineEditorChecks(win: BrowserWindow, js: (code: string) => Promise<unknown>): Promise<string> {
+  await js("document.querySelector('[data-open-settings]')?.click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-settings]')", 3_000))) return 'settings did not open';
+  await js("document.querySelector('[data-settings-section=\"pipelines\"]')?.click()");
+  const row = "document.querySelector('[data-pipeline-row=\"builtin-plan-execute-validate-push\"]')";
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'Settings › Pipelines did not list Plan, execute, validate, push';
+  await js(`${row}.click()`);
+  const card = "document.querySelector('[data-pipeline-step-card=\"Validate\"]')";
+  if (!(await waitInPage(win, `!!${card}`, 3_000))) return 'the editor did not show Validate';
+  await js(`${card}.dataset.open || ${card}.querySelector('[data-pipeline-step-toggle]').click()`);
+  if (!(await waitInPage(win, `!!${card}?.querySelector('[data-pipeline-starts]') && !!${card}.querySelector('[data-pipeline-model]')`, 3_000))) return 'Validate did not open with Starts and Model';
+  const box = (await js(`(() => { const s = ${card}.querySelector('[data-pipeline-starts]').getBoundingClientRect(); const m = ${card}.querySelector('[data-pipeline-model]').getBoundingClientRect(); const spill = Math.max(0, ...[...${card}.querySelector('[data-pipeline-starts]').querySelectorAll('*')].map((el) => el.getBoundingClientRect().bottom - s.bottom)); return { height: Math.round(s.height + spill), gap: Math.round(m.top - s.bottom - spill), text: ${card}.querySelector('[data-pipeline-starts]').innerText.replace(/\\s+/g, ' ') }; })()`)) as { height: number; gap: number; text: string };
+  const overflow = (await js("(() => { const el = document.querySelector('[data-settings-page=pipelines]')?.parentElement; return el ? el.scrollWidth - el.clientWidth : 0; })()")) as number;
+  await shot(win, 'pipeline-editor.png');
+  pressKey(win, 'Escape');
+  await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000);
+  if (box.height > 32) return `Starts is ${box.height}px high: its choices wrapped (${box.text})`;
+  if (box.gap < 0) return `Starts runs into the Model row by ${-box.gap}px`;
+  if (overflow > 1) return `the Pipelines page is ${overflow}px wider than Settings`;
+  return `ok: in a narrow window the list sits above the editor, and Validate's Starts (${box.text}) is one row of ${box.height}px, above the Model row`;
+}
+
+async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
+  const standIn = `smoke-autostart-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean' | 'error') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const sidebarItems = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
+  const box = '[data-new-session-view] [data-composer]';
+  const recorded = (kind: RecordedAlert['kind'], prompt: string) => recordedNotifications.filter((n) => n.kind === kind && n.title.includes(prompt)).length;
+  /** Start after this one… on the stand-in's row, then Add to queue (the main part of Start, opened this way). */
+  const queueAfter = async (prompt: string): Promise<string | null> => {
+    const opened = await js(
+      `(() => { const row = document.querySelector('[data-session-list] [data-session-id="${standIn}"]'); if (!row) return false; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); return true; })()`,
+    );
+    if (!opened) return 'the stand-in session has no row';
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-start-after]')", 2_000))) return 'the session menu has no Start after this one…';
+    await js("document.querySelector('[role=menu] [data-start-after]').click()");
+    const ready = `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('[data-queue-autostart-box]')?.getAttribute('aria-checked') === 'true' && !!document.querySelector('[data-queue-busy-line]')`;
+    if (!(await waitInPage(win, ready, 5_000))) return 'Start after this one… did not open New session on the project with Start by itself on';
+    if (!(await js("document.querySelector('[data-new-session-view] [data-composer-submit]')?.innerText.includes('Add to queue')"))) return 'Add to queue did not lead in New session';
+    await setFieldValue(win, box, prompt);
+    if (!(await waitInPage(win, `!document.querySelector('[data-new-session-view] [data-composer-submit]')?.disabled`, 2_000))) return 'Add to queue stayed disabled';
+    await js("document.querySelector('[data-new-session-view] [data-composer-submit]').click()");
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(prompt)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-autostart]')?.dataset.queueState === 'waiting'`, 3_000))) return 'the queued item did not wait to start by itself';
+    const label = (await js(`${row}.getAttribute('aria-label')`)) as string;
+    if (!label.includes('Starts by itself')) return `its row did not say it starts by itself (${label})`;
+    return null;
+  };
+  try {
+    if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
+    if ((await js(`${sidebarItems}.length`)) !== 0) return 'the throwaway profile already had a queue';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+
+    // A clean finish: it starts once and leaves the queue.
+    const first = 'Smoke autostart: run the tests';
+    const failed = await queueAfter(first);
+    if (failed) return failed;
+    await shot(win, 'queue-autostart.png');
+    host('idle', 'clean');
+    if (!(await waitInPage(win, `${sidebarItems}.length === 0`, 5_000))) return 'the item did not start after a clean finish';
+    if (!(await until(() => recorded('queue-started', first) === 1, 3_000))) return 'no "Started" notification';
+    // Long enough for a second start to show: there must be none.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (recorded('queue-started', first) !== 1) return `it started ${recorded('queue-started', first)} times`;
+
+    // An error: it doesn't start, stays in the queue, ready, and says why.
+    host('running');
+    const second = 'Smoke autostart: write the changelog';
+    const failedAgain = await queueAfter(second);
+    if (failedAgain) return failedAgain;
+    host('idle', 'error');
+    const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(second)}))`;
+    if (!(await waitInPage(win, `${row}?.closest('[data-queue-state]')?.dataset.queueState === 'ready' && ${row}.closest('[data-queue-state]').innerText.includes('ended with an error')`, 5_000))) return 'after an error the item did not turn ready and say why';
+    if (!(await until(() => recorded('queue-skipped', second) === 1, 3_000))) return 'no "didn\'t start" notification';
+    if (recorded('queue-started', second) !== 0) return 'it started after an error';
+    return 'ok: Start after this one… opened New session (Wait for set, Start by itself on, Add to queue first), the row said it starts by itself, a clean finish started it once and took it off the queue, an error left the next one ready with the reason, both notified';
+  } finally {
+    if (await js("!!document.querySelector('[data-new-session-view] [data-composer]')?.value")) await setFieldValue(win, box, '');
+    for (let i = 0; i < 4 && (await js(`${sidebarItems}.length`)) > 0; i++) {
+      await js("document.querySelector('[data-session-list] [data-queue-item]').focus()");
+      pressKey(win, 'Backspace');
+      await waitInPage(win, `${sidebarItems}.length < ${(await js(`${sidebarItems}.length`)) as number}`, 2_000);
+    }
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Scheduled sessions (#173), in the throwaway profile: a demo prompt in New session goes through Start ▾ › Schedule…
+ * (every day, a minute from now), and shows on Home. The engine's schedule clock (`smokeScheduleClock`, with
+ * `SWITCHBOARD_STUB_QUEUE`, which also keeps the run from sending anything to Claude) moves on: the run is titled
+ * "<name> · <day>", notified, and the row shows Last. Paused, a day later nothing runs. Delete, then Undo, puts it back;
+ * it is deleted for good at the end.
+ */
+async function runSchedulesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const name = 'Smoke schedule: review open pull requests';
+  const prompt = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const rowOf = `[...document.querySelectorAll('[data-schedules-card] [data-schedule-row]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  const started = () => recordedNotifications.filter((n) => n.kind === 'schedule-started' && n.title === `Scheduled: ${name} started`).length;
+  const menu = async (item: string) => {
+    await js(`${rowOf}?.querySelector('[data-schedule-more]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[role=menu] ${item}')`, 2_000))) return false;
+    await js(`document.querySelector('[role=menu] ${item}').click()`);
+    return true;
+  };
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-schedules-')));
+  const goHome = async () => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+    await waitInPage(win, "!!document.querySelector('[data-home], [data-onboarding]')", 3_000);
+  };
+  try {
+    // A folder of its own, opened with a link, so the run finds it (and nothing real is touched).
+    const text = `${name}\nList yesterday's open pull requests.`;
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${prompt}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) return 'New session did not open on the schedule\'s folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-add]')", 2_000))) return 'Start ▾ has no Schedule…';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog with the name from the first line';
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-repeat=\"daily\"]').click()");
+    // Two minutes from now on the clock, so the real clock can't reach it during the step: the run is due once the
+    // engine's clock has moved 150 seconds on, and still on time.
+    const at = new Date(Date.now() + 120_000);
+    const time = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', time);
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-describe]')?.innerText === 'Every day at ${time}' && document.querySelectorAll('[data-schedule-dialog] [data-schedule-next-runs] li').length === 3`, 2_000))) {
+      return `the dialog did not say "Every day at ${time}" with three next runs`;
+    }
+    await shot(win, 'schedule-dialog.png');
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('[data-schedule-dialog]') && ${prompt}?.value === '' && !!document.querySelector('[data-schedule-saved-toast]')`, 3_000))) return 'saving did not close the dialog, clear New session and say it is scheduled';
+
+    await goHome();
+    if (!(await waitInPage(win, `!!${rowOf}`, 5_000))) return 'the schedule did not show in the Schedules card on Home';
+    const label = (await js(`${rowOf}.getAttribute('aria-label')`)) as string;
+    if (!label.startsWith(`${name}, every day at ${time}, next `)) return `its row's label is "${label}"`;
+    if (!(await js("!!document.querySelector('[data-schedules-platform]')"))) return 'no line under the card says when schedules run';
+
+    clock(150_000);
+    if (!(await until(() => started() === 1, 5_000))) return 'the run did not start after the clock moved on';
+    const run = recordedScheduleRuns.find((r) => r.name === name && r.result === 'started');
+    if (!run?.title || !/^Smoke schedule: review open pull requests · \w{3} \d{1,2} \w{3}$/.test(run.title)) return `the run was titled "${run?.title}"`;
+    if (!(await waitInPage(win, `${rowOf}?.querySelector('[data-schedule-last]')?.innerText.startsWith('Last: ')`, 3_000))) return 'the row did not show Last';
+    await shot(win, 'schedules-card.png');
+
+    // Paused: a day later, nothing starts.
+    if (!(await menu('[data-schedule-menu-pause="pause"]'))) return 'the row menu has no Pause';
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true' && ${rowOf}.innerText.includes('Paused')`, 3_000))) return 'Pause did not dim the row and say Paused';
+    clock(24 * 60 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    if (started() !== 1) return 'a paused schedule ran';
+
+    // Delete, then Undo.
+    if (!(await menu('[data-schedule-menu-delete]'))) return 'the row menu has no Delete';
+    if (!(await waitInPage(win, `!${rowOf} && !!document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]')`, 3_000))) return 'Delete did not remove the row with an Undo';
+    await js("document.querySelector('[data-schedule-deleted-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${rowOf}?.dataset.schedulePaused === 'true'`, 3_000))) return 'Undo did not put the schedule back as it was';
+    return `ok: Schedule… opened the dialog (name from the first line, "Every day at ${time}", three next runs), the card listed it, the moved clock ran it once as "${run.title}" and the row showed Last; paused, nothing ran a day later; Delete and Undo put it back`;
+  } finally {
+    // Deleted for good (whatever the step got to), and New session left empty.
+    await goHome();
+    for (let i = 0; i < 2 && (await js(`!!${rowOf}`)); i++) {
+      await menu('[data-schedule-menu-delete]');
+      await waitInPage(win, `!${rowOf}`, 2_000);
+    }
+    if (await js(`!!${prompt}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Upcoming, in the throwaway profile against a temp folder: a queued prompt and a daily schedule made in New session,
+ * then Upcoming from the sidebar with its three cards. The project filter keeps them; Skip this run dims the run and
+ * says so, and Undo brings it back; Start now on the Queue card takes the item off the queue (the stub never sends
+ * the prompt to Claude). The schedule is deleted again.
+ */
+async function runUpcomingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-upcoming-')));
+  const name = 'Smoke upcoming: standup summary';
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const view = '[data-upcoming]';
+  const queued = `[...document.querySelectorAll('${view} [data-upcoming-queue] [data-queue-item]')]`;
+  const scheduleRow = `[...document.querySelectorAll('${view} [data-upcoming-schedule]')].find((el) => el.innerText.includes(${JSON.stringify(name)}))`;
+  /**
+   * The last run on screen of the smoke schedule that is still to come. Not the first: the schedules step moved the
+   * engine's clock a day on, so to the engine today's run has already passed.
+   */
+  const laterRun = `[...document.querySelectorAll('${view} [data-upcoming-run]')].filter((el) => el.innerText.includes(${JSON.stringify(name)}) && el.dataset.upcomingRunState === 'next').pop()`;
+  const fill = async (text: string) => {
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return false;
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    return waitInPage(win, "!!document.querySelector('[role=menu] [data-queue-add]')", 2_000);
+  };
+  try {
+    // A queued prompt and a schedule, in New session.
+    if (!(await fill('Smoke upcoming: queued prompt'))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[role=menu] [data-queue-add]').click()");
+    if (!(await waitInPage(win, `${composer}?.value === ''`, 3_000))) return 'Add to queue did not take the prompt';
+    if (!(await fill(`${name}\nWrite the standup summary.`))) return 'New session did not open again';
+    await js("document.querySelector('[role=menu] [data-schedule-add]').click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-schedule-dialog] [data-schedule-name]')?.value === ${JSON.stringify(name)}`, 3_000))) return 'Schedule… did not open the dialog';
+    await js(`document.querySelector('[data-schedule-dialog] [data-schedule-repeat="daily"]').click()`);
+    // An hour ahead (or the next morning), so a run is still to come today or tomorrow.
+    const at = new Date(Date.now() + 60 * 60_000);
+    await setFieldValue(win, '[data-schedule-dialog] [data-schedule-time]', `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`);
+    await js("document.querySelector('[data-schedule-dialog] [data-schedule-save]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-schedule-dialog]')", 3_000))) return 'saving the schedule did not close the dialog';
+
+    // Upcoming from the sidebar (or the rail): its three cards.
+    if (!(await js("!!document.querySelector('[data-upcoming-nav]')"))) return 'the sidebar has no Upcoming';
+    await js("document.querySelector('[data-upcoming-nav]').click()");
+    if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Upcoming did not open';
+    if (!(await js("document.querySelector('[data-upcoming-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Upcoming row was not selected';
+    if (!(await js(`document.querySelector('[data-upcoming-kind="all"]')?.getAttribute('aria-checked') === 'true'`))) await js(`document.querySelector('[data-upcoming-kind="all"]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-upcoming-queue]') && !!document.querySelector('${view} [data-upcoming-runs]') && !!document.querySelector('${view} [data-upcoming-schedules]')`, 3_000))) return 'Upcoming did not show the Queue, Scheduled runs and Schedules cards';
+    if (!(await waitInPage(win, `${queued}.length === 1 && !!${scheduleRow} && !!${laterRun}`, 5_000))) return 'Upcoming did not list the queued prompt, the schedule and its next run';
+    await shot(win, 'upcoming.png');
+
+    // The project filter: the temp folder's project keeps both.
+    // Compared in JavaScript, not in a selector: a Windows path's backslashes are escapes in CSS.
+    const pick = `[...document.querySelectorAll('[role=menu] [data-upcoming-project]')].find((el) => el.dataset.upcomingProject === ${JSON.stringify(folder)})`;
+    await js("document.querySelector('[data-upcoming-project-chip]').click()");
+    if (!(await waitInPage(win, `!!${pick}`, 2_000))) return 'the project filter did not offer the temp folder';
+    await js(`${pick}.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-upcoming-project-chip]')?.innerText.includes(${JSON.stringify(basename(folder))}) && ${queued}.length === 1 && !!${scheduleRow}`, 3_000))) return 'filtering by the project lost its items';
+
+    // Skip this run, then Undo: the run comes back.
+    const runId = (await js(`${laterRun}.dataset.upcomingRun`)) as string;
+    const run = `document.querySelector('[data-upcoming-run=${JSON.stringify(runId)}]')`;
+    await js(`${run}.querySelector('[data-upcoming-skip]').click()`);
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'skipped-by-you' && ${run}.innerText.includes('Skipped by you') && !!document.querySelector('[data-run-skipped-toast] [data-toast-undo]')`, 3_000))) return 'Skip this run did not mark the run Skipped by you with an Undo';
+    await js("document.querySelector('[data-run-skipped-toast] [data-toast-undo]').click()");
+    if (!(await waitInPage(win, `${run}?.dataset.upcomingRunState === 'next'`, 3_000))) return 'Undo did not bring the run back';
+
+    // Start now on the Queue card: the item leaves the queue.
+    const itemId = (await js(`${queued}[0].dataset.queueItem`)) as string;
+    await js(`document.querySelector('${view} [data-queue-start="${itemId}"]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('[data-queue-item="${itemId}"]')`, 5_000))) return 'Start now did not take the item off the queue';
+    return 'ok: Upcoming from the sidebar showed the queue, the scheduled runs and the schedules; the project filter kept them; Skip this run and Undo; Start now took the item off the queue';
+  } finally {
+    // Back to all projects, the schedule and any queued item gone, New session empty, the session later steps use.
+    if (!(await js("!!document.querySelector('[data-upcoming]')"))) await js("document.querySelector('[data-upcoming-nav]')?.click()");
+    await waitInPage(win, "!!document.querySelector('[data-upcoming]')", 2_000);
+    if (await js("!!document.querySelector('[data-upcoming-project-chip]')")) {
+      await js("document.querySelector('[data-upcoming-project-chip]').click()");
+      if (await waitInPage(win, `!!document.querySelector('[role=menu] [data-upcoming-project="all"]')`, 2_000)) await js(`document.querySelector('[role=menu] [data-upcoming-project="all"]').click()`);
+    }
+    for (let i = 0; i < 2 && (await js(`!!${scheduleRow}`)); i++) {
+      await js(`${scheduleRow}.querySelector('[data-schedule-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-schedule-menu-delete]').click()");
+      await waitInPage(win, `!${scheduleRow}`, 2_000);
+    }
+    for (let i = 0; i < 3 && (await js(`${queued}.filter((el) => el.innerText.includes('Smoke upcoming')).length`)) > 0; i++) {
+      await js(`${queued}.find((el) => el.innerText.includes('Smoke upcoming')).focus()`);
+      pressKey(win, 'Backspace');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (await js(`!!${composer}?.value`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
+ * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
+ * session goes through Start ▾ › Start when… to an issues trigger on the `switchboard` label with state labels on. Its first
+ * check starts nothing. A new labelled issue and the engine's moved clock (`smokeScheduleClock`) start one session with
+ * the filled prompt (the stub records it, with `SWITCHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
+ * saw `--add-label "switchboard: working" --remove-label switchboard`. Paused, a new issue starts nothing. The trigger and the
+ * project are removed again.
+ */
+async function runTriggersStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const stateFile = process.env.FAKE_GH_TRIGGERS;
+  // Windows can't start the fake gh script without a shell (see scripts/smoke.ts): the real gh would answer.
+  if (!stateFile) return 'ok: skipped, no fake gh on this platform';
+  const callsFile = `${stateFile}.calls`;
+  const startsFile = join(app.getPath('userData'), 'smoke-trigger-starts.jsonl');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
+  const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
+  const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
+  const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  const starts = () => (existsSync(startsFile) ? readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { title: string; prompt: string }) : []);
+  const calls = () => (existsSync(callsFile) ? readFileSync(callsFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[]) : []);
+  const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
+  const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
+  const startsBefore = starts().length;
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  writeFileSync(callsFile, '');
+  try {
+    const prompt = 'Smoke trigger: work on {{event.title}} ({{event.url}}).';
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return 'New session did not open on the temp folder';
+    await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when…';
+    await js("document.querySelector('[role=menu] [data-trigger-add]').click()");
+    const editor = '[data-trigger-editor="new"]';
+    if (!(await waitInPage(win, `!!document.querySelector('${editor} [data-trigger-prompt]') && document.querySelector('${editor} [data-trigger-prompt]').value === ${JSON.stringify(prompt)}`, 3_000))) return 'Start when… did not open the editor with the prompt';
+    if (!(await js(`document.querySelector('${editor} [role=radiogroup] [data-trigger-source="issues"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-source="command"]')?.getAttribute('aria-disabled') === 'true'`))) return 'the source cards are not a radio group with Issues for you picked and A command disabled';
+    if (!(await js(`[...document.querySelectorAll('${editor} [data-trigger-field="title"], ${editor} [data-trigger-field="url"]')].length === 2`))) return 'the prompt shows no event field chips';
+    // The summary says what Issues for you does, with the login the fake gh gives; the temp folder isn't a git
+    // repository, so New session hands over the project folder, one at a time.
+    const summary = `document.querySelector('${editor} [data-trigger-summary]')?.innerText`;
+    const expected = "When an issue with the switchboard label is assigned to @smoke-user, start a session in the project's folder. One at a time.";
+    if (!(await waitInPage(win, `${summary} === ${JSON.stringify(expected)}`, 3_000))) return `the summary said "${await js(summary)}"`;
+    if (!(await js(`['when', 'which', 'github', 'start', 'limits'].every((s) => !!document.querySelector('${editor} [data-trigger-section="' + s + '"]')) && !!document.querySelector('${editor} [data-trigger-section="github"][data-folded]') && !document.querySelector('${editor} [data-trigger-section="limits"][data-folded]') && !!document.querySelector('${editor} [data-trigger-folder-note]')`))) return 'the editor does not show its five sections, with GitHub folded and Limits open on the folder reason';
+    await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && !document.querySelector('${editor} [data-trigger-assignee]') && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true' && ${summary}?.startsWith('When an issue gets the switchboard label, ')`, 2_000))) return 'With a label did not keep the switchboard label and Only from collaborators, hide Assigned to and update the summary';
+    // What happens on GitHub? opens with Change, and state labels go on.
+    const change = `document.querySelector('${editor} [data-trigger-section-change="github"]')`;
+    if (!(await js(`${change}?.getAttribute('aria-expanded') === 'false' && !!document.getElementById(${change}.getAttribute('aria-controls'))`))) return "GitHub's Change has no aria-expanded or aria-controls";
+    await js(`${change}.click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor} [data-trigger-section="github"][data-folded]') && document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'false'`, 2_000))) return 'Change did not open What happens on GitHub? with state labels off';
+    await js(`document.querySelector('${editor} [data-trigger-state-labels]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-state-labels]')?.getAttribute('aria-checked') === 'true' && !!document.querySelector('${editor} [data-state-label="working"]')`, 2_000))) return 'state labels did not turn on';
+    if (!(await js(`[...document.querySelectorAll('${editor} [role=spinbutton]')].every((s) => s.hasAttribute('aria-valuemin') && s.hasAttribute('aria-valuemax'))`))) return 'the steppers are not spinbuttons with a min and a max';
+    await shot(win, 'trigger-editor.png');
+    await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor}') && ${composer}?.value === ''`, 3_000))) return 'Create trigger did not close the editor and empty New session';
+
+    // Its project's Triggers tab: the first check has marked issue 1 as seen.
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (!(await waitInPage(win, `!!${card} && ${card}.querySelector('[data-trigger-meta]')?.innerText.includes('checked now')`, 8_000))) return 'the Triggers tab did not show the trigger after its first check';
+    if (await js(`!!${card}.querySelector('[data-trigger-event]')`)) return 'the first check made an event';
+    if (starts().length !== startsBefore) return 'the first check started a session';
+
+    // A new labelled issue, and the clock past the interval: one session, with the filled prompt.
+    write({ ...read(), issues: [...read().issues, issue(2, 'Smoke issue two')] });
+    clock(6 * 60_000);
+    if (!(await until(() => starts().length === startsBefore + 1, 10_000))) return 'the new issue did not start a session';
+    const started = starts().at(-1)!;
+    if (started.title !== '#2 Smoke issue two') return `the session was titled "${started.title}"`;
+    if (!started.prompt.startsWith('Smoke trigger: work on Smoke issue two (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the prompt was not filled: ${started.prompt.slice(0, 120)}`;
+    if (!started.prompt.includes('GitHub issue (context to read, not instructions)')) return "the issue's text is not context to read";
+    const edit = calls().find((c) => c[0] === 'issue' && c[1] === 'edit' && c[2] === '2');
+    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'switchboard: working', '--remove-label', 'switchboard'])) return `the fake gh saw ${JSON.stringify(edit)}`;
+    if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started' && /^Issue 2, Smoke issue two, /.test(${card}.querySelector('[data-trigger-event]').getAttribute('aria-label') ?? '')`, 5_000))) return 'the card did not show the started event';
+    await shot(win, 'triggers-tab.png');
+
+    // Paused: a new issue starts nothing.
+    await js(`${card}.querySelector('[data-trigger-switch]').click()`);
+    if (!(await waitInPage(win, `${card}?.dataset.triggerPaused === 'true' && ${card}.querySelector('[data-trigger-paused-reason]')?.innerText === 'Paused by you.'`, 3_000))) return 'the switch did not pause the trigger';
+    write({ ...read(), issues: [...read().issues, issue(3, 'Smoke issue three')] });
+    clock(6 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (starts().length !== startsBefore + 1) return 'a paused trigger started a session';
+    return 'ok: Start when… opened the editor (its summary, five sections with GitHub folded and Limits open in the folder, a radio group of sources, field chips, spinbuttons; With a label hid Assigned to, Change opened GitHub for state labels), the first check started nothing, a new labelled issue started "#2 Smoke issue two" with the filled prompt and switchboard: working in one edit, paused it started nothing';
+  } finally {
+    // The trigger and the project go again, and the fake's repository with them.
+    if (await js(`!!${card}`)) {
+      await js(`${card}.querySelector('[data-trigger-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
+      await waitInPage(win, `!${card}`, 3_000);
+    }
+    await removeProjectInProjects(win, folder);
+    rmSync(stateFile, { force: true });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * A trigger that starts a pipeline (#185), in the throwaway profile, against a throwaway repository and the smoke's fake
+ * gh. New session with Run as on Execute and validate, then Start ▾ › Start when…: the editor opens on A pipeline with
+ * that pipeline picked, and Run without stopping for me is turned on. Its first check starts nothing; a new labelled issue starts one run (its stand-in first step gets
+ * the filled task and the issue as context), whose run row in the sidebar has the bolt and whose event on the card is
+ * started. The run, the trigger and the project are removed again.
+ */
+async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const stateFile = process.env.FAKE_GH_TRIGGERS;
+  // Windows can't start the fake gh script without a shell (see scripts/smoke.ts): the real gh would answer.
+  if (!stateFile) return 'ok: skipped, no fake gh on this platform';
+  const startsFile = join(app.getPath('userData'), 'smoke-pipeline-starts.jsonl');
+  const starts = (): Array<{ kind: string; sessionId: string; text: string }> => {
+    try {
+      return readFileSync(startsFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as { kind: string; sessionId: string; text: string });
+    } catch {
+      return [];
+    }
+  };
+  const before = starts().length;
+  const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-trigger-pipeline-')));
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
+  execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
+  const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
+  const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  const view = '[data-new-session-view]';
+  const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
+  const runRow = "[...document.querySelectorAll('[data-session-list] [data-session-id^=\"run-\"]')].find((row) => row.querySelector('[data-row-triggered]'))";
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  try {
+    const task = 'Smoke pipeline trigger: {{event.title}} ({{event.url}}).';
+    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
+    await js(`document.querySelector('${view} [data-run-as]').click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
+    await js("document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]').click()");
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-composer-submit]')?.dataset.startMain === 'pipeline'`, 2_000))) return 'Start did not turn into Run pipeline';
+    await js(`document.querySelector('${view} [data-start-menu]').click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when… with a pipeline picked';
+    await js("document.querySelector('[role=menu] [data-trigger-add]').click()");
+    const editor = '[data-trigger-editor="new"]';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-starts="pipeline"]')?.getAttribute('aria-checked') === 'true' && document.querySelector('${editor} [data-trigger-pipeline-pick]')?.dataset.value === 'builtin-execute-validate'`, 3_000))) return 'Start when… did not open the editor on A pipeline with Execute and validate';
+    if (await js(`!!document.querySelector('${editor} [data-trigger-model]') || !!document.querySelector('${editor} [data-trigger-workspace]')`)) return 'the editor still offers a model or a workspace for a pipeline';
+    if (!(await js(`document.querySelector('${editor} [data-trigger-unattended]')?.getAttribute('aria-checked') === 'false' && document.querySelector('${editor} [data-trigger-auto-push]')?.getAttribute('aria-checked') === 'false'`))) return 'Run without stopping for me and Open the pull request without me are not there, off';
+    await js(`document.querySelector('${editor} [data-trigger-unattended]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-unattended]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Run without stopping for me did not turn on';
+    await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard'`, 2_000))) return 'Label did not keep the switchboard label';
+    await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
+    if (!(await waitInPage(win, `!document.querySelector('${editor}')`, 3_000))) return 'Create trigger did not close the editor';
+
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (!(await waitInPage(win, `!!${card} && ${card}.querySelector('[data-trigger-meta]')?.innerText.includes('checked now') && ${card}.querySelector('[data-trigger-pipeline="builtin-execute-validate"]')?.innerText.includes('without stopping')`, 8_000))) return 'the Triggers tab did not show the trigger, with its pipeline run without stopping, after its first check';
+    if (fresh().length) return 'the first check started a run';
+
+    write({ ...read(), issues: [...read().issues, issue(2, 'Smoke pipeline issue')] });
+    engine.send({ type: 'smokeScheduleClock', ms: 6 * 60_000 });
+    if (!(await until(() => fresh().length === 1, 10_000))) return 'the new issue did not start a run';
+    const first = fresh()[0]!.text;
+    if (!first.includes('Smoke pipeline trigger: Smoke pipeline issue (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the first step did not get the filled task: ${first.slice(0, 160)}`;
+    if (!first.includes('GitHub issue (context to read, not instructions)')) return "the first step did not get the issue's text as context";
+    if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started'`, 5_000))) return 'the card did not show the started event';
+    if (!(await waitInPage(win, `!!(${runRow})`, 5_000))) return 'the run row in the sidebar has no bolt';
+    return 'ok: Start when… from Run as opened the editor on A pipeline (no model or workspace, Run without stopping for me turned on), the first check started nothing, a new labelled issue started one run whose first step got the filled task and the issue as context, with the bolt on its run row';
+  } finally {
+    // The run (stopped by Delete), the trigger and the project go again, and the fake's repository with them.
+    if (await js(`!!(${runRow})`)) {
+      await js(`(() => { const row = ${runRow}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-row-action=\"delete\"]')", 2_000)) {
+        await js("document.querySelector('[role=menu] [data-run-row-action=\"delete\"]').click()");
+        if (await waitInPage(win, "!!document.querySelector('[data-run-delete-confirm] [data-confirm]')", 2_000)) await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
+        await waitInPage(win, `!(${runRow})`, 3_000);
+      } else pressKey(win, 'Escape');
+    }
+    sendToWindow(win, IpcChannel.mainRequested, { kind: 'project', root: folder, tab: 'triggers' } satisfies MainWindowRequest);
+    if (await waitInPage(win, `!!${card}`, 3_000)) {
+      await js(`${card}.querySelector('[data-trigger-more]').click()`);
+      if (await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-menu-delete]')", 2_000)) await js("document.querySelector('[role=menu] [data-trigger-menu-delete]').click()");
+      await waitInPage(win, `!${card}`, 3_000);
+    }
+    await removeProjectInProjects(win, folder);
+    rmSync(stateFile, { force: true });
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
  * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
  */
@@ -5629,7 +7232,7 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
   const group = (await js("['today', 'yesterday', 'pinned', 'working'].find((g) => document.querySelector(`[data-section-toggle=\"${g}\"][data-open=\"true\"]`)) ?? null")) as string | null;
   if (!group) return `ok: no open section to collapse (Earlier ${earlier === 'none' ? 'not shown' : 'closed'})`;
   const toggle = `document.querySelector('[data-section-toggle="${group}"]')`;
-  const rowsUnder = `(() => { const rows = [...document.querySelectorAll('[data-session-list] [role=listitem]')]; const at = rows.findIndex((r) => r.querySelector('[data-section-toggle="${group}"]')); const out = []; for (const r of rows.slice(at + 1)) { if (r.querySelector('[data-section-toggle], [data-session-group], [data-archived-toggle]')) break; const s = r.querySelector('[data-session-id]'); if (s) out.push(s.dataset.sessionId); } return out; })()`;
+  const rowsUnder = `(() => { const rows = [...document.querySelectorAll('[data-session-list] [data-list-row]')]; const at = rows.findIndex((r) => r.querySelector('[data-section-toggle="${group}"]')); const out = []; for (const r of rows.slice(at + 1)) { if (r.querySelector('[data-section-toggle], [data-session-group], [data-archived-toggle]')) break; const s = r.querySelector('[data-session-id]'); if (s) out.push(s.dataset.sessionId); } return out; })()`;
   const before = (await js(`${rowsUnder}.length`)) as number;
   const selected = (await js("document.querySelector('[data-session-list] [aria-current=\"true\"]')?.dataset.sessionId ?? null")) as string | null;
   await js(`${toggle}.click()`);
@@ -5702,7 +7305,7 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
   const header = "document.querySelector('[data-archived-header]')";
   const toggle = (where: string) => `${where}?.querySelector('[data-archived-toggle]')`;
   // Done moving: the header carries no FLIP transform and the archived rows are fully shown.
-  const landed = `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [role=listitem].opacity-0')].length`;
+  const landed = `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [data-list-row].opacity-0')].length`;
   const scheme = preferences.get().colorScheme;
   try {
     await js(`${list}.scrollTop = 0`);
@@ -5718,10 +7321,11 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
     const docked = (await js(`(() => {
       const l = ${list}, d = ${dock}, lr = l.getBoundingClientRect(), dr = d.getBoundingClientRect();
       const content = l.firstElementChild.offsetHeight + parseFloat(getComputedStyle(l).paddingBottom);
-      return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
-    })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; dockTop: number; listBottom: number; dpr: number };
+      // A pixel of rounding (Windows at a fractional scale) is not a scroll.
+      return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight + 1, content, scrollHeight: l.scrollHeight, clientHeight: l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
+    })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; content: number; scrollHeight: number; clientHeight: number; dockTop: number; listBottom: number; dpr: number };
     if (!docked.outside || !docked.below) return `the closed Archived header is not docked under the list (${JSON.stringify(docked)})`;
-    if (docked.fits && docked.scrolls) return 'a list that fits still scrolls';
+    if (docked.fits && docked.scrolls) return `a list that fits still scrolls (${JSON.stringify(docked)})`;
     const sidebarShot = async (name: string) => {
       await settle(win);
       const rect = (await js("(() => { const r = document.querySelector('[data-sidebar-open]').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })()")) as Electron.Rectangle;
@@ -5735,8 +7339,8 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
     await js(`${toggle(dock)}.click()`);
     if (!(await waitInPage(win, landed, 2_000))) return 'opening Archived did not move its header into the list';
     const open = (await js(`(() => {
-      const item = ${header}.closest('[role=listitem]'), at = Number(item.getAttribute('aria-posinset'));
-      const prev = [...document.querySelectorAll('[data-session-list] [role=listitem]')].find((r) => Number(r.getAttribute('aria-posinset')) === at - 1);
+      const item = ${header}.closest('[data-list-row]'), at = Number(item.getAttribute('data-list-row'));
+      const prev = [...document.querySelectorAll('[data-session-list] [data-list-row]')].find((r) => Number(r.getAttribute('data-list-row')) === at - 1);
       const l = ${list};
       return { gap: prev ? Math.round(item.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : 0, top: item.getBoundingClientRect().top - l.getBoundingClientRect().top, half: l.clientHeight / 2, scrolledToEnd: l.scrollTop >= l.scrollHeight - l.clientHeight - 1 };
     })()`)) as { gap: number; top: number; half: number; scrolledToEnd: boolean };
@@ -5802,10 +7406,10 @@ async function shortArchivedList(win: BrowserWindow, sidebarShot: (name: string)
     if (fit.scrolls) return 'a short list still scrolls';
     await sidebarShot('archived-short-closed.png');
     await js(`${dock}.querySelector('[data-archived-toggle]').click()`);
-    if (!(await waitInPage(win, `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [role=listitem].opacity-0')].length`, 2_000))) return 'Archived did not open on the short list';
+    if (!(await waitInPage(win, `!!${header} && !${dock} && ${header}.style.transform === '' && ![...document.querySelectorAll('[data-session-list] [data-list-row].opacity-0')].length`, 2_000))) return 'Archived did not open on the short list';
     const placed = (await js(`(() => {
-      const item = ${header}.closest('[role=listitem]'), at = Number(item.getAttribute('aria-posinset'));
-      const prev = [...document.querySelectorAll('[data-session-list] [role=listitem]')].find((r) => Number(r.getAttribute('aria-posinset')) === at - 1);
+      const item = ${header}.closest('[data-list-row]'), at = Number(item.getAttribute('data-list-row'));
+      const prev = [...document.querySelectorAll('[data-session-list] [data-list-row]')].find((r) => Number(r.getAttribute('data-list-row')) === at - 1);
       return { gap: prev ? Math.round(item.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : 0, top: item.getBoundingClientRect().top - ${list}.getBoundingClientRect().top, half: ${list}.clientHeight / 2 };
     })()`)) as { gap: number; top: number; half: number };
     await sidebarShot('archived-short-open.png');
@@ -5978,14 +7582,20 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!document.querySelector('[data-changes-panel]') && document.querySelector('${banner}')`, 3_000))) return 'Esc did not close the Changes panel before the banner';
   }
+  // The banner shows with its Details open; Space closes and opens them.
+  const details = `document.querySelector('${banner} [data-catchup-details]')`;
+  if (!(await waitInPage(win, details, 3_000))) return 'the banner did not show with its Details open';
   pressKey(win, 'Space');
-  if (!(await waitInPage(win, `document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Space did not open the banner’s Details';
+  if (!(await waitInPage(win, `!${details}`, 3_000))) return 'Space did not close the banner’s Details';
+  pressKey(win, 'Space');
+  if (!(await waitInPage(win, details, 3_000))) return 'Space did not open the banner’s Details again';
   pressKey(win, 'Escape');
-  if (!(await waitInPage(win, `document.querySelector('${banner}') && !document.querySelector('${banner} [data-catchup-details]')`, 3_000))) return 'Esc did not close Details first';
+  if (!(await waitInPage(win, `document.querySelector('${banner}') && !${details}`, 3_000))) return 'Esc did not close Details first';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector('${strip}') && !document.querySelector('${banner}')`, 3_000))) return 'Esc did not fold the banner into the strip';
   pressKey(win, 'Space');
   if (!(await waitInPage(win, `document.querySelector('${banner}')`, 3_000))) return 'Space did not open the banner again';
+  if (!(await waitInPage(win, details, 3_000))) return 'the banner came back without its Details';
 
   // In the message box, keys are the message box's: Esc there leaves the banner alone.
   await js(`document.querySelector('${view} [data-composer]')?.focus(); true`);
@@ -6001,7 +7611,7 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-sort-recent]')?.click()");
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
-  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Space opened Details, Esc closed Details then folded the banner, Space opened it again, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
+  return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open at first, Space closed and opened them, Esc closed Details then folded the banner, Space opened it again with Details, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
@@ -6864,7 +8474,9 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     if (remountedAfterTurn || (await domOrder()) !== orderTwo) return 'failed: turning a split remounted or moved a pane';
     pressKey(win, 'W', ['meta', 'alt']);
     if (!(await waitInPage(win, `!document.querySelector('[data-split]') && document.querySelector('[data-current-session="${smoke}"]')`, 2_000))) return 'failed: ⌘⌥W did not close the active pane, leaving the other';
-    const tail = await tiles();
+    // The last pane grows into the closed one's space a frame or two later on a slow machine (CI): wait for it.
+    let tail = await tiles();
+    for (const startedAt = Date.now(); tail && Date.now() - startedAt < 3_000; tail = await tiles()) await settle(win);
     if (tail) return `failed: one pane does not fill the area: ${tail}`;
 
     // From the sidebar: dragging a session's row onto a pane's edge opens it there, and onto its centre replaces it.
@@ -7707,6 +9319,23 @@ async function runModsStep(win: BrowserWindow): Promise<string> {
       10_000,
     );
   if (!(await status('ready'))) return 'failed: the status chip did not show';
+  // A narrow message box: the chips under it must not run under anything on the right of the footer (the mods' chips,
+  // Ask, Stop, Send), side by side or on a line of their own. Measured once the footer has settled at that width.
+  const squeeze = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = '380px'; return !!f; })()";
+  const release = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = ''; })()";
+  const clear = `(() => {
+    const f = document.querySelector('[data-composer-footer]');
+    const chips = [...document.querySelectorAll('[data-composer-chips] [data-chip]')].map((c) => c.getBoundingClientRect());
+    const right = [...(document.querySelector('[data-composer-footer-end]')?.children ?? [])].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1);
+    if (!f || f.getBoundingClientRect().width > 381 || chips.length === 0 || right.length === 0) return false;
+    return !chips.some((c) => right.some((r) => c.right > r.left + 0.5 && c.left < r.right - 0.5 && c.bottom > r.top + 0.5 && c.top < r.bottom - 0.5));
+  })()`;
+  if (!(await js(squeeze))) return 'failed: no message box footer to narrow';
+  try {
+    if (!(await waitInPage(win, clear, 5_000))) return "failed: at a narrow width the chips under the message box run under the mods' chips or the buttons on the right";
+  } finally {
+    await js(release);
+  }
   await js("document.querySelector('[data-mod-status-list]') && document.querySelector('[data-mod-status-more]').click()");
   if (!(await js("!!document.querySelector('[data-mods-chip]')"))) return 'failed: no mods chip in the header';
   await js(`document.querySelector('${band} [data-mod-button="press"]').click()`);
@@ -7754,6 +9383,7 @@ function writeSmokeResult(): void {
         sessionCount: readyReports[0]?.sessionCount ?? 0,
         steps: smokeRun.steps,
         stoppedBy: smokeRun.stoppedBy,
+        only: smokeOnly ? { pattern: smokeOnly.source, matched: smokeRun.matched } : null,
         slowest: smokeRun.slowest(8),
         notifications: recordedNotifications,
         rendering,
@@ -7775,7 +9405,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   if (!smokeOutDir || !win) return;
   mkdirSync(smokeOutDir, { recursive: true });
   if (readyReports.length > 1) {
-    await smokeRun.step('engine restarted and renderer reconnected', async () => `ok: in ${Math.round(performance.now() - crashedAt)}ms`, { cleanup: false });
+    await smokeRun.step(RESTART_STEP, async () => `ok: in ${Math.round(performance.now() - crashedAt)}ms`, { cleanup: false });
     writeSmokeResult();
     exitApp(0);
     return;
@@ -7789,6 +9419,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const step = smokeRun.step.bind(smokeRun);
 
+  // The first two always run: the steps after them work in the session they open.
   await step('sessions listed after the initial scan', async () => {
     if (!(await waitInPage(win, "document.querySelector('[data-session-id]')", 5_000))) return 'failed: no session rows';
     await shot(win, 'window.png');
@@ -7798,10 +9429,10 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     pressKey(win, 'Escape');
     await waitInPage(win, "!document.querySelector('[role=menu]')", 1_000);
     return `ok: ${await js("document.querySelectorAll('[data-session-id]').length")} rows (${readyReports[0]!.sessionCount} in the first snapshot)`;
-  });
-  await step('newest session with messages rendered', () => openSmokeSession(win));
+  }, { always: true });
+  await step('newest session with messages rendered', () => openSmokeSession(win), { always: true });
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
-  await step('permission mode for new sessions: a fixed mode starts New session in it, the last one picked comes back', () => runNewSessionModeStep(win));
+  await step('permission mode for new sessions: project default, Remember last and a fixed mode', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';
@@ -7816,11 +9447,13 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('create pull request dialog', () => runPullRequestStep(win));
   await step('find in session', () => runFindStep(win));
   await step('file links', () => runFileLinksStep(win));
+  await step('file preview', () => runFilePreviewStep(win));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
@@ -7832,8 +9465,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));
-  await step('split layout: tiling panes', () => runSplitLayoutStep(win));
-  await step('split layout: window edges and the sidebar', () => runSplitEdgeStep(win));
+  // Both take about 5s locally and five times that on a CI runner.
+  await step('split layout: tiling panes', () => runSplitLayoutStep(win), { timeoutMs: 60_000 });
+  await step('split layout: window edges and the sidebar', () => runSplitEdgeStep(win), { timeoutMs: 60_000 });
   await step('archive', () => runArchiveStep(win));
   await step('rename', () => runRenameStep(win));
   await step('multi-select and archive', () => runArchiveManyStep(win));
@@ -7846,8 +9480,20 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
+  await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
+  await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
+  await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
   await step('queue', () => runQueueStep(win));
+  await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
+  await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
+  await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
+  await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
+  await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
+  await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
+  await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
+  await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
+  await step('triggers: a trigger that starts a pipeline, from Run as and Start when…, starts one run with the issue as its task and the bolt on its run row', () => runTriggerPipelineStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
@@ -7864,7 +9510,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage view: open from the usage bar, tabs and periods, a session from a row, Esc', () => runUsageViewStep(win), { timeoutMs: 45_000 });
   await step('settings › usage: Show estimated cost and Currency are saved, Open usage opens the view with its cost', () => runUsageSettingsStep(win));
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
-  await step('settings: theme, sidebar style, session scope, tool activity, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
+  await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
@@ -7888,7 +9534,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
-  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
+  // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
+  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 90_000 });
+  await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -7896,12 +9544,18 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   )) as Record<string, number>;
   const liveCwd = process.env.SWITCHBOARD_SMOKE_LIVE_CWD;
   if (liveCwd) await step('live session through the UI', () => runLiveSessionStep(win, liveCwd), { timeoutMs: 180_000 });
+  // With --only, the engine restart runs only when it is picked.
+  if (smokeOnly && !smokeOnly.test(RESTART_STEP)) {
+    writeSmokeResult();
+    exitApp(0);
+    return;
+  }
   crashedAt = performance.now();
   engine.crash();
   // The second ready finishes the run; if it never comes, say so instead of waiting for the watchdog.
   setTimeout(() => {
     if (smokeFinished) return;
-    void smokeRun.step('engine restarted and renderer reconnected', async () => 'failed: the renderer did not reconnect within 15s', { cleanup: false }).then(() => {
+    void smokeRun.step(RESTART_STEP, async () => 'failed: the renderer did not reconnect within 15s', { cleanup: false }).then(() => {
       writeSmokeResult();
       exitApp(0);
     });
@@ -7909,8 +9563,10 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  // Packaged builds take the icon from the bundle's icon.icns; in development, set it on the Dock.
-  if (!app.isPackaged) app.dock?.setIcon(join(here, '../../build/icon.png'));
+  // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
+  // Dock gets Graphite's, which is build/icon.png.
+  appIcon.apply(preferences.get().appIcon);
+  keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
     applicationName: 'Switchboard',
@@ -7922,6 +9578,7 @@ app.whenReady().then(() => {
     entry: join(here, 'engine.js'),
     dataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
+    previewRemote: !app.isPackaged || channelOf(app.getVersion()) === 'beta',
     onRequest: handleEngineRequest,
     onRestarted: () => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);
@@ -7943,11 +9600,14 @@ app.whenReady().then(() => {
     },
     focusedSession: sessionOnScreen,
     openSession,
+    openUpcoming: (scheduleId) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'upcoming', filter: null, scheduleId } satisfies MainWindowRequest),
+    openTriggers: (root) => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'project', root, tab: 'triggers' } satisfies MainWindowRequest),
     showAllSessions: () => preferences.get().sessionScope === 'all',
     alerts: () => preferences.get(),
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
-    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event) } : {}),
+    notificationIcon: () => appIcon.windowIcon(),
+    ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();
   // Running pull request checks are read every 30 seconds while a window has focus, else every 5 minutes. A blur
@@ -7955,6 +9615,9 @@ app.whenReady().then(() => {
   const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
   app.on('browser-window-focus', sendForeground);
   app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
+  // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
+  // sees a clock or time zone change within a minute.
+  powerMonitor.on('resume', () => engine.send({ type: 'wake' }));
   createWindow();
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
@@ -8010,3 +9673,5 @@ app.on('before-quit', () => {
   updater.stop();
   engine?.stop();
 });
+
+app.on('will-quit', () => keepAwake.dispose());

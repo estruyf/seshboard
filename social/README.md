@@ -29,4 +29,7 @@ It needs Google Chrome (or set `CHROME` to another Chromium binary). The `social
 | [release-0.0.18](release-0.0.18/posts.md) | Release 0.0.18: Remote on your phone, Catch-up, Ask, Agents panel |
 | [try-switchboard](try-switchboard/posts.md) | Switchboard in general, to get people to try it (real screenshots, any time) |
 | [release-0.0.21](release-0.0.21/posts.md) | Release 0.0.21: Run and send, Commands panel, Claude Code mods |
-| [release-0.0.23](release-0.0.23/posts.md) | Release 0.0.23: saved prompts and token costs at API prices (not released yet) |
+| [release-0.0.23](release-0.0.23/posts.md) | Release 0.0.23: saved prompts and token costs at API prices |
+| [release-1.0.0](release-1.0.0/posts.md) | Release 1.0.0: the milestone (two weeks, 24 releases, what Switchboard is) |
+| [linux-beta](linux-beta/posts.md) | Switchboard on Linux in the 1.1.0 beta (texts for your own Omarchy screenshot) |
+| [coming-1.1](coming-1.1/posts.md) | Preview of 1.1 while in beta: schedules, triggers, pipelines, Upcoming |

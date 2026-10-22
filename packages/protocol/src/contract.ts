@@ -47,16 +47,20 @@ import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts'
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
-import { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from './later.ts';
+import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
+import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
+import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, TriggersState } from './triggerSchema.ts';
+import { Pipeline, PipelineNotice, PipelineRunState, PipelineSave, PushPreview } from './pipelineSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 import { ContextItems } from './context.ts';
-import { GithubIssue, GithubPullRequest, PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
+import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './savedPromptSchema.ts';
+import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
-import { DeviceName, RemoteSettings, RemoteStatus } from './remote.ts';
+import { DeviceName, RemoteSettings, RemoteStatus, RemoteTheme } from './remote.ts';
 import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
 import { ClonePlan, CloneProgress, CloneSettings } from './clone.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
@@ -361,6 +365,16 @@ export const contract = {
         profileId: ProfileId.nullable().default(null),
         /** Check out this branch in `cwd` first (not with a worktree). Fails when git refuses, e.g. over uncommitted changes. */
         checkoutBranch: z.string().min(1).max(250).nullable().default(null),
+        /**
+         * Check out this pull request in `cwd` first (`gh pr checkout`; not with a worktree or a branch). DIRTY when the
+         * folder has changes ("3 changed files. Commit or stash them first."), GH_FAILED with gh's reason.
+         */
+        checkoutPullRequest: z.object({ number: z.number().int().positive(), repo: GithubOrigin.shape.repo }).optional(),
+        /**
+         * The issue or pull request New session was filled in from, kept with the session (`github.origin`). In a
+         * session from a fork's pull request Switchboard can't push to (`readOnly`), push and Create pull request are off.
+         */
+        github: GithubOrigin.optional(),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -443,6 +457,11 @@ export const contract = {
     'session.rewind': {
       params: z.object({ sessionId: SessionId, messageUuid: z.string(), dryRun: z.boolean().default(false) }),
       result: RewindResult,
+    },
+    /** The model, effort and permission mode a session resumes with (the set calls only save them while it isn't running). */
+    'session.savedSettings': {
+      params: z.object({ sessionId: SessionId }),
+      result: z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode }),
     },
     'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: PermissionMode }), result: z.object({}) },
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().max(200).nullable() }), result: z.object({}) },
@@ -559,6 +578,25 @@ export const contract = {
       params: z.object({ cwd: AbsolutePath.nullable(), paths: z.array(z.string().min(1).max(1024)).max(100) }),
       result: z.object({ paths: z.array(z.string().nullable()) }),
     },
+    /**
+     * Reads a Markdown, HTML or code file (see `previewKind`) to preview it. `content` is null when the file is over
+     * `MAX_PREVIEW_BYTES` (`size` still says how big it is). HTML comes with a Content-Security-Policy meta added and its
+     * local images inlined as data URIs. `modified` is the mtime in ms. NOT_FOUND when it is missing; UNSUPPORTED for a
+     * folder or any other extension: only previewable files are read.
+     */
+    'files.read': {
+      params: z.object({ path: AbsolutePath }),
+      result: z.object({ kind: z.enum(['markdown', 'html', 'code']), size: z.number(), content: z.string().nullable(), modified: z.number() }),
+    },
+    /**
+     * Reads an image a previewed file shows, as base64 (the shape of `transcript.image`). Only png, jpeg, gif, webp and
+     * svg, checked by their first bytes rather than the extension, up to `MAX_PREVIEW_IMAGE_BYTES`. NOT_FOUND when it is
+     * missing; UNSUPPORTED for a folder or something that isn't one of those images; TOO_LARGE over the limit.
+     */
+    'files.image': {
+      params: z.object({ path: AbsolutePath }),
+      result: z.object({ mediaType: z.string(), data: z.string() }),
+    },
     'editors.list': { params: z.object({}), result: z.object({ editors: z.array(EditorInfo), defaultId: z.string().nullable() }) },
     /** Opens a folder or file (optionally at a line) in an editor; `editorId` defaults to the user's default. */
     'editors.open': {
@@ -612,15 +650,34 @@ export const contract = {
     'savedPrompts.move': { params: z.object({ id: SavedPromptId, from: PromptScope, to: PromptScope }), result: z.object({ prompt: SavedPrompt }) },
     /** A prompt was sent: counts it, for ordering. Shared prompts' counts stay in the database. */
     'savedPrompts.used': { params: z.object({ id: SavedPromptId, scope: PromptScope }), result: z.object({}) },
-    /** Open pull requests of the project, for a `pr` blank (cached for a minute). Empty with a `reason` without gh or a GitHub remote. */
-    'github.pullRequests': {
+    // --- GitHub issues and pull requests (through gh, read-only) --------------------------------------
+    /** Whether the `#` list works in a project: `no-gh`, `not-signed-in`, `not-github` or `ok`. Checked once a minute. */
+    'github.status': {
       params: z.object({ root: AbsolutePath }),
-      result: z.object({ pullRequests: z.array(GithubPullRequest), repo: z.string().nullable(), reason: z.string().nullable() }),
+      result: z.object({ available: z.boolean(), reason: z.enum(['ok', 'no-gh', 'not-signed-in', 'not-github']), repo: z.string().nullable() }),
     },
-    /** An issue from a link, `#123` or `123`, for an `issue` blank (cached for a minute). Null with a `reason` when it can't be found. */
+    /**
+     * Open issues and pull requests of the project's repository, at most 10 of each, for the `#` list and saved prompts'
+     * blanks (cached per project and query for a minute; `refresh` asks gh again). An empty query lists the most
+     * recently updated; a number or `#123` puts that item first, open or closed; a pasted link finds that item, in any
+     * repository. Never fails: without gh, a sign-in or a GitHub remote the lists are empty with a `reason`, and a
+     * rate limit or a network error keeps the last lists (`stale`).
+     */
+    'github.search': {
+      params: z.object({ root: AbsolutePath, query: z.string().max(500).default(''), refresh: z.boolean().default(false) }),
+      result: GithubSearchResult,
+    },
+    /** An issue with its text, from a link, `#123` or `123` (cached for a minute). Null with a reason when it can't be read. */
     'github.issue': {
       params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
-      result: z.object({ issue: GithubIssue.nullable(), reason: z.string().nullable() }),
+      result: z.object({ issue: GithubIssueDetail.nullable(), reason: GithubReason, message: z.string().nullable() }),
+    },
+    /** A pull request with its text, branches, whether you can push to it and its unresolved review comments. */
+    /** The issue or pull request a session was started from (New session from it); null for any other session. */
+    'github.origin': { params: z.object({ sessionId: SessionId }), result: z.object({ origin: GithubOrigin.nullable() }) },
+    'github.pr': {
+      params: z.object({ root: AbsolutePath, ref: z.string().trim().min(1).max(500) }),
+      result: z.object({ pr: GithubPrDetail.nullable(), reason: GithubReason, message: z.string().nullable() }),
     },
 
     /**
@@ -667,7 +724,13 @@ export const contract = {
      */
     'git.branches': {
       params: z.object({ cwd: AbsolutePath }),
-      result: z.object({ current: z.string().nullable(), branches: z.array(z.string()), checkedOutElsewhere: z.array(z.string()).optional() }),
+      result: z.object({
+        current: z.string().nullable(),
+        branches: z.array(z.string()),
+        checkedOutElsewhere: z.array(z.string()).optional(),
+        /** Remote branches (`origin/dev`), most recent first: a new worktree can start from one. */
+        remoteBranches: z.array(z.string()).optional(),
+      }),
     },
     /**
      * Checks out a local branch in the checkout at `cwd` with `git switch`: uncommitted changes that
@@ -699,6 +762,13 @@ export const contract = {
      * first. Refused (SESSION_BUSY) while Claude is working in this checkout, and NOTHING_TO_COMMIT on a clean one.
      */
     'git.commit': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath, message: z.string().trim().min(1).max(20_000) }), result: z.object({ terminalId: z.string() }) },
+    /**
+     * A commit message for what `git.commit` would commit now, written by Haiku on the session's profile from the
+     * change alone (files, stat and a capped patch, plus recent subjects for the style), never the conversation, so it
+     * costs a few thousand tokens however long the session is. Nothing is staged. NOTHING_TO_COMMIT on a clean
+     * checkout, NO_MESSAGE when Haiku didn't answer in time.
+     */
+    'git.commitMessage': { params: z.object({ sessionId: SessionId, cwd: AbsolutePath }), result: z.object({ message: z.string() }) },
     /**
      * What the Create pull request dialog starts with for the branch checked out at `cwd`: its commits and diff against
      * `base` (else the project's base, `projectBase`, else the remote's default branch), the remote's branches, the
@@ -788,6 +858,8 @@ export const contract = {
      * Switchboard is stopped first. Optionally deletes the branch, after saving a recovery ref.
      */
     'worktrees.remove': { params: z.object({ root: AbsolutePath, items: z.array(WorktreeRemoveItem).min(1).max(200) }), result: z.object({ results: z.array(WorktreeRemoveResult) }) },
+    /** Unlocks a locked worktree of the repository at `root` (`git worktree unlock`), so it can be removed. */
+    'worktrees.unlock': { params: z.object({ root: AbsolutePath, path: AbsolutePath }), result: z.object({}) },
     /**
      * Pushes the branch checked out in a worktree, without a session or terminal (the overview has none): `git push`, or
      * `git push -u <remote> <branch>` the first time. Nothing can ask for a password, so a remote that wants one fails.
@@ -866,9 +938,10 @@ export const contract = {
     // --- Queue (the Later list, as it was first called) -------------------------------------------
     /**
      * The queue in order, first to start first; only one folder's with `cwd`. `started` maps queued items that
-     * were started to their sessions, for the items still waiting on them.
+     * were started to their sessions, for the items still waiting on them; `auto` is what the engine knows about
+     * items that start by themselves.
      */
-    'later.list': { params: z.object({ cwd: AbsolutePath.optional() }), result: z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }) },
+    'later.list': { params: z.object({ cwd: AbsolutePath.optional() }), result: z.object({ items: z.array(LaterItem), started: z.array(QueueStarted), auto: QueueAuto }) },
     /**
      * Queues a prompt, at the end unless `index` says where. `id`, `createdAt`, `index` and `waitFor` put a removed
      * item back as it was (Undo).
@@ -891,15 +964,130 @@ export const contract = {
     /** Moves an item to `toIndex` in the queue (clamped to its length). */
     'later.reorder': { params: z.object({ id: z.string().min(1).max(100), toIndex: z.number().int().min(0) }), result: z.object({}) },
     /**
-     * Changes what an item waits for, or its prompt and choices (edited in New session, kept as you type). It keeps
-     * its place. NOT_FOUND when it is gone.
+     * Changes what an item waits for, whether it starts by itself, or its prompt and choices (edited in New session,
+     * kept as you type). It keeps its place. Waiting for nothing turns `autoStart` off. NOT_FOUND when it is gone.
      */
-    'later.update': { params: z.object({ id: z.string().min(1).max(100), waitFor: QueueWaitFor.optional(), draft: LaterDraft.optional() }), result: z.object({ item: LaterItem }) },
+    'later.update': {
+      params: z.object({ id: z.string().min(1).max(100), waitFor: QueueWaitFor.optional(), autoStart: z.boolean().optional(), draft: LaterDraft.optional() }),
+      result: z.object({ item: LaterItem }),
+    },
     /**
      * Starts a queued item: the session is created from its draft exactly as New session creates one, then the
      * item leaves the queue. The focus limit's gate is the caller's (the UI asks before calling this).
      */
     'later.start': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ sessionId: z.string() }) },
+
+    // --- Scheduled sessions (#173) -----------------------------------------------------------------
+    /**
+     * Every schedule, oldest first, with the sessions they started (for the repeat icon on their rows). The engine runs
+     * them; the windows only show them.
+     */
+    'schedules.list': { params: z.object({}), result: z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }) },
+    /**
+     * Creates a schedule (no `id`) or changes one: its name, draft, rule, missed rule and paused. It keeps its last run.
+     * Saving starts counting its runs from now, so a time already past today doesn't run at once.
+     */
+    'schedules.save': { params: z.object({ schedule: ScheduleSave }), result: z.object({ schedule: Schedule }) },
+    'schedules.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Puts a deleted schedule back as it was (Undo). */
+    'schedules.restore': { params: z.object({ schedule: Schedule }), result: z.object({ schedule: Schedule }) },
+    /** Pauses or resumes. A resumed schedule counts its runs from now: what was due while it was paused doesn't run. */
+    'schedules.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ schedule: Schedule }) },
+    /**
+     * Runs it now, with the same rules as a run at its time (skipped while the last run is busy, queued at a limit). It
+     * doesn't move the next run. The result is the run's.
+     */
+    /**
+     * Skip this run: the run at `at` (an ISO time one of its runs falls on) doesn't start. Its time passes as a
+     * skipped run, "Skipped by you". `unskipRun` takes it back.
+     */
+    'schedules.skipRun': { params: z.object({ id: z.string().min(1).max(100), at: z.iso.datetime() }), result: z.object({ schedule: Schedule }) },
+    'schedules.unskipRun': { params: z.object({ id: z.string().min(1).max(100), at: z.iso.datetime() }), result: z.object({ schedule: Schedule }) },
+    'schedules.runNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ run: ScheduleRunEvent }) },
+
+    // --- Event triggers (#180) -------------------------------------------------------------------
+    /** Every trigger, oldest first, with its events and the sessions triggers started (the bolt on their rows). */
+    'triggers.list': { params: z.object({}), result: TriggersState },
+    /**
+     * Creates a trigger (no `id`) or changes one. Never with bypass permissions. A new one, or one whose source changed,
+     * looks at once and marks what is there as seen; only what comes after starts a session.
+     */
+    'triggers.save': { params: z.object({ trigger: TriggerSave }), result: z.object({ trigger: Trigger }) },
+    /** Deletes a trigger and its events; what it was is returned for Undo. The sessions it started keep their bolt. */
+    'triggers.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger.nullable(), events: z.array(TriggerEvent) }) },
+    /** Puts a deleted trigger back (Undo), with its events. It looks again before it starts anything. */
+    'triggers.restore': { params: z.object({ trigger: Trigger, events: z.array(TriggerEvent).max(1000) }), result: z.object({ trigger: Trigger }) },
+    /** Pauses or resumes. Resumed, it looks again first: what came while it was paused is marked as seen. */
+    'triggers.setPaused': { params: z.object({ id: z.string().min(1).max(100), paused: z.boolean() }), result: z.object({ trigger: Trigger }) },
+    /** Checks a trigger now, whether due or not: the trigger after it, and how many new events the check found. */
+    'triggers.checkNow': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ trigger: Trigger, found: z.number().int().min(0) }) },
+    /** Start now (a waiting event) or Start anyway (a skipped one), past `maxAtOnce`; the focus and usage limits still hold it. */
+    'triggers.startEvent': { params: z.object({ eventId: z.string().min(1).max(100) }), result: z.object({ event: TriggerEvent.nullable() }) },
+    /** The editor's facts about a project's repository: gh's account, the default branch, the workflows, the collaborators. */
+    'triggers.repoInfo': { params: z.object({ root: AbsolutePath }), result: TriggerRepoInfo },
+
+    // --- Pipelines (#179) ------------------------------------------------------------------------
+    /** The built-ins, then your pipelines; with `root`, only the ones that project can run. */
+    'pipelines.list': { params: z.object({ root: AbsolutePath.nullable().default(null) }), result: z.object({ pipelines: z.array(Pipeline) }) },
+    /** Shows or hides the built-in pipelines in every list. Hidden ones still resolve by id for runs that use them. */
+    'pipelines.showBuiltIns': { params: z.object({ show: z.boolean() }), result: z.object({ show: z.boolean() }) },
+    /** Creates a pipeline (no `id`) or changes one of yours. Refused while `pipelineIssues` finds anything, or for a built-in. */
+    'pipelines.save': { params: z.object({ pipeline: PipelineSave }), result: z.object({ pipeline: Pipeline }) },
+    /** Deletes one of your pipelines; what it was is returned for Undo. Runs that started from it go on. */
+    'pipelines.delete': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({ pipeline: Pipeline.nullable() }) },
+    /** Puts a deleted pipeline back (Undo). */
+    'pipelines.restore': { params: z.object({ pipeline: Pipeline }), result: z.object({ pipeline: Pipeline }) },
+    /**
+     * Runs a pipeline: from a session (it becomes the parent), or from New session with a task and a project (a run
+     * row is the parent). The run's folder is made first; the first step starts, or waits for a slot or for you.
+     */
+    'pipelines.run': {
+      params: z.object({
+        pipelineId: z.string().min(1).max(100),
+        parentSessionId: z.string().min(1).max(200).nullable().default(null),
+        task: z.string().max(MAX_PROMPT_LENGTH).nullable().default(null),
+        /** The images pasted with the task: every step that starts a session gets them. */
+        attachments: z.array(ImageAttachment).max(20).default([]),
+        project: AbsolutePath.nullable().default(null),
+        profileId: z.string().min(1).max(100).nullable().default(null),
+        /** New session's model, effort and mode: the steps that don't set their own take them. Null: none. */
+        choices: z.object({ model: z.string().max(200).nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable() }).nullable().default(null),
+      }),
+      result: z.object({ state: PipelineRunState }),
+    },
+    /** Every run with its steps, oldest first. */
+    'runs.list': { params: z.object({}), result: z.object({ runs: z.array(PipelineRunState) }) },
+    'runs.get': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState.nullable() }) },
+    /**
+     * Continue: starts the step that waits for you (Wait for me, or Push, with an edited commit message), goes on to the
+     * next step after a stop, or goes on with a paused run.
+     */
+    'runs.continue': { params: z.object({ runId: z.string().min(1).max(100), message: z.string().max(5_000).nullable().default(null) }), result: z.object({ state: PipelineRunState }) },
+    /** Run this step again: a new round of the current step, in a new sub-session. */
+    'runs.retryStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /** Another round: a verdict still asking for changes after its rounds sends them back once more, then checks again. */
+    'runs.anotherRound': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /** Skip this step: the next one starts, or waits. */
+    'runs.skipStep': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /** Stop the run: the step that works stops, and nothing starts after it. */
+    'runs.stop': { params: z.object({ runId: z.string().min(1).max(100) }), result: z.object({ state: PipelineRunState }) },
+    /**
+     * Archives or unarchives a run's tree in one go: the parent session (or the run row) and every sub-session under
+     * it. Refuses while a run in it goes on (stop it first). The runs of the tree, after.
+     */
+    'runs.archive': { params: z.object({ runId: z.string().min(1).max(100), archived: z.boolean() }), result: z.object({ runs: z.array(PipelineRunState) }) },
+    /**
+     * Deletes a run's tree from Switchboard: its runs (stopped first), the parent session, and the sub-sessions unless
+     * `keepSubSessions` (they then show on their own). Transcripts stay on disk.
+     */
+    'runs.delete': { params: z.object({ runId: z.string().min(1).max(100), keepSubSessions: z.boolean().default(false) }), result: z.object({}) },
+    /** Push's card: the commit message Haiku writes from the diff (once per run, unless `fresh`), the files and the branches. */
+    'runs.pushPreview': { params: z.object({ runId: z.string().min(1).max(100), fresh: z.boolean().default(false) }), result: z.object({ preview: PushPreview }) },
+    /**
+     * You wrote in a run row (a run started from New session): it gets a session of its own in the run's folder, with a
+     * brief of the run before your text, and its sub-sessions go under that session.
+     */
+    'runs.write': { params: z.object({ runId: z.string().min(1).max(100), text: z.string().min(1).max(MAX_PROMPT_LENGTH) }), result: z.object({ sessionId: z.string() }) },
 
     // --- Settings backup -----------------------------------------------------------------------
     /** Writes the chosen kinds of user choices (never the cache) to a settings file. */
@@ -971,6 +1159,8 @@ export const contract = {
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
     /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
     'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
+    /** The theme the app shows now, resolved, for paired phones that look like this computer (`theme.get` there). */
+    'remote.setTheme': { params: RemoteTheme, result: z.object({}) },
 
     // --- Other computers: this app paired with Remote on another computer (docs/remote-access.md) -------------------
     'computers.status': { params: z.object({}), result: ComputersStatus },
@@ -1263,7 +1453,33 @@ export const contract = {
     /** A session's pull request's checks all finished after some were running: main's notifier says so. */
     'git.checksFinished': ChecksFinished,
     /** The whole queue, in order, whenever an item is added, moved, changed, started or removed. */
-    'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted) }),
+    'later.changed': z.object({ items: z.array(LaterItem), started: z.array(QueueStarted), auto: QueueAuto }),
+    /** A queued item started by itself (main's notifier says so; a click opens the session). */
+    'later.autoStarted': z.object({ itemId: z.string(), sessionId: z.string(), prompt: z.string(), cwd: z.string(), projectName: z.string() }),
+    /**
+     * A queued item that starts by itself didn't, because the session it waited for ended with an error or was
+     * stopped. It stays in the queue, ready.
+     */
+    'later.autoSkipped': z.object({ itemId: z.string(), prompt: z.string(), sessionId: z.string(), title: z.string(), outcome: z.enum(['error', 'stopped']) }),
+    /** Every schedule, after any change and after each run. */
+    'schedules.changed': z.object({ schedules: z.array(Schedule), sessions: z.array(ScheduleSession) }),
+    /**
+     * Schedules ran (at their time, as missed runs at a start or a wake, or Run now): main's notifier says so, one
+     * notification for several missed runs.
+     */
+    'schedules.ran': z.object({ runs: z.array(ScheduleRunEvent) }),
+    /** Every trigger with its events, after any change and after a check that found something. */
+    'triggers.changed': TriggersState,
+    /** A triggered session started, an issue was picked up, or a trigger paused: main's notifier says so. */
+    'triggers.notice': z.object({ notices: z.array(TriggerNotice) }),
+    /** Pipelines were saved, deleted or imported: the built-ins and yours. */
+    'pipelines.changed': z.object({ pipelines: z.array(Pipeline) }),
+    /** A run changed: a step started or ended, it waits for you, or it ended. */
+    'runs.changed': z.object({ state: PipelineRunState }),
+    /** A run was deleted (`runs.delete`). */
+    'runs.removed': z.object({ runId: z.string() }),
+    /** A step needs you, a run stopped, or one is done: main's notifier says so. */
+    'runs.notice': z.object({ notice: PipelineNotice }),
     /** A session's Up next changed; an empty `queue` means nothing is waiting. */
     'upNext.changed': z.object({ sessionId: z.string(), queue: z.array(QueuedMessage) }),
     /** A profile hit or left a usage limit, or a resume was armed, fired or gave up. */

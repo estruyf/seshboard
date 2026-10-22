@@ -1,6 +1,6 @@
 import { trashName } from '../../lib/platform.ts';
 import { Check, Copy, Download, FolderOpen, MoreHorizontal, Trash2, Upload } from 'lucide-react';
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import type { ColorScheme } from '@switchboard/protocol/bridge';
 import type { ThemeEntry, ThemeMode } from '@switchboard/protocol/theme-format';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
@@ -15,6 +15,8 @@ import { RadioGroup } from '../ui/Radio.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { basename } from '../../lib/format.ts';
 import { useFlash } from '../ui/useFlash.ts';
+import { AppIconSettings } from './AppIconSettings.tsx';
+import { Heading } from './Heading.tsx';
 import { ThemePreview } from './ThemePreview.tsx';
 
 const SCHEMES = [
@@ -42,18 +44,6 @@ export const onlyLabel = (entry: ThemeEntry) => {
   const modes = themeModes(entry.file);
   return modes === 'both' ? null : modes === 'dark' ? 'Dark only' : 'Light only';
 };
-
-function Heading({ title, description, children }: { title: string; description?: string; children?: ReactNode }) {
-  return (
-    <div className="flex items-end gap-2">
-      <div className="min-w-0 flex-1">
-        <h2 className="text-body font-semibold">{title}</h2>
-        {description && <p className="mt-0.5 text-ui text-muted">{description}</p>}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 /** One theme: both modes in miniature, its name and where it came from, and a ⋯ menu. */
 function ThemeCard({ entry, selected, mode, onMenu }: { entry: ThemeEntry; selected: boolean; mode: ThemeMode; onMenu(at: ContextMenuPoint): void }) {
@@ -117,7 +107,7 @@ function ThemeCard({ entry, selected, mode, onMenu }: { entry: ThemeEntry; selec
   );
 }
 
-/** Settings › Theme: Appearance (Match System, Light, Dark), then the theme picker. */
+/** Settings › Theme: Appearance (Match System, Light, Dark), the theme picker, then the app icon. */
 export function ThemeSettings() {
   const colorScheme = usePreferences((s) => s.prefs.colorScheme);
   const update = usePreferences((s) => s.update);
@@ -242,6 +232,8 @@ export function ThemeSettings() {
         )}
         <Notice tone="info">Editing a theme file? Switchboard reloads the active theme when its file changes.</Notice>
       </section>
+
+      <AppIconSettings />
 
       {menuAt && <Menu x={menuAt.at.x} y={menuAt.at.y} above={menuAt.at.above} width={180} label={`${menuAt.entry.file.name} theme`} entries={entries(menuAt.entry)} onClose={() => setMenuAt(null)} />}
       {removing && (

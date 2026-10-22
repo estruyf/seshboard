@@ -1,13 +1,14 @@
 import { isKeptUnread, releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { pathInside, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
+import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
+import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
@@ -34,12 +35,14 @@ import { QueueButton } from '../composer/QueueButton.tsx';
 import { queueButtonState } from '../composer/queueButton.ts';
 import { UpNext, type UpNextActions } from '../composer/UpNext.tsx';
 import { ModBands } from '../mods/ModBands.tsx';
+import { StartsAfterBand } from '../queue/StartsAfterBand.tsx';
 import { ModPanePanel } from '../mods/ModPanePanel.tsx';
 import { ModFooterChips } from '../mods/ModFooterChips.tsx';
 import { ModsChip } from '../mods/ModsChip.tsx';
 import { shownMods } from '../mods/modVisibility.ts';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { ModReplaced } from '../mods/ModReplaced.tsx';
+import { TriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 import { lastQueued, mergeIntoBox } from '../composer/upNext.ts';
 import { contextFromPrompt } from '../composer/contextItems.ts';
 import { sessionHistory } from '../composer/promptHistory.ts';
@@ -67,7 +70,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
-import { SessionControls } from '../session/StatusBar.tsx';
+import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
@@ -85,6 +88,10 @@ import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
 import { claudeMs, liveTurn, type Turn } from './turns.ts';
 import { useAgentTokens, useTurns } from './useTurns.ts';
+import { createPortal } from 'react-dom';
+import { ReadMode } from '../readMode/ReadMode.tsx';
+import { useReadMode } from '../../state/readModeStore.ts';
+import { readableTurns, readReply } from './readReply.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
 import { useKnownMemoryFolders, useMemoryFoldersSync } from '../memory/useMemoryFolders.ts';
 import { MessageMenuContext, useRememberLayer } from '../memory/RememberLayer.tsx';
@@ -93,6 +100,10 @@ import { findMatches, searchableText, startMatch } from './findInSession.ts';
 import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
+import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
+import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
+import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
+import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
@@ -104,7 +115,7 @@ import { closeCommands, openCommands, pickCommand, toggleCommandsPanel, useSessi
 import { closeChanges, toggleChangesPanel, useSessionChanges } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel, useRightPanel, useRightTab } from '../../state/rightPanelStore.ts';
 import { useTaskStrip } from '../../state/taskStripStore.ts';
-import { MessageActionsContext, messageUuid, type MessageActions } from './messageActions.tsx';
+import { MessageActionsContext, messageUuid, type MessageActions, type ReadableReply } from './messageActions.tsx';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptItem } from './TranscriptItem.tsx';
 import { useTranscript } from './useTranscript.ts';
@@ -115,6 +126,9 @@ import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
 import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
+import { withRunStub } from '../pipelines/runView.ts';
+import { useRunOfParent } from '../../state/pipelinesStore.ts';
 import { replyPlaceholder } from '../catchUp/catchUpModel.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCatchUpShow } from '../../state/catchUpShow.ts';
@@ -493,6 +507,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const { commands: backgroundCommands, running: commandsRunning } = useCommandRuns(items, live !== null, activeHost?.backgroundTasks ?? null);
   const commandsState = useSessionCommands(sessionId);
   const showCommands = commandsState.open;
+  // And a file opened from a link in this session, unless the preview was detached to a dialog.
+  const previewTarget = useSessionPreview(sessionId);
+  const showPreview = previewTarget !== null;
+  const openPreviewHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().open(path, { sessionId, line, endLine }), [sessionId]);
   // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
   // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
   // mounted but hidden. Each pane shows its own session's terminal, so with two panes both can have one.
@@ -514,7 +532,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
@@ -522,15 +540,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const askFront = right.tabs && ask.open ? right.tab === 'ask' : undefined;
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
   const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
+  const previewFront = right.tabs && showPreview ? right.tab === 'preview' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
   const panesOpen = modPanes.length > 0;
   // A pop-out can be narrower than a panel and a usable conversation together: then the panel takes the whole view,
   // and the header's buttons (or the panel's ×) bring the conversation back.
   const narrowPanel = inPopout && (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_POPOUT_PANEL;
-  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || terminalOnRight || panesOpen);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || terminalOnRight || panesOpen);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || terminalOnRight || panesOpen);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || terminalOnRight || panesOpen);
+  // The header's Preview button, there only while a file is open: to the front, or closed.
+  const togglePreviewHere = () => {
+    const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
+    if (step === 'close') useFilePreview.getState().closePanel(sessionId);
+    else useRightPanel.getState().setTab(sessionId, 'preview');
+  };
   // Picking a mod's tab tells Claude Code which pane is shown.
   const pickRightTab = (tab: RightTab) => {
     useRightPanel.getState().setTab(sessionId, tab);
@@ -622,6 +647,38 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const agentTokens = useAgentTokens(client, sessionId, items, working);
   const turns = useTurns(sessionId, items, agentTokens);
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
+  // Reading mode: a portal from here, so it has this view's providers; the conversation stays mounted under it.
+  const reading = useReadMode((s) => (active && s.open?.sessionId === sessionId ? s.open : null));
+  const readingText = useHosts((s) => {
+    const block = s.streaming.get(sessionId);
+    return block?.kind === 'text' ? block.text : null;
+  });
+  const readReplyNow = useMemo(() => {
+    if (!reading) return null;
+    const last = readingText ? turns.at(-1) : readableTurns(items, turns).at(-1);
+    const key = reading.turnKey === 'last' ? last?.key : reading.turnKey;
+    return key ? readReply(items, turns, key, readingText) : null;
+  }, [reading, readingText, items, turns]);
+  useEffect(() => {
+    if (!reading) return;
+    // The reply it was opened at is gone (or there was none to open at): leave rather than sit invisible over the app.
+    if (!readReplyNow) useReadMode.getState().close();
+    else if (reading.turnKey === 'last') useReadMode.getState().resolve(readReplyNow.turnKey);
+  }, [reading, readReplyNow]);
+  // The replies with a Read button: each turn's last reply, with the turn it belongs to and about how long it is.
+  const readable = useMemo(() => {
+    const map = new Map<string, ReadableReply>();
+    for (const turn of turns) {
+      if (!turn.replyKey) continue;
+      let words = 0;
+      for (let i = turn.start + 1; i <= turn.end; i++) {
+        const item = items[i]!;
+        if (item.kind === 'text' && !item.subagent) words += item.text.split(/\s+/).filter(Boolean).length;
+      }
+      map.set(turn.replyKey, { turnKey: turn.key, words });
+    }
+    return map;
+  }, [items, turns]);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
   const finishedByReply = useMemo(() => {
     const map = new Map<string, Turn>();
@@ -872,6 +929,39 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     setHighlightKey(renderItems[index]!.key);
     useOverlay.getState().focus(null);
   }, [focusMessage, renderItems, virtualizer]);
+  // Leaving reading mode: at the reply it was opened at, the conversation is as it was; at another one, it scrolls to
+  // that reply. Focus goes to that reply's Read button, else the message box.
+  const readingBefore = useRef<{ turnKey: string; openedFrom: string } | null>(null);
+  if (reading) readingBefore.current = { turnKey: reading.turnKey, openedFrom: reading.openedFrom };
+  useEffect(() => {
+    if (reading) return;
+    const left = readingBefore.current;
+    readingBefore.current = null;
+    if (!left) return;
+    // Reply with quote and Ask about this put the caret elsewhere themselves.
+    const focusElsewhere = useReadMode.getState().leaveTo === 'elsewhere';
+    // A click on another session or a jump elsewhere ended it: this view isn't where the reader is.
+    const { selectedId, view } = useSessions.getState();
+    if (selectedId !== sessionId || view !== 'session') return;
+    const replyKey = turns.find((t) => t.key === left.turnKey)?.replyKey;
+    const index = replyKey ? renderItems.findIndex((item) => (item.kind === 'activity' ? item.items.some((i) => i.key === replyKey) : item.key === replyKey)) : -1;
+    const moved = left.openedFrom !== '' && left.turnKey !== left.openedFrom && index !== -1;
+    if (moved) {
+      follow(false);
+      // Its end is where the Read button is, and a long reply is taller than the view.
+      virtualizer.scrollToIndex(index, { align: 'end' });
+      requestAnimationFrame(() => virtualizer.scrollToIndex(index, { align: 'end' }));
+    }
+    const focusBack = () => {
+      const button = scrollRef.current?.querySelector<HTMLElement>(`[data-read-button][data-turn-key="${CSS.escape(left.turnKey)}"]`);
+      if (button) button.focus({ preventScroll: true });
+      else useDrafts.getState().requestFocus(sessionId);
+    };
+    // The reply's row is measured as it renders after a scroll: look for its button a couple of frames later.
+    if (focusElsewhere) return;
+    if (moved) requestAnimationFrame(() => requestAnimationFrame(focusBack));
+    else requestAnimationFrame(focusBack);
+  }, [reading]);
   // The highlight fades on its own timer: clearing focusMessage above re-runs that effect, which must not cancel it.
   useEffect(() => {
     if (!highlightKey) return;
@@ -1041,8 +1131,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
       savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
+      read: (turnKey) => useReadMode.getState().openReply(sessionId, turnKey),
+      readable,
     };
-  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1071,6 +1163,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     usePaletteBus.setState({ digest: { sessionId, prompts, lastUuid: before, lastReply } });
   }, [active, items, sessionId]);
   useEffect(() => () => usePaletteBus.setState((s) => (s.digest?.sessionId === sessionId ? { digest: null } : {})), [sessionId]);
+  // The palette's Preview last written file: the previewable file Claude wrote last in this session.
+  useEffect(() => useLastWritten.getState().set(sessionId, lastPreviewableWrite(items, cwd, home)), [items, sessionId, cwd, home]);
+  useEffect(() => () => useLastWritten.getState().set(sessionId, null), [sessionId]);
   // Ask about this session: its threads are read once per session, so the panel opens on them at once.
   useEffect(() => {
     if (client) void loadAskThreads(client, sessionId).catch(() => {});
@@ -1208,6 +1303,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const canSendNow = running && Boolean(activeHost);
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  // A pipeline run's parent: what you write there links the run, so Claude gets its brief first (#179).
+  const parentRun = useRunOfParent(sessionId);
+  const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
+  const runPlaceholder = useRunPlaceholder(sessionId);
   const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
@@ -1247,12 +1346,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           </span>
         )}
         {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
-        <div className={`min-w-24 flex-1 @max-[400px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
+        <div className={`min-w-24 flex-1 @max-[560px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
             {title}
           </h1>
           {/* Status · project · branch. In a narrow pane: the dot and the branch. */}
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
+            {/* A pipeline step's parent, before its state: the way back to the run. */}
+            <StepCrumb sessionId={sessionId} />
             <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
               {live ? <StatusDot live={live} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
               <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
@@ -1291,14 +1392,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
           </div>
         </div>
-        {/* Changes | Ask | Agents | Commands | Terminal: the side panels as one compact, icon-only segmented control. */}
+        {/* Changes | Ask | Agents | Commands | Preview | Terminal: the side panels as one compact, icon-only segmented control. */}
         <SegmentedControl
           mode="toggle"
           label="Panels"
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
-          onToggle={(panel) => (panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : toggleTerminalPanel(sessionId))}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          onToggle={(panel) =>
+            panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : panel === 'preview' ? togglePreviewHere() : toggleTerminalPanel(sessionId)
+          }
           segments={[
             ...(cwd && isRepo
               ? [
@@ -1366,6 +1469,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
+            // Only while a file is open in the side panel: a link opens it, the button brings it back to the front or closes it.
+            ...(previewTarget
+              ? [
+                  {
+                    value: 'preview' as const,
+                    label: 'Preview',
+                    icon: <Eye size={14} aria-hidden />,
+                    iconOnly: true,
+                    tooltip: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
+                    ariaLabel: previewFront === false ? `Bring the preview of ${basename(previewTarget.path)} to the front` : `Close the preview of ${basename(previewTarget.path)}`,
+                    front: previewFront,
+                    expanded: previewFront !== false,
+                    data: { 'data-toggle-preview': true },
+                  },
+                ]
+              : []),
             {
               value: 'terminal' as const,
               label: 'Terminal',
@@ -1389,8 +1508,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             active={active}
             activity={gitActivity}
             isWorktree={isWorktree}
-            projectBase={project?.defaults.branch ?? null}
-            onCommit={() => void send('Commit the current changes with a clear, conventional commit message.', [], openElsewhere, true).catch((e: Error) => setActionError(e.message))}
+            projectBase={project ? projectPrBase(project.defaults) : null}
             onBranchMenu={() => setBranchMenuRequest((n) => n + 1)}
             onNewWorktree={() => {
               // New session is the main window's view: from a pop-out it opens there.
@@ -1400,6 +1518,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             }}
           />
         )}
+        <BackToRunButton sessionId={sessionId} />
         <ModsChip sessionId={sessionId} profileId={profileId} />
         <MoreMenu
           sessionId={sessionId}
@@ -1474,6 +1593,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           />
         )}
       </header>
+      <TriggerOriginBar sessionId={sessionId} />
 
       {/* In a narrow pop-out a panel on the right fills the view (the rule in styles.css), as an expanded Changes does. */}
       <div ref={bodyRef} className="flex min-h-0 flex-1" data-narrow-panel={narrowPanel || undefined}>
@@ -1500,10 +1620,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               changesOpen={showChanges}
             />
           )}
+          {/* A pipeline run's step tree in its parent; the read-only line and the round at the top of a step. */}
+          {!terminalMaximized && <ParentStepTree sessionId={sessionId} />}
+          {!terminalMaximized && <StepTopLines sessionId={sessionId} />}
           <MessageActionsContext.Provider value={messageActions}>
           <PromptExpansionContext.Provider value={promptExpansion}>
           <MessageMenuContext.Provider value={remember.openMenu}>
           <FileLinksProvider cwd={cwd}>
+          <PreviewOpenerContext.Provider value={openPreviewHere}>
           <TurnMetaContext.Provider value={turnMeta}>
             {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
             <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
@@ -1565,7 +1689,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       data-item-kind={renderItems[row.index]!.kind}
                       ref={virtualizer.measureElement}
                       className={`absolute inset-x-6 pt-3 ${row.key === highlightKey ? 'search-highlight' : ''} ${row.key === landingKey ? 'prompt-landing' : ''}`}
-                      style={{ transform: `translateY(${row.start}px)` }}
+                      style={{ top: row.start }}
                     >
                       {autoPick && row.index === firstAnswer && <AutoPickLine sessionId={sessionId} pick={autoPick} />}
                       <TranscriptItem
@@ -1583,6 +1707,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               {autoPick && firstAnswer < 0 && renderItems.length > 0 && (
                 <div className="mx-auto max-w-3xl px-6 pt-3">
                   <AutoPickLine sessionId={sessionId} pick={autoPick} />
+                </div>
+              )}
+              {/* Switchboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
+              {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
+              {status === 'ready' && (
+                <div className="mx-auto max-w-3xl px-6 pb-4">
+                  <StepVerdictCard sessionId={sessionId} items={items} working={running} />
                 </div>
               )}
               <div ref={tailRef}>
@@ -1605,7 +1736,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />
             )}
             </div>
+            {readReplyNow && createPortal(<ReadMode sessionId={sessionId} title={title} live={live} cwd={cwd} reply={readReplyNow} />, document.body)}
           </TurnMetaContext.Provider>
+          </PreviewOpenerContext.Provider>
           </FileLinksProvider>
           </MessageMenuContext.Provider>
           </PromptExpansionContext.Provider>
@@ -1757,12 +1890,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 />
               )}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
+              <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
+              <StepStopNotice sessionId={sessionId} />
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
                   savedPrompts={{ root: options.projectActions ? projectRoot : null, projectName: projectName ?? 'This project' }}
                   links={{ sessionId, root: projectRoot }}
+                  github={{ root: options.projectActions ? projectRoot : null }}
                   status={<ModFooterChips sessionId={sessionId} profileId={profileId} />}
                   onDraftLoaded={onDraftLoaded}
                   onTextChange={onDraftText}
@@ -1772,7 +1909,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={replying && !running ? replyPlaceholder(title) : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
+                  placeholder={replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
                   submitLabel={openElsewhere ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
@@ -1781,9 +1918,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
-                  onSubmit={(text, attachments) => send(text, attachments, openElsewhere, false, whileWorking)}
-                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(text, attachments, false, false, 'now') } : undefined}
-                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(text, attachments, false, false, otherMode) }] : undefined}
+                  onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
+                  secondary={canSendNow ? { shortcut: 'composer.send-now', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, 'now') } : undefined}
+                  others={canSendNow ? [{ shortcut: 'composer.send-other', onSubmit: (text, attachments) => send(toRun(text), attachments, false, false, otherMode) }] : undefined}
                   onRecallQueued={() => {
                     const last = lastQueued(upNext);
                     if (!last) return false;
@@ -1815,10 +1952,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   controls={
                     activeHost ? (
                       <SessionControls host={activeHost} />
+                    ) : !restart && !registryLive ? (
+                      // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
+                      <SavedSessionControls
+                        sessionId={sessionId}
+                        profileId={profileId}
+                        note={
+                          host?.state === 'error' && (
+                            <span className="min-w-0 shrink truncate px-1.5 text-meta text-error" data-tooltip={host.error ?? undefined} data-session-elsewhere>
+                              Last run failed: {host.error}
+                            </span>
+                          )
+                        }
+                      />
                     ) : (
                       <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
                         {host?.state === 'error' ? (
-                          <span className="text-error">Last run failed: {host.error}</span>
+                          <span className="text-error select-text">Last run failed: {host.error}</span>
                         ) : registryLive ? (
                           `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
                         ) : (
@@ -1935,6 +2085,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             tabs={right.tabs ? rightTabs : undefined}
             onClose={() => closeCommands(sessionId)}
           />
+        )}
+        {!whyRequest && right.tab === 'preview' && previewTarget && !terminalMaximized && (
+          <PreviewOpenerContext.Provider value={openPreviewHere}>
+            <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} tabs={right.tabs ? rightTabs : undefined} />
+          </PreviewOpenerContext.Provider>
         )}
       </div>
     </div>

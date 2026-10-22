@@ -1,23 +1,25 @@
 import { existsSync, mkdirSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, withoutBriefs, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, withoutContext, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
 import { originFromEntrypoint, readHead, readLastActivity, type TranscriptHead } from '../claude/origin.ts';
 import type { ProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import { coalesce } from '../util/coalesce.ts';
 
 /** What the index derives from disk; user flags are added on the way out (see `decorate`). */
-type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'restoredAt' | 'viewedAt' | 'unread' | 'inApp'>;
+type RawSummary = Omit<SessionSummary, 'pinned' | 'archivedAt' | 'restoredAt' | 'viewedAt' | 'unread' | 'inApp' | 'parentId'>;
 
 interface Flags {
   pinned: boolean;
   archivedAt: number | null;
   restoredAt: number | null;
   viewedAt: number | null;
+  /** Taken out of Switchboard with its pipeline run (#179): left out of the list until it has new activity. */
+  hiddenAt: number | null;
 }
 
-const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null };
+const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
 
@@ -59,6 +61,8 @@ export interface SessionIndexOptions {
   isOwned?: (sessionId: string) => boolean;
   /** Sessions started elsewhere that the user continued in this app. */
   isContinued?: (sessionId: string) => boolean;
+  /** The session (or pipeline run) a session sits under: a pipeline's sub-sessions (#179). */
+  parentOf?: (sessionId: string) => string | null;
   /** Safety-net full rescan, in case file events were missed. */
   refreshIntervalMs?: number;
 }
@@ -101,12 +105,13 @@ export class SessionIndex {
           jsonl_path = excluded.jsonl_path, jsonl_mtime = excluded.jsonl_mtime,
           entrypoint = excluded.entrypoint, summary_json = excluded.summary_json`),
       remove: db.prepare('DELETE FROM sessions WHERE id = ?'),
-      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at FROM session_flags'),
+      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at FROM session_flags'),
       flagsDelete: db.prepare('DELETE FROM session_flags WHERE id = ?'),
       flagsUpsert: db.prepare(`
-        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at) VALUES (?, ?, ?, ?, ?)
+        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
-          pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at`),
+          pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at,
+          hidden_at = excluded.hidden_at`),
     };
     this.loadFlags();
     this.loadCache();
@@ -114,8 +119,8 @@ export class SessionIndex {
 
   private loadFlags(): void {
     this.flags.clear();
-    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null }>) {
-      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at });
+    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null }>) {
+      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at });
     }
   }
 
@@ -123,7 +128,7 @@ export class SessionIndex {
   reloadFlags(): void {
     this.loadFlags();
     if (this.entries.size === 0) return;
-    this.options.onChange({ upserted: [...this.entries.values()].map((e) => this.decorate(e.summary)), removed: [], complete: this.complete });
+    this.publish([...this.entries.values()].map((e) => e.summary), []);
   }
 
   private loadCache(): void {
@@ -149,17 +154,30 @@ export class SessionIndex {
     return entry ? this.decorate(entry.summary) : null;
   }
 
-  /** Sessions newest first, plus whether the first full scan has finished. */
+  /** Sessions newest first (without the hidden ones), plus whether the first full scan has finished. */
   snapshot(): { sessions: SessionSummary[]; complete: boolean } {
-    const sessions = [...this.entries.values()].map((e) => this.decorate(e.summary)).sort((a, b) => b.updatedAt - a.updatedAt);
+    const sessions = [...this.entries.values()].filter((e) => !this.hidden(e.summary)).map((e) => this.decorate(e.summary)).sort((a, b) => b.updatedAt - a.updatedAt);
     return { sessions, complete: this.complete };
   }
 
+  /** Taken out with its pipeline run, and quiet since: a new turn (resumed in Claude Code) brings it back. */
+  private hidden(raw: RawSummary): boolean {
+    const at = this.flags.get(raw.id)?.hiddenAt ?? null;
+    return at !== null && at >= raw.updatedAt;
+  }
+
+  /** Tells every window, once: hidden sessions go out as removed. */
+  private publish(summaries: RawSummary[], removed: string[]): void {
+    const shown = summaries.filter((s) => !this.hidden(s));
+    const gone = [...removed, ...summaries.filter((s) => this.hidden(s)).map((s) => s.id)];
+    this.options.onChange({ upserted: shown.map((s) => this.decorate(s)), removed: gone, complete: this.complete });
+  }
+
   private decorate(raw: RawSummary): SessionSummary {
-    const flags = this.flags.get(raw.id) ?? NO_FLAGS;
+    const { hiddenAt: _hidden, ...flags } = this.flags.get(raw.id) ?? NO_FLAGS;
     const seen = flags.viewedAt ?? this.options.baseline;
     const inApp = raw.origin === 'app' || (this.options.isContinued?.(raw.id) ?? false);
-    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp };
+    return { ...raw, ...flags, unread: raw.updatedAt > seen + UNREAD_SLACK_MS, inApp, parentId: this.options.parentOf?.(raw.id) ?? null };
   }
 
   /** The transcript file behind a session, when known. */
@@ -191,6 +209,33 @@ export class SessionIndex {
   }
 
   /**
+   * Archives or unarchives several sessions at once (a pipeline run's tree, #179), and tells every window in one
+   * change. Archiving takes the pin away, so nothing stays up under Pinned.
+   */
+  setArchivedMany(sessionIds: readonly string[], archived: boolean): void {
+    const now = Date.now();
+    for (const id of sessionIds) {
+      const current = this.flags.get(id) ?? NO_FLAGS;
+      this.storeFlags(id, { ...current, ...(archived ? { pinned: false, archivedAt: now, restoredAt: null } : { archivedAt: null, restoredAt: now }) });
+    }
+    this.publish(this.known(sessionIds), []);
+  }
+
+  /** Takes sessions out of Switchboard (Delete… on a pipeline run, #179): their transcripts stay, in one change. */
+  hide(sessionIds: readonly string[]): void {
+    const now = Date.now();
+    for (const id of sessionIds) this.storeFlags(id, { ...(this.flags.get(id) ?? NO_FLAGS), hiddenAt: now });
+    this.publish(this.known(sessionIds), []);
+  }
+
+  private known(sessionIds: readonly string[]): RawSummary[] {
+    return sessionIds.flatMap((id) => {
+      const entry = this.entries.get(id);
+      return entry ? [entry.summary] : [];
+    });
+  }
+
+  /**
    * Brings an archived session back to the main list because the user wrote to it.
    * Its activity alone wouldn't: an archived session stays archived while it works.
    */
@@ -212,9 +257,13 @@ export class SessionIndex {
   }
 
   private writeFlags(sessionId: string, flags: Flags): void {
-    this.flags.set(sessionId, flags);
-    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt);
+    this.storeFlags(sessionId, flags);
     this.republish(sessionId);
+  }
+
+  private storeFlags(sessionId: string, flags: Flags): void {
+    this.flags.set(sessionId, flags);
+    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt);
   }
 
   /** Reads one session again now, rather than when the file watcher notices (after a rename). */
@@ -223,10 +272,15 @@ export class SessionIndex {
     if (entry?.path) await this.updateOne(sessionId, entry.path, entry.summary.profileId);
   }
 
+  /** Sends sessions again in one change (their parents changed). */
+  republishMany(sessionIds: readonly string[]): void {
+    this.publish(this.known(sessionIds), []);
+  }
+
   /** Sends a session again after something `decorate` reads changed (flags, continued). */
   republish(sessionId: string): void {
     const entry = this.entries.get(sessionId);
-    if (entry) this.options.onChange({ upserted: [this.decorate(entry.summary)], removed: [], complete: this.complete });
+    if (entry) this.publish([entry.summary], []);
   }
 
   start(): void {
@@ -367,7 +421,7 @@ export class SessionIndex {
     const cwd = info.cwd ?? previous?.summary.cwd ?? readOnce().cwd;
     const location = cwd ? this.options.resolver.resolve(cwd) : null;
     // A linked session's brief is part of the first message, but not what you asked (session linking).
-    const firstPrompt = info.firstPrompt ? withoutBriefs(info.firstPrompt) : '';
+    const firstPrompt = info.firstPrompt ? withoutContext(info.firstPrompt) : '';
     const title = oneLine(info.customTitle || info.summary || firstPrompt || 'Untitled session', TITLE_MAX);
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
     // reopens the session; use the last message instead. Read again only when the file changed.
@@ -414,7 +468,7 @@ export class SessionIndex {
       db.exec('ROLLBACK');
       throw error;
     }
-    this.options.onChange({ upserted: upserted.map((e) => this.decorate(e.summary)), removed, complete: this.complete });
+    this.publish(upserted.map((e) => e.summary), removed);
   }
 
   private fileChanged(sessionId: string, path: string, profileId: string): void {

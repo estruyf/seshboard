@@ -127,8 +127,8 @@ describe('ActionStore', () => {
 describe('expandCommand', () => {
   const vars = { cwd: '/repo/wt', projectRoot: '/repo', branch: "feat/x'; rm -rf ~ #", worktreeName: 'wt', sessionId: 's1', sessionTitle: 'Fix "login"' };
   // That the quoting holds in each shell is tested in system/shell.test.ts.
-  const posix = { quote: posixQuote, unsafe: () => null };
-  const powershell = { quote: powershellQuote, unsafe: windowsUnsafe };
+  const posix = { kind: 'posix' as const, quote: posixQuote, unsafe: () => null };
+  const powershell = { kind: 'powershell' as const, quote: powershellQuote, unsafe: windowsUnsafe };
   it('quotes values for the shell that runs them, so they cannot inject commands', () => {
     expect(expandCommand('git push origin ${branch} && echo ${unknown}', vars, posix)).toBe(`git push origin ${posixQuote(vars.branch)} && echo \${unknown}`);
     expect(expandCommand('git push origin ${branch}', vars, powershell)).toBe(`git push origin 'feat/x''; rm -rf ~ #'`);
@@ -142,6 +142,23 @@ describe('expandCommand', () => {
     // A title with `"` is fine in an action that doesn't use it, and anywhere outside Windows.
     expect(expandCommand('build.cmd ${worktreeName}', vars, powershell)).toBe("build.cmd 'wt'");
     expect(expandCommand('echo ${sessionTitle}', vars, posix)).toBe(`echo ${posixQuote(vars.sessionTitle)}`);
+  });
+  it('inserts a value written inside double quotes as it is, so a command in it does not run', () => {
+    const title = '$(rm -rf ~)';
+    // Quoted again inside the double quotes, the value would still run: those are refused.
+    expect(() => expandCommand('echo "${sessionTitle}"', { ...vars, sessionTitle: title }, posix)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    expect(() => expandCommand('echo "${branch}"', { ...vars, branch: 'x`whoami`' }, posix)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    expect(() => expandCommand('echo "${branch}"', { ...vars, branch: 'a!b' }, posix)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    expect(() => expandCommand('echo "${worktreeName}" "$HOME"', { ...vars, worktreeName: '$x' }, posix)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    expect(expandCommand('echo "${sessionTitle}"', { ...vars, sessionTitle: "it's" }, posix)).toBe(`echo "it's"`);
+    expect(expandCommand('cd "${cwd}"', vars, posix)).toBe('cd "/repo/wt"');
+    // PowerShell reads `$` and the backtick inside double quotes, not `\`, so a Windows path goes in as it is.
+    expect(expandCommand('cd "${cwd}"', { ...vars, cwd: 'C:\\Users\\me\\wt' }, powershell)).toBe('cd "C:\\Users\\me\\wt"');
+    expect(() => expandCommand('echo "${branch}"', { ...vars, branch: 'a$b' }, powershell)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
+    // Single quotes in the action close nothing: the placeholder after them is quoted again.
+    expect(expandCommand("echo '${branch}'", { ...vars, branch: 'a$b' }, posix)).toBe(`echo '${posixQuote('a$b')}'`);
+    // An escaped quote in the action doesn't open double quotes.
+    expect(expandCommand('echo \\"${branch}\\"', { ...vars, branch: 'a$b' }, posix)).toBe(`echo \\"${posixQuote('a$b')}\\"`);
   });
   it('leaves prompt text unquoted', () => {
     expect(expandCommand('Review ${sessionTitle} on ${branch}', vars, null)).toBe(`Review Fix "login" on ${vars.branch}`);
@@ -160,9 +177,8 @@ describe('suggestActions', () => {
         { name: 'Test', command: 'pnpm test', type: 'shell', icon: 'flask' },
         { name: 'Release', command: 'pnpm release', type: 'shell', icon: 'rocket' },
         { name: 'Install', command: 'pnpm install', type: 'shell', icon: 'package' },
-        expect.objectContaining({ name: 'Commit', type: 'prompt' }),
       ]),
     );
-    expect(suggestActions(tempDir()).map((s) => s.name)).toEqual(['Commit', 'Push', 'Create PR']);
+    expect(suggestActions(tempDir()).map((s) => s.name)).toEqual(['Push', 'Create PR']);
   });
 });

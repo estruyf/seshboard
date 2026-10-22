@@ -454,7 +454,7 @@ export function PullRequestDialog({
               </p>
               {notice.actions.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-1.5">{notice.actions.map(action)}</div>}
               {showOutput && shown.output && (
-                <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-code p-2 font-mono text-meta whitespace-pre-wrap text-text" data-pr-output>
+                <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-code p-2 font-mono text-meta whitespace-pre-wrap text-text select-text" data-pr-output>
                   {shown.output}
                 </pre>
               )}

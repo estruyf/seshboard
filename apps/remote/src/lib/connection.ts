@@ -17,6 +17,8 @@ import {
   type RemoteLink,
   type RemotePairContract,
   type RpcClient,
+  appIconKey,
+  type AppIconKey,
 } from '@switchboard/protocol/remote-client';
 import { reconnectDelay, type Paired } from './link.ts';
 import { MAX_ATTEMPTS, OPEN_TIMEOUT_MS, offlineReason, type OfflineReason } from './offline.ts';
@@ -137,7 +139,8 @@ export type ConnectionState =
   /** `attempt` 0 is the first try; later ones are reconnects. */
   | { kind: 'connecting'; attempt: number }
   /** `since`: when this connection was made, for "Connected for 2h". */
-  | { kind: 'connected'; client: RpcClient<RemoteContract>; appVersion: string; computerName: string; features: string[]; since: number }
+  /** `appIcon`: the computer's app icon colourway for this app's icons (its hello, then `app.icon`); Graphite from an older one. */
+  | { kind: 'connected'; client: RpcClient<RemoteContract>; appVersion: string; computerName: string; features: string[]; appIcon: AppIconKey; since: number }
   /** `retryAt` null: it gave up trying by itself (Try again, or the page coming back to the front, starts over). */
   | { kind: 'offline'; retryAt: number | null; message: string; reason: OfflineReason; attempt: number }
   /** You chose Disconnect: nothing reconnects by itself, only Connect. The pairing stays. */
@@ -266,7 +269,10 @@ export class Connection {
       if (over()) return client.dispose();
       this.attempt = 0;
       // An engine from before the computer's name was sent.
-      this.set({ kind: 'connected', client, appVersion: hello.app.version, computerName: hello.computer?.name ?? this.paired.computerName ?? '', features: hello.features ?? [], since: Date.now() });
+      this.set({ kind: 'connected', client, appVersion: hello.app.version, computerName: hello.computer?.name ?? this.paired.computerName ?? '', features: hello.features ?? [], appIcon: appIconKey(hello.appIcon), since: Date.now() });
+      client.on('app.icon', ({ key }) => {
+        if (this.state.kind === 'connected' && this.state.client === client) this.set({ ...this.state, appIcon: appIconKey(key) });
+      });
       const code = await socket.closed;
       client.dispose();
       if (over()) return;

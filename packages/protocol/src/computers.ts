@@ -37,6 +37,11 @@ export const Computer = z.object({
   features: z.array(z.string()),
   /** When it was last connected, while it is not ("Last seen 2h ago"); null while connected, or not since this app started. */
   lastSeen: z.number().nullable(),
+  /**
+   * What it sent that this version can't read (it may run an older or newer version), in a sentence; null when
+   * everything was fine. A session list with such entries shows without them.
+   */
+  problem: z.string().nullable(),
 });
 export type Computer = z.infer<typeof Computer>;
 

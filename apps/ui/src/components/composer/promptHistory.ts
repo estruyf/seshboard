@@ -1,4 +1,4 @@
-import type { SessionSummary } from '@switchboard/protocol/client';
+import { parseRunBriefs } from '@switchboard/protocol/client';
 import type { DisplayItem } from '../transcript/displayItems.ts';
 import { matches } from '../../lib/shortcuts.ts';
 
@@ -127,27 +127,11 @@ export function sessionHistory(items: readonly DisplayItem[]): string[] {
   const entries: string[] = [];
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!;
-    const text = item.kind === 'user' && !item.subagent ? item.text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
+    // A pipeline run's brief went with a message to its parent: ↑ brings back what you typed (sending links the run again).
+    const text = item.kind === 'user' && !item.subagent ? parseRunBriefs(item.text).text : item.kind === 'command' ? (item.args ? `${item.name} ${item.args}` : item.name) : '';
     if (text.trim()) entries.push(text);
   }
   return withoutRepeats(entries);
-}
-
-/** How the session index shortens first prompts (`oneLine` in the engine's sessionIndex.ts). */
-const FIRST_PROMPT_MAX = 500;
-
-/**
- * For New session: the first prompts of the sessions you started in a project, newest first. Forks
- * share their first prompt, so each prompt is listed once. The index keeps a first prompt on one
- * line and cuts it at 500 characters; a cut one is left out, since sending it again would send half.
- */
-export function projectHistory(sessions: Iterable<SessionSummary>, root: string, limit = 50): string[] {
-  const prompts = [...sessions]
-    .filter((s) => s.inApp && s.projectRoot === root && s.firstPrompt?.trim())
-    .filter((s) => !(s.firstPrompt!.length >= FIRST_PROMPT_MAX && s.firstPrompt!.endsWith('…')))
-    .sort((a, b) => (b.createdAt ?? b.updatedAt) - (a.createdAt ?? a.updatedAt))
-    .map((s) => s.firstPrompt!);
-  return [...new Set(prompts)].slice(0, limit);
 }
 
 /** The parts of a key press that decide where ↑ and ↓ go. */

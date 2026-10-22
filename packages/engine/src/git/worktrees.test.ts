@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { WorktreeEntry } from '@switchboard/protocol';
 import { git } from './gitChanges.ts';
-import { ignoredFiles, listWorktrees, measureSize, parseWorktreeList, removalRefusal, removeWorktrees, sessionsBlocking, type SessionActivity } from './worktrees.ts';
+import { ignoredFiles, listWorktrees, measureSize, parseWorktreeList, removalRefusal, removeWorktrees, sessionsBlocking, unlockWorktree, type SessionActivity } from './worktrees.ts';
 
 let dir: string;
 let repo: string;
@@ -53,6 +53,18 @@ describe('parseWorktreeList', () => {
       { path: '/r/w', head: 'bbb', branch: null, bare: false, locked: true, lockReason: 'on a USB drive', prunable: false },
       { path: '/gone', head: 'ccc', branch: 'refs/heads/old', bare: false, locked: false, lockReason: null, prunable: true },
     ]);
+  });
+});
+
+describe('unlockWorktree', () => {
+  it('unlocks a locked worktree so it can be removed, and refuses the main checkout', async () => {
+    const path = await addWorktree('locked');
+    await run(repo, 'worktree', 'lock', path);
+    expect(removalRefusal(byName(await listWorktrees(repo), 'locked'))?.code).toBe('LOCKED');
+    await unlockWorktree(repo, path);
+    expect(byName(await listWorktrees(repo), 'locked').isLocked).toBe(false);
+    await expect(unlockWorktree(repo, repo)).rejects.toMatchObject({ code: 'MAIN' });
+    await expect(unlockWorktree(repo, join(dir, 'nope'))).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
 

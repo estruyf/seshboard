@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { basename, dirname, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  BACKUP_SECTIONS,
   DEFAULT_PREFERENCES,
+  Schedule,
+  Trigger,
+  Pipeline,
+  isBuiltInPipeline,
   BUILTIN_PROFILE_ID,
   ExportedProfile,
   ExportedProject,
@@ -31,6 +36,9 @@ import {
 } from '@switchboard/protocol';
 import { parseThemeFile } from '@switchboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
+import type { ScheduleStore } from '../schedules/scheduleStore.ts';
+import type { TriggerStore } from '../triggers/triggerStore.ts';
+import type { PipelineStore } from '../pipelines/pipelineStore.ts';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { readProfileDefaults, type ProfileStore } from '../profiles/profileStore.ts';
 import { parseDefaults, type ProjectRegistry, type StoredIcon } from '../projects/projectRegistry.ts';
@@ -49,7 +57,10 @@ export const CHOICE_KEYS: Record<string, string> = {
   [PERSONAL_DIR_KEY]: 'Personal memory folder',
 };
 
-const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
+/** Internal bookkeeping that has no label and no line in an import: sanitizing never returns it, the default carries it. */
+type InternalPreference = 'fileLinkClickRevision';
+
+const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, string> = {
   colorScheme: 'Appearance',
   sidebarStyle: 'Sidebar style',
   sidebarCollapsed: 'When the sidebar is collapsed',
@@ -65,6 +76,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   projectOrder: 'Project order',
   newSessionMode: 'Permission mode for new sessions',
   chrome: 'Use Claude in Chrome',
+  keepAwake: 'Keep this computer awake',
   autoUpdate: 'Automatic updates',
   updateChannel: 'Update channel',
   focusLimit: 'Focus limit',
@@ -72,6 +84,8 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   focusCountExternal: 'Count terminal and IDE sessions',
   focusCountRemote: 'Count sessions on other computers',
   themeId: 'Theme',
+  appIcon: 'App icon',
+  appIconOnRemote: 'Use the app icon on your phone too',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
   whileWorking: 'Enter while Claude is working',
@@ -84,6 +98,7 @@ const PREFERENCE_LABELS: Record<keyof Preferences, string> = {
   contextWarning: 'Large context',
   showMods: 'Show mods',
   hiddenMods: 'Mods with their UI hidden',
+  githubHintSeen: 'Projects that showed the GitHub CLI hint',
   sidebarSort: 'Sidebar order',
   githubStar: 'Star on GitHub',
   notifications: 'Notifications',
@@ -100,6 +115,12 @@ export interface SettingsStores {
   projects: ProjectRegistry;
   profiles: ProfileStore;
   actions: ActionStore;
+  /** Scheduled sessions; a file's schedules are skipped without it. */
+  schedules?: ScheduleStore;
+  /** Event triggers; a file's triggers are skipped without it. */
+  triggers?: TriggerStore;
+  /** Your pipelines; a file's pipelines are skipped without it. */
+  pipelines?: PipelineStore;
 }
 
 export interface ExportOptions {
@@ -202,6 +223,18 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
     }
     file.actions = { global, projects: [...byProject].map(([path, actions]) => ({ path, actions })) };
   }
+  if (want.has('schedules') && stores.schedules) {
+    // The last run stays here: it points at sessions on this computer.
+    file.schedules = stores.schedules.list().map(({ lastRun: _lastRun, runs: _runs, skippedRuns: _skipped, ...schedule }) => schedule);
+  }
+  if (want.has('triggers') && stores.triggers) {
+    // What its checks found stays here: it points at issues and sessions on this computer.
+    file.triggers = stores.triggers.list().map(exportedTrigger);
+  }
+  if (want.has('pipelines') && stores.pipelines) {
+    // Built-ins come with every Switchboard, and runs point at sessions on this computer: neither goes in the file.
+    file.pipelines = stores.pipelines.own();
+  }
   if (want.has('choices')) {
     const choices: Record<string, JsonValue> = {};
     for (const key of Object.keys(CHOICE_KEYS)) {
@@ -301,7 +334,7 @@ const THIS_COMPUTER = process.platform === 'darwin' ? 'this Mac' : 'this compute
 export function planImport(stores: SettingsStores, file: SettingsFile, options: ImportOptions): ImportPlan {
   const replace = options.mode === 'replace';
   const want = new Set(options.sections);
-  const present = (['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions'] as const).filter((s) => file[s] !== undefined);
+  const present = BACKUP_SECTIONS.filter((s) => file[s] !== undefined);
   const has = (section: BackupSection) => want.has(section) && file[section] !== undefined;
   const relocated = new Map(options.relocate.map((m) => [m.from, m.to]));
   const target = (path: string) => relocated.get(path) ?? path;
@@ -330,6 +363,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     const current: Preferences = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(options.preferences) };
     const incoming = sanitizePreferences(file.preferences);
     for (const key of Object.keys(incoming) as Array<keyof Preferences>) {
+      if (key === 'fileLinkClickRevision') continue;
       const value = incoming[key];
       if (same(current[key], value)) unchanged++;
       // A preference still at its default counts as never set: Merge fills it in.
@@ -595,6 +629,141 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     }
   }
 
+  // --- Scheduled sessions -------------------------------------------------------------------
+  // By id, like actions. A schedule whose folder isn't here (and wasn't pointed elsewhere) comes in paused, with the
+  // reason its row shows, so it doesn't run until you have the folder and resume it.
+  if (has('schedules') && stores.schedules) {
+    const scheduleStore = stores.schedules;
+    const current = new Map(scheduleStore.list().map((s) => [s.id, s]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.schedules!.entries()) {
+      const draft = (raw as { draft?: { cwd?: unknown } } | null)?.draft;
+      const from = typeof draft?.cwd === 'string' ? draft.cwd : null;
+      const root = from === null ? null : locate(from);
+      const moved = from !== null && root === null ? from : (root ?? from);
+      const parsed = Schedule.safeParse({ ...(raw as object), draft: { ...draft, cwd: moved }, lastRun: null, runs: [], skippedRuns: [] });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Schedule ${index + 1}`;
+      if (!parsed.success) {
+        note('schedules', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      const missingFolder = root === null;
+      const incoming: Schedule = { ...parsed.data, ...(missingFolder ? { paused: true, pausedReason: 'Folder not found' } : {}) };
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      const detail = missingFolder ? `paused: folder not found on ${THIS_COMPUTER}` : null;
+      const strip = ({ lastRun: _l, runs: _r, skippedRuns: _s, createdAt: _c, updatedAt: _u, ...rest }: Schedule) => rest;
+      if (!existing) {
+        note('schedules', label, 'add', detail);
+        writes.push(() => scheduleStore.restore(incoming));
+      } else if (same(strip(existing), strip(incoming))) unchanged++;
+      else if (replace) {
+        note('schedules', label, 'change', detail);
+        writes.push(() => scheduleStore.restore({ ...incoming, lastRun: existing.lastRun, runs: existing.runs, skippedRuns: existing.skippedRuns }));
+      } else note('schedules', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, schedule] of current) {
+        if (seen.has(id)) continue;
+        note('schedules', schedule.name, 'remove');
+        writes.push(() => scheduleStore.remove(id));
+      }
+    }
+  }
+
+  // --- Pipelines ----------------------------------------------------------------------------
+  // By id, like schedules. A pipeline for a project that isn't on this computer is skipped.
+  if (has('pipelines') && stores.pipelines) {
+    const pipelineStore = stores.pipelines;
+    const current = new Map(pipelineStore.own().map((p) => [p.id, p]));
+    const seen = new Set<string>();
+    for (const [index, raw] of file.pipelines!.entries()) {
+      const scope = (raw as { scope?: { kind?: unknown; root?: unknown } } | null)?.scope;
+      const from = scope?.kind === 'project' && typeof scope.root === 'string' ? scope.root : null;
+      const root = from === null ? null : locate(from);
+      const at = Date.now();
+      const parsed = Pipeline.safeParse({ createdAt: at, updatedAt: at, ...(raw as object), ...(from !== null ? { scope: { kind: 'project', root: root ?? from } } : {}), builtIn: false });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Pipeline ${index + 1}`;
+      if (!parsed.success || (from !== null && root === null) || isBuiltInPipeline(parsed.data.id)) {
+        if (!(parsed.success && isBuiltInPipeline(parsed.data.id))) note('pipelines', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      const incoming = parsed.data;
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      const strip = ({ createdAt: _c, updatedAt: _u, ...rest }: Pipeline) => rest;
+      if (!existing) {
+        note('pipelines', label, 'add');
+        writes.push(() => pipelineStore.restore(incoming));
+      } else if (same(strip(existing), strip(incoming))) unchanged++;
+      else if (replace) {
+        note('pipelines', label, 'change');
+        writes.push(() => pipelineStore.restore({ ...incoming, createdAt: existing.createdAt }));
+      } else note('pipelines', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, pipeline] of current) {
+        if (seen.has(id)) continue;
+        note('pipelines', pipeline.name, 'remove');
+        writes.push(() => pipelineStore.remove(id));
+      }
+    }
+  }
+
+  // --- Event triggers -----------------------------------------------------------------------
+  // By id, like schedules. Every trigger comes in paused, so it starts nothing on this computer until you have looked
+  // at it and resumed it; resumed, its first check marks what is there as seen.
+  if (has('triggers') && stores.triggers) {
+    const triggerStore = stores.triggers;
+    const current = new Map(triggerStore.list().map((t) => [t.id, t]));
+    const seen = new Set<string>();
+    // A trigger that starts a pipeline needs it here: one of yours, a built-in, or one this file brings.
+    const pipelinesHere = new Set([
+      ...(stores.pipelines ? stores.pipelines.own().map((p) => p.id) : []),
+      ...(has('pipelines') && stores.pipelines ? file.pipelines!.flatMap((raw) => (typeof (raw as { id?: unknown } | null)?.id === 'string' ? [(raw as { id: string }).id] : [])) : []),
+    ]);
+    const pipelineHere = (id: string) => isBuiltInPipeline(id) || pipelinesHere.has(id);
+    for (const [index, raw] of file.triggers!.entries()) {
+      const from = typeof (raw as { projectRoot?: unknown } | null)?.projectRoot === 'string' ? (raw as { projectRoot: string }).projectRoot : null;
+      const root = from === null ? null : locate(from);
+      const at = Date.now();
+      const parsed = Trigger.safeParse({ createdAt: at, updatedAt: at, ...(raw as object), projectRoot: root ?? from, paused: true, pausedReason: IMPORTED_TRIGGER, failures: 0, lastError: null, blockedUntil: null, lastCheckedAt: null, seededAt: null });
+      const name = (raw as { name?: unknown })?.name;
+      const label = parsed.success ? parsed.data.name : typeof name === 'string' ? name : `Trigger ${index + 1}`;
+      if (!parsed.success || root === null) {
+        note('triggers', label, 'skip', from !== null && root === null ? `folder not found on ${THIS_COMPUTER}` : 'not readable');
+        continue;
+      }
+      if (parsed.data.start.kind === 'pipeline' && !pipelineHere(parsed.data.start.pipelineId)) {
+        note('triggers', label, 'skip', `its pipeline isn’t on ${THIS_COMPUTER}`);
+        continue;
+      }
+      const incoming = parsed.data;
+      if (seen.has(incoming.id)) continue;
+      seen.add(incoming.id);
+      const existing = current.get(incoming.id);
+      if (!existing) {
+        note('triggers', label, 'add', 'comes in paused');
+        writes.push(() => triggerStore.restore(incoming));
+      } else if (same(exportedTrigger(existing), exportedTrigger(incoming))) unchanged++;
+      else if (replace) {
+        note('triggers', label, 'change', 'comes in paused');
+        writes.push(() => triggerStore.restore({ ...incoming, createdAt: existing.createdAt }, triggerStore.eventsOf(existing.id)));
+      } else note('triggers', label, 'keep', 'yours differs');
+    }
+    if (replace) {
+      for (const [id, trigger] of current) {
+        if (seen.has(id)) continue;
+        note('triggers', trigger.name, 'remove');
+        writes.push(() => triggerStore.remove(id));
+      }
+    }
+  }
+
   // --- App choices --------------------------------------------------------------------------
   if (has('choices')) {
     for (const [choice, label] of Object.entries(CHOICE_KEYS)) {
@@ -672,4 +841,12 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       return { preferences, themes };
     },
   };
+}
+
+/** Why an imported trigger is paused. */
+export const IMPORTED_TRIGGER = 'Imported. Check it, then resume.';
+
+/** A trigger as the settings file has it: its choices, without what its checks found or whether it runs here. */
+function exportedTrigger({ pausedReason: _r, failures: _f, lastError: _e, blockedUntil: _b, lastCheckedAt: _l, seededAt: _s, paused: _p, createdAt: _c, updatedAt: _u, ...trigger }: Trigger) {
+  return trigger;
 }

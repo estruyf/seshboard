@@ -1,4 +1,4 @@
-import { isAbsolutePath, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
+import { isAbsolutePath, isWorktreeBase, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
 import { fillMessage, type FillState } from '../components/savedPrompts/fillModel.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';
@@ -22,6 +22,8 @@ export interface DraftForm {
   choices: Choices;
   /** A profile picked for this session only (null: the project's, else the default). */
   profileId: string | null;
+  /** The pipeline the Run as chip picked (null or missing: one session). */
+  runAs?: string | null;
 }
 
 /** What was typed (and attached) in a message box and not sent yet. */
@@ -188,6 +190,8 @@ function parseContext(value: unknown): ContextItem[] {
     const range = raw.range === undefined ? {} : { range: raw.range as { start: number; end: number } };
     if (raw.kind === 'file' && typeof raw.path === 'string' && isAbsolutePath(raw.path)) out.push({ kind: 'file', path: raw.path, directory: raw.directory === true, ...range });
     else if (raw.kind === 'session' && typeof raw.sessionId === 'string' && raw.sessionId && typeof raw.label === 'string' && raw.label.trim()) out.push({ kind: 'session', sessionId: raw.sessionId, label: raw.label });
+    else if (raw.kind === 'github' && (raw.type === 'issue' || raw.type === 'pr') && Number.isInteger(raw.number) && (raw.number as number) > 0 && typeof raw.repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(raw.repo) && typeof raw.title === 'string' && typeof raw.url === 'string' && raw.url.startsWith('https://github.com/'))
+      out.push({ kind: 'github', type: raw.type, number: raw.number as number, repo: raw.repo, title: raw.title, url: raw.url });
     else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks')) {
       out.push({
         kind: 'text',
@@ -211,11 +215,12 @@ function parseForm(value: unknown): DraftForm | undefined {
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
   const permissionMode = str(c.permissionMode);
   const workspace = c.workspace === 'worktree' || c.workspace === 'current' ? c.workspace : null;
-  const baseRef = c.baseRef === 'fresh' || c.baseRef === 'head' ? c.baseRef : null;
+  const baseRef = isWorktreeBase(c.baseRef) ? c.baseRef : null;
   if (permissionMode === null || workspace === null || baseRef === null) return undefined;
   return {
     choices: { model: str(c.model) ?? '', effort: (str(c.effort) ?? '') as Choices['effort'], permissionMode: permissionMode as Choices['permissionMode'], workspace, baseRef, branch: str(c.branch) ?? '' },
     profileId: str(value.profileId),
+    ...(str(value.runAs) ? { runAs: str(value.runAs) } : {}),
   };
 }
 

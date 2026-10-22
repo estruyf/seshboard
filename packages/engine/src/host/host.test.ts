@@ -8,7 +8,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
 import type { LimitStop } from '../usageLimit/usageLimit.ts';
-import { describeSuggestions } from './permissions.ts';
+import { describeSuggestions, RECHECK_MESSAGE } from './permissions.ts';
 import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -45,7 +45,12 @@ class Channel<T> implements AsyncIterable<T> {
 
 const SUGGESTION = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }] as const;
 
-/** Scripted stand-in for a Claude Code process. Prompts starting with `bash:` ask for permission; `crash` kills it. */
+const EDIT_SUGGESTION = [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }] as const;
+
+/**
+ * Scripted stand-in for a Claude Code process. Prompts starting with `bash:` ask for permission, `tools:Write,Bash`
+ * makes those tool calls and asks for each at once, `serial:Write,Write` one after the other; `crash` kills it.
+ */
 class FakeQuery {
   readonly out = new Channel<unknown>();
   interrupts = 0;
@@ -98,7 +103,23 @@ class FakeQuery {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
       }
-      if (text.startsWith('bash:')) {
+      if (text.startsWith('tools:') || text.startsWith('serial:')) {
+        const [kind, list] = text.split(':') as [string, string];
+        const tools = list.split(',');
+        this.out.push({ type: 'assistant', uuid: 'a-calls', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: tools.map((name, i) => ({ type: 'tool_use', id: `tool-${this.received.length}-${i + 1}`, name, input: {} })) } });
+        state('requires_action');
+        const ask = (tool: string, i: number) =>
+          this.options.canUseTool!(tool, { tool }, {
+            signal: new AbortController().signal,
+            suggestions: (tool === 'Write' ? [...EDIT_SUGGESTION] : []) as never,
+            toolUseID: `tool-${this.received.length}-${i + 1}`,
+          } as never) as Promise<PermissionResult>;
+        const results: PermissionResult[] = [];
+        if (kind === 'tools') results.push(...(await Promise.all(tools.map(ask))));
+        else for (const [i, tool] of tools.entries()) results.push(await ask(tool, i));
+        state('running');
+        assistant(results.map((r, i) => `${tools[i]}=${r.behavior === 'deny' && r.message === RECHECK_MESSAGE ? 'recheck' : r.behavior}`).join(' '));
+      } else if (text.startsWith('bash:')) {
         state('requires_action');
         const result = (await this.options.canUseTool!('Bash', { command: text.slice(5) }, {
           signal: new AbortController().signal,
@@ -214,6 +235,9 @@ function setup(
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
     links?: HostManagerDeps['links'];
+    readOnly?: HostManagerDeps['readOnly'];
+    planApproved?: HostManagerDeps['planApproved'];
+    autoAnswer?: HostManagerDeps['autoAnswer'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -225,7 +249,7 @@ function setup(
   const permissions: PermissionRequest[] = [];
   const resolved: string[] = [];
   const created: string[] = [];
-  const turns: Array<{ sessionId: string; ok: boolean; error: string | null }> = [];
+  const turns: Array<{ sessionId: string; ok: boolean; error: string | null; stopped?: boolean; superseded?: boolean }> = [];
   const warmups: Array<{ options: Options; closed: boolean }> = [];
   const ephemeral = new Set<string>();
   const sdk: SdkRuntime = {
@@ -273,6 +297,9 @@ function setup(
     sessionSettings: opts.settings,
     limits: opts.limits,
     links: opts.links,
+    readOnly: opts.readOnly,
+    planApproved: opts.planApproved,
+    autoAnswer: opts.autoAnswer,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -345,10 +372,24 @@ describe('HostManager', () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'Say hi' });
     await until(() => t.turns.length === 1);
-    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null }]);
+    expect(t.turns).toEqual([{ sessionId: id, ok: true, error: null, stopped: false, superseded: false }]);
     await t.manager.send({ sessionId: id, text: 'fail', attachments: [], fork: false });
     await until(() => t.turns.length === 2);
-    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false });
+    expect(t.turns[1]).toMatchObject({ sessionId: id, ok: false, stopped: false });
+    t.manager.closeAll();
+  });
+
+  it('says a turn you stopped was stopped, whatever its result, for queued items that start after it', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    await t.manager.interrupt(id);
+    await until(() => t.turns.length === 1);
+    expect(t.turns[0]).toMatchObject({ sessionId: id, stopped: true, superseded: false });
+    // The next turn is its own.
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(t.turns[1]).toMatchObject({ ok: true, stopped: false });
     t.manager.closeAll();
   });
 
@@ -455,6 +496,50 @@ describe('HostManager', () => {
     await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-allow+always')));
     expect(t.resolved).toEqual([request.requestId]);
     expect(() => t.manager.respond(request.requestId, { behavior: 'deny' })).toThrow(/already answered/);
+    t.manager.closeAll();
+  });
+
+  it('sends waiting prompts back to Claude Code when the mode changes to one that would let them run', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'tools:Write,Bash,AskUserQuestion' });
+    await until(() => t.permissions.length === 3);
+    // Accept edits only lets the edit run: the command and the question keep waiting.
+    await t.manager.setPermissionMode(id, 'acceptEdits');
+    expect(t.queries[0]!.mode).toBe('acceptEdits');
+    expect(t.manager.list().permissions.map((p) => p.toolName)).toEqual(['Bash', 'AskUserQuestion']);
+    // Auto mode decides the command itself; no mode answers a question.
+    await t.manager.setPermissionMode(id, 'auto');
+    expect(t.manager.list().permissions.map((p) => p.toolName)).toEqual(['AskUserQuestion']);
+    // Ask before edits lets nothing more run.
+    await t.manager.setPermissionMode(id, 'default');
+    expect(t.manager.list().permissions).toHaveLength(1);
+    t.manager.respond(t.permissions[2]!.requestId, { behavior: 'allow' });
+    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Write=recheck Bash=recheck AskUserQuestion=allow')));
+    t.manager.closeAll();
+  });
+
+  it('sends back a prompt that a call made before the mode change asks for later', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'serial:Write,Write,Bash' });
+    await until(() => t.permissions.length === 1);
+    // Auto mode decides calls as they arrive: the later ones were decided under the old mode, so they go back too.
+    await t.manager.setPermissionMode(id, 'auto');
+    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Write=recheck Write=recheck Bash=recheck')));
+    expect(t.permissions).toHaveLength(1);
+    // Claude's new attempts are new calls: they ask as usual.
+    await t.manager.send({ sessionId: id, text: 'serial:Write', attachments: [], fork: false });
+    await until(() => t.permissions.length === 2);
+    t.manager.closeAll();
+  });
+
+  it('sends the other waiting edits back when "always" switches to Accept edits', async () => {
+    const t = setup();
+    await t.manager.create({ ...base, cwd: '/w', prompt: 'tools:Write,Write,Bash' });
+    await until(() => t.permissions.length === 3);
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', always: true });
+    expect(t.manager.list().permissions.map((p) => p.toolName)).toEqual(['Bash']);
+    t.manager.respond(t.permissions[2]!.requestId, { behavior: 'deny' });
+    await until(() => t.messages.some((m) => m.messages.some((x) => x.uuid === 'a-Write=allow Write=recheck Bash=deny')));
     t.manager.closeAll();
   });
 
@@ -650,6 +735,17 @@ describe('HostManager', () => {
       t.manager.resumeQueue(id);
       await until(() => t.queries[0]!.received.some((r) => r.text === 'later'));
       expect(t.infos.filter((i) => i.sessionId === id).at(-1)!.queueHold).toBeNull();
+      t.manager.closeAll();
+    });
+
+    it('sends Up next once the turn has ended when Stop lets it continue (from a phone)', async () => {
+      const t = setup();
+      const id = await busy(t);
+      await send(t, id, 'later');
+      await t.manager.interrupt(id, 'continue');
+      await until(() => t.queries[0]!.received.some((r) => r.text === 'later'));
+      expect(t.infos.filter((i) => i.sessionId === id).every((i) => i.queueHold !== 'stopped' && i.queueHold !== 'error')).toBe(true);
+      expect(queue(t, id)).toHaveLength(0);
       t.manager.closeAll();
     });
 
@@ -1192,6 +1288,21 @@ describe('HostManager', () => {
     second.manager.closeAll();
   });
 
+  it('saves the model, effort and mode of a session that is not running, and resumes with them', async () => {
+    const t = setup({ cwds: { old: '/w' } });
+    await t.manager.setModel('old', 'sonnet');
+    await t.manager.setEffort('old', 'high');
+    await t.manager.setPermissionMode('old', 'acceptEdits');
+    await expect(t.manager.setPermissionMode('old', 'bypassPermissions')).rejects.toMatchObject({ code: 'INVALID' });
+    expect(t.manager.savedSettings('old')).toEqual({ model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits' });
+    expect(t.queries).toHaveLength(0);
+
+    await t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false });
+    await until(() => t.queries.length === 1);
+    expect(t.queries[0]!.options).toMatchObject({ model: 'sonnet', effort: 'high', permissionMode: 'acceptEdits' });
+    t.manager.closeAll();
+  });
+
   it('passes on the model list Claude Code reports', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
@@ -1322,5 +1433,61 @@ describe('failureMessage', () => {
   it('keeps other errors, and this one when a claude was found', () => {
     expect(failureMessage(sdkError, '/usr/local/bin/claude')).toBe(sdkError);
     expect(failureMessage('Process exited with code 1', undefined)).toBe('Process exited with code 1');
+  });
+
+  describe('pipeline steps (#179)', () => {
+    const decide = async (query: FakeQuery, tool: string, input: Record<string, unknown>) => {
+      const hook = query.options.hooks?.PreToolUse?.[0]?.hooks[0];
+      const out = (await hook?.({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input } as never, undefined, { signal: new AbortController().signal })) as { hookSpecificOutput?: { permissionDecision?: string } } | undefined;
+      return out?.hookSpecificOutput?.permissionDecision ?? 'none';
+    };
+
+    it('starts a read-only step behind the read-only hook, and keeps it on a resume', async () => {
+      const t = setup({ cwds: { s1: '/work/app' }, readOnly: (id) => id === 's1' });
+      await t.manager.prewarm('/work/app', 'default');
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Check it', readOnly: true });
+      await until(() => lastState(t.infos, id) === 'idle');
+      // Not the pre-warmed process: that one started without the hook.
+      expect(t.queries[0]!.options.sessionId).toBe(id);
+      expect(await decide(t.queries[0]!, 'Read', { file_path: '/work/app/a.ts' })).toBe('allow');
+      expect(await decide(t.queries[0]!, 'Bash', { command: 'git diff main' })).toBe('allow');
+      expect(await decide(t.queries[0]!, 'Write', { file_path: '/work/app/a.ts' })).toBe('deny');
+      expect(await decide(t.queries[0]!, 'Bash', { command: 'rm -rf .' })).toBe('deny');
+
+      await t.manager.send({ sessionId: 's1', text: 'And this?', attachments: [], fork: false });
+      await until(() => t.queries.length === 2);
+      expect(await decide(t.queries[1]!, 'Edit', {})).toBe('deny');
+    });
+
+    it('forks a step with its own model and mode, in the same folder as the step it forks', async () => {
+      const t = setup({ cwds: { plan: '/work/app/.claude/worktrees/run' } });
+      const id = await t.manager.fork({ from: 'plan', text: 'Build the plan', model: 'sonnet', effort: null, permissionMode: 'acceptEdits' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.queries[0]!.options).toMatchObject({ resume: 'plan', forkSession: true, sessionId: id, cwd: '/work/app/.claude/worktrees/run', model: 'sonnet', permissionMode: 'acceptEdits' });
+      expect(t.queries[0]!.options.hooks).toBeUndefined();
+      expect(t.queries[0]!.received.map((r) => r.text)).toEqual(['Build the plan']);
+      expect(t.created).toEqual([id]);
+    });
+
+    it('answers an approved plan with what the pipeline says instead', async () => {
+      const approved: Array<{ id: string; plan: string }> = [];
+      const t = setup({ planApproved: (id, plan) => (approved.push({ id, plan }), 'Plan kept. Stop here.') });
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'tools:ExitPlanMode', permissionMode: 'plan' });
+      await until(() => t.permissions.length === 1);
+      t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow', updatedInput: { plan: '1. Do it' } });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(approved).toEqual([{ id, plan: '1. Do it' }]);
+      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-ExitPlanMode=deny');
+    });
+
+    it('answers a request for you when the pipeline does, without showing it, and keeps the plan as a click would', async () => {
+      const approved: string[] = [];
+      const t = setup({ planApproved: (id) => (approved.push(id), 'Plan kept. Stop here.'), autoAnswer: (request) => (request.toolName === 'ExitPlanMode' ? { behavior: 'allow' } : null) });
+      const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'tools:ExitPlanMode', permissionMode: 'plan' });
+      await until(() => lastState(t.infos, id) === 'idle');
+      expect(t.permissions).toEqual([]);
+      expect(approved).toEqual([id]);
+      expect(t.messages.flatMap((m) => m.messages.map((x) => x.uuid))).toContain('a-ExitPlanMode=deny');
+    });
   });
 });

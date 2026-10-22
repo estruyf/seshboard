@@ -10,7 +10,9 @@ import {
   type ComputerPairing,
   type ComputersStatus,
   type KeyPair,
+  unreadableLine,
 } from '@switchboard/protocol';
+import { checkEvent, checkResult, type CheckedData } from './computerData.ts';
 import { ComputerLink, dialWebSocket, LinkError, pairComputer, type Dial, type LinkFailure, type LinkState } from './computerLink.ts';
 import { ComputerStore, type PairedComputer } from './computerStore.ts';
 import { computerName } from './computerName.ts';
@@ -40,7 +42,7 @@ export interface ComputerHubOptions {
 export class ComputerHub {
   private readonly store: ComputerStore;
   private readonly dial: Dial;
-  private readonly links = new Map<string, { link: ComputerLink; state: LinkState; lastSeen: number | null }>();
+  private readonly links = new Map<string, LinkEntry>();
   private pairing: ComputerPairing = null;
   private pairingAbort: AbortController | null = null;
   private device: KeyPair | null = null;
@@ -140,11 +142,33 @@ export class ComputerHub {
     this.links.get(id)?.link.retryNow();
   }
 
-  /** A request to a connected computer; it checks the params itself. */
+  /** A request to a connected computer; it checks the params itself, and this one checks its answer. */
   async call(id: string, method: ComputerMethod, params: unknown): Promise<unknown> {
     const entry = this.links.get(id);
     if (!entry) throw new RpcError('NOT_FOUND', 'This computer isn’t paired');
-    return entry.link.call(method, params);
+    const result = await entry.link.call(method, params);
+    const checked = this.checked(id, entry, method, checkResult(method, result));
+    if (!checked.ok) throw new RpcError('UNREADABLE', unreadableLine(this.nameOf(id), null));
+    return checked.value;
+  }
+
+  /**
+   * Notes what a computer sent that this version can't read, for the line on its page and in the log. A session list
+   * replaces what the last one said; anything else stays said until the computer connects again.
+   */
+  private checked(id: string, entry: LinkEntry, what: string, checked: CheckedData): CheckedData {
+    const name = this.nameOf(id);
+    if (!checked.ok) this.options.log('warn', `Other computers: ${name} sent ${what} this version can’t read (${checked.issue})`);
+    else if (checked.dropped) this.options.log('warn', `Other computers: ${name} sent ${checked.dropped} entries in ${what} this version can’t read`);
+    const before = entry.listProblem ?? entry.problem;
+    if (what === 'sessions.list' || what === 'sessions.changed') entry.listProblem = !checked.ok ? unreadableLine(name, null) : checked.dropped ? unreadableLine(name, checked.dropped) : null;
+    else if (!checked.ok) entry.problem = unreadableLine(name, null);
+    if ((entry.listProblem ?? entry.problem) !== before) this.changed();
+    return checked;
+  }
+
+  private nameOf(id: string): string {
+    return this.store.list().find((computer) => computer.id === id)?.name ?? '';
   }
 
   private async deviceKey(): Promise<KeyPair | null> {
@@ -155,9 +179,11 @@ export class ComputerHub {
   }
 
   private connect(computer: PairedComputer, device: KeyPair): void {
-    const entry: { link: ComputerLink; state: LinkState; lastSeen: number | null } = {
+    const entry: LinkEntry = {
       state: { kind: 'connecting' },
       lastSeen: null,
+      problem: null,
+      listProblem: null,
       link: new ComputerLink({
         address: computer.address,
         enginePublicKey: computer.enginePublicKey,
@@ -168,11 +194,17 @@ export class ComputerHub {
           // Leaving a connection: when it was last there, for "Last seen 2h ago" while it is away.
           if (entry.state.kind === 'connected' && state.kind !== 'connected') entry.lastSeen = (this.options.now ?? Date.now)();
           entry.state = state;
+          // Connected again: it may have been updated since.
+          if (state.kind === 'connected') entry.problem = entry.listProblem = null;
           if (state.kind === 'connected' && state.name && state.name !== this.store.find(computer.enginePublicKey)?.name) this.store.setName(computer.id, state.name);
           if (state.kind === 'unpaired') this.options.log('info', `Other computers: ${computer.address} no longer knows this computer`);
           this.changed();
         },
-        onEvent: (name, payload) => this.options.onEvent({ computerId: computer.id, name, payload: payload as ComputerEvent['payload'] }),
+        onEvent: (name, payload) => {
+          const event = checkEvent(name, payload);
+          const checked = event && this.checked(computer.id, entry, name, event);
+          if (checked?.ok) this.options.onEvent({ computerId: computer.id, name, payload: checked.value as ComputerEvent['payload'] });
+        },
       }),
     };
     this.links.set(computer.id, entry);
@@ -182,7 +214,7 @@ export class ComputerHub {
   private view(computer: PairedComputer): Computer {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
-    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null };
+    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
         return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };
@@ -203,6 +235,16 @@ export class ComputerHub {
   private changed(): void {
     if (!this.stopped) this.options.onStatus(this.status());
   }
+}
+
+interface LinkEntry {
+  link: ComputerLink;
+  state: LinkState;
+  lastSeen: number | null;
+  /** What it sent that this version can't read, other than its session list; until it connects again. */
+  problem: string | null;
+  /** What its last session list had that this version can't read. */
+  listProblem: string | null;
 }
 
 /** Why a paired computer can't be reached, in a sentence that says what to do. */

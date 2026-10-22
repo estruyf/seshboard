@@ -3,7 +3,8 @@
 /*
  * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Switchboard: the same surfaces,
  * text and status colours (needs you `warn`, working `accent-ink`, background `ok`, unread `unread`). It follows the
- * phone's light or dark mode. Themes stay on the computer.
+ * phone's light or dark mode. A computer's theme overrides these on `<html>` (Theme, `lib/themeApply.ts`), so a new
+ * token here goes in `PHONE_TOKENS` (`lib/theme.ts`) too.
  */
 :root {
   color-scheme: light dark;
@@ -29,6 +30,8 @@
   --sb-diff-removed: #d73a491f;
   --sb-focus-ring: #916c008c;
   --sb-caution: #b35900;
+  /* Pipelines (#179): the run row's icon and the step kinds, as on the computer; never a state. */
+  --sb-pipeline: #6741d9;
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;
   --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
@@ -66,6 +69,7 @@
     --sb-diff-removed: #ff6b6b1f;
     --sb-focus-ring: #ffd43b8c;
     --sb-caution: #ffa94d;
+    --sb-pipeline: #9775fa;
     --sb-popover: #2a3244;
     --sb-overlay-border: #414861;
     --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
@@ -97,6 +101,7 @@
   --color-error: var(--sb-error);
   --color-unread: var(--sb-unread);
   --color-caution: var(--sb-caution);
+  --color-pipeline: var(--sb-pipeline);
   --color-popover: var(--sb-popover);
   --color-selected: var(--sb-selected);
   --color-code: var(--sb-code-bg);

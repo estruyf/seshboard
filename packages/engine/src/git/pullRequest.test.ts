@@ -231,6 +231,13 @@ process.stdout.write('https://github.com/o/r/pull/123\\n');
     expect(() => readFileSync(join(scratch, 'hook.txt'))).toThrow();
   });
 
+  it('pushes again when the upstream is only a stale ref because the remote deleted the branch', async () => {
+    await run('push', '-q', '-u', 'origin', 'feat/x');
+    await git(remote, ['branch', '-D', 'feat/x']);
+    await create();
+    expect((await git(remote, ['rev-parse', 'feat/x'])).trim()).toBe((await run('rev-parse', 'HEAD')).trim());
+  });
+
   it('says the remote has commits this branch lacks when the push is turned down', async () => {
     await run('push', '-q', '-u', 'origin', 'feat/x');
     const other = join(scratch, 'other');

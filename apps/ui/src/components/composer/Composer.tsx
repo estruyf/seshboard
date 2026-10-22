@@ -1,6 +1,6 @@
-import { ImagePlus, MessageCircleQuestion, Paperclip } from 'lucide-react';
-import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { blanksLeftText, blanksOf, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
+import { ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -9,8 +9,11 @@ import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContex
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
+import { besideChipRow } from './footerMeasure.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
+import { Menu, type MenuEntry } from '../Menu.tsx';
+import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { onFirstLine, onLastLine, revealCaret, textareaRows } from './caretLine.ts';
 import { appendQuote, appendText, applyEdit, deadKeyWrap, editKey } from './editing.ts';
 import { PromptHistory, recallAnnouncement, routeArrow, type Recall } from './promptHistory.ts';
@@ -27,16 +30,31 @@ import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillStat
 import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
 import { engineClient, useSavedPrompts, useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
 import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
+import { GithubHint, GithubList } from '../github/GithubList.tsx';
+import { pastedGithubLink, rowsOf, SEARCH_DEBOUNCE_MS, withoutLink } from '../github/githubList.ts';
+import { chipItem, reasonLine } from '../github/githubText.ts';
+import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../github/githubCache.ts';
+import { GithubStateIcon } from '../github/GithubParts.tsx';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { startFromGithub } from '../../state/githubStartStore.ts';
 
-/** A row of the / or @ list; `prompt` makes it a saved prompt rather than a command, `session` a session to link. */
-type PaletteItem = { value: string; label: string; detail: string; prompt?: SavedPrompt; session?: SessionSummary };
+/**
+ * A row of the /, @ or # list; `prompt` makes it a saved prompt rather than a command, `session` a session to link,
+ * `github` an issue or pull request to attach.
+ */
+type PaletteItem = { value: string; label: string; detail: string; prompt?: SavedPrompt; session?: SessionSummary; github?: GithubListItem };
 interface Palette {
-  kind: 'slash' | 'file';
-  /** Where the token being completed starts (the `/` or `@`). */
+  kind: 'slash' | 'file' | 'issue';
+  /** Where the token being completed starts (the `/`, `@` or `#`). */
   start: number;
   items: PaletteItem[];
   active: number;
+  /** The # list: the project's repository, whether gh is still asked, a line about an old list, or the hint about gh. */
+  github?: { repo: string | null; loading: boolean; notice: string | null; empty: string; hint: boolean };
 }
+
+/** An issue or pull request as a row of the # list. */
+const githubRow = (item: GithubListItem): PaletteItem => ({ value: `github:${item.type}:${item.repo}#${item.number}`, label: `#${item.number}`, detail: item.title, github: item });
 
 export interface ComposerProps {
   /**
@@ -129,6 +147,11 @@ export interface ComposerProps {
    * goes to Claude. Without it, `@` only lists files.
    */
   links?: { sessionId: string | null; root: string | null };
+  /**
+   * Issues and pull requests: `#` at the start of a word lists the project's (`root`) open ones, and a pasted link to
+   * one offers to attach it. Only in a project with a remote on GitHub; without gh, one hint per project.
+   */
+  github?: { root: string | null };
 }
 
 /** What the message was made of: the typed text and the context chips that `promptWithContext` put together. */
@@ -223,10 +246,39 @@ export function Composer(props: ComposerProps) {
       event.preventDefault();
       setNotice(null);
       addContext([pastedItem(pasted, chips)]);
+    } else {
+      // A link to an issue or pull request goes in as text; a hint offers to attach it, where gh can read it.
+      const link = addContext && githubRoot && client ? pastedGithubLink(pasted) : null;
+      if (link) void githubStatus(client!, githubRoot!).then((status) => status.available && setPasteOffer(link), () => {});
     }
+  };
+  /** Right-click (or Shift+F10) in the box: Electron has no menu of its own, so Cut, Copy, Paste and Select all are here. */
+  const [menuAt, setMenuAt] = useState<ContextMenuPoint | null>(null);
+  const textMenu = (): MenuEntry[] => {
+    const el = ref.current;
+    const selected = !!el && el.selectionStart !== el.selectionEnd;
+    // The menu hands focus back to the box as it closes; the command runs after that.
+    const run = (command: () => void) => () => setTimeout(() => { ref.current?.focus(); command(); }, 0);
+    return [
+      { label: 'Cut', icon: <Scissors size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('cut')) },
+      { label: 'Copy', icon: <Copy size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('copy')) },
+      // Through the main process, so an image on the clipboard arrives as a paste event like Cmd/Ctrl+V does.
+      { label: 'Paste', icon: <ClipboardPaste size={13} />, onSelect: run(() => void window.switchboard?.pasteClipboard()), data: { 'data-composer-menu-paste': true } },
+      'separator',
+      { label: 'Select all', icon: <TextSelect size={13} />, onSelect: run(() => ref.current?.select()) },
+    ];
   };
   /** Bumped whenever the palette's input moves on: a file search that answers after that is dropped. */
   const searchSeq = useRef(0);
+  /** The # list waits a moment after each key before asking gh. */
+  const githubTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Where the # token starts that Esc closed the list for: it stays closed while you go on typing it. */
+  const githubDismissed = useRef<number | null>(null);
+  /** Where the # token starts that the hint about gh is showing for: it stays while that token is typed. */
+  const githubHintFor = useRef<number | null>(null);
+  /** A link to an issue or pull request was pasted: offer to attach it (the link stays text unless you do). */
+  const [pasteOffer, setPasteOffer] = useState<ReturnType<typeof pastedGithubLink>>(null);
+  const githubRoot = props.github?.root ?? null;
   const ids = useId();
   const history = useRef<PromptHistory | null>(null);
   history.current ??= new PromptHistory(props.history);
@@ -234,6 +286,7 @@ export function Composer(props: ComposerProps) {
   const [announcement, setAnnouncement] = useState('');
   const closePalette = () => {
     ++searchSeq.current;
+    clearTimeout(githubTimer.current);
     setPalette(null);
   };
 
@@ -368,12 +421,71 @@ export function Composer(props: ComposerProps) {
     el.focus();
   }, [props.focusRequest, props.disabledReason]);
 
+  /**
+   * The # list for the token at `start`: nothing in a project without a GitHub remote, the hint once per project when
+   * gh is missing or signed out, else what is known at once and gh's answer a moment after the last key.
+   */
+  const openGithub = (start: number, query: string, seq: number, refresh = false) => {
+    clearTimeout(githubTimer.current);
+    if (!githubRoot || !client || !addContext || githubDismissed.current === start) return setPalette(null);
+    const root = githubRoot;
+    const show = (result: GithubSearchResult | null, loading: boolean) => {
+      if (seq !== searchSeq.current) return;
+      const items = result ? rowsOf(result).map(githubRow) : [];
+      const reason = result ? reasonLine(result.reason, result.message) : null;
+      setPalette((current) => ({
+        kind: 'issue',
+        start,
+        items,
+        active: current?.kind === 'issue' && current.active < items.length ? current.active : 0,
+        github: {
+          repo: result?.repo ?? (current?.kind === 'issue' ? (current.github?.repo ?? null) : null),
+          loading,
+          notice: result?.stale && reason ? `${reason} Showing the last list.` : null,
+          empty: reason ?? (query ? 'No open issue or pull request matches.' : 'No open issues or pull requests.'),
+          hint: false,
+        },
+      }));
+    };
+    void githubStatus(client, root).then(
+      (status) => {
+        if (seq !== searchSeq.current) return;
+        if (status.reason === 'not-github') return setPalette(null);
+        if (!status.available) {
+          // One hint per project, kept while that # is typed; after it, # is plain text there until gh works.
+          const seen = usePreferences.getState().prefs.githubHintSeen;
+          if (githubHintFor.current !== start && seen.includes(root)) return setPalette(null);
+          if (!seen.includes(root)) usePreferences.getState().update({ githubHintSeen: [...seen, root] });
+          githubHintFor.current = start;
+          return setPalette({ kind: 'issue', start, items: [], active: 0, github: { repo: status.repo, loading: false, notice: null, empty: '', hint: true } });
+        }
+        const known = refresh ? null : cachedSearch(root, query);
+        show(known ? { ...known, repo: known.repo ?? status.repo } : { repo: status.repo, reason: 'ok', message: null, issues: [], pullRequests: [], stale: false }, true);
+        githubTimer.current = setTimeout(() => {
+          if (seq !== searchSeq.current) return;
+          client.call('github.search', { root, query, refresh }).then(
+            (result) => {
+              rememberSearch(root, query, result);
+              show(result, false);
+            },
+            () => show(known, false),
+          );
+        }, refresh ? 0 : SEARCH_DEBOUNCE_MS);
+      },
+      () => {},
+    );
+  };
+
   /** `withToken`: the side question token is in the box, where commands and files don't apply. */
   const updatePalette = (value: string, caret: number, withToken = sideToken) => {
     // Any edit makes an earlier file search stale, whatever this one turns out to be.
     const seq = ++searchSeq.current;
     const token = withToken ? null : tokenAtCaret(value, caret);
+    // Esc closed the # list for this token, or the hint about gh showed for it: only while it is still the one typed.
+    if (token?.kind !== 'issue' || token.start !== githubDismissed.current) githubDismissed.current = null;
+    if (token?.kind !== 'issue' || token.start !== githubHintFor.current) githubHintFor.current = null;
     if (!token) return setPalette(null);
+    if (token.kind === 'issue') return openGithub(token.start, token.query, seq);
     if (token.kind === 'slash') {
       const q = token.query.toLowerCase();
       // Commands and saved prompts match the same way: the start of the name first, then its letters in order.
@@ -425,6 +537,32 @@ export function Composer(props: ComposerProps) {
     useComposerTargets.getState().register({ key: draftKey, cwd });
     return () => useComposerTargets.getState().unregister(draftKey);
   }, [draftKey, cwd]);
+  // The footer's left side never gets less than the attach buttons and the chip row at its smallest level, so when the
+  // right side (mods' chips, Ask, Stop, Send) leaves less than that, the right side wraps to its own line and nothing
+  // overlaps. It doesn't depend on the level the row shows now, so the footer can't flip between one line and two.
+  const footerStartRef = useRef<HTMLDivElement>(null);
+  const hasControls = Boolean(props.controls);
+  useLayoutEffect(() => {
+    const start = footerStartRef.current;
+    if (!start) return;
+    const measure = () => {
+      const smallest = start.querySelector<HTMLElement>('[data-composer-chips] > [aria-hidden] > div:last-child');
+      if (!smallest) return;
+      start.style.minWidth = `${Math.ceil(besideChipRow(start) + smallest.getBoundingClientRect().width)}px`;
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(start);
+    const smallest = start.querySelector('[data-composer-chips] > [aria-hidden] > div:last-child');
+    if (smallest) resize.observe(smallest);
+    // A chip row that mounts or changes after this runs.
+    const mutation = new MutationObserver(measure);
+    mutation.observe(start, { childList: true, subtree: true });
+    return () => {
+      resize.disconnect();
+      mutation.disconnect();
+    };
+  }, [hasControls]);
   // Claude Code may read this box, fill it or show a suggestion in it, for a mod. Never sends.
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const textNow = useRef(text);
@@ -519,6 +657,15 @@ export function Composer(props: ComposerProps) {
       startPrompt(item.prompt);
       return;
     }
+    // An issue or pull request from the # list becomes a chip; the # and what was typed after it go.
+    if (item.github && addContext) {
+      const end = palette.start + 1 + (/^[^\s#]*/.exec(text.slice(palette.start + 1))?.[0].length ?? 0);
+      setText(`${text.slice(0, palette.start)}${text.slice(end).replace(/^ /, '')}`);
+      closePalette();
+      addContext([chipItem(item.github)]);
+      requestAnimationFrame(() => el.setSelectionRange(palette.start, palette.start));
+      return;
+    }
     // A session from the @ list: its label stays in the text, so the sentence still reads, and it becomes a chip.
     if (item.session && addContext) {
       const linkedNow = chips.filter((c) => c.kind === 'session');
@@ -552,6 +699,28 @@ export function Composer(props: ComposerProps) {
     closePalette();
     const position = palette.start + item.value.length + 1;
     requestAnimationFrame(() => el.setSelectionRange(position, position));
+  };
+
+  /** ⌥↩ in the # list: New session from that issue or pull request; the # and what was typed after it leave this box. */
+  const newSessionFrom = (item: GithubListItem) => {
+    if (!palette || !githubRoot) return;
+    const end = palette.start + 1 + (/^[^\s#]*/.exec(text.slice(palette.start + 1))?.[0].length ?? 0);
+    setText(`${text.slice(0, palette.start)}${text.slice(end).replace(/^ /, '')}`);
+    closePalette();
+    startFromGithub({ root: githubRoot, type: item.type, ref: item.url, item, link: null });
+  };
+
+  /** The hint after a pasted link: attach it as a chip, and the link leaves the text. Without an answer from gh it stays text. */
+  const attachPasted = async () => {
+    const offer = pasteOffer;
+    setPasteOffer(null);
+    if (!offer || !client || !githubRoot || !addContext) return;
+    const result = await client.call('github.search', { root: githubRoot, query: offer.url }).catch(() => null);
+    const found = result ? rowsOf(result)[0] : undefined;
+    if (!found) return setNotice(result ? (reasonLine(result.reason, result.message) ?? `Couldn't find #${offer.number}.`) : `Couldn't find #${offer.number}.`);
+    setText((current) => withoutLink(current, offer.url));
+    addContext([chipItem({ ...found, url: githubUrl(found.type, found.repo, found.number) })]);
+    ref.current?.focus();
   };
 
   /** `requested`: sent through `submitRequest` rather than Enter or the button. `send`: the secondary action instead of `onSubmit`. */
@@ -659,6 +828,11 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isContextMenuKey(event)) {
+      event.preventDefault();
+      setMenuAt(contextMenuPoint(null, event.currentTarget.getBoundingClientRect(), window.innerHeight));
+      return;
+    }
     // Tab takes a mod's suggestion into the empty box.
     if (suggestion && event.key === 'Tab' && !event.shiftKey && !text) {
       event.preventDefault();
@@ -676,7 +850,7 @@ export function Composer(props: ComposerProps) {
     }
     const route = routeArrow(
       { key: event.key, shiftKey: event.shiftKey, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, isComposing: event.nativeEvent.isComposing },
-      palette && { active: palette.active, count: palette.items.length },
+      palette && palette.items.length ? { active: palette.active, count: palette.items.length } : null,
       (direction) => (direction === 'older' ? onFirstLine : onLastLine)(el.value, el.selectionStart, el.selectionEnd, textareaRows(el)),
     );
     if (route?.kind === 'palette') {
@@ -703,14 +877,23 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (palette) {
-      // ⌃⇥ moves to another session; it never picks a command.
-      if (event.key === 'Enter' || (event.key === 'Tab' && !event.ctrlKey)) {
+      // ⌥↩ on an issue or pull request: New session from it, rather than a chip here.
+      const row = palette.items[palette.active];
+      if (row?.github && matches(event.nativeEvent, 'composer.github-new-session')) {
         event.preventDefault();
-        choose(palette.items[palette.active]!);
+        newSessionFrom(row.github);
+        return;
+      }
+      // ⌃⇥ moves to another session; it never picks a command.
+      if (row && (event.key === 'Enter' || (event.key === 'Tab' && !event.ctrlKey))) {
+        event.preventDefault();
+        choose(row);
         return;
       }
       if (event.key === 'Escape') {
         event.preventDefault();
+        // Esc on the # list keeps what you typed as text: the list stays closed for this word.
+        if (palette.kind === 'issue') githubDismissed.current = palette.start;
         closePalette();
         return;
       }
@@ -816,7 +999,37 @@ export function Composer(props: ComposerProps) {
       }}
     >
       <DropOverlay drop={drop} />
-      {palette && (
+      {palette?.kind === 'issue' &&
+        palette.github &&
+        (palette.github.hint ? (
+          <GithubHint className="absolute right-0 bottom-full left-0 z-10 mb-2" />
+        ) : (
+          <GithubList
+            id={`${ids}-palette`}
+            optionId={(i) => `${ids}-option-${i}`}
+            rows={palette.items.flatMap((item) => (item.github ? [item.github] : []))}
+            active={palette.active}
+            repo={palette.github.repo}
+            loading={palette.github.loading}
+            notice={palette.github.notice}
+            empty={palette.github.empty}
+            onPick={(i, newSession) => {
+              const row = palette.items[i];
+              if (!row?.github) return;
+              if (newSession) newSessionFrom(row.github);
+              else choose(row);
+            }}
+            onRefresh={() => {
+              if (!githubRoot) return;
+              forgetGithub(githubRoot);
+              const el = ref.current;
+              const token = el ? tokenAtCaret(el.value, el.selectionStart) : null;
+              if (token?.kind === 'issue') openGithub(token.start, token.query, ++searchSeq.current, true);
+            }}
+            className="absolute right-0 bottom-full left-0 z-10 mb-2"
+          />
+        ))}
+      {palette && palette.kind !== 'issue' && (
         // Focus stays in the message box (aria-activedescendant points at the highlighted option), so the
         // options are plain list items rather than buttons that Tab could land on.
         <ul
@@ -925,6 +1138,17 @@ export function Composer(props: ComposerProps) {
             setLocalChips((current) => current.flatMap((chip) => (chip.id !== id ? [chip] : chip.kind !== 'text' ? [chip] : value.trim() ? [{ ...chip, text: value }] : [])));
           }}
         />
+        {pasteOffer && (
+          <div className="mb-2 flex items-center gap-1.5 text-meta text-muted" data-github-paste-offer>
+            <Button size="sm" icon={<GithubStateIcon type={pasteOffer.type} state="open" size={12} />} onMouseDown={(e) => e.preventDefault()} onClick={() => void attachPasted()} data-github-paste-attach>
+              Attach #{pasteOffer.number}
+            </Button>
+            <span className="min-w-0 truncate">Claude gets its title, labels and text. Or keep the link as text.</span>
+            <Button variant="quiet" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => setPasteOffer(null)} className="ml-auto shrink-0">
+              Keep as text
+            </Button>
+          </div>
+        )}
         <AttachmentThumbs
           attachments={attachments}
           className="mb-2"
@@ -961,8 +1185,8 @@ export function Composer(props: ComposerProps) {
             aria-keyshortcuts={props.running && props.onInterrupt ? ariaKeysFor('claude.stop') : undefined}
             // While the / or @ list is open, ↑ ↓ move through it without leaving the box.
             aria-autocomplete="list"
-            aria-controls={palette ? `${ids}-palette` : undefined}
-            aria-activedescendant={palette ? `${ids}-option-${palette.active}` : undefined}
+            aria-controls={palette && !palette.github?.hint ? `${ids}-palette` : undefined}
+            aria-activedescendant={palette?.items.length ? `${ids}-option-${palette.active}` : undefined}
             spellCheck
             onChange={(e) => {
               const el = e.target;
@@ -977,6 +1201,7 @@ export function Composer(props: ComposerProps) {
                 return;
               }
               setText(el.value);
+              if (pasteOffer && !el.value.includes(pasteOffer.url)) setPasteOffer(null);
               updatePalette(el.value, el.selectionStart);
               // After the box has grown (or not, at its full height): before the next paint, so nothing jumps.
               requestAnimationFrame(() => revealCaret(el));
@@ -984,6 +1209,11 @@ export function Composer(props: ComposerProps) {
             onKeyDown={onKeyDown}
             {...deadKeyWrap(setText)}
             onPaste={onPaste}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const pointer = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null;
+              setMenuAt(contextMenuPoint(pointer, e.currentTarget.getBoundingClientRect(), window.innerHeight));
+            }}
             onBlur={() => {
               // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
               ++searchSeq.current;
@@ -992,24 +1222,25 @@ export function Composer(props: ComposerProps) {
             className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
           />
         </div>
+        {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}
         {props.controls && notice && (
           <p role="alert" className="mt-1 truncate text-meta text-error" data-tooltip={notice}>
             {notice}
           </p>
         )}
-        <div className="mt-1.5 flex items-center justify-between gap-2" data-composer-footer>
+        <div className={`mt-1.5 flex items-center justify-between gap-x-2 ${props.controls ? 'flex-wrap gap-y-1.5' : ''}`} data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}
           </span>
           {props.controls ? (
-            <div className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
+            <div ref={footerStartRef} className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
               {/* What goes into the message comes first; a thin line, then the chips that set how it runs. */}
               <div className="flex shrink-0 items-center gap-0.5">{attach}</div>
               <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
               {props.controls}
               {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
               <span id={`${ids}-hint`} className="sr-only">
-                {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+                {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
               </span>
             </div>
           ) : (
@@ -1021,11 +1252,11 @@ export function Composer(props: ComposerProps) {
               ) : props.running ? (
                 `Esc to stop Claude · ${props.runningHint ?? `messages wait for Claude to finish${props.secondary ? ` · ${formatKeys(keysFor(props.secondary.shortcut))} sends now` : ''}`}`
               ) : (
-                `/ for commands · @ for files${props.onCycleMode ? ` · ${localizeKeys('⇧Tab')} to change mode` : ''}`
+                `/ for commands · @ for files${githubRoot ? ' · # for issues' : ''}${props.onCycleMode ? ` · ${localizeKeys('⇧Tab')} to change mode` : ''}`
               )}
             </span>
           )}
-          <div className="flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {/* Said when it changes; empty (but there) once every required blank is filled. */}
             <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
               {left.length ? blanksLeftText(left.length) : ''}
@@ -1058,7 +1289,7 @@ export function Composer(props: ComposerProps) {
             {sideToken ? null : (
               <>
                 {props.running && props.onInterrupt && (
-                  <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
+                  <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow onClick={props.onInterrupt} data-tooltip={`Stop Claude (${formatKeys(keysFor('claude.stop'))})`} data-composer-stop>
                     Stop
                   </Button>
                 )}

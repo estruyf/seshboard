@@ -5,7 +5,10 @@ describe('parseFileRef', () => {
   it('reads paths with and without a line', () => {
     expect(parseFileRef('packages/common/src/search/suggestions.ts:69')).toEqual({ path: 'packages/common/src/search/suggestions.ts', line: 69 });
     expect(parseFileRef('src/a.ts:12:5')).toEqual({ path: 'src/a.ts', line: 12 });
-    expect(parseFileRef('src/a.ts:12-30')).toEqual({ path: 'src/a.ts', line: 12 });
+    expect(parseFileRef('src/a.ts:12-30')).toEqual({ path: 'src/a.ts', line: 12, endLine: 30 });
+    expect(parseFileRef('src/a.ts:12:5-30:2')).toEqual({ path: 'src/a.ts', line: 12, endLine: 30 });
+    expect(parseFileRef('src/a.ts:30-12')).toEqual({ path: 'src/a.ts', line: 30 });
+    expect(parseFileRef('/Users/me/src/filePreview.ts:10-14')).toEqual({ path: '/Users/me/src/filePreview.ts', line: 10, endLine: 14 });
     expect(parseFileRef(' /Users/me/a.ts ')).toEqual({ path: '/Users/me/a.ts' });
     expect(parseFileRef('~/Developer/involv')).toEqual({ path: '~/Developer/involv' });
     expect(parseFileRef('Root.xml')).toEqual({ path: 'Root.xml' });
@@ -40,7 +43,8 @@ describe('fileUrl', () => {
 describe('fileRefFromHref', () => {
   it('reads relative and file links, with GitHub-style lines', () => {
     expect(fileRefFromHref('src/a.ts#L69')).toEqual({ path: 'src/a.ts', line: 69 });
-    expect(fileRefFromHref('src/a.ts#L69-L80')).toEqual({ path: 'src/a.ts', line: 69 });
+    expect(fileRefFromHref('src/a.ts#L69-L80')).toEqual({ path: 'src/a.ts', line: 69, endLine: 80 });
+    expect(fileRefFromHref('src/a.ts#L69C2-L80C5')).toEqual({ path: 'src/a.ts', line: 69, endLine: 80 });
     expect(fileRefFromHref('file:///Users/me/my%20notes/a.md')).toBeNull();
     expect(fileRefFromHref('file:///Users/me/a.md')).toEqual({ path: '/Users/me/a.md' });
     expect(fileRefFromHref('file:///C:/Users/me/a.md#L3')).toEqual({ path: 'C:/Users/me/a.md', line: 3 });

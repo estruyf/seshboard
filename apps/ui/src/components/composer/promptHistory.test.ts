@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionSummary } from '@switchboard/protocol/client';
 import type { DisplayItem } from '../transcript/displayItems.ts';
-import { projectHistory, PromptHistory, recallAnnouncement, routeArrow, sessionHistory, type ArrowKey } from './promptHistory.ts';
+import { PromptHistory, recallAnnouncement, routeArrow, sessionHistory, type ArrowKey } from './promptHistory.ts';
 
 const up: ArrowKey = { key: 'ArrowUp', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, isComposing: false };
 const down: ArrowKey = { ...up, key: 'ArrowDown' };
@@ -167,52 +166,5 @@ describe('sessionHistory', () => {
   it('drops a message that repeats the one just before it', () => {
     const items = [user('1', 'again'), user('2', 'retry'), user('3', 'retry'), user('4', 'again')];
     expect(sessionHistory(items)).toEqual(['again', 'retry', 'again']);
-  });
-});
-
-describe('projectHistory', () => {
-  const session = (id: string, firstPrompt: string | null, createdAt: number, extra: Partial<SessionSummary> = {}): SessionSummary => ({
-    id,
-    title: firstPrompt ?? 'Untitled',
-    firstPrompt,
-    customTitle: null,
-    cwd: '/repo',
-    projectRoot: '/repo',
-    gitBranch: null,
-    worktree: null,
-    origin: 'app',
-    createdAt,
-    updatedAt: createdAt,
-    fileSize: null,
-    tag: null,
-    pinned: false,
-    archivedAt: null,
-    restoredAt: null,
-    viewedAt: null,
-    unread: false,
-    inApp: true,
-    profileId: 'default',
-    ...extra,
-  });
-
-  it('lists the first prompts of your sessions in the project, newest first, each once', () => {
-    const sessions = [
-      session('a', 'older', 1),
-      session('b', 'newest', 3),
-      session('c', 'middle', 2),
-      session('fork', 'middle', 4),
-      session('other', 'elsewhere', 5, { projectRoot: '/other' }),
-      session('cli', 'not from here', 6, { inApp: false }),
-      session('empty', null, 7),
-    ];
-    expect(projectHistory(sessions, '/repo')).toEqual(['middle', 'newest', 'older']);
-  });
-
-  it('leaves out prompts the index cut short, and keeps to the limit', () => {
-    const cut = `${'x'.repeat(499)}…`;
-    expect(projectHistory([session('a', cut, 2), session('b', 'whole', 1)], '/repo')).toEqual(['whole']);
-    const many = Array.from({ length: 60 }, (_, i) => session(`s${i}`, `prompt ${i}`, i));
-    expect(projectHistory(many, '/repo')).toHaveLength(50);
-    expect(projectHistory(many, '/repo')[0]).toBe('prompt 59');
   });
 });

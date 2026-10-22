@@ -58,6 +58,21 @@ describe('usage from every computer', () => {
     ]);
   });
 
+  it('shows a profile once when more than one computer signs in to its account, with the newest numbers', () => {
+    const tag = 'a'.repeat(64);
+    const at = (entry: RemoteProfileUsage, fetchedAt: number, account: string | null) => ({ ...entry, account, usage: { fetchedAt, limits: [], extraUsage: null } });
+    const merged = mergeUsage([
+      { id: 'aa', name: 'mystic', usage: [at(usage('default', 'Personal'), 1, tag), at(usage('p2', 'Work'), 1, 'b'.repeat(64))] },
+      { id: 'bb', name: 'studio', usage: [at(usage('default', 'Default'), 5, tag)] },
+      { id: 'cc', name: 'laptop', usage: [at(usage('default', 'Personal'), 3, tag), at(usage('p3', 'Other'), 1, null)] },
+    ]);
+    expect(merged?.map((u) => [u.profile.id, u.profile.name, u.usage?.fetchedAt, u.computers])).toEqual([
+      ['aa:default', 'Personal', 5, ['mystic', 'studio', 'laptop']],
+      ['aa:p2', 'mystic · Work', 1, undefined],
+      ['cc:p3', 'laptop · Other', 1, undefined],
+    ]);
+  });
+
   it('waits for a first answer, and leaves out a computer that has none yet', () => {
     expect(mergeUsage([{ id: 'aa', name: 'mystic', usage: null }, { id: 'bb', name: 'studio', usage: null }])).toBeNull();
     expect(mergeUsage([{ id: 'aa', name: 'mystic', usage: null }, { id: 'bb', name: 'studio', usage: [usage('default', 'Default')] }])?.map((u) => u.profile.name)).toEqual(['studio']);

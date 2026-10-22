@@ -28,7 +28,12 @@ const PLANS: Record<string, Plan> = {
   'quick-question': newSession((ctx) => ctx.questionsDir),
   'new-session-clone': 'hide',
   'new-session-worktree': 'hide',
+  // The picker is a dialog of the main window.
+  'new-session-from-issue': 'hide',
+  'new-session-from-pr': 'hide',
   'queue-add': newSession(() => null),
+  // Schedules: New session (and its dialog) are the main window's.
+  'schedule-add': newSession(() => null),
   'go-to-session': () => ({ kind: 'go-to' }),
   'next-session': navigate('next'),
   'previous-session': navigate('previous'),
@@ -56,15 +61,26 @@ const PLANS: Record<string, Plan> = {
   unsent: 'hide',
   'queue-start-next': 'hide',
   'queue-pick': 'hide',
+  schedules: 'hide',
+  // Triggers: the editor is a dialog of the main window.
+  'trigger-new': 'hide',
+  triggers: 'hide',
+  // Pipelines: Settings › Pipelines opens on the one picked, in the main window's state.
+  pipelines: 'hide',
   'open-in-new-window': 'hide',
 
-  // Settings, Usage and project pages: their stores send them to the main window.
+  // Settings, Usage, Upcoming and project pages: their stores send them to the main window.
   settings: 'main',
   'open-usage': 'main',
+  upcoming: 'main',
+  'queue-view': 'main',
+  'schedules-view': 'main',
   'worktrees-here': 'main',
   worktrees: 'main',
   'branches-here': 'main',
   branches: 'main',
+  'triggers-here': 'main',
+  'triggers-page': 'main',
   memory: 'main',
   'memory-settings': 'main',
   'connect-computer': 'main',
@@ -94,6 +110,9 @@ const PLANS: Record<string, Plan> = {
   'rename-session': 'here',
   // New session lives in the main window, and its box is the one the link goes in.
   'new-session-linked': 'hide',
+  'start-after-session': 'hide',
+  // The engine runs it; this window's session is the parent.
+  'run-pipeline': 'here',
   pin: 'here',
   archive: 'here',
   fork: 'here',
@@ -107,7 +126,10 @@ const PLANS: Record<string, Plan> = {
   'prompt-next': 'here',
   'remember-this': 'here',
   'quote-in-reply': 'here',
+  'read-last-reply': 'here',
   'copy-last-reply': 'here',
+  // A pop-out has the session's side panel and the preview dialog too.
+  'preview-last-file': 'here',
   'copy-session-id': 'here',
   'check-transcript': 'here',
   'toggle-terminal': 'here',

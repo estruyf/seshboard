@@ -190,7 +190,7 @@ describe('project list', () => {
     const cache = openCacheDatabase(join(data, 'cache.sqlite'));
     const registry = new ProjectRegistry(cache.db, join(data, 'icons'));
     const root = tempDir();
-    const unset = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+    const unset = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
     expect(() => registry.setDefaults(root, unset)).toThrow(/Add this folder/);
     registry.add(root);
     const project = () => registry.list(new Map()).find((p) => p.root === root)!;

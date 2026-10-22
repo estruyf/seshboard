@@ -1,11 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareCode, SquareTerminal } from 'lucide-react';
-import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt } from '@switchboard/protocol/client';
+import { ArrowUp, BookOpen, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
+import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt, type SendMode } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { remoteRowId } from '../../state/remoteSelection.ts';
-import { remoteSessionDraftKey, useRemoteDrafts } from '../../state/remoteDraftsStore.ts';
-import { onlyThereLine, remoteRowStatus } from '../../state/remoteRows.ts';
+import { useProfiles } from '../../state/profilesStore.ts';
+import { onlyThereLine, remoteProfileColor, remoteRowStatus } from '../../state/remoteRows.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { statusLine } from '../../state/sidebarOrder.ts';
@@ -27,11 +28,15 @@ import { engineClient, useSavedPrompts } from '../savedPrompts/savedPromptsStore
 import { PromptIcon, ScopeTag } from '../savedPrompts/ScopeTag.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
+import { RemoteLimitNotice } from './RemoteLimitNotice.tsx';
+import { RemoteUpNext } from './RemoteUpNext.tsx';
+import { QueueButton } from '../composer/QueueButton.tsx';
+import { queueButtonState, sendKeyMode } from '../composer/queueButton.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
-import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
+import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteDisplay, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
@@ -41,6 +46,9 @@ import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
 import { sentLine } from '../transcript/turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
+import { MessageToolbar, REVEAL_IN_REPLY_ROW } from '../transcript/messageActions.tsx';
+import { readReply } from '../transcript/readReply.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerView.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
@@ -76,6 +84,9 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [streaming, setStreaming] = useState<Streaming>(NOT_STREAMING);
+  /** Its Up next and how it stands with its usage limit, kept up to date by the watch below. */
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const [limit, setLimit] = useState<RemoteLimitStanding | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -98,8 +109,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     let current = true;
     setError(null);
     setStreaming(NOT_STREAMING);
+    setQueue([]);
+    setLimit(null);
     const offs = [
       onComputerEvent(client, id, 'transcript.updated', (update) => update.sessionId === session.id && setMessages((m) => applyUpdate(m, update))),
+      onComputerEvent(client, id, 'upNext.changed', (event) => event.sessionId === session.id && setQueue(event.queue)),
+      onComputerEvent(client, id, 'limits.changed', (event) => event.sessionId === session.id && setLimit(event.limit)),
       onComputerEvent(client, id, 'session.stream', (delta) => delta.sessionId === session.id && setStreaming((s) => applyStream(s, delta))),
     ];
     void callComputer(client, id, 'transcript.get', { sessionId: session.id, limit: PAGE }).then(
@@ -172,9 +187,13 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     });
 
   const items = useMemo(() => remoteItems(messages), [messages]);
-  // Each finished turn's time and duration under its last reply, from the messages' timestamps (no tokens: the
-  // remote contract has no usage), and the open turn's clock on the working line.
-  const turns = useMemo(() => remoteTurns(messages), [messages]);
+  // Each finished turn's time, duration and tokens under its last reply, from the messages (the computer's usage),
+  // and the open turn's clock on the working line. Read takes its reply from the same display items.
+  const display = useMemo(() => remoteDisplay(messages), [messages]);
+  const turns = display.turns;
+  /** The turn whose replies are open in Read (its prompt's key). */
+  const [reading, setReading] = useState<string | null>(null);
+  const readingReply = reading ? readReply(display.items, turns, reading) : null;
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   const width = useWidth(scroller);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
@@ -228,9 +247,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             <Button variant="quiet" size="sm" iconOnly disabled icon={<SquareTerminal size={14} aria-hidden />} aria-label={onlyThereLine('Terminal', name)} data-remote-terminal />
           </OnlyThere>
         </div>
-        <OnlyThere feature="The editor" name={name}>
-          <Button variant="quiet" iconOnly disabled icon={<SquareCode size={15} aria-hidden />} aria-label={onlyThereLine('The editor', name)} className="@max-[420px]:hidden" data-remote-open-in />
-        </OnlyThere>
         <Button
           variant="quiet"
           iconOnly
@@ -274,11 +290,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           {items.map((item) =>
             item.kind === 'user' ? (
               <div key={item.key} className="flex justify-end">
-                <div className="relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
+                <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
                   <ClampedPrompt itemKey={item.key} className="text-body whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
                     {item.text}
                   </ClampedPrompt>
                   {item.device && <p className="mt-1 text-meta text-faint">from {item.device}</p>}
+                  <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly />
                 </div>
               </div>
             ) : item.kind === 'notice' ? (
@@ -286,9 +303,18 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
                 {item.text}
               </p>
             ) : item.kind === 'text' ? (
-              <div key={item.key} className="text-body">
+              <div key={item.key} className="group/message relative text-body">
                 <RemoteText text={item.text} />
-                <TurnMetaLine itemKey={item.key} className="mt-1 h-6" />
+                {/* As on this computer: the actions, then the turn's line under a turn's last reply, shown on hover or focus. */}
+                <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+                  <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly />
+                  {turnMeta.byReply.has(item.key) && (
+                    <Button variant="quiet" size="sm" icon={<BookOpen size={13} />} className={`h-6 shrink-0 ${REVEAL_IN_REPLY_ROW}`} onClick={() => setReading(turnMeta.byReply.get(item.key)!.key)} data-remote-read>
+                      Read
+                    </Button>
+                  )}
+                  <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />
+                </div>
               </div>
             ) : (
               <ToolRun key={item.key} tools={item.tools} />
@@ -318,6 +344,13 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           )}
         </div>
         </TurnMetaContext.Provider>
+        {readingReply && (
+          <Dialog title="Read" subtitle={`${readingReply.words.toLocaleString()} ${readingReply.words === 1 ? 'word' : 'words'} · ${readingReply.minutes} min read`} width="lg" onClose={() => setReading(null)} data-remote-read-dialog>
+            <div className="flex flex-col gap-4 text-body">
+              {readingReply.blocks.flatMap((block) => (block.kind === 'text' ? [<RemoteText key={block.key} text={block.text} />] : []))}
+            </div>
+          </Dialog>
+        )}
       </div>
 
       <div className="mx-auto grid w-full max-w-3xl shrink-0 gap-2 px-6 pb-4">
@@ -367,6 +400,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             ))}
           </div>
         )}
+        {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
+        {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
         <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
         {/* What the session would cost at API prices, as that computer counts it; the quiet line under a local session's box. */}
         <div className="-mt-1 flex min-h-6 items-center justify-end px-1 text-meta text-muted empty:hidden" data-remote-session-footer>
@@ -438,24 +473,26 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
  * The message box, in the local layout: the computer's chip where the profile chip is, the session's profile (it keeps
  * it, as a local one does), and model, effort and mode chips that change them there while it runs in Switchboard, as
  * in the remote app. A computer too old for `options.get` shows them as text. Stop while Claude works, and a `remote` border. Images and files go with the
- * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them. What you typed and attached
- * stays when you go to another session and come back (`remoteDraftsStore.ts`).
+ * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
+  const localProfiles = useProfiles((s) => s.profiles);
+  // What you typed stays with the session when you go elsewhere and come back, also after a restart, until it is sent.
   const draftKey = remoteSessionDraftKey(computer.id, session.id);
-  const draft = useRemoteDrafts((s) => s.drafts[draftKey]?.text ?? '');
-  const setDraft = (text: string) => useRemoteDrafts.getState().update(draftKey, { text });
+  const [saved] = useState(() => loadRemoteDraft(draftKey));
+  const [draft, setDraft] = useState(saved.text);
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fillerRef = useRef<PromptFillerHandle>(null);
   // Saved prompts live on this computer; the / menu lists the ones for every project (a project's belong to a folder here).
   const { prompts: savedPrompts } = useSavedPrompts(undefined);
-  const [fillState, setFill] = useState<FillState | null>(null);
+  const [fillState, setFill] = useState<FillState | null>(saved.fill ?? null);
+  useEffect(() => saveRemoteDraft(draftKey, { text: draft, ...(fillState ? { fill: fillState } : {}) }), [draftKey, draft, fillState]);
   const [menu, setMenu] = useState<{ start: number; items: SavedPrompt[]; active: number } | null>(null);
   const connected = computer.state === 'connected';
   const name = computer.name;
-  const attachments = useRemoteAttachments({ computer, rootRef: root, draftKey, disabledReason: connected ? null : `${name} is not connected` });
+  const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
   const options = useRemoteOptions(client, computer);
   // Only a session that runs in Switchboard there has a mode, and only then can its model, effort and mode change.
   const running = session.permissionMode != null;
@@ -487,7 +524,10 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     setFill(null);
     requestAnimationFrame(() => areaRef.current?.focus());
   };
-  const send = () => {
+  // While Claude works there, Enter queues or steers (Settings › Conversation, this computer's), as for a local session.
+  const whileWorking = usePreferences((p) => p.prefs.whileWorking);
+  const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
+  const send = (mode: SendMode = whileWorking) => {
     if (fillState && left.length) return fillerRef.current?.focusBlank(left[0]);
     const sentFill = fillState;
     const text = (sentFill ? fillMessage(sentFill, draft) : draft).trim();
@@ -495,9 +535,11 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     setSending(true);
     onSent();
     const { images, files } = attachments;
-    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode: 'queue', images, ...(files.length ? { files } : {}) })
+    void callComputer(client, computer.id, 'session.send', { sessionId: session.id, text, mode, images, ...(files.length ? { files } : {}) })
       .then(
         ({ queued }) => {
+          // Also when you went to another session while it was sending.
+          clearRemoteDraft(draftKey);
           setDraft('');
           setFill((current) => (current === sentFill ? null : current));
           if (sentFill) void engineClient()?.call('savedPrompts.used', { id: sentFill.prompt.id, scope: sentFill.prompt.scope }).catch(() => {});
@@ -524,15 +566,23 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
         return setMenu(null);
       }
     }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    const mode = event.nativeEvent.isComposing ? null : sendKeyMode(event.nativeEvent, working, whileWorking);
+    if (mode) {
       event.preventDefault();
-      send();
+      send(mode);
     } else if (working && matches(event.nativeEvent, 'claude.stop') && !document.querySelector(OVERLAY_SELECTOR)) {
       event.preventDefault();
       onStop();
     }
   };
-  const placeholder = !connected ? `${name} is not connected` : working ? `Message Claude on ${name} (queued until this turn ends)` : `Message Claude on ${name}`;
+  const placeholder = !connected
+    ? `${name} is not connected`
+    : working
+      ? whileWorking === 'queue'
+        ? `Message Claude on ${name}. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.`
+        : `Message Claude on ${name}. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`
+      : `Message Claude on ${name}`;
+  const blocked = !connected ? `${name} is not connected` : attachments.reading ? 'Reading the attachments' : null;
   return (
     <div ref={root} className={`relative rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
       <DropOverlay drop={attachments.drop} />
@@ -563,7 +613,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       )}
       {fillState && (
         <>
-          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={send} onLeave={() => areaRef.current?.focus()} />
+          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={() => send()} onLeave={() => areaRef.current?.focus()} />
           <div aria-hidden className="my-2 border-t border-dashed border-edge" />
         </>
       )}
@@ -592,7 +642,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
           {session.profile && (
             <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude profile: ${session.profile.name}. A running session keeps its profile.`} data-remote-session-profile={session.profile.id}>
-              <span className={`size-1.5 rounded-full ${PROFILE_DOT[session.profile.color]}`} aria-hidden />
+              <span className={`size-1.5 rounded-full ${PROFILE_DOT[remoteProfileColor(session.profile, localProfiles)]}`} aria-hidden />
               {session.profile.name}
             </span>
           )}
@@ -624,11 +674,15 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
         <div className="flex shrink-0 items-center gap-1.5">
           {working && connected && <span className="text-meta text-muted @max-[860px]:hidden">Claude is working on {name}</span>}
           {working && (
-            <Button size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-computer-stop>
+            <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-computer-stop>
               Stop
             </Button>
           )}
-          <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label={working ? 'Add to Up next' : 'Send'} disabled={!connected || sending || attachments.reading || !hasMessage} onClick={send} data-computer-send />
+          {working ? (
+            <QueueButton state={queueButtonState({ blocked, sending, hasMessage, whileWorking })} onAction={(action) => send(action === 'send-now' ? 'now' : action)} />
+          ) : (
+            <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label="Send" disabled={!connected || sending || attachments.reading || !hasMessage} onClick={() => send()} data-computer-send />
+          )}
         </div>
       </div>
     </div>

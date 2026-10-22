@@ -23,6 +23,8 @@ export interface NewSessionInfo {
   canQueue: boolean;
   /** The picked folder is a git checkout with a remote: it can fetch, and pull when behind. */
   canCatchUp: boolean;
+  /** The picked folder (not a quick question's): New session from an issue or pull request works on it. */
+  root?: string | null;
 }
 
 /** Dialogs a palette command opens after the palette has closed. `PaletteDialogs` renders them. */
@@ -37,6 +39,8 @@ export type PaletteDialog =
   | { kind: 'memory-import'; source: { kind: 'export'; paths: string[] } | { kind: 'paste' } }
   | { kind: 'memory-copy-app' }
   | { kind: 'remember'; text: string; from: 'user' | 'claude'; sessionId: string | null; root: string | null }
+  /** New session from an issue or pull request: the # list on its own, for `root`. */
+  | { kind: 'github-start'; type: 'issue' | 'pr'; root: string }
   /**
    * The saved prompt editor: New prompt (`editing` null), Edit, or Save as prompt (`text` from a sent message, whose
    * links, branches and paths it offers as blanks). `root` is the project it was opened in (null: none), `scope` where

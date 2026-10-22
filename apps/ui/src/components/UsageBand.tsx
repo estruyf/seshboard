@@ -99,7 +99,7 @@ const resetTitle = (limit: UsageLimit, now: number) =>
  * Plan usage, like the claude-stats mod: one pill per window with a ring and a reset countdown.
  * Shows the limits of the given Claude profile (the default one when omitted).
  * `compact` drops the pills for a single line (`6% 5h · 4h44m`), for the new session's route tray.
- * `footer`: tiny bars (`5h ▬ 9%   Week ▬ 18%`) for the quiet line under a session's composer, reset times in the tooltips;
+ * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the quiet line under a session's composer, reset times in the tooltips;
  * the profile is shown next to it by the caller.
  * `tray`: the footer with the profile in front and when each window resets (`● Work  5h ▬ 9% · resets 3h 10m`),
  * for New session. Its parent must be an `@container`: the reset times go first when it is narrow, then the bars.
@@ -184,13 +184,14 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
         onClick={() => openUsage(id)}
         aria-label={`Plan usage: ${limits.map((l, i) => spokenLimit(l, now, costs[i])).join('. ')}. Open usage`}
         data-tooltip={usageSummary(limits, now, costs, costNotes)}
-        className={`flex min-w-0 items-center gap-4 rounded-md px-1 py-0.5 text-meta text-muted ${BAND_HOVER}`}
+        className={`flex min-w-0 items-center gap-3 rounded-md px-1 py-0.5 text-meta text-muted ${BAND_HOVER}`}
         data-usage-band
         data-usage-profile={id}
       >
         {limits.map((limit, i) => (
           <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
-            <Meter percent={limit.percent} showValue hideTrackNarrow>
+            {/* Rings rather than bars: the line also holds the cost and the context window, so it runs out of room fast. */}
+            <Meter kind="ring" percent={limit.percent} showValue hideTrackNarrow>
               <span>{footerLabel(limit)}</span>
             </Meter>
             {costs[i] && (

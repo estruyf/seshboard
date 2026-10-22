@@ -47,17 +47,56 @@ export interface ActionVariables {
  * Fills in `${cwd}`, `${branch}`, … . For shell actions every value is quoted for the shell that runs them
  * (`shell.quote`, from `UserShell`), so a branch or title can never inject a command; prompts pass null.
  * Where no quoting is safe for every program (Windows, `shell.unsafe`), a value the action uses that holds a
- * dangerous character is refused instead (`UNSAFE_VALUE`). Unknown variables are left as they are.
+ * dangerous character is refused instead (`UNSAFE_VALUE`). A value written inside double quotes in the action is
+ * inserted as it is, since the quotes already keep it one argument, and a character the shell still reads there
+ * (`$`, a backtick, …) is refused. Unknown variables are left as they are.
  */
-export function expandCommand(command: string, vars: ActionVariables, shell: Pick<UserShell, 'quote' | 'unsafe'> | null): string {
-  return command.replace(/\$\{(\w+)\}/g, (match, name: string) => {
+export function expandCommand(command: string, vars: ActionVariables, shell: Pick<UserShell, 'kind' | 'quote' | 'unsafe'> | null): string {
+  return command.replace(/\$\{(\w+)\}/g, (match, name: string, offset: number) => {
     if (!Object.hasOwn(vars, name)) return match;
     const value = vars[name as keyof ActionVariables];
     if (!shell) return value;
     const unsafe = shell.unsafe(value);
     if (unsafe !== null) throw new RpcError('UNSAFE_VALUE', `\${${name}} contains ${describeCharacter(unsafe)}, which Windows can't pass safely to every program. Leave \${${name}} out of this action, or change the ${VARIABLE_NOUNS[name] ?? 'value'}.`);
+    if (insideDoubleQuotes(command, offset)) {
+      const read = DOUBLE_QUOTE_READS[shell.kind].exec(value)?.[0];
+      if (read) throw new RpcError('UNSAFE_VALUE', `\${${name}} is in double quotes in this action, and the shell reads "${read}" inside them. Take the quotes off \${${name}}, or change the ${VARIABLE_NOUNS[name] ?? 'value'}.`);
+      return value;
+    }
     return shell.quote(value);
   });
+}
+
+/** The characters a shell still reads inside double quotes, where a value is inserted as it is. */
+const DOUBLE_QUOTE_READS: Record<UserShell['kind'], RegExp> = {
+  posix: /[$`"\\!]/,
+  powershell: /[$`"]/,
+};
+
+/**
+ * Whether the action leaves the shell inside double quotes at `index`. Single quotes hold `"` literally and the
+ * other way round; a backslash (or backtick, for PowerShell) escapes the next character outside single quotes. A
+ * placeholder this can't place inside double quotes is quoted, which is safe in any case.
+ */
+function insideDoubleQuotes(command: string, index: number): boolean {
+  let open: '"' | "'" | null = null;
+  for (let i = 0; i < index; i++) {
+    const char = command[i];
+    if (open === "'") {
+      if (char === "'") open = null;
+      continue;
+    }
+    if (char === '\\' || char === '`') {
+      i++;
+      continue;
+    }
+    if (open === '"') {
+      if (char === '"') open = null;
+    } else if (char === '"' || char === "'") {
+      open = char;
+    }
+  }
+  return open === '"';
 }
 
 /** What each variable is, for the message when its value is refused. */
@@ -223,7 +262,11 @@ export class ActionStore {
   }
 }
 
-/** Starter actions: package.json scripts (with the project's package manager), plus git and Claude basics. */
+/**
+ * Starter actions: package.json scripts (with the project's package manager), plus git basics. No "ask Claude to
+ * commit" prompt: sent to the session, it has the model read the whole conversation again for a commit message, and
+ * the git button's commit writes one from the diff for a few thousand tokens.
+ */
 export function suggestActions(projectRoot: string): ActionSuggestion[] {
   const suggestions: ActionSuggestion[] = [];
   let scripts: Record<string, unknown> = {};
@@ -248,7 +291,6 @@ export function suggestActions(projectRoot: string): ActionSuggestion[] {
     suggestions.push({ name: 'Install', command: runner === 'npm run' ? 'npm install' : `${runner.split(' ')[0]} install`, type: 'shell', icon: 'package' });
   }
   suggestions.push(
-    { name: 'Commit', command: 'Commit the current changes with a clear, conventional commit message.', type: 'prompt', icon: 'git-commit' },
     { name: 'Push', command: 'git push', type: 'shell', icon: 'upload' },
     { name: 'Create PR', command: 'gh pr create --web', type: 'shell', icon: 'git-pull-request' },
   );

@@ -9,6 +9,12 @@ import { showOf } from '../../state/catchUpShow.ts';
 import { promptLabel } from '../../state/queue.ts';
 import { useUnsent } from '../drafts/useUnsent.ts';
 import { useQueue } from '../../state/useQueue.ts';
+import { useSchedules } from '../../state/schedulesStore.ts';
+import { useTriggers } from '../../state/triggersStore.ts';
+import { usePipelines } from '../../state/pipelinesStore.ts';
+import { pipelinesFor } from '../../state/pipelines.ts';
+import { listedSchedules } from '../../state/upcoming.ts';
+import { useLastWritten } from '../../state/lastWrittenStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -29,6 +35,7 @@ import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
 import { planGit } from '../git/gitPlan.ts';
+import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './paletteContext.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -36,7 +43,7 @@ import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
-function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
+function useGitState(cwd: string | null, busy: boolean, readOnly: boolean): PaletteGit | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [git, setGit] = useState<PaletteGit | null>(null);
@@ -55,7 +62,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
     ]).then(
       ([status, changes, github, { pr }, { checks }]) => {
         if (cancelled) return;
-        const plan = planGit(status, busy);
+        const plan = planGit(status, busy, readOnly);
         setGit({
           changed: changes.files.length,
           unstaged: changes.files.filter((file) => !file.staged).length,
@@ -72,7 +79,7 @@ function useGitState(cwd: string | null, busy: boolean): PaletteGit | null {
     return () => {
       cancelled = true;
     };
-  }, [client, cwd, busy]);
+  }, [client, cwd, busy, readOnly]);
   return git;
 }
 
@@ -100,6 +107,10 @@ export function usePaletteContext(): PaletteContext {
   const themes = useThemes((s) => s.themes);
   const activeTheme = useThemes((s) => s.active.entry.id);
   const queue = useQueue();
+  // One-time schedules that have run aren't listed anywhere but Upcoming's History.
+  const scheduleCount = useSchedules((s) => listedSchedules(s.schedules, Date.now()).length);
+  const triggerCount = useTriggers((s) => s.triggers.length);
+  const pipelines = usePipelines((s) => s.pipelines);
   const unsent = useUnsent().length;
   const digest = usePaletteBus((s) => s.digest);
   const newSessionInfo = usePaletteBus((s) => s.newSessionInfo);
@@ -112,9 +123,10 @@ export function usePaletteContext(): PaletteContext {
   const boxes = useComposerTargets((s) => s.boxes);
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
+  const lastWritten = useLastWritten((s) => s.paths);
 
   const pageRoot = useProjectPage((s) => s.root);
-  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
+  const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
 
@@ -151,7 +163,7 @@ export function usePaletteContext(): PaletteContext {
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
-  const git = useGitState(question ? null : (session?.cwd ?? null), session?.running ?? false);
+  const git = useGitState(question ? null : (session?.cwd ?? null), session?.running ?? false, useReadOnlyFork(id));
   const projectRoot = question ? null : (session?.projectRoot ?? null);
   const { actions } = useProjectActionList(projectRoot);
 
@@ -187,6 +199,10 @@ export function usePaletteContext(): PaletteContext {
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
+    schedules: scheduleCount,
+    triggers: triggerCount,
+    pipelines: pipelines.length,
+    sessionPipelines: session ? pipelinesFor(pipelines, session.projectRoot).length : 0,
     unsent,
     projectCount: added.length,
     projects: added.map((p) => ({ root: p.root, name: p.name })),
@@ -205,6 +221,7 @@ export function usePaletteContext(): PaletteContext {
     prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
     cloneEnabled,
+    lastPreviewableFile: id ? (lastWritten.get(id) ?? null) : null,
     computers: (computers ?? []).filter((c) => c.state === 'connected').map((c) => ({ id: c.id, name: c.name })),
   };
 }

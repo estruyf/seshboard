@@ -46,3 +46,18 @@ export const REMOTE_FEATURE_PUSH_KEY = 'push.vapid';
  * `cost`, so a session there and the plan windows show their estimated API cost here.
  */
 export const REMOTE_FEATURE_COSTS = 'costs';
+
+/** In `hello`'s `features`: `limits.get`, `limits.resume` and `limits.arm` answer, and `limits.changed` follows a watched session. */
+export const REMOTE_FEATURE_LIMITS = 'limits';
+
+/**
+ * In `hello`'s `features`: pipelines (#179). `sessions.list` has the runs and each session's `parentId`, and
+ * `pipelines.list`, `pipelines.run` and the `runs.*` methods answer: start a run, its buttons, Push and a run row's
+ * message box.
+ */
+export const REMOTE_FEATURE_PIPELINES = 'pipelines';
+
+/** In `hello`'s `features`: `session.queue.sendNow` answers, so a message in Up next can be sent now (Claude stops first). */
+export const REMOTE_FEATURE_QUEUE_SEND_NOW = 'session.queue.sendNow';
+/** In `hello`'s `features`: `theme.get` answers and `theme.changed` follows, so the phone can look like this computer. */
+export const REMOTE_FEATURE_THEME = 'theme';

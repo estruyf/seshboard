@@ -77,7 +77,7 @@ describe('footer and header', () => {
   it('says what is pushed first', () => {
     expect(pushLine(draft())).toBe('Pushes 3 commits to origin first');
     expect(pushLine(draft({ ahead: 1, hasUpstream: true }))).toBe('Pushes 1 commit to origin first');
-    expect(pushLine(draft({ ahead: 0, hasUpstream: true }))).toBe('Already pushed');
+    expect(pushLine(draft({ ahead: 0, hasUpstream: true }))).toBe('Makes sure feat/sessions-archive is on origin first');
     expect(pushLine(draft({ ahead: 0, hasUpstream: false }))).toBe('Publishes feat/sessions-archive to origin first');
     expect(statsText(draft())).toBe('3 commits · 9 files');
     expect(statsText(draft({ commits: ['a'], files: 1 }))).toBe('1 commit · 1 file');

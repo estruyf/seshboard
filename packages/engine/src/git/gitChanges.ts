@@ -62,8 +62,25 @@ function folderProblem(cwd: string): string | null {
   }
 }
 
-/** The branch a worktree or feature branch would merge into: origin's default branch, else main/master. */
+/** The default branch a project sets for itself, by the folder asked about; the engine fills it in from the project's defaults. */
+let projectDefaultBranch: (cwd: string) => string | null = () => null;
+
+/** Lets the engine name a project's own default branch, which `baseBranch` prefers to the remote's. */
+export function setProjectDefaultBranch(lookup: (cwd: string) => string | null): void {
+  projectDefaultBranch = lookup;
+}
+
+/**
+ * The branch a worktree or feature branch would merge into: the project's own default branch while it still exists
+ * (here or on origin), else origin's default branch, else main/master.
+ */
 export async function baseBranch(cwd: string): Promise<string | null> {
+  const chosen = projectDefaultBranch(cwd);
+  if (chosen) {
+    const exists = await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${chosen}`], { allowExitCodes: [1, 128] }).catch(() => '');
+    const onOrigin = exists.trim() ? exists : await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${chosen}`], { allowExitCodes: [1, 128] }).catch(() => '');
+    if (onOrigin.trim()) return chosen;
+  }
   const remoteHead = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { allowExitCodes: [1, 128] }).catch(() => '');
   if (remoteHead.trim()) return remoteHead.trim().replace(/^origin\//, '');
   for (const name of ['main', 'master', 'trunk', 'develop']) {
@@ -95,6 +112,15 @@ export async function listBranches(cwd: string, run: typeof git = git): Promise<
     if (worktree && name !== current) checkedOutElsewhere.push(name);
   }
   return { current, branches, checkedOutElsewhere };
+}
+
+/** Remote branches, most recently committed first, as `origin/dev`; each remote's `HEAD` is left out. `run` is git itself, swapped in tests. */
+export async function listRemoteBranches(cwd: string, run: typeof git = git): Promise<string[]> {
+  const refs = await run(cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/remotes']).catch(() => '');
+  return refs
+    .split('\n')
+    .filter((ref) => ref.startsWith('refs/remotes/') && !ref.endsWith('/HEAD'))
+    .map((ref) => ref.slice('refs/remotes/'.length));
 }
 
 /**
@@ -143,7 +169,7 @@ export async function checkoutRoot(cwd: string): Promise<string | null> {
  * The top folder of the checkout, in this platform's form: git prints `C:/…` on Windows, where every other
  * path (and every comparison with one) uses `C:\…`. Throws outside git.
  */
-async function topLevel(cwd: string): Promise<string> {
+export async function topLevel(cwd: string): Promise<string> {
   return resolve((await git(cwd, ['rev-parse', '--show-toplevel'])).trim());
 }
 

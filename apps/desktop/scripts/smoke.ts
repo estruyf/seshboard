@@ -6,6 +6,10 @@
  * --demo runs it in the made-up home folder the README screenshots use (scripts/screenshot-demo.ts) instead of
  * the user's own: projects, sessions and a running one, the same on every machine. CI runs it this way
  * (npm run smoke:demo), since a runner's home folder has no ~/.claude.
+ *
+ * --only "<pattern>" runs only the steps whose label matches (a case-insensitive regular expression; repeat it for more),
+ * plus the two that open the session the others work in: `npm run smoke -- --only "own window" --only split`. Use it
+ * while building a feature, and the full run once at the end. Steps run inside another (the projects step's) go with it.
  */
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -27,16 +31,42 @@ const outDir = join(appDir, '.smoke');
 rmSync(outDir, { recursive: true, force: true });
 
 // --packaged runs the built app (npm run dist) instead of the development build: Switchboard.app, or on Windows
-// the unpacked folder for this PC's architecture.
+// and Linux the unpacked folder for this computer's architecture.
 const packaged = process.argv.includes('--packaged');
+const unpacked = (os: string) => join(appDir, 'dist', process.arch === 'arm64' ? `${os}-arm64-unpacked` : `${os}-unpacked`);
 const packagedApp = () =>
   process.platform === 'win32'
-    ? join(appDir, 'dist', process.arch === 'arm64' ? 'win-arm64-unpacked' : 'win-unpacked', 'Switchboard.exe')
-    : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
+    ? join(unpacked('win'), 'Switchboard.exe')
+    : process.platform === 'linux'
+      ? join(unpacked('linux'), 'switchboard')
+      : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
 const command = packaged ? packagedApp() : (createRequire(import.meta.url)('electron') as unknown as string);
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
+
+// Each --only adds a pattern; a step runs when its label matches any of them.
+const patterns = process.argv.flatMap((arg, i) => (arg === '--only' ? [process.argv[i + 1] ?? ''] : arg.startsWith('--only=') ? [arg.slice('--only='.length)] : []));
+const only = patterns.length ? patterns.map((pattern) => `(?:${pattern})`).join('|') : null;
+if (only) {
+  if (patterns.some((pattern) => !pattern.trim())) {
+    console.error('✗ --only needs a pattern: npm run smoke -- --only "<part of a step label>"');
+    process.exit(1);
+  }
+  try {
+    new RegExp(only, 'i');
+  } catch (error) {
+    console.error(`✗ --only ${patterns.map((pattern) => `"${pattern}"`).join(' ')} is not a valid pattern: ${(error as Error).message}`);
+    process.exit(1);
+  }
+  childEnv.SWITCHBOARD_SMOKE_ONLY = only;
+  console.log(`only the steps matching ${patterns.map((pattern) => `"${pattern}"`).join(' or ')}`);
+}
+
+// Started from Claude Code: its own session runs in this repository, and the steps that need a session or folder
+// nobody works in skip it, so some steps fail by design. Not worth looking into; run the full smoke from a terminal.
+const insideClaude = Boolean(process.env.CLAUDECODE || process.env.CLAUDE_CODE_SESSION_ID);
+if (insideClaude && !process.argv.includes('--demo') && !only) console.log('note: started from a Claude Code session; steps that need a session or folder not in use may fail because of it');
 
 let world: DemoWorld | null = null;
 if (process.argv.includes('--demo')) {
@@ -48,15 +78,19 @@ if (process.argv.includes('--demo')) {
   console.log(`demo home: ${world.home}`);
 }
 
-// A fake gh, so the Create pull request step never reaches GitHub: it says it is signed in, and refuses everything
-// else (so the pull request lists are empty, as without gh). Windows can't start a script without a shell; there the
-// step stays read-only with the real gh.
+// A fake gh (tests/fixtures/fake-gh.cjs), so nothing reaches GitHub: it says it is signed in, answers the # list's
+// issues and pull requests for the made-up smoke-owner/smoke-repo only, and refuses everything else (so the pull
+// request lists of real projects are empty, as without gh). Windows can't start a script without a shell; there the
+// steps stay read-only with the real gh, and the # list steps are skipped.
 if (process.platform !== 'win32') {
   mkdirSync(outDir, { recursive: true });
   const fakeGh = join(outDir, 'gh');
-  writeFileSync(fakeGh, '#!/bin/sh\nif [ "$1 $2" = "auth status" ]; then exit 0; fi\necho "the smoke test\'s gh never reaches GitHub" >&2\nexit 1\n');
+  const script = join(appDir, '..', '..', 'tests', 'fixtures', 'fake-gh.cjs');
+  writeFileSync(fakeGh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`);
   chmodSync(fakeGh, 0o755);
   childEnv.SWITCHBOARD_GH = fakeGh;
+  // The triggers step's repository: the step writes it, the fake answers triggers' calls from it while it exists.
+  childEnv.FAKE_GH_TRIGGERS = join(outDir, 'fake-gh-triggers.json');
 }
 
 // A second computer for Other computers: the real Remote hub over made-up sessions (scripts/remote-demo.ts), in a
@@ -124,4 +158,13 @@ if (result.window) console.log(`  window ${result.window.content.join('×')} on 
 if (result.reports[0]) console.log(`  claude ${result.reports[0].claudeVersion ?? 'not found'} · engine ping ${result.reports[0].pingMs}ms · electron ${result.versions.electron}`);
 if (packaged) console.log('  (packaged app)');
 if (world) console.log('  (demo home)');
-console.log(`${failed.length ? `✗ ${failed.length} of ${steps.length} steps failed` : `✓ all ${steps.length} steps passed`} in ${seconds(performance.now() - started)}, screenshots in ${outDir}`);
+if (result.only) {
+  console.log(`  (only ${patterns.map((pattern) => `"${pattern}"`).join(' or ')}: ${result.only.matched} step${result.only.matched === 1 ? '' : 's'} picked, plus the two that open the session)`);
+}
+const noMatch = result.only && !result.only.matched;
+if (noMatch) {
+  console.log('✗ no step label matches --only; labels are the step(...) lines in runSmokeStep (apps/desktop/src/main/index.ts), and steps inside "projects" run with it');
+  process.exitCode = 1;
+}
+if (insideClaude && !world && failed.length) console.log('  (started from Claude Code: failures about running sessions or their folders come from that; rerun from a terminal)');
+if (!noMatch) console.log(`${failed.length ? `✗ ${failed.length} of ${steps.length} steps failed` : `✓ all ${steps.length} steps passed`} in ${seconds(performance.now() - started)}, screenshots in ${outDir}`);

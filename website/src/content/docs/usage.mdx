@@ -9,7 +9,7 @@ import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../components/Related.astro';
 
-The usage bar tells you how much of your plan is used. The Usage view tells you what used it: which sessions, projects and models, in the current 5-hour window, the last 24 hours, or the last 7 or 30 days. It counts every session, also the ones you started with `claude` in a terminal.
+The plan usage under the message box tells you how much of your plan is used. The Usage view tells you what used it: which sessions, projects and models, in the current 5-hour window, the last 24 hours, or the last 7 or 30 days. It counts every session, also the ones you started with `claude` in a terminal.
 
 It shows tokens and shares, and what they would cost at API prices. Your plan is a subscription, so that is only an estimate: see [Estimated cost](#estimated-cost).
 
@@ -17,7 +17,7 @@ It shows tokens and shares, and what they would cost at API prices. Your plan is
 
 ## Open it
 
-- Click a usage bar: the one under the message box, the one in [New session](/new-session/form/), or a profile's card on [Home](/sessions/home/). The view opens for that bar's profile. The bar's tooltip says *Click to see what used it*.
+- Click your plan usage: the rings under a session's message box, the bars in [New session](/new-session/form/), or a profile's card on [Home](/sessions/home/). The view opens for that profile. The tooltip says *Click to see what used it*.
 - In the command palette: *Open usage*. It has no key by default.
 
 It opens in the window like Home. **Back** or <Kbd keys="escape" /> returns to where you were, and so does your mouse's back button.
@@ -124,6 +124,8 @@ The limit belongs to your [Claude profile](/settings/claude-profiles/), not to o
 - The [queue](/new-session/queue/) holds new sessions for that profile until the reset.
 - Sessions of another profile go on as usual.
 
+The same notice shows in the [remote app](/remote-access/) on your phone, and above a session on [another computer](/other-computers/), with **Resume now** and **Resume when it resets**. Up next lists the held messages there too. The other computer needs this version of Switchboard.
+
 To have every stopped session resume by itself, set **Resume after a usage limit resets** to **Always** in [Settings › Conversation](/settings/#conversation).
 
 With an API key, Amazon Bedrock or Google Vertex there are no plan limits, so none of this shows.
@@ -132,7 +134,7 @@ With an API key, Amazon Bedrock or Google Vertex there are no plan limits, so no
 
 Switchboard shows what your tokens would cost at Anthropic's API prices. Your plan is not billed per token, so this is never a charge. It tells you what the same work would cost on the API.
 
-- **The usage bars** under the message box and in [New session](/new-session/form/), after each window's %: *5h 38% ≈$4.10 · Week 52% ≈$61*. Hover a bar for each window's estimate.
+- **Your plan usage** under a session's message box and in [New session](/new-session/form/), after each window's %: *5h 38% ≈$4.10 · Week 52% ≈$61*. Hover a window for its estimate.
 - **A session's cost** next to Context under its message box: *Cost ≈$12.40*, everything the session used since it started, its agents included. A session on [another computer](/other-computers/) shows it too, as that computer counts it.
 - **The Limits cards**: each window's cost, such as *≈$4.10 at API prices*.
 - **The Tokens tab**: a **Cost (est.)** tile with the period's total, and a **Cost (est.)** column for each session, project, model, day or computer, also in the *N more* line. A model's panel says its cost, and **Show as table** under the chart has the cost of each hour or day.
@@ -143,9 +145,9 @@ How it is counted:
 - Each window counts from when it started: 5 hours before the 5-hour window resets, 7 days before the weekly one resets. A model's own weekly limit, such as **Weekly · Opus**, counts only that model's tokens.
 - Every model is priced at its own list price: input, output, cache writes and cache reads. A write to the hour-long prompt cache costs more than one to the 5-minute cache, and each reply says which it used. Fast mode's higher price isn't counted.
 - The calls Switchboard makes itself, such as [Auto model](/new-session/auto-model/) routing and [catch-up](/sessions/catch-up/) summaries, are counted too.
-- Your plan counts every computer you use it on, so the usage bars and the Limits cards add up the same windows on your [paired computers](/other-computers/) that sign in to the same account. Hover a bar to see which computers count, such as *Counts This PC and mystic*, and which don't and why, such as *Not counted: studio is offline.* A computer counts once it runs this version of Switchboard. The Tokens tab adds up your other computers with **All computers**.
+- Your plan counts every computer you use it on, so the plan usage under the message box and the Limits cards add up the same windows on your [paired computers](/other-computers/) that sign in to the same account. Hover a window to see which computers count, such as *Counts This PC and mystic*, and which don't and why, such as *Not counted: studio is offline.* A computer counts once it runs this version of Switchboard. The Tokens tab adds up your other computers with **All computers**.
 - Totals are kept per hour, so the window's first hour counts whole. The estimate can be a little high early in a window.
-- In a narrow pane the estimates in the bars and next to Context hide first.
+- In a narrow pane the estimates after the plan usage and next to Context hide first.
 - With **All computers**, a computer on an older Switchboard sends no cost: its rows stay blank, and the **Cost (est.)** tile says which computer is left out, such as *at API prices, without mystic*.
 
 Turn it off, hide it on the usage bars only (**Show it on the usage bars**), or pick the currency, in [Settings › Usage](/settings/#usage). Other currencies are converted from US dollars at fixed exchange rates.
@@ -158,7 +160,7 @@ The first time, Switchboard reads all your transcripts to count their tokens: *R
 
 - Tokens come from Claude Code's transcripts, in each profile's config folder. Each answer from Claude counts once, also when Claude Code writes it on several lines. Subagents count for the session that started them.
 - Claude Code deletes old transcripts after a while (30 days by default). The totals Switchboard counted stay, so 30 days stays complete.
-- The plan % comes from the same check as the usage bar. No extra checks are made for this view.
+- The plan % comes from the same check as the plan usage under the message box. No extra checks are made for this view.
 
 ## Related
 

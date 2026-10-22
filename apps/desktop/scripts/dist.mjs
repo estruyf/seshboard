@@ -15,17 +15,26 @@ const PLATFORM_ARGS = {
   // The .dmg, .zip and folder are Apple Silicon only (electron-builder.yml).
   darwin: ['--mac', '--arm64'],
   win32: ['--win'],
+  // The AppImage, .deb and .rpm for this machine's architecture (node-pty is compiled for it).
+  linux: ['--linux'],
 };
 
-const platformArgs = PLATFORM_ARGS[process.platform];
+let platformArgs = PLATFORM_ARGS[process.platform];
 if (!platformArgs) {
-  console.error(`Switchboard is packaged on macOS and Windows, not on ${process.platform}.`);
+  console.error(`Switchboard is packaged on macOS, Windows and Linux, not on ${process.platform}.`);
   process.exit(1);
+}
+// The .rpm needs rpmbuild (the rpm package on Debian and Ubuntu, rpm-tools on Arch). Without it a local build
+// makes the other two; the release workflow installs it.
+if (process.platform === 'linux' && spawnSync('rpmbuild', ['--version']).error) {
+  console.warn('rpmbuild is not installed: building the AppImage and .deb only.');
+  platformArgs = ['--linux', 'AppImage', 'deb'];
 }
 /** The app's archive in each build this OS makes. */
 const ARCHIVES = {
   darwin: ['mac-arm64/Switchboard.app/Contents/Resources/app.asar'],
   win32: ['win-unpacked/resources/app.asar', 'win-arm64-unpacked/resources/app.asar'],
+  linux: ['linux-unpacked/resources/app.asar', 'linux-arm64-unpacked/resources/app.asar'],
 };
 /** What may be at the top of app.asar. Anything else (src, scripts, .smoke with screenshots of real sessions) got in through a `files` pattern. */
 const PACKAGED = new Set(['out', 'node_modules', 'package.json']);

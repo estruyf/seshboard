@@ -30,13 +30,25 @@ A folder that isn't a git repository can't have a worktree: the switch is greyed
 1. Choose **New worktree** as the route. The strip now shows **New worktree** and the branch it starts from.
 2. Pick what it branches from in the branch menu (**Branch from**):
    - the remote's default branch, such as `origin/main` (marked *default*, Claude Code's default);
-   - your local HEAD (marked *local HEAD*), which includes your unpushed commits.
+   - your local HEAD (marked *local HEAD*), which includes your unpushed commits;
+   - any other branch of the repository, local or remote, such as `dev` or `origin/release`. Type in **Search branches** to find one.
 3. Optionally give it a name (see below).
 4. Write the prompt and press **Start** (<Kbd shortcut="new-session.start" />).
 
 </Steps>
 
 The worktree goes in `.claude/worktrees/<name>` inside the project, on a new branch `worktree-<name>`. Hover the route for where it will be: "Isolated in .claude/worktrees/amber-baking-acorn · your checkout stays untouched".
+
+### From another branch
+
+Claude Code only starts a worktree from the remote's default branch or your local HEAD. For any other branch, Switchboard makes the worktree itself, in the same folder and with the same branch name, and then starts Claude in it:
+
+- A remote branch, such as `origin/dev`, is fetched first, so the worktree starts from its latest commits. Offline, it starts from what you fetched last.
+- The new branch doesn't track the branch it started from, so a push from the worktree never lands on `dev` itself.
+- Git-ignored files that your project's `.worktreeinclude` lists, such as `.env`, are copied in, as Claude Code does.
+- A branch that is checked out somewhere else works too: the worktree gets a branch of its own.
+
+A `WorktreeCreate` hook in your Claude Code settings doesn't run for these worktrees.
 
 ### Its name
 

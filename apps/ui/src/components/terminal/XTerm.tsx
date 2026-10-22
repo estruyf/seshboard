@@ -3,11 +3,16 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { useEffect, useRef } from 'react';
+import { Clipboard, Copy, MessageSquareText, Wrench } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { appKeyInTerminal, matches } from '../../lib/shortcuts.ts';
 import { currentPlatform } from '../../lib/platform.ts';
+import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
+import { useDrafts } from '../../state/draftsStore.ts';
+import { Menu, type MenuEntry } from '../Menu.tsx';
+import { terminalPrompt } from './terminalPrompt.ts';
 import { releaseWebglContexts } from './releaseWebgl.ts';
 import { terminalFontFamily, type DetectedFont } from './terminalFont.ts';
 import { mayUseWebgl, NO_LOSSES, recordLoss } from './webglPolicy.ts';
@@ -43,7 +48,7 @@ function terminalTheme(): ITheme {
  * One terminal view. Attaching replays the terminal's recent output, so
  * switching tabs or sessions (or an engine reconnect) never loses history.
  */
-export function XTerm({ id, active, exited, onClose }: { id: string; active: boolean; exited: boolean; onClose: () => void }) {
+export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; /** The session whose message box the Claude items fill; null for the window's own terminal. */ sessionId: string | null; active: boolean; exited: boolean; onClose: () => void }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const hostRef = useRef<HTMLDivElement>(null);
@@ -54,6 +59,7 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
   exitedRef.current = exited;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const [menu, setMenu] = useState<(ContextMenuPoint & { selection: string }) | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -66,6 +72,8 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
       allowProposedApi: true,
       scrollback: 10_000,
       macOptionIsMeta: true,
+      // A right-click keeps the selection it opens the menu on.
+      rightClickSelectsWord: false,
       theme: terminalTheme(),
     });
     const fit = new FitAddon();
@@ -139,6 +147,11 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
           term.clear();
           host.dataset.cleared = String(Number(host.dataset.cleared ?? 0) + 1);
         }
+        return false;
+      }
+      // Shift+F10 and the menu key open the same menu as a right-click, at the terminal's top left.
+      if (isContextMenuKey(event)) {
+        if (event.type === 'keydown') setMenu({ ...contextMenuPoint(null, host.getBoundingClientRect(), window.innerHeight), selection: term.getSelection() });
         return false;
       }
       // ⌃⇥ and ⌃⇧⇥ move between sessions, as everywhere else in the window; ⌃` hides the terminal, as in VS Code.
@@ -242,12 +255,54 @@ export function XTerm({ id, active, exited, onClose }: { id: string; active: boo
     });
   }, [active]);
 
+  const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {});
+  const paste = () => void navigator.clipboard.readText().then((text) => text && termRef.current?.paste(text), () => {});
+  const askClaude = (ask: 'explain' | 'fix', selection: string) => {
+    if (sessionId) useDrafts.getState().requestQuote(sessionId, terminalPrompt(ask, selection), { plain: true });
+  };
+  const entries = (selection: string): MenuEntry[] => {
+    const has = selection.trim().length > 0;
+    return [
+      { label: 'Copy', icon: <Copy size={14} />, disabled: !has, onSelect: () => copy(selection) },
+      { label: 'Paste', icon: <Clipboard size={14} />, disabled: exited, onSelect: paste },
+      { label: 'Select all', onSelect: () => termRef.current?.selectAll() },
+      ...(sessionId
+        ? ([
+            'separator',
+            { label: 'Explain with Claude', icon: <MessageSquareText size={14} />, disabled: !has, onSelect: () => askClaude('explain', selection) },
+            { label: 'Fix with Claude', icon: <Wrench size={14} />, disabled: !has, onSelect: () => askClaude('fix', selection) },
+          ] satisfies MenuEntry[])
+        : []),
+    ];
+  };
+
   // The padding sits on a wrapper: the fit addon sizes the terminal to its parent's box and would count padding there as room.
   // `isolate`: xterm stacks its own layers with z-index (the WebGL addon's full-size link canvas is z-index 2); kept
   // inside the terminal, they can't cover anything the panel puts next to it.
   return (
-    <div className="isolate h-full w-full px-4 py-2.5">
-      <div ref={hostRef} className="h-full w-full" data-terminal={id} />
-    </div>
+    <>
+      <div
+        className="isolate h-full w-full px-4 py-2.5"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY, above: event.clientY > window.innerHeight / 2, selection: termRef.current?.getSelection() ?? '' });
+        }}
+      >
+        <div ref={hostRef} className="h-full w-full" data-terminal={id} />
+      </div>
+      {menu && (
+        <Menu
+          x={menu.x}
+          y={menu.y}
+          above={menu.above}
+          label="Terminal"
+          entries={entries(menu.selection)}
+          onClose={() => {
+            setMenu(null);
+            termRef.current?.focus();
+          }}
+        />
+      )}
+    </>
   );
 }

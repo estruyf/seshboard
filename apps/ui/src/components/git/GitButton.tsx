@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PrCheck, PrChecks, GitSyncAction, WorktreePullRequest, WorktreeStatus } from '@switchboard/protocol/client';
+import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useSessionRequests } from '../../state/paletteBus.ts';
@@ -27,7 +28,7 @@ import { toast } from '../../state/toastStore.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { checksLine, checkTime, checkTitle, failedChecks, fixChecksDraft, MAX_FIX_CHECKS, MENU_CHECKS } from './checks.ts';
 import { CommitDialog } from './CommitDialog.tsx';
-import { gitSummary, planGit, showsViewPr, STEP_LABEL, stepCount, type GitStep } from './gitPlan.ts';
+import { gitSummary, planGit, showsViewPr, STEP_LABEL, stepCount, type GitStep, FORK_READ_ONLY } from './gitPlan.ts';
 import { PullRequestDialog, type CreatedPr } from './PullRequestDialog.tsx';
 import { ariaKeysFor, formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 
@@ -53,8 +54,9 @@ function CheckIcon({ bucket, size = 13 }: { bucket: PrCheck['bucket'] | 'none'; 
  * Split button in the session header. Its face runs the step the checkout needs next (pull when
  * behind, commit when dirty, push when ahead, a pull request when a branch is ready, else fetch), or
  * shows the branch's open pull request (View PR #123) once it has one; the menu has every git step,
- * plus switching branch and starting a worktree session. Commit asks Claude (or opens the commit
- * dialog from the menu); fetch, pull and push run git in a terminal tab so the output stays visible;
+ * plus switching branch and starting a worktree session. Commit has Haiku write the message from the changes and
+ * commits (Commit… in the menu opens the commit dialog); commit, fetch, pull and push run git in a terminal tab so the
+ * output stays visible;
  * Create PR opens the Create pull request dialog. With an open pull request, its checks show as an icon on View PR
  * and as a Checks group in the menu, where failed ones can be handed to Claude with their logs.
  * `activity` changes when the session does something, so the status follows along.
@@ -67,7 +69,6 @@ export function GitButton({
   activity,
   isWorktree,
   projectBase,
-  onCommit,
   onBranchMenu,
   onNewWorktree,
 }: {
@@ -80,8 +81,6 @@ export function GitButton({
   isWorktree: boolean;
   /** The project's default branch, where a pull request goes into first. */
   projectBase: string | null;
-  /** Asks Claude to commit. */
-  onCommit(): void;
   /** Opens the branch menu (or, in a worktree, the worktree's merge and remove menu). */
   onBranchMenu(): void;
   onNewWorktree(): void;
@@ -109,6 +108,8 @@ export function GitButton({
   /** A git step is starting: a second click (or ⌘⇧L) waits until it has, instead of running it twice. */
   const pendingRef = useRef(false);
   const [pending, setPending] = useState(false);
+  /** Ask Claude to commit is writing the message. */
+  const [writing, setWriting] = useState(false);
   /** The folder whose status has been read once. */
   const loaded = useRef<string | null>(null);
 
@@ -186,23 +187,39 @@ export function GitButton({
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
-  const plan = status ? planGit(status, busy) : null;
+  // A fork's pull request Switchboard can't push back: push and Create PR are off here.
+  const readOnly = useReadOnlyFork(sessionId);
+  const plan = status ? planGit(status, busy, readOnly) : null;
   const openTerminal = (terminalId: string) => {
     togglePanel(sessionId, true);
     setActive(sessionId, terminalId);
   };
+  /** Shows why a git step failed: a toast (the button's tooltip alone is easy to miss), and the tooltip keeps it until the next try. */
+  const fail = (what: string, e: unknown) => {
+    const message = `Couldn't ${what}: ${e instanceof Error ? e.message : String(e)}`;
+    setError(message);
+    toast(message, { tone: 'error', durationMs: 10_000, data: { 'data-git-error': true } });
+  };
   const run = async (step: GitStep) => {
     setError(null);
-    if (step === 'commit') return onCommit();
     if (step === 'pr') return setCreatingPr(true);
     if (!client || pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
     try {
+      if (step === 'commit') {
+        // Haiku writes the message from the change alone, in a call of its own: sending the session "commit this"
+        // would have the model read the whole conversation again.
+        setWriting(true);
+        const { message } = await client.call('git.commitMessage', { sessionId, cwd }).finally(() => setWriting(false));
+        const { terminalId } = await client.call('git.commit', { sessionId, cwd, message });
+        openTerminal(terminalId);
+        return;
+      }
       const { terminalId } = await client.call('git.sync', { sessionId, cwd, action: step satisfies GitSyncAction });
       openTerminal(terminalId);
     } catch (e) {
-      setError(`Couldn't ${STEP_LABEL[step].toLowerCase()}: ${e instanceof Error ? e.message : String(e)}`);
+      fail(STEP_LABEL[step].toLowerCase(), e);
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -243,7 +260,7 @@ export function GitButton({
       if (draft.items.length) drafts.addContext(sessionId, draft.items);
       drafts.requestQuote(sessionId, draft.text, { plain: true });
     } catch (e) {
-      setError(`Couldn't read the logs of the failed checks: ${e instanceof Error ? e.message : String(e)}`);
+      fail('read the logs of the failed checks', e);
     } finally {
       setFixing(false);
     }
@@ -287,7 +304,7 @@ export function GitButton({
       openTerminal(terminalId);
       if ((await waitForExit(terminalId, 10 * 60_000)) && useTerminals.getState().terminals.get(terminalId)?.exitCode === 0) setCreatingPr(true);
     } catch (e) {
-      setError(`Couldn't pull: ${e instanceof Error ? e.message : String(e)}`);
+      fail('pull', e);
     }
   };
   const markReady = async () => {
@@ -297,7 +314,7 @@ export function GitButton({
       await client.call('git.prReady', { cwd, number: openPr.number });
       setPr({ ...openPr, draft: false });
     } catch (e) {
-      setError(`Couldn't mark #${openPr.number} ready: ${e instanceof Error ? e.message : String(e)}`);
+      fail(`mark #${openPr.number} ready`, e);
     } finally {
       setReadying(false);
     }
@@ -306,7 +323,7 @@ export function GitButton({
   const tooltipFor = (step: GitStep): string => {
     const blocked = plan.blocked[step];
     if (blocked) return blocked;
-    if (step === 'commit') return `Ask Claude to commit ${status.uncommitted === 1 ? 'the changed file' : `the ${status.uncommitted} changed files`}`;
+    if (step === 'commit') return `Ask Claude to commit ${status.uncommitted === 1 ? 'the changed file' : `the ${status.uncommitted} changed files`}. Haiku writes the message from the changes`;
     if (step === 'fetch') return 'Fetch from the remote in a terminal tab, to see whether the upstream moved on';
     if (step === 'pull') return `Pull from ${status.upstream} in a terminal tab (${pullShortcut()})`;
     if (step === 'push') return status.upstream ? `Push to ${status.upstream} in a terminal tab` : `Publish ${status.branch} to ${status.pushRemote} in a terminal tab`;
@@ -316,16 +333,21 @@ export function GitButton({
   const face = plan.primary;
   const FaceIcon = ICON[face];
   // While a step is starting, the face waits (the reason is only for its tooltip).
-  const faceBlocked = plan.blocked[face] ?? (pending && face !== 'commit' ? 'Starting…' : null);
+  const faceBlocked = plan.blocked[face] ?? (writing ? 'Writing the commit message…' : pending ? 'Starting…' : null);
+  // The step you clicked is under way (Haiku writing the message, then the terminal opening): say so on the button itself.
+  const starting = pending && plan.blocked[face] === null;
+  const startingLabel = writing ? 'Writing message…' : 'Starting…';
   const count = COUNT[face] ? stepCount(status, face) : null;
   // The header's one yellow button, whenever there is something to do (pull, commit, push or a PR).
   // With nothing to do the face is Fetch, which stays a quiet bordered button.
   const primary = face !== 'fetch' && faceBlocked === null;
   const step = (s: GitStep, label: string, extra: Partial<Extract<MenuEntry, { label: string }>> = {}): MenuEntry => ({
     label,
-    disabled: plan.blocked[s] !== null || (pending && s !== 'commit'),
+    disabled: plan.blocked[s] !== null || pending,
     onSelect: () => void run(s),
     data: { 'data-git-step': s },
+    // The menu says why push and Create PR are off on a fork's pull request; a tooltip alone isn't seen in a menu.
+    ...(readOnly && (s === 'push' || s === 'pr') ? { detail: FORK_READ_ONLY } : {}),
     ...extra,
   });
   const entries: MenuEntry[] = [
@@ -342,7 +364,7 @@ export function GitButton({
       onSelect: () => setCommitting(true),
       data: { 'data-git-step': 'commit-dialog' },
     },
-    step('commit', 'Ask Claude to commit', { icon: <Sparkles size={13} /> }),
+    step('commit', writing ? 'Writing the message…' : 'Ask Claude to commit', { icon: <Sparkles size={13} /> }),
     step('push', 'Push', { icon: <CloudUpload size={13} /> }),
     ...(openPr
       ? [
@@ -406,7 +428,7 @@ export function GitButton({
       aria-busy={fixing || undefined}
       data-view-pr={viewPr.number}
       data-checks={faceChecks?.summary}
-      className={`flex h-7 items-center gap-1.5 rounded-l-md border border-border px-2.5 text-ui text-text hover:bg-border/50 ${error ? 'ring-1 ring-error ring-inset' : ''}`}
+      className={`flex h-7 items-center gap-1.5 rounded-l-md border border-border px-2.5 text-ui text-text hover:bg-border/50`}
     >
       <GitPullRequest size={13} className="text-muted @max-[860px]:hidden" aria-hidden />
       <span>View PR #{viewPr.number}</span>
@@ -431,16 +453,22 @@ export function GitButton({
         // Not `disabled`: a blocked step stays hoverable and focusable so its tooltip can say why.
         onClick={() => faceBlocked === null && void run(face)}
         aria-disabled={faceBlocked !== null}
-        data-tooltip={error ?? tooltipFor(face)}
-        aria-label={`${STEP_LABEL[face]}${count ? ` ${count}` : ''}`}
+        aria-busy={starting || undefined}
+        data-tooltip={error ?? (starting ? startingLabel : tooltipFor(face))}
+        aria-label={starting ? startingLabel : `${STEP_LABEL[face]}${count ? ` ${count}` : ''}`}
         aria-keyshortcuts={face === 'pull' ? ariaKeysFor('git.pull') : undefined}
-        className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${error ? 'ring-1 ring-error ring-inset' : ''} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
+        className={`flex h-7 items-center gap-1.5 rounded-l-md px-2.5 text-ui ${primary ? 'bg-accent font-semibold text-on-accent' : 'border border-border text-text'} ${faceBlocked ? 'cursor-default opacity-50' : primary ? 'hover:bg-accent/85' : 'hover:bg-border/50'}`}
       >
-        {/* A narrow header drops the icon first; in a pane under 420px (four side by side) the icon and the count stand
-            in for the word, which stays in the label and the tooltip. */}
-        <FaceIcon size={13} className={`@max-[860px]:hidden @max-[420px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
-        <span className="@max-[420px]:sr-only">{STEP_LABEL[face]}</span>
-        {count !== null && count > 0 && (
+        {/* A narrow header drops the icon first; under 560px (four panes side by side, or a pop-out at its smallest,
+            which also has Move back and Close window) the icon and the count stand in for the word, which stays in the
+            label and the tooltip. */}
+        {starting ? (
+          <LoaderCircle size={13} className="animate-spin" aria-hidden />
+        ) : (
+          <FaceIcon size={13} className={`@max-[860px]:hidden @max-[560px]:inline ${primary ? '' : 'text-muted'}`} aria-hidden />
+        )}
+        <span className="@max-[560px]:sr-only">{starting ? startingLabel : STEP_LABEL[face]}</span>
+        {!starting && count !== null && count > 0 && (
           <span className="tabular-nums" aria-hidden>
             {COUNT[face]!.prefix}
             {count}

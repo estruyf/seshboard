@@ -11,14 +11,14 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Set a project's defaults once, and every new session in it starts the way you want, such as on your work account in a new worktree. The **Settings** tab of a project's page holds what new sessions in the project start with: the Claude profile, model, effort, permission mode, workspace and branch. It also holds the project's name and icon in Switchboard.
+Set a project's defaults once, and every new session in it starts the way you want, such as on your work account in a new worktree. The **Settings** tab of a project's page holds what new sessions in the project start with: the Claude profile, model, effort, permission mode, workspace and branch. It also holds the project's name, icon and folder in Switchboard, and **Remove**.
 
-<Screenshot name="project-settings" alt="The Settings tab of acme-store: Claude profile, Model and Effort, Permissions, Workspace with the worktree base, then the project's name with Rename and its icon with Choose image" eager />
+<Screenshot name="project-settings" alt="The Settings tab of acme-store: Name, Icon with Choose image, Folder with Show, Claude profile, the defaults (Model and Effort, Permissions, Workspace with the worktree base, Default branch), and Remove from Switchboard" eager />
 
 ## Open it
 
 - Click **Settings** on a project's page.
-- Choose **Project settings…** in a project's menu in the sidebar or the [Projects view](/projects/projects-view/).
+- Choose **Project settings…** in a project's menu in the sidebar or the [Projects view](/projects/projects-view/), or click the gear on its row in the list.
 - After adding a project, Switchboard opens it on this tab.
 
 ## How to use it
@@ -36,22 +36,28 @@ With more than one [Claude profile](/settings/claude-profiles/), **Claude profil
 | **Model** | A model, **Auto** (Haiku picks from the first prompt, see [Auto model](/new-session/auto-model/)), or *Global default*. Next to it, an effort level, or *Global effort*. Queued prompts on Auto are routed when they start, not when you add them. |
 | **Permissions** | A permission mode, or *Global default*. |
 | **Workspace** | *Current folder*, *New worktree*, or *Global default*. Outside git, a new worktree can't be chosen. |
-| **Worktree base** | What a new worktree branches from: *Worktree from origin* or *Worktree from HEAD*, or the global default. Shown unless the workspace is the current folder. |
+| **Worktree base** | What a new worktree branches from: *Worktree from origin*, *Worktree from HEAD*, *Worktree from &lt;branch&gt;* for any local or remote branch, or the global default. Shown unless the workspace is the current folder. With a branch here, pull requests go into that branch, and queued items, scheduled sessions and triggers in the project start from it too. |
+| **Default branch** | The branch the project develops on, when it isn't the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it, and [Changes](/terminal-changes-git/changes/) compares against it. *The remote's default branch* follows GitHub. Only in a git repository. |
 | **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. Only in a git repository, and not for a new worktree. |
 
-A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else the choices you last made in the New session view, and for **Permissions** the mode set in [Settings → General](/settings/#new-sessions) when there is one. When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
+A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else Claude Code's own defaults, and for **Permissions** the mode set in [Settings → General](/settings/#new-sessions). When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
 
-The [Projects view](/projects/projects-view/) shows a summary of these defaults on each project ("Opus · high effort · worktree"), or, when none are set, *Profile defaults* or *Global defaults*, depending on whether the project's profile has any.
+The project's [Overview](/projects/overview/) shows a summary of these defaults under **How sessions start here** ("Opus · high effort · worktree"), or, when none are set, *Profile defaults* or *Global defaults*, depending on whether the project's profile has any.
 
-### Name and icon
+### Name, icon and folder
 
-- **Name**: **Rename…** gives the project a name of its own in Switchboard. The folder on disk keeps its name.
+- **Name**: the project's name in Switchboard, edited in place. <Kbd keys="enter" /> or leaving the field saves it, <Kbd keys="escape" /> puts it back, and an empty field uses the folder's name. The folder on disk keeps its name.
 - **Icon**: **Choose image…** picks an image file. **Detect automatically** goes back to the icon found in the repository; it shows after you picked your own.
+- **Folder**: where the project is, with **Show** to open it in your file manager.
 
-For an emoji or a letter, click the project's icon in the page header. See [Change the icon](/projects/projects-view/#change-the-icon).
+For an emoji or a letter, use **Project icon** in the project's menu. See [Change the icon](/projects/projects-view/#change-the-icon).
+
+### Remove
+
+**Remove from Switchboard…** takes the project off Switchboard's lists, after you confirm.
 
 <Aside>
-None of this changes anything on disk or in the repository. Removing a project from Switchboard keeps its folder and sessions.
+None of this changes anything on disk or in the repository. Removing a project from Switchboard keeps its folder and sessions, and its sessions stay in search.
 </Aside>
 
 ## Settings

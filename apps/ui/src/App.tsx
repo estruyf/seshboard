@@ -15,15 +15,16 @@ import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
 import { AddContextDialogHost } from './components/composer/AddContextDialog.tsx';
 import { CommandPalette } from './components/palette/CommandPalette.tsx';
+import { FilePreviewDialog } from './components/filePreview/FilePreviewDialog.tsx';
 import { PaletteDialogs } from './components/palette/PaletteDialogs.tsx';
+import { RunTreeDialogs } from './components/pipelines/RunTreeDialogs.tsx';
 import { ClaudeInstallDialog } from './components/updates/ClaudeInstallDialog.tsx';
 import { SearchDialog } from './components/search/SearchDialog.tsx';
 import { CloneProjectDialog } from './components/clone/CloneProjectDialog.tsx';
 import { useClone, useCloneSync } from './state/cloneStore.ts';
 import { AddProjectDialog } from './components/projects/AddProjectDialog.tsx';
 import { BackupDialogs } from './components/backup/BackupDialogs.tsx';
-import { ProjectManagerView } from './components/projects/ProjectManagerView.tsx';
-import { ProjectPage } from './components/projects/ProjectPage.tsx';
+import { ProjectsView } from './components/projects/ProjectsView.tsx';
 import { useProjectPage } from './state/projectPageStore.ts';
 import { useWorktreesSync } from './state/worktreesStore.ts';
 import { SettingsView } from './components/SettingsView.tsx';
@@ -35,6 +36,10 @@ import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
+import { useSchedulesSync } from './state/schedulesStore.ts';
+import { useTriggersSync } from './state/triggersStore.ts';
+import { usePipelinesSync } from './state/pipelinesStore.ts';
+import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
@@ -46,6 +51,7 @@ import { useQueueToasts } from './state/useQueue.ts';
 import { useLinksSync } from './state/linksStore.ts';
 import { useNavHistorySync } from './state/navHistoryStore.ts';
 import { useSessions, type MainView } from './state/sessionsStore.ts';
+import { useReadMode } from './state/readModeStore.ts';
 import { useOverlay } from './state/overlayStore.ts';
 import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
@@ -70,6 +76,9 @@ import { usePopoutsSync } from './state/usePopoutsSync.ts';
 import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
+import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { SelectionMenu } from './components/SelectionMenu.tsx';
+import { openUpcoming } from './state/upcomingStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
 function terminalView(view: MainView, sessionId: string | null): TerminalView {
@@ -115,10 +124,14 @@ function useShortcuts() {
       } else if (matches(event, 'session.next-needs-you')) {
         later(goToNextNeedsYou);
       } else if (matches(event, 'sidebar.toggle')) {
-        later(() => useSidebar.getState().toggle());
+        // Over reading mode the sidebar is a panel on the reading view, not the real one behind it.
+        later(() => (useReadMode.getState().open ? useReadMode.getState().toggleSidebar() : useSidebar.getState().toggle()));
       } else if (matches(event, 'home')) {
         event.preventDefault();
         useSessions.getState().goHome();
+      } else if (matches(event, 'upcoming')) {
+        event.preventDefault();
+        openUpcoming();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -204,6 +217,9 @@ export function App() {
   usePreferencesSync();
   useThemesSync();
   useLaterSync();
+  useSchedulesSync();
+  useTriggersSync();
+  usePipelinesSync();
   useCatchUpSync();
   useUpNextSync();
   useModsSync();
@@ -228,13 +244,15 @@ export function App() {
   // Settings covers the view it opened from, a session too: there the window's terminal is the one ⌘J shows.
   const shownView = view === 'settings' ? 'settings' : terminalView(behind, selectedId);
   const overlay = useOverlay((s) => s.open);
+  // Reading mode covers the window (a portal from the session view); the sidebar and the view stay mounted, out of reach, under it.
+  const reading = useReadMode((s) => s.open !== null);
   const adding = useProjects((s) => s.adding);
   const cloning = useClone((s) => s.dialog);
 
   return (
     <div className="flex h-full">
-      <SidebarShell />
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <SidebarShell inert={reading} />
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
         {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view, and Settings. */}
         <AppTerminalFrame view={shownView}>
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
@@ -243,12 +261,13 @@ export function App() {
           <UsageView />
         ) : behind === 'remote' ? (
           <RemoteView />
-        ) : behind === 'projects' ? (
-          <ProjectManagerView />
-        ) : behind === 'project' ? (
-          <ProjectPage />
+        ) : behind === 'projects' || behind === 'project' ? (
+          // One view for both: the list of projects and the open one.
+          <ProjectsView />
         ) : behind === 'new' ? (
           <NewSessionView />
+        ) : behind === 'upcoming' ? (
+          <UpcomingView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (
@@ -263,7 +282,11 @@ export function App() {
       {overlay === 'search' && <SearchDialog />}
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
+      <SelectionMenu />
       <PaletteDialogs />
+      <RunTreeDialogs />
+      <FilePreviewDialog />
+      <TriggerEditorHost />
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />

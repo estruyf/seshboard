@@ -250,8 +250,40 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 - The Later list becomes the **queue** (the names stay `later` inside: `later_prompts`, `later.*`, `laterStore`). Migration v16 adds `position` (numbered by age, oldest first) and `wait_json` (NULL is "any session in the project"), and `later_started` to remember which session a started item became, so an item waiting on it follows that session.
 - RPCs: `later.reorder`, `later.update` (what it waits for) and `later.start`, which creates the session through the same path as `session.create`; `later.remove` takes `startedAs` for an item edited and started from New session.
-- Ready logic is a pure module (`apps/ui/src/state/queue.ts`): busy means starting, running or needs you, measured on the rows the sidebar lists. Nothing starts by itself; the toast and the notification only say an item is ready.
+- Ready logic is a pure module (now `packages/protocol/src/queueStates.ts`, see 5.8.1): busy means starting, running or needs you, measured on the rows the sidebar lists. The toast and the notification say an item is ready; only items with Start by itself start (5.8.1).
 - Sidebar sections close (`sidebarSections.ts`, saved in app state as `ui.sidebarSections`); the open session's row stays under a closed header.
+
+### 5.8.1 Start by itself ✅ ([#172](https://github.com/estruyf/switchboard/issues/172))
+
+- `autoStart` on `LaterItem`, kept in `settings_json` (no migration); waiting for nothing turns it off. `later.update` takes it.
+- The ready rules moved to `packages/protocol/src/queueStates.ts`, shared by the UI (what rows say) and the engine (what starts), with how the session waited on ended (`SessionOutcome`: clean, error, stopped, quit) and the items held at the focus limit, sent with `later.changed` as `auto`.
+- `QueueAutoStarter` (`packages/engine/src/later/autoStart.ts`) arms an item once it has seen it waiting, and starts it through `later.start`'s path when it turns ready after clean finishes only; at the focus limit (from main as a standing `focus` message, counted with the shared `focusSessions`) it waits for a slot, at a usage limit for the reset. Errors and stops leave it ready and emit `later.autoSkipped`; starts emit `later.autoStarted`; main's notifier shows both.
+- Sessions Claude Code runs outside Switchboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
+- Not yet: other computers' sessions are counted by the window's focus count but not the engine's.
+
+### 5.8.2 Scheduled sessions ✅ ([#173](https://github.com/estruyf/switchboard/issues/173))
+
+- The rules are a pure module (`packages/protocol/src/schedules.ts`: `nextRuns`, `describe`, `formatNext`), in local time: a time DST skips runs at the jump, one it repeats runs once, day 31 runs on a shorter month's last day. The zod side is `scheduleSchema.ts`.
+- `schedules` and `schedule_runs` (migration v34) are user choices that survive a rebuild. `checked_at` is the moment up to which a schedule's runs were dealt with, so runs missed while closed are found at the next start.
+- `Scheduler` (`packages/engine/src/schedules/scheduler.ts`) owns one timer, capped at a minute so a clock or time zone change is seen (and logged as a jump), and re-armed after every change and on wake (`powerMonitor` `resume`, forwarded by main). A run is skipped while the last one is busy, queued at the focus or usage limit as an item that starts by itself (`QueueAutoStarter.armForLimit`), and pauses its schedule when the folder is gone; removing a project pauses its schedules. Titles are set with the SDK's rename once the transcript exists.
+- `schedules.*` RPCs, `schedules.changed` and `schedules.ran` (main's notifier, one notification for several missed runs); a **Schedules** section in the settings file (missing folders import paused).
+- UI: Schedule… and Save schedule in Start ▾, `ScheduleDialog`, the Home card and the project section (`components/schedules/`), the repeat icon on rows, *Schedule a session…* and *Schedules…* in the palette. Row text and labels are pure (`state/schedules.ts`).
+- Not yet: starting Switchboard or waking the computer for a run; on Windows the app quits with its last window, so schedules run only while one is open.
+
+### 5.8.3 Upcoming ✅
+
+- One main view (`upcoming` in `MainView`, `components/upcoming/UpcomingView.tsx`) for the queue, the scheduled runs of the next 7 days and every schedule, across projects, with an All | Queue | Schedules control and a project filter kept per window (`state/upcomingStore.ts`, sessionStorage).
+- The timeline is `upcomingRuns` in `packages/protocol/src/schedules.ts` (runs still to come, from `nextRuns`, so DST and short months are the timer's); History is `pastRuns` (the last 7 days of every schedule's runs). A one-time schedule that has run leaves every list (`oneTimeDone`) and only shows in History; the scheduler removes it 8 days after its run. Day groups, folding of repeating days, the sidebar hint and the filters are pure in `apps/ui/src/state/upcoming.ts`.
+- A schedule keeps its last 20 runs (`runs`) and the single runs you skipped (`skippedRuns`, ISO times), both on its row (migration v35). `schedules.skipRun` / `unskipRun`; the timer records a skipped time as `skipped`, "Skipped by you", without a notification.
+- Reached from Home and Upcoming rows under the sidebar's search, the rail's Upcoming button (in place of the queue button), ⌘⇧Y, *Go to Upcoming*, *Queue…* and *Schedules…*, Home's See all in Upcoming, and notifications of runs that didn't start.
+
+### 5.8.4 Event triggers, phase 1 ✅ ([#180](https://github.com/estruyf/switchboard/issues/180))
+
+- CI fails on a branch and issues for you (a label, an assignee, or both), set up on a project's Triggers tab. The design and what changed while building it are in [docs/event-triggers.md](docs/event-triggers.md).
+- Rules in `packages/protocol/src/triggers.ts` (`issueQuery`, `eventKey`, `newEvents`, `slots`, `nextStateLabel`, `fillTriggerPrompt`), zod in `triggerSchema.ts`; `triggers`, `trigger_events` and `trigger_sessions` (migration v36) are user data.
+- `TriggerWatcher` (`packages/engine/src/triggers/watcher.ts`) runs on the Scheduler's tick, polls through `gh` (one file per source), starts through the schedule run's path (focus and usage limits hold it in the queue), keeps state labels and Assign to me, and pauses after five failed checks.
+- UI: the Triggers tab and editor (`components/triggers/`), Start ▾ › Start when…, Triggers… in the project menu, *New trigger…* and *Triggers: pick one…*, Upcoming's Triggers filter, the bolt and the header line on triggered sessions, notifications from main.
+- Not yet: Changes requested and A command (phase 2), pipelines (phase 3), suggested triggers in `.switchboard.json` (phase 4).
 
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 

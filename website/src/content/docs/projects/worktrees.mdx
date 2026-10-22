@@ -19,7 +19,7 @@ Sessions you start in a [new worktree](/new-session/worktrees/) each get a full 
 ## Open it
 
 - Click **Worktrees** on a project's page.
-- Click the worktree pill ("6 worktrees · 2 can go") on a project in the [Projects view](/projects/projects-view/).
+- Click **worktrees** in the numbers on the project's [Overview](/projects/overview/), or a worktree in its Worktrees panel.
 - Choose **Worktrees…** in a project's menu in the sidebar.
 - In the command palette (<Kbd shortcut="palette.commands" first />), run *Worktrees in &lt;project&gt;* for the project you are in, or *Worktrees…* and pick a project.
 - Run *Clean up worktrees in &lt;project&gt;…* to go straight to the confirmation for what is suggested. If nothing can go, a toast says so.
@@ -87,7 +87,9 @@ When a branch that would be deleted has commits that aren't pushed anywhere, a w
 - **Push branch** pushes it first.
 - **Remove worktree, keep branch** removes the folder but keeps that one branch.
 
-**Cancel** has the focus, so <Kbd keys="escape" /> or <Kbd keys="enter" /> backs out. When the removal is done, a toast says how many worktrees went and how much space was freed. Worktrees that couldn't be removed are listed at the top of the tab with the reason.
+**Cancel** has the focus, so <Kbd keys="escape" /> or <Kbd keys="enter" /> backs out.
+
+The worktrees are removed one at a time, and each row in the dialog shows **Removing…**, **Removed** or the error, so a slow one doesn't hide the rest. **Stop after this one** ends the run once the current worktree is done. If one doesn't answer in time, the run stops and the list is read again, so it shows what is really left. When the removal is done, a toast says how many worktrees went and how much space was freed. Worktrees that couldn't be removed are listed at the top of the tab with the reason.
 
 ### Prune stale entries
 
@@ -102,6 +104,7 @@ Right-click a row, or click its **⋯**, for:
 - **Open in editor**, **Reveal in <Os mac="Finder" windows="File Explorer" />** and **Copy path**.
 - **Merge into &lt;base&gt;…**: merges the branch into the base branch in the main checkout, in a terminal tab of its session, so you can see the result. The worktree stays; remove it afterwards. It needs a session in the worktree, no uncommitted changes and commits to merge.
 - **Push branch**: pushes the worktree's branch.
+- **Unlock worktree**: only for a worktree git has locked. Claude Code locks a worktree while a session runs in it, and a crash can leave the lock behind. Unlock it, and you can remove it.
 - **Remove worktree…**: opens the confirmation for that one worktree.
 
 The main checkout only has the first group of items. When an item is greyed out, the reason is at the bottom of the menu.
@@ -116,7 +119,7 @@ Switchboard only ever removes a worktree with `git worktree remove`, or `git wor
 
 - the main checkout;
 - a worktree with uncommitted changes (commit or revert them first);
-- a worktree locked with `git worktree lock`;
+- a worktree locked with `git worktree lock` (use **Unlock worktree** in its menu first);
 - a worktree where a session is working, or where a Claude Code session is open in another app or a terminal.
 
 A session that is idle in Switchboard is stopped first; its conversation stays. Each worktree is checked again just before it is removed, and one that fails doesn't stop the rest. A branch is deleted last, only once its worktree is gone.

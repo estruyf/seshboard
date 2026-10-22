@@ -134,6 +134,7 @@ describe('computersToAsk', () => {
     version: state === 'connected' ? '0.0.21' : null,
     features: state === 'connected' ? features : [],
     lastSeen: null,
+    problem: null,
   });
 
   it('asks connected computers that answer usage.tokens, and says why the others are not counted', () => {

@@ -22,6 +22,8 @@ switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%2
 | `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout with a git remote on that repository, first among your projects, then among the other folders you've used Claude Code in (most recent first). If there's none, the folder field stays empty and New session says so. |
 | `autostart` | `1` (or `true`) starts the session right away, as if you'd pressed Enter. Leave it out (or use `0`) to fill in New session and wait for you. |
 | `question` | `1` (or `true`) makes it a quick question: no project, in Switchboard's scratch folder. `cwd`, `project` and `repo` are then ignored. |
+| `issue` | An issue of the project: its number (`32` or `#32`, URL-encoded as `%2332`) or its link on GitHub. New session opens filled in from it, as described in [From an issue or pull request](#from-an-issue-or-pull-request). Needs `cwd`, `project` or `repo`. |
+| `pr` | A pull request of the project, the same way: `pr=151`, or its link. A link can have `issue` or `pr`, not both. |
 
 All parameters are optional. When a link gives more than one of `cwd`, `project` and `repo`, `cwd` wins, then `project`, then `repo`. **A link that gives none of them doesn't guess:** the folder field stays empty and the project list opens so you can pick one.
 
@@ -36,6 +38,19 @@ Only use `autostart` in links you write for yourself or your team. Clicking an `
 When a link fills in the prompt (and doesn't start the session), a line under the message box says **Prompt from an external link** until you send it or clear it. For a long prompt it also gives the number of characters, since part of it may be scrolled out of view. **Clear** empties the message box.
 
 Model, effort, permission mode and the worktree choice come from the project's defaults (or your last choices), as they do when you press ⌘N. You see them before you press Enter. A link can't set them. A link that starts the session itself takes the permission mode only from the project's default, and never a mode that skips permission prompts (see [Starting automatically](#starting-automatically)).
+
+### From an issue or pull request
+
+```text
+switchboard://new-session?project=switchboard&issue=32
+switchboard://new-session?repo=estruyf/switchboard&pr=151
+```
+
+A link with `issue` or `pr` opens New session the way **New session from issue…** does in Switchboard: a new worktree named after the issue (`issue-32-<title>`), the issue as a chip above the message box, and "Fix #32: <title>" in the box (for a pull request, "Work on #151: <title>", and a choice between a new worktree from the pull request and your current checkout). A `prompt` in the link takes the place of that first line. A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**
+
+**These links never start a session on their own.** An issue's text is written by anyone who can open an issue, so you always read the prompt first. With `autostart=1` as well, `autostart` is ignored and the banner adds **Links with an issue or pull request never start on their own.**
+
+The issue or pull request has to be in the project's repository on GitHub: a link to one in another repository is refused with **This issue is from another repository than <project>.** Reading it needs the [GitHub CLI](https://cli.github.com/), signed in (`gh auth login`).
 
 ## Open a session
 
@@ -67,6 +82,7 @@ Links can come from any web page, chat message or script, so Switchboard checks 
 - a `project` that isn't one of your projects, or has control or invisible characters;
 - a `repo` that isn't `owner/name`;
 - an `autostart` value other than `1`, `true`, `yes`, `0`, `false` or `no`;
+- an `issue` or `pr` that isn't a number, `#123` or a link to an issue or pull request on github.com; both in one link; one in a quick question (`question=1`), or without `cwd`, `project` or `repo`;
 - a session ID that isn't a session ID, or a session that isn't on this Mac.
 
 Switchboard ignores parameters it doesn't know, so a link made for a newer version still opens.

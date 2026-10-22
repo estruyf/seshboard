@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  .copy { width: 450px; }
+  .also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .also .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+  .btn.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  .card { position: absolute; border-radius: 13px; background: var(--card); box-shadow: 0 0 0 1px var(--edge), 0 26px 60px -12px rgba(0,0,0,0.85); }
+  .ic { width: 14px; height: 14px; flex: none; }
+
+  /* Upcoming, at the back on the right. */
+  .up { left: 214px; top: 0; width: 386px; padding: 14px 16px 12px; background: var(--bg); }
+  .up .hd { display: flex; align-items: center; gap: 10px; }
+  .up h2 { font-size: 18px; font-weight: 650; color: #f3f4f7; }
+  .seg { margin-left: auto; display: flex; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--border); }
+  .seg span { display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px; font-size: 10.5px; color: var(--muted); }
+  .seg span.on { background: var(--card); color: var(--text); box-shadow: 0 0 0 1px var(--edge); }
+  .seg i { font-style: normal; font-size: 9.5px; color: var(--faint); }
+  .up .sub2 { display: flex; justify-content: space-between; margin: 14px 0 6px; }
+  .day { margin-top: 8px; padding: 0 2px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text); }
+  .day.m { color: var(--muted); }
+  .run { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 8px; }
+  .run:nth-of-type(even) { background: rgba(255,255,255,0.025); }
+  .run .t { font-size: 11.5px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .run b { display: block; font-size: 12px; font-weight: 600; color: var(--text); }
+  .run span.p { font-size: 10.5px; color: var(--muted); }
+  .run .rep { font-size: 10px; color: var(--faint); }
+
+  /* A trigger that started a session, in front on the left. */
+  .trig { left: 0; top: 238px; width: 310px; padding: 13px 14px 12px; }
+  .trig .hd { display: flex; align-items: center; gap: 9px; }
+  .trig .badge { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: rgba(255,107,107,0.14); color: var(--error); }
+  .trig b { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .trig .meta { margin-top: 6px; font-size: 10.5px; color: var(--muted); }
+  .ev { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 11.5px; color: var(--text); }
+  .ev .w { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--accent); font-weight: 600; }
+  .ev .w i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .ev .ago { font-size: 10.5px; color: var(--faint); }
+
+  /* A pipeline run: its steps under the message box. */
+  .pipe { left: 148px; top: 392px; width: 452px; padding: 13px 15px 12px; }
+  .pipe .hd { display: flex; align-items: center; gap: 8px; }
+  .pipe .hd b { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .pipe .hd .pill { margin-left: auto; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 11px; }
+  .step { padding: 8px 9px; border-radius: 9px; background: rgba(255,255,255,0.03); box-shadow: inset 0 0 0 1px var(--border); }
+  .step .n { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .step .m { margin-top: 3px; font-size: 10px; color: var(--muted); }
+  .step.done .n svg { color: var(--ok); }
+  .step.now { box-shadow: inset 0 0 0 1.5px rgba(255,212,59,0.6); background: rgba(255,212,59,0.07); }
+  .step.wait { opacity: 0.6; }
+  .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(255,212,59,0.25); border-top-color: var(--accent); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--faint); }
+  .pipe .hand { margin-top: 9px; font-size: 10.5px; color: var(--faint); }
+  .pipe .hand span { color: var(--link); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 1.1</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Coming soon · in beta now</div>
+    <h1>Claude Code that <span class="hl">starts on its own</span></h1>
+    <p class="sub"><b>Schedules</b>, <b>triggers</b> and <b>pipelines</b>: a session every morning, one when CI fails, or a chain of steps for one task. See it all in <b>Upcoming</b>.</p>
+    <div class="also">Also coming:
+      <span class="pill">Linux</span>
+      <span class="pill"># for issues and PRs</span>
+      <span class="pill">App icons and themes</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Try the beta</span>
+    <span class="where">Settings › About › Channel: Beta</span>
+  </div>
+
+  <div class="stage">
+    <div class="card up">
+      <div class="hd">
+        <h2>Upcoming</h2>
+        <span class="seg"><span>Queue <i>2</i></span><span class="on">Schedules <i>3</i></span><span>Triggers <i>2</i></span></span>
+      </div>
+      <div class="sub2"><span class="section" style="color:var(--muted)">Scheduled</span><span style="font-size:10.5px;color:var(--muted)">Next 7 days</span></div>
+      <div class="day">Tomorrow</div>
+      <div class="run"><span class="t">08:00</span><div><b>Morning triage</b><span class="p">acme-store</span></div><span class="rep">Weekdays</span></div>
+      <div class="run"><span class="t">09:30</span><div><b>Update dependencies</b><span class="p">payments-api</span></div><span class="rep">Weekly</span></div>
+    </div>
+
+    <div class="card trig">
+      <div class="hd">
+        <span class="badge"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 1.5L3.5 9h4l-1 5.5L12.5 7h-4z"/></svg></span>
+        <div><b>Fix failing CI</b><div class="meta" style="margin-top:1px">When CI fails on main</div></div>
+      </div>
+      <div class="meta">New worktree · Sonnet · Accept edits</div>
+      <div class="ev">
+        <span class="w"><i></i>Working</span>
+        <span>Run #482 failed on main</span>
+        <span class="ago">3m</span>
+      </div>
+    </div>
+
+    <div class="card pipe">
+      <div class="hd">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.6"><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="8" r="1.8"/><path d="M5.3 8h5.4"/><path d="M8.5 6l2.2 2-2.2 2"/></svg>
+        <b>Plan, build, review</b>
+        <span class="pill">Run as</span>
+      </div>
+      <div class="steps">
+        <div class="step done"><div class="n"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg>Plan</div><div class="m">Opus</div></div>
+        <div class="step now"><div class="n"><span class="spin"></span>Build</div><div class="m">Sonnet</div></div>
+        <div class="step wait"><div class="n"><span class="dot"></span>Review</div><div class="m">Fresh session</div></div>
+        <div class="step wait"><div class="n"><span class="dot"></span>Push</div><div class="m">Opens the PR</div></div>
+      </div>
+      <div class="hand">Each step in its own sub-session, handed over with <span>@Plan</span></div>
+    </div>
+  </div>
+</body>
+</html>

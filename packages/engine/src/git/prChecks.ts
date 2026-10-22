@@ -180,6 +180,8 @@ interface Watch {
   last: PrChecks | null;
   /** Running checks have been seen for this pull request, so finishing is news. */
   running: boolean;
+  /** The session that asked was archived: nothing follows this checkout until a live session asks again. */
+  released: boolean;
   since: number;
   expectUntil: number;
   timer: ReturnType<typeof setTimeout> | null;
@@ -204,7 +206,10 @@ export class ChecksWatcher {
   /** The checks for `cwd`: a recent read unless `fresh`. `sessionId` hears when they finish. */
   async get(cwd: string, request: { sessionId?: string; fresh?: boolean; afterPush?: boolean } = {}): Promise<PrChecks | null> {
     const watch = this.watches.get(cwd) ?? this.add(cwd);
-    if (request.sessionId) watch.sessionId = request.sessionId;
+    if (request.sessionId) {
+      watch.sessionId = request.sessionId;
+      watch.released = false;
+    }
     if (request.afterPush) watch.expectUntil = this.now() + AFTER_PUSH_WINDOW_MS;
     if (watch.reading) return watch.reading;
     if (!request.fresh && !request.afterPush && watch.last && this.now() - watch.last.at < REUSE_MS) return watch.last;
@@ -219,13 +224,26 @@ export class ChecksWatcher {
     if (foreground) for (const watch of this.watches.values()) if (watch.timer && watch.due - this.now() > FOREGROUND_POLL_MS) this.schedule(watch, FOREGROUND_POLL_MS);
   }
 
+  /** The session was archived: its checks stop being followed, and it hears nothing when they finish. */
+  release(sessionId: string): void {
+    for (const watch of this.watches.values()) {
+      if (watch.sessionId !== sessionId) continue;
+      watch.sessionId = null;
+      watch.released = true;
+      watch.running = false;
+      watch.expectUntil = 0;
+      if (watch.timer) clearTimeout(watch.timer);
+      watch.timer = null;
+    }
+  }
+
   close(): void {
     for (const watch of this.watches.values()) if (watch.timer) clearTimeout(watch.timer);
     this.watches.clear();
   }
 
   private add(cwd: string): Watch {
-    const watch: Watch = { cwd, sessionId: null, last: null, running: false, since: this.now(), expectUntil: 0, timer: null, due: 0, reading: null };
+    const watch: Watch = { cwd, sessionId: null, last: null, running: false, released: false, since: this.now(), expectUntil: 0, timer: null, due: 0, reading: null };
     this.watches.set(cwd, watch);
     return watch;
   }
@@ -265,6 +283,8 @@ export class ChecksWatcher {
     if (checks.error) watch.running = false;
     else if (running) watch.running = true;
     else if (checks.checks.length) watch.running = false;
+    // An archived session's checks aren't followed any more.
+    if (watch.released) return;
     // Checks aren't there right after a push: look again for a little while. Once they are, follow them.
     if (running && this.now() - watch.since < WATCH_LIMIT_MS) this.schedule(watch, this.foreground ? FOREGROUND_POLL_MS : BACKGROUND_POLL_MS);
     else if ((checks.summary === 'none' || allDone(checks.checks)) && !checks.error && this.now() < watch.expectUntil) this.schedule(watch, AFTER_PUSH_POLL_MS);

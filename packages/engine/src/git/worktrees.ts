@@ -66,7 +66,8 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, run: (i
 }
 
 /** Changed and new files in a checkout. Renames carry their old path as an extra entry; only entries that start with a status count. */
-const countUncommitted = async (path: string) =>
+/** Changed files in a checkout: staged, unstaged and untracked. */
+export const countUncommitted = async (path: string) =>
   (await git(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).catch(() => '')).split('\0').filter((e) => /^[ MADRCU?!]{2} /.test(e)).length;
 
 /** A session that may be in one of the worktrees. */
@@ -333,6 +334,19 @@ export async function removeWorktreeEntry(
     branchDeleted = true;
   }
   return { recoveryRef, branchDeleted };
+}
+
+/**
+ * Unlocks a worktree (`git worktree unlock`), so it can be removed. Refuses the main checkout and paths git doesn't
+ * list. Claude Code locks the worktrees it makes while a session runs, and a crashed one leaves the lock behind.
+ */
+export async function unlockWorktree(root: string, path: string): Promise<void> {
+  const { worktrees } = await listWorktrees(root);
+  const entry = worktrees.find((w) => w.path === path);
+  if (!entry) throw new WorktreeRefusal('NOT_FOUND', 'Git no longer lists this worktree.');
+  if (entry.isMain) throw new WorktreeRefusal('MAIN', 'The main checkout is never locked.');
+  if (!entry.isLocked) return;
+  await git(root, ['worktree', 'unlock', entry.path]);
 }
 
 /** A Claude Code process that may be working in a worktree: one Switchboard runs (`hosted`), or any from the live registry. */

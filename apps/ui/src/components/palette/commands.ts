@@ -19,6 +19,7 @@ import {
   Bookmark,
   BookmarkPlus,
   Brain,
+  CircleDot,
   CircleHelp,
   CloudDownload,
   Code,
@@ -30,6 +31,7 @@ import {
   Copy,
   Cpu,
   Download,
+  Eye,
   FileDiff,
   Folder,
   FolderCog,
@@ -72,6 +74,7 @@ import {
   Pin,
   PinOff,
   Play,
+  Repeat,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -102,7 +105,11 @@ import {
   VolumeX,
   Wrench,
   X,
+  Zap,
+  ListTree,
   type LucideIcon,
+  CalendarClock,
+  BookOpen,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { PromptScope } from '@switchboard/protocol/client';
@@ -121,11 +128,13 @@ import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteS
 /** Requests the session view answers, because the dialog or menu they open lives there. */
 export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
 /** Requests the New session view answers: they change its own choices. */
-export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'catch-up' | 'add-project';
+export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'schedule' | 'catch-up' | 'add-project';
 
 /** What commands do, implemented against the stores in `paletteApi.ts` (and faked in tests). */
 export interface PaletteApi {
   goHome(): void;
+  /** Upcoming, on a filter (Queue…, Schedules…). */
+  openUpcoming(kind?: 'all' | 'queue' | 'schedules'): void;
   /** The Usage view, for the default profile. */
   openUsage(): void;
   showSearch(): void;
@@ -147,7 +156,7 @@ export interface PaletteApi {
   goToNextNeedsYou(): void;
   manageProjects(): void;
   /** A project's page, on a tab or the one it was last left on. */
-  openProject(root: string, tab?: 'worktrees' | 'branches' | 'memory'): void;
+  openProject(root: string, tab?: 'triggers' | 'worktrees' | 'branches' | 'memory'): void;
   /** A project's Worktrees tab with the clean-up confirmation for what it suggests. */
   cleanUpWorktrees(root: string): void;
   /** Memory in and out of the Claude app: Import from Claude export…, Paste from Claude app…, Copy for Claude app…. */
@@ -163,6 +172,10 @@ export interface PaletteApi {
   renameSession(): void;
   /** New session on this session's project, linked to it (session linking). */
   newLinkedSession(): void;
+  /** New session on this session's project, queued to start by itself once it finishes. */
+  startAfterSession(): void;
+  /** New session from an issue or pull request of the project: the # list on its own, then New session filled in. */
+  githubStart(type: 'issue' | 'pr', root: string): void;
   /** Opens the session's catch-up from its strip (or for a read session). */
   showCatchUp(): void;
   /** Makes the catch-up for the session's last finished turn now, and shows it. */
@@ -172,6 +185,10 @@ export interface PaletteApi {
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
   copyLastReply(): void;
+  /** Preview last written file: opens the previewable file Claude wrote last in the session. */
+  previewLastFile(): void;
+  /** Opens reading mode at the session's last reply. */
+  readLastReply(): void;
   /** Remember this…: the selected text in the conversation, else Claude's last reply, as a memory. */
   rememberThis(): void;
   /** Quote in reply: the selected text in the conversation, else Claude's last reply, quoted in the message box. */
@@ -223,6 +240,8 @@ export interface PaletteApi {
   newSessionRequest(kind: NewSessionRequest): void;
   /** Opens the New session view (Add to queue… outside it). */
   openNewSession(): void;
+  /** New session with Start ▾ on Schedule…, to write the prompt a schedule runs. */
+  openToSchedule(): void;
   /** Opens New session with another computer picked in Run on. */
   newSessionOn(computerId: string): void;
   /** The sidebar shows only that computer's sessions (the Computers filter). */
@@ -317,11 +336,15 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: Lucid
   { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'prompts', label: 'Prompts', icon: Bookmark },
+  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'about', label: 'About', icon: Info },
 ];
+
+/** The project New session from an issue or pull request works on: New session's folder there, else the one on screen. */
+const githubProject = (ctx: PaletteContext): string | null => (ctx.connected ? (ctx.newSession?.root ?? ctx.currentProject?.root ?? null) : null);
 
 /** Every command that doesn't depend on the project's actions. */
 export const COMMANDS: PaletteCommand[] = [
@@ -358,6 +381,24 @@ export const COMMANDS: PaletteCommand[] = [
     next: () => ({ kind: 'clone', chip: 'Clone from GitHub' }),
   },
   {
+    id: 'new-session-from-issue',
+    title: 'New session from issue…',
+    group: 'general',
+    icon: CircleDot,
+    keywords: 'github issue # fix start worktree bug',
+    when: (ctx) => githubProject(ctx) !== null,
+    run: (api, ctx) => api.githubStart('issue', githubProject(ctx)!),
+  },
+  {
+    id: 'new-session-from-pr',
+    title: 'New session from pull request…',
+    group: 'general',
+    icon: GitPullRequest,
+    keywords: 'github pull request pr # review checkout worktree',
+    when: (ctx) => githubProject(ctx) !== null,
+    run: (api, ctx) => api.githubStart('pr', githubProject(ctx)!),
+  },
+  {
     id: 'new-session-worktree',
     title: 'New session in a worktree…',
     group: 'general',
@@ -378,6 +419,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-minimize', title: 'Minimize sidebar', group: 'general', icon: PanelLeftDashed, keywords: 'rail icons collapse narrow', when: (ctx) => ctx.sidebar !== 'minimal', run: (api) => api.setSidebar('minimal') },
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
+  { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
   { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
   { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },
@@ -406,7 +448,7 @@ export const COMMANDS: PaletteCommand[] = [
   ),
   { id: 'import-theme', title: 'Import theme…', group: 'general', icon: Upload, keywords: 'colours colors json file', when: always, run: (api) => api.importTheme() },
   { id: 'export-theme', title: 'Export current theme…', group: 'general', icon: Download, keywords: 'colours colors json file save', when: always, run: (api) => api.exportTheme() },
-  { id: 'manage-projects', title: 'Manage projects', group: 'general', icon: FolderCog, keywords: 'folders defaults', when: (ctx) => ctx.view !== 'projects', run: (api) => api.manageProjects() },
+  { id: 'manage-projects', title: 'Manage projects', group: 'general', icon: FolderCog, keywords: 'folders defaults', when: (ctx) => ctx.view !== 'projects' && ctx.view !== 'project', run: (api) => api.manageProjects() },
   // In New session the project added is picked there too.
   { id: 'add-project', title: 'Add project…', group: 'general', icon: FolderPlus, keywords: 'folder', when: always, run: (api, ctx) => (ctx.newSession ? api.newSessionRequest('add-project') : api.addProject()) },
   {
@@ -544,6 +586,16 @@ export const COMMANDS: PaletteCommand[] = [
     run: (api, ctx) => api.startQueued(ctx.queue.firstReady!.id),
   },
   {
+    id: 'queue-view',
+    title: 'Queue…',
+    group: 'general',
+    icon: ListEnd,
+    keywords: 'queued later saved prompts waiting upcoming order reorder',
+    hint: (ctx) => (ctx.queue.count > 0 ? `${ctx.queue.count} queued` : ''),
+    when: always,
+    run: (api) => api.openUpcoming('queue'),
+  },
+  {
     id: 'queue-pick',
     title: 'Queue: pick one to start…',
     group: 'general',
@@ -564,6 +616,85 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.connected,
     // In New session with a prompt: queue it. Anywhere else: New session, to write one.
     run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('add-to-queue') : api.openNewSession()),
+  },
+  {
+    id: 'schedule-add',
+    title: 'Schedule a session…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring every day weekday week month cron timer daily',
+    hint: (ctx) => (ctx.newSession?.canQueue ? '' : 'opens New session'),
+    when: (ctx) => ctx.connected,
+    // In New session with a prompt: the schedule dialog. Anywhere else: New session, to write the prompt, with Start on Schedule….
+    run: (api, ctx) => (ctx.newSession?.canQueue ? api.newSessionRequest('schedule') : api.openToSchedule()),
+  },
+  {
+    id: 'schedules-view',
+    title: 'Schedules…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring runs upcoming week skip pause',
+    hint: (ctx) => (ctx.schedules > 0 ? String(ctx.schedules) : ''),
+    when: always,
+    run: (api) => api.openUpcoming('schedules'),
+  },
+  {
+    id: 'trigger-new',
+    title: 'New trigger…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event start when ci failed failing workflow issue label assigned automation watch',
+    when: (ctx) => ctx.projects.length > 0 && ctx.connected,
+    next: () => ({ kind: 'projects', purpose: 'trigger', worktree: false, chip: 'New trigger' }),
+  },
+  {
+    id: 'triggers-here',
+    title: (ctx) => `Triggers in ${ctx.currentProject?.name ?? 'this project'}`,
+    group: 'general',
+    hint: 'current project',
+    icon: Zap,
+    keywords: 'trigger event ci failed issue label assigned automation watch tab',
+    when: (ctx) => ctx.currentProject !== null && ctx.projects.some((p) => p.root === ctx.currentProject!.root),
+    run: (api, ctx) => api.openProject(ctx.currentProject!.root, 'triggers'),
+  },
+  {
+    id: 'triggers-page',
+    title: 'Triggers…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event ci failed issue label assigned automation watch tab project',
+    when: (ctx) => ctx.projects.length > 0 && ctx.connected,
+    next: () => ({ kind: 'projects', purpose: 'triggers', worktree: false, chip: 'Triggers' }),
+  },
+  {
+    id: 'triggers',
+    title: 'Triggers: pick one…',
+    group: 'general',
+    icon: Zap,
+    keywords: 'trigger event check now pause resume delete edit ci issues',
+    hint: (ctx) => String(ctx.triggers),
+    when: (ctx) => ctx.triggers > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'triggers', chip: 'Triggers' }),
+  },
+  {
+    id: 'pipelines',
+    title: 'Pipelines: pick one…',
+    group: 'general',
+    icon: ListTree,
+    keywords: 'pipeline run steps plan execute validate push edit settings workflow chain',
+    hint: (ctx) => String(ctx.pipelines),
+    when: (ctx) => ctx.pipelines > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'pipelines', chip: 'Pipelines' }),
+  },
+  {
+    id: 'schedules',
+    title: 'Schedules: pick one…',
+    group: 'general',
+    icon: Repeat,
+    keywords: 'schedule repeat recurring run now pause resume delete edit',
+    hint: (ctx) => String(ctx.schedules),
+    when: (ctx) => ctx.schedules > 0 && ctx.connected,
+    next: () => ({ kind: 'pick', list: 'schedules', chip: 'Schedules' }),
   },
 
   // A session is open
@@ -595,6 +726,24 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'link mention stack pull request pr branch context reference @',
     when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
     run: (api) => api.newLinkedSession(),
+  },
+  {
+    id: 'start-after-session',
+    title: 'Start after this session…',
+    group: 'session',
+    icon: Play,
+    keywords: 'queue follow up then next chain finish finished when done start by itself auto',
+    when: (ctx) => indexed(ctx) && !!session(ctx)!.projectRoot,
+    run: (api) => api.startAfterSession(),
+  },
+  {
+    id: 'run-pipeline',
+    title: 'Run pipeline…',
+    group: 'session',
+    icon: ListTree,
+    keywords: 'pipeline steps plan execute validate push parent sub-session workflow chain',
+    when: (ctx) => hasSession(ctx) && ctx.connected && ctx.sessionPipelines > 0,
+    next: () => ({ kind: 'pick', list: 'run-pipeline', chip: 'Run pipeline' }),
   },
   {
     id: 'pin',
@@ -651,7 +800,9 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'use-saved-prompt', title: 'Use saved prompt…', group: 'general', icon: Bookmark, keywords: 'template snippet blanks fill prompts', when: (ctx) => ctx.composer !== null && ctx.prompts.length > 0, next: () => ({ kind: 'pick', list: 'prompt', chip: 'Saved prompt' }) },
   { id: 'new-saved-prompt', title: 'New saved prompt…', group: 'general', icon: BookmarkPlus, keywords: 'template snippet blanks create prompts', when: (ctx) => ctx.connected, run: (api) => api.newPrompt() },
   { id: 'quote-in-reply', title: 'Quote in reply', group: 'session', icon: TextQuote, keywords: 'quote answer question selection reply message box', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.quoteInReply() },
+  { id: 'read-last-reply', title: 'Read the last reply', group: 'session', icon: BookOpen, keywords: 'reading mode focus outline full window', shortcut: keysFor('read.toggle'), when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.readLastReply() },
   { id: 'copy-last-reply', title: 'Copy last reply', group: 'session', icon: Copy, keywords: 'clipboard markdown answer', when: (ctx) => !!session(ctx)?.hasReply, run: (api) => api.copyLastReply() },
+  { id: 'preview-last-file', title: 'Preview last written file', group: 'session', icon: Eye, keywords: 'markdown html code preview plan readme file open written', when: (ctx) => session(ctx) !== null && ctx.lastPreviewableFile !== null, run: (api) => api.previewLastFile() },
   { id: 'copy-session-id', title: 'Copy session id', group: 'session', icon: Hash, keywords: 'clipboard uuid resume', when: (ctx) => session(ctx) !== null, run: (api) => api.copySessionId() },
   { id: 'check-transcript', title: 'Check transcript…', group: 'session', icon: Stethoscope, keywords: 'diagnose empty missing messages error debug compacted', when: (ctx) => session(ctx) !== null && ctx.connected, run: (api) => api.checkTranscript() },
   { id: 'toggle-terminal', title: 'Toggle terminal', group: 'session', shortcut: keysFor('terminal.toggle'), icon: SquareTerminal, keywords: 'shell panel', when: (ctx) => session(ctx) !== null, run: (api) => api.toggleTerminal() },

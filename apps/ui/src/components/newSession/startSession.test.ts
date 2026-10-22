@@ -153,3 +153,28 @@ describe('startNewSession with Auto', () => {
     expect(fake.createSession).toHaveBeenCalledWith(expect.objectContaining({ model: null }));
   });
 });
+
+describe('sessionCreateParams from an issue or pull request', () => {
+  const origin = { type: 'pr' as const, repo: 'o/r', number: 151, readOnly: false };
+
+  it('keeps where it came from, and starts a pull request’s worktree from its branch', () => {
+    const params = sessionCreateParams({ ...START, worktree: true, worktreeName: 'pr-151-x', github: { origin, worktreeFrom: { branch: 'feat/issue-start', pullRequest: 151, fork: false } } });
+    expect(params.github).toEqual(origin);
+    expect(params.worktree).toEqual({ name: 'pr-151-x', baseRef: { branch: 'feat/issue-start', pullRequest: 151, fork: false } });
+    expect(params.checkoutPullRequest).toBeUndefined();
+    expect(params.checkoutBranch).toBeNull();
+  });
+
+  it('checks a pull request out in the current folder, and never another branch with it', () => {
+    const params = sessionCreateParams({ ...START, choices: { ...CHOICES, branch: 'other' }, github: { origin, checkoutPullRequest: { number: 151, repo: 'o/r' } } });
+    expect(params.checkoutPullRequest).toEqual({ number: 151, repo: 'o/r' });
+    expect(params.worktree).toBeNull();
+    expect(params.checkoutBranch).toBeNull();
+  });
+
+  it('starts from an issue in a worktree branched as usual', () => {
+    const params = sessionCreateParams({ ...START, worktree: true, worktreeName: 'issue-32-fix', github: { origin: { type: 'issue', repo: 'o/r', number: 32, readOnly: false } } });
+    expect(params.worktree).toEqual({ name: 'issue-32-fix', baseRef: 'fresh' });
+    expect(params.github).toEqual({ type: 'issue', repo: 'o/r', number: 32, readOnly: false });
+  });
+});

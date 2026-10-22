@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
-import type { RemoteSessions } from '@switchboard/protocol/client';
+import type { ComputersStatus, RemoteSessions } from '@switchboard/protocol/client';
 import { callComputer } from '../components/computers/callComputer.ts';
+import { newProblems } from '../components/computers/computerSessions.ts';
+import { toast } from './toastStore.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useComputers } from './computersStore.ts';
 
@@ -16,13 +18,28 @@ export function useComputersSync(): void {
     if (!client) return;
     const store = () => useComputers.getState();
     fetched.current.clear();
+    const setStatus = (status: ComputersStatus) => {
+      // A computer that sent what this version can't read says so once; its page and its chip keep saying it.
+      for (const computer of newProblems(store().status?.computers, status.computers)) {
+        toast(`Can’t read what ${computer.name} sent`, {
+          icon: 'computer',
+          tone: 'error',
+          body: computer.problem!,
+          durationMs: 10_000,
+          actions: [{ label: 'Show', onSelect: () => useComputers.getState().openPage(computer.id) }],
+          data: { 'data-computer-problem-toast': computer.id },
+        });
+      }
+      store().setStatus(status);
+    };
     const offs = [
-      client.on('computers.changed', (status) => store().setStatus(status)),
+      client.on('computers.changed', setStatus),
+      // The engine checked it against the remote contract (`computerData.ts`).
       client.on('computers.event', ({ computerId, name, payload }) => {
         if (name === 'sessions.changed') store().setList(computerId, payload as unknown as RemoteSessions);
       }),
     ];
-    void client.call('computers.status', {}).then((status) => store().setStatus(status), () => {});
+    void client.call('computers.status', {}).then(setStatus, () => {});
     return () => offs.forEach((off) => off());
   }, [client]);
 

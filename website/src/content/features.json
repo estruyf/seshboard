@@ -127,9 +127,19 @@
       "page": "vscode-companion"
     },
     {
+      "id": "palette:read-last-reply",
+      "name": "Read the last reply",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:copy-last-reply",
       "name": "Copy last reply",
       "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:preview-last-file",
+      "name": "Preview last written file",
+      "page": "sessions/file-preview"
     },
     {
       "id": "palette:copy-session-id",
@@ -460,6 +470,31 @@
       "id": "palette:new-session-linked",
       "name": "New session linked to this one",
       "page": "sessions/linking"
+    },
+    {
+      "id": "palette:start-after-session",
+      "name": "Start after this session…",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "palette:schedule-add",
+      "name": "Schedule a session…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "palette:schedules",
+      "name": "Schedules: pick one… (Run now, Edit…, Pause or Resume, Delete)",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "palette:new-session-from-issue",
+      "name": "New session from issue…",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "palette:new-session-from-pr",
+      "name": "New session from pull request…",
+      "page": "sessions/github-issues"
     },
     {
       "id": "palette:rename-session",
@@ -802,6 +837,16 @@
       "page": "new-session/form"
     },
     {
+      "id": "shortcut:composer.github",
+      "name": "composer.github",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "shortcut:composer.github-new-session",
+      "name": "composer.github-new-session",
+      "page": "sessions/github-issues"
+    },
+    {
       "id": "shortcut:composer.history",
       "name": "composer.history",
       "page": "new-session/form"
@@ -972,6 +1017,46 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:read.toggle",
+      "name": "read.toggle",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.previous",
+      "name": "read.previous",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.next",
+      "name": "read.next",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.previous-heading",
+      "name": "read.previous-heading",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.next-heading",
+      "name": "read.next-heading",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.bigger",
+      "name": "read.bigger",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.smaller",
+      "name": "read.smaller",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "shortcut:read.reply",
+      "name": "read.reply",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "shortcut:session.new-window",
       "name": "session.new-window",
       "page": "sessions/own-window"
@@ -1075,6 +1160,31 @@
       "id": "shortcut:settings.search",
       "name": "settings.search",
       "page": "settings"
+    },
+    {
+      "id": "shortcut:projects.find",
+      "name": "projects.find",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.move",
+      "name": "projects.move",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.switch",
+      "name": "projects.switch",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.switcher-settings",
+      "name": "projects.switcher-settings",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "shortcut:projects.tab",
+      "name": "projects.tab",
+      "page": "projects/projects-view"
     },
     {
       "id": "shortcut:shortcuts",
@@ -1252,6 +1362,16 @@
       "page": "settings"
     },
     {
+      "id": "feature:reading-mode",
+      "name": "Reading mode: Read in a reply's actions, In this reply outline, Aa text settings, Reply with quote, Copy and Ask about this on a selection",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:app-icon",
+      "name": "Settings: Theme: App icon (nine colourways, Use it on your phone too)",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
@@ -1287,8 +1407,33 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computers-profile-colours",
+      "name": "Other computers: the profile's colour on a remote session's left line, this computer's colour for a profile of the same name",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-drafts",
+      "name": "Other computers: each session keeps its unsent message, and New session one prompt per computer",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-usage-limit",
+      "name": "Other computers: Resume now, Resume when it resets and the held Up next messages on a session a usage limit stopped",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-unreadable",
+      "name": "Other computers: sessions this version can't read are left out, and the computer's page and chip say why",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:remote-status-card",
       "name": "Settings › Remote: the status card and the fix for each problem",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-turn-tokens-copy-read",
+      "name": "Remote app: a finished turn's tokens, Copy on your messages and Read for a reply",
       "page": "remote-access"
     },
     {
@@ -1329,6 +1474,11 @@
     {
       "id": "feature:remote-docked-prompt",
       "name": "Remote: Claude needs you, docked above the message box",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-stop-steer",
+      "name": "Remote: Stop next to the send button, and Queue, Steer or Send now while Claude works",
       "page": "remote-access"
     },
     {
@@ -1389,6 +1539,11 @@
     {
       "id": "feature:remote-notifications",
       "name": "Remote: notifications",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-theme",
+      "name": "Remote: Theme, the phone in your computer's theme or Demo Time",
       "page": "remote-access"
     },
     {
@@ -1514,6 +1669,21 @@
     {
       "id": "feature:remote-drafts",
       "name": "Remote: each session keeps the message you didn't send, also after a reload",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-pipelines",
+      "name": "Remote: pipeline runs under their session, a run's steps and buttons, Push, and Run pipeline or Run as from a phone",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-usage-limit",
+      "name": "Remote: Resume now and Resume when it resets on a session a usage limit stopped",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-unreadable",
+      "name": "Remote: a banner when a computer sends sessions this version can't read",
       "page": "remote-access"
     },
     {
@@ -1937,6 +2107,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:composer-context-menu",
+      "name": "Message box right-click menu: Cut, Copy, Paste (with images) and Select all",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:confirm-quit",
       "name": "Ask before quitting",
       "page": "settings"
@@ -1999,6 +2174,16 @@
     {
       "id": "feature:pr-checks",
       "name": "Pull request checks on the git button and in its menu, read again while they run, with a notification when they finish",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:checks-archived",
+      "name": "Archived sessions stop following their pull request checks",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:git-error-toast",
+      "name": "A message says why Commit, Pull, Push or Fetch failed",
       "page": "terminal-changes-git/git"
     },
     {
@@ -2122,8 +2307,18 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:file-preview",
+      "name": "Preview Markdown, HTML and code files",
+      "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:file-preview-panel",
+      "name": "File preview in the side panel or a dialog, with line numbers and the linked lines marked",
+      "page": "sessions/file-preview"
+    },
+    {
       "id": "feature:file-link-click",
-      "name": "Clicking a file link: show or open (Settings, Conversation)",
+      "name": "Clicking a file link: open in Switchboard, show in the file manager or open in the editor (Settings, Conversation)",
       "page": "settings"
     },
     {
@@ -2637,6 +2832,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "feature:new-session-choices-per-prompt",
+      "name": "New session: a change applies to that prompt only, and the next starts from the project's defaults",
+      "page": "new-session/form"
+    },
+    {
       "id": "feature:profile-setup-guide",
       "name": "How to set up another profile",
       "page": "settings/claude-profiles"
@@ -2657,6 +2857,11 @@
       "page": "settings/claude-profiles"
     },
     {
+      "id": "feature:new-session-permission-mode",
+      "name": "Permission mode for new sessions: project default, Remember last or always one mode",
+      "page": "settings"
+    },
+    {
       "id": "feature:project-actions",
       "name": "Project actions",
       "page": "projects/actions"
@@ -2667,8 +2872,18 @@
       "page": "new-session/form"
     },
     {
+      "id": "feature:project-default-branch",
+      "name": "A project's own default branch",
+      "page": "projects/settings"
+    },
+    {
       "id": "feature:project-filter",
       "name": "Project filter",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:project-filter-open",
+      "name": "Open a project's page from the sidebar's project menu (›), and Manage projects…",
       "page": "sessions/sidebar"
     },
     {
@@ -2683,17 +2898,12 @@
     },
     {
       "id": "feature:project-overview-cards",
-      "name": "Overview cards",
-      "page": "projects/overview"
-    },
-    {
-      "id": "feature:project-overview-memory-card",
-      "name": "Memory card on the project Overview",
+      "name": "Overview: numbers, recent sessions, worktrees and how sessions start",
       "page": "projects/overview"
     },
     {
       "id": "feature:project-page",
-      "name": "Project page header and tabs",
+      "name": "Project header: the name's switcher, ‹ ›, New session and ⋯",
       "page": "projects/projects-view"
     },
     {
@@ -2728,7 +2938,32 @@
     },
     {
       "id": "feature:projects-view",
-      "name": "Projects view",
+      "name": "Projects view: the list on the left, the open project on the right",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-switcher",
+      "name": "Switch project from the name's menu (↩ same tab, ⌘↩ Settings)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-row-settings",
+      "name": "A project's Settings from its row (the gear)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:project-previous-next",
+      "name": "Previous and next project on the same tab (‹ ›, ⌥↑ ⌥↓)",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:projects-narrow",
+      "name": "Narrow windows fold the list into the switcher",
+      "page": "projects/projects-view"
+    },
+    {
+      "id": "feature:projects-search",
+      "name": "Find a project in the list",
       "page": "projects/projects-view"
     },
     {
@@ -2765,6 +3000,51 @@
       "id": "feature:queue-item-menu",
       "name": "Queue item menu",
       "page": "new-session/queue"
+    },
+    {
+      "id": "feature:queue-start-by-itself",
+      "name": "Start by itself (queue item menu and New session)",
+      "page": "new-session/queue"
+    },
+    {
+      "id": "feature:schedule-start-menu",
+      "name": "Schedule… in New session's Start menu, and Save schedule after Edit…",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-dialog",
+      "name": "Schedule a session dialog: Name, Repeat, At, If missed, Next runs, Runs with",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-home-card",
+      "name": "Schedules card on Home",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedules-project-tab",
+      "name": "Schedules section in a project's Sessions tab",
+      "page": "projects/sessions"
+    },
+    {
+      "id": "feature:schedule-row-menu",
+      "name": "Schedule row menu: Run now, Edit…, Pause or Resume, Delete with Undo",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-runs",
+      "name": "Scheduled runs: skipped while the last run works, queued at a limit, missed runs, notifications",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedule-session-icon",
+      "name": "Repeat icon on sessions a schedule started",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:schedules-backup",
+      "name": "Schedules in settings export and import",
+      "page": "settings/backup"
     },
     {
       "id": "feature:queue-messages",
@@ -2853,12 +3133,12 @@
     },
     {
       "id": "feature:remove-project",
-      "name": "Remove a project from Switchboard",
+      "name": "Remove a project from Switchboard, in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
       "id": "feature:rename-project",
-      "name": "Rename a project (Switchboard name only)",
+      "name": "Rename a project (Switchboard name only), in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
@@ -2872,13 +3152,28 @@
       "page": "sessions/linking"
     },
     {
+      "id": "feature:github-list",
+      "name": "Attach a GitHub issue or pull request with # in the message box",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:new-session-from-github",
+      "name": "New session from a GitHub issue or pull request, with the worktree and prompt filled in",
+      "page": "sessions/github-issues"
+    },
+    {
+      "id": "feature:link-issue-pr",
+      "name": "issue and pr parameters in switchboard://new-session links",
+      "page": "links"
+    },
+    {
       "id": "feature:rename-session",
       "name": "Rename a session",
       "page": "sessions/sidebar"
     },
     {
       "id": "feature:reorder-projects",
-      "name": "Reorder projects",
+      "name": "Reorder projects by dragging, or with ⌥⇧↑ ⌥⇧↓",
       "page": "projects/projects-view"
     },
     {
@@ -2945,6 +3240,11 @@
       "id": "feature:session-context-menu",
       "name": "Session context menu",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-menu-start-after",
+      "name": "Start after this one… (session menu and the conversation's ⋯ menu)",
+      "page": "new-session/queue"
     },
     {
       "id": "feature:session-menu-project",
@@ -3552,6 +3852,11 @@
       "page": "projects/worktrees"
     },
     {
+      "id": "feature:worktree-cleanup-progress",
+      "name": "Removing worktrees one at a time: Removing…, Removed or the error, and Stop after this one",
+      "page": "projects/worktrees"
+    },
+    {
       "id": "feature:worktree-groups",
       "name": "Worktree groups: Safe to remove, Probably done, Keep, Stale",
       "page": "projects/worktrees"
@@ -3563,7 +3868,7 @@
     },
     {
       "id": "feature:worktree-pill",
-      "name": "Worktree pill in the Projects view",
+      "name": "Worktree hint on a project's row",
       "page": "projects/projects-view"
     },
     {
@@ -3579,6 +3884,11 @@
     {
       "id": "feature:worktree-row-menu",
       "name": "Worktree row menu: open session, merge, push, remove",
+      "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:worktree-unlock",
+      "name": "Unlock a locked worktree",
       "page": "projects/worktrees"
     },
     {
@@ -3725,6 +4035,306 @@
       "id": "feature:clone-other-computer",
       "name": "Clone from GitHub on another computer (Run on)",
       "page": "other-computers"
+    },
+    {
+      "id": "palette:upcoming",
+      "name": "Go to Upcoming",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:queue-view",
+      "name": "Queue…: Upcoming on the queue",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:schedules-view",
+      "name": "Schedules…: Upcoming on the schedules",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "shortcut:upcoming",
+      "name": "Upcoming: queued and scheduled",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming",
+      "name": "Upcoming: the queue, the scheduled runs of the next 7 days and every schedule, across projects",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-filters",
+      "name": "Upcoming: All, Queue and Schedules, and the project filter, kept per window",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-sidebar",
+      "name": "Sidebar: Home and Upcoming rows, with the count and what comes next",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-rail",
+      "name": "Minimal sidebar: the Upcoming button with its count, green when an item is ready",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-history",
+      "name": "Upcoming: History, the runs of the last 7 days and how they went (Finished, Skipped, Missed, In the queue)",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-fold",
+      "name": "Upcoming: days in a row with the same runs fold into one line",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-run",
+      "name": "Skip this run: skip one scheduled run, with Undo",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:skip-next-run",
+      "name": "Skip next run in a schedule's menu",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:see-all-upcoming",
+      "name": "See all in Upcoming on Home's Queue and Schedules cards (three rows each)",
+      "page": "sessions/home"
+    },
+    {
+      "id": "feature:schedule-once",
+      "name": "Schedules: Once, a single run at a date and time",
+      "page": "new-session/schedules"
+    },
+    {
+      "id": "feature:linux-support",
+      "name": "Switchboard on Linux (x64 and Arm64)",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-packages",
+      "name": "AppImage, .deb and .rpm for Linux",
+      "page": "getting-started/install"
+    },
+    {
+      "id": "feature:linux-updates",
+      "name": "Updates on Linux through the AppImage or the package manager",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-open-in",
+      "name": "Open in Files and Linux terminals",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "feature:linux-sounds",
+      "name": "Freedesktop system sounds on Linux",
+      "page": "getting-started/linux"
+    },
+    {
+      "id": "project-tab:triggers",
+      "name": "Triggers tab",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:trigger-new",
+      "name": "New trigger…",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers",
+      "name": "Triggers: pick one… (Check now, Edit…, Pause or Resume, Delete)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-page",
+      "name": "Triggers… (a project's Triggers tab)",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "palette:triggers-here",
+      "name": "Triggers in <current project>",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-editor",
+      "name": "Trigger editor: a sentence that says what it does, then five numbered sections: when it starts, which issues or runs, what happens on GitHub, what it starts, and limits",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-start-when",
+      "name": "Start when… in New session's Start menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-ci",
+      "name": "CI fails on a branch: a session for each new failed workflow run, with its log",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-issues",
+      "name": "Issues for you: a label, assigned to you, or both, from collaborators only",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-state-labels",
+      "name": "State labels on the issue, and Assign the issue to me when work starts",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-limits",
+      "name": "Sessions at a time (Runs at a time) and Events that may wait, with Start now and Start anyway",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-guardrails",
+      "name": "Trigger guardrails: never bypass permissions, pause after 5 failed checks, the first check marks what is there as seen",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-session-bolt",
+      "name": "Bolt on sessions a trigger started, and the Started by line in their header",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-notifications",
+      "name": "Trigger notifications: a CI failure started a session, an issue picked up, a trigger paused",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-project-menu",
+      "name": "Triggers… in a project's menu",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-pipeline",
+      "name": "A trigger that starts a pipeline: the event as its task, a run row with the bolt, Start when… from Run as",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:trigger-unattended",
+      "name": "Run without stopping for me and Open the pull request without me, on a trigger that starts a pipeline",
+      "page": "projects/triggers"
+    },
+    {
+      "id": "feature:pipeline-approve-plan",
+      "name": "Approve the plan for me, on a pipeline's plan step",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:upcoming-triggers",
+      "name": "Upcoming's Triggers filter: every trigger across projects, with what waits",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:triggers-backup",
+      "name": "Triggers in settings export and import, imported paused",
+      "page": "settings/backup"
+    },
+    {
+      "id": "terminal-context-menu",
+      "name": "Terminal right-click menu: Copy, Paste, Explain or Fix with Claude",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
+      "id": "feature:open-at-login",
+      "name": "Settings: General, Open at login",
+      "page": "settings"
+    },
+    {
+      "id": "feature:keep-awake",
+      "name": "Settings: General, Keep awake",
+      "page": "settings"
+    },
+    {
+      "id": "palette:run-pipeline",
+      "name": "Run pipeline…",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "palette:pipelines",
+      "name": "Pipelines: pick one…",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "settings:pipelines",
+      "name": "Settings › Pipelines",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-builtins-switch",
+      "name": "Settings › Pipelines: the Built-in pipelines switch, to see only your own",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-session-menu",
+      "name": "Run pipeline › in a session’s ⋯ menu",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-run-as",
+      "name": "Run as chip in New session: pick a pipeline, and Start runs it",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-archive-tree",
+      "name": "Archive or delete a pipeline run with its sub-sessions",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-sidebar-tree",
+      "name": "Steps nested under their parent in the sidebar",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-another-round",
+      "name": "Another round when a verdict still asks for changes after its rounds",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-run-row",
+      "name": "A run row for a pipeline started from New session",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-step-tree",
+      "name": "The step tree in the parent’s view",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-handoff",
+      "name": "Steps hand over with @ links",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-verdicts",
+      "name": "Verdicts and rounds",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-push",
+      "name": "The Push step",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-run-brief",
+      "name": "The run’s brief when you write in the parent",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-notifications",
+      "name": "Notifications when a run needs you, stops or is done",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipelines-backup",
+      "name": "Pipelines in the settings file",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "palette:settings-pipelines",
+      "name": "Settings: Pipelines",
+      "page": "sessions/pipelines"
     }
   ]
 }

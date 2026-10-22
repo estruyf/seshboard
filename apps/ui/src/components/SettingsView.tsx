@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -8,6 +8,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
 import { NewPromptButton, SavedPromptsSettings } from './savedPrompts/SavedPromptsSettings.tsx';
 import { NotificationsSettings } from './notifications/NotificationsSettings.tsx';
+import { PipelinesSettings } from './pipelines/editor/PipelinesSettings.tsx';
 import { SessionsSettings } from './sessions/SessionsSettings.tsx';
 import { useSessions, type SettingsSection } from '../state/sessionsStore.ts';
 import { useSidebar } from '../state/sidebarStore.ts';
@@ -20,6 +21,8 @@ import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
+import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
+import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
 import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
@@ -169,7 +172,12 @@ const STARTUP: Array<{ value: StartupView; label: string; detail: string }> = [
 ];
 
 /** The permission mode new sessions start in: the one picked last, or one of the modes the menus offer. */
-const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [{ value: 'last', label: 'The last one you picked' }, ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] }))];
+/** Permission mode for new sessions: the project's default, the one picked last, or always one mode (over the project's default). */
+const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [
+  { value: 'project', label: 'Use project default' },
+  { value: 'remember', label: 'Remember last' },
+  ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] })),
+];
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
@@ -185,6 +193,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> 
   { id: 'usage', label: 'Usage', icon: Gauge },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'prompts', label: 'Prompts', icon: Bookmark },
+  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
   { id: 'vscode', label: 'VS Code', icon: SquareCode },
   { id: 'remote', label: 'Remote', icon: Smartphone },
   { id: 'backup', label: 'Backup', icon: ArchiveRestore },
@@ -302,7 +311,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               <span>
                 <span className="block text-ui">Clicking a file link</span>
                 <span className="block text-meta text-muted">
-                  What a click does on a file in Claude’s replies. {formatKeys(clickKeysFor('transcript.file-link-other'))} does the other, and right-click lists both.
+                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
                 </span>
               </span>
               <Select<FileLinkClick>
@@ -310,6 +319,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.fileLinkClick}
                 onChange={(fileLinkClick) => update({ fileLinkClick })}
                 options={[
+                  { value: 'switchboard', label: 'Open in Switchboard' },
                   { value: 'file-manager', label: `Show in ${fileManagerName()}` },
                   { value: 'editor', label: 'Open in editor' },
                 ]}
@@ -394,6 +404,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <SavedPromptsSettings />
         </Section>
       );
+    case 'pipelines':
+      return <PipelinesSettings />;
     case 'usage':
       return (
         <>
@@ -420,7 +432,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'general':
       return (
         <>
-          <Section title="On startup" description="What Switchboard shows when it opens.">
+          <Section title="On startup" description="Whether Switchboard opens at login, and what it shows when it opens.">
+            <OpenAtLoginSetting />
             <RadioGroup label="On startup" className="grid gap-2.5">
               {STARTUP.map(({ value, label, detail }) => (
                 <Radio key={value} checked={prefs.startupView === value} onSelect={() => update({ startupView: value })} dataAttrs={{ 'data-startup-view': value }}>
@@ -430,11 +443,14 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               ))}
             </RadioGroup>
           </Section>
+          <Section title="Sleep">
+            <KeepAwakeSetting />
+          </Section>
           <Section title="New sessions">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Permission mode</span>
-                <span className="block text-meta text-muted">What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.</span>
+                <span className="block text-meta text-muted">What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.</span>
               </span>
               <Select<NewSessionMode>
                 label="Permission mode for new sessions"
@@ -702,13 +718,13 @@ export function SettingsView() {
           <div className="drag flex h-13 shrink-0 items-center justify-end px-6">
             <Button variant="quiet" iconOnly icon={<X size={15} aria-hidden />} shortcut="settings.close" onClick={close} data-close-settings data-tooltip={`Close (${formatKeys(keysFor('settings.close'))})`} aria-label="Close settings" className="no-drag" />
           </div>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (
               <div className="mx-auto min-w-0 max-w-2xl px-8">
                 <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
-              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
+              <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>
                 <SectionPage section={section} scrollRef={scroller} />
               </div>
             )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteBlock, RemoteMessage } from '@switchboard/protocol/remote-client';
-import { runSummary, transcriptItems } from './steps.ts';
+import { runLabel, runSummary, stepText, transcriptItems } from './steps.ts';
 
 let n = 0;
 const msg = (role: RemoteMessage['role'], ...blocks: RemoteBlock[]): RemoteMessage => ({ uuid: `m${++n}`, role, timestamp: 1, parentToolUseId: null, blocks });
@@ -51,5 +51,20 @@ describe('runSummary', () => {
     expect(runSummary([call('Bash'), thinking('x')] as never)).toBe('1 step · ran 1 command');
     expect(runSummary([call('Read', { file_path: 'a' }), call('Grep'), call('Glob'), call('WebFetch'), call('Edit', { file_path: 'b' })] as never)).toBe('5 steps · edited 1 file, read 1 file, searched 2 times');
     expect(runSummary([call('mcp__x__y')] as never)).toBe('1 step');
+  });
+});
+
+describe('runLabel', () => {
+  const merge = call('Bash', { command: "sed -i '' -e '/^<<<<<<< HEAD$/d' CHANGELOG.md && grep -c x", description: 'Merge origin/dev' });
+
+  it('words a call the way the app does: its description, not its command', () => {
+    expect(stepText(merge as never)).toBe('Merge origin/dev');
+    expect(stepText(call('Bash', { command: 'npm test' }) as never)).toBe('Run npm test');
+    expect(stepText(call('Bash', { command: "python3 - <<'EOF'\nprint(1)\nEOF" }) as never)).toBe('Run a Python script');
+  });
+
+  it('shows the step Claude is on, then what the steps did', () => {
+    expect(runLabel([call('Read', { file_path: 'a.ts' }), merge] as never, true)).toBe('Merging origin/dev');
+    expect(runLabel([merge, call('Bash', { command: 'ls' })] as never, false)).toBe('2 steps · ran 2 commands');
   });
 });

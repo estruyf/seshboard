@@ -5,6 +5,8 @@ export interface EngineProcessOptions {
   dataDir: string;
   /** The app's version, which the engine tells the VS Code companion. */
   appVersion: string;
+  /** A development or beta build: Remote also accepts the preview's remote app (`REMOTE_PREVIEW_APP_URL`). */
+  previewRemote: boolean;
   /** Called after an unexpected exit, once the replacement process is running. */
   onRestarted: () => void;
   /** Requests from the engine that need the main process (e.g. moving files to the Trash). Returns the reply. */
@@ -24,7 +26,8 @@ export class EngineProcess {
   constructor(private readonly options: EngineProcessOptions) {}
 
   start(): void {
-    const child = utilityProcess.fork(this.options.entry, ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion], {
+    const args = ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion, ...(this.options.previewRemote ? ['--remote-preview'] : [])];
+    const child = utilityProcess.fork(this.options.entry, args, {
       serviceName: 'Switchboard Engine',
       stdio: 'inherit',
     });
@@ -56,6 +59,11 @@ export class EngineProcess {
         this.options.onRestarted();
       }, delay);
     });
+  }
+
+  /** Sends a one-off message to the running engine (the smoke test's); a replacement process doesn't get it. */
+  send(message: { type: string } & Record<string, unknown>): void {
+    this.child?.postMessage(message);
   }
 
   /** Sends a setting to the engine now and again to every process that replaces it, so a restart keeps it. */

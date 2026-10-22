@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalPatch, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
+import { INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 
-const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null };
+const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
 describe('new session choices', () => {
   it('start from the project defaults and fall back to the global ones', () => {
@@ -18,7 +18,7 @@ describe('new session choices', () => {
   });
 
   it('take the profile defaults where the project sets nothing', () => {
-    const { branch: _, ...noProfile } = unset;
+    const noProfile: ProfileDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null };
     const profile = { ...noProfile, model: 'opus', permissionMode: 'plan' as const, workspace: 'worktree' as const };
     // Without profile defaults, the project's (or nothing) as before.
     expect(layeredDefaults(null, null)).toBeNull();
@@ -30,14 +30,12 @@ describe('new session choices', () => {
     expect(layeredDefaults(null, profile)).toEqual({ ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree' });
     const globals = { ...INITIAL_CHOICES, model: 'haiku', effort: 'low' as const };
     expect(startingChoices(globals, layered)).toEqual({ ...globals, model: 'sonnet', permissionMode: 'plan', workspace: 'worktree', branch: 'develop' });
-    // Fields the profile decides are not remembered globally either.
-    expect(globalPatch({ model: 'haiku', permissionMode: 'default', effort: 'max' }, layered)).toEqual({ effort: 'max' });
     // A link takes the profile's mode, unless it never asks.
     expect(linkStartingChoices(globals, layeredDefaults(null, profile)).permissionMode).toBe('plan');
     expect(linkStartingChoices(globals, layeredDefaults(null, { ...profile, permissionMode: 'bypassPermissions' })).permissionMode).toBe('default');
-    // The mode Settings sets for new sessions sits under the profile's, and fills in where the profile sets none.
-    expect(startingChoices(withNewSessionMode(globals, 'acceptEdits'), layeredDefaults(null, profile)).permissionMode).toBe('plan');
-    expect(startingChoices(withNewSessionMode(globals, 'acceptEdits'), layeredDefaults(null, { ...profile, permissionMode: null })).permissionMode).toBe('acceptEdits');
+    // Use project default takes the profile's mode; a mode Settings sets is used over it.
+    expect(newSessionChoices(layeredDefaults(null, profile), 'project', 'default').permissionMode).toBe('plan');
+    expect(newSessionChoices(layeredDefaults(null, profile), 'acceptEdits', 'default').permissionMode).toBe('acceptEdits');
   });
 
   it('start a session from a link without the mode you last picked', () => {
@@ -56,16 +54,12 @@ describe('new session choices', () => {
     expect(linkPermissionMode('default')).toBe('default');
   });
 
-  it('only remember changes globally for fields the project leaves unset', () => {
-    const project = { ...unset, model: 'opus' };
-    expect(globalPatch({ model: 'haiku', effort: 'max', branch: 'x' }, project)).toEqual({ effort: 'max' });
-    expect(globalPatch({ model: 'haiku' }, null)).toEqual({ model: 'haiku' });
-  });
-
   it('save as project defaults, dropping the branch for worktrees', () => {
     const choices = { ...INITIAL_CHOICES, model: '', effort: 'high' as const, branch: 'develop' };
-    expect(toProjectDefaults(choices)).toEqual({ model: null, effort: 'high', permissionMode: 'default', workspace: 'current', baseRef: 'fresh', branch: 'develop' });
+    expect(toProjectDefaults(choices)).toEqual({ model: null, effort: 'high', permissionMode: 'default', workspace: 'current', baseRef: 'fresh', branch: 'develop', defaultBranch: null });
     expect(toProjectDefaults({ ...choices, workspace: 'worktree' }).branch).toBeNull();
+    // The project's default branch isn't a New session choice: saving keeps it.
+    expect(toProjectDefaults(choices, 'dev').defaultBranch).toBe('dev');
     expect(sameDefaults(toProjectDefaults(choices), toProjectDefaults(choices))).toBe(true);
     expect(sameDefaults(unset, toProjectDefaults(choices))).toBe(false);
   });
@@ -73,6 +67,7 @@ describe('new session choices', () => {
   it('read stored globals leniently', () => {
     expect(readGlobals(null)).toEqual({ globals: INITIAL_CHOICES, cwd: null });
     expect(readGlobals({ cwd: '/a', model: 'opus', workspace: 'sideways', effort: 3 })).toEqual({ globals: { ...INITIAL_CHOICES, model: 'opus' }, cwd: '/a' });
+    expect(readGlobals({ baseRef: 'refs/heads/dev' }).globals.baseRef).toBe('fresh');
   });
 });
 
@@ -93,22 +88,36 @@ const project = (root: string, extra: Partial<ProjectInfo>): ProjectInfo => ({
 });
 
 describe('the permission mode for new sessions', () => {
-  const globals = { ...INITIAL_CHOICES, permissionMode: 'plan' as const };
-  const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null });
+  const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null, defaultBranch: null });
 
-  it('starts in the mode picked last, unless Settings sets one', () => {
-    expect(startingChoices(withNewSessionMode(globals, 'last'), null).permissionMode).toBe('plan');
-    expect(startingChoices(withNewSessionMode(globals, 'auto'), null).permissionMode).toBe('auto');
-    expect(startingChoices(withNewSessionMode(globals, 'default'), null).permissionMode).toBe('default');
+  it("uses the project's default, else Ask first", () => {
+    expect(startingMode('project', project('acceptEdits'), 'plan')).toBe('acceptEdits');
+    expect(startingMode('project', project(null), 'plan')).toBe('default');
+    expect(startingMode('project', null, 'plan')).toBe('default');
   });
 
-  it("gives way to a project's own default", () => {
-    expect(startingChoices(withNewSessionMode(globals, 'auto'), project('acceptEdits')).permissionMode).toBe('acceptEdits');
-    expect(startingChoices(withNewSessionMode(globals, 'auto'), project(null)).permissionMode).toBe('auto');
+  it('remembers the mode picked last, over the project default', () => {
+    expect(startingMode('remember', null, 'plan')).toBe('plan');
+    expect(startingMode('remember', project('acceptEdits'), 'plan')).toBe('plan');
+  });
+
+  it('starts in a mode Settings sets, over the project default', () => {
+    expect(startingMode('auto', project('acceptEdits'), 'plan')).toBe('auto');
+    expect(startingMode('default', project('plan'), 'plan')).toBe('default');
+  });
+
+  it('keeps the other choices from the project defaults', () => {
+    expect(newSessionChoices({ ...project('plan'), model: 'opus', workspace: 'worktree' }, 'acceptEdits', 'default')).toEqual({ ...INITIAL_CHOICES, model: 'opus', workspace: 'worktree', permissionMode: 'acceptEdits', branch: '' });
+  });
+
+  it('reads the last mode leniently, never one that skips every check', () => {
+    expect(readLastMode('plan')).toBe('plan');
+    expect(readLastMode('auto')).toBe('auto');
+    for (const value of ['bypassPermissions', 'dontAsk', '', null, undefined, 3]) expect(readLastMode(value)).toBe('default');
   });
 
   it('never reaches a session a link starts', () => {
-    expect(linkStartingChoices(withNewSessionMode(globals, 'auto'), null).permissionMode).toBe('default');
+    expect(linkStartingChoices(INITIAL_CHOICES, null).permissionMode).toBe('default');
   });
 });
 

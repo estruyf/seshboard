@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
-import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
+import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, newProblems, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
 const session = (id: string, status: RemoteSession['status']): RemoteSession => ({
@@ -62,9 +62,19 @@ describe('another computer’s list', () => {
   });
 
   it('says how the connection is', () => {
-    const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, features: [], lastSeen: null };
+    const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, features: [], lastSeen: null, problem: null };
     expect(computerLine(computer, 1_000)).toBe('Studio Mac doesn’t answer. Trying again in 30s.');
     expect(computerLine({ ...computer, retryAt: 120_000 }, 0)).toBe('Studio Mac doesn’t answer. Trying again in 2 min.');
+    expect(computerLine({ ...computer, state: 'connected', message: null, problem: 'Studio Mac sent data this version of Switchboard can’t read.' })).toBe('Studio Mac sent data this version of Switchboard can’t read.');
+  });
+
+  it('tells a computer’s problem once', () => {
+    const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'connected', message: null, retryAt: null, version: '1.0.0', features: [], lastSeen: null, problem: null };
+    const bad = { ...computer, problem: 'Studio Mac sent data.' };
+    expect(newProblems(undefined, [computer])).toEqual([]);
+    expect(newProblems([computer], [bad])).toEqual([bad]);
+    expect(newProblems([bad], [bad])).toEqual([]);
+    expect(newProblems([bad], [{ ...bad, problem: 'Studio Mac sent 2 items.' }])).toHaveLength(1);
     expect(computerLine({ ...computer, state: 'connected', message: null })).toBe('Connected');
   });
 
@@ -128,7 +138,18 @@ describe('the remote transcript', () => {
 });
 
 describe('remoteTurns', () => {
-  it('times each turn from the messages, with no tokens, keyed like the text items', () => {
+  it('counts a turn’s tokens from the usage the computer sent, once per response', () => {
+    const usage = { input: 10, output: 50, cacheRead: 1000, cacheWrite: 100 };
+    const messages: RemoteMessage[] = [
+      message('u1', 'Go', { role: 'user', timestamp: 1_000 }),
+      message('a1', 'Looking.', { timestamp: 2_000, usage: { id: 'resp-1', ...usage } }),
+      message('a2', 'Done.', { timestamp: 9_000, usage: { id: 'resp-1', ...usage } }),
+      message('a3', 'Thanks.', { timestamp: 12_000, usage: { id: 'resp-2', ...usage } }),
+    ];
+    expect(remoteTurns(messages)[0]?.tokens?.total).toBe(2 * 1160);
+  });
+
+  it('times each turn from the messages, with no tokens when none were sent, keyed like the text items', () => {
     const tool = { type: 'tool_use' as const, id: 't1', name: 'Bash', input: {}, truncated: false };
     const messages: RemoteMessage[] = [
       message('u1', 'Fix it', { role: 'user', timestamp: 1_000 }),

@@ -165,6 +165,12 @@ export class ProjectRegistry {
     }
   }
 
+  /** An added project's defaults; unset ones for a folder that isn't added. */
+  defaultsOf(root: string): ProjectDefaults {
+    const row = this.row(root);
+    return row?.added_at != null ? readDefaults(row.defaults_json) : NO_DEFAULTS;
+  }
+
   setDefaults(root: string, defaults: ProjectDefaults): void {
     if (this.row(root)?.added_at == null) throw new RpcError('NOT_FOUND', 'Add this folder as a project first');
     const empty = Object.values(defaults).every((v) => v === null);

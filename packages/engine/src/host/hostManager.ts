@@ -20,7 +20,7 @@ import {
   type SlashCommand,
   type StreamDelta,
   type UsageLimitHit,
-  type WorktreeRequest,
+  type ClaudeWorktreeRequest,
   type ModLog,
   type ModPromptAnswer,
   type ModPromptAsk,
@@ -28,10 +28,10 @@ import {
 } from '@switchboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
-import { describeSuggestions } from './permissions.ts';
+import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery } from './sessionHost.ts';
+import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -99,7 +99,7 @@ export interface HostManagerDeps {
   /** A session's Up next changed (running or not), for windows showing it. */
   onUpNext?: (sessionId: string, queue: QueuedMessage[]) => void;
   /** A session's turn ended: finished, or stopped with an error. */
-  onTurnEnd?: (sessionId: string, outcome: { ok: boolean; error: string | null }) => void;
+  onTurnEnd?: (sessionId: string, outcome: TurnOutcome) => void;
   /**
    * Plan usage limits per profile (`UsageLimits`): a turn a limit stopped sets one, a turn that gets through clears it,
    * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
@@ -115,6 +115,18 @@ export interface HostManagerDeps {
    * reads gh and git for them first (briefly) when a message is sent or queued.
    */
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
+  /** A read-only pipeline step (#179): its resumes keep the read-only hook. */
+  readOnly?: (sessionId: string) => boolean;
+  /**
+   * You approved a plan (`ExitPlanMode`). A pipeline's plan step keeps it and answers with what Claude Code gets
+   * instead of the approval (the next step builds it); null lets the approval through as it is.
+   */
+  planApproved?: (sessionId: string, plan: string) => string | null;
+  /**
+   * Answers a permission request before it is shown (a pipeline step that approves its own plan, a run that goes on
+   * without you); null shows it as usual.
+   */
+  autoAnswer?: (request: PermissionRequest) => PermissionDecision | null;
 }
 
 /** How long Claude Code waits for the message box (it settles on an empty one after 5 s). */
@@ -134,6 +146,8 @@ interface Pending {
   request: PermissionRequest;
   input: Record<string, unknown>;
   suggestions: PermissionUpdate[] | undefined;
+  /** A user's ask rule forced this prompt, so no mode answers it. */
+  matchedAskRule: boolean;
   resolve: (result: PermissionResult) => void;
 }
 
@@ -156,7 +170,7 @@ export interface CreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
-  worktree: WorktreeRequest | null;
+  worktree: ClaudeWorktreeRequest | null;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
    * the first message, e.g. setup actions. Failures are logged; the message still goes.
@@ -164,6 +178,8 @@ export interface CreateParams {
   beforeFirstMessage?: (sessionId: string) => Promise<void>;
   /** Auto picked `model`: kept with the session and reported in its info. */
   autoPick?: AutoPick | null;
+  /** Only tools that read: a read-only pipeline step (#179). */
+  readOnly?: boolean;
   /**
    * Auto picks the model after the session has opened: it starts on `model`, shows your message and that Auto is
    * choosing, and the message goes once the pick is in (and setup has finished). Null model: the default model.
@@ -194,6 +210,11 @@ export class HostManager {
    * resume after Stop, the idle reaper, a rewind or an app restart would otherwise drop back to them.
    */
   private readonly settings: SessionSettingsStore;
+  /**
+   * Per session, the tool calls that were under way when the mode last changed, and that mode. A prompt one of
+   * them asks for later was decided under the old mode, so it goes back to Claude Code like a waiting one.
+   */
+  private readonly callsBeforeMode = new Map<string, { mode: PermissionMode; toolUseIds: Set<string> }>();
   /** The mode last saved per session, so info updates don't write to the database every time. */
   private readonly lastMode = new Map<string, PermissionMode>();
   /** What Auto picked per session, read once from the settings (null: it didn't), so info updates don't hit the database. */
@@ -228,7 +249,8 @@ export class HostManager {
 
   async create(params: CreateParams): Promise<string> {
     await this.deps.links?.warm(params.prompt);
-    const warm = this.takeWarm(params);
+    // A warm process started without the read-only hook.
+    const warm = params.readOnly ? undefined : this.takeWarm(params);
     const sessionId = warm?.sessionId ?? randomUUID();
     const host = await this.spawn(
       {
@@ -240,6 +262,7 @@ export class HostManager {
         permissionMode: params.permissionMode,
         effort: params.effort,
         worktree: params.worktree,
+        ...(params.readOnly ? { readOnly: true } : {}),
       },
       warm,
     );
@@ -294,7 +317,7 @@ export class HostManager {
     const permissionMode = this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default';
     const model = saved?.model ?? null;
     const effort = saved?.effort ?? null;
-    const common = { cwd, profileId, model, permissionMode, effort, worktree: null };
+    const common = { cwd, profileId, model, permissionMode, effort, worktree: null, ...(this.deps.readOnly?.(sessionId) ? { readOnly: true } : {}) };
     // A fork gets its own id up front, so it is never stored or reported under the original's id
     // (which would show the original as starting, or replace it in the map while it runs here).
     if (fork) return this.spawn({ ...common, sessionId: randomUUID(), forkFrom: sessionId, mode: 'fork' });
@@ -327,6 +350,36 @@ export class HostManager {
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
     return { sessionId, messageUuid, queued };
+  }
+
+  /**
+   * Forks a session with its own model, effort and mode, and the first message: a pipeline step that starts as a fork
+   * of an earlier one (#179). Waits for the fork to start; its id.
+   */
+  async fork(params: { from: string; text: string; model: string | null; effort: Effort | null; permissionMode: PermissionMode; readOnly?: boolean }): Promise<string> {
+    const cwd = this.deps.sessionCwd(params.from);
+    if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
+    await this.deps.links?.warm(params.text);
+    const saved = this.settings.get(params.from);
+    const model = params.model ?? saved?.model ?? null;
+    const effort = params.effort ?? saved?.effort ?? null;
+    const host = await this.spawn({
+      sessionId: randomUUID(),
+      forkFrom: params.from,
+      mode: 'fork',
+      cwd,
+      profileId: this.deps.sessionProfile(params.from),
+      model,
+      permissionMode: params.permissionMode,
+      effort,
+      worktree: null,
+      ...(params.readOnly ? { readOnly: true } : {}),
+    });
+    host.send(params.text, []);
+    const sessionId = await host.initialized;
+    this.deps.onCreated(sessionId);
+    if (model || effort) this.settings.set(sessionId, { model, effort });
+    return sessionId;
   }
 
   /** Takes a message out of a session's queue (null when it was already sent). Works while the session isn't running too. */
@@ -397,9 +450,26 @@ export class HostManager {
     }
   }
 
-  async interrupt(sessionId: string): Promise<void> {
+  /** Stops Claude's turn; `upNext` says whether the queue waits for you after it (see `SessionHost.interrupt`). */
+  async interrupt(sessionId: string, upNext: 'hold' | 'continue' = 'hold'): Promise<void> {
     this.denyPending(sessionId, 'Interrupted by the user.');
-    await this.require(sessionId).interrupt();
+    await this.require(sessionId).interrupt(upNext);
+  }
+
+  /**
+   * Sends back the session's waiting prompts that `mode` would let run. Claude Code checks a tool call once, when
+   * it asks, and answering one prompt lets the next one ask at once: without this, switching to Auto mode right
+   * after answering still left that next prompt waiting. Claude makes the call again and it is checked anew.
+   * Calls under way are remembered too: Auto mode checks a call as it arrives, so some ask only later (`ask`).
+   */
+  private recheckPending(sessionId: string, mode: PermissionMode): void {
+    const host = this.hosts.get(sessionId);
+    if (host?.openToolCalls.size) this.callsBeforeMode.set(sessionId, { mode, toolUseIds: new Set(host.openToolCalls) });
+    else this.callsBeforeMode.delete(sessionId);
+    for (const [requestId, pending] of this.pending) {
+      if (pending.request.sessionId !== sessionId || !recheckAfterModeChange({ toolName: pending.request.toolName, matchedAskRule: pending.matchedAskRule }, mode)) continue;
+      this.settle(requestId, { behavior: 'deny', message: RECHECK_MESSAGE });
+    }
   }
 
   /** Pending prompts would otherwise keep the turn alive after it is stopped. */
@@ -413,12 +483,29 @@ export class HostManager {
     return this.require(sessionId).stopTask(taskId);
   }
 
-  setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
-    return this.require(sessionId).setPermissionMode(mode);
+  /**
+   * What a session resumes with, for the chips of a session that isn't running here. Setting the model, effort or
+   * mode while it isn't running only saves it: the next message resumes the session that way.
+   */
+  savedSettings(sessionId: string): { model: string | null; effort: Effort | null; permissionMode: PermissionMode } {
+    const saved = this.settings.get(sessionId);
+    return { model: saved?.model ?? null, effort: saved?.effort ?? null, permissionMode: this.lastMode.get(sessionId) ?? saved?.permissionMode ?? 'default' };
+  }
+
+  async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
+    if (this.running(sessionId)) {
+      await this.require(sessionId).setPermissionMode(mode);
+      this.recheckPending(sessionId, mode);
+      return;
+    }
+    // Bypass needs an extra flag at startup, so a resume never starts in it.
+    if (mode === 'bypassPermissions') throw new RpcError('INVALID', 'Bypass permissions can only be turned on while the session runs.');
+    this.lastMode.set(sessionId, mode);
+    this.settings.set(sessionId, { permissionMode: mode });
   }
 
   async setEffort(sessionId: string, effort: Effort | null): Promise<void> {
-    await this.require(sessionId).setEffort(effort);
+    if (this.running(sessionId)) await this.require(sessionId).setEffort(effort);
     this.settings.set(sessionId, { effort });
   }
 
@@ -458,8 +545,8 @@ export class HostManager {
   async setModel(sessionId: string, model: string | null): Promise<void> {
     // Changed while Auto was still choosing: your model stays, and Auto's pick won't replace it.
     this.choosing.delete(sessionId);
-    const host = this.require(sessionId);
-    await host.setModel(model);
+    const host = this.running(sessionId);
+    await host?.setModel(model);
     // Once you pick a model yourself, the session is no longer on Auto's pick: its chip shows the plain model.
     const pick = this.autoPick(sessionId);
     const left = pick && !pick.left ? { ...pick, left: true } : null;
@@ -467,7 +554,7 @@ export class HostManager {
     if (!left) return;
     this.picks.set(sessionId, left);
     // The host already reported the new model, with the pick it had then: report it again so the chip drops "Auto".
-    this.deps.onInfo(this.withPick(host.info));
+    if (host) this.deps.onInfo(this.withPick(host.info));
   }
 
   /** What Auto picked for a session (null: it didn't), also when it isn't running. */
@@ -502,6 +589,7 @@ export class HostManager {
     // Stopped while Auto was choosing: the message never goes, and the session no longer says Auto is choosing.
     this.choosing.delete(sessionId);
     host?.close();
+    this.callsBeforeMode.delete(sessionId);
     this.deps.onClosed?.(sessionId);
     for (const [requestId, pending] of this.pending) {
       if (pending.request.sessionId === sessionId) this.settle(requestId, { behavior: 'deny', message: 'Session closed.' });
@@ -518,6 +606,14 @@ export class HostManager {
   respond(requestId: string, decision: PermissionDecision): void {
     const pending = this.pending.get(requestId);
     if (!pending) throw new RpcError('NOT_FOUND', 'This request was already answered or cancelled');
+    if (decision.behavior === 'allow' && pending.request.toolName === 'ExitPlanMode') {
+      const input = decision.updatedInput ?? pending.input;
+      const instead = this.deps.planApproved?.(pending.request.sessionId, typeof input.plan === 'string' ? input.plan : '') ?? null;
+      if (instead) {
+        this.settle(requestId, { behavior: 'deny', message: instead, interrupt: false });
+        return;
+      }
+    }
     if (decision.behavior === 'allow') {
       const result: PermissionResult = {
         behavior: 'allow',
@@ -525,6 +621,9 @@ export class HostManager {
       };
       if (decision.always && pending.suggestions) result.updatedPermissions = pending.suggestions;
       this.settle(requestId, result);
+      // "Always" can switch the mode too (Accept edits for this session), which the other waiting prompts miss.
+      const mode = result.updatedPermissions?.findLast((u) => u.type === 'setMode');
+      if (mode?.type === 'setMode') this.recheckPending(pending.request.sessionId, mode.mode);
     } else {
       this.settle(requestId, { behavior: 'deny', message: decision.message ?? 'The user declined this action.', interrupt: decision.interrupt ?? false });
     }
@@ -950,7 +1049,10 @@ export class HostManager {
         // onInfo stores this session's new list right after.
         commandsChanged: () => this.forgetCommands(config.profileId),
         queue: (sessionId, messages) => this.saveQueue(sessionId, messages),
-        turnEnded: (sessionId, outcome) => this.deps.onTurnEnd?.(sessionId, outcome),
+        turnEnded: (sessionId, outcome) => {
+          this.callsBeforeMode.delete(sessionId);
+          this.deps.onTurnEnd?.(sessionId, outcome);
+        },
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
         turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
         limited: () => !!this.deps.limits?.of(config.profileId),
@@ -991,6 +1093,11 @@ export class HostManager {
   }
 
   private ask(sessionId: string, toolName: string, input: Record<string, unknown>, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> {
+    // Once per call: Claude's new attempt has a new id, so it can't come back here again.
+    const before = this.callsBeforeMode.get(sessionId);
+    if (before?.toolUseIds.delete(options.toolUseID) && recheckAfterModeChange({ toolName, matchedAskRule: Boolean(options.matchedAskRule) }, before.mode)) {
+      return Promise.resolve({ behavior: 'deny', message: RECHECK_MESSAGE });
+    }
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
@@ -1008,8 +1115,14 @@ export class HostManager {
         agentId: str(options.agentID),
         createdAt: Date.now(),
       };
-      this.pending.set(requestId, { request, input, suggestions: options.suggestions, resolve });
+      this.pending.set(requestId, { request, input, suggestions: options.suggestions, matchedAskRule: Boolean(options.matchedAskRule), resolve });
       options.signal.addEventListener('abort', () => this.settle(requestId, { behavior: 'deny', message: 'Cancelled.' }), { once: true });
+      // Answered for you: through `respond`, so an approved plan goes through `planApproved` as a click would.
+      const auto = this.deps.autoAnswer?.(request) ?? null;
+      if (auto) {
+        this.respond(requestId, auto);
+        return;
+      }
       this.deps.onPermission(request);
     });
   }

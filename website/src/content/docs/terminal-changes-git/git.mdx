@@ -46,7 +46,7 @@ The button's face runs the step the branch needs next, in the order a branch usu
 | Face | When |
 |---|---|
 | **Pull ↓2** | The branch is behind its upstream. |
-| **Commit 3** | There are changed files. Claude writes the commit. |
+| **Commit 3** | There are changed files. Haiku writes the message, then it commits. |
 | **Push ↑1** | There are commits to push, or a new branch with commits to publish. |
 | **Create PR** | A branch other than the base branch, or a worktree, has commits ahead of the base branch. It opens [Create pull request](#create-a-pull-request). |
 | **View PR #123** | The branch has an open pull request, and nothing to pull, commit or push. It opens the pull request on GitHub. An icon shows how its [checks](#checks) stand. |
@@ -68,14 +68,16 @@ The ▾ next to the button opens the menu. At the top it shows the branch and wh
 - **Switch branch…**, or **Merge or remove worktree…** in a worktree;
 - **New worktree…**
 
-When the branch is behind its upstream, the menu says to pull before you push. A step that can't run is greyed out.
+When the branch is behind its upstream, the menu says to pull before you push. A step that can't run is greyed out. When Commit, Pull, Push or Fetch fails, a message says why.
 
 ### Commit
 
 There are two ways to commit:
 
-- **Ask Claude to commit** (also the button's face, **Commit N**) sends Claude a message to commit the current changes with a clear, conventional commit message.
-- **Commit…** opens a dialog for your own message. Click **Commit** or press <Kbd keys="mod+enter" />. It commits what is staged, or every change when nothing is staged. Git runs in a terminal tab, so you see the output of your commit hooks.
+- **Ask Claude to commit** (also the button's face, **Commit N**) has Haiku write the message, then commits. Haiku reads only the changes: the files, the diff stat and the diff (lock files left out, about 10,000 tokens at most), and your recent commit messages for the style. It doesn't read the conversation, so a commit costs a few thousand tokens however long the session is. The tokens count on the session's profile, in Usage.
+- **Commit…** opens a dialog for your own message. Click **Commit** or press <Kbd keys="mod+enter" />.
+
+Both commit what is staged, or every change when nothing is staged. Git runs in a terminal tab, so you see the output of your commit hooks.
 
 Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unstage). *Commit…* in the command palette opens the same dialog.
 
@@ -87,7 +89,7 @@ Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unst
 
 <Steps>
 
-1. Check the branches at the top: your branch, **into** the base branch. Click the base branch to pick another one; type in **Filter branches** to find it. The line on the right says how many commits, files and lines the pull request has.
+1. Check the branches at the top: your branch, **into** the base branch. That is the project's **Default branch** or its **Worktree base** branch when it has one (its [Settings tab](/projects/settings/)), else the repository's default branch. Click the base branch to pick another one; type in **Filter branches** to find it. The line on the right says how many commits, files and lines the pull request has.
 2. Write the **Title**. It starts as the commit's message when the branch has one commit, otherwise as the branch name (`feat/sessions-archive` becomes *Sessions archive*).
 3. Write the **Description**. It starts from the repository's pull request template when it has one, otherwise from the list of commits. **From** on the right picks another start: each template, **Commit list** or **Empty**. When you have changed the text, Switchboard asks before it replaces it.
 4. Tick **Draft** to open it as a draft.
@@ -122,7 +124,7 @@ Once the branch has an open pull request, Switchboard shows its checks: the GitH
 
 - **View PR #123** on the git button gets an icon: a green check when all checks passed, a red cross when one failed, a spinning circle while they run. Hover it to see how many, such as *1 of 5 checks failed* or *2 checks running*.
 - The git menu has a **Checks** group: each check with its workflow and how long it ran, failed ones first. Click a check to open it on GitHub. With more than eight checks, **N more on GitHub** opens the pull request's checks.
-- While checks run, Switchboard reads them again every 30 seconds, and every 5 minutes while none of its windows is in front. After a push, it looks for the new checks while GitHub starts them.
+- While checks run, Switchboard reads them again every 30 seconds, and every 5 minutes while none of its windows is in front. After a push, it looks for the new checks while GitHub starts them. An archived session no longer follows its checks, also when you open it, and gets no check notification.
 - When the checks finish while you are in another session or app, a notification says **Checks failed on PR #123** or **Checks passed on PR #123**. Click it to open the session. With [sounds](/settings/notifications/#sounds) on, failed checks play the sound for **Stopped with an error**, and passed ones the sound for **Project action ended**.
 
 #### Fix failing checks with Claude

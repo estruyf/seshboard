@@ -7,6 +7,7 @@ import {
   offlineStartLine,
   onlySource,
   onlyThereLine,
+  remoteProfileColor,
   remoteProjectKey,
   remoteRows,
   remoteRowStatus,
@@ -192,5 +193,15 @@ describe('the wording', () => {
   it('says what only works on that computer, with one helper', () => {
     expect(onlyThereLine('Terminal', 'mystic')).toBe('Terminal is on mystic. Not available from here.');
     expect(onlyThereLine('Changes', 'mystic')).toBe('Changes are on mystic. Not available from here.');
+  });
+});
+
+describe('remote profile colours', () => {
+  const local = [{ name: 'Personal', color: 'green' as const }, { name: 'Work', color: 'orange' as const }];
+  it('takes this computer’s colour for a profile of the same name', () => {
+    expect(remoteProfileColor({ id: 'x', name: ' work ', color: 'blue' }, local)).toBe('orange');
+  });
+  it('keeps the other computer’s colour when no profile matches', () => {
+    expect(remoteProfileColor({ id: 'x', name: 'Client', color: 'blue' }, local)).toBe('blue');
   });
 });

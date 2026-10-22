@@ -4,10 +4,10 @@
 
 <h1 align="center">Switchboard</h1>
 
-<p align="center">A fast app for Mac and Windows to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
+<p align="center">A fast app for Mac, Windows and Linux to run and keep track of your Claude Code sessions, across all your Claude accounts.</p>
 
 <p align="center">
-  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac or Windows</b></a> · <a href="https://switchboard.struyfconsulting.com/">Docs</a> · <code>brew install --cask estruyf/tap/switchboard</code>
+  <a href="https://github.com/estruyf/switchboard/releases/latest"><b>Download for Mac, Windows or Linux</b></a> · <a href="https://switchboard.struyfconsulting.com/">Docs</a> · <code>brew install --cask estruyf/tap/switchboard</code>
 </p>
 
 <p align="center">
@@ -52,6 +52,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - **Clean up branches.** A project's **Branches** tab lists its branches here and on the remote, says which are merged or deleted on the remote, and deletes the ones you tick: the local copy, the one on the remote, or both. See [Branches](#branches).
 - Chat as you would in the terminal. You get streaming replies, `/` commands (your own commands and skills included), `@` file mentions, and images you paste, drop or attach. Drag files anywhere over a session and the message box shows what a drop does: images are attached, other files and folders are added as context.
 - **Context** shows as chips above the message: files you drop, pick from the `@` list, or choose several at once with **Add context** (⌘⇧A, or the paperclip). Remove one with its ×. Files go to Claude as references it reads itself, so a large file stays small. With the [VS Code companion](#vs-code-companion) you can send the lines you have selected in VS Code, problems and terminal output too.
+- **GitHub issues and pull requests:** type `#` in the message box to attach one of the project's open issues or pull requests as a chip. When the message goes to Claude, it gets the title, link, labels and text, and for a pull request its branch and unresolved review comments, marked as context to read, not instructions. Press ⌥↩ on one in the list (or run *New session from issue…* or *New session from pull request…* in the command palette, or open a [link](docs/deep-links.md#from-an-issue-or-pull-request)) to open New session with a worktree named after it and the prompt filled in; nothing runs until you press Start. Switchboard only reads from GitHub. This needs the [GitHub CLI](https://cli.github.com/), signed in once with `gh auth login`; without it you can still paste a link to an issue. See [GitHub issues and pull requests](https://switchboard.struyfconsulting.com/sessions/github-issues/).
 - Approve or deny permission requests, answer Claude's questions and review plans in the conversation. **Why?** on a permission or question card says why Claude needs it and what saying yes does.
 - Follow what Claude does without the noise: each run of tool calls is one line ("Reading src/app.ts…", then "Ran 3 commands and edited 2 files"), and a click shows every step, with diffs, command output, to-do lists and subagent runs.
 - Images Claude reads or you attach are shown in the conversation.
@@ -68,7 +69,9 @@ It uses the Claude Code you already have installed, with your login, settings, c
 
 **Stay on top of things**
 - A notification and Dock badge when a session needs you or finishes, so you can leave it running in the background.
-- A **queue** of prompts to start next, each one saying when it's ready (when its project is free). See [Queue](#queue).
+- A **queue** of prompts to start next, each one saying when it's ready (when its project is free), or starting by itself once the session it waits for finishes. See [Queue](#queue).
+- **Schedules** that start a prompt at set times, every day, on weekdays, on the days you pick or once a month. See [Schedules](#schedules).
+- **Triggers** that start a session when CI fails on a branch, or when an issue is labelled or assigned to you. See [Triggers](#triggers).
 - **Unsent messages** are kept, also after you quit. See [Unsent messages](#unsent-messages).
 - **Saved prompts** with blanks: type / in any message box, pick one, fill in an issue, a pull request, a branch or your own options, and send. Keep them for every project, for one project just for you, or share them with the project in its `.switchboard.json`. See [Saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/).
 - An optional **focus limit**: how many sessions you want going at the same time, so starting another doesn't come at the cost of the ones already running. See [Focus limit](#focus-limit).
@@ -78,13 +81,13 @@ It uses the Claude Code you already have installed, with your login, settings, c
 **Review and finish the work**
 - A **Changes** panel (⌘⇧D) with the session's git diff: what's uncommitted, or the whole branch compared with `main`. Stage, unstage or revert files, and open any diff inline. Reverted new files go to the Trash.
 - The **branch** a session's folder has checked out shows in its header, read live from git (so it's right after you or Claude switch in a terminal). Click it (or **Switch branch…** in the git menu) to switch to another local branch. Switching uses `git switch`: uncommitted changes that don't conflict come along, and when they would be overwritten git refuses and you stay where you are. Nothing is ever stashed or thrown away. It waits while Claude is working in this folder, and asks first when other sessions work in the same folder.
-- A **git button** in the session header offers the next step for the branch: **Pull ↓2** when it's behind its upstream, **Commit 3** when there are changes (Claude writes the commit), **Push ↑1**, **Create PR** once a branch or worktree has commits, **View PR #123** once it has an open pull request, otherwise **Fetch**. Its menu shows where the branch stands (behind, ahead, changed files) and has every step: Pull (⌘⇧L), Fetch, **Commit…** with your own message, Ask Claude to commit, Push and Create PR…, plus **Switch branch…** and **New worktree…**. It says when you need to pull before you push. Git runs in a terminal tab so you see its output. **Create PR…** opens a dialog for the title, the description (from your pull request template or the commits), the base branch and Draft, then pushes and creates the pull request with the GitHub CLI (`gh`), without a browser. Once there is a pull request, **View PR #123** shows whether its checks passed, failed or are still running, the menu lists them, and a notification says when they finish. **Fix failing checks with Claude** puts a prompt in the message box with the end of each failed job's log. Pull and commit wait while Claude is working in the folder.
+- A **git button** in the session header offers the next step for the branch: **Pull ↓2** when it's behind its upstream, **Commit 3** when there are changes (Haiku writes the message from the diff, not the conversation, so it's quick and cheap), **Push ↑1**, **Create PR** once a branch or worktree has commits, **View PR #123** once it has an open pull request, otherwise **Fetch**. Its menu shows where the branch stands (behind, ahead, changed files) and has every step: Pull (⌘⇧L), Fetch, **Commit…** with your own message, Ask Claude to commit, Push and Create PR…, plus **Switch branch…** and **New worktree…**. It says when you need to pull before you push. Git runs in a terminal tab so you see its output. **Create PR…** opens a dialog for the title, the description (from your pull request template or the commits), the base branch and Draft, then pushes and creates the pull request with the GitHub CLI (`gh`), without a browser. Once there is a pull request, **View PR #123** shows whether its checks passed, failed or are still running, the menu lists them, and a notification says when they finish. **Fix failing checks with Claude** puts a prompt in the message box with the end of each failed job's log. Pull and commit wait while Claude is working in the folder.
 - **Finish a worktree** from its **Worktree** menu: merge into the base branch, or remove the worktree, optionally with its branch. Switchboard warns you before you lose commits that aren't merged or pushed.
 
 **Everything in one place**
 - A **command palette**: ⌘K (or ⌘⇧P) for the commands that fit where you are, ⌘P to jump to any session or project by typing a few letters. Start a session from it without leaving the keyboard: pick a project, write the prompt, press ⌘↵.
 - **Sessions side by side**: ⌥-click a session (or choose *Open beside*) to split the active pane. Open as many as fit, side by side, one above the other, or mixed. Drag a pane by its title to dock it somewhere else, and drag the dividers to resize.
-- **Home** (⌘⇧H, or the house button at the top of the sidebar) shows what needs you, what is working, and your projects. **Close a session** with the × in its header to go back to Home. A session that is working keeps running; pick it in the sidebar to open it again.
+- **Home** (⌘⇧H, or **Home** at the top of the sidebar) shows what needs you, what is working, and your projects. **Upcoming** (⌘⇧Y), under it, shows your queue, the scheduled runs of the next 7 days and every schedule, across projects. **Close a session** with the × in its header to go back to Home. A session that is working keeps running; pick it in the sidebar to open it again.
 - **Tools** (below the message box): the session's MCP servers, with their status and tools (turn them on or off, or reconnect, while the session runs in Switchboard), plus its skills, commands, agents and plugins.
 - A built-in terminal per session: ⌘J (or **Terminal** in the header) opens a shell in the session's folder. Outside a session, ⌘J opens a terminal too: in the project's folder on its page, otherwise in your home folder. **⋯ → Open in → Claude Code** opens the session in the full Claude Code terminal interface.
 - **Project actions**: one-click buttons for things like *Commit*, *Test* or *Publish*, running a command or sending Claude a prompt. See [Project actions](docs/project-actions.md).
@@ -124,16 +127,26 @@ It uses the Claude Code you already have installed, with your login, settings, c
 
 ## Requirements
 
-- A Mac with Apple Silicon, or a PC with Windows 10 or 11
+- A Mac with Apple Silicon, a PC with Windows 10 or 11, or Linux (x64 or Arm64)
 - [Claude Code](https://github.com/anthropics/claude-code) installed and signed in (`claude` works in your terminal)
 
-What works differently on Windows is in [Windows support](docs/windows-support.md).
+What works differently on Windows is in [Windows support](docs/windows-support.md), and on Linux in [Switchboard on Linux](https://switchboard.struyfconsulting.com/getting-started/linux/).
 
 ## Install
 
 Download the `.dmg` from the [latest release](https://github.com/estruyf/switchboard/releases/latest), open it and drag Switchboard to Applications.
 
 On Windows, download `Switchboard-<version>-setup.exe` from the same release and run it. It installs for you only, without admin rights, and updates itself.
+
+On Linux, download the `.deb` (Debian, Ubuntu), the `.rpm` (Fedora, RHEL, openSUSE) or the AppImage (any distribution) from the same release, for x64 or Arm64:
+
+```bash
+sudo apt install ./Switchboard-<version>-amd64.deb     # or
+sudo dnf install ./Switchboard-<version>-x86_64.rpm    # or
+chmod +x Switchboard-<version>-x86_64.AppImage && ./Switchboard-<version>-x86_64.AppImage
+```
+
+All three update themselves: the AppImage in place, the `.deb` and `.rpm` through your package manager.
 
 Or install it with [Homebrew](https://brew.sh):
 
@@ -150,7 +163,7 @@ npm install
 npm run dist
 ```
 
-Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications.
+Then open `apps/desktop/dist/Switchboard-<version>-arm64.dmg` and drag Switchboard to Applications. On Windows the build makes the installer, and on Linux the AppImage, `.deb` and `.rpm` (the `.rpm` needs `rpmbuild`).
 
 If macOS blocks the app the first time you open it, see [Building, signing and notarisation](docs/building-and-signing.md).
 
@@ -179,7 +192,7 @@ To stop the checks, turn off *Check for Claude Code updates automatically* in Se
 
 Press **⌘/** (or Help › Keyboard Shortcuts) to see every shortcut in the app, with the ones that work where you are and your project actions' shortcuts. Type in its field to filter by name or by keys ("terminal", "⌘J").
 
-On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
+On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them that way. In the terminal panel, Ctrl keys belong to the shell and Ctrl+Shift keys to Switchboard.
 
 <p align="center"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/shortcuts-dark.png">
@@ -198,6 +211,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘P | Go to a session or project (⌥↩ opens a session beside this one) |
 | ⌘⇧F | Search all conversations |
 | ⌘⇧H | Home |
+| ⌘⇧Y | Upcoming: queued and scheduled |
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
@@ -223,7 +237,7 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘⌫ | Delete the session (in the sidebar, to the Trash) |
 | ⌥-click | Open beside the current session (in the sidebar; Dragging the session onto a pane opens it there) |
 | Middle-click | Archive a finished session (in the sidebar) |
-| ← or → | Close or open a section (on a section header in the sidebar) |
+| ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |
 | ⌘E | Edit a queued item in New session (on a queued item, in the sidebar or Home) |
@@ -247,6 +261,14 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ↩ | Edit a message in Up next (on a message in Up next, above the message box; ↑ in an empty message box edits the last one) |
 | ⌥↑ or ⌥↓ | Move a message in Up next up or down (on a message in Up next, above the message box) |
 | ⌫ | Remove a message from Up next (on a message in Up next, above the message box; Undo puts it back) |
+| ⌘⌥R | Read the last reply, or close reading mode (in a session) |
+| ← | Go to the previous reply (in reading mode) |
+| → | Go to the next reply (in reading mode) |
+| K | Go to the previous heading (in reading mode) |
+| J | Go to the next heading (in reading mode) |
+| = or + | Make the text bigger (in reading mode) |
+| - | Make the text smaller (in reading mode) |
+| R | Reply with the selected text quoted (in reading mode) |
 | ⌘F | Find in the conversation |
 | ↩ or ⌘G | Next match (in Find) |
 | ⇧↩ or ⌘⇧G | Previous match (in Find) |
@@ -277,6 +299,8 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⇧↩ | New line |
 | / | Commands and skills (at the start of the message) |
 | @ | Mention a file |
+| # | Attach an issue or pull request (at the start of a word, in a project on GitHub) |
+| ⌥↩ | New session from it (on an issue or pull request in the # list) |
 | ⌘⇧A | Add files as context (Several at once; they show as chips) |
 | ⇥ | Next blank (in a saved prompt; After the last blank, on to the text under the prompt) |
 | ⇧⇥ | Previous blank (in a saved prompt; Backspace in an empty blank takes it out of the prompt) |
@@ -311,6 +335,16 @@ On Windows, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app shows them tha
 | ⌘↩ | Start the session |
 | ⌘⇧↩ | Add the prompt to the queue (Starts when you say so) |
 
+**Projects**
+
+| Shortcut | What it does |
+|---|---|
+| ⌥↑ or ⌥↓ | Previous or next project, same tab |
+| ⌥⇧↑ or ⌥⇧↓ | Move the open project up or down the list (The order the sidebar and New session use) |
+| ⌘F | Find a project in the list |
+| ⌘1 to ⌘8 | Jump to a tab (Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions, Settings) |
+| ⌘↩ | Open the project's Settings (in the project name's switcher) |
+
 **Settings**
 
 | Shortcut | What it does |
@@ -330,9 +364,9 @@ Drag the sidebar's right edge to make it wider or narrower; double-click the edg
 
 Open Settings with ⌘, or the gear at the bottom of the sidebar. While it is open, the sidebar lists its sections; close it with the × button, *Back to sessions* or Escape.
 
-- **General:** what Switchboard shows when it opens: *The last session* (the default; only if the sidebar lists it, so not a session from another app while those are hidden) or *New session*. You can also turn off the "Ask before quitting" prompt.
+- **General:** *Open at login* opens Switchboard when you log in (handy on a virtual machine that restarts by itself), and what it shows when it opens: *The last session* (the default; only if the sidebar lists it, so not a session from another app while those are hidden) or *New session*. You can also turn off the "Ask before quitting" prompt.
 
-- **Theme:** *Appearance* is Match System, Light or Dark. Under it, pick a [theme](#themes): Demo Time (the default), Catppuccin, Claude, Nord (dark only), Solarized, The unnamed (dark only), or one you imported.
+- **Theme:** *Appearance* is Match System, Light or Dark. Under it, pick a [theme](#themes): Demo Time (the default), Catppuccin, Nord (dark only), Solarized, one of the nine that match the app icons (Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean, Neon), or one you imported.
 - **Sidebar:** *Large icons* (easy to spot each project), *Standard*, or *Compact* (one line per session). *When collapsed* picks what ⌘B does: a *Minimal rail* of project icons, or *Hidden*. *Show sessions from other apps* also lists sessions from the terminal, Claude desktop and your editor (off by default), and notifies you when a terminal session is waiting.
 - **Projects:** *Project order* picks how New session, Home and the command palette list your projects: *Recent* (the ones you used last first, the default) or *Your order* (the order you set in Projects). *Clone from GitHub* (off by default) starts a project from a GitHub URL: New session clones it into the *Clone into* folder, adds it to your projects and runs your first prompt there. Before the first session in a clone that brings hooks, MCP servers or permission rules, Switchboard lists them and asks.
 - **Conversation:** *Summarised* (the default) shows each run of tool calls as one line, like Claude Code: what Claude is doing right now, or what it did, with how long it took. Click it to see the steps, and a step to see its details. *Every step* shows each tool call as its own card.
@@ -348,7 +382,7 @@ Open Settings with ⌘, or the gear at the bottom of the sidebar. While it is op
 
 A theme sets the colours of the app, the code blocks and the terminal, for light and dark. Pick one in **Settings → Theme** or with *Theme: <name>* in the command palette; it applies at once, and the toast's **Undo** takes you back.
 
-- **Built in:** Demo Time, Catppuccin (Latte and Mocha), Claude, Nord, Solarized and The unnamed. Nord and The unnamed have only a dark version; in light mode they show Demo Time.
+- **Built in:** Demo Time, Catppuccin (Latte and Mocha), Nord and Solarized, and nine themes that match the app icons: Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean and Neon. Nord has only a dark version; in light mode it shows Demo Time.
 - **Import…** (or drop a theme `.json` on the window, outside a session's message box) shows both modes, how many colours the file sets and which are worked out from its background and accent, any text that is hard to read, and its terminal and code colours, before you add it. *Add and use* switches to it right away.
 - **Export…** in a theme's ⋯ menu (or *Export current theme…* in the palette) saves it as a `.json` file. Exporting Demo Time gives every colour, a good starting point for your own. **Duplicate** makes an editable copy of any theme.
 - **Open themes folder** shows where imported themes are kept. Edit a file there and Switchboard applies it as soon as you save; if a change isn't valid, it keeps the last version that worked and says what's wrong.
@@ -379,7 +413,7 @@ Everything that starts work asks the same way: a message that brings back a sess
 
 ## Queue
 
-The queue holds prompts you want to start later, in the order you want them. It never starts anything by itself: it tells you when an item is ready, and you start it.
+The queue holds prompts you want to start later, in the order you want them. It tells you when an item is ready, and you start it, or it starts by itself when you turned on **Start by itself**.
 
 **Add to the queue.** In New session, write the prompt and choose **Add to queue** (⌘⇧↩) in Start's menu (the ▾ next to Start). The prompt is kept with its project and settings (model, effort, mode, branch or worktree), the box empties and you stay in New session to write the next one. The command palette's New session step has the same menu, and *Add to queue…* in the palette opens New session. Images you attached aren't kept with the prompt.
 
@@ -393,14 +427,37 @@ When the project you picked in New session has a session working, a line under t
 
 **Where it shows.** The **Queue** section in the sidebar sits right under Working. Ready items have a green tint and a **Start** button; the others show what they wait for, with Start on hover. Home has a Queue card with every item. When an item turns ready because a session finished, a message in the corner says so ("switchboard is free") with **Start it** and **Review first**, and the "Claude finished" notification names what's next in the queue.
 
-**Working with items.** Click an item to open it in New session, filled in, to check or change it first; it stays queued until you start it or add it again. **Start** starts it straight away, through the focus limit. Right-click an item (or ⋯ on Home) for Start now, Edit in New session…, Wait for…, Move to top, Move up and down, and Remove. Drag an item to reorder it, or use ⌥↑ and ⌥↓. Removing one doesn't ask: **Undo** brings it back. *Start next in queue* and *Queue: pick one to start…* are in the command palette.
+**Start by itself.** An item can start by itself once the session it waits for finishes, such as "once this session is finished, run the tests and write the changelog entry". Choose **Start after this one…** in a session's menu (or the conversation's ⋯ menu, or *Start after this session…* in the palette): New session opens on its project with Wait for set to that session and Start by itself on, and **Add to queue** queues it. The check is also next to **Wait for…** in New session and in an item's menu. Its row says "starts after “Fix login”" with a play mark, and the session it waits for shows "Starts after this one" above its message box. It only starts after a clean finish: after an error or a stop it stays in the queue, ready, and a notification says why. At the focus limit it waits for a free slot instead of asking; at a usage limit it waits for the reset. It starts with or without a window open, never at launch after Switchboard quit while that session worked, and not for a session that runs in the terminal, whose end Switchboard can't see.
+
+**Working with items.** Click an item to open it in New session, filled in, to check or change it first; it stays queued until you start it or add it again. **Start** starts it straight away, through the focus limit. Right-click an item (or ⋯ on Home) for Start now, Edit in New session…, Wait for…, Start by itself, Move to top, Move up and down, and Remove. Drag an item to reorder it, or use ⌥↑ and ⌥↓. Removing one doesn't ask: **Undo** brings it back. *Start next in queue* and *Queue: pick one to start…* are in the command palette.
+
+## Schedules
+
+A schedule starts a session from a prompt at set times, for work that comes back, such as "review yesterday's open pull requests" every weekday at 08:00. Every run is a new session, titled with the schedule's name and the day.
+
+**Make one.** In New session, write the prompt, set its choices, and choose **Schedule…** in Start's menu. The dialog takes a name, **Repeat** (Every day, Monday to Friday, Every week with the days you pick, or Every month on a day; the 31st runs on a shorter month's last day), **At**, and **If missed** (**Run when Switchboard starts** or **Skip it**), and shows the next three runs. With the mode on Ask before edits it warns that Claude will stop at its first permission. *Schedule a session…* in the palette does the same.
+
+**Where they show.** A **Schedules** card on Home and a section in a project's Sessions tab, each row with the rule, the last run (linked to its session), the next run, **Run now** and a menu with Edit…, Pause or Resume, and Delete (with Undo). *Schedules…* in the palette lists them. Sessions a schedule started have a repeat icon in the sidebar.
+
+**When it runs.** A notification says it started. A run never asks: while the last run is still working or waiting for you it's skipped; at the focus limit or a usage limit it goes to the queue and starts by itself when it can; a schedule whose folder is gone pauses. Runs missed while Switchboard was closed or the computer slept run once at the next start or wake, or are skipped, as you chose. On a Mac, schedules run while Switchboard is running, also with its windows closed; on Windows and Linux, while a Switchboard window is open.
+
+## Triggers
+
+A trigger starts a session when there is work: when CI fails on a branch, or when an open issue gets your label, is assigned to you, or both. Switchboard checks GitHub through the [GitHub CLI](https://cli.github.com) every 5 minutes, on this computer only; no webhook is needed.
+
+**Make one.** On a project's **Triggers** tab, choose **New trigger** (or **Start when…** in New session's Start menu, with the prompt you wrote). Pick the source, write the prompt (type `{{` for the event's fields, such as `{{event.title}}`), and check what the sessions run with and how many may run at once. The first check marks what is there as seen; only new failures and issues start a session.
+
+**On GitHub.** For issues, a trigger can keep a state label on the issue (`claude: working`, `claude: needs input`, `claude: pr open`, `claude: failed`) and assign the issue to you when it is picked up. Nothing else is written to GitHub, and only when you turn these on.
+
+**Guardrails.** Triggered sessions never bypass permissions; issues come from the repository's collaborators only, unless you change it; the issue's text and the CI log are context to read, not instructions; a trigger that fails five checks in a row pauses with the reason. Triggers show on the project's tab and in Upcoming's Triggers filter, sessions they started have a bolt in the sidebar, and notifications say when one starts or pauses.
 
 ## Project pages and worktrees
 
 Click a project in the **Projects** view, choose **Open project** in a project's menu in the sidebar, or run *Project: &lt;name&gt;* in the command palette to open its page. The header shows the folder, the branch checked out and its upstream, with **Open in editor** and **New session** (⌘N starts in this project while its page is open). The tabs below:
 
 - **Overview:** a card per area: sessions (working, needing you, in total), worktrees (how many, their size, how many can go), branches (here, on the remote, how many can go), the queue (when something is queued here) and git (branch, commits behind its upstream, changed files). Each card opens its tab.
-- **Sessions:** the project's sessions as the sidebar groups them, and its queued prompts.
+- **Sessions:** the project's sessions as the sidebar groups them, its queued prompts and its schedules.
+- **Triggers:** what starts a session when CI fails or an issue is for you, with their events. See [Triggers](#triggers).
 - **Worktrees:** every worktree of the repository, not only the ones Switchboard made. See below.
 - **Branches:** every branch, here and on the remote. See [Branches](#branches).
 - **Memory:** what Claude Code remembers about the project, and the instructions the team shares. See [Memory](#memory).
@@ -561,4 +618,4 @@ Switchboard and its VS Code companion are released under the [MIT License](LICEN
 
 ## Credits
 
-Switchboard's colour theme and syntax colours come from the [Demo Time theme](https://github.com/estruyf/vscode-demo-time-theme) (MIT). Solarized is [Ethan Schoonover's palette](https://ethanschoonover.com/solarized/) (MIT), Claude is ported from [jnahian/vscode-claude-theme](https://github.com/jnahian/vscode-claude-theme) (MIT), Nord from [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) (MIT), Catppuccin from [catppuccin.com](https://catppuccin.com/) (MIT) and The unnamed from [estruyf/vscode-unnamed-theme](https://github.com/estruyf/vscode-unnamed-theme) (MIT); see [Themes](docs/themes.md#credits-and-licences).
+Switchboard's colour theme and syntax colours come from the [Demo Time theme](https://github.com/estruyf/vscode-demo-time-theme) (MIT). Solarized is [Ethan Schoonover's palette](https://ethanschoonover.com/solarized/) (MIT), Nord is ported from [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) (MIT) and Catppuccin from [catppuccin.com](https://catppuccin.com/) (MIT); see [Themes](docs/themes.md#credits-and-licences).

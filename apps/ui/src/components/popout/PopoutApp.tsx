@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { SelectionMenu } from '../SelectionMenu.tsx';
 import { useReadyReport } from '../../engine/useReadyReport.ts';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { useAskSync } from '../../state/askStore.ts';
@@ -24,7 +25,9 @@ import { ArchiveDraftDialog } from '../drafts/ArchiveDraftDialog.tsx';
 import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
 import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
 import { CommandPalette } from '../palette/CommandPalette.tsx';
+import { FilePreviewDialog } from '../filePreview/FilePreviewDialog.tsx';
 import { PaletteDialogs } from '../palette/PaletteDialogs.tsx';
+import { RunTreeDialogs } from '../pipelines/RunTreeDialogs.tsx';
 import { useOverlayShortcuts } from '../palette/useOverlayShortcuts.ts';
 import { ShortcutsSheet } from '../shortcuts/ShortcutsSheet.tsx';
 import { useSavedPromptsSync } from '../savedPrompts/savedPromptsStore.ts';
@@ -95,7 +98,10 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
+      <SelectionMenu />
       <PaletteDialogs />
+      <RunTreeDialogs />
+      <FilePreviewDialog />
       <AddContextDialogHost />
       {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}
       <FocusGateDialog />

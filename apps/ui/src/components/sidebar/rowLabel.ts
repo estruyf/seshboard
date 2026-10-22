@@ -45,12 +45,15 @@ export function sessionRowLabel(row: {
   ownWindow?: boolean;
   /** It holds a message you typed and didn't send. */
   draft?: boolean;
+  /** A pipeline runs from it, or it is a run row: where the run is ("Validate · 3 of 4"). */
+  pipeline?: string | null;
   updatedAt: number;
   now: number;
 }): string {
   const parts = [row.title || 'Untitled session'];
   if (row.project) parts.push(row.project);
   if (row.status) parts.push(STATUS_LABEL[row.status]);
+  if (row.pipeline) parts.push(`pipeline at ${row.pipeline.replace(/ · /g, ', ')}`);
   if (row.pinned) parts.push('pinned');
   if (row.archived) parts.push('archived');
   if (row.picked) parts.push('in the selection');
@@ -58,5 +61,14 @@ export function sessionRowLabel(row: {
   if (row.ownWindow) parts.push('open in its own window');
   if (row.draft) parts.push('unsent message');
   parts.push(`updated ${spokenAge(row.updatedAt, row.now)}`);
+  return parts.join(', ');
+}
+
+/** The accessible name of a pipeline's sub-session: its step, its parent, then the model and state the row shows. */
+export function stepRowLabel(row: { title: string; parent: string | null; meta: string | null; status: RowStatus }): string {
+  const parts = [row.title || 'Untitled session'];
+  if (row.parent) parts.push(`step of ${row.parent}`);
+  if (row.meta) parts.push(row.meta.replace(/ · /g, ', '));
+  if (row.status) parts.push(STATUS_LABEL[row.status]);
   return parts.join(', ');
 }

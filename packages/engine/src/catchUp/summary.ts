@@ -179,6 +179,8 @@ export interface SummarizerOptions {
   startMs?: number;
   /** Smoke runs and screenshots: answer from this instead of calling a model. */
   stub?: (input: string, system: string) => string | null;
+  /** What the log calls a call ("Catch-up summary"). */
+  what?: string;
 }
 
 const emptyTokens = (): TokenCounts => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
@@ -252,7 +254,7 @@ export class Summarizer {
         }
       }
     } catch (error) {
-      if (!timedOut) this.options.log('debug', `Catch-up summary failed: ${(error as Error).message}`);
+      if (!timedOut) this.options.log('debug', `${this.options.what ?? 'Catch-up summary'} failed: ${(error as Error).message}`);
     } finally {
       clearTimeout(timer);
       query?.close();
@@ -260,7 +262,7 @@ export class Summarizer {
       setTimeout(() => this.options.ephemeral.delete(helperId), 5_000).unref?.();
     }
     if (sum(tokens) > 0) this.options.record(profileId, { id: randomUUID(), at: Date.now(), model, sessionId, tokens });
-    if (timedOut) this.options.log('debug', `Catch-up summary for ${sessionId}: Haiku didn't answer in time`);
+    if (timedOut) this.options.log('debug', `${this.options.what ?? 'Catch-up summary'} for ${sessionId}: Haiku didn't answer in time`);
     return text;
   }
 }

@@ -29,7 +29,7 @@ export function QueueButton({ state, onAction }: { state: QueueButtonState; onAc
   entries.push({ note: 'Queue holds it in Up next until Claude finishes. Steer gives it to Claude now, and Claude reads it at its next step. Send now stops Claude first.' });
   return (
     <SplitButton
-      onClick={() => onAction('queue')}
+      onClick={() => onAction(state.items[0]!.action)}
       disabled={state.disabled}
       reason={state.reason}
       entries={entries}

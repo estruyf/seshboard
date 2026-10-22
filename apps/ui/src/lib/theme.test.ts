@@ -85,7 +85,7 @@ describe('generating a theme from canvas and accent', () => {
     // white canvas get a hint of the yellow accent (Demo Time's are cool blue-grey), the diff backgrounds
     // are 14% (12%), and accent-ink and dark warn are solved to just 4.5:1.
     const greys = 0.05;
-    const LIMIT: Partial<Record<keyof ThemeTokens, number>> = { 'on-accent': 0.25, 'terminal-bg': 0.03, warn: 0.03, text: greys, muted: greys, faint: greys, selected: greys };
+    const LIMIT: Partial<Record<keyof ThemeTokens, number>> = { 'on-accent': 0.25, 'terminal-bg': 0.03, warn: 0.03, text: greys, 'paper-text': greys, muted: greys, faint: greys, selected: greys };
     const report: string[] = [];
     for (const mode of THEME_MODES) {
       const demo = DEMO_TIME_TOKENS[mode];
@@ -197,7 +197,7 @@ async function syntaxOf(syntax: ThemeSyntax | undefined, mode: ThemeMode) {
 
 describe('built-in themes', () => {
   it('ship in picker order with Demo Time first', () => {
-    expect(BUILT_IN_THEMES.map((b) => b.id)).toEqual(['demo-time', 'catppuccin', 'claude', 'nord', 'solarized', 'the-unnamed']);
+    expect(BUILT_IN_THEMES.map((b) => b.id)).toEqual(['demo-time', 'catppuccin', 'nord', 'solarized', 'graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon']);
   });
 
   it.each(BUILT_IN_THEMES.map((b) => [b.id, b.raw] as const))('%s parses, has its modes and keeps text readable', (id, raw) => {
@@ -205,12 +205,12 @@ describe('built-in themes', () => {
     if ('error' in result) throw new Error(result.error);
     expect(result.ignored).toEqual([]);
     const theme = result.theme;
-    // Nord and The unnamed are dark only, as the originals are; every other built-in has both modes.
-    const modes = id === 'nord' || id === 'the-unnamed' ? (['dark'] as const) : THEME_MODES;
+    // Nord is dark only, as the original is; every other built-in has both modes.
+    const modes = id === 'nord' ? (['dark'] as const) : THEME_MODES;
     expect(THEME_MODES.filter((mode) => theme[mode])).toEqual(modes);
     const resolved = resolveTheme(theme);
-    // Text, muted text and the accent as text reach WCAG AA. Solarized's and Claude's own palettes keep a
-    // few pairs under it (text on the accent, comments in code), as the originals do; the import report lists them.
+    // Text, muted text and the accent as text reach WCAG AA. Solarized's own palette keeps a
+    // few pairs under it (text on the accent, comments in code), as the original does; the import report lists them.
     for (const mode of modes) {
       const t = resolved[mode].tokens;
       expect(contrastOf(t.text, t.bg), `${mode} text`).toBeGreaterThanOrEqual(AA);
@@ -223,6 +223,12 @@ describe('built-in themes', () => {
     const resolved = resolveTheme(DEMO_TIME);
     const syntax = { light: await syntaxOf(undefined, 'light'), dark: await syntaxOf(undefined, 'dark') };
     expect(contrastIssues(DEMO_TIME, resolved, syntax, AA)).toEqual([]);
+  });
+
+  it.each(['graphite', 'midnight', 'paper', 'signal', 'forest', 'plum', 'aluminium', 'ocean', 'neon'])('%s, made for the app icon, keeps every pair readable, code included', async (id) => {
+    const theme = BUILT_IN_THEMES.find((b) => b.id === id)!.raw as ThemeFile;
+    const syntax = { light: await syntaxOf(undefined, 'light'), dark: await syntaxOf(undefined, 'dark') };
+    expect(contrastIssues(theme, resolveTheme(theme), syntax, AA)).toEqual([]);
   });
 });
 

@@ -95,12 +95,23 @@ export function nextCommand(state: UpdateState): Exclude<UpdateCommand, 'retry'>
   return 'check';
 }
 
-/** Why this build can't update itself, or null when it can. Checked in this order. */
-export function updatesDisabledReason(build: { env: Record<string, string | undefined>; packaged: boolean; devServer: boolean; hasFeed: boolean; mockFeed: boolean }): string | null {
+/**
+ * Why this build can't update itself, or null when it can. Checked in this order. `installer` is false on Linux for a
+ * copy that isn't the AppImage, .deb or .rpm (the unpacked folder), which electron-updater has no way to replace.
+ */
+export function updatesDisabledReason(build: {
+  env: Record<string, string | undefined>;
+  packaged: boolean;
+  devServer: boolean;
+  hasFeed: boolean;
+  mockFeed: boolean;
+  installer?: boolean;
+}): string | null {
   if (build.env.SWITCHBOARD_DISABLE_AUTO_UPDATE) return 'Updates are turned off by SWITCHBOARD_DISABLE_AUTO_UPDATE.';
   if (build.mockFeed) return null;
   if (build.devServer) return 'Updates are turned off in development builds.';
   if (!build.packaged) return 'Updates are turned off in builds that aren’t packaged.';
   if (!build.hasFeed) return 'This build has no update feed (app-update.yml), so it can’t update itself. Preview builds don’t have one.';
+  if (build.installer === false) return 'This copy wasn’t installed from the AppImage, .deb or .rpm, so it can’t update itself.';
   return null;
 }

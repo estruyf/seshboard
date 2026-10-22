@@ -24,6 +24,8 @@ export interface LinkServiceDeps {
   commits(folder: string, branch: string, base: string | null): Promise<string[]>;
   /** The last reply of the session's last turn. */
   lastReply(id: string): Promise<string | null>;
+  /** The plan you approved in a session that was a pipeline's plan step (#179). */
+  plan?(id: string): string | null;
   log(level: 'debug' | 'warn', message: string): void;
 }
 
@@ -124,20 +126,21 @@ export class LinkService {
       catchUp,
       commits: warm?.commits ?? [],
       lastReply: warm?.lastReply ?? null,
+      plan: this.deps.plan?.(sessionId) ?? null,
     };
   }
 
   /**
    * The message as Claude reads it: each stub turned into a brief about its session, each link recorded under `from`.
    * Never waits: what `warm` read before is used, the rest comes from the session index and the catch-up store.
-   * A text without stubs comes back as it is.
+   * A text without stubs comes back as it is. `others` is how many other blocks (attached issues) share the budget.
    */
-  expand(from: string, text: string): string {
+  expand(from: string, text: string, others = 0): string {
     const { briefs } = parseBriefs(text);
     // The same session twice gets one brief, where it is first linked.
     const stubs = briefs.filter((b, i) => b.stub && b.sessionId !== from && briefs.findIndex((o) => o.stub && o.sessionId === b.sessionId) === i);
     if (!stubs.length) return briefs.some((b) => b.stub) ? this.drop(text) : text;
-    const written = new Map(writeBriefs(stubs.map((stub) => buildBrief(this.source(stub.label, stub.sessionId)))).map((brief, i) => [stubs[i]!.sessionId, brief]));
+    const written = new Map(writeBriefs(stubs.map((stub) => buildBrief(this.source(stub.label, stub.sessionId))), stubs.length + others).map((brief, i) => [stubs[i]!.sessionId, brief]));
     const out = replaceBriefs(text, (brief, block) => {
       // A brief already written stays as it was; a link to the session itself, or a second one, says nothing.
       if (!brief.stub) return block;

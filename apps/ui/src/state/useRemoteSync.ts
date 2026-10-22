@@ -4,10 +4,13 @@ import { connectedRows, connectionAnnouncement, connectionChanges, connectToastD
 import { revokeDevice, setToastDay, toastDay, useRemote } from './remoteStore.ts';
 import { toast } from './toastStore.ts';
 import { popoutSession } from './popoutsStore.ts';
+import { useThemes } from './themeStore.ts';
+import { remoteTheme } from '../lib/themeRemote.ts';
 
 /**
  * Mirrors Remote's status and what paired devices do (`remote.changed`, `remote.fromDevice`) into `useRemote`, for
- * Settings › Remote and the sidebar. A device that connects is announced, with a toast the first time each day.
+ * Settings › Remote and the sidebar. A device that connects is announced, with a toast the first time each day. The
+ * theme in use goes to the engine, for phones that look like this computer.
  */
 export function useRemoteSync(): void {
   const connection = useEngineConnection();
@@ -24,6 +27,14 @@ export function useRemoteSync(): void {
       (error: Error) => store().setError(error.message),
     );
     return () => offs.forEach((off) => off());
+  }, [client]);
+
+  // On connecting and on every change of theme (picked, or its file edited). The engine passes on only a change.
+  useEffect(() => {
+    if (!client || popoutSession) return;
+    const send = ({ entry, resolved }: ReturnType<typeof useThemes.getState>['active']) => void client.call('remote.setTheme', remoteTheme(entry.file.name, resolved)).catch(() => {});
+    send(useThemes.getState().active);
+    return useThemes.subscribe((state, prev) => state.active !== prev.active && send(state.active));
   }, [client]);
 
   useEffect(() => {

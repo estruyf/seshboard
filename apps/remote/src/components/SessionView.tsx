@@ -1,13 +1,16 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X } from 'lucide-react';
-import type { CatchUp, QueuedMessage, RemoteFile, RemoteImage, RemoteMessage, RemoteOptions, RemoteSessions } from '@switchboard/protocol/remote-client';
+import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X, Zap } from 'lucide-react';
+import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
+import { runsOf } from '../lib/runs.ts';
+import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
 import { commitTitle, showsCatchUp } from '../lib/catchUp.ts';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
 import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
+import { ReadSheet } from './ReadSheet.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { formatDuration, turnStart, workingLabel } from '../lib/working.ts';
 import { turnEnds, turnLine } from '../lib/turns.ts';
@@ -15,7 +18,7 @@ import { answer } from './answer.ts';
 import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
 import { useNow } from './SessionList.tsx';
-import { MenuButton, type MenuItem } from './Menu.tsx';
+import { AnchoredMenu, MenuButton, type MenuItem } from './Menu.tsx';
 import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
@@ -26,8 +29,11 @@ import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } 
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
+import { LimitNotice } from './LimitNotice.tsx';
 import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
+import { SEND_MODES, SEND_MODES_NOTE, sendKey } from '../lib/sendMode.ts';
+import { keys, MAC } from '../lib/platform.ts';
 import { Button, ComputerTag, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
@@ -55,6 +61,7 @@ export function SessionView({
   wide = false,
   initialChanges = false,
   computerName,
+  onOpenSession,
 }: {
   client: Client;
   /** What the computer takes beyond what every version does (its hello). */
@@ -73,13 +80,28 @@ export function SessionView({
   initialChanges?: boolean;
   /** The computer it runs on, with more than one paired: the header says it. */
   computerName?: string | undefined;
+  /** Opens another session (or run row) of this computer: a pipeline run's parent or one of its steps. */
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const session = sessions.sessions.find((s) => s.id === sessionId) ?? null;
+  // Pipelines (#179): the run this session started, or the run and step it is a sub-session of.
+  const takesPipelines = features.includes(REMOTE_FEATURE_PIPELINES);
+  const runs = runsOf(sessions, sessionId);
+  const runState = runs.parent ?? runs.step?.state ?? null;
+  const [runSheet, setRunSheet] = useState(false);
+  const [pipelineSheet, setPipelineSheet] = useState(false);
+  const listed = new Set(sessions.sessions.map((s) => s.id));
+  const runParentId = runs.step && !runs.parent ? (runs.step.state.run.parentSessionId ?? runs.step.state.run.id) : null;
+  const canOpenParent = runParentId !== null && (listed.has(runParentId) || runs.step?.state.run.parentSessionId === null);
+  const stepName = runs.step ? runs.step.state.run.pipeline.steps[runs.step.index]?.name : undefined;
+  const idlePlaceholder = runs.parent ? PARENT_PLACEHOLDER : runs.step && waitsOnStep(runs.step.state, runs.step.index, runs.step.round) ? replyToStepPlaceholder(stepName ?? 'the step') : undefined;
   const prompts = sessions.prompts.filter((p) => p.sessionId === sessionId);
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [streaming, setStreaming] = useState<Streaming>(NOT_STREAMING);
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  /** How the session stands with its profile's usage limit; null while it isn't at one. */
+  const [limit, setLimit] = useState<RemoteLimitStanding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [changes, setChanges] = useState<ChangesState | null>(null);
@@ -135,6 +157,7 @@ export function SessionView({
       }),
       client.on('session.stream', (delta) => delta.sessionId === sessionId && setStreaming((current) => applyStream(current, delta))),
       client.on('upNext.changed', (event) => event.sessionId === sessionId && setQueue(event.queue)),
+      client.on('limits.changed', (event) => event.sessionId === sessionId && setLimit(event.limit)),
       client.on('catchup.changed', (event) => event.sessionId === sessionId && setCatchUp(event.catchUp)),
     ];
     void client.call('catchup.get', { sessionId }).then((r) => live && setCatchUp(r.catchUp), () => {});
@@ -184,17 +207,21 @@ export function SessionView({
   const tasks = session?.background ?? [];
   const results = resultsByCall(messages);
   const fail = (e: Error) => !lostConnection(e) && setError(e.message);
+  // A run's parent goes to Archived with its sub-sessions, as on the computer.
+  const treeRun = takesPipelines ? runs.parent : null;
+  const treeSteps = treeRun ? new Set(treeRun.steps.flatMap((s) => (s.sessionId ? [s.sessionId] : []))).size : 0;
+  const setArchived = (archived: boolean) => (treeRun ? client!.call('runs.archive', { runId: treeRun.run.id, archived }) : client!.call('session.setFlags', { sessionId, archived }));
   const menu: MenuItem[] = [
     ...(working ? [{ label: 'Stop', onSelect: () => void client?.call('session.interrupt', { sessionId }).catch(fail) }] : []),
     { label: 'Mark as read', disabled: !client || !unread, onSelect: () => void client?.call('session.markRead', { sessionId }).catch(fail) },
+    ...(takesPipelines && session && !runs.step ? [{ label: 'Run pipeline…', disabled: !client, onSelect: () => setPipelineSheet(true) }] : []),
     {
-      label: 'Archive',
+      label: treeSteps ? `Archive with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Archive',
       disabled: !client,
       onSelect: () =>
-        void client
-          ?.call('session.setFlags', { sessionId, archived: true })
+        void setArchived(true)
           .then(() => {
-            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void client.call('session.setFlags', { sessionId, archived: false }).catch(fail) } });
+            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
             onLeave();
           })
           .catch(fail),
@@ -203,7 +230,7 @@ export function SessionView({
   const open = prompts[0];
   const card = showsCatchUp(catchUp, working || background, Boolean(open)) ? catchUp : null;
   const files = changes?.files.length ?? 0;
-  const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = []) => client!.call('session.send', { sessionId, text, mode: 'queue', images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
+  const send = (text: string, images: RemoteImage[] = [], files: RemoteFile[] = [], mode: SendMode = 'queue') => client!.call('session.send', { sessionId, text, mode, images, ...(files.length ? { files } : {}) }).then(() => setUnfolded(true));
   const askToFix = (path: string | null) => {
     setSheet(null);
     setFill({ text: path ? `In ${path}, ` : '', id: Date.now() });
@@ -301,15 +328,18 @@ export function SessionView({
               <span className="tabular-nums">{files}</span>
             </Button>
           )}
-          {wide && working && (
-            <Button size="md" onClick={stop} disabled={!client} data-remote-stop>
-              <Square className="size-3 fill-current" aria-hidden />
-              Stop
-            </Button>
-          )}
           <MenuButton label="Session actions" items={menu} />
         </header>
         {banner}
+        {runState && (
+          <RunBar
+            state={runState}
+            step={runs.parent ? null : runs.step && { index: runs.step.index, round: runs.step.round }}
+            client={client}
+            onSteps={() => setRunSheet(true)}
+            onParent={canOpenParent && onOpenSession ? () => onOpenSession(runParentId!) : null}
+          />
+        )}
         <Transcript
           messages={messages}
           results={results}
@@ -332,7 +362,16 @@ export function SessionView({
             </p>
           </div>
         )}
-        {queue.length > 0 && <UpNext queue={queue} onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))} />}
+        {client && (
+          <LimitNotice client={client} sessionId={sessionId} limit={limit} held={queue.length} busy={working || prompts.length > 0} now={now} />
+        )}
+        {queue.length > 0 && (
+          <UpNext
+            queue={queue}
+            onRemove={(id) => void client?.call('session.queue.remove', { sessionId, id }).catch((e: Error) => setError(e.message))}
+            onSendNow={features.includes(REMOTE_FEATURE_QUEUE_SEND_NOW) ? (id) => void client?.call('session.queue.sendNow', { sessionId, id }).catch((e: Error) => setError(e.message)) : null}
+          />
+        )}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         <Composer
@@ -354,7 +393,9 @@ export function SessionView({
           disabled={!client}
           working={working}
           answering={Boolean(open)}
-          onSend={async (text, images, files) => {
+          idle={idlePlaceholder}
+          onStop={stop}
+          onSend={async (text, images, files, mode) => {
             // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
             if (open) {
               if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
@@ -363,12 +404,14 @@ export function SessionView({
               if (result === 'failed') throw new Error("The answer didn't reach your computer.");
               return;
             }
-            await send(text, images, files);
+            await send(text, images, files, mode);
           }}
           onError={setError}
           onFocusChange={setTyping}
         />
       </div>
+      {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
+      {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
       {ask.open && !panelFits && <AskSheet client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
       {askPanel && <AskPanel client={client} sessionId={sessionId} state={ask} working={working} onQuote={quote} onClose={() => closeAsk(sessionId)} />}
       {sheet === 'changes' && <ChangesSheet client={client} sessionId={sessionId} changes={changes} onClose={() => setSheet(null)} onAsk={askToFix} onCommit={() => setSheet('commit')} />}
@@ -442,6 +485,9 @@ function Transcript({
   const atEnd = useRef(true);
   const [away, setAway] = useState(false);
   const [missed, setMissed] = useState(false);
+  /** The key of the reply whose turn is open in Read. */
+  const [reading, setReading] = useState<string | null>(null);
+  const readingEnd = reading ? ends.get(reading) : undefined;
   const last = messages.at(-1)?.uuid;
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -521,7 +567,7 @@ function Transcript({
                   const end = item.kind === 'text' ? ends.get(item.key) : undefined;
                   return (
                     <Fragment key={item.key}>
-                      <ItemView item={item} results={results} live={working && index === items.length - 1} />
+                      <ItemView item={item} results={results} live={working && index === items.length - 1} onRead={end ? () => setReading(item.key) : undefined} />
                       {end && (
                         <p className="-mt-3 text-meta whitespace-nowrap text-faint tabular-nums" data-turn-meta>
                           {turnLine(end)}
@@ -545,6 +591,7 @@ function Transcript({
           )}
         </div>
       </div>
+      {readingEnd && <ReadSheet texts={readingEnd.texts} onClose={() => setReading(null)} />}
       {away && (
         <Button size="md" onClick={toEnd} data-remote-jump className={`absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md ${missed ? 'border-accent-ink!' : ''}`}>
           <ArrowDown className="size-4" aria-hidden />
@@ -595,7 +642,8 @@ function BackgroundLine({ text }: { text: string }) {
   );
 }
 
-function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: string) => void }) {
+/** What waits for the turn to end. Send now (from a computer that takes it) stops Claude and sends that one at once. */
+function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemove: (id: string) => void; onSendNow: ((id: string) => void) | null }) {
   return (
     <section aria-label="Up next" className="px-3 pt-2 sm:px-6">
       <div className="mx-auto w-full max-w-3xl px-1">
@@ -604,6 +652,12 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
           {queue.map((item) => (
             <li key={item.id} className="flex items-center gap-2 py-0.5">
               <span className="min-w-0 flex-1 truncate text-ui">{item.text}</span>
+              {onSendNow && (
+                <Button variant="quiet" size="md" onClick={() => onSendNow(item.id)} title="Stop Claude and send this now" className="px-2!" data-remote-send-now={item.id}>
+                  <Zap className="size-3.5" aria-hidden />
+                  Send now
+                </Button>
+              )}
               <Button variant="quiet" size="md" aria-label="Remove from Up next" onClick={() => onRemove(item.id)} className="px-2!">
                 <X className="size-4" aria-hidden />
               </Button>
@@ -616,8 +670,9 @@ function UpNext({ queue, onRemove }: { queue: QueuedMessage[]; onRemove: (id: st
 }
 
 /**
- * The message box. While Claude works, a message waits in Up next for the turn to end, as on the computer. While a
- * prompt is open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
+ * The message box. While Claude works, Stop sits next to Send, and a message waits in Up next for the turn to end, as
+ * on the computer; the menu next to Send can steer it or send it now instead (`lib/sendMode.ts`). While a prompt is
+ * open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
  * (`Attachments.tsx`), and show above the box with a remove button.
  */
 function Composer({
@@ -628,6 +683,8 @@ function Composer({
   disabled,
   working,
   answering,
+  idle,
+  onStop,
   onSend,
   onError,
   onFocusChange,
@@ -642,7 +699,10 @@ function Composer({
   disabled: boolean;
   working: boolean;
   answering: boolean;
-  onSend: (text: string, images: RemoteImage[], files: RemoteFile[]) => Promise<void>;
+  /** What the box says while Claude waits for you: a run's parent and a step the run waits on say what writing does. */
+  idle?: string | undefined;
+  onStop: () => void;
+  onSend: (text: string, images: RemoteImage[], files: RemoteFile[], mode: SendMode) => Promise<void>;
   onError: (message: string) => void;
   /** The box got or lost focus: on a touch screen, the keyboard came up or went. */
   onFocusChange: (focused: boolean) => void;
@@ -675,12 +735,15 @@ function Composer({
       if (el) el.scrollTop = el.scrollHeight;
     });
   }, [fill]);
-  const send = async () => {
+  const cantSend = disabled || busy || reading || !text.trim();
+  /** While Claude works, Send queues; its menu can steer or send now instead. An answer to a prompt has one way. */
+  const modes = working && !answering;
+  const send = async (mode: SendMode = 'queue') => {
     const message = text.trim();
     if (!message || busy || reading) return;
     setBusy(true);
     try {
-      await onSend(message, attachments.images, attachments.files);
+      await onSend(message, attachments.images, attachments.files, mode);
       // Also when you went to another view while it was sending.
       clearDraft(draft);
       setText('');
@@ -715,21 +778,47 @@ function Composer({
           onFocus={() => onFocusChange(true)}
           onBlur={() => onFocusChange(false)}
           onKeyDown={(event) => {
-            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer.
-            if (fine && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer; ⌥↵ steers, ⌘⇧↵ sends now.
+            const mode = fine ? sendKey({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }, MAC) : null;
+            if (mode) {
               event.preventDefault();
-              void send();
+              void send(mode);
             }
           }}
           rows={1}
-          placeholder={disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : 'Message Claude'}
+          placeholder={disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : (idle ?? 'Message Claude')}
           aria-label="Message"
           data-remote-message
           className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
         />
-        <Button type="submit" variant="primary" size="md" disabled={disabled || busy || reading || !text.trim()} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className="px-3!">
-          <Send className="size-4" aria-hidden />
-        </Button>
+        {working && (
+          <Button variant="danger" size="md" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="px-3!" data-remote-stop>
+            <Square className="size-3 fill-current" aria-hidden />
+            <span className="hidden sm:inline">Stop</span>
+          </Button>
+        )}
+        <div className="flex shrink-0">
+          <Button type="submit" variant="primary" size="md" disabled={cantSend} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className={`px-3! ${modes ? 'rounded-r-none' : ''}`}>
+            <Send className="size-4" aria-hidden />
+          </Button>
+          {modes && (
+            <AnchoredMenu
+              label="More ways to send"
+              side="above"
+              items={[
+                ...SEND_MODES.map(({ mode, label, shortcut }) => ({ label, hint: fine ? keys(shortcut) : undefined, onSelect: () => void send(mode) })),
+                { kind: 'separator' as const },
+                { kind: 'note' as const, label: SEND_MODES_NOTE },
+              ]}
+            >
+              {(trigger) => (
+                <Button {...trigger} variant="primary" size="md" disabled={cantSend} aria-label="More ways to send" className="rounded-l-none border-l border-on-accent/20 px-1.5!" data-remote-send-menu>
+                  <ChevronDown className="size-4" aria-hidden />
+                </Button>
+              )}
+            </AnchoredMenu>
+          )}
+        </div>
       </div>
       {/* Wraps on a narrow phone rather than scrolling: a scrolling row would clip the lists that open above the chips. */}
       {chips && <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-1.5 pt-1.5">{chips}</div>}

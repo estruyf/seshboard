@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { LaterDraft, LaterItem, QueueStarted, QueueWaitFor } from '@switchboard/protocol/client';
+import type { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from '@switchboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { runOnce } from '../lib/inFlight.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
@@ -16,13 +16,15 @@ interface LaterState {
   items: LaterItem[];
   /** Started items and their sessions, for the items still waiting on them. */
   started: QueueStarted[];
+  /** What the engine knows about items that start by themselves: how sessions ended, and items held at the focus limit. */
+  auto: QueueAuto;
   loaded: boolean;
   /**
    * New session should fill itself in from this item (a click on it, or Edit in New session). `asNew`: it left the
    * queue (Undo of Add to queue), and its prompt goes back into New session's box as a prompt of its own.
    */
   request: { item: LaterItem; asNew: boolean; seq: number } | null;
-  replace(items: LaterItem[], started: QueueStarted[]): void;
+  replace(items: LaterItem[], started: QueueStarted[], auto: QueueAuto): void;
   /** Opens New session filled in from an item, so it can be checked (and changed) before it starts. */
   use(item: LaterItem, options?: { asNew?: boolean }): void;
   /** New session takes the request once. */
@@ -34,9 +36,10 @@ let seq = 0;
 export const useLater = create<LaterState>()((set, get) => ({
   items: [],
   started: [],
+  auto: { outcomes: [], focusHeld: [] },
   loaded: false,
   request: null,
-  replace: (items, started) => set({ items, started, loaded: true }),
+  replace: (items, started, auto) => set({ items, started, auto, loaded: true }),
   use: (item, options = {}) => {
     set({ request: { item, asNew: options.asNew ?? false, seq: ++seq } });
     useSessions.getState().openNewSession();
@@ -54,8 +57,8 @@ export function useLaterSync(): void {
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
     if (!client) return;
-    const off = client.on('later.changed', ({ items, started }) => useLater.getState().replace(items, started));
-    void client.call('later.list', {}).then(({ items, started }) => useLater.getState().replace(items, started), () => {});
+    const off = client.on('later.changed', ({ items, started, auto }) => useLater.getState().replace(items, started, auto));
+    void client.call('later.list', {}).then(({ items, started, auto }) => useLater.getState().replace(items, started, auto), () => {});
     return off;
   }, [client]);
 }
@@ -132,6 +135,11 @@ export async function updateQueued(id: string, draft: LaterDraft): Promise<void>
 
 export async function setWaitFor(item: LaterItem, waitFor: QueueWaitFor): Promise<void> {
   await clientNow().call('later.update', { id: item.id, waitFor });
+}
+
+/** Start by itself, on or off. The engine turns it off for an item that waits for nothing. */
+export async function setAutoStart(item: LaterItem, autoStart: boolean): Promise<void> {
+  await clientNow().call('later.update', { id: item.id, autoStart });
 }
 
 /** Queued items being started (from the gate until the engine answers), so each starts once. */

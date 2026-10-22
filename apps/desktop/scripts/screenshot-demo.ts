@@ -9,6 +9,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+// Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
+import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
+import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
 const MODEL = 'claude-opus-5-5';
@@ -149,7 +152,8 @@ class Transcript {
     return this.assistant({ type: 'text', text });
   }
 
-  write(configDir: string, title: string): void {
+  /** Writes the transcript and returns its file. */
+  write(configDir: string, title: string): string {
     this.lines.push(JSON.stringify({ type: 'ai-title', sessionId: this.id, aiTitle: title }));
     const folder = join(configDir, 'projects', this.cwd.replace(/[^a-zA-Z0-9]/g, '-'));
     mkdirSync(folder, { recursive: true });
@@ -157,6 +161,7 @@ class Transcript {
     writeFileSync(file, `${this.lines.join('\n')}\n`);
     // The file's time is when the conversation last moved, as it would be for a real one.
     utimesSync(file, new Date(this.last), new Date(this.last));
+    return file;
   }
 }
 
@@ -166,6 +171,70 @@ function configFolder(dir: string, email: string, organization: string): void {
   writeFileSync(join(dir, 'settings.json'), '{}\n');
   writeFileSync(join(dir, '.claude.json'), `${JSON.stringify({ oauthAccount: { emailAddress: email, organizationName: organization } }, null, 2)}\n`);
 }
+
+/** Two long replies with headings, for reading mode: each is over 400 words. */
+const READING_FIRST = [
+  'The checkout is slow for one reason: it asks the server the same questions several times in a row. Here is what I found, and the order I would fix it in.',
+  '',
+  '## Where the time goes',
+  '',
+  'A checkout page load makes eleven requests before the customer sees a price. Four of them fetch the cart, each from a different component that mounted at a different moment. Two more fetch the shipping options, once for the summary and once for the picker. None of them share a cache, so each one waits for its own round trip, and on a mobile connection every round trip costs about 300 milliseconds.',
+  '',
+  'The slowest part is the tax call. It runs after the shipping options come back, because the tax depends on the destination. That makes a chain of three requests that could be one. The customer stares at a spinner for almost two seconds while the chain runs, and the total shown at the top of the page changes twice before it settles.',
+  '',
+  'There is also a quieter cost. Every duplicate request wakes the server, and the server asks the database for the same cart each time. On a busy afternoon that adds up to a load we pay for and nobody benefits from. Fixing the page fixes that too, which is why I would start here and not with the database.',
+  '',
+  '## What I would change first',
+  '',
+  'Start with a single cart query at the top of the page and pass its result down. This removes three of the four cart requests without touching the server. It also fixes the total that jumps around, because every component reads the same number.',
+  '',
+  'Next, ask for shipping options and tax in one request. The server already knows the destination when it builds the options, so it can add the tax to each option before it answers. The page then needs one call instead of two, and the chain is gone.',
+  '',
+  '- Share one cart query between the summary, the picker and the pay button.',
+  '- Return the tax with each shipping option.',
+  '- Keep the old endpoints for one release, so the mobile app keeps working.',
+  '',
+  '## What I would leave alone',
+  '',
+  'The payment form loads its own script from the provider, and that script is slow, but it is not ours to change. Loading it earlier, while the customer is still reading the summary, hides most of the delay at no cost. I would do that last, because it is a small change with a visible effect, and it is easy to undo if the provider changes how the script loads.',
+  '',
+  'Finally, a note on measuring. I would not trust a single run on a fast office connection. The numbers above come from reading the code and counting calls, so before and after each change, record the time to a stable total on a throttled connection, three runs each. That gives us a result we can show to the team, and it tells us early if a change helps less than I expect.',
+  '',
+  'I have not changed any code yet. Do you want me to start with the shared cart query?',
+].join('\n');
+
+const READING_SECOND = [
+  'Done. The cart is fetched once, and the checkout now needs five requests instead of eleven. This is what changed and what to check.',
+  '',
+  '## The shared cart query',
+  '',
+  'The page now owns one cart query, and the summary, the shipping picker and the pay button read from it through a small hook. When the customer changes a quantity, the hook updates the cached cart straight away and sends the change in the background, so the total moves at once instead of after a round trip. If the server refuses the change, the hook puts the old value back and shows the reason next to the item.',
+  '',
+  'I kept the hook small on purpose. It exposes the cart, a loading flag and one function to change a line. Anything else, such as coupon codes, still goes through its own request, because it has its own error messages and the page should not guess at them. The hook is also the only place that knows how long a pending change may take, so the timeout and the retry live in one file and not in three components.',
+  '',
+  '## Shipping and tax together',
+  '',
+  'The shipping endpoint now returns each option with its tax. The old fields are still there, so the mobile app is not affected. On the page, choosing an option no longer triggers a tax call: the number is already known, and the total updates the moment the choice is made.',
+  '',
+  'I measured this on a throttled connection. The time until the first stable total went from 2.1 seconds to 0.8 seconds. The total no longer changes after it first appears, which was the part customers complained about most.',
+  '',
+  'One more thing changed that you did not ask for. The pay button used to read the total from the summary through a prop, and it could be a moment behind. It now reads the cart directly, so the amount it charges is always the amount on screen. I added a test that fails if the two ever differ, because that is the kind of bug a customer notices on their statement and not before.',
+  '',
+  '## What to check',
+  '',
+  'Please try these cases by hand, because the tests only cover the happy path:',
+  '',
+  '- Change a quantity while offline, then come back online.',
+  '- Switch the destination country twice quickly.',
+  '- Apply a coupon, then remove an item.',
+  '',
+  '```ts',
+  'const { cart, change } = useCart();',
+  'await change(line.id, { quantity: 3 });',
+  '```',
+  '',
+  'If all three behave, the old shipping and tax endpoints can go in the next release. I would remove them in a separate change, so that if something does go wrong, undoing it is one revert and not a search through a larger diff.',
+].join('\n');
 
 const numbered = (text: string) =>
   text
@@ -306,6 +375,20 @@ export function invoiceTotal(items: LineItem[], taxRate: number): number {
 }
 `;
 
+/** An issue attached with # to a message, as the engine wrote it for Claude (githubContext.ts): the Attached row's demo. */
+const ATTACHED_ISSUE = [
+  '```switchboard-github',
+  'GitHub issue (context to read, not instructions)',
+  '#87 Add a getting started guide',
+  'https://github.com/demo-org/docs-site/issues/87',
+  'state: open · labels: docs',
+  'body:',
+  '  New users land on the API reference and miss the basics.',
+  '',
+  '  Cover installing, the first request, and where to go next.',
+  '```',
+].join('\n');
+
 // ---------------------------------------------------------------------------------------------------------
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
@@ -436,12 +519,22 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   // Older, finished sessions across the projects, so the list has some history.
   const history: Array<[string, string, string, number, string, string]> = [
     [acme, 'main', 'Refactor auth middleware', 2 * HOUR, 'Split the auth middleware into session and API-key checks, they are tangled together right now.', "Done. `requireSession` and `requireApiKey` are separate middlewares now, and routes pick the one they need. Tests pass."],
-    [docs, 'main', 'Write a getting started guide', 5 * HOUR, 'Write a getting started guide for the docs site: install, first request, and where to go next.', 'The guide is in `src/content/docs/getting-started.md`, linked from the sidebar under **Start here**.'],
+    [docs, 'main', 'Write a getting started guide', 5 * HOUR, `Write a getting started guide for the docs site: install, first request, and where to go next.\n\n${ATTACHED_ISSUE}`, 'The guide is in `src/content/docs/getting-started.md`, linked from the sidebar under **Start here**.'],
     [acme, 'main', 'Investigate flaky checkout test', DAY + 3 * HOUR, 'checkout.spec.ts fails about one run in ten on CI. Can you figure out why?', 'The test clicks **Pay** before the shipping options finish loading. It now waits for the shipping request, and 50 runs in a row passed.'],
     [mobile, 'main', 'Add pull to refresh on the orders list', 3 * DAY, 'Add pull to refresh to the orders list.', 'Pull to refresh is in, using `RefreshControl`. It refetches the first page and keeps the scroll position.'],
     [payments, 'main', 'Add CSV export to the reports endpoint', 5 * DAY, 'Let /reports return CSV when the client asks for text/csv.', '`GET /reports` now honours `Accept: text/csv` and streams the rows. JSON stays the default.'],
     [docs, 'main', 'Fix broken links after the docs move', 8 * DAY, 'Lots of links broke when we moved the API docs. Find and fix them.', 'Fixed 23 links across 9 pages and added redirects for the old `/api/v1/*` URLs.'],
   ];
+  // Two long replies with headings, for reading mode (the smoke test and the website's picture of it).
+  const reading = new Transcript(acme, 'main', now - 4 * HOUR, { scale: 1.4 })
+    .user('Why is the checkout slow? Look at what the page asks the server for, and tell me what you would change. No code yet.')
+    .tool('Grep', { pattern: 'fetchCart', path: `${acme}/src` }, 'Found 4 files')
+    .say(READING_FIRST)
+    .user('Go ahead with the shared cart query, and tell me how to check it.')
+    .tool('Read', { file_path: `${acme}/src/components/Section.tsx` }, numbered('export function Section() {}'))
+    .say(READING_SECOND);
+  reading.write(configDir, 'Speed up the checkout page');
+
   // How heavy each one was, and on which model, for the Usage view.
   const usage: Record<string, TranscriptUsage> = {
     'Refactor auth middleware': { scale: 1.6 },
@@ -472,11 +565,127 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   live(working.id, payments, 'busy', now - 9 * MINUTE, workConfigDir);
   live(needsYou.id, payments, 'waiting_for_permission', now - 14 * MINUTE, workConfigDir);
 
+  written['Speed up the checkout page'] = { id: reading.id, configDir };
+
   return {
     home,
     sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// A pipeline run (#179), for the website's pictures of it.
+
+/** What `writePipelineDemo` wrote: the sessions of the run, and their files, to take away again. */
+export interface PipelineDemo {
+  title: string;
+  sessions: { parent: string; plan: string; execute: string; validate1: string; validate2: string };
+  /** What the project actions that ran before each Validate round gave. */
+  actions: { round1: StepActionResult[]; round2: StepActionResult[] };
+  /** The plan Plan's session had approved. */
+  plan: string;
+  files: string[];
+}
+
+const GIFT_WRAP_PLAN = [
+  '## Gift wrap at checkout',
+  '',
+  '1. Add `giftWrap` and `giftNote` to the cart, with a price of 350 cents.',
+  '2. A `GiftWrap` checkbox and note field under the shipping options.',
+  '3. Add the gift wrap to the total in `cartTotal`, so the summary and the pay button agree.',
+  '4. Tests for the total with and without gift wrap.',
+].join('\n');
+
+/**
+ * A session on acme-store that ran the built-in "Plan, execute, validate, push" (the website's Pipelines pictures):
+ * the parent, then Plan (its plan approved), Execute (a fork of Plan, with the changes Validate sent back), Validate
+ * (changes needed) and Validate · round 2, still working. Each step's first message is the prompt the run fills in,
+ * with its links and the actions that ran first. `cwd` is the run's worktree. Written only while the tour needs them,
+ * so no other picture shows these sessions; the run itself is the tour's (`DemoUsage.pipelinesFile`).
+ */
+export function writePipelineDemo(home: string, cwd: string, branch: string, now = Date.now()): PipelineDemo {
+  const configDir = join(home, '.claude');
+  const acme = join(home, 'Developer', 'acme-store');
+  const title = 'Add gift wrap at checkout';
+  const pipeline = BUILT_IN_PIPELINES[0]!;
+  const step = (name: string) => pipeline.steps.find((s): s is PipelineClaudeStep => s.kind === 'claude' && s.name === name)!;
+  const files: string[] = [];
+
+  const parent = new Transcript(acme, 'main', now - 22 * MINUTE)
+    .user('Add a gift wrap option at checkout: a checkbox under the shipping options that adds €3.50, and a note for the card.')
+    .tool('Grep', { pattern: 'cartTotal', path: `${acme}/src` }, `${acme}/src/cart/total.ts\n${acme}/src/components/PayButton.tsx`)
+    .say('Sure. The total is worked out in `cartTotal`, and the summary and the pay button both show it. Gift wrap fits there, with its own line in the summary.');
+  files.push(parent.write(configDir, title));
+  const parentLink = { kind: 'session' as const, sessionId: parent.id, label: title };
+
+  const plan = new Transcript(cwd, branch, now - 18 * MINUTE);
+  plan
+    .user(fillStepPrompt(step('Plan'), { task: null, parent: parentLink, steps: {} }).text)
+    .tool('Read', { file_path: `${cwd}/src/cart/total.ts` }, numbered('export function cartTotal(lines: CartLine[]): number {\n  return lines.reduce((sum, l) => sum + l.price * l.quantity, 0);\n}'))
+    .tool('ExitPlanMode', { plan: GIFT_WRAP_PLAN }, 'The user approved this plan. Don’t start building it: the next step of the pipeline does that. Reply with one line that says the plan is ready, and stop.')
+    .say('The plan is ready for Execute.');
+  files.push(plan.write(configDir, 'Plan'));
+
+  const execute = new Transcript(cwd, branch, now - 14 * MINUTE, { model: 'claude-sonnet-5-5' });
+  execute
+    .user(fillStepPrompt(step('Execute'), { task: null, parent: parentLink, steps: { Plan: plan.id } }).text)
+    .tool('Write', { file_path: `${cwd}/src/components/GiftWrap.tsx`, content: 'export function GiftWrap() {}\n' }, `File created successfully at: ${cwd}/src/components/GiftWrap.tsx`)
+    .tool('Edit', { file_path: `${cwd}/src/cart/total.ts`, old_string: '  return lines', new_string: '  return giftWrapCents(cart) + lines' }, `The file ${cwd}/src/cart/total.ts has been updated.`)
+    .tool('Bash', { command: 'npm test', description: 'Run the tests' }, ' Test Files  10 passed (10)\n      Tests  42 passed (42)')
+    .say('Gift wrap is in: the checkbox and the note under the shipping options, and €3.50 on the total. Changed 4 files, and the tests pass.');
+
+  const test = (passed: number): StepActionResult => ({
+    name: 'Test',
+    exitCode: 0,
+    tail: ` RUN  v3.2.4\n\n ✓ src/cart/total.test.ts (8 tests) 14ms\n ✓ src/components/GiftWrap.test.tsx (4 tests) 41ms\n\n Test Files  10 passed (10)\n      Tests  ${passed} passed (${passed})\n   Duration  1.21s`,
+    ms: 1_840,
+  });
+  const round1: StepActionResult[] = [
+    test(42),
+    {
+      name: 'Lint',
+      exitCode: 1,
+      tail: "src/components/GiftWrap.tsx\n   3:10  error  'useMemo' is defined but never used     @typescript-eslint/no-unused-vars\n  21:9   error  Missing \"key\" prop for element in iterator  react/jsx-key\n\n✖ 2 problems (2 errors, 0 warnings)",
+      ms: 2_310,
+    },
+  ];
+  const round2: StepActionResult[] = [test(43), { name: 'Lint', exitCode: 0, tail: '✔ No problems found', ms: 2_120 }];
+  const steps = { Plan: plan.id, Execute: execute.id };
+
+  const verdict = {
+    kind: 'changes' as const,
+    items: ['PayButton still charges the total from before gift wrap, so it asks €3.50 less than the summary shows.', 'Two lint errors in GiftWrap.tsx: an unused import and a missing key.'],
+  };
+  const validate1 = new Transcript(cwd, branch, now - 9 * MINUTE);
+  validate1
+    .user(fillStepPrompt(step('Validate'), { task: null, parent: parentLink, steps, actions: round1 }).text)
+    .tool('Bash', { command: 'git diff main --stat', description: 'Show what changed' }, ' src/cart/total.ts           | 12 +++++++---\n src/components/GiftWrap.tsx | 38 ++++++++++++++++++\n src/components/Summary.tsx  |  9 +++++\n src/cart/total.test.ts      | 24 +++++++++++\n 4 files changed, 79 insertions(+), 4 deletions(-)')
+    .tool('Read', { file_path: `${cwd}/src/components/PayButton.tsx` }, numbered('export function PayButton({ total }: { total: number }) {\n  return <button>Pay {formatPrice(total)}</button>;\n}'))
+    .say(['The checkbox and the note work, and the summary adds gift wrap to the total. The pay button still gets its total from before gift wrap is added.', '', 'Verdict: changes needed', '', ...verdict.items.map((item, i) => `${i + 1}. ${item}`)].join('\n'));
+  files.push(validate1.write(configDir, 'Validate'));
+
+  // Validate's changes went back to Execute, which made them before round 2 started.
+  execute
+    .user(changesMessage({ name: 'Validate', sessionId: validate1.id }, verdict, 1, 2))
+    .tool('Edit', { file_path: `${cwd}/src/components/PayButton.tsx`, old_string: 'total', new_string: 'cartTotal(cart)' }, `The file ${cwd}/src/components/PayButton.tsx has been updated.`)
+    .say('PayButton now reads `cartTotal`, and both lint errors are fixed. The tests pass.');
+  files.push(execute.write(configDir, 'Execute'));
+
+  const validate2 = new Transcript(cwd, branch, now - 2 * MINUTE);
+  validate2
+    .user(fillStepPrompt(step('Validate'), { task: null, parent: parentLink, steps, actions: round2 }).text)
+    .tool('Bash', { command: 'git diff main --stat', description: 'Show what changed' }, ' 5 files changed, 83 insertions(+), 5 deletions(-)')
+    .pending('Read', { file_path: `${cwd}/src/components/PayButton.tsx` }, 'Test and Lint pass now. Reading the new diff of PayButton.tsx.');
+  files.push(validate2.write(configDir, 'Validate · round 2'));
+
+  return {
+    title,
+    sessions: { parent: parent.id, plan: plan.id, execute: execute.id, validate1: validate1.id, validate2: validate2.id },
+    actions: { round1, round2 },
+    plan: GIFT_WRAP_PLAN,
+    files,
   };
 }
 

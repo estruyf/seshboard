@@ -1,15 +1,21 @@
-import type { RemoteSessions } from '@switchboard/protocol/remote-client';
+import { checkRemoteSessions, REMOTE_FEATURE_THEME, unreadableLine, type RemoteSessions, type RemoteTheme } from '@switchboard/protocol/remote-client';
 import { Connection, type ConnectionState, type Dial } from './connection.ts';
 import { computerId, type Paired } from './link.ts';
 import type { PushComputers, PushTarget } from './push.ts';
+import { cleanTheme } from './theme.ts';
+import { cacheTheme, cachedTheme } from './themeApply.ts';
 
-/** One paired computer: its pairing, its connection, and its last list of sessions. */
+/** One paired computer: its pairing, its connection, its last list of sessions and its last theme. */
 export interface Computer {
   id: string;
   paired: Paired;
   connection: Connection;
   state: ConnectionState;
   sessions: RemoteSessions;
+  /** The theme in use there (`REMOTE_FEATURE_THEME`), kept on the phone; null until it sent one. */
+  theme: RemoteTheme | null;
+  /** What its last session list had that this app can't read (`unreadableLine`), for a banner; null when all was fine. */
+  problem: string | null;
 }
 
 const EMPTY: RemoteSessions = { sessions: [], prompts: [] };
@@ -75,7 +81,7 @@ export class Computers {
       }
       if (known) this.remove(id);
       const connection = new Connection(paired, this.options.dial ? { dial: this.options.dial } : {});
-      this.entries.set(id, { id, paired, connection, state: connection.current, sessions: cachedSessions(id) });
+      this.entries.set(id, { id, paired, connection, state: connection.current, sessions: cachedSessions(id), theme: cachedTheme(id), problem: null });
       connection.subscribe((state) => this.stateChanged(id, connection, state));
       connection.start({ disconnected: wasDisconnected(id) });
     }
@@ -88,12 +94,29 @@ export class Computers {
     this.changed();
   }
 
-  /** A list the phone asked for itself (pull to refresh, an answer). */
-  setSessions(id: string, sessions: RemoteSessions): void {
+  /**
+   * A list as the computer sent it (`sessions.list`, `sessions.changed`, pull to refresh), checked first: another
+   * version, or something that isn't Switchboard, may send one the views can't read. What can't be read is left
+   * out, and the computer's `problem` says so; a list that can't be read at all keeps the last one.
+   */
+  setSessions(id: string, value: unknown): void {
     const entry = this.entries.get(id);
     if (!entry) return;
-    this.entries.set(id, { ...entry, sessions });
-    cacheSessions(id, sessions);
+    const checked = checkRemoteSessions(value);
+    const name = nameOf(entry);
+    const problem = !checked ? unreadableLine(name, null) : checked.dropped ? unreadableLine(name, checked.dropped) : null;
+    this.entries.set(id, { ...entry, ...(checked ? { sessions: checked.list } : {}), problem });
+    if (checked) cacheSessions(id, checked.list);
+    this.changed();
+  }
+
+  /** A theme from the computer: kept, and shown when it is the one Theme shows. */
+  private setTheme(id: string, value: unknown): void {
+    const entry = this.entries.get(id);
+    const theme = cleanTheme(value);
+    if (!entry || !theme || JSON.stringify(theme) === JSON.stringify(entry.theme)) return;
+    this.entries.set(id, { ...entry, theme });
+    cacheTheme(id, theme);
     this.changed();
   }
 
@@ -110,12 +133,17 @@ export class Computers {
     if (!entry || entry.connection !== connection) return;
     this.listing.get(id)?.();
     this.listing.delete(id);
-    const next = { ...entry, state };
+    // Connected again: it may have been updated since, and its next list says.
+    const next = { ...entry, state, ...(state.kind === 'connected' ? { problem: null } : {}) };
     this.entries.set(id, next);
     if (state.kind === 'connected') {
       const { client } = state;
-      const off = client.on('sessions.changed', (sessions) => this.setSessions(id, sessions));
-      this.listing.set(id, off);
+      const offs = [client.on('sessions.changed', (sessions) => this.setSessions(id, sessions))];
+      if (state.features.includes(REMOTE_FEATURE_THEME)) {
+        offs.push(client.on('theme.changed', (theme) => this.setTheme(id, theme)));
+        void client.call('theme.get', {}).then(({ theme }) => this.setTheme(id, theme), () => {});
+      }
+      this.listing.set(id, () => offs.forEach((off) => off()));
       void client.call('sessions.list', {}).then((sessions) => this.setSessions(id, sessions), () => {});
       if (state.computerName && state.computerName !== entry.paired.computerName) {
         const paired = { ...entry.paired, computerName: state.computerName };
@@ -158,8 +186,8 @@ const CACHE = 'switchboard-remote:sessions';
 
 function cachedSessions(id: string): RemoteSessions {
   try {
-    const value = JSON.parse(sessionStorage.getItem(`${CACHE}:${id}`) ?? 'null') as RemoteSessions | null;
-    if (value && Array.isArray(value.sessions) && Array.isArray(value.prompts)) return value;
+    const checked = checkRemoteSessions(JSON.parse(sessionStorage.getItem(`${CACHE}:${id}`) ?? 'null'));
+    if (checked) return checked.list;
   } catch {
     // Nothing kept, or storage is off.
   }

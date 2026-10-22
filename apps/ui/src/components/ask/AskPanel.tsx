@@ -58,8 +58,16 @@ export function AskPanel(props: AskPanelProps) {
   const focus = useAsk((s) => (s.focus?.sessionId === sessionId ? s.focus.nonce : 0));
   useEffect(() => {
     if (!focus) return;
+    // Ask about this (from reading mode) starts the field with the selection quoted, the caret under it.
+    const prefill = useAsk.getState().focus?.prefill;
     useAsk.setState({ focus: null });
-    requestAnimationFrame(() => fieldRef.current?.focus());
+    if (prefill) setText(prefill);
+    requestAnimationFrame(() => {
+      const field = fieldRef.current;
+      if (!field) return;
+      field.focus();
+      if (prefill) field.setSelectionRange(prefill.length, prefill.length);
+    });
   }, [focus]);
 
   // The thread sticks to the bottom while an answer comes in, unless you scrolled up to read.
@@ -307,7 +315,7 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
       <div className="mt-2 min-w-0 text-body" data-ask-answer={item.status}>
         {item.status === 'error' ? (
           <div className="flex flex-wrap items-center gap-2" role="alert">
-            <span className="min-w-0 text-error">{item.error}</span>
+            <span className="min-w-0 text-error select-text">{item.error}</span>
             <Button size="sm" onClick={onRetry} data-ask-retry>
               Try again
             </Button>

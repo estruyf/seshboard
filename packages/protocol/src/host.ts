@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { isBranchName } from './githubRepo.ts';
 import { UsageLimitHit } from './usageLimit.ts';
+import { isWorktreeBase, type WorktreeBase } from './worktreeBase.ts';
 
 /** Permission modes the UI can switch between (bypassPermissions is deliberately not offered). */
 export const PermissionMode = z.enum(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']);
@@ -191,12 +193,35 @@ export const ModelOption = z.object({
 });
 export type ModelOption = z.infer<typeof ModelOption>;
 
+/**
+ * A branch a new worktree starts from, which the engine makes itself (`git/worktreeFrom.ts`): Claude Code's own setting
+ * only knows `fresh` and `head`. With `pullRequest`, the branch is that pull request's: it is fetched first
+ * (`pull/<n>/head`, which works for forks too) and the worktree works on it, at the pull request's latest commit.
+ */
+export const WorktreeBranchBase = z.object({
+  branch: z.string().min(1).max(250).refine(isBranchName, 'Not a branch name git takes'),
+  /** Start from this remote's copy of the branch (`origin/dev`), fetched first, rather than the local branch. */
+  remote: z.string().regex(/^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$/, 'Not a remote name').optional(),
+  pullRequest: z.number().int().positive().optional(),
+  /** The pull request is from a fork: its branch isn't on this repository's remote, so the worktree tracks nothing. */
+  fork: z.boolean().optional(),
+});
+export type WorktreeBranchBase = z.infer<typeof WorktreeBranchBase>;
+
+/**
+ * A worktree base as New session, a project's defaults, the queue and triggers keep it: `fresh`, `head`, or a branch's
+ * full ref (`refs/heads/dev`, `refs/remotes/origin/dev`). `worktreeRequestBase` turns it into what `session.create` takes.
+ */
+export const WorktreeBaseSchema = z.custom<WorktreeBase>(isWorktreeBase, 'Choose fresh, head or a branch');
+
 export const WorktreeRequest = z.object({
   name: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/, 'Use letters, digits, dot, dash or underscore'),
-  /** `fresh` = from origin's default branch (Claude Code's default); `head` = from the current local HEAD. */
-  baseRef: z.enum(['fresh', 'head']),
+  /** `fresh` = from origin's default branch (Claude Code's default); `head` = from the current local HEAD; or a branch. */
+  baseRef: z.union([z.enum(['fresh', 'head']), WorktreeBranchBase]),
 });
 export type WorktreeRequest = z.infer<typeof WorktreeRequest>;
+/** A worktree Claude Code makes itself (`--worktree`): from origin's default branch or the local HEAD. */
+export type ClaudeWorktreeRequest = WorktreeRequest & { baseRef: 'fresh' | 'head' };
 
 export const ProjectInspection = z.object({
   path: z.string(),

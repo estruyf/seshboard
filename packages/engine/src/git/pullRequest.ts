@@ -272,8 +272,12 @@ export async function createPullRequest(
   const remote = status.pushRemote!;
 
   options.onStep('push');
-  if (!status.upstream || (status.unpushed ?? 0) > 0) {
-    const args = status.upstream ? ['push'] : ['push', '-u', remote, branch];
+  // The upstream can be a stale remote-tracking ref (its branch deleted on the remote after an earlier pull request was
+  // merged), and gh refuses a branch the remote doesn't have. So ask the remote itself, not only the local state; the
+  // push (and its hooks) is skipped only when the remote has the branch and nothing is new.
+  const onRemote = async () => (await git(status.path, ['ls-remote', '--exit-code', '--heads', remote, branch], { env: { ...options.env, GIT_TERMINAL_PROMPT: '0' }, allowExitCodes: [2] }).catch(() => '')).trim() !== '';
+  if (!status.upstream || (status.unpushed ?? 0) > 0 || !(await onRemote())) {
+    const args = ['push', '-u', remote, branch];
     try {
       // Pre-push hooks can run tests: give them time.
       await git(status.path, args, { env: { ...options.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 10 * 60_000 });
@@ -292,7 +296,8 @@ export async function createPullRequest(
   }
 
   options.onStep('create');
-  const result = await runGh(options.gh, prCreateArgs(request), { cwd: status.path, env: options.env, input: request.body, timeout: 2 * 60_000 });
+  const create = () => runGh(options.gh, prCreateArgs(request), { cwd: status.path, env: options.env, input: request.body, timeout: 2 * 60_000 });
+  const result = await create();
   if (result.code !== 0 || result.missing) throw new PrFailure(classifyGhFailure(result));
   const pr = parsePrUrl(result.stdout) ?? parsePrUrl(result.stderr);
   if (!pr) throw new PrFailure(failure('UNKNOWN', "gh finished without saying where the pull request is.", `${result.stdout}\n${result.stderr}`));

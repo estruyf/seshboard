@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
   isAbsolutePath,
+  listedInMainList,
+  type PipelineRunState,
+  type RemoteRunState,
   type CatchUp,
   type Effort,
   type PermissionMode,
@@ -19,6 +22,7 @@ import {
   type TranscriptMessage,
   type RemoteUsageBreakdown,
   type UsageBreakdown,
+  type WorktreeBase,
 } from '@switchboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
@@ -40,6 +44,8 @@ export interface ListOptions {
   projectNames: ReadonlyMap<string, string>;
   /** Every Claude profile; a session names its own only when there is more than one. */
   profiles?: readonly RemoteSessionProfile[];
+  /** Every pipeline run: a step's sub-session sits under its parent, and the runs of what is listed go along. */
+  runs?: readonly PipelineRunState[];
   now?: number;
 }
 
@@ -52,6 +58,9 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const live = new Map(sources.live.map((l) => [l.sessionId, l]));
   const profiles = options.profiles && options.profiles.length > 1 ? new Map(options.profiles.map(({ id, name, color }) => [id, { id, name, color }])) : null;
   const profileOf = (id: string | null | undefined) => (profiles && id ? (profiles.get(id) ?? null) : null);
+  // A step's session sits under its run's parent before its transcript says so (a session still starting).
+  const stepParent = new Map<string, string>();
+  for (const { run, steps } of options.runs ?? []) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
   const sessions: RemoteSession[] = listed.map((s) => ({
     id: s.id,
     title: s.title,
@@ -69,8 +78,44 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     profile: profileOf(running.get(s.id)?.profileId ?? flags.get(s.id)?.profileId ?? live.get(s.id)?.profileId),
     auto: autoOf(running.get(s.id)),
     background: running.get(s.id)?.backgroundTasks ?? [],
+    parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
-  return { sessions, prompts: promptsFor(sources.permissions ?? [], listed).map(remotePrompt) };
+  const prompts = promptsFor(sources.permissions ?? [], listed).map(remotePrompt);
+  if (!options.runs) return { sessions, prompts };
+  const now = options.now ?? Date.now();
+  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now });
+  return { sessions, prompts, runs };
+}
+
+/** The most runs a phone gets. */
+export const REMOTE_RUN_LIMIT = 50;
+
+/**
+ * The runs a phone gets, newest first: those started from a session it lists or with a sub-session it lists, and the
+ * run rows (runs started from New session) the sidebar lists. A run row is listed as a session is: while it works or
+ * waits for you, until you archive it, and for `archiveAfterDays` after its last activity.
+ */
+export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number }): RemoteRunState[] {
+  const shown = runs.filter((state) => {
+    const { run, steps } = state;
+    if (run.parentSessionId) return listed.has(run.parentSessionId) || steps.some((s) => s.sessionId !== null && listed.has(s.sessionId));
+    const goesOn = run.status === 'running' || run.status === 'waiting' || run.status === 'paused';
+    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false }, options.now, options.archiveAfterDays);
+  });
+  return shown
+    .sort((a, b) => b.run.updatedAt - a.run.updatedAt)
+    .slice(0, REMOTE_RUN_LIMIT)
+    .map((state) => remoteRun(state, options.projectNames));
+}
+
+/** A run for a phone: its project as an id and a name, without its folders, its profile, the plan and the actions' output. */
+export function remoteRun(state: PipelineRunState, projectNames: ReadonlyMap<string, string>): RemoteRunState {
+  const { pipeline, projectRoot, cwd, profileId: _profile, ...run } = state.run;
+  const { scope: _scope, ...saved } = pipeline;
+  return {
+    run: { ...run, pipeline: saved, projectId: projectIdOf(projectRoot), projectName: projectNames.get(projectRoot) ?? lastSegment(projectRoot), worktree: cwd !== projectRoot },
+    steps: state.steps.map(({ plan: _plan, actions: _actions, ...step }) => step),
+  };
 }
 
 /** What Auto did for a running session, as its model chip shows it: nothing once you changed the model yourself. */
@@ -91,7 +136,7 @@ export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({
   createdAt: p.createdAt,
 });
 
-const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+export const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
 function remoteBlock(block: TranscriptBlock): RemoteBlock {
   switch (block.type) {
@@ -111,6 +156,7 @@ export const remoteMessage = (message: TranscriptMessage, device?: string): Remo
   parentToolUseId: message.parentToolUseId,
   ...remoteTurn(message.role, message.blocks.map(remoteBlock)),
   ...(device ? { device } : {}),
+  ...(message.usage ? { usage: { id: message.usage.id ?? message.uuid, input: message.usage.input, output: message.usage.output, cacheRead: message.usage.cacheRead, cacheWrite: message.usage.cacheCreation } } : {}),
 });
 
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;
@@ -200,7 +246,7 @@ export interface SessionChoice {
   effort: Effort | null;
   permissionMode: PermissionMode;
   worktree: boolean;
-  baseRef: 'fresh' | 'head';
+  baseRef: WorktreeBase;
   /** A branch to check out in the project's folder first; null keeps what is checked out. */
   checkoutBranch: string | null;
 }
@@ -219,7 +265,7 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
 }
 
 /** A project's or a profile's defaults as a phone gets them. */
-export const remoteDefaults = (defaults: ProfileDefaults) => ({
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>) => ({
   model: defaults.model,
   effort: defaults.effort,
   permissionMode: defaults.permissionMode,

@@ -217,7 +217,7 @@ export const sameShortcut = (a: string, b: string) =>
 
 /** Where you are, for `when()`. Built from the stores (and where focus was) when the shortcuts sheet opens. */
 export interface ShortcutContext {
-  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage";
+  view: "home" | "new-session" | "session" | "settings" | "projects" | "project" | "usage" | "upcoming";
   /** A session is open in the session view. */
   session: boolean;
   /** Claude is working, or waiting for you, in that session. */
@@ -247,7 +247,8 @@ export type ShortcutSection =
   | "actions"
   | "new-session"
   | "settings"
-  | "usage";
+  | "usage"
+  | "projects";
 
 /** The sections' headings, in the sheet and the README. */
 export const SECTION_TITLES: Record<ShortcutSection, string> = {
@@ -261,10 +262,11 @@ export const SECTION_TITLES: Record<ShortcutSection, string> = {
   "new-session": "New session",
   usage: "Usage",
   settings: "Settings",
+  projects: "Projects",
 };
 
 /** Where focus has to be for a key to do this. Two shortcuts on the same keys in different places don't collide. */
-export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view";
+export type ShortcutPlace = "sidebar" | "find" | "composer" | "terminal" | "upnext" | "view" | "reading";
 
 export interface ShortcutDef {
   id: string;
@@ -300,6 +302,8 @@ const inMessageBox = (ctx: ShortcutContext) =>
 /** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
 const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
 const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
+/** The Projects view: the list of projects and the open one. */
+const inProjects = (ctx: ShortcutContext) => ctx.view === "projects" || ctx.view === "project";
 
 export const SHORTCUTS = [
   // General
@@ -336,6 +340,12 @@ export const SHORTCUTS = [
     section: "general",
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
+  {
+    id: "upcoming",
+    keys: ["mod+shift+y"],
+    action: "Upcoming: queued and scheduled",
+    section: "general",
+  },
   {
     id: "usage.open",
     keys: [],
@@ -471,9 +481,9 @@ export const SHORTCUTS = [
   {
     id: "sidebar.section-toggle",
     keys: ["arrowleft", "arrowright"],
-    action: "Close or open a section",
+    action: "Close or open a section, or a pipeline's steps",
     section: "sessions",
-    context: "On a section header in the sidebar",
+    context: "On a section header or a pipeline's row in the sidebar",
     where: "sidebar",
   },
   {
@@ -631,6 +641,84 @@ export const SHORTCUTS = [
   },
 
   // In a session
+  {
+    id: "read.toggle",
+    keys: ["mod+alt+r"],
+    action: "Read the last reply, or close reading mode",
+    section: "session",
+    context: "In a session",
+    when: inSession,
+  },
+  {
+    id: "read.previous",
+    keys: ["arrowleft"],
+    action: "Go to the previous reply",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.next",
+    keys: ["arrowright"],
+    action: "Go to the next reply",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.previous-heading",
+    keys: ["k"],
+    action: "Go to the previous heading",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.next-heading",
+    keys: ["j"],
+    action: "Go to the next heading",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.bigger",
+    keys: ["=", "plus"],
+    action: "Make the text bigger",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.smaller",
+    keys: ["-"],
+    action: "Make the text smaller",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
+  {
+    id: "read.reply",
+    keys: ["r"],
+    action: "Reply with the selected text quoted",
+    section: "session",
+    context: "In reading mode",
+    when: inSession,
+    where: "reading",
+    reserve: false,
+  },
   {
     id: "find",
     keys: ["mod+f"],
@@ -867,6 +955,24 @@ export const SHORTCUTS = [
     where: "composer",
   },
   {
+    id: "composer.github",
+    keys: ["#"],
+    action: "Attach an issue or pull request",
+    section: "composer",
+    context: "At the start of a word, in a project on GitHub",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
+    id: "composer.github-new-session",
+    keys: ["alt+enter"],
+    action: "New session from it",
+    section: "composer",
+    context: "On an issue or pull request in the # list",
+    when: inMessageBox,
+    where: "composer",
+  },
+  {
     id: "composer.add-context",
     keys: ["mod+shift+a"],
     action: "Add files as context",
@@ -1063,6 +1169,50 @@ export const SHORTCUTS = [
     action: "Back to where you were",
     section: "usage",
     when: (ctx) => ctx.view === "usage",
+  },
+
+  // Projects
+  {
+    id: "projects.switch",
+    keys: ["alt+arrowup", "alt+arrowdown"],
+    action: "Previous or next project, same tab",
+    section: "projects",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    where: "view",
+  },
+  {
+    id: "projects.move",
+    keys: ["alt+shift+arrowup", "alt+shift+arrowdown"],
+    action: "Move the open project up or down the list",
+    section: "projects",
+    context: "The order the sidebar and New session use",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    where: "view",
+  },
+  {
+    id: "projects.find",
+    keys: ["mod+f"],
+    action: "Find a project in the list",
+    section: "projects",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+  },
+  {
+    id: "projects.tab",
+    keys: ["mod+1..8"],
+    action: "Jump to a tab",
+    section: "projects",
+    context: "Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions, Settings",
+    when: (ctx) => inProjects(ctx) && ctx.focus !== "terminal",
+    reserve: false,
+  },
+  {
+    id: "projects.switcher-settings",
+    keys: ["mod+enter"],
+    action: "Open the project's Settings",
+    section: "projects",
+    context: "In the project name's switcher",
+    when: inProjects,
+    where: "find",
   },
 
   // Settings

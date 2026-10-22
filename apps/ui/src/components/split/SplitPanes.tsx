@@ -2,6 +2,9 @@ import { ArrowRightLeft, PanelBottomClose, PanelLeftClose, PanelRightClose, Pane
 import { useEffect, useMemo, useRef } from 'react';
 import { useComputers } from '../../state/computersStore.ts';
 import { parseRemoteRowId } from '../../state/remoteSelection.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { usePipelines } from '../../state/pipelinesStore.ts';
+import { RunRowPane } from '../pipelines/RunRowPane.tsx';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useTilingArea } from '../../state/tilingArea.ts';
@@ -17,7 +20,7 @@ const pct = (n: number) => `${n * 100}%`;
 
 /**
  * One session, or many in a tiling layout: side by side and stacked, mixed freely (see `state/tiling.ts` for the
- * tree). A pane shows a session of this computer or one of another computer's (its leaf is `remoteRowId`). The tree decides each pane's rectangle (`computeLayout`) and the panes are drawn as a flat list in a
+ * tree). A pane shows a session of this computer, one of another computer's (its leaf is `remoteRowId`), or a pipeline's run row (`RunRowPane`, its leaf the run's id). The tree decides each pane's rectangle (`computeLayout`) and the panes are drawn as a flat list in a
  * fixed order (by session id), each positioned absolutely with percentages, so opening, closing, moving,
  * swapping or resizing a pane never moves or remounts a session that stays: its unsent message, scroll position
  * and Find are untouched. Moving a DOM element would reset its scroll and focus, and a nested render that
@@ -86,6 +89,8 @@ export function SplitPanes() {
             >
               {remote ? (
                 <RemotePane remote={remote} pane={{ id, tiled, active: isActive, leading }} />
+              ) : isRunRowId(id) ? (
+                <RunRowPane runId={id} pane={{ id, tiled, active: isActive, leading }} />
               ) : (
                 <TranscriptView sessionId={id} tiled={tiled} active={isActive} leading={leading} />
               )}
@@ -140,7 +145,8 @@ function DropPreview({ drag, area }: { drag: TileDrag; area: React.RefObject<HTM
     const ref = parseRemoteRowId(drag.id);
     return ref ? (s.lists.get(ref.computerId)?.sessions.find((session) => session.id === ref.sessionId)?.title ?? null) : null;
   });
-  const title = local ?? remote ?? 'Session';
+  const run = usePipelines((s) => (isRunRowId(drag.id) ? (s.runs.get(drag.id)?.run.title ?? null) : null));
+  const title = local ?? remote ?? run ?? 'Session';
   const open = useSessions((s) => s.paneIds.includes(drag.id));
   const size = useTilingArea((s) => s.size);
   if (!areaRect || !size) return null;

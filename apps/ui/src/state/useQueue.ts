@@ -50,19 +50,26 @@ function useQueueLimit(): (item: LaterItem) => UsageLimitHit | null {
 export function useQueue(rows?: readonly SessionRowData[]): QueueSummary & { rows: readonly SessionRowData[] } {
   const items = useLater((s) => s.items);
   const started = useLater((s) => s.started);
+  const auto = useLater((s) => s.auto);
   const listed = useListedRows();
   const all = rows ?? listed;
   const projectName = useProjectName();
   const limitOf = useQueueLimit();
   const now = useMinute(useLimits((s) => s.state.limits.length > 0));
-  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName, limitOf, now }), [items, started, all, projectName, limitOf, now]);
+  // How sessions ended and what waits at the focus limit come from the engine, which decides what starts by itself.
+  const engine = useMemo(() => {
+    const outcomes = new Map(auto.outcomes.map((o) => [o.sessionId, o.outcome]));
+    return { outcomeOf: (id: string) => outcomes.get(id) ?? null, focusHeld: new Set(auto.focusHeld) };
+  }, [auto]);
+  const summary = useMemo(() => queueStates({ items, started, rows: all, projectName, limitOf, now, ...engine }), [items, started, all, projectName, limitOf, now, engine]);
   return { ...summary, rows: all };
 }
 
 /**
  * One toast when queued items turn ready because a session they waited on finished: "<project> is free", with
  * Start it and Review first, or "2 queued items are ready" with Show queue. Once per item per transition; the
- * first load and items that wait for nothing never count. Nothing starts by itself.
+ * first load, items that wait for nothing and items that start by themselves (the engine starts those, and main
+ * notifies) never count.
  */
 export function useQueueToasts(): void {
   const { entries, rows } = useQueue();

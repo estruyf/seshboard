@@ -95,7 +95,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "border": "#e1e4e8", "overlay-border": "#d1d5da", "overlay-shadow": "#15181f33",
       "text": "#202736", "muted": "#505869", "faint": "#687082", "link": "#005cc5",
       "selected": "#2027361a", "focus-ring": "#916c008c", "scrim": "#15181f59",
-      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8",
+      "ok": "#00806f", "warn": "#d1186b", "error": "#d73a49", "caution": "#b35900", "unread": "#005cc5", "memory": "#8250df", "remote": "#7048e8", "paper": "#fbfaf7", "paper-text": "#1f2328", "trigger": "#6f42c1", "pipeline": "#6741d9",
       "accent": "#ffd43b", "accent-ink": "#916c00", "on-accent": "#15181f",
       "diff-added": "#00806f1f", "diff-removed": "#d73a491f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#15181f29",
@@ -112,7 +112,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "border": "#2d3142", "overlay-border": "#414861", "overlay-shadow": "#000000b3",
       "text": "#d9dbe1", "muted": "#9ba4b7", "faint": "#8b94a6", "link": "#74c0fc",
       "selected": "#d9dbe11c", "focus-ring": "#ffd43b8c", "scrim": "#00000099",
-      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc",
+      "ok": "#51cf66", "warn": "#ed217c", "error": "#ff6b6b", "caution": "#ffa94d", "unread": "#74c0fc", "memory": "#b197fc", "remote": "#b197fc", "paper": "#15181f", "paper-text": "#d9dbe1", "trigger": "#b197fc", "pipeline": "#9775fa",
       "accent": "#ffd43b", "accent-ink": "#ffd43b", "on-accent": "#15181f",
       "diff-added": "#51cf661f", "diff-removed": "#ff6b6b1f",
       "terminal-bg": "#0d1016", "terminal-shadow": "#0000008c",
@@ -162,6 +162,8 @@ For each mode, Switchboard first generates every token from `canvas` and `accent
 | `on-accent` | black or white, whichever reads better on the accent |
 | `link`, `unread` | the accent when it is blue-ish, otherwise Demo Time's blue; 4.5:1 on `bg` |
 | `ok`, `warn`, `error`, `caution` | Demo Time's hues, moved to 4.5:1 on `bg`, so they keep their meaning (pink still needs you) |
+| `paper` | a light canvas: a slightly warm, slightly darker lift of it. A dark canvas: the canvas |
+| `paper-text` | `text`, moved to at least 4.5:1 on `paper` |
 | `remote` | Demo Time's violet, moved to 4.5:1 on `bg`, the sidebar and cards |
 | `profile-*` | Demo Time's hues, moved to 3:1 on `bg` |
 | `selected` | `text` at 10% (light) or 11% (dark) |
@@ -202,6 +204,9 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `unread` | finished and not read yet: rail, dot | `#005cc5` | `#74c0fc` |
 | `memory` | Claude Code memory: MEMORY.md in What loads here | `#8250df` | `#b197fc` |
 | `remote` | only things on another computer: its chips, the badge on its project icons, the line over its sessions | `#7048e8` | `#b197fc` |
+| `trigger` | event triggers: the bolt on a session a trigger started, event fields in a trigger's prompt | `#6f42c1` | `#b197fc` |
+| `pipeline` | pipelines: the icon on a parent row and a run row, step kinds and @ links in the editor | `#6741d9` | `#9775fa` |
+| `paper`, `paper-text` | reading mode: the page behind a reply and the text on it. Light is a warm off-white; dark is the same as `bg` and `text` | `#fbfaf7`, `#1f2328` | `#15181f`, `#d9dbe1` |
 | `accent` | primary buttons and tints (Demo Time's yellow) | `#ffd43b` | `#ffd43b` |
 | `accent-ink` | the accent as text, icons, spinners, working dots and borders | `#916c00` | `#ffd43b` |
 | `on-accent` | text on an accent fill | `#15181f` | `#15181f` |
@@ -254,23 +259,20 @@ The background of code is always the theme's `code-bg`, never the syntax theme's
 |---|---|---|---|
 | Demo Time | Demo Time Light | Demo Time Dark | Demo Time |
 | Catppuccin | Latte | Mocha | `catppuccin-latte` / `catppuccin-mocha` |
-| Claude | Claude Light | Claude Dark | Claude Light / Claude Dark, inline |
 | Nord | Demo Time Light | Nord | `nord` |
 | Solarized | Solarized Light | Solarized Dark | `solarized-light` / `solarized-dark` |
-| The unnamed | Demo Time Light | The unnamed | The unnamed, inline |
+| Graphite, Midnight, Paper, Signal, Forest, Plum, Aluminium, Ocean, Neon | their own | their own | Demo Time |
 
-They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)), checked the same way as imports, and they can't be removed. Nord and The unnamed are dark only, as the originals are, so in light mode they show Demo Time. All of them reach WCAG AA for text, muted text and the accent as text in every mode they have. Solarized, Claude, Nord and Catppuccin keep their own palettes where that is lower, as the originals do: text on Solarized's yellow in light mode (3.0:1) and its comments in code (2.3:1 light, 2.6:1 dark), and white on Claude's orange (4.2:1) and its comments in code (2.5:1 light, 2.8:1 dark), Nord's comments in code (2.7:1) and Catppuccin Latte's (3.3:1). The unnamed reaches AA on every pair, code included. Where a VS Code theme's status colours are too light to read as text on its background, the port darkens them (Claude Light's green, pink and red; Catppuccin Latte's green, pink, peach, yellow and blue) or lightens them (Nord's red, orange and purple) and keeps their hue. Nord's code blocks sit a step darker than its background, so its dim comments stay as readable as they can.
+They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)), checked the same way as imports, and they can't be removed. Nord is dark only, as the original is, so in light mode it shows Demo Time. The nine after Solarized match the [app icon's colourways](../assets/app-icons): each takes its accent from the icon's main cable, its second cable for a chart series (and for links where it is blue), and its background from the icon's body; the rest is generated, then adjusted until every pair reaches WCAG AA, Demo Time's code colours included. All of them reach WCAG AA for text, muted text and the accent as text in every mode they have. Solarized, Nord and Catppuccin keep their own palettes where that is lower, as the originals do: text on Solarized's yellow in light mode (3.0:1) and its comments in code (2.3:1 light, 2.6:1 dark), Nord's comments in code (2.7:1) and Catppuccin Latte's (3.3:1). Where a VS Code theme's status colours are too light to read as text on its background, the port darkens them (Catppuccin Latte's green, pink, peach, yellow and blue) or lightens them (Nord's red, orange and purple) and keeps their hue. Nord's code blocks sit a step darker than its background, so its dim comments stay as readable as they can.
 
 ## Credits and licences
 
 - **Demo Time**: [estruyf/vscode-demo-time-theme](https://github.com/estruyf/vscode-demo-time-theme), MIT.
 - **Catppuccin**: [catppuccin.com](https://catppuccin.com/), its palette from [catppuccin/palette](https://github.com/catppuccin/palette) mapped as [catppuccin/vscode](https://github.com/catppuccin/vscode) does, ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2021 Catppuccin. Its code colours are Shiki's bundled `catppuccin-latte` and `catppuccin-mocha`.
-- **Claude**: Claude Theme by jnahian ([jnahian/vscode-claude-theme](https://github.com/jnahian/vscode-claude-theme)), ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2025 Claude Theme. Its code colours are the original's `tokenColors`.
-- **The unnamed**: [estruyf/vscode-unnamed-theme](https://github.com/estruyf/vscode-unnamed-theme), MIT. Its code colours are the original's `tokenColors`.
 - **Nord**: [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) by Sven Greb, ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2016-present Sven Greb. Its code colours are Shiki's bundled `nord`.
 - **Solarized**: the [Solarized](https://ethanschoonover.com/solarized/) palette by Ethan Schoonover ([altercation/solarized](https://github.com/altercation/solarized)), ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2011 Ethan Schoonover. Its code colours are Shiki's bundled `solarized-light` and `solarized-dark`.
 
-The MIT License for Solarized, Claude Theme, Nord and Catppuccin (each with its own copyright line above):
+The MIT License for Solarized, Nord and Catppuccin (each with its own copyright line above):
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 >

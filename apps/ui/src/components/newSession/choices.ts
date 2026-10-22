@@ -1,4 +1,4 @@
-import type { Effort, NewSessionMode, PermissionMode, ProfileDefaults, ProjectDefaults } from '@switchboard/protocol/client';
+import { isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -6,12 +6,16 @@ export interface Choices {
   permissionMode: PermissionMode;
   effort: Effort | '';
   workspace: 'current' | 'worktree';
-  baseRef: 'fresh' | 'head';
+  /** Where a new worktree starts: `fresh`, `head`, or a branch of the repository. */
+  baseRef: WorktreeBase;
   branch: string;
 }
 
-/** The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository, so they never become global. */
-export type GlobalChoices = Omit<Choices, 'branch'>;
+/**
+ * The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository,
+ * so they never become global: not the one to check out, and not the one a worktree starts from.
+ */
+export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fresh' | 'head' };
 
 /** Where the global choices (and the last folder) are kept in the engine's app state. */
 export const DEFAULTS_KEY = 'newSession.defaults';
@@ -20,12 +24,31 @@ export const INITIAL_CHOICES: GlobalChoices = { model: '', permissionMode: 'defa
 
 const FIELDS = ['model', 'permissionMode', 'effort', 'workspace', 'baseRef', 'branch'] as const;
 
+/** Where the permission mode last picked in New session or the palette is kept, for Remember last. */
+export const LAST_MODE_KEY = 'newSession.lastMode';
+
+/** Modes New session can start in by itself: never one that skips every check, as in the mode menus. */
+const REMEMBERED_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto'];
+
+/** Reads the stored last mode leniently: Ask first when there is none, or it is one New session doesn't offer. */
+export function readLastMode(value: unknown): PermissionMode {
+  return REMEMBERED_MODES.includes(value as PermissionMode) ? (value as PermissionMode) : 'default';
+}
+
 /**
- * The global defaults with the permission mode Settings sets for new sessions (Settings › General), unless it is
- * the one you picked last. The mode you pick is still remembered, for when the setting goes back to that.
+ * The permission mode a new session starts in, from Settings › General › Permission mode: the project's or profile's
+ * own default, else Ask first (`project`); the one picked last (`remember`); or always the one Settings sets, over
+ * the project's default.
  */
-export function withNewSessionMode(globals: GlobalChoices, mode: NewSessionMode): GlobalChoices {
-  return mode === 'last' ? globals : { ...globals, permissionMode: mode };
+export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults | null | undefined, last: PermissionMode): PermissionMode {
+  if (setting === 'project') return defaults?.permissionMode ?? INITIAL_CHOICES.permissionMode;
+  if (setting === 'remember') return last;
+  return setting;
+}
+
+/** What New session and the palette's prompt start with: the project's and profile's defaults, and the mode Settings says. */
+export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode): Choices {
+  return { ...startingChoices(INITIAL_CHOICES, defaults), permissionMode: startingMode(setting, defaults, last) };
 }
 
 /**
@@ -41,6 +64,7 @@ export function layeredDefaults(project: ProjectDefaults | null | undefined, pro
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,
     branch: project?.branch ?? null,
+    defaultBranch: project?.defaultBranch ?? null,
   };
 }
 
@@ -79,21 +103,8 @@ export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefa
   return { ...startingChoices(globals, project), permissionMode: linkPermissionMode(project?.permissionMode) };
 }
 
-/**
- * The part of a change that updates the global defaults: fields the project (or the profile) decides
- * apply to this session only (until saved as the project's default).
- */
-export function globalPatch(patch: Partial<Choices>, project: ProjectDefaults | null | undefined): Partial<GlobalChoices> {
-  const out: Partial<GlobalChoices> = {};
-  for (const key of FIELDS) {
-    if (key === 'branch' || !(key in patch) || (project && project[key] !== null)) continue;
-    (out as Record<string, unknown>)[key] = patch[key];
-  }
-  return out;
-}
-
-/** The choices as a project's defaults ("Save as project default"). */
-export function toProjectDefaults(choices: Choices): ProjectDefaults {
+/** The choices as a project's defaults ("Save as project default"), keeping the project's default branch, which New session doesn't choose. */
+export function toProjectDefaults(choices: Choices, defaultBranch: string | null = null): ProjectDefaults {
   return {
     model: choices.model || null,
     effort: choices.effort || null,
@@ -102,6 +113,7 @@ export function toProjectDefaults(choices: Choices): ProjectDefaults {
     baseRef: choices.baseRef,
     // A branch only applies to the current folder; a worktree gets its own.
     branch: choices.workspace === 'current' ? choices.branch || null : null,
+    defaultBranch,
   };
 }
 

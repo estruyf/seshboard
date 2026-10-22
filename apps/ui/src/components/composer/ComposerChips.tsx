@@ -5,6 +5,7 @@ import type { ClaudeProfile, Effort, PermissionMode } from '@switchboard/protoco
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
@@ -34,10 +35,18 @@ export interface ComposerChipRowProps {
   mode: { value: PermissionMode; onChange(mode: PermissionMode): void };
   disabled?: boolean;
   names?: ChipNames;
+  /**
+   * New session with a pipeline picked in Run as: the model, effort and mode apply only to the steps that don't set
+   * their own. A chip no step uses is dimmed (still usable); each says why in its tooltip.
+   */
+  pipeline?: Record<'model' | 'effort' | 'permissionMode', BoxChoiceUse> | null;
 }
 
 /** Auto's wand, in the accent: always with the model chip's "Auto", since the permission mode can read "Auto" too. */
 export const AutoWand = ({ size = 13 }: { size?: number }) => <WandSparkles size={size} className="shrink-0 text-accent-ink" aria-hidden />;
+
+/** A chip's tooltip with what a picked pipeline does with it. */
+const withNote = (title: string, use: BoxChoiceUse | undefined) => (use ? `${title}. ${use.note}` : title);
 
 /** Three bars that fill with the effort level; above High they turn to the accent. */
 function EffortBars({ effort }: { effort: Effort | '' }) {
@@ -62,7 +71,7 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES }: ComposerChipRowProps) {
+export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
   const current = profiles.find((p) => p.id === profile.value);
   const fixed = !profile.onChange;
@@ -135,12 +144,14 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       isAuto ? (
         <>
           <AutoWand />
-          <span>Auto</span>
+          {chipShape(l).autoWord && <span>Auto</span>}
           {autoPicked !== null && (
             <>
-              <span aria-hidden className="text-faint">
-                ·
-              </span>
+              {chipShape(l).autoWord && (
+                <span aria-hidden className="text-faint">
+                  ·
+                </span>
+              )}
               <span className="font-semibold text-text">{chipShape(l).modelVersion ? shortModelName(autoPicked) : modelFamily(autoPicked)}</span>
             </>
           )}
@@ -158,7 +169,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         onChange={model.onChange}
         disabled={disabled}
         label={modelTitle}
-        title={modelTitle}
+        title={withNote(modelTitle, pipeline?.model)}
         heading="Model"
         placement="up"
         choices={model.choices}
@@ -185,7 +196,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           onChange={effort.onChange}
           disabled={disabled}
           label={`Effort: ${effortLabel}`}
-          title={`Effort: ${effortLabel}`}
+          title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
           heading="Effort"
           placement="up"
           choices={[{ value: '' as const, label: 'Default', description: 'What Claude Code would pick' }, ...EFFORTS.map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
@@ -211,7 +222,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         onChange={mode.onChange}
         disabled={disabled}
         label={`Permission mode: ${MODE_SHORT[mode.value]}`}
-        title={`Permission mode: ${MODE_SHORT[mode.value]} (${formatKeys(keysFor('mode.cycle'))} in the message box)`}
+        title={withNote(`Permission mode: ${MODE_SHORT[mode.value]} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
         heading="Permissions"
         placement="up"
         choices={modes.map((m) => ({ value: m, label: MODE_LABEL[m], description: MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
@@ -222,10 +233,21 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
     ),
   });
 
+  const dimmed = (key: string) => {
+    const use = key === 'model' ? pipeline?.model : key === 'effort' ? pipeline?.effort : key === 'mode' ? pipeline?.permissionMode : undefined;
+    return use?.dim ?? false;
+  };
+
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>
       {chips.map((chip) => (
-        <div key={chip.key} className="shrink-0" data-chip={chip.key} {...(chip.key === 'model' ? { 'data-model-chip': isAuto ? 'auto' : model.value || 'default' } : {})}>
+        <div
+          key={chip.key}
+          className={`shrink-0 transition-opacity ${dimmed(chip.key) ? 'opacity-50 hover:opacity-100 focus-within:opacity-100' : ''}`}
+          data-chip={chip.key}
+          data-chip-dimmed={dimmed(chip.key) || undefined}
+          {...(chip.key === 'model' ? { 'data-model-chip': isAuto ? 'auto' : model.value || 'default' } : {})}
+        >
           {chip.menu(chip.face(level))}
         </div>
       ))}

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { withoutBriefs, type SearchHit, type TranscriptMessage } from '@switchboard/protocol';
+import { withoutContext, type SearchHit, type TranscriptMessage } from '@switchboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import { normaliseMessage } from '../claude/transcript.ts';
 
@@ -26,8 +26,8 @@ export function searchableText(message: TranscriptMessage): string | null {
     const command = /<command-name>([\s\S]*?)<\/command-name>/.exec(text);
     if (command) return `${command[1]!.trim()} ${/<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim() ?? ''}`.trim();
     if (/^<local-command|^\[Request interrupted/.test(text)) return null;
-    // A linked session's brief belongs to that session: searching finds its words there, not here.
-    const typed = withoutBriefs(text);
+    // A linked session's brief belongs to that session, and an issue's text to GitHub: searching finds their words there.
+    const typed = withoutContext(text);
     return typed ? typed.slice(0, MAX_TEXT) : null;
   }
   return text.slice(0, MAX_TEXT);

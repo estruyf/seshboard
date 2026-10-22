@@ -16,7 +16,7 @@ interface AskState {
   /** Answers that came in before the window knew the question's id (the ask's reply was still on its way). */
   early: ReadonlyMap<string, AskEvent[]>;
   /** Bumped to put the focus in a session's panel field (the Ask button with an empty box, the palette). */
-  focus: { sessionId: string; nonce: number } | null;
+  focus: { sessionId: string; nonce: number; prefill?: string } | null;
   update(sessionId: string, change: (state: SessionAsk) => SessionAsk): void;
   /** An answer coming in, from any window. */
   receive(event: AskEvent): void;
@@ -88,11 +88,11 @@ export function retryAsk(client: Client, sessionId: string, threadId: string, id
 }
 
 /** Opens the panel (read first when the window hasn't yet); `focus` puts the caret in its field. */
-export async function openAsk(client: Client | null, sessionId: string, focus = true): Promise<void> {
+export async function openAsk(client: Client | null, sessionId: string, focus = true, prefill?: string): Promise<void> {
   update(sessionId, opened);
   // With Changes open too, Ask comes to the front.
   useRightPanel.getState().setTab(sessionId, 'ask');
-  if (focus) focusAsk(sessionId);
+  if (focus) focusAsk(sessionId, prefill);
   const state = useAsk.getState().sessions.get(sessionId);
   if (client && !state?.loaded) await loadAskThreads(client, sessionId).catch(() => {});
 }
@@ -104,7 +104,8 @@ export function toggleAskPanel(client: Client | null, sessionId: string, othersO
   else void openAsk(client, sessionId);
 }
 
-export const focusAsk = (sessionId: string) => useAsk.setState((s) => ({ focus: { sessionId, nonce: (s.focus?.nonce ?? 0) + 1 } }));
+/** Puts the caret in the panel's field; `prefill` starts the field with that text (a quote), the caret at its end. */
+export const focusAsk = (sessionId: string, prefill?: string) => useAsk.setState((s) => ({ focus: { sessionId, nonce: (s.focus?.nonce ?? 0) + 1, ...(prefill ? { prefill } : {}) } }));
 export const closeAsk = (sessionId: string) => update(sessionId, closed);
 /** Whether a session's Ask panel is open (Toggle changes asks, from outside the session view). */
 export const isAskOpen = (sessionId: string | null) => !!sessionId && !!useAsk.getState().sessions.get(sessionId)?.open;

@@ -1,4 +1,4 @@
-import type { Computer, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
+import type { ClaudeProfile, Computer, ProfileColor, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteRowId } from './remoteSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -22,6 +22,8 @@ export interface RemoteRowInfo {
   waitingTool: string | null;
   /** When its turn began on that computer, for the Working section's order (`workingSince`); null when not known. */
   workingSince: number | null;
+  /** The Claude profile it runs with there; null while that computer has one profile, or it isn't known. */
+  profile: RemoteSession['profile'];
   /** The computer is not connected: the row shows its last known state, dimmed. */
   offline: boolean;
   /** When the computer was last connected, while it is offline. */
@@ -87,6 +89,7 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
       status,
       waitingTool: asking[0]?.toolName ?? null,
       workingSince: session.workingSince ?? null,
+      profile: session.profile,
       offline: computer.state !== 'connected',
       lastSeen: computer.lastSeen,
     },
@@ -102,6 +105,15 @@ export function remoteRows(computers: readonly Pick<Computer, 'id' | 'name' | 's
     const list = lists.get(computer.id);
     return list ? list.sessions.map((session) => remoteRow(computer, session, list.prompts)) : [];
   });
+}
+
+/**
+ * The colour of a remote session's profile here: when this computer has a profile of the same name (Personal, Work),
+ * that profile's colour, so one account reads the same on both; else the colour the other computer gave it.
+ */
+export function remoteProfileColor(profile: NonNullable<RemoteSession['profile']>, local: readonly Pick<ClaudeProfile, 'name' | 'color'>[]): ProfileColor {
+  const name = profile.name.trim().toLowerCase();
+  return local.find((p) => p.name.trim().toLowerCase() === name)?.color ?? profile.color;
 }
 
 /** Leaves out the rows of the computers the filter hides (`THIS_COMPUTER` for this one's own). */

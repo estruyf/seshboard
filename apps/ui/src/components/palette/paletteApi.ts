@@ -1,17 +1,22 @@
+import { startAfter } from '../../state/startAfterStore.ts';
 import { fileManagerName } from '../../lib/platform.ts';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useBackup } from '../../state/backupStore.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
+import { useFilePreview } from '../../state/filePreviewStore.ts';
+import { useLastWritten } from '../../state/lastWrittenStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
+import { useReadMode } from '../../state/readModeStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
+import { readOnlyFork } from '../../state/githubOriginStore.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { cleanUpWorktrees, openProject } from '../../state/projectPageStore.ts';
@@ -22,6 +27,8 @@ import { openSessionManager } from '../../state/sessionManagerStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
+import { openUpcoming } from '../../state/upcomingStore.ts';
+import { openToSchedule } from '../../state/schedulesStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { ownerSession } from '../terminal/appTerminal.ts';
@@ -45,6 +52,7 @@ import { newSessionOn } from '../computers/remoteActions.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { onlySource, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import type { PaletteContext } from './paletteContext.ts';
+import { archiveTree } from '../pipelines/RunTreeDialogs.tsx';
 
 /** Says why a command didn't work: the palette has closed by then, so it can't say it itself. */
 const failed = (what: string) => (error: unknown) => toast(`Couldn't ${what}: ${error instanceof Error ? error.message : String(error)}`);
@@ -85,6 +93,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
   return {
     goHome: () => useSessions.getState().goHome(),
     openUsage: () => openUsage(),
+    openUpcoming: (kind) => openUpcoming({ kind }),
     showSearch: () => useOverlay.getState().show('search'),
     showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),
@@ -116,7 +125,9 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     setFocusLimit: (on) => usePreferences.getState().update({ focusLimit: on ? lastLimit() : null }),
 
     renameSession: () => session && usePaletteBus.getState().showDialog({ kind: 'rename-session', sessionId, title: session.title }),
+    githubStart: (type, root) => usePaletteBus.getState().showDialog({ kind: 'github-start', type, root }),
     newLinkedSession: () => session?.projectRoot && startLinkedSession({ id: sessionId, title: session.title, projectRoot: session.projectRoot }),
+    startAfterSession: () => session?.projectRoot && startAfter({ id: sessionId, projectRoot: session.projectRoot }),
     showCatchUp: () => {
       const card = useCatchUp.getState().cards.get(sessionId);
       if (card) useCatchUp.getState().setCollapsed(card, false);
@@ -132,6 +143,8 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         useCatchUp.getState().setCollapsed(catchUp, false);
       }),
     setFlags: (change) => {
+      // The parent of a pipeline run archives with its sub-sessions, as one tree (#179).
+      if (change.archived !== undefined && session && archiveTree(sessionId, change.archived, session.title)) return;
       const apply = () => call('change the session', (c) => c.call('sessions.setFlags', { sessionId, ...change }));
       // Archiving a session with an unsent message asks first.
       if (change.archived && session) archiveSessions([{ id: sessionId, title: session.title }], apply);
@@ -143,6 +156,12 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       const reply = usePaletteBus.getState().digest?.lastReply;
       if (reply) void navigator.clipboard.writeText(reply).catch(failed('copy the reply'));
     },
+    previewLastFile: () => {
+      const path = useLastWritten.getState().paths.get(sessionId);
+      if (path) useFilePreview.getState().open(path, { sessionId });
+    },
+    // After the palette's own close, which gives focus back to where it was, so reading mode's focus on open stays.
+    readLastReply: () => void setTimeout(() => useReadMode.getState().openLast(sessionId)),
     rememberThis: () => {
       // What you selected in the conversation, else Claude's last reply.
       const { selected, from } = conversationSelection();
@@ -219,7 +238,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       cwd &&
       call('sync with the remote', async (c) => {
         const status = await c.call('worktree.status', { cwd });
-        const { terminalId } = await c.call('git.sync', { sessionId, cwd, action: syncStep(status, session?.running ?? false) });
+        const { terminalId } = await c.call('git.sync', { sessionId, cwd, action: syncStep(status, session?.running ?? false, readOnlyFork(sessionId)) });
         showTerminal(sessionId, terminalId);
       }),
     stageAll: () =>
@@ -264,6 +283,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     },
     newSessionRequest: (kind) => usePaletteBus.getState().requestNewSession(kind),
     openNewSession: () => useSessions.getState().openNewSession(),
+    openToSchedule: () => openToSchedule(),
     newSessionOn: (computerId) => newSessionOn(computerId),
     showOnlyComputer: (computerId) => {
       const computers = useComputers.getState().status?.computers ?? [];

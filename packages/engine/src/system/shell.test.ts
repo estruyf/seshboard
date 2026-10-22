@@ -18,7 +18,8 @@ describe('userShell', () => {
     expect(shell).toMatchObject({ file: '/bin/bash', kind: 'posix', interactive: ['-l'] });
     expect(shell.run('npm test')).toEqual(['-ilc', 'npm test']);
     expect(shell.unsafe('a & b "c"')).toBeNull();
-    expect(userShell({}, 'linux').file).toBe('/bin/zsh');
+    expect(userShell({}, 'darwin').file).toBe('/bin/zsh');
+    expect(userShell({}, 'linux').file).toBe('/bin/bash');
   });
 
   it('is PowerShell 7 on Windows when it is on PATH, else Windows PowerShell', () => {

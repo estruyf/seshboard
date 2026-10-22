@@ -3,8 +3,8 @@ import type { LaterItem, QueueWaitFor } from '@switchboard/protocol/client';
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { contextMenuPoint, isContextMenuKey } from '../../lib/contextMenu.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
-import { moveInQueue, removeFromQueue, setWaitFor, startQueued, useLater } from '../../state/laterStore.ts';
-import { busyInProject, moveTarget, promptLabel, sameWait, type QueueEntry } from '../../state/queue.ts';
+import { moveInQueue, removeFromQueue, setAutoStart, setWaitFor, startQueued, useLater } from '../../state/laterStore.ts';
+import { autoStartBlock, busyInProject, moveTarget, promptLabel, queueSession, sameWait, type QueueEntry } from '../../state/queue.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -36,6 +36,22 @@ export function waitForEntries(options: { current: QueueWaitFor; busy: readonly 
   ];
 }
 
+/**
+ * "Start by itself", the check item under "Wait for…": the item starts once what it waits for has finished cleanly.
+ * Disabled, with the reason, while it waits for nothing or for a session Switchboard doesn't run.
+ */
+export function startByItself(item: LaterItem, rows: readonly SessionRowData[]): MenuEntry {
+  const blocked = autoStartBlock(item.waitFor, { cwd: item.cwd, sessions: rows.map(queueSession), started: useLater.getState().started });
+  return {
+    label: 'Start by itself',
+    checkbox: true,
+    checked: item.autoStart && !blocked,
+    disabledReason: blocked ?? undefined,
+    data: { 'data-queue-menu-autostart': true },
+    onSelect: () => void setAutoStart(item, !item.autoStart).catch(() => {}),
+  };
+}
+
 type MenuState = { x: number; y: number; above?: boolean; entries: MenuEntry[]; label: string } | null;
 
 export interface QueueMenus {
@@ -63,20 +79,18 @@ export function useQueueMenu(rows: readonly SessionRowData[]): QueueMenus {
     const ids = useLater.getState().items.map((i) => i.id);
     const index = ids.indexOf(item.id);
     const above = index > 0 ? useLater.getState().items[index - 1]! : null;
-    const waitFor = () =>
-      setMenu({
-        ...at,
-        label: 'Wait for',
-        entries: waitForEntries({ current: item.waitFor, busy: busyInProject(rows, item.cwd), above, onPick: (next) => void setWaitFor(item, next).catch(() => {}) }),
-      });
     setMenu({
       ...at,
       label: `Queued: ${promptLabel(item.prompt, 60)}`,
       entries: [
         { label: 'Start now', hint: formatKeys(keysFor('queue.start')), data: { 'data-queue-menu-start': true }, onSelect: () => void startQueued(item) },
         { label: 'Edit in New session…', hint: formatKeys(keysFor('queue.edit')), data: { 'data-queue-menu-edit': true }, onSelect: () => useLater.getState().use(item) },
-        // Opens its own list where this menu was, as a submenu would.
-        { label: 'Wait for…', hint: '›', data: { 'data-queue-menu-wait': true }, onSelect: () => requestAnimationFrame(waitFor) },
+        {
+          label: 'Wait for…',
+          data: { 'data-queue-menu-wait': true },
+          submenu: waitForEntries({ current: item.waitFor, busy: busyInProject(rows, item.cwd), above, onPick: (next) => void setWaitFor(item, next).catch(() => {}) }),
+        },
+        startByItself(item, rows),
         { label: 'Move to top', hint: formatKeys(keysFor('queue.move-top')), disabled: moveTarget(ids, item.id, 'top') === null, onSelect: () => move(item, 'top') },
         { label: 'Move up', hint: '⌥↑', disabled: moveTarget(ids, item.id, -1) === null, data: { 'data-queue-menu-up': true }, onSelect: () => move(item, -1) },
         { label: 'Move down', hint: '⌥↓', disabled: moveTarget(ids, item.id, 1) === null, data: { 'data-queue-menu-down': true }, onSelect: () => move(item, 1) },

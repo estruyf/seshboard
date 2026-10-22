@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sessionRowLabel, spokenAge } from './rowLabel.ts';
+import { sessionRowLabel, spokenAge, stepRowLabel } from './rowLabel.ts';
 
 const now = new Date(2026, 9, 6, 12, 0).getTime();
 const MINUTE = 60_000;
@@ -41,5 +41,16 @@ describe('sessionRowLabel', () => {
 
   it('never reads an empty title', () => {
     expect(sessionRowLabel({ ...base, title: '' })).toMatch(/^Untitled session, /);
+  });
+});
+
+describe('pipeline rows', () => {
+  it('says where a run is, and what a sub-session is', () => {
+    expect(sessionRowLabel({ title: 'Add a toggle', project: 'switchboard', status: 'running', pinned: false, archived: false, beside: false, pipeline: 'Validate · 3 of 4', updatedAt: now, now })).toBe(
+      'Add a toggle, switchboard, Claude is working, pipeline at Validate, 3 of 4, updated just now',
+    );
+    expect(stepRowLabel({ title: 'Validate · round 2', parent: 'Add a toggle', meta: 'Opus · read only · working', status: 'running' })).toBe(
+      'Validate · round 2, step of Add a toggle, Opus, read only, working, Claude is working',
+    );
   });
 });

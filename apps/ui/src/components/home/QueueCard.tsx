@@ -1,9 +1,10 @@
-import { Clock, GripVertical, ListEnd, MoreHorizontal, Play, Plus } from 'lucide-react';
+import { GripVertical, ListEnd, MoreHorizontal, Play, Plus } from 'lucide-react';
 import { savedAgo } from '../../state/focus.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued, useLater } from '../../state/laterStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import type { QueueEntry } from '../../state/queue.ts';
+import { queueRowLabel, type QueueEntry } from '../../state/queue.ts';
+import { QueueMark } from '../queue/QueueMark.tsx';
 import { useQueue, useProjectName } from '../../state/useQueue.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -14,9 +15,13 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { modelLabel } from '../../lib/autoModel.ts';
+import { SeeAllInUpcoming } from '../upcoming/SeeAllInUpcoming.tsx';
+
+/** How many queued items Home shows; See all in Upcoming has the rest. */
+const HOME_ROWS = 3;
 
 /**
- * Home's Queue: every queued prompt in order, the full width under Needs you and Working. Each row says why it is
+ * Home's Queue: the first queued prompts in order (Upcoming has all of them), the full width under Needs you and Working. Each row says why it is
  * ready or what it waits for, and its choices; Start (yellow) when ready, Start now otherwise. Drag by the grip or
  * ⌥↑ ⌥↓ to reorder; a click on the prompt opens it in New session to check first.
  */
@@ -53,12 +58,13 @@ export function QueueCard({ now }: { now: number }) {
         <span className="flex shrink-0 items-center gap-1 text-meta text-faint @max-[640px]:hidden">
           Drag to reorder · <Kbd keys="⌥" /> <Kbd keys="↑" /> <Kbd keys="↓" />
         </span>
+        <SeeAllInUpcoming kind="queue" />
         <Button icon={<Plus size={13} aria-hidden />} onClick={() => useSessions.getState().openNewSession()} className="shrink-0" data-home-queue-add>
           Add to queue
         </Button>
       </div>
       <ul className="grid gap-0.5">
-        {queue.entries.map((entry) => {
+        {queue.entries.slice(0, HOME_ROWS).map((entry) => {
           const { item, state } = entry;
           const ready = state === 'ready';
           const { lead, rest } = meta(entry);
@@ -70,7 +76,8 @@ export function QueueCard({ now }: { now: number }) {
               className={`group/queue relative flex min-w-0 items-center gap-2.5 rounded-lg py-2 pr-2 pl-1 ${QUEUE_SURFACE[state]}`}
               data-queue-item={item.id}
               data-queue-state={state}
-              aria-label={`Queued in ${projectName(item.cwd)}: ${item.prompt.slice(0, 200)}. ${[lead, rest].filter(Boolean).join(', ')}`}
+              data-queue-autostart={entry.autoStart || undefined}
+              aria-label={`Queued in ${projectName(item.cwd)}: ${entry.autoStart ? queueRowLabel(entry) : `${item.prompt.slice(0, 200)}.`} ${[lead, rest].filter(Boolean).join(', ')}`}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
                 if (!menus.onKeyDown(e, entry) && e.key === 'Enter') useLater.getState().use(item);
@@ -87,7 +94,7 @@ export function QueueCard({ now }: { now: number }) {
               <button type="button" tabIndex={-1} onClick={() => useLater.getState().use(item)} className="grid min-w-0 flex-1 gap-px text-left" data-tooltip="Open in New session to check it first">
                 <span className="truncate text-body text-text">{item.prompt}</span>
                 <span className="flex min-w-0 items-center gap-1 text-meta text-faint">
-                  {state === 'waiting' && <Clock size={11} className="shrink-0" aria-hidden />}
+                  <QueueMark entry={entry} size={11} />
                   <span className="min-w-0 truncate">
                     {lead && <span className={ready ? 'text-ok' : ''}>{lead}</span>}
                     {lead && rest && ' · '}

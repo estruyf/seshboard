@@ -2,12 +2,14 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BACKUP_SECTIONS, DEFAULT_PREFERENCES, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
+import { BACKUP_SECTIONS, BUILT_IN_PIPELINES, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { ProfileStore } from '../profiles/profileStore.ts';
 import { ProjectRegistry } from '../projects/projectRegistry.ts';
+import { ScheduleStore } from '../schedules/scheduleStore.ts';
+import { TriggerStore } from '../triggers/triggerStore.ts';
 import { exportSettings, planImport, readSettingsFile, writeBackup, writeSettingsFile, type SettingsStores } from './settingsTransfer.ts';
 
 const dirs: string[] = [];
@@ -34,6 +36,8 @@ function mac() {
     profiles: new ProfileStore(cache.db, appState, { configDir: join(data, '.claude'), fromEnv: false }),
     projects: new ProjectRegistry(cache.db, join(data, 'icons')),
     actions: new ActionStore(cache.db),
+    schedules: new ScheduleStore(cache.db),
+    triggers: new TriggerStore(cache.db),
   };
   return { data, stores };
 }
@@ -50,6 +54,76 @@ function roundTrip(stores: SettingsStores, preferences: unknown = DEFAULT_PREFER
 }
 
 describe('settings export and import', () => {
+  it('carries schedules, and imports one whose folder is missing paused', () => {
+    const before = mac();
+    const web = tempDir();
+    const gone = join(tempDir(), 'gone');
+    const kept = before.stores.schedules!.save({ name: 'Review open pull requests', draft: { cwd: web, prompt: 'Review them', model: 'opus' }, rule: { kind: 'weekdays', time: '08:00' }, missed: 'skip', paused: false });
+    before.stores.schedules!.setLastRun(kept.id, { at: 1, result: 'started', sessionId: 'last-run-session', itemId: null, reason: null });
+    mkdirSync(gone);
+    const away = before.stores.schedules!.save({ name: 'Standup summary', draft: { cwd: gone, prompt: 'Write it' }, rule: { kind: 'monthly', day: 31, time: '10:00' }, missed: 'run', paused: false });
+    const file = roundTrip(before.stores);
+    rmSync(gone, { recursive: true });
+    expect(file.schedules).toHaveLength(2);
+    expect(JSON.stringify(file.schedules)).not.toContain('last-run-session');
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'schedules')).toEqual([
+      { section: 'schedules', label: 'Review open pull requests', change: 'add', detail: null },
+      { section: 'schedules', label: 'Standup summary', change: 'add', detail: expect.stringMatching(/^paused: folder not found/) },
+    ]);
+    expect(plan.preview.missingFolders).toContain(gone);
+    plan.apply();
+    const imported = after.stores.schedules!.list();
+    expect(imported.find((s) => s.id === kept.id)).toMatchObject({ name: 'Review open pull requests', rule: { kind: 'weekdays', time: '08:00' }, missed: 'skip', paused: false, lastRun: null, draft: { cwd: web, model: 'opus' } });
+    expect(imported.find((s) => s.id === away.id)).toMatchObject({ paused: true, pausedReason: 'Folder not found' });
+
+    // The same file again changes nothing; Replace removes what the file lacks.
+    expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'schedules' && c.change !== 'keep')).toEqual([]);
+    after.stores.schedules!.save({ name: 'Extra', draft: { cwd: web, prompt: 'Extra' }, rule: { kind: 'daily', time: '07:00' }, missed: 'run', paused: false });
+    expect(planImport(after.stores, file, { ...ALL, mode: 'replace' }).preview.changes).toContainEqual({ section: 'schedules', label: 'Extra', change: 'remove', detail: null });
+  });
+
+  it('carries triggers without what their checks found, and imports them paused', () => {
+    const before = mac();
+    const web = tempDir();
+    const saved = before.stores.triggers!.save({ projectRoot: web, name: 'Issues for you', source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, prompt: 'Work on {{event.title}}', stateLabels: { on: true }, paused: false });
+    before.stores.triggers!.checked(saved.id, { at: 5, seen: { '#12': 'match' }, seeded: true });
+    before.stores.triggers!.addEvent(saved.id, { key: '#13', kind: 'issue', title: 'An issue', url: 'https://github.com/o/r/issues/13', fields: {}, at: 1, context: null }, 'waiting');
+    const file = roundTrip(before.stores);
+    expect(file.triggers).toHaveLength(1);
+    expect(JSON.stringify(file.triggers)).not.toMatch(/#12|seededAt|lastCheckedAt|An issue/);
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'triggers')).toEqual([{ section: 'triggers', label: 'Issues for you', change: 'add', detail: 'comes in paused' }]);
+    plan.apply();
+    const [imported] = after.stores.triggers!.list();
+    expect(imported).toMatchObject({ id: saved.id, projectRoot: web, source: { kind: 'issues', label: 'switchboard', assignee: '@me' }, stateLabels: { on: true }, paused: true, pausedReason: 'Imported. Check it, then resume.', seededAt: null });
+    expect(after.stores.triggers!.events()).toEqual([]);
+    // The same file again changes nothing.
+    expect(planImport(after.stores, file, ALL).preview.changes.filter((c) => c.section === 'triggers')).toEqual([]);
+  });
+
+  it('keeps the pipeline a trigger starts, and skips one whose pipeline isn’t here', () => {
+    const before = mac();
+    const web = tempDir();
+    const base = { projectRoot: web, source: { kind: 'ci' as const }, prompt: 'Fix {{event.workflow}}' };
+    before.stores.triggers!.save({ ...base, name: 'Built in', start: { kind: 'pipeline', pipelineId: BUILT_IN_PIPELINES[0]!.id } });
+    before.stores.triggers!.save({ ...base, name: 'Mine', start: { kind: 'pipeline', pipelineId: 'gone' } });
+    const file = roundTrip(before.stores);
+
+    const after = mac();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'triggers')).toEqual([
+      { section: 'triggers', label: 'Built in', change: 'add', detail: 'comes in paused' },
+      { section: 'triggers', label: 'Mine', change: 'skip', detail: expect.stringMatching(/its pipeline isn’t on this/) },
+    ]);
+    plan.apply();
+    expect(after.stores.triggers!.list().map((t) => t.start)).toEqual([{ kind: 'pipeline', pipelineId: BUILT_IN_PIPELINES[0]!.id, unattended: false, autoPush: false }]);
+  });
+
   it('restores projects, icons, actions, choices, preferences and sessions on a clean Mac', () => {
     const before = mac();
     const [web, api] = [tempDir(), tempDir()];
@@ -61,7 +135,7 @@ describe('settings export and import', () => {
     before.stores.projects.setIcon(web, { kind: 'file', path: iconFile });
     before.stores.projects.setIcon(api, { kind: 'emoji', value: '🚀' });
     before.stores.projects.rename(api, 'Backend');
-    before.stores.projects.setDefaults(api, { model: 'opus', effort: null, permissionMode: 'plan', workspace: null, baseRef: null, branch: null });
+    before.stores.projects.setDefaults(api, { model: 'opus', effort: null, permissionMode: 'plan', workspace: null, baseRef: null, branch: null, defaultBranch: null });
     before.stores.actions.save(null, action({ id: 'lint', command: 'npm run lint' }));
     before.stores.actions.save(null, action({ id: 'review', type: 'prompt', command: 'Review the diff' }));
     before.stores.actions.save(web, action({ id: 'dev', command: 'npm run dev', shortcut: 'cmd+shift+d', runOnWorktreeCreate: true }));
@@ -141,7 +215,7 @@ describe('settings export and import', () => {
     const full = roundTrip(before.stores);
     const after = mac();
     const plan = planImport(after.stores, full, { ...ALL, sections: ['projects'] });
-    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'choices', 'sessions']);
+    expect(plan.preview.sections).toEqual(['preferences', 'themes', 'profiles', 'projects', 'actions', 'schedules', 'triggers', 'choices', 'sessions']);
     expect(new Set(plan.preview.changes.map((c) => c.section))).toEqual(new Set(['projects']));
     plan.apply();
     expect(after.stores.actions.all()).toEqual([]);
@@ -191,6 +265,24 @@ describe('settings export and import', () => {
     expect(actions.test).toMatchObject({ command: 'npm test', trusted: false });
     expect(actions.build).toMatchObject({ trusted: true });
     expect(target.stores.appState.get('editor.default')).toBe('zed');
+  });
+
+  it('imports a file link choice only when the file marks it as picked, and never lists the revision', () => {
+    const importWith = (fileLinkClick: string, fileLinkClickRevision?: number) => {
+      const target = mac();
+      const file = roundTrip(target.stores);
+      file.preferences = { fileLinkClick, ...(fileLinkClickRevision === undefined ? {} : { fileLinkClickRevision }) };
+      return planImport(target.stores, file, { ...ALL, mode: 'replace' });
+    };
+    // An old export: "file-manager" was the default then, so it says nothing about a choice.
+    const old = importWith('file-manager');
+    expect(old.apply().preferences).toEqual({});
+    expect(old.preview.changes.filter((c) => c.section === 'preferences')).toEqual([]);
+    // A new export carries the revision; the revision itself is not a line in the preview.
+    const picked = importWith('file-manager', FILE_LINK_CLICK_REVISION);
+    expect(picked.apply().preferences).toEqual({ fileLinkClick: 'file-manager' });
+    expect(picked.preview.changes.filter((c) => c.section === 'preferences').map((c) => c.label)).toEqual(['Clicking a file link']);
+    expect(importWith('editor').apply().preferences).toEqual({ fileLinkClick: 'editor' });
   });
 
   it('skips folders missing on this Mac unless they are pointed elsewhere', () => {

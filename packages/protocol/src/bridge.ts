@@ -13,9 +13,11 @@ import {
 
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
+import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
+export * from "./appIcons.ts";
 
 /**
  * The small API the preload script exposes on `window.switchboard`.
@@ -33,6 +35,7 @@ export const IpcChannel = {
   rendererReady: "switchboard:renderer-ready",
   pickFolder: "switchboard:pick-folder",
   pickImage: "switchboard:pick-image",
+  pasteClipboard: "switchboard:paste-clipboard",
   pickContextFiles: "switchboard:pick-context-files",
   chooseExportFile: "switchboard:choose-export-file",
   chooseImportFile: "switchboard:choose-import-file",
@@ -64,6 +67,10 @@ export const IpcChannel = {
   notificationPermission: "switchboard:notification-permission",
   openNotificationSettings: "switchboard:open-notification-settings",
   testNotification: "switchboard:test-notification",
+  getOpenAtLogin: "switchboard:get-open-at-login",
+  setOpenAtLogin: "switchboard:set-open-at-login",
+  openLoginItemsSettings: "switchboard:open-login-items-settings",
+  keepAwakeStatus: "switchboard:keep-awake-status",
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
   popIn: "switchboard:pop-in",
@@ -111,7 +118,7 @@ export interface ForwardedKeys {
 /**
  * Something a pop-out asks the main window to show or do, because it has no such view itself: a page of Settings, the
  * Usage view, a project's page, New session (on a folder, in a new worktree), Go to, Search, or a step to another
- * session in the sidebar's order. `section` and `tab` are the names the main window's views use; it ignores one it
+ * session in the sidebar's order, or Upcoming (on a filter, with a schedule's run in view). `section` and `tab` are the names the main window's views use; it ignores one it
  * doesn't know.
  */
 export type MainWindowRequest =
@@ -121,7 +128,8 @@ export type MainWindowRequest =
   | { kind: "new-session"; cwd: string | null; worktree: boolean }
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
-  | { kind: "navigate"; to: "next" | "previous" | "needs-you" };
+  | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | null; scheduleId: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -133,8 +141,16 @@ export type SidebarCollapsed = "minimal" | "closed";
 export type ToolActivity = "summary" | "steps";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
-/** What a click on a file link in the conversation does: show the file in the file manager, or open it in the editor. */
-export type FileLinkClick = "file-manager" | "editor";
+/**
+ * What a click on a file link in the conversation does: open it in Switchboard (Markdown, HTML and code preview there,
+ * other files show in the file manager), always show it in the file manager, or open it in the editor.
+ */
+export type FileLinkClick = "switchboard" | "file-manager" | "editor";
+/**
+ * The version of the `fileLinkClick` choices. Preferences are saved whole, so a saved "file-manager" can't be told
+ * apart from the old default (before "switchboard" existed). It counts as a choice only from this revision on.
+ */
+export const FILE_LINK_CLICK_REVISION = 2;
 /** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
@@ -144,11 +160,13 @@ export type UpdateChannel = "stable" | "beta";
 /** How New session, Home and the palette list your projects: most recently used first, or in the order you set. */
 export type ProjectOrder = "recent" | "yours";
 /**
- * The permission mode a new session starts in: the one you picked last (`last`), or always the same one. Bypass
- * permissions is never offered, as in the mode menus.
+ * The permission mode a new session starts in: the project's or profile's own default, else Ask first (`project`),
+ * the one you picked last (`remember`), or always the same one, over the project's default. Bypass permissions is
+ * never offered, as in the mode menus. Builds before 1.1.0 stored `last` (the project's default first, then the
+ * mode picked last); it isn't read any more, so it becomes `project`.
  */
-export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto";
-export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
+export type NewSessionMode = "project" | "remember" | "default" | "acceptEdits" | "plan" | "auto";
+export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["project", "remember", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
@@ -256,6 +274,8 @@ export interface Preferences {
   toolActivity: ToolActivity;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
   fileLinkClick: FileLinkClick;
+  /** Internal: which version of the `fileLinkClick` choices was saved; "file-manager" without the current one is the old default. */
+  fileLinkClickRevision: number;
   /** Settings › Conversation: "Show prompt outline", the rail beside the conversation with a mark for each of your prompts. */
   promptOutline: boolean;
   /** Settings › Conversation: "Under each reply", when a turn ended, how long it took and its tokens. */
@@ -269,7 +289,7 @@ export interface Preferences {
   sessionScope: SessionScope;
   startupView: StartupView;
   projectOrder: ProjectOrder;
-  /** What New session and the palette's prompt start in, unless the project has its own default. */
+  /** What New session and the palette's prompt start in (Settings › General › Permission mode). */
   newSessionMode: NewSessionMode;
   /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
@@ -277,6 +297,12 @@ export interface Preferences {
    * ask for it. Off by default: not everyone has the extension.
    */
   chrome: boolean;
+  /**
+   * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
+   * Switchboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
+   * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
+   */
+  keepAwake: boolean;
   /** Check GitHub for a newer release shortly after launch and every few hours. */
   autoUpdate: boolean;
   updateChannel: UpdateChannel;
@@ -289,6 +315,13 @@ export interface Preferences {
   focusCountRemote: boolean;
   /** The colour theme: a built-in's id (`demo-time`, `github`…) or an imported theme's file name. */
   themeId: string;
+  /**
+   * Settings › Theme › App icon: the colourway of the icon in the Dock and the app switcher (macOS), or on the windows
+   * and the taskbar. Main applies it at launch, before the first window. The bundle's own icon stays Graphite.
+   */
+  appIcon: AppIconKey;
+  /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
+  appIconOnRemote: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -328,6 +361,11 @@ export interface Preferences {
   showMods: boolean;
   /** Mods whose UI is hidden here, as `modKey(profileId, name)`; kept while Show mods is off. */
   hiddenMods: string[];
+  /**
+   * Projects (their roots) where the `#` list already showed its one hint about the GitHub CLI: there `#` stays plain
+   * text until gh works.
+   */
+  githubHintSeen: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   githubStar: GithubStar;
@@ -347,7 +385,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
-  fileLinkClick: "file-manager",
+  fileLinkClick: "switchboard",
+  fileLinkClickRevision: FILE_LINK_CLICK_REVISION,
   promptOutline: true,
   turnDetails: "duration",
   fadeInactivePanes: true,
@@ -356,8 +395,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sessionScope: "switchboard",
   startupView: "home",
   projectOrder: "recent",
-  newSessionMode: "last",
+  newSessionMode: "project",
   chrome: false,
+  keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
   focusLimit: null,
@@ -365,6 +405,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   focusCountExternal: false,
   focusCountRemote: true,
   themeId: DEFAULT_THEME_ID,
+  appIcon: DEFAULT_APP_ICON,
+  appIconOnRemote: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   whileWorking: "queue",
@@ -377,6 +419,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   contextWarning: DEFAULT_CONTEXT_WARNING,
   showMods: true,
   hiddenMods: [],
+  githubHintSeen: [],
   sidebarSort: "recent",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
@@ -493,8 +536,13 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
   // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
-  if (oneOf(["file-manager", "editor"] as const, raw.fileLinkClick))
-    out.fileLinkClick = raw.fileLinkClick;
+  // "file-manager" saved before the revision was the old default, not a choice: leave it out so "switchboard" applies.
+  if (
+    oneOf(["switchboard", "editor"] as const, raw.fileLinkClick) ||
+    (raw.fileLinkClick === "file-manager" && raw.fileLinkClickRevision === FILE_LINK_CLICK_REVISION)
+  )
+    out.fileLinkClick = raw.fileLinkClick as FileLinkClick;
+  // The revision itself is never read back: the default carries the current one, so every save marks the choice as picked.
   if (typeof raw.promptOutline === "boolean") out.promptOutline = raw.promptOutline;
   if (oneOf(["none", "time", "duration", "tokens"] as const, raw.turnDetails))
     out.turnDetails = raw.turnDetails;
@@ -510,6 +558,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
+  if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
     out.updateChannel = raw.updateChannel;
@@ -532,6 +581,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.focusCountRemote === "boolean")
     out.focusCountRemote = raw.focusCountRemote;
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
+  if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
+  if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -554,6 +605,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (Array.isArray(raw.githubHintSeen))
+    out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
@@ -659,6 +712,12 @@ export type DeepLink =
       autostart: boolean;
       /** A quick question: no project, in the scratch folder the engine keeps (`cwd`, `project` and `repo` are null). */
       question: boolean;
+      /**
+       * New session from this issue or pull request of the project (a number, or a link to it on GitHub): the worktree,
+       * chip and prompt are filled in. Such a link never starts a session, whatever `autostart` says.
+       */
+      issue?: string | null;
+      pr?: string | null;
     }
   | { action: "session"; sessionId: string };
 
@@ -725,6 +784,8 @@ export interface SwitchboardBridge {
   onSelectSession(listener: (sessionId: string) => void): () => void;
   /** Native image picker (for project icons). Resolves to null when cancelled. */
   pickImage(defaultPath?: string): Promise<string | null>;
+  /** Pastes the clipboard into the focused field as Cmd/Ctrl+V does, so images and files reach the field's paste handler too. */
+  pasteClipboard(): Promise<void>;
   /** Native open dialog for files (and folders, on macOS) to add as context, starting in `defaultPath`. Empty when cancelled. */
   pickContextFiles(defaultPath?: string): Promise<PickedPath[]>;
   /** Native save dialog for a settings export, suggesting `defaultName`. Resolves to null when cancelled. */
@@ -804,6 +865,14 @@ export interface SwitchboardBridge {
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
+  /** Whether Switchboard opens when you log in to this computer, as the system has it. */
+  openAtLogin(): Promise<OpenAtLogin>;
+  /** Adds Switchboard to the system's login items, or takes it off; answers how it stands afterwards. */
+  setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
+  /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
+  openLoginItemsSettings(): void;
+  /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
+  keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
   readonly popout: string | null;
   /** The sessions shown in pop-out windows, read once when the page loads; then follow `onPopoutsChanged`. */
@@ -842,6 +911,13 @@ export interface SwitchboardBridge {
   /** In the main window: a pop-out asked for every unsent message. */
   onDraftsRequested(listener: () => void): () => void;
 }
+
+/**
+ * Whether Switchboard opens at login. The system holds it (System Settings › General › Login Items, or Startup apps
+ * on Windows), not the preferences, so a change made there shows here. `needs-approval`: macOS added it but waits for
+ * you to allow it there. `unavailable`: a development build, which would add Electron itself, or Linux.
+ */
+export type OpenAtLogin = "on" | "off" | "needs-approval" | "unavailable";
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
 export type NotificationPermission = "allowed" | "blocked" | "unknown";

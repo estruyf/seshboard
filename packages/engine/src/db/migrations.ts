@@ -568,4 +568,205 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (session_id, repo, number)
   );
   `,
+
+  // v33: The issue or pull request a session was started from (New session from it), where it works on it, and whether
+  // it is a pull request from a fork Switchboard can't push to (push and Create pull request are off there). Set when
+  // the session starts and never read back from a transcript: keep it.
+  `
+  CREATE TABLE session_github (
+    session_id TEXT PRIMARY KEY,
+    type       TEXT NOT NULL,
+    repo       TEXT NOT NULL,
+    number     INTEGER NOT NULL,
+    read_only  INTEGER NOT NULL DEFAULT 0,
+    cwd        TEXT NOT NULL,
+    branch     TEXT,
+    created_at INTEGER NOT NULL
+  );
+  `,
+
+  // v34: Scheduled sessions (#173). A schedule is a user choice like a queued prompt: keep it. `checked_at` is the moment
+  // up to which its runs were dealt with, so runs due while Switchboard was closed are found at the next start.
+  // `schedule_runs` remembers which sessions a schedule started (the repeat icon on their rows); it can't be read back
+  // from a transcript, so keep it too.
+  `
+  CREATE TABLE schedules (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    draft_json    TEXT NOT NULL,
+    rule_json     TEXT NOT NULL,
+    missed        TEXT NOT NULL DEFAULT 'run',
+    paused        INTEGER NOT NULL DEFAULT 0,
+    paused_reason TEXT,
+    last_run_json TEXT,
+    checked_at    INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+  );
+  CREATE TABLE schedule_runs (
+    session_id  TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL,
+    at          INTEGER NOT NULL
+  );
+  CREATE INDEX schedule_runs_schedule ON schedule_runs (schedule_id);
+  `,
+
+  // v35: Upcoming. A schedule keeps its last runs (today's past runs in the timeline) and the single runs you skipped
+  // (Skip this run), both as JSON on its row. User data like the schedule itself.
+  `
+  ALTER TABLE schedules ADD COLUMN runs_json TEXT;
+  ALTER TABLE schedules ADD COLUMN skipped_runs_json TEXT;
+  `,
+
+  // v36: Event triggers (#180). A trigger is a user choice like a schedule: keep it. `seen_json` is what its last check
+  // saw, so only what is new starts. `trigger_events` are its events, one per key (a run's workflow and commit, an
+  // issue's number); the unique index is the dedupe. `trigger_sessions` remembers which sessions a trigger started
+  // (the bolt on their rows, the line in their header); it can't be read back from a transcript, so keep all three.
+  `
+  CREATE TABLE triggers (
+    id              TEXT PRIMARY KEY,
+    project_root    TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    source_json     TEXT NOT NULL,
+    prompt          TEXT NOT NULL,
+    draft_json      TEXT NOT NULL,
+    max_at_once     INTEGER NOT NULL DEFAULT 3,
+    max_waiting     INTEGER NOT NULL DEFAULT 10,
+    interval_min    INTEGER NOT NULL DEFAULT 5,
+    state_labels_json TEXT NOT NULL,
+    assign_on_pickup INTEGER NOT NULL DEFAULT 0,
+    paused          INTEGER NOT NULL DEFAULT 0,
+    paused_reason   TEXT,
+    failures        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    blocked_until   INTEGER,
+    last_checked_at INTEGER,
+    seeded_at       INTEGER,
+    seen_json       TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+  );
+  CREATE INDEX triggers_project ON triggers (project_root);
+  CREATE TABLE trigger_events (
+    id            TEXT PRIMARY KEY,
+    trigger_id    TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    kind          TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    fields_json   TEXT NOT NULL,
+    context       TEXT,
+    status        TEXT NOT NULL,
+    reason        TEXT,
+    session_id    TEXT,
+    item_id       TEXT,
+    label         TEXT,
+    reassigned_to TEXT,
+    created_at    INTEGER NOT NULL,
+    started_at    INTEGER
+  );
+  CREATE UNIQUE INDEX trigger_events_key ON trigger_events (trigger_id, key);
+  CREATE INDEX trigger_events_session ON trigger_events (session_id);
+  CREATE TABLE trigger_sessions (
+    session_id   TEXT PRIMARY KEY,
+    trigger_id   TEXT NOT NULL,
+    event_id     TEXT NOT NULL,
+    trigger_name TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    ref          TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    at           INTEGER NOT NULL
+  );
+  `,
+
+  // v37: Pipelines (#179). Pipelines and their runs are user data, so they survive a cache rebuild. A run keeps the
+  // pipeline as it was when it started (`pipeline_json`), its steps one row per round. `session_parents` puts a
+  // pipeline's sub-sessions under the session (or run row) they were run from: the `sessions` table is a cache of
+  // ~/.claude that may be dropped, and this can't be read back from a transcript.
+  `
+  CREATE TABLE pipelines (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    scope_json  TEXT NOT NULL,
+    steps_json  TEXT NOT NULL,
+    auto_push   INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+  CREATE TABLE pipeline_runs (
+    id                TEXT PRIMARY KEY,
+    pipeline_id       TEXT NOT NULL,
+    pipeline_json     TEXT NOT NULL,
+    parent_session_id TEXT,
+    task              TEXT,
+    title             TEXT NOT NULL,
+    project_root      TEXT NOT NULL,
+    cwd               TEXT NOT NULL,
+    profile_id        TEXT,
+    status            TEXT NOT NULL,
+    reason            TEXT,
+    waiting_for       TEXT,
+    step              INTEGER NOT NULL DEFAULT 0,
+    round             INTEGER NOT NULL DEFAULT 1,
+    sent_back_to      INTEGER,
+    pr_json           TEXT,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL,
+    ended_at          INTEGER
+  );
+  CREATE INDEX pipeline_runs_parent ON pipeline_runs (parent_session_id);
+  CREATE TABLE pipeline_run_steps (
+    run_id       TEXT NOT NULL,
+    idx          INTEGER NOT NULL,
+    round        INTEGER NOT NULL,
+    step         TEXT NOT NULL,
+    session_id   TEXT,
+    status       TEXT NOT NULL,
+    outcome      TEXT,
+    verdict_json TEXT,
+    reason       TEXT,
+    plan         TEXT,
+    actions_json TEXT,
+    started_at   INTEGER NOT NULL,
+    ended_at     INTEGER,
+    PRIMARY KEY (run_id, idx, round)
+  );
+  CREATE INDEX pipeline_run_steps_session ON pipeline_run_steps (session_id);
+  CREATE TABLE session_parents (
+    session_id TEXT PRIMARY KEY,
+    parent_id  TEXT NOT NULL,
+    run_id     TEXT
+  );
+  CREATE INDEX session_parents_parent ON session_parents (parent_id);
+  `,
+
+  // v38: Pipelines (#179). A run row archived and unarchived by hand, like a session, and sessions taken out of
+  // Switchboard with their run (Delete… on a run), whose transcripts stay. User choices: keep them.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN archived_at INTEGER;
+  ALTER TABLE pipeline_runs ADD COLUMN restored_at INTEGER;
+  ALTER TABLE session_flags ADD COLUMN hidden_at INTEGER;
+  `,
+
+  // v39: Pipelines (#179). The images sent with a run's task, kept (as a JSON list) so every step that starts a
+  // session gets them, also after a restart. Part of the run: keep them.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN attachments_json TEXT;
+  `,
+
+  // v40: Event triggers start pipelines (#185). What a trigger starts (`start_json`, null: a session, as before), the
+  // run an event became, and the event's text (an issue, a failed log) a triggered run gives its first step as context.
+  // All user data: keep them.
+  `
+  ALTER TABLE triggers ADD COLUMN start_json TEXT;
+  ALTER TABLE trigger_events ADD COLUMN run_id TEXT;
+  CREATE INDEX trigger_events_run ON trigger_events (run_id);
+  ALTER TABLE pipeline_runs ADD COLUMN context TEXT;
+  `,
+
+  // v41: A run a trigger starts without stopping for you (#185): plans approved, steps that wait started, questions
+  // answered with "decide". Part of the run: keep it.
+  `
+  ALTER TABLE pipeline_runs ADD COLUMN unattended INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

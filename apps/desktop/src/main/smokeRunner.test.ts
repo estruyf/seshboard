@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SmokeRun } from './smokeRunner.ts';
+import { SKIPPED, SmokeRun } from './smokeRunner.ts';
 
 describe('SmokeRun', () => {
   it('records results, booleans and throws', async () => {
@@ -52,5 +52,22 @@ describe('SmokeRun', () => {
     await run.step('quick', async () => 'ok');
     await run.step('slow', () => new Promise<string>((resolve) => setTimeout(() => resolve('ok'), 30)));
     expect(run.slowest(1).map((s) => s.label)).toEqual(['slow']);
+  });
+
+  it('runs only the steps --only picks, the always ones, and the steps inside a picked one', async () => {
+    const run = new SmokeRun({ only: /pop-out|projects/i });
+    const ran: string[] = [];
+    const step = (label: string, options = {}) => run.step(label, async () => (ran.push(label), 'ok'), options);
+    await step('open a session', { always: true });
+    expect(await step('find in session')).toBe(SKIPPED);
+    await step('a session in its own window (Pop-out)');
+    await run.step('projects', async () => {
+      ran.push('projects');
+      await step('project branches');
+      return 'ok';
+    });
+    expect(ran).toEqual(['open a session', 'a session in its own window (Pop-out)', 'projects', 'project branches']);
+    expect(run.steps.map((s) => s.label)).toEqual(['open a session', 'a session in its own window (Pop-out)', 'project branches', 'projects']);
+    expect(run.matched).toBe(2);
   });
 });

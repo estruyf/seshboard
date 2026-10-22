@@ -38,6 +38,11 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     notifications: true,
     sounds: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
+    schedules: 0,
+    triggers: 0,
+    pipelines: 0,
+    sessionPipelines: 0,
+    lastPreviewableFile: null,
     unsent: 0,
     projectCount: 2,
     projects: [
@@ -129,6 +134,39 @@ describe('when(): always', () => {
     expect(titleOf(add, inNew)).toBe('Add to queue');
     add.run!(api, inNew);
     expect(api.newSessionRequest).toHaveBeenCalledWith('add-to-queue');
+    // Schedule a session… does the same with the schedule dialog; Schedules… lists them once there are some.
+    const schedule = visibleCommands(ctx).find((c) => c.id === 'schedule-add')!;
+    expect(hintOf(schedule, ctx)).toBe('opens New session');
+    schedule.run!(api, inNew);
+    expect(api.newSessionRequest).toHaveBeenCalledWith('schedule');
+    expect(visibleCommands(ctx).some((c) => c.id === 'schedules')).toBe(false);
+    const withSchedules = context({ schedules: 4 });
+    const list = visibleCommands(withSchedules).find((c) => c.id === 'schedules')!;
+    expect(hintOf(list, withSchedules)).toBe('4');
+    expect(list.next!(withSchedules)).toEqual({ kind: 'pick', list: 'schedules', chip: 'Schedules' });
+  });
+
+  it('lists the pipelines once there are some', () => {
+    expect(visibleCommands(context()).some((c) => c.id === 'pipelines')).toBe(false);
+    const ctx = context({ pipelines: 3 });
+    const list = visibleCommands(ctx).find((c) => c.id === 'pipelines')!;
+    expect(titleOf(list, ctx)).toBe('Pipelines: pick one…');
+    expect(hintOf(list, ctx)).toBe('3');
+    expect(list.next!(ctx)).toEqual({ kind: 'pick', list: 'pipelines', chip: 'Pipelines' });
+    expect(visibleCommands(context({ pipelines: 3, connected: false })).some((c) => c.id === 'pipelines')).toBe(false);
+  });
+
+  it('makes a trigger for a project, and lists the triggers once there are some', () => {
+    const ctx = context({ projects: [{ root: '/work/app', name: 'app' }] });
+    const add = visibleCommands(ctx).find((c) => c.id === 'trigger-new')!;
+    expect(titleOf(add, ctx)).toBe('New trigger…');
+    expect(add.next!(ctx)).toEqual({ kind: 'projects', purpose: 'trigger', worktree: false, chip: 'New trigger' });
+    expect(visibleCommands(context({ projects: [] })).some((c) => c.id === 'trigger-new')).toBe(false);
+    expect(visibleCommands(ctx).some((c) => c.id === 'triggers')).toBe(false);
+    const withTriggers = context({ triggers: 2 });
+    const list = visibleCommands(withTriggers).find((c) => c.id === 'triggers')!;
+    expect(hintOf(list, withTriggers)).toBe('2');
+    expect(list.next!(withTriggers)).toEqual({ kind: 'pick', list: 'triggers', chip: 'Triggers' });
   });
 
   it('asks a quick question in the scratch folder, once the engine has said where it is', () => {
@@ -166,6 +204,17 @@ describe('when(): a session is open', () => {
     const shown = groupIds(inSession({}, { git: GIT }), 'session');
     expect(shown).toEqual(expect.arrayContaining(['rename-session', 'pin', 'archive', 'copy-session-id', 'toggle-terminal', 'new-terminal-tab', 'toggle-changes', 'tools', 'open-in-editor', 'reveal-in-finder', 'close-session', 'delete-session']));
     expect(groupIds({ ...inSession(), view: 'settings' }, 'session')).toEqual([]);
+  });
+
+  it('runs a pipeline from the open session, when its project has one', () => {
+    const ctx = inSession({}, { pipelines: 3, sessionPipelines: 2 });
+    const run = visibleCommands(ctx).find((c) => c.id === 'run-pipeline')!;
+    expect(titleOf(run, ctx)).toBe('Run pipeline…');
+    expect(run.group).toBe('session');
+    expect(run.next!(ctx)).toEqual({ kind: 'pick', list: 'run-pipeline', chip: 'Run pipeline' });
+    expect(ids(inSession({}, { pipelines: 3, sessionPipelines: 0 }))).not.toContain('run-pipeline');
+    expect(ids(context({ pipelines: 3, sessionPipelines: 2 }))).not.toContain('run-pipeline');
+    expect(ids(inSession({}, { pipelines: 3, sessionPipelines: 2, connected: false }))).not.toContain('run-pipeline');
   });
 
   it('needs a transcript to rename, pin, archive or delete, and a folder for the folder commands', () => {
@@ -207,6 +256,14 @@ describe('when(): a session is open', () => {
     expect(ids(inSession())).not.toContain('fork');
     const talked = ids(inSession({ prompts: 2, hasReply: true }));
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
+  });
+
+  it('previews the last written file only when the open session wrote a Markdown or HTML one', () => {
+    expect(ids(inSession())).not.toContain('preview-last-file');
+    expect(ids(context({ lastPreviewableFile: '/work/app/PLAN.md' }))).not.toContain('preview-last-file');
+    const written = inSession({}, { lastPreviewableFile: '/work/app/PLAN.md' });
+    expect(groupIds(written, 'session')).toContain('preview-last-file');
+    expect(visibleCommands(written).find((c) => c.id === 'preview-last-file')!.title).toBe('Preview last written file');
   });
 
   it('asks about the session in an open session, through the Ask panel', () => {
@@ -451,6 +508,19 @@ describe('project pages and worktrees', () => {
     byId(ctx, 'branches-here')!.run!(api, ctx);
     expect(api.openProject).toHaveBeenCalledWith('/work/app', 'branches');
     expect(ids(context({ projects: [] }))).not.toContain('branches');
+  });
+
+  it("opens the current project's triggers, or asks which project", () => {
+    const api = { openProject: vi.fn() } as unknown as PaletteApi;
+    expect(ids(context())).toContain('triggers-page');
+    expect(ids(context())).not.toContain('triggers-here');
+    expect(byId(context(), 'triggers-page')!.next!(context())).toEqual({ kind: 'projects', purpose: 'triggers', worktree: false, chip: 'Triggers' });
+
+    const ctx = context({ view: 'project', currentProject: app });
+    expect(titleOf(byId(ctx, 'triggers-here')!, ctx)).toBe('Triggers in app');
+    byId(ctx, 'triggers-here')!.run!(api, ctx);
+    expect(api.openProject).toHaveBeenCalledWith('/work/app', 'triggers');
+    expect(ids(context({ projects: [] }))).not.toContain('triggers-page');
   });
 });
 

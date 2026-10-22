@@ -48,14 +48,14 @@ export function FileLink({ fileRef, fallback, children }: { fileRef: FileRef | n
   const path = useResolvedPath(fileRef);
   if (!path) return <>{fallback}</>;
   return (
-    <ResolvedFileLink path={path} line={fileRef?.line}>
+    <ResolvedFileLink path={path} line={fileRef?.line} endLine={fileRef?.endLine}>
       {children}
     </ResolvedFileLink>
   );
 }
 
-function ResolvedFileLink({ path, line, children }: { path: string; line: number | undefined; children: ReactNode }) {
-  const { action, tooltip, error, handlers, extras } = useFileLinkActions(path, line);
+function ResolvedFileLink({ path, line, endLine, children }: { path: string; line: number | undefined; endLine: number | undefined; children: ReactNode }) {
+  const { action, tooltip, error, handlers, extras } = useFileLinkActions(path, line, endLine);
   return (
     <>
       <a

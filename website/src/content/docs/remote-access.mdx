@@ -18,13 +18,14 @@ On your phone you can:
 - switch between sessions from a drawer, with one tap;
 - read a session's conversation as it happens, with Claude's answers formatted and its tool runs folded into one line;
 - allow or deny what Claude asks, answer its questions, and start or keep working on a plan;
-- send a prompt, or add one to Up next while Claude works, and remove it again;
+- send a prompt, or add one to Up next while Claude works, and remove it again, steer Claude or stop it;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it, with a swipe;
 - start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
+- start a [pipeline](/sessions/pipelines/) and follow its steps;
 - get a notification when a session needs you or finishes.
 
-Everything else stays on your computer: the terminal, pushing and pull requests, memory, settings, managing profiles and file attachments.
+Everything else stays on your computer: the terminal, pushing and pull requests outside a pipeline's Push step, memory, settings, managing profiles and file attachments.
 
 Remote also lets Switchboard on another computer, such as your laptop, show this computer's sessions in its own sidebar. That uses the same tunnel and pairing as a phone: see [Other computers](/other-computers/).
 
@@ -168,11 +169,11 @@ A long press on a session has the same **Mark as read** and **Archive**, and so 
 
 ## Switch sessions
 
-<Screenshot name="remote-phone-drawer" width={390} alt="The sessions drawer over a session: Sessions with the computer chip, a search field, a Home row with Personal 58% and Work 91%, the sessions by group with the open one picked, and New session at the bottom." />
+<Screenshot name="remote-phone-drawer" width={390} alt="The sessions drawer over a session: Sessions with the computer chip, the Home row, a search field, the sessions by group with the open one picked, and New session at the bottom." />
 
 In a session, the button at the top left opens your other sessions in a drawer. Its pink count says how many other sessions need you. You can also swipe from the left edge of the screen to pull the drawer out. Tap a session to switch to it.
 
-The drawer has a search field, **Home**, your sessions by group with the open one picked, and **New session** at the bottom. Tap **Home** to go back to the first screen. With more than one Claude profile, the **Home** row shows how much each profile has used, such as **Work 82%** and **Personal 18%**. With three or more, it shows the one closest to a limit and **+2**.
+The drawer has **Home** as its first row, under **Sessions** and above your computers and the search field. Then come your sessions by group, with the open one picked, and **New session** at the bottom. Tap **Home** to go back to the first screen, where the usage card shows each profile's usage.
 
 To close the drawer, tap next to it, swipe it to the left, or use the back gesture. A session you pick takes the place of the one you had open, so the back gesture goes back to your sessions, not through every session you looked at.
 
@@ -199,33 +200,51 @@ The app stays connected to all of them, and shows the sessions of every computer
 
 The title at the top says **Sessions**. Under it, a chip for each computer has its status dot and, in pink, how many of its sessions need you. Tap a chip for that computer's menu: how it's connected, **Disconnect** or **Connect**, and **Forget this computer…**. **Pair another computer…** is in the **⋯** menu. In the drawer, and in a wide window, the chips are under **Sessions**.
 
-When a computer is offline or disconnected, a line under the title says so, with **Connect** or **Help**, and its sessions stay in the list, greyed out, until it is back. The other computers work as before. A computer that no longer knows your phone says **Pair again with** its name, with **Forget**.
+When a computer is offline or disconnected, a line under the title says so: tap it for help, or tap **Connect** after you disconnected, and its sessions stay in the list, greyed out, until it is back. The other computers work as before. A computer that no longer knows your phone says **Pair again with** its name, with **Forget**.
 
 In **New session**, **Run on** picks the computer the session starts on. Its projects become the tiles, and what you typed stays when you switch. A computer that isn't connected stays in the switch, greyed out, with why, such as **Offline**. The app picks the computer you last started a session on, while it is connected.
 
-The count on the drawer button, on each chip and in the browser tab adds up what needs you on every connected computer. The usage card has a row for each computer, such as **mystic**, or **mystic · Work** when that computer has more than one Claude profile. Each computer keeps its own pairing: **Disconnect** and **Forget this computer…** only affect the computer whose chip you tapped.
+The count on the drawer button, on each chip and in the browser tab adds up what needs you on every connected computer. The usage card has a row for each computer, such as **mystic**, or **mystic · Work** when that computer has more than one Claude profile. A profile signed in to the same account on more than one computer has one row, with the profile's name, and its full card says which computers it is on, such as **On mystic and studio**. Each computer keeps its own pairing: **Disconnect** and **Forget this computer…** only affect the computer whose chip you tapped.
 
 ## A session
 
-The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with, such as **· Work**. The **⋯** menu has **Stop** while Claude works, **Mark as read** and **Archive**. Opening a session marks it as read, as on your computer.
+The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with, such as **· Work**. The **⋯** menu has **Stop** while Claude works, **Mark as read**, **Run pipeline…** and **Archive**. Opening a session marks it as read, as on your computer.
 
 When Claude needs you, the question stays above the message box, so it doesn't scroll away: **Claude needs you**, what it asks, and **Deny**, **Always allow** when it's offered, and **Allow**. The arrow folds it to one line while you read the conversation. With more than one, **1 of 2** and the arrows step through them. While it's open, the message box says **Or tell Claude what to do instead**: what you send there says no, with your message as the reason.
 
 While you type, the keyboard never covers the message box, and the question folds to one line above it, such as **Claude needs you · Allow Bash?**. Tap that line to read it again: the keyboard goes away and the question unfolds.
 
-While Claude works, the end of the conversation shows three dots, how long the turn has taken and what Claude is doing, such as **Thinking** or **Using Bash**. A working session's dot pulses, in the list and in the header.
+While Claude works, the end of the conversation shows three dots, how long the turn has taken and what Claude is doing, such as **Thinking** or **Running the tests**. A working session's dot pulses, in the list and in the header.
 
 When Claude's turn ended but a background command or agent it started still runs, the session isn't done yet: Claude carries on when that finishes. The header says **Running in the background**, the end of the conversation says what still runs in green, such as **1 background command running**, and the catch-up waits until it's done. A green pill above the message box, such as **1 background command**, lists each task with how long it has run. Tap **Stop** next to one to stop it; Claude is told it was stopped. Seeing and stopping the tasks needs this version of Switchboard on your computer.
 
-Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**, which stays at the top of the screen while you scroll through a long block. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. The run Claude is working on stays open.
+Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**, which stays at the top of the screen while you scroll through a long block. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. Steps are named as in the app: a command by what it does, such as **Merge origin/dev**, not its raw text. The run Claude is working on stays open.
+
+A finished turn ends with when it ended, how long it took and its tokens, as on your computer: *8:19 AM · 31s · 18.4k tokens*. Your messages have **Copy**. A finished reply has **Copy** and **Read**, which opens the turn's replies in full, one after another, with how long they take to read. Tokens need this version of Switchboard on your computer; an older one shows the time and duration only.
 
 When a session finished, and nothing it started still runs in the background, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it.
 
 In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
-While Claude works, a message you send waits under **Up next** above the message box, with **×** to remove it. It shows what you queued for the session on your computer too. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
+While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **Send now** to stop Claude and send it at once, and **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
+
+To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
+
+When a usage limit stopped the session, a notice above the message box says which limit and when it resets, with **Resume now** and **Resume when it resets**. Messages held in Up next wait for the reset too. This needs this version of Switchboard on your computer.
 
 To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
+
+## Pipelines
+
+[Pipeline](/sessions/pipelines/) runs show on your phone too. Each step's sub-session sits under the session the run started from, and a run started from New session has a row of its own.
+
+- **Start one** from a session's **⋯** menu with **Run pipeline…**: that session becomes the parent. Or in **New session**, pick a pipeline in **Run as** next to the chips: **Start session** becomes **Run pipeline**, and the steps show under the box.
+- **Follow it**: a bar under the session's header shows the pipeline and where the run is, such as *Validate · 3 of 4*. Tap it for the steps, each with its state, model and **Open**. In a step, the up arrow goes **Back to the run**.
+- **Act on it**: what the run waits for is a button on the bar: **Continue**, **Another round** or **Push…**. The steps sheet also has **Skip this step**, **Run this step again** and **Stop the run**.
+- **Push**: shows the commit message and the files first, with **Commit, push and open PR**, **Edit message** and **Stop here**.
+- **Archive**: on a run's parent, **Archive with its 3 steps** archives the parent and its sub-sessions together.
+
+A notification says when a run waits for you, stops or is done. Pipelines are set up in Switchboard on your computer, in Settings › Pipelines.
 
 ## Ask about this session
 
@@ -256,7 +275,7 @@ On a phone, while you type, the tiles and the chips make room: only the project'
 
 ## On a computer or a tablet
 
-In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Switchboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. The house button next to **Sessions** closes the open session and shows Home on the right.
+In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Switchboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. **Home**, the first row under **Sessions**, closes the open session and shows Home on the right.
 
 On a narrower screen, such as an iPad held upright, the sessions can fold away to leave the session the whole width: tap the button at the top left of a session, or press <Kbd keys="mod+b" />. Folded, that button opens them as a drawer, as on a phone. Its **Home** row shows Home on the right. The button next to the computer's name in the drawer, or <Kbd keys="mod+b" /> again, keeps them open on the left. Your choice is kept in this browser.
 
@@ -293,13 +312,15 @@ Microsoft Edge keeps <Kbd keys="mod+shift+u" /> for Read aloud: use <Kbd keys="u
 
 ### A session and its Changes
 
-The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, **Changes** with the number of files, and **Stop** while Claude works. The buttons of a prompt show their keys.
+The conversation keeps a comfortable reading width in the middle. The header shows the model and the permission mode (such as **Opus · Auto**), **Ask**, and **Changes** with the number of files. The buttons of a prompt show their keys.
 
 In a window at least 1280 pixels wide, **Changes** opens on the right instead of over the conversation: the files, the diff of the one you pick, a commit message that starts with what you asked, **Ask Claude to fix…** and **Commit**. The browser remembers whether you had it open. **Ask** opens in the same place; close it and Changes comes back. Esc closes either.
 
 ### The browser tab
 
 The tab's title starts with the number of sessions that need you, such as **(2) Switchboard Remote**, and its icon gets a pink dot. In a session the title is the session's, so you can find the tab among others.
+
+The tab's icon is your computer's [app icon](/settings/#app-icon), with **Use it on your phone too** on there. It changes as soon as you pick another one.
 
 ## Notifications
 
@@ -315,17 +336,28 @@ With more than one computer, every computer sends you notifications, and each on
 
 Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Switchboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
 
+## Theme
+
+Switchboard Remote can use your computer's theme, so your phone looks like Switchboard there. It does this by default, with the theme you picked in [Settings → Theme](/themes/built-in/). When you pick another theme on your computer, or edit the one you use, your phone changes too. Light or dark follows your phone, not your computer.
+
+Open **Theme** in the **⋯** menu to choose:
+
+- Your computer, with the name of its theme, such as **GitHub**.
+- **Demo Time**, the built-in look, whatever your computer uses.
+
+With more than one computer, each one is in the list, and your phone uses the theme of one of them for all your sessions. The colours don't change when you open a session on another computer. At first it is the theme of the first computer in the list. Your phone keeps the theme, so it stays when that computer is offline. A computer with a version of Switchboard from before this one says **Update Switchboard there to use its theme**.
+
 ## When your phone can't connect
 
-A line under the header says why, when your phone can tell:
+A short line under the header says your phone can't reach your computer and is reconnecting: "Can't reach Elio's iMac · Reconnecting…". Tap it for **Help**, which says why, when your phone can tell:
 
-- **Its tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
-- **Is it asleep or offline?**: nothing answers. Wake your computer, or check its network.
-- **Is Switchboard running, with Remote on?**: the address answers, but Switchboard doesn't.
+- **The tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
+- **Nothing answers**: your computer is asleep or offline. Wake it, or check its network.
+- **The address answers, but Switchboard doesn't**: check that Switchboard is open, and that Settings → Remote shows the tunnel as running.
 
 You chose **Disconnect**? Then nothing connects until you tap **Connect** (see [Your computer's menu](#your-computers-menu)).
 
-**Help** explains what to do, with a link to this page. While it's offline, your phone keeps showing the last list, greyed out, and the buttons that need your computer are off. It tries again by itself, and at once when you come back to the page.
+**Help** also links to this page. When your phone stopped trying, the line says **Stopped trying**, with **Try again**. While it's offline, your phone keeps showing the last list, greyed out, and the buttons that need your computer are off. It tries again by itself, and at once when you come back to the page.
 
 ## Updates
 
@@ -335,13 +367,14 @@ When there is one, a blue bar says **A new version is ready.** **Reload** loads 
 
 ## Good to know
 
-- Your computer has to be on and Switchboard running. Sleep stops Remote until the computer wakes up.
+- Your computer has to be on and Switchboard running. Sleep stops Remote until the computer wakes up: turn on <Os mac="Keep this Mac awake" windows="Keep this PC awake" /> in [Settings › General](/settings/#sleep) to keep it from sleeping.
 - The phone only lists the sessions your sidebar lists, outside Archived, and can only open those.
 - Messages you send from your phone show **From *your phone*** under them on the phone.
 - Scrolled up in a conversation, **Jump to latest** takes you back down. It says **New messages** when something arrived below.
 - The chip and the offline help use your computer's name, which you set in <Os mac="System Settings → General → About → Name" windows="Settings → System → About → Rename this PC" />.
 - Pairing is closed after five wrong attempts, until you click **Pair a device** again.
 - Your phone keeps its key in the browser, for this site only. Someone with your unlocked phone can use Remote until you revoke it.
+- When a computer sends sessions this version can't read, for example because it runs an older or newer Switchboard, the app leaves them out and a banner says so. Updating Switchboard on both fixes it.
 
 ## Related
 

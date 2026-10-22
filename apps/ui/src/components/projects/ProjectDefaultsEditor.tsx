@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults } from '@switchboard/protocol/client';
+import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -13,13 +13,14 @@ const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui te
 const UNSET = '';
 
 /** Shows a summary of the defaults a project or profile sets, e.g. "Opus · high effort · worktree"; `fallback` when it sets none. */
-export function describeDefaults(d: ProfileDefaults & { branch?: string | null }, fallback = 'Global defaults'): string {
+export function describeDefaults(d: Omit<ProjectDefaults, 'branch' | 'defaultBranch'> & { branch?: string | null; defaultBranch?: string | null }, fallback = 'Global defaults'): string {
   const parts = [
     d.model === AUTO_MODEL ? 'Auto' : d.model,
     d.effort && `${d.effort} effort`,
     d.permissionMode && d.permissionMode !== 'default' && d.permissionMode,
-    d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : ''}` : d.workspace === 'current' && 'current folder',
+    d.workspace === 'worktree' ? `worktree${d.baseRef === 'head' ? ' from HEAD' : isBranchBase(d.baseRef) ? ` from ${branchOfBase(d.baseRef)}` : ''}` : d.workspace === 'current' && 'current folder',
     d.branch && `on ${d.branch}`,
+    d.defaultBranch && `default branch ${d.defaultBranch}`,
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : fallback;
 }
@@ -60,7 +61,7 @@ export function ProjectDefaultsEditor({
   const client = connection.status === 'connected' ? connection.client : null;
   const models = useHosts((s) => s.models);
   const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
-  const [branches, setBranches] = useState<{ current: string | null; branches: string[] }>({ current: null, branches: [] });
+  const [branches, setBranches] = useState<{ current: string | null; branches: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
     if (!client || !root || !isGitRepo) return;
@@ -91,6 +92,11 @@ export function ProjectDefaultsEditor({
   const inherit = (label: string, value: string | null | undefined, shown?: string) => (value ? `Profile ${label} (${shown ?? value})` : `Global ${label}`);
   const baseLabel = { fresh: 'from origin', head: 'from HEAD' } as const;
   const branchOptions = defaults.branch && !branches.branches.includes(defaults.branch) ? [defaults.branch, ...branches.branches] : branches.branches;
+  // A project's worktrees can start from any of its branches; a profile has no repository, so only origin or HEAD.
+  const listedBases: BranchBase[] = root ? [...branches.branches.map((b) => `refs/heads/${b}` as const), ...(branches.remoteBranches ?? []).map((b) => `refs/remotes/${b}` as const)] : [];
+  const baseOptions = isBranchBase(defaults.baseRef) && !listedBases.includes(defaults.baseRef) ? [defaults.baseRef, ...listedBases] : listedBases;
+  // A default branch is a name, here or on a remote: `origin/dev` is offered as `dev`.
+  const namedBranches = [...new Set([...(defaults.defaultBranch ? [defaults.defaultBranch] : []), ...branches.branches, ...(branches.remoteBranches ?? []).map((b) => b.slice(b.indexOf('/') + 1))])];
 
   return (
     <div className="grid gap-2.5" data-project-defaults={root ?? undefined}>
@@ -150,21 +156,36 @@ export function ProjectDefaultsEditor({
         {defaults.workspace !== 'current' && (
           <Select
             label="Worktree base"
-            tooltip="What a new worktree branches from"
+            tooltip="What a new worktree branches from. A branch here is also where pull requests go"
             className={field}
             value={defaults.baseRef ?? UNSET}
             disabled={!isGitRepo}
-            onChange={(value) => set({ baseRef: nullable<'fresh' | 'head'>(value) })}
+            onChange={(value) => set({ baseRef: nullable<WorktreeBase>(value) })}
             options={[
               { value: UNSET, label: `Worktree base: ${inherit('default', profile?.baseRef, profile?.baseRef ? baseLabel[profile.baseRef] : undefined).toLowerCase()}` },
               { value: 'fresh', label: 'Worktree from origin' },
               { value: 'head', label: 'Worktree from HEAD' },
+              ...baseOptions.map((base) => ({ value: base, label: `Worktree from ${branchOfBase(base)}` })),
             ]}
-            menuWidth={220}
+            menuWidth={260}
             dataAttrs={{ 'data-default-base': true }}
           />
         )}
       </Row>
+      {root && isGitRepo && (
+        <Row label="Default branch">
+          <Select
+            label="Default branch"
+            tooltip="Where worktrees from origin start, what pull requests go into and what changes compare against"
+            className={field}
+            value={defaults.defaultBranch ?? UNSET}
+            onChange={(value) => set({ defaultBranch: nullable(value) })}
+            options={[{ value: UNSET, label: "The remote's default branch" }, ...namedBranches.map((b) => ({ value: b, label: b }))]}
+            menuWidth={240}
+            dataAttrs={{ 'data-default-default-branch': true }}
+          />
+        </Row>
+      )}
       {root && isGitRepo && defaults.workspace !== 'worktree' && (
         <Row label="Branch">
           <Select

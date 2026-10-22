@@ -235,6 +235,19 @@ describe('the shortcut registry', () => {
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
       'pr.create': [SESSION, HOME],
       'session.new-window': [SESSION, HOME],
+      'read.toggle': [SESSION, HOME],
+      'projects.switch': [at({ view: 'project' }), { ...at({ view: 'project' }), focus: 'terminal' }],
+      'projects.move': [at({ view: 'projects' }), HOME],
+      'projects.find': [at({ view: 'project' }), SESSION],
+      'projects.tab': [at({ view: 'project' }), at({ view: 'usage' })],
+      'projects.switcher-settings': [at({ view: 'project' }), HOME],
+      'read.previous': [SESSION, HOME],
+      'read.next': [SESSION, HOME],
+      'read.previous-heading': [SESSION, HOME],
+      'read.next-heading': [SESSION, HOME],
+      'read.bigger': [SESSION, HOME],
+      'read.smaller': [SESSION, HOME],
+      'read.reply': [SESSION, HOME],
       'editor.open': [SESSION, at({ view: 'new-session' })],
       'claude.stop': [{ ...SESSION, running: true }, SESSION],
       'composer.send-now': [{ ...SESSION, running: true }, SESSION],
@@ -251,6 +264,8 @@ describe('the shortcut registry', () => {
       'composer.previous-blank': [at({ view: 'new-session' }), HOME],
       'composer.history': [SESSION, at({ view: 'new-session' })],
       'composer.add-context': [at({ view: 'new-session' }), HOME],
+      'composer.github': [SESSION, HOME],
+      'composer.github-new-session': [at({ view: 'new-session' }), HOME],
       'permission.allow': [{ ...SESSION, pending: 'permission' }, SESSION],
       'permission.deny': [{ ...SESSION, pending: 'question' }, SESSION],
       'permission.pick': [{ ...SESSION, pending: 'question' }, { ...SESSION, pending: 'permission' }],
@@ -290,10 +305,11 @@ const INTENDED_OVERLAPS: Record<string, string> = {
   'cmd+enter': 'A waiting card takes ⌘↩ (Allow) before the message box sends; in New session the message box sending is starting the session. On a queued item in the sidebar it starts that item, which a waiting card never overlaps (the card has focus in the session). Create pull request is a dialog: while it is open, ⌘↩ is its own.',
   'cmd+k': 'In the terminal ⌘K clears it, as in Terminal; the palette is ⌘⇧P there.',
   'shift+tab': 'In the text of the message box ⇧⇥ switches the permission mode; on the blanks of a saved prompt (above that text) it goes to the previous blank.',
+  'alt+enter': 'In the # list ⌥↩ starts a new session from the highlighted issue or pull request; with the list closed, while Claude works, it queues or steers the other way.',
 };
 
 describe('shortcut collisions', () => {
-  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects', 'usage'];
+  const VIEWS: ShortcutContext['view'][] = ['home', 'new-session', 'session', 'settings', 'projects', 'project', 'usage'];
   const FOCUS: ShortcutContext['focus'][] = ['terminal', 'composer', 'other'];
   /** Every view and focus, with everything off and with everything on (the most shortcuts at once). */
   const contexts = VIEWS.flatMap((view) =>

@@ -14,8 +14,14 @@ export interface GitPlan {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Works out which git steps make sense for a checkout. `busy`: Claude is working in this session. */
-export function planGit(status: WorktreeStatus, busy: boolean): GitPlan {
+/** Why push and Create PR are off in a session from a fork's pull request Switchboard can't push to. */
+export const FORK_READ_ONLY = "From a fork you can't push to.";
+
+/**
+ * Works out which git steps make sense for a checkout. `busy`: Claude is working in this session. `readOnly`: the
+ * session works on a fork's pull request Switchboard can't push back, so push and Create PR are off.
+ */
+export function planGit(status: WorktreeStatus, busy: boolean, readOnly = false): GitPlan {
   const behind = status.behindUpstream ?? 0;
   const noRemote = !status.hasRemote ? 'No remote' : null;
   const detached = !status.branch ? 'HEAD is detached' : null;
@@ -26,9 +32,10 @@ export function planGit(status: WorktreeStatus, busy: boolean): GitPlan {
     fetch: noRemote,
     commit: status.uncommitted === 0 ? 'Nothing to commit' : busy ? 'Claude is working' : null,
     pull: noRemote ?? detached ?? (!status.upstream ? 'No upstream branch yet' : behind === 0 ? `Up to date with ${status.upstream}` : busy ? 'Claude is working in this folder' : null),
-    push: noRemote ?? detached ?? pullFirst ?? (status.upstream && status.unpushed === 0 ? 'Nothing to push' : null),
+    push: noRemote ?? (readOnly ? FORK_READ_ONLY : null) ?? detached ?? pullFirst ?? (status.upstream && status.unpushed === 0 ? 'Nothing to push' : null),
     pr:
       noRemote ??
+      (readOnly ? FORK_READ_ONLY : null) ??
       detached ??
       (onBase ? `On ${status.branch}, the base branch` : null) ??
       pullFirst ??
@@ -40,8 +47,8 @@ export function planGit(status: WorktreeStatus, busy: boolean): GitPlan {
   const wants: Record<Exclude<GitStep, 'fetch'>, boolean> = {
     pull: behind > 0,
     commit: status.uncommitted > 0,
-    push: status.hasRemote && (status.upstream ? (status.unpushed ?? 0) > 0 : !onBase && status.ahead > 0),
-    pr: status.hasRemote && (status.isWorktree || !onBase) && status.ahead > 0,
+    push: !readOnly && status.hasRemote && (status.upstream ? (status.unpushed ?? 0) > 0 : !onBase && status.ahead > 0),
+    pr: !readOnly && status.hasRemote && (status.isWorktree || !onBase) && status.ahead > 0,
   };
   const order = ['pull', 'commit', 'push', 'pr'] as const;
   // Nothing to do: fetching shows whether the upstream moved on.
@@ -83,8 +90,8 @@ export const STEP_LABEL: Record<GitStep, string> = { fetch: 'Fetch', commit: 'Co
  * What "Sync with remote" runs: pull when the upstream is ahead, else push what hasn't been pushed (or
  * publish a branch that has commits), else fetch to see whether the upstream moved on.
  */
-export function syncStep(status: WorktreeStatus, busy: boolean): 'pull' | 'push' | 'fetch' {
-  const plan = planGit(status, busy);
+export function syncStep(status: WorktreeStatus, busy: boolean, readOnly = false): 'pull' | 'push' | 'fetch' {
+  const plan = planGit(status, busy, readOnly);
   if ((status.behindUpstream ?? 0) > 0 && plan.blocked.pull === null) return 'pull';
   const unpushed = status.upstream ? (status.unpushed ?? 0) > 0 : status.branch !== status.baseBranch && status.ahead > 0;
   if (unpushed && plan.blocked.push === null) return 'push';

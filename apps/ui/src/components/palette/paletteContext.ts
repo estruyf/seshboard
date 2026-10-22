@@ -9,7 +9,7 @@ import type { Way } from '../../state/tilingGeometry.ts';
 
 /** Where you are: what the main area shows. */
 /** `projects` is the list of projects; `project` one project's page. */
-export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage';
+export type PaletteView = 'home' | 'new-session' | 'session' | 'settings' | 'projects' | 'project' | 'usage' | 'upcoming';
 
 /** The session in the active pane, as far as the palette's commands care. */
 export interface PaletteSession {
@@ -96,6 +96,14 @@ export interface PaletteContext {
   sounds: boolean;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
+  /** How many scheduled sessions there are (#173). */
+  schedules: number;
+  /** How many event triggers there are, in every project (#180). */
+  triggers: number;
+  /** How many pipelines there are, built-ins and yours (#179). */
+  pipelines: number;
+  /** How many of them the open session's project can run; 0 without a session. */
+  sessionPipelines: number;
   /** Unsent messages (sessions and New session prompts) that count. */
   unsent: number;
   projectCount: number;
@@ -116,7 +124,7 @@ export interface PaletteContext {
   sidebar: SidebarState;
   settingsSection: SettingsSection;
   /** New session is on screen: what its route can do. */
-  newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean } | null;
+  newSession: { canWorktree: boolean; canSaveDefaults: boolean; canQueue: boolean; canCatchUp: boolean; root?: string | null } | null;
   /** The scratch folder quick questions run in; null until the engine has said. */
   questionsDir: string | null;
   /** The saved prompts the message box on screen can use ("Prompt: <name>", Use saved prompt…). */
@@ -127,6 +135,8 @@ export interface PaletteContext {
   canContinueInVSCode: boolean;
   /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */
   cloneEnabled: boolean;
+  /** The previewable file Claude wrote or edited last in the open session (absolute path); null in a remote session or when there is none. */
+  lastPreviewableFile: string | null;
   /** Paired computers that are connected: "New session on <name>…" and "Show only <name>". */
   computers: Array<{ id: string; name: string }>;
 }

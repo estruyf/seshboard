@@ -34,9 +34,10 @@ const run = (command: string, args: string[], cwd?: string) =>
 
 /**
  * Opens a `switchboard://` link with whichever Switchboard the system knows: `open` on macOS, the shell's URL handler
- * on Windows (no shell in between, so nothing in the link is read as a command).
+ * on Windows (no shell in between, so nothing in the link is read as a command), `xdg-open` on Linux.
  */
-const openLink = (link: string) => (process.platform === 'win32' ? run('rundll32.exe', ['url.dll,FileProtocolHandler', link]) : run('open', [link]));
+const openLink = (link: string) =>
+  process.platform === 'win32' ? run('rundll32.exe', ['url.dll,FileProtocolHandler', link]) : run(process.platform === 'darwin' ? 'open' : 'xdg-open', [link]);
 
 /** Brings Switchboard up without changing what it shows: by its bundle id on macOS, with `switchboard://show` elsewhere. */
 const showApp = () => (process.platform === 'darwin' ? run('open', ['-b', APP_ID]) : openLink('switchboard://show'));

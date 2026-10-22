@@ -2,8 +2,9 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
 import { PROFILE_DOT } from '../lib/options.ts';
-import { cardRows, compactProfiles, compactText, windowPercent } from '../lib/profiles.ts';
-import { countdown, LEVEL_FILL, LEVEL_TEXT, levelOf, limitName, spokenLimit, usageMessage, visibleLimits, withUsage } from '../lib/usage.ts';
+import type { ListedUsage } from '../lib/everywhere.ts';
+import { cardRows, windowPercent } from '../lib/profiles.ts';
+import { countdown, LEVEL_FILL, LEVEL_TEXT, levelOf, limitName, onComputers, spokenLimit, usageMessage, visibleLimits, withUsage } from '../lib/usage.ts';
 import type { Client } from './Connected.tsx';
 import { connectionOf } from './connectionOf.ts';
 import { useNow } from './SessionList.tsx';
@@ -71,7 +72,7 @@ export function useUsages(computers: ReadonlyArray<{ id: string; client: Client 
  * Home's usage: a card per Claude profile with a bar for the 5-hour window and the week, as on the computer's Home.
  * "Profiles" with more than one, else "Usage".
  */
-export function UsageSection({ usage, offline = false, className = '' }: { usage: RemoteProfileUsage[] | null; offline?: boolean; className?: string }) {
+export function UsageSection({ usage, offline = false, className = '' }: { usage: ListedUsage[] | null; offline?: boolean; className?: string }) {
   const now = useNow();
   return (
     <section aria-labelledby="home-usage" aria-busy={usage === null || undefined} className={`flex flex-col ${className}`} data-remote-usage>
@@ -105,7 +106,7 @@ function wasOpen(): boolean {
  * "Profiles" card with a row per profile (the two closest to a limit, and "+N", from three on). A tap unfolds every
  * profile's full card. Nothing until the first numbers come.
  */
-export function UsageCard({ usage, offline = false }: { usage: RemoteProfileUsage[] | null; offline?: boolean }) {
+export function UsageCard({ usage, offline = false }: { usage: ListedUsage[] | null; offline?: boolean }) {
   const now = useNow();
   const [open, setOpen] = useState(wasOpen);
   const id = useId();
@@ -187,38 +188,20 @@ function MiniBar({ label, percent }: { label: string; percent: number | null }) 
   );
 }
 
-/**
- * The drawer's Home row: each profile's dot, name and the highest of its limits in the level's colour ("● Work 82%
- * ● Personal 18%"), or the closest to a limit and "+2" from three profiles on. Nothing with one profile.
- */
-export function ProfileStrip({ usage }: { usage: RemoteProfileUsage[] | null }) {
-  const compact = compactProfiles(usage ?? []);
-  if (!compact.items.length) return null;
-  return (
-    <span className="flex min-w-0 items-center gap-3 text-meta" aria-label={compactText(compact)} data-remote-profile-strip>
-      {compact.items.map((item) => (
-        <span key={item.id} aria-hidden className="flex min-w-0 items-center gap-1">
-          <span className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[item.color]}`} />
-          <span className="truncate text-muted">{item.name}</span>
-          {item.percent !== null && <span className={`font-semibold tabular-nums ${LEVEL_TEXT[item.level] || 'text-muted'}`}>{item.percent}%</span>}
-        </span>
-      ))}
-      {compact.more > 0 && (
-        <span aria-hidden className="shrink-0 text-faint">
-          +{compact.more}
-        </span>
-      )}
-    </span>
-  );
-}
-
-function ProfileCard({ entry, now }: { entry: RemoteProfileUsage; now: number }) {
+/** A profile's card; one on more than one computer says which ("On mystic and studio"). */
+function ProfileCard({ entry, now }: { entry: ListedUsage; now: number }) {
   const limits = entry.usage ? visibleLimits(entry.usage.limits) : [];
+  const where = entry.computers && onComputers(entry.computers);
   return (
-    <article aria-label={`${entry.profile.name}: usage`} className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-border bg-card p-3" data-remote-usage-profile={entry.profile.id}>
+    <article aria-label={where ? `${entry.profile.name}, ${where.toLowerCase()}: usage` : `${entry.profile.name}: usage`} className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-border bg-card p-3" data-remote-usage-profile={entry.profile.id}>
       <div className="flex min-w-0 items-center gap-2">
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${PROFILE_DOT[entry.profile.color]}`} />
         <h3 className="truncate text-ui font-semibold">{entry.profile.name}</h3>
+        {where && (
+          <span aria-hidden className="ml-auto min-w-0 truncate text-meta text-faint" data-remote-usage-computers>
+            {where}
+          </span>
+        )}
       </div>
       {limits.length === 0 ? (
         <p className="text-meta text-faint" title={entry.error ?? undefined}>

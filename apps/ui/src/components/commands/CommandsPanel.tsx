@@ -179,7 +179,7 @@ function CommandDetail({ run, sessionId, task, now, onStop }: { run: CommandRun;
           </div>
         </div>
         {task && run.state === 'running' && (
-          <Button variant="quiet" size="sm" icon={<Square size={11} aria-hidden />} disabled={stopping} onClick={() => void stop()} aria-label={`Stop ${run.what}`} data-tooltip="Stop this command" data-command-stop>
+          <Button variant="danger" size="sm" icon={<Square size={11} aria-hidden />} disabled={stopping} onClick={() => void stop()} aria-label={`Stop ${run.what}`} data-tooltip="Stop this command" data-command-stop>
             {stopping ? 'Stopping…' : 'Stop'}
           </Button>
         )}

@@ -8,7 +8,7 @@ import { waitingCount } from './computerSessions.ts';
 
 const NONE: Computer[] = [];
 
-/** The status dot of a computer: `ok` connected, `faint` pulsing while connecting, `faint` otherwise. */
+/** The status dot of a computer: `ok` connected (`caution` when it sent what this version can't read), `faint` pulsing while connecting, `faint` otherwise. */
 const DOT: Record<Computer['state'], string> = { connected: 'bg-ok', connecting: 'bg-faint animate-pulse', offline: 'bg-faint', unpaired: 'bg-faint' };
 const STATE: Record<Computer['state'], string> = { connected: 'Connected', connecting: 'Connecting', offline: 'Offline', unpaired: 'Pair it again' };
 
@@ -73,13 +73,15 @@ export function ComputersStrip({ localWaiting, joined = false }: { localWaiting:
           const tooltip =
             computer.state === 'offline'
               ? offlineLine(computer.name, computer.lastSeen)
-              : page
+              : computer.problem
+                ? computer.problem
+                : page
                 ? `${computer.name}: ${computer.message ?? STATE[computer.state]}`
                 : only
                   ? 'Show every computer'
                   : `Show only ${computer.name}`;
           return chip(computer.id, computer.name, {
-            dot: DOT[computer.state],
+            dot: computer.state === 'connected' && computer.problem ? 'bg-caution' : DOT[computer.state],
             waiting: waitingCount(list),
             remote: true,
             offline: computer.state !== 'connected',

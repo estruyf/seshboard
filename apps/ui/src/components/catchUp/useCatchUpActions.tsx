@@ -10,6 +10,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { CommitDialog } from '../git/CommitDialog.tsx';
 import { nextAfterArchive, type CatchUpActionId } from './catchUpModel.ts';
+import { archiveTree } from '../pipelines/RunTreeDialogs.tsx';
 
 export interface CatchUpActions {
   run(id: CatchUpActionId): void;
@@ -57,8 +58,11 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
       case 'archive': {
         // The next session in the sidebar's order, worked out before this one leaves it.
         const order = currentOrder().map((row) => row.id);
-        useSessions.getState().patchSummary(sessionId, { archivedAt: Date.now(), unread: false });
-        void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('archive it'));
+        // The parent of a pipeline run archives with its sub-sessions (asking first while the run goes on).
+        if (!archiveTree(sessionId, true, useSessions.getState().sessions.get(sessionId)?.title ?? '')) {
+          useSessions.getState().patchSummary(sessionId, { archivedAt: Date.now(), unread: false });
+          void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('archive it'));
+        }
         const next = nextAfterArchive(order, sessionId);
         // A pop-out shows this one session: archived, its window closes (the next one would open in the main window).
         if (next && !popoutSession) useSessions.getState().select(next);

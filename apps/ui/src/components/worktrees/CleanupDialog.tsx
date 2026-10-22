@@ -48,6 +48,9 @@ export function CleanupDialog({
   const [pushing, setPushing] = useState<string | null>(null);
   const [ignored, setIgnored] = useState<Map<string, { files: string[]; total: number }>>(new Map());
   const [busy, setBusy] = useState(false);
+  /** How far a removal got, per worktree: they go one by one, so a slow or failed one doesn't hide the rest. */
+  const [progress, setProgress] = useState<Map<string, 'removing' | 'removed' | { error: string }>>(new Map());
+  const stopRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const freed = freedBytes(
     entries.filter((e) => !e.missing).map((e) => e.path),
@@ -92,29 +95,45 @@ export function CleanupDialog({
     if (!client || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      const { results } = await client.call('worktrees.remove', {
-        root,
-        items: entries.map((e) => ({ path: e.path, deleteBranch: deleteBranches && e.branch !== null && !keepBranch.has(e.path), recoveryRef: recoveryRef && e.branch !== null })),
-      });
-      const removed = results.filter((r) => r.ok);
-      if (removed.length) {
-        toast(
-          removedMessage(
-            removed.length,
-            freedBytes(
-              removed.map((r) => r.path),
-              sizes,
-            ).bytes,
-          ),
-        );
+    stopRef.current = false;
+    const results: WorktreeRemoveResult[] = [];
+    const mark = (path: string, state: 'removing' | 'removed' | { error: string }) => setProgress((m) => new Map(m).set(path, state));
+    let interrupted = false;
+    for (const e of entries) {
+      if (stopRef.current) break;
+      mark(e.path, 'removing');
+      try {
+        // One call per worktree: each is short, and its result shows as soon as it is done.
+        const { results: one } = await client.call('worktrees.remove', {
+          root,
+          items: [{ path: e.path, deleteBranch: deleteBranches && e.branch !== null && !keepBranch.has(e.path), recoveryRef: recoveryRef && e.branch !== null }],
+        });
+        const result = one[0]!;
+        results.push(result);
+        mark(e.path, result.ok ? 'removed' : { error: result.error ?? 'Failed' });
+      } catch (err) {
+        // A timeout doesn't say whether git finished: the tab reads the list again and shows what is left.
+        mark(e.path, { error: `No answer: ${err instanceof Error ? err.message : String(err)}` });
+        setError('Stopped at a worktree that did not answer. The list is read again to show what is left.');
+        interrupted = true;
+        break;
       }
-      onDone(results);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setBusy(false);
     }
+    const removed = results.filter((r) => r.ok);
+    if (removed.length) {
+      toast(
+        removedMessage(
+          removed.length,
+          freedBytes(
+            removed.map((r) => r.path),
+            sizes,
+          ).bytes,
+        ),
+      );
+    }
+    onDone(results);
+    if (interrupted || results.some((r) => !r.ok)) setBusy(false);
+    else onClose();
   };
 
   const count = entries.length;
@@ -135,11 +154,11 @@ export function CleanupDialog({
       data-worktree-cleanup
       footer={
         <>
-          <Button ref={cancelRef} kbd="Esc" onClick={onClose}>
-            Cancel
+          <Button ref={cancelRef} kbd="Esc" onClick={busy ? () => (stopRef.current = true) : onClose}>
+            {busy ? 'Stop after this one' : 'Cancel'}
           </Button>
           <Button variant="danger" filled disabled={busy || !client} onClick={() => void remove()} data-worktree-cleanup-confirm>
-            {busy ? 'Removing…' : `Remove ${count}`}
+            {busy ? `Removing ${Math.min(progress.size, count)} of ${count}…` : `Remove ${count}`}
           </Button>
         </>
       }
@@ -148,6 +167,7 @@ export function CleanupDialog({
         {entries.map((entry) => {
           const files = ignored.get(entry.path);
           const size = sizes.get(entry.path);
+          const state = progress.get(entry.path);
           return (
             <li key={entry.path} className="grid gap-0.5 rounded-lg border border-edge bg-card px-3 py-2" data-cleanup-item={entry.path}>
               <div className="flex min-w-0 items-baseline gap-3">
@@ -155,7 +175,12 @@ export function CleanupDialog({
                 <span className="shrink-0 font-mono text-meta text-muted">{entry.missing ? '0 B' : size ? formatBytes(size.bytes) : '…'}</span>
               </div>
               <span className="truncate font-mono text-meta text-muted">{describe(entry)}</span>
-              {files && files.total > 0 && (
+              {state && (
+                <span className={typeof state === 'object' ? 'text-meta text-error' : 'text-meta text-muted'} data-cleanup-state={typeof state === 'object' ? 'failed' : state}>
+                  {state === 'removing' ? 'Removing…' : state === 'removed' ? 'Removed' : state.error}
+                </span>
+              )}
+              {files && files.total > 0 && !state && (
                 <span className="text-meta text-caution" data-cleanup-ignored>
                   Ignored files that will be deleted: <span className="font-mono">{ignoredLine(files.files, files.total)}</span>
                 </span>

@@ -23,10 +23,13 @@ The sidebar is always on the left of the window. Press <Kbd shortcut="sidebar.to
 At the top:
 
 - **Search sessions** filters the list by title, project or branch. To search inside conversations, use [Search](/sessions/search/) (<Kbd shortcut="search" />).
-- The **Home** button opens [Home](/sessions/home/) (<Kbd shortcut="home" />).
 - The yellow **+** button starts a [new session](/new-session/form/) (<Kbd shortcut="session.new" />).
+- **Home** opens [Home](/sessions/home/) (<Kbd shortcut="home" />).
+- **Upcoming** opens [Upcoming](/sessions/upcoming/) (<Kbd shortcut="upcoming" />): your queue and scheduled runs. It shows how many items are queued plus your active schedules, and what comes next, such as "1 ready" or "next 08:00".
 - **Recent** and **Quickest to unblock** set the order. Recent groups sessions as below; Quickest to unblock puts what needs you or a review first, the quickest at the top. See [Catch-up](/sessions/catch-up/#quickest-to-unblock).
 - **All projects** filters the list to one project. Its menu lists your projects with their session count, plus **Add project…** and **Manage projects…**. The ⋯ next to a project (or → on it) opens its options: icon, rename, open the project's page, Worktrees, Branches and more.
+
+A session you ran a [pipeline](/sessions/pipelines/) from shows where the run is, such as *Validate · 3 of 4*, with the pipeline icon. Its steps sit under it, closed at first: open them with the arrow. A run you started from New session has a row of its own with the pipeline icon instead of a project icon.
 
 At the bottom, the footer counts your sessions ("12 sessions · 2 open · 1 queued · 1 waiting"), shows the [focus limit](/focus-limit/) counter when it is on and the [unsent messages](/sessions/unsent-drafts/) count, and has the **Projects** and **Settings** buttons.
 
@@ -116,7 +119,7 @@ Switchboard remembers the width and the state.
 
 <Screenshot name="sidebar-rail" alt="The sidebar collapsed to the minimal rail: one project icon per session, in the same groups and order" width={480} />
 
-The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there.
+The **minimal rail** is 80px wide: one project icon per session, in the same groups and order as the open sidebar, with the same coloured rails. Hover an icon to see the session's title, project, branch and state. Click a group's letter to open the sidebar there. At the top, under Home, the calendar button opens [Upcoming](/sessions/upcoming/). Its badge shows the count, in green when a queued item is ready.
 
 With the sidebar **hidden**, the conversation takes the whole window. A <Pill tone="needs-you">needs you</Pill> pill in the header says when sessions wait for you; click it to open the one waiting longest. After a jump with <Kbd shortcut="session.next" /> or <Kbd shortcut="session.next-needs-you" />, a short label at the top of the window says where you landed.
 

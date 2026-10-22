@@ -6,12 +6,13 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
-import { archivesOnMiddleClick, isActive } from '../../state/sidebarRows.ts';
+import { archivesOnMiddleClick, isActive, rowStatus } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { keepUnread } from '../../state/keptUnread.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -19,6 +20,11 @@ import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
 import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
+import { stopRun, usePipelines } from '../../state/pipelinesStore.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { archiveTreeLabel, runRowMenu, unarchiveTreeLabel } from '../../state/runTree.ts';
+import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
+import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -53,14 +59,18 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const openIn = useOpenIn();
   const projectIcons = useProjectIconEntries();
   const projects = useProjects((s) => s.projects);
+  const pipelines = usePipelines((s) => s.pipelines);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
   const [renaming, setRenaming] = useState<SessionRowData | null>(null);
 
   // Only indexed sessions have flags; a session still starting has nothing to keep them against.
-  // Archiving a session with an unsent message asks first (and discards the message).
+  // Archiving a session with an unsent message asks first (and discards the message). The parent of a pipeline run
+  // (#179) archives and unarchives with its sub-sessions, as one tree.
   const flagAll = (targets: SessionRowData[], change: FlagChange) => {
-    const indexed = targets.filter((target) => target.summary);
+    const trees = change.archived !== undefined ? targets.filter((target) => isTreeParent(target.id)) : [];
+    for (const target of trees) archiveTree(target.id, change.archived!, target.title);
+    const indexed = targets.filter((target) => target.summary && !trees.includes(target));
     const apply = () => {
       for (const target of indexed) void client?.call('sessions.setFlags', { sessionId: target.id, ...change });
     };
@@ -69,6 +79,12 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   };
 
   const middleClick = (data: SessionRowData) => {
+    // A run row archives as a tree once its run has finished, as a session does.
+    if (isRunRowId(data.id)) {
+      const status = rowStatus(data);
+      if ((status === null || status === 'idle' || status === 'unread') && isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) archiveTree(data.id, true, data.title);
+      return;
+    }
     if (!archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) return;
     // A session on another computer is archived there, through its own contract.
     if (data.remote) return setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
@@ -98,6 +114,22 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
     const flag = (change: FlagChange) => flagAll([data], change);
+    // A run row (#179) isn't a session: it opens, stops, archives or deletes as one tree with its sub-sessions.
+    const runState = isRunRowId(data.id) ? usePipelines.getState().runs.get(data.id) : undefined;
+    if (runState) {
+      const act = { open: () => useSessions.getState().select(data.id), stop: () => void stopRun(data.id), archive: () => archiveTree(data.id, true, data.title), unarchive: () => archiveTree(data.id, false, data.title), delete: () => askDeleteTree(data.id, data.title) };
+      setMenu({
+        ...at,
+        label: `Pipeline run “${data.title}”`,
+        entries: runRowMenu(runState, { archived: archivedNow, sessions: treeSize(data.id) }).flatMap((item): MenuEntry[] => [
+          ...(item.action === 'delete' ? ['separator' as const] : []),
+          { label: item.label, danger: item.action === 'delete', onSelect: act[item.action], data: { 'data-run-row-action': item.action } },
+        ]),
+      });
+      return;
+    }
+    // The parent of a run: Archive and Delete… take its sub-sessions too.
+    const tree = isTreeParent(data.id) ? treeSize(data.id) : null;
     const cwd = data.summary?.cwd ?? data.live?.cwd ?? null;
     // Removing the project from here read as removing the session; that lives in the project menus.
     const projectEntries = projectIcons.entries(data.projectRoot, at, { remove: false, nested: true });
@@ -118,17 +150,22 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           : []),
         { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => flag({ pinned: !data.pinned }), disabled: !data.summary },
         archivedNow
-          ? { label: 'Unarchive', onSelect: () => flag({ archived: false }), disabled: !data.summary }
-          : { label: 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary },
+          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => flag({ archived: false }), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
+          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
         'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
+        // A run row (#179) has no conversation to be the parent of another run.
+        ...(isRunRowId(data.id) ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
+        { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
         'separator',
         ...(projectMenu.length ? [...projectMenu, 'separator' as const] : []),
-        { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
+        tree !== null
+          ? { label: 'Delete…', hint: '⌘⌫', danger: true, onSelect: () => askDeleteTree(data.id, data.title), data: { 'data-delete-tree': true } }
+          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
       ],
     });
     // The memories it wrote, once read: added under Project while the menu is still this session's.

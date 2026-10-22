@@ -1,5 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { EyeOff, House, ListEnd, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { CalendarClock, EyeOff, House, Pin, Plus, Search, Settings, TriangleAlert } from 'lucide-react';
+import { openUpcoming } from '../../state/upcomingStore.ts';
+import { useUpcomingSummary } from '../../state/useUpcomingSummary.ts';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
@@ -7,7 +9,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
-import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
+import { useRowProfile } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -15,7 +17,6 @@ import { sidebarGroups, statusLine, waitingDetail, type WaitingRequest } from '.
 import { GROUP_LABEL, inScope, rowStatus, type RowStatus, type SessionGroup } from '../../state/sidebarRows.ts';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
-import { useQueue } from '../../state/useQueue.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
@@ -31,22 +32,28 @@ import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
 import { RailDevices, useDeviceAnnouncement } from '../remote/ConnectedDevices.tsx';
 import { localizeKeys, matches, modKey } from '../../lib/shortcuts.ts';
+import { runOfParent, usePipelines } from '../../state/pipelinesStore.ts';
+import { runIsActive } from '../../state/pipelines.ts';
+import { parentRunLine, runRowLine } from '../../state/pipelineTree.ts';
+import { isRunRowId } from '../../state/runSelection.ts';
+import { PipelineTile } from './pipelineTreeRow.tsx';
+
+/** The rail lists parents only: no pipeline's sub-sessions, open or not. */
+const NO_OPEN_PARENTS: ReadonlySet<string> = new Set();
 
 /**
  * One row of the rail: a session, the thin line between two groups, a closed section as one chip (its count, and a
- * dot when something in it is unread), or the queue's button (its ready count in green).
+ * dot when something in it is unread). The queue is behind Upcoming, at the top.
  */
 type RailItem =
   | { kind: 'session'; data: SessionRowData }
   | { kind: 'divider'; key: string }
-  | { kind: 'chip'; section: SectionKey; group: SessionGroup; count: number; unread: number }
-  | { kind: 'queue'; count: number; ready: number };
+  | { kind: 'chip'; section: SectionKey; group: SessionGroup; count: number; unread: number };
 
 const ROW_HEIGHT = 44;
 const DIVIDER_HEIGHT = 13;
 const CHIP_HEIGHT = 32;
-const QUEUE_HEIGHT = 58;
-const itemHeight = (item: RailItem) => (item.kind === 'session' ? ROW_HEIGHT : item.kind === 'chip' ? CHIP_HEIGHT : item.kind === 'queue' ? QUEUE_HEIGHT : DIVIDER_HEIGHT);
+const itemHeight = (item: RailItem) => (item.kind === 'session' ? ROW_HEIGHT : item.kind === 'chip' ? CHIP_HEIGHT : DIVIDER_HEIGHT);
 
 /** A closed section in the rail: its first letter (a pin for Pinned) and count. A click opens the sidebar there. */
 function SectionChip({ item }: { item: Extract<RailItem, { kind: 'chip' }> }) {
@@ -74,34 +81,44 @@ function SectionChip({ item }: { item: Extract<RailItem, { kind: 'chip' }> }) {
   );
 }
 
-/** The queue in the rail: one button with how many are ready, and how many are queued under it. */
-function QueueButton({ item }: { item: Extract<RailItem, { kind: 'queue' }> }) {
-  const what = `Queue, ${item.count} queued${item.ready ? `, ${item.ready} ready` : ''}`;
+/**
+ * Upcoming in the rail: its icon with the count (queued items plus active schedules), green while an item is ready.
+ * The tooltip says what the sidebar row's hint says.
+ */
+function UpcomingButton({ now, selected }: { now: number; selected: boolean }) {
+  const summary = useUpcomingSummary(now);
   return (
-    <button
-      type="button"
-      onClick={() => useSidebarSections.getState().showSection('queue')}
-      aria-label={`${what}. Open the sidebar on the queue`}
-      data-tooltip={what}
+    <Button
+      variant="quiet"
+      size="lg"
+      iconOnly
+      icon={
+        <span className="relative flex">
+          <CalendarClock size={15} aria-hidden />
+          {summary.count > 0 && (
+            <span
+              aria-hidden
+              className={`absolute -top-2 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ring-2 ring-sidebar ${summary.ready > 0 ? 'bg-ok text-bg' : 'bg-border text-text'}`}
+              data-rail-upcoming-count={summary.count}
+            >
+              {summary.count}
+            </span>
+          )}
+        </span>
+      }
+      aria-label={summary.label}
+      shortcut="upcoming"
+      selected={selected}
+      aria-current={selected ? 'page' : undefined}
       data-tooltip-placement="right"
-      data-tooltip-title="Queue"
-      data-tooltip-meta={`${item.count} queued`}
-      data-tooltip-status={item.ready ? `${item.ready} ready to start` : undefined}
-      data-tooltip-tone={item.ready ? 'ok' : 'faint'}
-      data-tooltip-hint="Click to open the sidebar on the queue"
-      data-rail-queue
-      className="mx-auto flex flex-col items-center gap-0.5 rounded-lg px-1.5 pt-1 text-muted hover:text-text"
-    >
-      <span className={`relative flex size-9 items-center justify-center rounded-lg ${item.ready ? 'bg-ok/15 text-ok' : 'bg-border/50'}`}>
-        <ListEnd size={16} aria-hidden />
-        {item.ready > 0 && (
-          <span aria-hidden className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ok px-1 text-[10px] leading-none font-semibold text-bg tabular-nums ring-2 ring-sidebar" data-rail-queue-ready={item.ready}>
-            {item.ready}
-          </span>
-        )}
-      </span>
-      <span className="text-meta tabular-nums">{item.count} queued</span>
-    </button>
+      data-tooltip-title="Upcoming"
+      data-tooltip-meta={summary.count > 0 ? `${summary.count} planned` : undefined}
+      data-tooltip-status={summary.hint?.text}
+      data-tooltip-tone={summary.ready > 0 ? 'ok' : 'faint'}
+      data-upcoming-nav
+      onClick={() => openUpcoming()}
+      className="no-drag w-9! rounded-lg!"
+    />
   );
 }
 
@@ -152,16 +169,20 @@ const RailRow = memo(function RailRow({
   const remote = data.remote ?? null;
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
+  // A pipeline's run row, or a session a run started from: where the run is, in the tooltip.
+  const runRow = isRunRowId(data.id);
+  const runs = usePipelines((s) => s.runs);
+  const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
+  const progress = run && (runRow || runIsActive(run)) ? (runRow ? runRowLine(run, null) : parentRunLine(run, null)) : null;
   // With more than one Claude profile the rail is the profile's colour on every row, as in the open sidebar.
-  const multipleProfiles = useMultipleProfiles();
-  const profile = useProfile(data.profileId);
-  const profileRail = multipleProfiles && profile ? PROFILE_DOT[profile.color] : null;
+  const profile = useRowProfile(data);
+  const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? (status && RAIL_TONE[status]);
   const dot = status && CORNER_DOT[status];
   const line = remote?.offline
     ? { text: offlineLine(remote.computerName, remote.lastSeen, now), tone: 'faint' as const }
     : statusLine(status, status === 'needs-you' ? (remote ? waitingDetail(remote.waitingTool ? { toolName: remote.waitingTool, input: null } : null) : waitingDetail(request)) : null);
-  const meta = [projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
+  const meta = [progress, projectName, data.branch, remote ? `on ${remote.computerName}` : null, shortAge(data.updatedAt, now)].filter(Boolean).join(' · ');
   const hint = remote ? 'Click to open' : localizeKeys('Click to open · ⌥-click to open beside');
   const menuAt = (el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
@@ -171,6 +192,7 @@ const RailRow = memo(function RailRow({
     <button
       type="button"
       data-sidebar-rail-row={data.id}
+      data-run-row={runRow || undefined}
       data-remote-row={remote?.computerId}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
@@ -203,7 +225,7 @@ const RailRow = memo(function RailRow({
       className={`relative mx-auto flex h-10 w-11 items-center justify-center rounded-lg ${selected ? 'bg-selected' : beside ? 'bg-border/45 ring-1 ring-inset ring-border' : 'hover:bg-border/45'} ${remote?.offline ? 'opacity-55' : ''}`}
     >
       {railTone && <span aria-hidden className={`${railShape(selected || beside)} ${railTone}`} data-profile-badge={profileRail && profile ? profile.id : undefined} />}
-      <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />
+      {runRow ? <PipelineTile size={26} /> : <ProjectIcon project={project} root={data.projectRoot} size={26} name={remote?.projectName} remote={remote !== null} />}
       {draft !== null && <PenBadge size={14} className="absolute bottom-0.5 left-0.5" data-rail-pen />}
       {outside && (
         <span aria-hidden className="absolute right-0.5 bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-sidebar text-caution" data-rail-outside>
@@ -234,6 +256,7 @@ export function SidebarRail() {
   const view = useSessions((s) => s.view);
   const listView = useSessions((s) => (s.view === 'settings' ? s.settingsFrom : s.view));
   const atHome = useSessions((s) => (s.view === 'session' || (s.view === 'settings' && s.settingsFrom === 'session')) && s.layout === null);
+  const atUpcoming = useSessions((s) => s.view === 'upcoming' || (s.view === 'settings' && s.settingsFrom === 'upcoming'));
   const scope = usePreferences((s) => s.prefs.sessionScope);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const now = useNow();
@@ -250,34 +273,27 @@ export function SidebarRail() {
   const sort = usePreferences((s) => s.prefs.sidebarSort);
   const catchUps = useCatchUp((s) => s.cards);
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick }), [listed, now, archiveAfterDays, sort, quick]);
+  // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
+  const runs = usePipelines((s) => s.runs);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS }), [listed, now, archiveAfterDays, sort, quick, runs]);
+  // A sub-session in the main area: its parent's icon is the one that shows it.
+  const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
+  const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);
+  const railShownId = shownId && !railIds.has(shownId) && shownParent ? shownParent : shownId;
   const sectionsOpen = useSidebarSections((s) => s.open);
-  const queue = useQueue(all);
   const items = useMemo<RailItem[]>(() => {
-    // Blocks in the open sidebar's order (the queue under Working), a thin line between them.
+    // Blocks in the open sidebar's order, a thin line between them.
     const blocks: { key: string; items: RailItem[] }[] = [];
-    // The queue only shows in Recent, as in the sidebar.
-    const queueBlock = queue.entries.length && sort === 'recent' ? [{ key: 'queue', items: [{ kind: 'queue' as const, count: queue.entries.length, ready: queue.readyCount }] }] : [];
-    let queued = false;
     for (const { group, rows } of groups) {
-      if (!queued && group !== 'needs-you' && group !== 'working') {
-        blocks.push(...queueBlock);
-        queued = true;
-      }
       if (isSectionKey(group) && !sectionsOpen[group]) {
         // A closed section is one chip; the open session stays beside it, as in the sidebar.
         const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
-        const kept = rows.filter((row) => row.id === shownId).map((data) => ({ kind: 'session' as const, data }));
+        const kept = rows.filter((row) => row.id === railShownId).map((data) => ({ kind: 'session' as const, data }));
         blocks.push({ key: group, items: [{ kind: 'chip', section: group, group, count: rows.length, unread }, ...kept] });
       } else blocks.push({ key: group, items: rows.map((data) => ({ kind: 'session' as const, data })) });
-      if (group === 'working') {
-        blocks.push(...queueBlock);
-        queued = true;
-      }
     }
-    if (!queued) blocks.push(...queueBlock);
     return blocks.flatMap((block, i) => [...(i > 0 ? [{ kind: 'divider' as const, key: `divider-${block.key}` }] : []), ...block.items]);
-  }, [groups, sectionsOpen, queue.entries.length, queue.readyCount, shownId, sort]);
+  }, [groups, sectionsOpen, railShownId]);
   const order = useMemo(() => items.flatMap((item) => (item.kind === 'session' ? [item.data.id] : [])), [items]);
   // The oldest open request of each waiting session: what its tooltip says it waits for.
   const requests = useMemo(() => {
@@ -289,6 +305,9 @@ export function SidebarRail() {
     return map;
   }, [permissions]);
   const menus = useSessionMenu(order);
+  // A run row isn't a session yet: no session menu, and a middle-click doesn't archive it.
+  const railMenu = useCallback((at: { x: number; y: number }, data: SessionRowData) => menus.openSessionMenu(at, data), [menus]);
+  const railMiddleClick = useCallback((data: SessionRowData) => menus.middleClick(data), [menus]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -297,7 +316,7 @@ export function SidebarRail() {
     estimateSize: (i) => itemHeight(items[i]!),
     getItemKey: useCallback((i: number) => {
       const item = items[i]!;
-      return item.kind === 'session' ? item.data.id : item.kind === 'chip' ? `chip-${item.section}` : item.kind === 'queue' ? 'queue' : item.key;
+      return item.kind === 'session' ? item.data.id : item.kind === 'chip' ? `chip-${item.section}` : item.key;
     }, [items]),
     overscan: 10,
   });
@@ -313,7 +332,7 @@ export function SidebarRail() {
   });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const tabStopId =
-    focusedId && renderedIds.includes(focusedId) ? focusedId : shownId && renderedIds.includes(shownId) ? shownId : (renderedIds[0] ?? null);
+    focusedId && renderedIds.includes(focusedId) ? focusedId : railShownId && renderedIds.includes(railShownId) ? railShownId : (renderedIds[0] ?? null);
 
   const focusRow = (id: string) => {
     setFocusedId(id);
@@ -387,6 +406,7 @@ export function SidebarRail() {
           onClick={() => useSessions.getState().goHome()}
           className="no-drag w-9! rounded-lg!"
         />
+        <UpcomingButton now={now} selected={atUpcoming} />
       </div>
       <div aria-hidden className="mx-3 h-px shrink-0 bg-border" />
 
@@ -405,12 +425,10 @@ export function SidebarRail() {
                   <span aria-hidden className="h-px w-full bg-border" data-rail-divider />
                 ) : item.kind === 'chip' ? (
                   <SectionChip item={item} />
-                ) : item.kind === 'queue' ? (
-                  <QueueButton item={item} />
                 ) : (
                   <RailRow
                     data={item.data}
-                    selected={item.data.id === shownId}
+                    selected={item.data.id === railShownId}
                     beside={listView === 'session' && item.data.id !== selectedId && paneIds.length > 1 && paneIds.includes(item.data.id)}
                     tabbable={item.data.id === tabStopId}
                     now={now}
@@ -418,8 +436,8 @@ export function SidebarRail() {
                     draft={draftPreviews.get(item.data.id) ?? null}
                     outside={(catchUps.get(item.data.id)?.signals.outOfScope.length ?? 0) > 0}
                     onClick={rowClick}
-                    onMenu={menus.openSessionMenu}
-                    onMiddleClick={menus.middleClick}
+                    onMenu={railMenu}
+                    onMiddleClick={railMiddleClick}
                   />
                 )}
               </div>

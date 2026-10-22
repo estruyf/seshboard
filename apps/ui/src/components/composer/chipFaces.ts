@@ -2,8 +2,9 @@ import type { Effort, PermissionMode } from '@switchboard/protocol/client';
 
 /**
  * How compact the message box's chips are. 0: everything. 1: the profile shows only its dot. 2: the model
- * drops its version. 3: effort shows only its bars. 4: the mode shows only its dot. The model, effort and mode
- * say the most about a run, so they shrink last. Each step keeps whole words, so a chip never ends in "…".
+ * drops its version. 3: effort shows only its bars. 4: the mode shows only its dot and Auto's model chip loses the
+ * word "Auto" (its wand stays). The model, effort and mode say the most about a run, so they shrink last. Each step
+ * keeps whole words, so a chip never ends in "…".
  */
 export type FooterLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -62,6 +63,7 @@ export const MODE_SHORT: Record<PermissionMode, string> = {
 };
 
 /** What each chip shows at a level. */
-export function chipShape(level: FooterLevel): { effortLabel: boolean; modeLabel: boolean; modelVersion: boolean; profileName: boolean } {
-  return { effortLabel: level < 3, modeLabel: level < 4, modelVersion: level < 2, profileName: level < 1 };
+export function chipShape(level: FooterLevel): { autoWord: boolean; effortLabel: boolean; modeLabel: boolean; modelVersion: boolean; profileName: boolean } {
+  // The word "Auto" on the model chip goes with the mode's label: the wand still says it, and the mode can't be mistaken for it.
+  return { autoWord: level < 4, effortLabel: level < 3, modeLabel: level < 4, modelVersion: level < 2, profileName: level < 1 };
 }
