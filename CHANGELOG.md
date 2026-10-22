@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Light or dark in the remote app.** Open **Theme** in the remote app's **⋯** menu and set Appearance to Match System, Light or Dark. **Sync now** there asks your computers for their theme again.
 - **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
 - **Reload MCP servers.** Added an MCP server to your Claude Code settings or a project's `.mcp.json` while sessions were open? Press ⌘K and choose **Reload MCP servers**: running sessions pick it up for their next message without restarting, and the refresh button in a session's Tools does the same for that session.
 - **Mark as read after a few seconds.** A finished session you open is marked read once it has been in front of you for 3 seconds, also when it opens with a catch-up, which stays open until you fold it. Settings › Sessions › Mark as read after sets the seconds, or turn it off to mark sessions read yourself.
@@ -16,6 +17,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **The remote app follows your computer's theme again.** A phone also paired with a computer that no longer connects stayed in Demo Time and missed theme changes. It now uses the first computer that sends its theme.
+- **The preview remote app keeps working on the Beta channel.** With the update channel in Settings › About set to Beta, a phone that uses the beta remote app stays connected after you install a stable release. On Stable, only the regular remote app connects.
 - **Large context notice in sessions with a 1M window.** The notice, the reminder before the cache expires and the quit prompt now count tokens: Large from in Settings › Usage is a share of a 200k window (60% is 120k), whatever the session's window. Before, a session on a 1M window only counted as large from 600k.
 - **Compacting shows after switching sessions** ([#198](https://github.com/estruyf/switchboard/issues/198)). A session that is compacting now says so when you switch to another session and back, also in pop-outs and split view, instead of only Working.
 - **Large context cost follows the model you pick.** The cost in the Large context notice is now the price of the model your next message goes to, also after you pick another one in the model chip.

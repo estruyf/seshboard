@@ -11,7 +11,7 @@ import './styles.css';
 registerWorker();
 // The computer's app icon from last time, so Add to Home Screen takes it even before the computer answers.
 showAppIcon(storedAppIcon(() => localStorage));
-// The computer's theme it showed last time, before the first paint (Theme, in the menu).
+// The computer's theme it showed last time, and Appearance, before the first paint (Theme, in the menu).
 showLastTheme();
 
 createRoot(document.getElementById('root')!).render(

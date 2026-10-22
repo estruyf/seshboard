@@ -337,6 +337,22 @@ describe('Remote hub', () => {
     (await open(beta.port)).ws.close();
   });
 
+  it('follows the update channel: Stable closes phones on the preview and refuses them, Beta lets them in again', async () => {
+    const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
+    const { hub, port, on } = await setup({ previewApp: true });
+    await on();
+    const onPreview = await open(port, preview);
+    const onSite = await open(port);
+    const closed = new Promise<void>((resolve) => onPreview.ws.once('close', () => resolve()));
+    hub.setPreviewApp(false);
+    await closed;
+    expect(onSite.ws.readyState).toBe(onSite.ws.OPEN);
+    await expect(open(port, preview)).rejects.toThrow('HTTP 403');
+    hub.setPreviewApp(true);
+    (await open(port, preview)).ws.close();
+    onSite.ws.close();
+  });
+
   it('gives a phone only what it needs, and only the sessions the sidebar lists', async () => {
     const { hub, port, on, sent, sentImages, answered, created } = await setup();
     await on();

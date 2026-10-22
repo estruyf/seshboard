@@ -31,7 +31,7 @@ import { notificationPermission, notificationSettingsUrl } from './notificationP
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
-import { channelOf, updatesDisabledReason } from './updateState.ts';
+import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -229,6 +229,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
   engine?.sendStanding({ type: 'appIcon', key: prefs.appIconOnRemote ? prefs.appIcon : DEFAULT_PREFERENCES.appIcon });
+  // Settings › About › Channel: Beta also lets paired phones use the preview's remote app, Stable only the website's.
+  engine?.sendStanding({ type: 'remotePreview', enabled: acceptsPreviewRemote({ packaged: app.isPackaged, version: app.getVersion(), channel: prefs.updateChannel }) });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -3627,6 +3629,15 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   const remote = phone.client<RemoteContract>(socket.frames, socket.session);
   try {
     await remote.call('hello', { client: { version: 'smoke' } });
+    // The phone looks like this computer: it gets the theme in use, and the next one when another is picked.
+    const themeBefore = preferences.get().themeId;
+    const { theme } = await remote.call('theme.get', {});
+    if (!theme) return 'theme.get gave the phone no theme';
+    const changed = new Promise<string>((resolve) => remote.on('theme.changed', (next) => resolve(next.name)));
+    updatePreferences({ themeId: themeBefore === 'aluminium' ? 'nord' : 'aluminium' });
+    const name = await Promise.race([changed, new Promise<string>((resolve) => setTimeout(() => resolve(''), 5_000))]);
+    updatePreferences({ themeId: themeBefore });
+    if (name !== (themeBefore === 'aluminium' ? 'Nord' : 'Aluminium')) return `the phone did not get the theme picked here (got "${name}", had "${theme.name}")`;
     const row = '[data-connected-devices="devices"] [data-connected-device="smoke-phone"]';
     if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})?.innerText.includes('Smoke iPhone')`, 5_000))) return 'the connected test phone has no row in the sidebar';
     if (!(await js(`/since /.test(document.querySelector(${JSON.stringify(row)}).innerText)`))) return 'the row does not say since when';
@@ -9652,7 +9663,6 @@ app.whenReady().then(() => {
     entry: join(here, 'engine.js'),
     dataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
-    previewRemote: !app.isPackaged || channelOf(app.getVersion()) === 'beta',
     onRequest: handleEngineRequest,
     onRestarted: () => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);

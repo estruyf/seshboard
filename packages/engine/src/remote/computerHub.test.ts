@@ -40,7 +40,7 @@ async function otherComputer(name = 'Studio Mac') {
     pairing,
     appVersion: '9.9.9',
     computerName: () => name,
-    origins: [APP_ORIGIN, REMOTE_DESKTOP_ORIGIN],
+    origins: () => [APP_ORIGIN, REMOTE_DESKTOP_ORIGIN],
     log: () => {},
     handlers: (device) =>
       ({

@@ -58,8 +58,8 @@ const engine = createEngine({
   // The VS Code companion connects over a socket; SWITCHBOARD_NO_COMPANION=1 leaves it closed.
   ...(process.env.SWITCHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SWITCHBOARD_REMOTE_APP_URL points it at a development build of the remote app
-  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out. --remote-preview (development and beta builds)
-  // also lets in the website preview's remote app.
+  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out. Whether the website preview's remote app is let
+  // in too comes from main (`remotePreview`), as it follows the update channel.
   ...(process.env.SWITCHBOARD_NO_REMOTE === '1'
     ? {}
     : {
@@ -67,7 +67,6 @@ const engine = createEngine({
           appVersion,
           identity: remoteKey('identity'),
           deviceKey: remoteKey('device'),
-          previewApp: process.argv.includes('--remote-preview'),
           ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}),
         },
       }),
@@ -146,6 +145,11 @@ process.parentPort.on('message', (event) => {
   // Settings › Theme › App icon, for paired phones.
   if (data?.type === 'appIcon') {
     engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
+    return;
+  }
+  // The preview's remote app: development and beta builds, or the Beta update channel (Settings › About).
+  if (data?.type === 'remotePreview') {
+    engine.setRemotePreview((data as { enabled?: unknown }).enabled === true);
     return;
   }
   // Settings › General › Use Claude in Chrome.

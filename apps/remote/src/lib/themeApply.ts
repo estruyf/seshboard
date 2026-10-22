@@ -1,16 +1,18 @@
 import type { RemoteTheme } from '@switchboard/protocol/remote-client';
-import { cleanTheme, themeVars, type ThemeMode } from './theme.ts';
+import { cleanModeChoice, cleanTheme, resolveMode, themeVars, type ModeChoice, type ThemeMode } from './theme.ts';
 
 /**
  * Puts a computer's theme on the page, and keeps what Theme needs in localStorage (not secret): which computer's theme
- * to show, each computer's last theme (so it shows while that computer is offline) and the one on screen (so the
- * next launch paints with it before anything connects). The CSP allows no `<style>` of our own, so the values go on
- * `<html>`'s style, for the mode the phone is in, again when that mode changes.
+ * to show, each computer's last theme (so it shows while that computer is offline), the one on screen (so the next
+ * launch paints with it before anything connects) and Appearance. The CSP allows no `<style>` of our own, so the
+ * values go on `<html>`'s style, for the mode shown, again when that mode changes. Appearance set to Light or Dark
+ * puts `data-mode` on `<html>`, which styles.css reads for Demo Time.
  */
 
 const CHOICE = 'switchboard-remote:theme-from';
 const THEMES = 'switchboard-remote:theme';
 const SHOWN = 'switchboard-remote:theme-shown';
+const MODE = 'switchboard-remote:mode';
 
 const read = (key: string): string | null => {
   try {
@@ -59,27 +61,57 @@ export const cachedTheme = (computer: string): RemoteTheme | null => parse(read(
 export const cacheTheme = (computer: string, theme: RemoteTheme | null): void => write(`${THEMES}:${computer}`, theme && JSON.stringify(theme));
 
 const dark = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
-const modeNow = (): ThemeMode => (dark?.matches ? 'dark' : 'light');
+let mode = cleanModeChoice(read(MODE));
+const modeListeners = new Set<() => void>();
+
+/** Appearance: Match System, Light or Dark. */
+export const modeChoice = (): ModeChoice => mode;
+
+/** The mode the page shows now, for what draws its own colours (Theme's swatches). */
+export const modeNow = (): ThemeMode => resolveMode(mode, Boolean(dark?.matches));
+
+/** Called when the mode shown changes: Appearance, or the phone's own while it matches the system. */
+export function subscribeMode(listener: () => void): () => void {
+  modeListeners.add(listener);
+  return () => modeListeners.delete(listener);
+}
+
+export function chooseMode(next: ModeChoice): void {
+  mode = next;
+  write(MODE, next === 'system' ? null : next);
+  paint();
+  for (const listener of modeListeners) listener();
+}
+
 let shown: RemoteTheme | null = null;
 let set: string[] = [];
 /** The theme-color tags' own values (index.html), for when no theme is shown. */
 const ownBars = new Map<HTMLMetaElement, string>();
 
 function paint(): void {
+  if (mode === 'system') delete document.documentElement.dataset.mode;
+  else document.documentElement.dataset.mode = mode;
   const root = document.documentElement.style;
   for (const name of set) root.removeProperty(name);
   const vars = shown ? themeVars(shown, modeNow()) : {};
   for (const [name, value] of Object.entries(vars)) root.setProperty(name, value);
   set = Object.keys(vars);
-  // The status bar on iOS and the toolbar on Android take the theme's background, per mode as in index.html.
-  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
-    if (!ownBars.has(meta)) ownBars.set(meta, meta.content);
-    const mode: ThemeMode = meta.media.includes('dark') ? 'dark' : 'light';
-    meta.content = (shown && themeVars(shown, mode)['--sb-bg']) || ownBars.get(meta)!;
+  // The status bar on iOS and the toolbar on Android take the theme's background, per mode as in index.html. With
+  // Appearance set, both tags say that mode's: the phone's own mode no longer matters.
+  const metas = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+  for (const meta of metas) if (!ownBars.has(meta)) ownBars.set(meta, meta.content);
+  const own = (of: ThemeMode) => [...ownBars].find(([meta]) => meta.media.includes(of))?.[1] ?? '';
+  for (const meta of metas) {
+    const of: ThemeMode = mode === 'system' ? (meta.media.includes('dark') ? 'dark' : 'light') : mode;
+    meta.content = (shown && themeVars(shown, of)['--sb-bg']) || own(of);
   }
 }
 
-dark?.addEventListener('change', paint);
+dark?.addEventListener('change', () => {
+  if (mode !== 'system') return;
+  paint();
+  for (const listener of modeListeners) listener();
+});
 
 /** Shows a computer's theme, or the phone's own look (null). */
 export function showTheme(theme: RemoteTheme | null): void {
@@ -92,5 +124,5 @@ export function showTheme(theme: RemoteTheme | null): void {
 /** At launch: the theme on screen last time, before the computers are read and connected. */
 export function showLastTheme(): void {
   shown = parse(read(SHOWN));
-  if (shown) paint();
+  if (shown || mode !== 'system') paint();
 }

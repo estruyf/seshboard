@@ -37,7 +37,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     pairing,
     appVersion: '1.2.3',
     computerName: () => "Elio's iMac",
-    origins: [APP_ORIGIN],
+    origins: () => [APP_ORIGIN],
     ...options,
     log: () => {},
     handlers: (device) => ({

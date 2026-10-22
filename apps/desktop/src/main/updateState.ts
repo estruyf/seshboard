@@ -11,6 +11,15 @@ export function channelOf(version: string): UpdateChannel {
   return /-beta\./.test(version) ? 'beta' : 'stable';
 }
 
+/**
+ * Whether Remote also lets in the preview's remote app (`REMOTE_PREVIEW_APP_URL`, built from `dev`): a development
+ * build, a beta build, or a release on the Beta channel, so a phone set up on the preview keeps working when the beta
+ * becomes a release. A release on the Stable channel only lets in the website's.
+ */
+export function acceptsPreviewRemote(options: { packaged: boolean; version: string; channel: UpdateChannel }): boolean {
+  return !options.packaged || channelOf(options.version) === 'beta' || options.channel === 'beta';
+}
+
 export function initialUpdateState(options: { currentVersion: string; channel: UpdateChannel; disabledReason: string | null; updatedTo?: string | null }): UpdateState {
   return {
     status: options.disabledReason ? 'disabled' : 'idle',

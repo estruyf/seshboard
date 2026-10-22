@@ -67,9 +67,9 @@ export function App() {
     if (appIcon) showAppIcon(appIcon);
   }, [appIcon]);
 
-  // The theme of the computer picked in Theme (the first one paired, by default). While the pairings are still read,
-  // the one from last time stays.
-  const themeFrom = themeComputer(useSyncExternalStore(subscribeThemeChoice, themeChoice), list.map((c) => c.id));
+  // The theme of the computer picked in Theme (by default the first one that sent one). While the pairings are still
+  // read, the one from last time stays.
+  const themeFrom = themeComputer(useSyncExternalStore(subscribeThemeChoice, themeChoice), list);
   const theme = list.find((c) => c.id === themeFrom)?.theme ?? null;
   const reading = screen.kind === 'loading' || (screen.kind === 'connected' && list.length === 0);
   useEffect(() => {
@@ -234,6 +234,7 @@ export function App() {
           focus={computer.id}
           onFocus={(id) => list.some((c) => c.id === id) && choose(id)}
           onSessions={(id, sessions) => computers.setSessions(id, sessions)}
+          onSyncThemes={() => computers.syncThemes()}
           request={request}
           onAdd={() => setScreen({ kind: 'add' })}
           onForget={(id) => void forget(id)}

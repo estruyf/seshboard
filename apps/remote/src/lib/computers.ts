@@ -120,6 +120,19 @@ export class Computers {
     this.changed();
   }
 
+  /**
+   * Sync now, in Theme: asks every connected computer for its theme again, in case a change didn't come through.
+   * False when none of them could answer (none connected, or none with `REMOTE_FEATURE_THEME`).
+   */
+  async syncThemes(): Promise<boolean> {
+    const asked = [...this.entries.values()].flatMap((entry) => {
+      const { state } = entry;
+      if (state.kind !== 'connected' || !state.features.includes(REMOTE_FEATURE_THEME)) return [];
+      return [state.client.call('theme.get', {}).then(({ theme }) => (this.setTheme(entry.id, theme), true), () => false)];
+    });
+    return (await Promise.all(asked)).includes(true);
+  }
+
   private remove(id: string): void {
     this.listing.get(id)?.();
     this.listing.delete(id);
