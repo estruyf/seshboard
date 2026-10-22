@@ -153,6 +153,12 @@ process.parentPort.on('message', (event) => {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
     return;
   }
+  // Settings › General › Global permission mode, for sessions started from a phone.
+  if (data?.type === 'permissionMode') {
+    const mode = (data as { mode?: unknown }).mode;
+    engine.setGlobalPermissionMode(mode === 'acceptEdits' || mode === 'plan' || mode === 'auto' ? mode : 'default');
+    return;
+  }
   // Settings › Conversation › Resume after a usage limit resets.
   if (data?.type === 'limits') {
     engine.setResumeAtLimit((data as { resume?: unknown }).resume === 'always' ? 'always' : 'ask');

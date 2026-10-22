@@ -252,7 +252,7 @@ function LocalNewSession() {
   const defaultsKey = JSON.stringify(sessionDefaults);
   /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults, with the mode Settings says (a link's never skips permission prompts). */
   const firstChoices = (): Choices =>
-    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(INITIAL_CHOICES, sessionDefaults) : newSessionChoices(sessionDefaults, newSessionMode, lastMode);
+    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(INITIAL_CHOICES, sessionDefaults, newSessionMode) : newSessionChoices(sessionDefaults, newSessionMode, lastMode);
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);

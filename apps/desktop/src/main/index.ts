@@ -218,6 +218,9 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
   // Settings › Conversation › Resume after a usage limit resets: Always arms a session the moment a limit stops it.
   engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
+  // Settings › General › Global permission mode: a phone's new session starts in it where its profile and project set
+  // none. Remember last counts as Ask before edits there: the mode picked last is kept in the window.
+  engine?.sendStanding({ type: 'permissionMode', mode: prefs.newSessionMode === 'remember' ? 'default' : prefs.newSessionMode });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
@@ -2454,10 +2457,11 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Settings › General › Permission mode: Use project default (the default) doesn't keep a mode picked in New session,
- * Remember last brings it back, and a fixed mode is what New session's mode chip starts on. Runs before any step
- * types in New session, since an unsent prompt there keeps the choices it was written with. Starts no session; only
- * the throwaway profile's preference changes, and it is put back, with the session that was open.
+ * Settings › General › Global permission mode: Ask before edits (the default) doesn't keep a mode picked in New
+ * session, Remember last brings it back, and a fixed mode is what New session's mode chip starts on, where the
+ * project and its profile set none (else theirs wins). Runs before any step types in New session, since an unsent
+ * prompt there keeps the choices it was written with. Starts no session; only the throwaway profile's preference
+ * changes, and it is put back, with the session that was open.
  */
 async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2484,29 +2488,32 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
     return picked && (await until(() => preferences.get().newSessionMode === mode));
   };
 
-  if (preferences.get().newSessionMode !== 'project') return `the preference started as ${preferences.get().newSessionMode}, not Use project default`;
+  if (preferences.get().newSessionMode !== 'default') return `the preference started as ${preferences.get().newSessionMode}, not Ask before edits`;
   const base = await freshMode();
   if (!base) return 'New session has no mode chip';
-  // Picked in New session: for this prompt only while the setting is Use project default.
+  // A mode the project or its profile sets wins over the global one.
+  const inherited = base !== 'default';
+  const expect = (global: string) => (inherited ? base : global);
+  // Picked in New session: for this prompt only while the global mode is a fixed one.
   const picked = base === 'plan' ? 'acceptEdits' : 'plan';
   if (!(await chooseChoice(win, 'mode', picked, view))) return `could not pick ${picked} in New session's mode chip`;
   const afterPick = await freshMode();
-  if (afterPick !== base) return `with Use project default, New session kept ${afterPick} instead of starting on ${base}`;
-  if (!(await setMode('remember'))) return 'could not set Permission mode to Remember last in Settings › General';
+  if (afterPick !== base) return `with Ask before edits, New session kept ${afterPick} instead of starting on ${base}`;
+  if (!(await setMode('remember'))) return 'could not set the global permission mode to Remember last in Settings › General';
   const remembered = await freshMode();
-  if (remembered !== picked) return `with Remember last, New session's mode chip starts on ${remembered}, not ${picked}`;
-  const fixed = [base, picked].includes('acceptEdits') ? 'default' : 'acceptEdits';
-  if (!(await setMode(fixed))) return `could not set Permission mode to ${fixed} in Settings › General`;
+  if (remembered !== expect(picked)) return `with Remember last, New session's mode chip starts on ${remembered}, not ${expect(picked)}`;
+  const fixed = picked === 'plan' ? 'acceptEdits' : 'plan';
+  if (!(await setMode(fixed))) return `could not set the global permission mode to ${fixed} in Settings › General`;
   const withFixed = await freshMode();
-  if (withFixed !== fixed) return `with ${fixed} set, New session's mode chip starts on ${withFixed}`;
-  if (!(await setMode('project'))) return 'could not set Permission mode back to Use project default';
+  if (withFixed !== expect(fixed)) return `with ${fixed} set, New session's mode chip starts on ${withFixed}, not ${expect(fixed)}`;
+  if (!(await setMode('default'))) return 'could not set the global permission mode back to Ask before edits';
   const again = await freshMode();
-  if (again !== base) return `back on Use project default, the chip starts on ${again}, not ${base}`;
+  if (again !== base) return `back on Ask before edits, the chip starts on ${again}, not ${base}`;
   if (open) {
     openSession(open);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
   }
-  return `ok: ${picked} picked was not kept on Use project default (${base}), came back with Remember last; ${fixed} from Settings`;
+  return `ok: ${picked} picked was not kept on Ask before edits (${base}${inherited ? ', from the project' : ''}), came back with Remember last; ${fixed} from Settings`;
 }
 
 /**
@@ -2732,6 +2739,17 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (before === after) return '↓ did not move in the dropdown';
   if (!(await waitInPage(win, `${page('[data-default-model]')}.dataset.value === ''`, 1_000))) return 'Escape changed the model default';
   if (!(await chooseOption(win, `${pageSelector} [data-default-effort]`, 'high'))) return 'could not pick an effort default';
+  // The permission mode follows the profile's (and through it the global one), or skips it for the global one; each
+  // says where it is set, and Change opens it there.
+  if (!(await waitInPage(win, `${page('[data-default-mode]')}?.dataset.value === '' && ${page('[data-default-mode-hint="profile"]')}`, 2_000))) return 'the permission mode did not start on Profile default with its hint';
+  await shot(win, 'project-permission-mode.png');
+  if (!(await chooseOption(win, `${pageSelector} [data-default-mode]`, 'global'))) return 'could not pick Global default for the permission mode';
+  if (!(await waitInPage(win, page('[data-default-mode-hint="global"]'), 2_000))) return 'Global default says nothing about where it is set';
+  await js(`${page('[data-default-mode-open="global"]')}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"general\"] [data-new-session-mode]')", 3_000))) return "Global default's Change did not open Settings › General";
+  await click('[data-close-settings]');
+  if (!(await waitInPage(win, page('[data-default-mode]'), 3_000))) return 'closing Settings did not go back to the project';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-mode]`, ''))) return 'could not put the permission mode back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });
@@ -9439,7 +9457,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   }, { always: true });
   await step('newest session with messages rendered', () => openSmokeSession(win), { always: true });
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
-  await step('permission mode for new sessions: project default, Remember last and a fixed mode', () => runNewSessionModeStep(win));
+  await step('permission mode for new sessions: global mode, Remember last and a fixed mode', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';

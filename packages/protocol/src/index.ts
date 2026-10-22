@@ -3,6 +3,7 @@ export * from './rpc.ts';
 export * from './contract.ts';
 export * from './bridge.ts';
 export * from './sessions.ts';
+export * from './permissionModes.ts';
 export * from './host.ts';
 export * from './terminal.ts';
 export * from './actions.ts';

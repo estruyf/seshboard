@@ -2863,7 +2863,7 @@
     },
     {
       "id": "feature:new-session-permission-mode",
-      "name": "Permission mode for new sessions: project default, Remember last or always one mode",
+      "name": "Global permission mode: what new sessions start in where the profile and project set none, or Remember last",
       "page": "settings"
     },
     {

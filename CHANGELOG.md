@@ -8,6 +8,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
 
+### Changed
+
+- **A clearer order for permission modes.** Settings › General › Global permission mode is what new sessions start in, unless the Claude profile or the project sets a mode, and each session can still change it. A project's Permissions now offers Profile default and Global default (which skips the profile's mode), each with a Change link to where it is set. If Settings had Use project default, it is now Ask before edits, and projects and profiles still come first. A mode set in Settings no longer overrides a project's or profile's own.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added

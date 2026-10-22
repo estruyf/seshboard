@@ -43,6 +43,7 @@ import {
   AUTO_MODEL,
   DEFAULT_AUTO_MODEL,
   type AutoModelPrefs,
+  type PermissionMode,
   type ResumeAtLimit,
   type AutoPick,
   type CatchUp,
@@ -314,6 +315,8 @@ export interface Engine {
   setCatchUpSummaries(enabled: boolean): void;
   /** Settings › Conversation › Resume after a usage limit resets, from main. */
   setResumeAtLimit(mode: ResumeAtLimit): void;
+  /** Settings › General › Global permission mode, from main: what a phone's new session starts in where its profile and project set none. */
+  setGlobalPermissionMode(mode: PermissionMode): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -785,6 +788,7 @@ export function createEngine(options: EngineOptions): Engine {
   // --- Usage limits -------------------------------------------------------------------------------------------------
   /** Main sends Settings › Conversation › "Resume after a usage limit resets" when the engine starts and after each change. */
   let resumeAtLimit: ResumeAtLimit = 'ask';
+  let globalPermissionMode: PermissionMode = 'default';
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -2092,6 +2096,7 @@ export function createEngine(options: EngineOptions): Engine {
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
+      globalPermissionMode: () => globalPermissionMode,
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
@@ -3676,6 +3681,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setResumeAtLimit: (mode) => {
       resumeAtLimit = mode;
+    },
+    setGlobalPermissionMode: (mode) => {
+      globalPermissionMode = mode;
     },
     smokeQueueHost: standInHost,
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {

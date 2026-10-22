@@ -2,7 +2,7 @@ import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
-import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -171,12 +171,10 @@ const STARTUP: Array<{ value: StartupView; label: string; detail: string }> = [
   { value: 'new', label: 'New session', detail: 'Starts ready for a new prompt.' },
 ];
 
-/** The permission mode new sessions start in: the one picked last, or one of the modes the menus offer. */
-/** Permission mode for new sessions: the project's default, the one picked last, or always one mode (over the project's default). */
+/** The global permission mode: one of the modes the menus offer, or the one picked last. */
 const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [
-  { value: 'project', label: 'Use project default' },
-  { value: 'remember', label: 'Remember last' },
   ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] })),
+  { value: 'remember', label: 'Remember last' },
 ];
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
@@ -449,11 +447,11 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <Section title="New sessions">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
-                <span className="block text-ui">Permission mode</span>
-                <span className="block text-meta text-muted">What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.</span>
+                <span className="block text-ui">Global permission mode</span>
+                <span className="block text-meta text-muted">{GLOBAL_MODE_DETAIL}</span>
               </span>
               <Select<NewSessionMode>
-                label="Permission mode for new sessions"
+                label="Global permission mode"
                 value={prefs.newSessionMode}
                 onChange={(newSessionMode) => update({ newSessionMode })}
                 options={NEW_SESSION_MODE_OPTIONS}

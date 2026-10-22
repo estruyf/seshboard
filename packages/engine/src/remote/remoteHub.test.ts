@@ -205,6 +205,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     setEffort: async (sessionId, effort) => void calls.push(`effort ${sessionId} ${effort}`),
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
+    globalPermissionMode: () => 'default',
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -449,8 +450,9 @@ describe('Remote hub', () => {
     expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
     expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
     expect(options.profiles).toEqual([
-      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, worktree: null } },
-      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, worktree: true } },
+      // A profile without a mode starts in the global one.
+      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null } },
+      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true } },
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
@@ -1082,6 +1084,10 @@ describe('what a phone sees', () => {
     const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
     expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh', checkoutBranch: null });
     expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
+    // The global mode where neither sets one, or where the project skips its profile's.
+    expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
+    expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalPermissionMode: true }, work, 'auto').permissionMode).toBe('auto');
   });
 });
 

@@ -201,7 +201,11 @@ describe('project list', () => {
     // A value an older or newer build wrote that no longer validates falls back to unset.
     cache.db.prepare('UPDATE project_settings SET defaults_json = ? WHERE root = ?').run(JSON.stringify({ model: 'sonnet', effort: 'turbo' }), root);
     expect(project().defaults).toEqual({ ...unset, model: 'sonnet' });
+    // Global default for the permission mode is kept; without it the field stays out.
+    registry.setDefaults(root, { ...unset, globalPermissionMode: true });
+    expect(project().defaults).toEqual({ ...unset, globalPermissionMode: true });
     registry.setDefaults(root, unset);
+    expect(project().defaults).not.toHaveProperty('globalPermissionMode');
     expect(project().defaults).toEqual(unset);
     cache.close();
   });

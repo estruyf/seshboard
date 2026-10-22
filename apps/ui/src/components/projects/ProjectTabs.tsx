@@ -492,7 +492,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
       )}
       <SettingRow label="Defaults" hint={`New sessions in ${project.name} start with these. The New session view can still change them for one session.`}>
         <div className="grid w-full min-w-0 gap-2">
-          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} onSave={(d) => void save(d)} />
+          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} profileRef={profile ? { id: profile.id, name: profile.name } : null} onSave={(d) => void save(d)} />
           {error && (
             <p role="alert" className="text-ui text-error">
               Couldn't save the defaults: {error}

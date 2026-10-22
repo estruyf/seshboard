@@ -42,7 +42,8 @@ export function parseDefaults(input: unknown): ProjectDefaults {
   const out = { ...NO_DEFAULTS } as Record<string, unknown>;
   for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
     const parsed = shape[key].safeParse(raw[key]);
-    if (parsed.success) out[key] = parsed.data;
+    // An optional field that isn't set stays out, so a project without defaults still has none.
+    if (parsed.success && parsed.data !== undefined) out[key] = parsed.data;
   }
   return out as ProjectDefaults;
 }

@@ -30,7 +30,8 @@ import {
   type TriggerSection,
 } from '../../state/triggers.ts';
 import { closeTriggerEditor, loadRepoInfo, saveTrigger, useTriggers, type TriggerEditorRequest } from '../../state/triggersStore.ts';
-import { layeredDefaults } from '../newSession/choices.ts';
+import { globalMode, layeredDefaults } from '../newSession/choices.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
@@ -147,7 +148,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const profiles = useProfiles((s) => s.profiles);
   const defaultProfile = useProfiles((s) => s.defaultId);
   const profileDefaults = profiles.find((p) => p.id === (project?.profileId ?? defaultProfile))?.defaults ?? null;
-  const defaults = useMemo(() => layeredDefaults(project?.defaults, profileDefaults), [project?.defaults, profileDefaults]);
+  const globalSetting = usePreferences((s) => s.prefs.newSessionMode);
+  // The project's and profile's defaults, and the global permission mode where neither sets one (never the mode picked
+  // last: a trigger's sessions start on their own).
+  const defaults = useMemo(() => {
+    const layered = layeredDefaults(project?.defaults, profileDefaults);
+    const permissionMode = layered?.permissionMode ?? globalMode(globalSetting, null);
+    return { model: null, effort: null, workspace: null, baseRef: null, branch: null, defaultBranch: null, ...layered, permissionMode };
+  }, [project?.defaults, profileDefaults, globalSetting]);
   const models = useHosts((s) => s.models);
   const [form, setForm] = useState<TriggerForm>(() => (request.trigger ? triggerForm(request.trigger) : newTriggerForm(request.root, defaults, request.from)));
   const [info, setInfo] = useState<TriggerRepoInfo | null>(() => useTriggers.getState().repoInfo.get(request.root) ?? null);

@@ -210,6 +210,8 @@ export interface RemoteHubOptions {
   models(): ModelOption[];
   /** Settings › Conversation › Auto model: whether New session offers Auto, and the models it may pick. */
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
+  /** Settings › General › Global permission mode: what a session starts in where its profile and project set none. */
+  globalPermissionMode(): PermissionMode;
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   /**
@@ -753,7 +755,7 @@ export class RemoteHub {
    * remote branch, or a name that isn't one.
    */
   private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
-    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
+    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode());
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
@@ -989,17 +991,18 @@ export class RemoteHub {
       },
       'options.get': () => {
         const { profiles, defaultId } = this.options.profiles();
+        const globalMode = this.options.globalPermissionMode();
         return {
           models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
           efforts: [...Effort.options],
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
-          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults) })),
+          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode) })),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
-            defaults: remoteDefaults(p.defaults),
+            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null),
           })),
         };
       },
