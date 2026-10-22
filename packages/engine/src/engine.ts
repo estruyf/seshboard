@@ -209,7 +209,7 @@ export interface EngineOptions {
   companion?: { appVersion: string; socketParent?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
-   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds). `identity` asks main for Remote's key, which it keeps in the system's
+   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds, and the Beta update channel; `setRemotePreview` changes it). `identity` asks main for Remote's key, which it keeps in the system's
    * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
    * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
    * way; only called once one is paired. Without it, this app can't pair with another computer.
@@ -345,6 +345,8 @@ export interface Engine {
   setChrome(enabled: boolean): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
+  /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
+  setRemotePreview(enabled: boolean): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
@@ -3712,6 +3714,7 @@ export function createEngine(options: EngineOptions): Engine {
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
     setAppIcon: (key) => remote?.setAppIcon(key),
+    setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;

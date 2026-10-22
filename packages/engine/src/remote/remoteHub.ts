@@ -158,7 +158,10 @@ export interface RemoteHubOptions {
   computerName?: () => string;
   /** The remote app (`REMOTE_APP_URL`; a development build can point at its own). */
   appUrl?: string;
-  /** Also accept the preview's remote app (`REMOTE_PREVIEW_APP_URL`): development and beta builds. */
+  /**
+   * Also accept the preview's remote app (`REMOTE_PREVIEW_APP_URL`): development and beta builds, and a release whose
+   * update channel is Beta. Changes with `setPreviewApp`.
+   */
   previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
@@ -280,6 +283,8 @@ export class RemoteHub {
   private settings: RemoteSettings;
   private problem: RemoteStatus['problem'] = null;
   private readonly appUrl: string;
+  /** Whether the preview's remote app is let in (`previewApp`, then `setPreviewApp`). */
+  private previewApp: boolean;
   /** The engine's public address while the tunnel runs. */
   private address: string | null = null;
   private tunnelState: RemoteStatus['tunnel'] = { state: 'off', message: null };
@@ -319,6 +324,7 @@ export class RemoteHub {
     const theme = RemoteTheme.safeParse(options.appState.get(THEME_KEY));
     this.theme = theme.success ? theme.data : null;
     this.appUrl = options.appUrl ?? REMOTE_APP_URL;
+    this.previewApp = options.previewApp ?? false;
     this.server = new RemoteServer({
       // The server only starts once there is one (see `apply`).
       identity: () => this.identity!,
@@ -328,7 +334,7 @@ export class RemoteHub {
       ...(options.computerName ? { computerName: options.computerName } : {}),
       appIcon: () => this.appIcon,
       // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
-      origins: [...remoteAppOrigins(this.appUrl, options.previewApp ?? false), REMOTE_DESKTOP_ORIGIN],
+      origins: () => [...remoteAppOrigins(this.appUrl, this.previewApp), REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
       log: options.log,
@@ -449,6 +455,16 @@ export class RemoteHub {
     if (key === this.appIcon) return;
     this.appIcon = key;
     if (this.server.listening) this.server.each((rpc) => rpc.emit('app.icon', { key }));
+  }
+
+  /**
+   * The update channel changed: Beta lets in the preview's remote app too, Stable only the website's. Phones on the
+   * preview are closed when it stops being let in, rather than at their next reconnect.
+   */
+  setPreviewApp(enabled: boolean): void {
+    if (enabled === this.previewApp) return;
+    this.previewApp = enabled;
+    if (!enabled && this.server.listening) this.server.closeRefused();
   }
 
   /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */

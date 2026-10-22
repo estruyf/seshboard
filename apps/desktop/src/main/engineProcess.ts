@@ -5,8 +5,6 @@ export interface EngineProcessOptions {
   dataDir: string;
   /** The app's version, which the engine tells the VS Code companion. */
   appVersion: string;
-  /** A development or beta build: Remote also accepts the preview's remote app (`REMOTE_PREVIEW_APP_URL`). */
-  previewRemote: boolean;
   /** Called after an unexpected exit, once the replacement process is running. */
   onRestarted: () => void;
   /** Requests from the engine that need the main process (e.g. moving files to the Trash). Returns the reply. */
@@ -26,7 +24,7 @@ export class EngineProcess {
   constructor(private readonly options: EngineProcessOptions) {}
 
   start(): void {
-    const args = ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion, ...(this.options.previewRemote ? ['--remote-preview'] : [])];
+    const args = ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion];
     const child = utilityProcess.fork(this.options.entry, args, {
       serviceName: 'Switchboard Engine',
       stdio: 'inherit',

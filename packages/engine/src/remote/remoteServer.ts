@@ -59,8 +59,9 @@ export interface RemoteServerOptions {
   /**
    * The remote app's origins: a socket from a page anywhere else is refused. Browsers always send `Origin` on a
    * WebSocket and a page can't fake it, so another site open on the phone or this computer can't reach the engine.
+   * Asked at each socket, so it can change while the server runs (the preview's app follows the update channel).
    */
-  origins: readonly string[];
+  origins(): readonly string[];
   /** The engine's public address now, kept with each device that connects (to tell when a new one hasn't reached it). */
   address?: () => string | null;
   /** The tunnel is Cloudflare's, which sets `CF-Connecting-IP` itself (other tunnels pass it on from the client). */
@@ -117,6 +118,8 @@ export class RemoteServer {
   private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME, perMessageDeflate: false });
   private readonly connections = new Map<WebSocket, RemoteConnection & { rpc: RpcServer<RemoteContract> }>();
   private readonly pending = new Set<WebSocket>();
+  /** The page each socket came from, so `closeRefused` can tell which aren't let in any more. */
+  private readonly origins = new WeakMap<WebSocket, string>();
   private readonly backoff: Backoff;
   private name: string | null = null;
 
@@ -172,6 +175,12 @@ export class RemoteServer {
     for (const [socket, connection] of this.connections) if (connection.deviceId === deviceId) socket.terminate();
   }
 
+  /** Closes the sockets whose origin `origins` no longer lists: the phone reconnects and is refused. */
+  closeRefused(): void {
+    const allowed = this.options.origins();
+    for (const socket of [...this.connections.keys(), ...this.pending]) if (!allowed.includes(this.origins.get(socket) ?? '')) socket.terminate();
+  }
+
   /** Sends an event to every connected phone (the hub decides what each may see). */
   each(fn: (rpc: RpcServer<RemoteContract>, deviceId: string) => void): void {
     for (const connection of this.connections.values()) fn(connection.rpc, connection.deviceId);
@@ -186,7 +195,7 @@ export class RemoteServer {
   private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
     const address = clientAddress(request, this.options.cloudflare?.() ?? false);
     const origin = request.headers.origin ?? '';
-    if (decodePath(request.url ?? '') !== '/ws' || !this.options.origins.includes(origin)) {
+    if (decodePath(request.url ?? '') !== '/ws' || !this.options.origins().includes(origin)) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
     }
@@ -194,7 +203,10 @@ export class RemoteServer {
       socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
       return;
     }
-    this.sockets.handleUpgrade(request, socket, head, (ws) => this.accept(ws, address, deviceKind(origin, request.headers['user-agent'])));
+    this.sockets.handleUpgrade(request, socket, head, (ws) => {
+      this.origins.set(ws, origin);
+      this.accept(ws, address, deviceKind(origin, request.headers['user-agent']));
+    });
   }
 
   /** `kind`: what pairs, from the socket's origin; only a label in Settings › Remote, never what lets it in. */

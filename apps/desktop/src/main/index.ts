@@ -31,7 +31,7 @@ import { notificationPermission, notificationSettingsUrl } from './notificationP
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
-import { channelOf, updatesDisabledReason } from './updateState.ts';
+import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -229,6 +229,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
   engine?.sendStanding({ type: 'appIcon', key: prefs.appIconOnRemote ? prefs.appIcon : DEFAULT_PREFERENCES.appIcon });
+  // Settings › About › Channel: Beta also lets paired phones use the preview's remote app, Stable only the website's.
+  engine?.sendStanding({ type: 'remotePreview', enabled: acceptsPreviewRemote({ packaged: app.isPackaged, version: app.getVersion(), channel: prefs.updateChannel }) });
 }
 
 ipcMain.on(IpcChannel.getPreferences, (event) => {
@@ -9652,7 +9654,6 @@ app.whenReady().then(() => {
     entry: join(here, 'engine.js'),
     dataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
-    previewRemote: !app.isPackaged || channelOf(app.getVersion()) === 'beta',
     onRequest: handleEngineRequest,
     onRestarted: () => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);
