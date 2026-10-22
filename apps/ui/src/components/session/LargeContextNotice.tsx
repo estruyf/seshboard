@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Layers } from 'lucide-react';
 import { cacheRewriteCost, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { useHosts } from '../../state/hostsStore.ts';
 import { useSecondClock } from '../../lib/secondClock.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { useCostFormat } from '../usage/useCost.ts';
 import { lastTurnTokens } from './ContextMeter.tsx';
-import { agoText, cacheState, cacheUseOf, compactTokens, contextPercentOf, isLargeContext, untilText } from './largeContext.ts';
+import { agoText, cacheState, cacheUseOf, compactTokens, contextPercentOf, isLargeContext, nextMessageModel, untilText } from './largeContext.ts';
 
 /** Notices dismissed this run, per session and cache state: a lapsed cache still shows after dismissing the countdown. */
 const dismissed = new Set<string>();
@@ -27,6 +28,7 @@ export function LargeContextNotice({
   host,
   messages,
   working,
+  chosenModel,
   onCompact,
 }: {
   sessionId: string;
@@ -35,10 +37,13 @@ export function LargeContextNotice({
   host: SessionHostInfo | null | undefined;
   messages: readonly TranscriptMessage[];
   working: boolean;
+  /** What the model chip shows, which the next message goes to: null is Claude Code's default, undefined when not known. */
+  chosenModel?: string | null;
   onCompact?: () => void;
 }) {
   const warning = usePreferences((s) => s.prefs.contextWarning);
   const format = useCostFormat();
+  const models = useHosts((s) => s.models);
   const [, setDismissed] = useState(0);
   const estimate = live ? null : lastTurnTokens(messages);
   const tokens = live?.tokens ?? estimate;
@@ -51,7 +56,7 @@ export function LargeContextNotice({
   const state = cacheState(use, now);
   const key = `${sessionId}:${state.kind}`;
   if (dismissed.has(key)) return null;
-  const model = host?.model ?? lastModel(messages);
+  const model = nextMessageModel(chosenModel, models, [host?.model, lastModel(messages)]);
   const usd = use && model ? cacheRewriteCost(tokens, model, use.ttl) : null;
   const cost = format && usd !== null ? ` (${format(usd)})` : '';
   const size = live ? `${compactTokens(tokens)} tokens (${Math.round(live.percent)}%)` : `about ${compactTokens(tokens)} tokens`;
