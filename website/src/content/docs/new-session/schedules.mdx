@@ -7,6 +7,7 @@ import Kbd from '../../../components/Kbd.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 import OnlyOn from '../../../components/OnlyOn.astro';
+import Os from '../../../components/Os.astro';
 import Related from '../../../components/Related.astro';
 
 A schedule starts a session from a prompt at set times. Use it for work that comes back: "review yesterday's open pull requests" every weekday at 08:00, "check for dependency updates" on Mondays, "write the standup summary from yesterday's commits". Every run is a new session.
@@ -93,6 +94,8 @@ When Switchboard was closed, or the computer was asleep, at a schedule's time:
 - With **Skip it**, it doesn't run. The row says "Missed Mon 08:45", and it runs again at its next time.
 
 When several schedules run at once this way, one notification says so: "3 scheduled sessions started".
+
+To keep the computer from sleeping through a schedule, turn on <Os mac="Keep this Mac awake" windows="Keep this PC awake" /> in [Settings › General](/settings/#sleep).
 
 ### Time changes
 

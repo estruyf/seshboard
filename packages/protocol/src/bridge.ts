@@ -160,11 +160,13 @@ export type UpdateChannel = "stable" | "beta";
 /** How New session, Home and the palette list your projects: most recently used first, or in the order you set. */
 export type ProjectOrder = "recent" | "yours";
 /**
- * The permission mode a new session starts in: the one you picked last (`last`), or always the same one. Bypass
- * permissions is never offered, as in the mode menus.
+ * The permission mode a new session starts in: the project's or profile's own default, else Ask first (`project`),
+ * the one you picked last (`remember`), or always the same one, over the project's default. Bypass permissions is
+ * never offered, as in the mode menus. Builds before 1.1.0 stored `last` (the project's default first, then the
+ * mode picked last); it isn't read any more, so it becomes `project`.
  */
-export type NewSessionMode = "last" | "default" | "acceptEdits" | "plan" | "auto";
-export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["last", "default", "acceptEdits", "plan", "auto"];
+export type NewSessionMode = "project" | "remember" | "default" | "acceptEdits" | "plan" | "auto";
+export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["project", "remember", "default", "acceptEdits", "plan", "auto"];
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
@@ -287,7 +289,7 @@ export interface Preferences {
   sessionScope: SessionScope;
   startupView: StartupView;
   projectOrder: ProjectOrder;
-  /** What New session and the palette's prompt start in, unless the project has its own default. */
+  /** What New session and the palette's prompt start in (Settings › General › Permission mode). */
   newSessionMode: NewSessionMode;
   /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
@@ -393,7 +395,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sessionScope: "switchboard",
   startupView: "home",
   projectOrder: "recent",
-  newSessionMode: "last",
+  newSessionMode: "project",
   chrome: false,
   keepAwake: false,
   autoUpdate: true,

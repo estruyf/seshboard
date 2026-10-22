@@ -23,8 +23,8 @@ export function settingsIndex(): SettingEntry[] {
       id: 'new-session-mode',
       page: 'general',
       label: 'Permission mode',
-      detail: 'What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.',
-      keywords: 'new session default ask first accept edits plan auto mode permissions',
+      detail: 'What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.',
+      keywords: 'new session default ask first accept edits plan auto mode permissions project default remember last override',
       target: '[data-new-session-mode]',
     },
     {

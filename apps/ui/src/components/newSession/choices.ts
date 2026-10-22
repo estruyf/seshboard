@@ -24,12 +24,31 @@ export const INITIAL_CHOICES: GlobalChoices = { model: '', permissionMode: 'defa
 
 const FIELDS = ['model', 'permissionMode', 'effort', 'workspace', 'baseRef', 'branch'] as const;
 
+/** Where the permission mode last picked in New session or the palette is kept, for Remember last. */
+export const LAST_MODE_KEY = 'newSession.lastMode';
+
+/** Modes New session can start in by itself: never one that skips every check, as in the mode menus. */
+const REMEMBERED_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto'];
+
+/** Reads the stored last mode leniently: Ask first when there is none, or it is one New session doesn't offer. */
+export function readLastMode(value: unknown): PermissionMode {
+  return REMEMBERED_MODES.includes(value as PermissionMode) ? (value as PermissionMode) : 'default';
+}
+
 /**
- * The global defaults with the permission mode Settings sets for new sessions (Settings › General), unless it is
- * the one you picked last. The mode you pick is still remembered, for when the setting goes back to that.
+ * The permission mode a new session starts in, from Settings › General › Permission mode: the project's or profile's
+ * own default, else Ask first (`project`); the one picked last (`remember`); or always the one Settings sets, over
+ * the project's default.
  */
-export function withNewSessionMode(globals: GlobalChoices, mode: NewSessionMode): GlobalChoices {
-  return mode === 'last' ? globals : { ...globals, permissionMode: mode };
+export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults | null | undefined, last: PermissionMode): PermissionMode {
+  if (setting === 'project') return defaults?.permissionMode ?? INITIAL_CHOICES.permissionMode;
+  if (setting === 'remember') return last;
+  return setting;
+}
+
+/** What New session and the palette's prompt start with: the project's and profile's defaults, and the mode Settings says. */
+export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode): Choices {
+  return { ...startingChoices(INITIAL_CHOICES, defaults), permissionMode: startingMode(setting, defaults, last) };
 }
 
 /**

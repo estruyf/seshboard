@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -78,7 +78,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices } from './choices.ts';
+import { DEFAULTS_KEY, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
@@ -123,7 +123,9 @@ function LocalNewSession() {
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
   // Before a folder is picked, the mode is already the one Settings sets.
-  const [d, setD] = useState<Choices>(() => ({ ...withNewSessionMode(INITIAL_CHOICES, newSessionMode), branch: '' }));
+  const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode));
+  /** The permission mode last picked here or in the palette, for Settings › General › Permission mode › Remember last. */
+  const [lastMode, setLastMode] = useState<PermissionMode>(INITIAL_CHOICES.permissionMode);
   const [loaded, setLoaded] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
@@ -151,8 +153,11 @@ function LocalNewSession() {
   const [runAsMenu, setRunAsMenu] = useState(0);
   const profiles = useProfiles((s) => s.profiles);
   const defaultProfile = useProfiles((s) => s.defaultId);
-  /** The folder the user changed options for: until the folder changes, late-arriving defaults never override their choices. */
-  const touchedFor = useRef<string | null>(null);
+  /**
+   * The folder the user changed options for: until the folder changes, late-arriving defaults never override their choices.
+   * `undefined` while nothing was changed, so changes made before a folder is picked (`null`) count too.
+   */
+  const touchedFor = useRef<string | null | undefined>(undefined);
   /** A `switchboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
   const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
@@ -172,7 +177,6 @@ function LocalNewSession() {
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   /** An `autostart` link is waiting: its choices never take the permission mode you last picked (see `linkStartingChoices`). */
   const autostarting = pendingStart !== null;
-  const choicesFor = autostarting ? linkStartingChoices : startingChoices;
   /** Why the folder couldn't be checked (the engine call failed). */
   const [inspectError, setInspectError] = useState<string | null>(null);
   /**
@@ -246,8 +250,9 @@ function LocalNewSession() {
   /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const defaultsKey = JSON.stringify(sessionDefaults);
-  /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults over the ones last used (and the mode Settings sets). */
-  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults));
+  /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults, with the mode Settings says (a link's never skips permission prompts). */
+  const firstChoices = (): Choices =>
+    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(INITIAL_CHOICES, sessionDefaults) : newSessionChoices(sessionDefaults, newSessionMode, lastMode);
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -261,17 +266,19 @@ function LocalNewSession() {
   );
   const statusOf = (root: string) => tileStatus(activity.get(root), projects.get(root)?.lastActivity ?? null, Date.now());
 
-  // Restore the last folder. Choices are not remembered: every session starts from its project's defaults.
+  // Restore the last folder and the mode picked last. Other choices are not remembered: every session starts from its project's defaults.
   useEffect(() => {
     if (!client || loaded) return;
     let cancelled = false;
     // Quick question choices are optional: without them, a question starts from the initial ones.
     const questionStored = client.call('appState.get', { key: QUESTION_DEFAULTS_KEY }).then(({ value }) => value, () => null);
-    Promise.all([client.call('appState.get', { key: DEFAULTS_KEY }), questionStored]).then(
-      ([{ value }, questionValue]) => {
+    const lastModeStored = client.call('appState.get', { key: LAST_MODE_KEY }).then(({ value }) => value, () => null);
+    Promise.all([client.call('appState.get', { key: DEFAULTS_KEY }), questionStored, lastModeStored]).then(
+      ([{ value }, questionValue, lastModeValue]) => {
         if (cancelled) return;
         const stored = readGlobals(value);
         setQuestionChoices(readQuestionChoices(questionValue));
+        setLastMode(readLastMode(lastModeValue));
         if (!folderFromLink.current) setCwd((current) => current ?? stored.cwd);
         setLoaded(true);
       },
@@ -305,7 +312,7 @@ function LocalNewSession() {
     setStartAfterId(null);
     setPreset(undefined);
     setDraftPrompt('');
-    touchedFor.current = null;
+    touchedFor.current = undefined;
     setProfileOverride(null);
     setD(firstChoices());
   };
@@ -350,7 +357,7 @@ function LocalNewSession() {
     if (fromLater || fromSchedule) leaveQueued();
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
-    touchedFor.current = null;
+    touchedFor.current = undefined;
     setProfileOverride(null);
     setAddAsProject(true);
     setCwd(link.cwd);
@@ -393,7 +400,7 @@ function LocalNewSession() {
     if (!request) return;
     if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
-    touchedFor.current = null;
+    touchedFor.current = undefined;
     setProfileOverride(null);
     setPendingStart(null);
     setLinkRepo(null);
@@ -646,7 +653,7 @@ function LocalNewSession() {
     if (!loaded || touchedFor.current === cwd) return;
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, cwd, defaultsKey, newSessionMode, autostarting, question, questionChoices]);
+  }, [loaded, cwd, defaultsKey, newSessionMode, lastMode, autostarting, question, questionChoices]);
 
   // Inspect the folder (git? branch?), load its branches, and pre-warm Claude Code there.
   useEffect(() => {
@@ -699,11 +706,16 @@ function LocalNewSession() {
 
   const persist = (folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { cwd: folder } });
 
-  // A change applies to this session only; a project's own defaults are set in its configuration. Always build on the latest state: two quick changes (folder, then model) must not undo each other.
+  // A change applies to this session only; a project's own defaults are set in its configuration. Only the mode is
+  // kept, for Remember last. Always build on the latest state: two quick changes (folder, then model) must not undo each other.
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
     setSavedNote(null);
     setD((current) => ({ ...current, ...patch }));
+    if (patch.permissionMode && !question) {
+      setLastMode(patch.permissionMode);
+      void client?.call('appState.set', { key: LAST_MODE_KEY, value: patch.permissionMode });
+    }
     if (question) {
       // A quick question's choices are its own: they never change what a project starts with.
       const remembered = questionPatch(patch);
@@ -718,7 +730,7 @@ function LocalNewSession() {
     }
   };
   const changeFolder = (folder: string) => {
-    touchedFor.current = null;
+    touchedFor.current = undefined;
     if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);

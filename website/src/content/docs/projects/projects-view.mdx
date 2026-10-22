@@ -11,23 +11,23 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Projects are the folders you work in with Switchboard. Add a folder once, and it is ready to pick in New session, to filter the sidebar by, and to open on a page of its own with its sessions, worktrees, branches and memory. The **Projects** view is where you add, order, rename and remove them, and where you open each project's own page.
+Projects are the folders you work in with Switchboard. Add a folder once, and it is ready to pick in New session, to filter the sidebar by, and to open on a page of its own with its sessions, worktrees, branches and memory. The **Projects** view is one view for all of it: the list of projects on the left, and the open project's page on the right. Add, order, rename and remove projects in the list, and work with one on its page.
 
-<Screenshot name="projects-view" alt="The Projects view: a list of projects, each with its icon, name, new-session defaults, session count and a worktree pill that says how many worktrees there are and how many can go" eager />
+<Screenshot name="projects-view" alt="The Projects view: the list of projects on the left, each with its icon, name, profile and worktree hint, and the open project's page on the right with its tabs" eager />
 
 ## Open it
 
-- Click the folder icon (**Projects**) at the bottom of the sidebar. Click it again to go back to your session.
+- Click the folder icon (**Projects**) at the bottom of the sidebar. Click it again to go back to your session. It opens on the project you had open last.
 - Run *Manage projects* in the [command palette](/command-palette/) (<Kbd shortcut="palette.commands" first />).
 - Choose **Manage projects…** at the bottom of the project filter at the top of the sidebar.
 
-To add a project straight away, run *Add project…* in the palette, click the **+** folder button next to the project filter, or choose **Add project…** in that filter. New session has **Add project…** too, which picks the project you add there.
+To add a project straight away, run *Add project…* in the palette, click the **+** folder button next to the project filter, or choose **Add a project folder…** in that filter. New session has **Add project…** too, which picks the project you add there.
 
 ## Add a project
 
 <Steps>
 
-1. Click **Add project** in the view's header (or **Add a project** when the list is empty).
+1. Click **+** next to **Projects** at the top of the list (or **Add a project folder** when the list is empty).
 2. Pick a folder from the list. It shows the folders you have used Claude Code in, most recent first, with how many sessions each has. Type to filter by name or path, and use the arrow keys and <Kbd keys="enter" /> to add one.
 3. For a folder that isn't listed, click **Choose folder…** and pick any folder.
 4. Add as many as you like, then click **Done**.
@@ -36,24 +36,29 @@ To add a project straight away, run *Add project…* in the palette, click the *
 
 When you close the dialog, Switchboard opens the last project you added on its **Settings** tab, so you can set its [defaults](/projects/settings/) right away.
 
-## How to use it
+## The list
 
-Each row shows the project's icon and name, its new-session defaults ("Opus · high effort · worktree", or *Global defaults*), how many sessions it has and when it was last active. A project whose folder is missing says **Folder not found**. With more than one [Claude profile](/settings/claude-profiles/), the row also shows the profile the project uses.
+Each row shows the project's icon and name, and under it the [Claude profile](/settings/claude-profiles/) it uses (with more than one) and a worktree hint, such as *Personal · 4 can go*. A dot says a session in it is working (yellow) or needs you (pink), and the time says when it was last active. A project whose folder is missing says **Folder not found**.
 
-On the right of each row:
+- **Click a row** to open the project on the right, on the tab you left it on.
+- **The gear** on a row, shown when you point at it, opens the project's [Settings tab](/projects/settings/).
+- **Right-click a row**, or press <Kbd shortcut="context-menu" first />, for the [project menu](#the-project-menu), with **Rename project…** and **Remove from Switchboard…**.
+- **Find a project** at the top (<Kbd shortcut="projects.find" />) narrows the list by name.
+- <Kbd keys="arrowup|arrowdown" />, <Kbd keys="home" /> and <Kbd keys="end" /> move through the list and open the project they land on.
 
-- The **worktree pill** ("6 worktrees · 2 can go") shows how many worktrees the project has besides its main checkout. It turns green when some can go. Click it to open the project's [Worktrees tab](/projects/worktrees/). Projects without extra worktrees, or outside git, don't have one.
-- The pen button starts a **new session** in the project.
-- **⋯** opens the project's menu.
-- The up and down arrows move the project in the list.
+### Switch projects
+
+The project's name at the top of its page has a ▾: click it to find another project. <Kbd keys="enter" /> opens it on the tab on screen, <Kbd shortcut="projects.switcher-settings" /> on its Settings. The ‹ and › buttons next to **New session**, or <Kbd shortcut="projects.switch" />, go to the previous or next project in the list, on the same tab. <Kbd shortcut="projects.tab" /> jump to a tab.
+
+In a narrow window the list folds away. The ‹ in the page's header shows it over the project; click outside it or press <Kbd keys="escape" /> to close it.
 
 ### Reorder projects
 
-Use the up and down arrows on a row. The order is used by the sidebar's project filter and, when *Project order* is set to *Your order*, by New session, Home and the command palette.
+Drag a row up or down. With a project open, <Kbd shortcut="projects.move" /> moves it up or down one place. Dragging is off while you search. The order is used by the sidebar's project filter and, when *Project order* is set to *Your order*, by New session, Home and the command palette.
 
 ### Rename a project
 
-Choose **Rename project…** in the project's **⋯** menu, or click its icon. Only Switchboard uses the new name: the folder on disk keeps its own. Leave the field empty, or click **Use folder name**, to go back to the folder's name.
+Choose **Rename project…** in the project's menu (right-click its row, or the **⋯** on its page), or change **Name** on its [Settings tab](/projects/settings/). Only Switchboard uses the new name: the folder on disk keeps its own. Leave the field empty, or click **Use folder name**, to go back to the folder's name.
 
 ### Change the icon
 
@@ -63,7 +68,7 @@ Switchboard picks up a project's icon from the repository when it can: a logo or
 { "iconPath": "assets/logo.svg" }
 ```
 
-To set your own, click the project's icon (or open its **⋯** menu) and choose under **Project icon**:
+To set your own, open the project's menu and choose under **Project icon**:
 
 - **Choose image…** picks an image file.
 - **Use emoji…** opens an emoji picker. You can also type any emoji in its field.
@@ -72,51 +77,52 @@ To set your own, click the project's icon (or open its **⋯** menu) and choose 
 
 ### The project menu
 
-The **⋯** menu on a row has the icon choices, **Rename project…** and **Open folder in editor**, plus:
+Right-click a row in the list for the project's menu. It has the icon choices, **Rename project…** and **Open folder in editor**, plus:
 
 - **Claude profile**, to link the project to a profile (only with more than one profile).
 - **Open project**, **Worktrees…** and **Branches…**, to open the project's page on that tab.
 - **Project settings…**, to open its Settings tab.
 - **Remove from Switchboard…**
 
-The same menu opens from a project in the sidebar's project filter.
+The same menu opens from a project in the sidebar's project filter. The **⋯** on a project's page has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Switchboard…**.
 
 ### Remove a project
 
-Choose **Remove from Switchboard…** in the project's **⋯** menu and confirm with **Remove**. The project disappears from the sidebar and New session. Nothing on disk changes: the folder, its files and its sessions stay, its sessions are still found by [search](/sessions/search/), and you can add it again later.
+Choose **Remove from Switchboard…** in the project's menu, or under **Remove** on its Settings tab, and confirm with **Remove**. The project disappears from the sidebar and New session. Nothing on disk changes: the folder, its files and its sessions stay, its sessions are still found by [search](/sessions/search/), and you can add it again later.
 
 ## Open a project's page
 
 Every project has its own page with its sessions, worktrees, branches, memory, actions and settings. Open it by:
 
-- clicking the project's name in the Projects view;
+- clicking its row in the Projects view;
 - choosing **Open project** in the project's menu in the sidebar;
 - running *Project: &lt;name&gt;* in the command palette;
 - pressing <Kbd shortcut="palette.goto" /> and picking the project.
 
-<Screenshot name="project-overview" alt="A project page for acme-store: the breadcrumb, the project's icon and name, its folder, branch and upstream, Open in editor and New session buttons, and the tabs Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions and Settings" />
+<Screenshot name="project-overview" alt="A project page for acme-store: the project's icon and name with its switcher, its folder and branch, the previous and next buttons, New session and the ⋯ menu, and the tabs Overview, Sessions, Triggers, Worktrees, Branches, Memory, Actions and Settings" />
 
 ### The header
 
-A breadcrumb (**Projects**) takes you back to the list. When you opened the project from a page of Settings, such as the projects in Settings › Memory, the breadcrumb says **Settings › Memory** and takes you back there. The back button on your mouse does the same. Below it are the project's icon and name, and a line with its folder, the branch checked out and its upstream. Click the icon to change it or rename the project.
+The header has the project's icon and name, and a line with its folder, its profile (with more than one) and the branch checked out. Click the name to [switch projects](#switch-projects). When you opened the project from a page of Settings, such as the projects in Settings › Memory, a link above the name says **Settings › Memory** and takes you back there. The back button on your mouse does the same.
 
 On the right:
 
-- **Open in editor** opens the folder in your editor.
+- **‹** and **›** go to the previous and next project.
 - **New session** starts a session in this project. While the page is open, <Kbd shortcut="session.new" /> starts in this project too.
+- **⋯** has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Switchboard…**.
 
 ### The tabs
 
 | Tab | What it shows |
 |---|---|
-| [Overview](/projects/overview/) | A card per area: sessions, worktrees, branches, memory, the queue and git. |
+| [Overview](/projects/overview/) | Its numbers, recent sessions, the worktrees worth a look, and how new sessions start. |
 | [Sessions](/projects/sessions/) | The project's sessions, grouped as in the sidebar, and its queued prompts. |
 | [Triggers](/projects/triggers/) | What starts a session when CI fails or an issue is for you, with their events. |
 | [Worktrees](/projects/worktrees/) | Every worktree of the repository, and which ones can go. |
 | [Branches](/projects/branches/) | Every branch, here and on the remote, and which ones can go. |
 | [Memory](/projects/memory/) | What Claude Code remembers about the project, its instructions, and your personal memory. |
 | [Actions](/projects/actions/) | The project's actions. |
-| [Settings](/projects/settings/) | The Claude profile, defaults for new sessions, and the name and icon. |
+| [Settings](/projects/settings/) | The name, icon and folder, the Claude profile, defaults for new sessions, and Remove. |
 
 Sessions, Triggers, Worktrees, Branches, Memory and Actions show a count. With a tab focused, use <Kbd keys="arrowleft|arrowright" /> to move between tabs.
 

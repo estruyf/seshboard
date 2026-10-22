@@ -77,7 +77,7 @@ Next to it, the **Open in** button opens the project in your editor, terminal or
 
 ## Write the prompt
 
-The message box works the same as in a session:
+The message box works the same as in a session, except that <Kbd keys="arrowup" /> brings back no earlier messages here:
 
 - <Kbd shortcut="composer.send" /> starts, <Kbd shortcut="composer.newline" /> adds a new line.
 - Type <Kbd shortcut="composer.commands" /> for commands and skills, <Kbd shortcut="composer.mention" /> to mention a file.
@@ -97,7 +97,11 @@ Prompts you write here and don't start are kept per project, also after you quit
 |---|---|---|
 | **Start session** | <Kbd shortcut="new-session.start" /> | Starts the session with the choices on screen. |
 | **Add to queue** | <Kbd shortcut="new-session.queue" /> | Keeps the prompt, project and choices in the [queue](/new-session/queue/) to start later. |
+| **Schedule…** | | Opens [Schedule a session](/new-session/schedules/) for the prompt. |
+| **Start when…** | | Makes a [trigger](/projects/triggers/) that starts the prompt when CI fails or an issue is for you. |
 | **Start in a new worktree** | | Starts this one session in a new worktree, leaving the route and the project's default as they are. Shown in a git repository while the route is the current checkout. |
+
+**Run as**, next to Start in a git repository, says **One session**. Pick a [pipeline](/sessions/pipelines/) there, and Start becomes **Run pipeline**: it runs the pipeline with the prompt as its task, and its steps show under the message box. **Start one session** in the ▾ starts a single session instead.
 
 When something stops Start, its tooltip says why: "Type a message first", "Choose a folder first", or the focus limit.
 
@@ -105,9 +109,9 @@ The session opens as soon as it starts. Claude Code was already warmed up in the
 
 ## Project defaults
 
-New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then the choices you made last in New session.
+New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then Claude Code's own defaults. The permission mode follows **Permission mode** in [Settings › General](/settings/#new-sessions), which can also remember the last one you picked or always use one.
 
-Change something for one session, and it applies to that session only. To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
+Change something in New session, and it applies to that prompt only: the next one starts from the project's defaults again (the permission mode too, unless Settings › General says **Remember last**). To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
 
 You can also edit the defaults on the project's [Settings tab](/projects/settings/).
 

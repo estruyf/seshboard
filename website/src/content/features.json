@@ -1407,6 +1407,26 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computers-profile-colours",
+      "name": "Other computers: the profile's colour on a remote session's left line, this computer's colour for a profile of the same name",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-drafts",
+      "name": "Other computers: each session keeps its unsent message, and New session one prompt per computer",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-usage-limit",
+      "name": "Other computers: Resume now, Resume when it resets and the held Up next messages on a session a usage limit stopped",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-unreadable",
+      "name": "Other computers: sessions this version can't read are left out, and the computer's page and chip say why",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:remote-status-card",
       "name": "Settings › Remote: the status card and the fix for each problem",
       "page": "remote-access"
@@ -1654,6 +1674,16 @@
     {
       "id": "feature:remote-pipelines",
       "name": "Remote: pipeline runs under their session, a run's steps and buttons, Push, and Run pipeline or Run as from a phone",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-usage-limit",
+      "name": "Remote: Resume now and Resume when it resets on a session a usage limit stopped",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-unreadable",
+      "name": "Remote: a banner when a computer sends sessions this version can't read",
       "page": "remote-access"
     },
     {
@@ -2077,6 +2107,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:composer-context-menu",
+      "name": "Message box right-click menu: Cut, Copy, Paste (with images) and Select all",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:confirm-quit",
       "name": "Ask before quitting",
       "page": "settings"
@@ -2139,6 +2174,16 @@
     {
       "id": "feature:pr-checks",
       "name": "Pull request checks on the git button and in its menu, read again while they run, with a notification when they finish",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:checks-archived",
+      "name": "Archived sessions stop following their pull request checks",
+      "page": "terminal-changes-git/git"
+    },
+    {
+      "id": "feature:git-error-toast",
+      "name": "A message says why Commit, Pull, Push or Fetch failed",
       "page": "terminal-changes-git/git"
     },
     {
@@ -2787,6 +2832,11 @@
       "page": "new-session/form"
     },
     {
+      "id": "feature:new-session-choices-per-prompt",
+      "name": "New session: a change applies to that prompt only, and the next starts from the project's defaults",
+      "page": "new-session/form"
+    },
+    {
       "id": "feature:profile-setup-guide",
       "name": "How to set up another profile",
       "page": "settings/claude-profiles"
@@ -2807,6 +2857,11 @@
       "page": "settings/claude-profiles"
     },
     {
+      "id": "feature:new-session-permission-mode",
+      "name": "Permission mode for new sessions: project default, Remember last or always one mode",
+      "page": "settings"
+    },
+    {
       "id": "feature:project-actions",
       "name": "Project actions",
       "page": "projects/actions"
@@ -2819,7 +2874,7 @@
     {
       "id": "feature:project-default-branch",
       "name": "A project's own default branch",
-      "page": "new-session/form"
+      "page": "projects/settings"
     },
     {
       "id": "feature:project-filter",
@@ -3797,6 +3852,11 @@
       "page": "projects/worktrees"
     },
     {
+      "id": "feature:worktree-cleanup-progress",
+      "name": "Removing worktrees one at a time: Removing…, Removed or the error, and Stop after this one",
+      "page": "projects/worktrees"
+    },
+    {
       "id": "feature:worktree-groups",
       "name": "Worktree groups: Safe to remove, Probably done, Keep, Stale",
       "page": "projects/worktrees"
@@ -4123,7 +4183,7 @@
     },
     {
       "id": "feature:trigger-limits",
-      "name": "At once and waiting limits, with Start now and Start anyway",
+      "name": "Sessions at a time (Runs at a time) and Events that may wait, with Start now and Start anyway",
       "page": "projects/triggers"
     },
     {
@@ -4199,6 +4259,11 @@
     {
       "id": "settings:pipelines",
       "name": "Settings › Pipelines",
+      "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:pipeline-builtins-switch",
+      "name": "Settings › Pipelines: the Built-in pipelines switch, to see only your own",
       "page": "sessions/pipelines"
     },
     {

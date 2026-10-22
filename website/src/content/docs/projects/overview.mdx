@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: A project's Overview tab shows one card per area, each opening its own tab.
+description: A project's Overview tab shows its numbers, its recent sessions, the worktrees worth a look and how new sessions start.
 sidebar:
   label: Overview tab
 ---
@@ -11,32 +11,25 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Open the **Overview** tab to see how a project is doing at a glance: what needs you, what can be cleaned up, and how full its memory is. It is the first tab of a project's page, and it sums up the project in a few cards: its sessions, worktrees, branches, memory, queue and git. Click a card to open the tab with the details.
+Open the **Overview** tab to see how a project is doing at a glance: what is working, what was done lately, which worktrees can go, and how new sessions start. It is the first tab of a project's page.
 
-<Screenshot name="project-overview" alt="The Overview tab of acme-store: cards for Sessions, Worktrees, Branches, Memory and Git, each with a one-line summary" eager />
+<Screenshot name="project-overview" alt="The Overview tab of acme-store: a row of numbers, Recent sessions, Worktrees with Clean up, and How sessions start here" eager />
 
 ## Open it
 
-Open a project's page from the [Projects view](/projects/projects-view/#open-a-projects-page), **Open project** in a project's menu in the sidebar, or *Project: &lt;name&gt;* in the command palette (<Kbd shortcut="palette.commands" first />). The page opens on Overview the first time, and later on the tab you left it on. Click **Overview** in the tab row to come back to it.
+Click a project in the [Projects view](/projects/projects-view/), choose **Open project** in a project's menu in the sidebar, or run *Project: &lt;name&gt;* in the command palette (<Kbd shortcut="palette.commands" first />). A project opens on the tab you left it on, Overview the first time. Click **Overview** in the tab row, or press <Kbd keys="mod+1" />, to come back to it.
 
 ## How to use it
 
-Each card has a heading and one line:
+At the top, a row of numbers: **working now** (in yellow when there are some), **sessions**, **last active**, **worktrees** (with how many can go, in green), **queued** and **triggers**. Click a number, other than last active, to open its tab.
 
-| Card | What it says | Opens |
-|---|---|---|
-| **Sessions** | How many sessions are working (in yellow), how many need you (in pink), and the total. | [Sessions](/projects/sessions/) |
-| **Worktrees** | How many worktrees the project has besides its main checkout, their size on disk, and how many are safe to remove (in green). | [Worktrees](/projects/worktrees/) |
-| **Branches** | How many local branches, how many on the remote, and how many are safe to delete. | [Branches](/projects/branches/) |
-| **Memory** | How many memories the project has, and how full its `MEMORY.md` is ("MEMORY.md 186/200"): orange from 180 lines, red past the 200 that load. | [Memory](/projects/memory/) |
-| **Queue** | How many prompts are queued for this project, and how many are ready. Only shown when something is queued. | [Sessions](/projects/sessions/) |
-| **Git** | The branch checked out (or *detached HEAD*), how many commits it is behind its upstream, how many commits are left to push, and how many files have changed. | [Branches](/projects/branches/) |
+Under it:
 
-Outside a git repository, the Worktrees, Branches and Git cards say **Not a git repository**. While Switchboard reads the repository, they say **Reading…**.
+- **Recent sessions**: the four newest, each with its state (*Needs you*, *Working*, *Finished* and so on), its branch and its age. Click one to open it. **All 205 ›** opens the [Sessions tab](/projects/sessions/).
+- **Worktrees**: the worktrees in use first, then the ones that can go, each with a badge: *in use*, *merged* or *no changes*. Click one to open the [Worktrees tab](/projects/worktrees/). **Clean up 2 ›** removes the ones that can go, after the [confirmation](/projects/worktrees/#the-confirmation).
+- **How sessions start here**: the profile and the defaults new sessions start with, such as *Opus · high effort · worktree*, or *Profile defaults* or *Global defaults* when the project sets none. **Change in Settings ›** opens the [Settings tab](/projects/settings/).
 
-<Aside>
-Sizes on disk are measured in the background. The Worktrees card shows the total once the sizes are in.
-</Aside>
+Outside a git repository, the Worktrees panel says **Not a git repository**. While Switchboard reads the repository, it says **Reading…**.
 
 ## Settings
 

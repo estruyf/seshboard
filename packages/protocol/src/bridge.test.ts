@@ -107,15 +107,19 @@ describe('keepAwake preference', () => {
 });
 
 describe('newSessionMode preference', () => {
-  it('starts new sessions in the mode picked last by default', () => {
-    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('last');
+  it("starts new sessions in the project's default by default", () => {
+    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('project');
   });
 
   it('keeps the offered modes, and drops bypass and anything else', () => {
-    for (const mode of ['last', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
+    for (const mode of ['project', 'remember', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
     expect(sanitizePreferences({ newSessionMode: 'bypassPermissions' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: 'dontAsk' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: null })).toEqual({});
+  });
+
+  it("drops the old 'last', so it becomes the project's default", () => {
+    expect(sanitizePreferences({ newSessionMode: 'last' })).toEqual({});
   });
 });
 

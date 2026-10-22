@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, GitBranch, GitBranchPlus, SquarePen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type ProjectInspection } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@switchboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
@@ -27,7 +27,7 @@ import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
-import { INITIAL_CHOICES, layeredDefaults, startingChoices, withNewSessionMode, type Choices } from '../newSession/choices.ts';
+import { INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, newSessionChoices, readLastMode, type Choices } from '../newSession/choices.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote } from '../newSession/trayLabels.ts';
 import { baseChoices } from '../newSession/worktreeBases.ts';
@@ -71,7 +71,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
   /** The project's defaults, then the profile's. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
-  const [d, setD] = useState<Choices>(() => ({ ...startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
+  /** The permission mode last picked here or in New session, for Settings › General › Permission mode › Remember last. */
+  const [lastMode, setLastMode] = useState<PermissionMode>(INITIAL_CHOICES.permissionMode);
+  const [d, setD] = useState<Choices>(() => ({ ...newSessionChoices(sessionDefaults, newSessionMode, INITIAL_CHOICES.permissionMode), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
   const [gitStatus, setGitStatus] = useState<{ remote: string | null; baseBranch: string | null; behindUpstream: number | null } | null>(null);
@@ -91,7 +93,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   /** Sessions busy in this project: a queued prompt would wait for them. */
   const workingHere = busyInProject(useListedRows(), root).length;
 
-  // The choices last made in New session, under the project's defaults (a quick question's own, for one).
+  // A quick question's own choices, or the mode picked last (for Remember last); the rest comes from the project's defaults.
   useEffect(() => {
     if (!client) return;
     let cancelled = false;
@@ -101,7 +103,10 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         () => !cancelled && setLoaded(true),
       );
     } else {
-      setLoaded(true);
+      client.call('appState.get', { key: LAST_MODE_KEY }).then(
+        ({ value }) => !cancelled && (setLastMode(readLastMode(value)), setLoaded(true)),
+        () => !cancelled && setLoaded(true),
+      );
     }
     return () => {
       cancelled = true;
@@ -114,9 +119,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
       setD(questionStartingChoices(questionChoices));
       return;
     }
-    const choices = startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults);
+    const choices = newSessionChoices(sessionDefaults, newSessionMode, lastMode);
     setD(worktree ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, newSessionMode, defaultsKey, worktree, question, questionChoices]);
+  }, [loaded, newSessionMode, lastMode, defaultsKey, worktree, question, questionChoices]);
 
   // Is it a git repository, on which branch, and where would a worktree branch from.
   useEffect(() => {
@@ -163,10 +168,14 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
     if (moved && savedDraft(moved)) forget(moved);
   }, [moved]);
 
-  // As in New session: a change applies to this prompt only.
+  // As in New session: a change applies to this prompt only, and only the mode is kept, for Remember last.
   const update = (patch: Partial<Choices>) => {
     touched.current = true;
     setD((current) => ({ ...current, ...patch }));
+    if (patch.permissionMode && !question) {
+      setLastMode(patch.permissionMode);
+      void client?.call('appState.set', { key: LAST_MODE_KEY, value: patch.permissionMode });
+    }
     if (question) {
       const remembered = questionPatch(patch);
       if (Object.keys(remembered).length) {

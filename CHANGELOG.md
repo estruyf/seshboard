@@ -2,7 +2,7 @@
 
 All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-22
 
 ### Added
 
@@ -29,7 +29,6 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 - **Pick an app icon.** Pick an app icon in Settings › Theme: nine colourways of the Switchboard icon for the Dock and taskbar, and for the remote app on your phone.
 - **Open at login.** Turn on **Open at login** in Settings › General, under On startup, and Switchboard opens when you log in to your Mac or sign in to Windows. So on a virtual machine or a computer that restarts by itself, it is running again without you opening it. The setting is the system's own login item, so you can also change it in System Settings › General › Login Items, or in Startup apps on Windows. When macOS asks you to allow it first, Settings says so and opens the right page. It isn't available on Linux.
 - **Start a worktree from any branch.** The **Branch from** menu of a new worktree offered only the remote's default branch, such as `origin/main`, and your local HEAD. It now lists every other branch too, local and remote, such as `dev` or `origin/release`, with **Search branches** to find one. Claude Code can't start a worktree from those, so Switchboard makes it, in the same `.claude/worktrees` folder and with the same `worktree-` branch, and starts Claude in it. A remote branch is fetched first. The new branch doesn't track the one it started from, so a push never lands on `dev` itself. Git-ignored files your `.worktreeinclude` lists, such as `.env`, are copied in. A project can keep a branch as its default under **Worktree base** on its Settings tab, or with **Save as project default**; queued items, scheduled sessions and triggers in that project start from it too.
-
 - **Unlock a locked worktree.** A worktree git has locked (Claude Code does this while a session runs, and a crash can leave it behind) has **Unlock worktree** in its ⋯ menu, so you can remove it.
 - **A project's own default branch.** A project's defaults have a **Default branch**, for when you work on another branch than the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it and Changes compares against it. Leave it on the remote's default branch to follow GitHub.
 - **The remote app uses your computer's theme.** Your phone now looks like Switchboard on your computer, in the theme you picked there, and changes when you pick another one or edit it. Light or dark follows your phone. Open **Theme** in the **⋯** menu to go back to **Demo Time**. With more than one computer, your phone uses one computer's theme for all your sessions, so the colours don't change when you switch: the first computer's at first, or the one you pick in **Theme**.
@@ -37,6 +36,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Changed
 
 - **New sessions start from the project's defaults.** A model, effort, mode or workspace you change in New session now applies to that prompt only, and the next one starts from the project's defaults again. To change what a project starts with, use Save as project default or the project's configuration.
+- **Permission mode for new sessions.** Settings › General › Permission mode now offers **Use project default** (the default: the project's or profile's mode, else Ask before edits), **Remember last** (the mode you picked last in New session or the palette) or one mode to always start in, which now applies even in a project with its own default mode. If you had it on The last one you picked, it is now on Use project default.
 - **Projects is one view.** The list is on the left, the project on the right. Switch with the name's menu, the arrows or ⌥↑↓, and open a project's Settings from its row. Drag a row to reorder the list, and right-click it to rename or remove the project.
 - **A clearer trigger editor.** The trigger editor is easier to follow: five numbered sections, and a sentence at the top that says what the trigger will do. A new issues trigger changes nothing on GitHub until you turn on state labels in **What happens on GitHub?**.
 - **A clearer queue line in New session.** The line under the message box now says what happens ("If you add it to the queue, it waits for “Fix login” to finish, then starts by itself"), and the **Wait for** button shows what is picked.

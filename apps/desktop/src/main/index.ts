@@ -1149,6 +1149,10 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
       if (!(await waitInPage(win, `!document.querySelector('${session} [data-auto-choosing]')`, 5_000))) return 'Stop session left Auto choosing';
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
       if (!(await waitInPage(win, `${prompt}`, 5_000))) return 'New session did not open again';
+      // A choice applies to that prompt only: the next New session starts from the defaults again, so pick Auto anew.
+      // Wait for its folder first: the project's defaults arrive with it and would replace an earlier pick.
+      if (!(await waitInPage(win, `!!document.querySelector('${view} [data-folder-select]')?.dataset.value && document.querySelector('${view} [data-model-select]')?.dataset.value === ${JSON.stringify(previousModel)}`, 3_000))) return 'New session remembered Auto instead of starting from the defaults';
+      if (!(await chooseChoice(win, 'model', 'auto', view))) return 'could not pick Auto again';
       choosing = 'Start opened the session while Auto chose';
     }
 
@@ -2443,21 +2447,24 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Settings › General › Permission mode: a fixed mode is what New session's mode chip starts on, and The last one
- * you picked brings back the remembered one. Runs before any step types in New session, since an unsent prompt there
- * keeps the choices it was written with. Starts no session; only the throwaway profile's preference changes, and it
- * is put back, with the session that was open.
+ * Settings › General › Permission mode: Use project default (the default) doesn't keep a mode picked in New session,
+ * Remember last brings it back, and a fixed mode is what New session's mode chip starts on. Runs before any step
+ * types in New session, since an unsent prompt there keeps the choices it was written with. Starts no session; only
+ * the throwaway profile's preference changes, and it is put back, with the session that was open.
  */
 async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const chip = "document.querySelector('[data-new-session-view] [data-mode-select]')";
+  const view = '[data-new-session-view]';
+  const chip = `document.querySelector('${view} [data-mode-select]')`;
   const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
-  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on. */
+  /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on, once it has settled. */
   const freshMode = async () => {
     await js("document.querySelector('[data-go-home]')?.click()");
     await waitInPage(win, `!${chip}`, 2_000);
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
-    return (await waitInPage(win, `${chip}?.dataset.value`, 5_000)) ? ((await js(`${chip}.dataset.value`)) as string) : null;
+    if (!(await waitInPage(win, `${chip}?.dataset.value`, 5_000))) return null;
+    await settle(win);
+    return (await js(`${chip}.dataset.value`)) as string;
   };
   const setMode = async (mode: string) => {
     await js("document.querySelector('[data-open-settings]').click()");
@@ -2465,26 +2472,34 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-settings-section=\"general\"]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-new-session-mode]')", 2_000))) return false;
     const picked = await chooseOption(win, '[data-new-session-mode]', mode);
-    if (mode !== 'last') await shot(win, 'settings-new-session-mode.png');
+    if (mode === 'remember') await shot(win, 'settings-new-session-mode.png');
     await js("document.querySelector('[data-close-settings]').click()");
     return picked && (await until(() => preferences.get().newSessionMode === mode));
   };
 
-  if (preferences.get().newSessionMode !== 'last') return `the preference started as ${preferences.get().newSessionMode}, not The last one you picked`;
+  if (preferences.get().newSessionMode !== 'project') return `the preference started as ${preferences.get().newSessionMode}, not Use project default`;
+  const base = await freshMode();
+  if (!base) return 'New session has no mode chip';
+  // Picked in New session: for this prompt only while the setting is Use project default.
+  const picked = base === 'plan' ? 'acceptEdits' : 'plan';
+  if (!(await chooseChoice(win, 'mode', picked, view))) return `could not pick ${picked} in New session's mode chip`;
+  const afterPick = await freshMode();
+  if (afterPick !== base) return `with Use project default, New session kept ${afterPick} instead of starting on ${base}`;
+  if (!(await setMode('remember'))) return 'could not set Permission mode to Remember last in Settings › General';
   const remembered = await freshMode();
-  if (!remembered) return 'New session has no mode chip';
-  const fixed = remembered === 'plan' ? 'acceptEdits' : 'plan';
+  if (remembered !== picked) return `with Remember last, New session's mode chip starts on ${remembered}, not ${picked}`;
+  const fixed = [base, picked].includes('acceptEdits') ? 'default' : 'acceptEdits';
   if (!(await setMode(fixed))) return `could not set Permission mode to ${fixed} in Settings › General`;
   const withFixed = await freshMode();
   if (withFixed !== fixed) return `with ${fixed} set, New session's mode chip starts on ${withFixed}`;
-  if (!(await setMode('last'))) return 'could not set Permission mode back to The last one you picked';
+  if (!(await setMode('project'))) return 'could not set Permission mode back to Use project default';
   const again = await freshMode();
-  if (again !== remembered) return `back on The last one you picked, the chip starts on ${again}, not ${remembered}`;
+  if (again !== base) return `back on Use project default, the chip starts on ${again}, not ${base}`;
   if (open) {
     openSession(open);
     if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
   }
-  return `ok: ${fixed} from Settings, then ${remembered} again as the one picked last`;
+  return `ok: ${picked} picked was not kept on Use project default (${base}), came back with Remember last; ${fixed} from Settings`;
 }
 
 /**
@@ -8446,7 +8461,9 @@ async function runSplitLayoutStep(win: BrowserWindow): Promise<string> {
     if (remountedAfterTurn || (await domOrder()) !== orderTwo) return 'failed: turning a split remounted or moved a pane';
     pressKey(win, 'W', ['meta', 'alt']);
     if (!(await waitInPage(win, `!document.querySelector('[data-split]') && document.querySelector('[data-current-session="${smoke}"]')`, 2_000))) return 'failed: ⌘⌥W did not close the active pane, leaving the other';
-    const tail = await tiles();
+    // The last pane grows into the closed one's space a frame or two later on a slow machine (CI): wait for it.
+    let tail = await tiles();
+    for (const startedAt = Date.now(); tail && Date.now() - startedAt < 3_000; tail = await tiles()) await settle(win);
     if (tail) return `failed: one pane does not fill the area: ${tail}`;
 
     // From the sidebar: dragging a session's row onto a pane's edge opens it there, and onto its centre replaces it.
@@ -9402,7 +9419,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   }, { always: true });
   await step('newest session with messages rendered', () => openSmokeSession(win), { always: true });
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
-  await step('permission mode for new sessions: a fixed mode starts New session in it, the last one picked comes back', () => runNewSessionModeStep(win));
+  await step('permission mode for new sessions: project default, Remember last and a fixed mode', () => runNewSessionModeStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';

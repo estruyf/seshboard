@@ -31,7 +31,7 @@ Type in the message box and press <Kbd shortcut="composer.send" />. <Kbd shortcu
 - **Ask about this session:** the **Ask** button next to **Send** (or `/btw` and a question) asks Claude about the session in a panel on the right, without adding it to the conversation, also while Claude works. See [Ask about this session](/sessions/ask/).
 - **Mention a file or a session:** type <Kbd shortcut="composer.mention" /> and pick a file from the list, or another session to [link it](/sessions/linking/): Claude then gets its branch, pull request, what it did and its last reply.
 - **Code:** select text and type <Kbd keys="`" /> to wrap it as code: one line as `inline code`, several lines in a code block.
-- **Earlier messages:** <Kbd shortcut="composer.history" /> at the start of your text brings back what you sent before. On the first line, the first <Kbd keys="arrowup" /> takes the caret to the start, and the next one brings the message back. Esc goes back to what you were typing.
+- **Earlier messages:** <Kbd shortcut="composer.history" /> at the start of your text brings back what you sent before in this session. It only shows the session's own messages, and doesn't work in New session. On the first line, the first <Kbd keys="arrowup" /> takes the caret to the start, and the next one brings the message back. Esc goes back to what you were typing.
 - **Images:** paste them, drop them on the session, or click the image button under the message box. Images Claude reads or you attach show in the conversation.
 - **Right-click:** right-click in the message box, on the New session page too, for **Cut**, **Copy**, **Paste** and **Select all**. **Paste** also attaches an image on the clipboard.
 
@@ -157,7 +157,7 @@ In a narrow pane the chips get shorter (effort and mode show only their icon) in
 
 ### Context window and usage
 
-Under the message box, a line shows your plan usage (your 5-hour and weekly limits; hover for when they reset), what the session would cost at API prices (*Cost ≈$12.40*, see [Estimated cost](/usage/#estimated-cost)), and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
+Under the message box, a line shows your plan usage (your 5-hour and weekly limits as small rings, such as *5h 9%* and *Week 18%*; hover for when they reset), what the session would cost at API prices (*Cost ≈$12.40*, see [Estimated cost](/usage/#estimated-cost)), and a ring for how full the **context window** is. Click the ring to see what fills it, like `/context`, and **Compact now** to compact the conversation. *Compact context* in the command palette does the same.
 
 After a compaction the whole conversation stays: a *Conversation compacted* line marks each place it was compacted, and you can scroll back past it.
 

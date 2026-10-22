@@ -172,7 +172,12 @@ const STARTUP: Array<{ value: StartupView; label: string; detail: string }> = [
 ];
 
 /** The permission mode new sessions start in: the one picked last, or one of the modes the menus offer. */
-const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [{ value: 'last', label: 'The last one you picked' }, ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] }))];
+/** Permission mode for new sessions: the project's default, the one picked last, or always one mode (over the project's default). */
+const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [
+  { value: 'project', label: 'Use project default' },
+  { value: 'remember', label: 'Remember last' },
+  ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] })),
+];
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
@@ -445,7 +450,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
                 <span className="block text-ui">Permission mode</span>
-                <span className="block text-meta text-muted">What New session starts in. A project’s or profile’s own default comes first, and a link never starts in Auto mode.</span>
+                <span className="block text-meta text-muted">What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.</span>
               </span>
               <Select<NewSessionMode>
                 label="Permission mode for new sessions"

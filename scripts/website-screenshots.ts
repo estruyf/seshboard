@@ -727,9 +727,10 @@ const screens: Screen[] = [
     name: 'reading-mode',
     async take(t) {
       await t.openSession(LONG_REPLY);
-      // A long reply shows its Read button all the time; the last one is the newest reply.
+      // Read shows when its reply is hovered, like the other actions; the last one is the newest reply.
       const read = t.page.locator('[data-current-session] [data-read-button]').last();
       await read.scrollIntoViewIfNeeded();
+      await read.locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " group/message ")][1]').hover();
       await read.click();
       await t.need('[data-read-mode]', 'reading mode did not open');
       await t.need('[data-read-outline]', 'the outline of the reply did not show');
@@ -1235,7 +1236,9 @@ const screens: Screen[] = [
       await t.click('[data-close-settings]');
       const clone = JSON.stringify(join(folder, 'design-tokens'));
       await t.click('[data-open-projects]');
-      await t.click(`[data-project-row=${clone}] [data-project-more-button]`);
+      // A narrow window folds the list away behind the header's ‹. The row's menu opens with a right-click.
+      if (await t.page.locator('[data-projects-view][data-narrow]').count()) await t.click('[data-project-show-list]');
+      await t.q(`[data-project-row=${clone}]`).click({ button: 'right' });
       await t.click('[role=menu] [data-remove-project]');
       await t.click('[data-confirm]');
       await t.gone(`[data-project-row=${clone}]`, 'the clone was not removed from the projects');
@@ -1441,9 +1444,18 @@ const screens: Screen[] = [
     name: 'projects-view',
     async take(t) {
       await t.click('[data-open-projects]');
-      await t.need('[data-project-manager] [data-project-row]', 'Projects listed nothing');
-      await t.need('[data-worktree-pill]', 'no worktree pill', 30_000);
+      await t.need('[data-projects-view]', 'Projects did not open');
+      // A narrow view folds the list away: close the sidebar to show the list next to the project, as on a wider window.
+      const madeRoom = (await t.page.locator('[data-projects-view][data-narrow]').count()) > 0 && (await t.page.locator('[data-sidebar-open]').count()) > 0;
+      if (madeRoom) await t.click('[data-projects-view] [data-sidebar-toggle]');
+      await t.need('[data-project-list] [data-project-row]', 'Projects listed nothing');
+      await t.need('[data-project-page]', 'no project open next to the list');
+      await t.settle();
       await t.shot('projects-view');
+      if (madeRoom) {
+        await t.click('[data-sidebar-toggle]');
+        await t.need('[data-sidebar-open]', 'the sidebar did not open again');
+      }
       await t.home();
     },
   },

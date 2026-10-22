@@ -20,12 +20,14 @@ Switchboard checks GitHub through the GitHub CLI (`gh`), every 5 minutes, on thi
 <Steps>
 
 1. Open the project's page, and its **Triggers** tab. The project's **⋯** menu in the sidebar has **Triggers…**. In the command palette, *Triggers…* asks for the project, and *Triggers in* the current project goes straight there.
-2. Choose **New trigger**. **Name** at the top follows the source, such as "CI fails on main", until you type one.
-3. Under **When**, pick **CI fails on a branch** or **Issues for you**, and say what to look for.
-4. Write the prompt under **Then**, and check what the sessions run with.
+2. Choose **New trigger**. The name in the title follows the source, such as "CI fails on main", until you click it and type one.
+3. Under **When should it start?**, pick **CI fails on a branch** or **Issues for you**. Under **Which runs?** or **Which issues?**, say what to look for.
+4. Under **What does it start?**, pick **A session** or **A pipeline**, write the prompt, and check what it runs with.
 5. Choose **Create trigger** (<Kbd keys="mod+enter" />).
 
 </Steps>
+
+The editor has five numbered sections: **When should it start?**, **Which issues?** (**Which runs?** for CI), **What happens on GitHub?**, **What does it start?** and **Limits**. A CI trigger has nothing to do on GitHub, so it has four. A sentence at the top says what the trigger will do, such as "When an issue gets the **switchboard** label, start a **session** in a new worktree. Up to **3** at once." **What happens on GitHub?** and **Limits** stay folded while they are at their defaults, with one line that says so. A new issues trigger changes nothing on GitHub until you turn on state labels there.
 
 You can also start from a prompt: write it in [New session](/new-session/form/), then choose **Start when…** in Start's ▾ menu, after **Schedule…**. The editor opens for that project, with the prompt and New session's choices. A folder that isn't one of your projects yet becomes one, so the trigger has a Triggers tab. In the command palette, *New trigger…* asks for the project first.
 
@@ -58,25 +60,25 @@ An open issue that newly matches the filter starts a session that works on it.
 
 | Choice | Picks up | Fits |
 |---|---|---|
-| **Label** | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
+| **With a label** | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
 | **Assigned to me** | every open issue assigned to you | a team: each person's Switchboard picks up only their issues |
-| **Label and assigned to me** | issues with the label that are assigned to you | a team where you also choose which of your issues Claude takes |
+| **Both** | issues with the label that are assigned to you | a team where you also choose which of your issues Claude takes |
 
 "Me" is the account `gh` is signed in with. The editor shows it, such as "@estruyf signed in to gh". Pick **Someone else…** to type another login.
 
 An issue newly matches when the label is added, when it is assigned to you, or when a matching issue is opened. The session is titled after the issue, such as "#212 Pinned sessions lose their order".
 
 <Aside type="caution">
-With **Label** alone on a repository more people work on, the editor warns: "estruyf/switchboard has 6 collaborators. Everyone's switchboard issues will start here. Use Assigned to me, turn on state labels, or Assign to me when picked up."
+With **With a label** on a repository more people work on, the editor warns: "estruyf/switchboard has 6 collaborators. Everyone's switchboard issues will start here. Pick Both, or turn on state labels in 3."
 </Aside>
 
-### Only collaborators
+### Only from collaborators
 
-**Only collaborators** is on by default. Only issues opened by the repository's owners, members and collaborators start a session. A bot or an issue template can add a label for anyone, so on a public repository anyone could start a session on your computer. An issue from someone else shows as skipped, with **Start anyway**.
+**Only from collaborators** is on by default. Only issues opened by the repository's owners, members and collaborators start a session. A bot or an issue template can add a label for anyone, so on a public repository anyone could start a session on your computer. An issue from someone else shows as skipped, with **Start anyway**.
 
-### On GitHub
+### What happens on GitHub?
 
-Two choices write to GitHub, and only when you turn them on.
+Two choices write to GitHub, and only when you turn them on. Until then, the section is folded and says "Nothing: no labels, no assignee".
 
 **Keep a state label on the issue** keeps one label on the issue that says where the work is, so you and your team see it on GitHub:
 
@@ -89,32 +91,55 @@ Two choices write to GitHub, and only when you turn them on.
 | It ends with an error, is stopped, or can't start | `switchboard: failed` |
 
 - One state label at a time, changed in one edit. Labels the repository doesn't have yet are created.
-- **Rename labels** changes their names.
+- **Rename** changes their names.
 - An issue that already has `switchboard: working` or `switchboard: needs input` is skipped: another computer works on it.
 - A label you change by hand on GitHub isn't put back.
+- Archiving or deleting a session a trigger started takes its working or needs input label off the issue.
 - To start an issue again, add the trigger's label again. With **Assigned to me** alone, take the state label off.
 
-**Assign to me when picked up** assigns the issue to you when the work starts, so the team sees who has it. It skips issues that already have an assignee. It's there with **Label** only: with an assignee in the filter, every issue already has one.
+**Assign the issue to me when work starts** assigns the issue to you when the work starts, so the team sees who has it. It skips issues that already have an assignee. It's there with **With a label** only: with an assignee in the filter, every issue already has one.
 
 When an issue is assigned to someone else while its session works, the session goes on. Its header says who has it now.
 
-## Then
+## What does it start?
+
+**Starts** is **A session** or **A pipeline**. For a pipeline, see [Start a pipeline](#start-a-pipeline).
 
 | Field | What it does |
 |---|---|
 | **Prompt** | What the session should do. Type `{{` for the event's fields, such as `{{event.title}}`, `{{event.url}}`, `{{event.number}}`, `{{event.workflow}}` or `{{event.branch}}`. They show as violet chips, and are filled in for each event. The issue's text and comments, or the failed log, go in after the prompt as context to read, not instructions. |
 | **Runs with** | The workspace (a new worktree, or the project folder), the [Claude profile](/settings/claude-profiles/), the model and the mode, from the project's defaults. The mode menu has no **Bypass permissions**. |
-| **At once** | The most sessions the trigger runs together (1 to 10, 3 by default). A session counts while it works or waits for you. |
-| **Waiting** | How many new events may wait their turn while those sessions are busy (10 by default). Past that, events are skipped. |
+### Limits
 
-In the project folder, sessions would edit the same files, so **At once** is fixed at 1.
+| Field | What it does |
+|---|---|
+| **Sessions at a time** | The most sessions the trigger runs together (1 to 10, 3 by default). A session counts while it works or waits for you. |
+| **Events that may wait** | How many new events may wait their turn while those sessions are busy (10 by default). Past that, events are skipped. |
+
+In the project folder, sessions would edit the same files, so only one runs at a time.
+
+## Start a pipeline
+
+With **Starts** on **A pipeline**, each new failed CI run or issue for you starts a run of the [pipeline](/sessions/pipelines/) you pick, instead of a session. The prompt is the run's **Task**: it fills `{{task}}` in the steps, and the issue's text or the failed log goes to the first step to read. Each step sets its own model and mode, and the run works in a new worktree.
+
+- The run's row in the sidebar has the bolt, and links to the issue or the run.
+- **Runs at a time** counts runs, not their steps. A run counts while a step works or it waits for you.
+- State labels follow the run. While Push waits for you, the issue says needs input.
+- A trigger pauses when its pipeline is deleted or no longer fits the project.
+
+Two choices let the run go on without you:
+
+- **Run without stopping for me**: plans are approved for you, steps that wait for you start, and Claude decides questions itself. Tool permissions, errors and a failing review still stop the run.
+- **Open the pull request without me**: Push commits, pushes and opens the pull request when the steps before it are done. Merging stays with you.
+
+To make one from New session, pick a pipeline in **Run as**, write the task, then choose **Start ▾ › Start when…**.
 
 ## How many start at once
 
-Label ten issues on a Monday morning and ten sessions would start together. A trigger starts at most its **At once** number. A session counts while it works or waits for you.
+Label ten issues on a Monday morning and ten sessions would start together. A trigger starts at most its **Sessions at a time** number. A session counts while it works or waits for you.
 
-- The rest wait for a slot, oldest first, up to the **Waiting** number. Each waiting event has **Start now**.
-- Past the **Waiting** number, events are skipped, with "10 already waiting", and **Start anyway**.
+- The rest wait for a slot, oldest first, up to the **Events that may wait** number. Each waiting event has **Start now**.
+- Past that number, events are skipped, with "10 already waiting", and **Start anyway**.
 - The [focus limit](/focus-limit/) and usage limits still apply. A start they hold goes to the [queue](/new-session/queue/) as an item that starts by itself.
 
 ## The Triggers tab
@@ -148,8 +173,8 @@ A trigger starts work while you look elsewhere, from text other people wrote.
 
 - **Never bypass permissions.** A trigger can't be saved with **Bypass permissions**. Claude asks for permissions as always, and you get a notification.
 - **Event text is context, not instructions.** Your prompt is the instruction.
-- **Only collaborators** is on by default.
-- **Nothing outward.** Switchboard writes nothing to GitHub but the state labels and **Assign to me when picked up**, and only when they are on. Commenting or pushing is for Claude to do in the prompt, behind a permission prompt.
+- **Only from collaborators** is on by default.
+- **Nothing outward.** Switchboard writes nothing to GitHub but the state labels and **Assign the issue to me when work starts**, and only when they are on. A pipeline's Push opens a pull request only after you confirm, or with **Open the pull request without me** on. Commenting or pushing is for Claude to do in the prompt, behind a permission prompt.
 - **Pauses on failure.** A trigger whose check fails five times in a row pauses, with the reason, such as "Paused after 5 failed checks: gh is signed out". When GitHub asks Switchboard to slow down, it waits an hour before it checks again.
 - **On this computer only.** Triggers are never in `.switchboard.json`: a committed file must not start sessions on everyone's computer.
 

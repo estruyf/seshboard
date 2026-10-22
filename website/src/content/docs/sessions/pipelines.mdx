@@ -24,8 +24,9 @@ Plan it with Opus, build it with Sonnet, have a fresh session check the diff and
 ## Run a pipeline
 
 - **From a session:** in the session's **⋯** menu, or when you right-click it in the sidebar, choose **Run pipeline ›** and a pipeline. That session becomes the parent: the steps start with what you two discussed.
-- **From New session:** write the task, then choose **Start ▾ › Run pipeline ›** and a pipeline. There is no conversation yet, so the run gets a row of its own in the sidebar that holds the task and the steps.
+- **From New session:** write the task, then pick a pipeline in the **Run as** chip next to Start (it says **One session** until you do). Start becomes **Run pipeline**, and the steps show under the message box, with **Change** to pick another. **Start ▾ › Start one session** starts a single session instead. There is no conversation yet, so the run gets a row of its own in the sidebar that holds the task and the steps.
 - **From the command palette:** *Run pipeline…* runs one from the session you are in. *Pipelines: pick one…* opens a pipeline in Settings.
+- **From your phone:** see [Remote on your phone](/remote-access/#pipelines).
 
 The run works in one folder: a new worktree from the parent's branch, or the parent's worktree when it has one. Every step works there.
 
@@ -58,7 +59,7 @@ A step can start fresh, or as a fork of an earlier step, which keeps everything 
 
 A step is an ordinary session. You can open it, read it, reply in it and stop it. Its header names the parent, and **Back to the run** takes you there.
 
-- **Plan mode:** a step in plan mode ends with a plan to approve. When you approve it, the step keeps the plan for the steps after it and stops there; the next step builds it.
+- **Plan mode:** a step in plan mode ends with a plan to approve. When you approve it, the step keeps the plan for the steps after it and stops there; the next step builds it. With **Approve the plan for me** on the step, the run goes on to the next step as soon as the plan is written, without waiting for you. The plan is still kept for later steps and the pull request.
 - **Read only:** the step shows "Read only: Claude can read, search and run checks. It can't edit files." Claude can read files, search, and run git status, diff, log or show.
 - **Run first:** project actions such as Test and Lint run in the run's folder before Claude starts. Their exit codes and the last 40 lines of their output go in the prompt, and the first message shows each with a check or a cross.
 
@@ -68,6 +69,8 @@ A step can end with a verdict: its last reply says `Verdict: pass` or `Verdict: 
 
 - **Pass:** the run goes on.
 - **Changes needed:** the list goes to the step it names (Execute), with a link back to this step. When Execute's turn ends, this step runs again as a new round, such as *Validate · round 2*, up to its number of rounds.
+
+When the verdict still asks for changes after its last round, the run stops and offers **Another round**, in the step tree and in the step that found them. The changes go back to Execute once more, and Validate checks again when Execute is done. Or work on them in Execute yourself: when that turn ends cleanly, Validate checks again. You can also ask Validate what it needs first; the run still waits for the changes.
 
 ## Push
 
@@ -82,7 +85,7 @@ A step is done when its turn ended cleanly, Claude doesn't wait for you, and its
 - **Execute ended with an error:** run this step again, or reply in Execute.
 - **A step asks a question or for a permission:** answer it in the step.
 - **Validate has no verdict:** its last reply doesn't end with a verdict.
-- **Still changes needed after 2 rounds:** look at the last round, then **Continue** or **Stop the run**.
+- **Still changes needed after 2 rounds:** **Another round** sends the changes back to Execute. Or **Continue** to go on anyway, or **Stop the run**.
 - **A step with Wait for me before this step:** **Continue** starts it.
 - **Paused: Switchboard was closed.** The run goes on at the next start.
 
@@ -98,14 +101,14 @@ The parent's message box says "Message Claude. It gets a brief of the run first.
 
 <Screenshot name="pipeline-editor" alt="Settings › Pipelines: the built-in Plan, execute, validate, push open in the editor, its Validate step open with its model, prompt, Run first and verdict, and the tree it makes on the right" />
 
-Open **Settings › Pipelines**. The list has the built-in pipelines, those for all projects, and those for each project. Built-ins can't be changed: choose **Duplicate** to start from one.
+Open **Settings › Pipelines**. The list has the built-in pipelines, those for all projects, and those for each project. Built-ins can't be changed: choose **Duplicate** to start from one. To see only your own pipelines, turn off **Built-in pipelines** above the list.
 
 <Steps>
 
 1. Choose **New pipeline**, give it a name, and pick **This project** or **All projects**.
 2. Add steps with **+ Add a step**. Open a step to set it up:
    - **Starts:** fresh, or as a fork of an earlier step.
-   - **Model:** the model, effort and mode, and **Read only**.
+   - **Model:** the model, effort and mode, and **Read only**. A step in plan mode also has **Approve the plan for me**.
    - **Prompt:** type @ for the parent and the earlier steps. "@ links the parent or an earlier step. Claude gets their brief, as with any linked session."
    - **Run first:** project actions that run before Claude starts.
    - **Verdict:** **Ends with a verdict**, which step gets the changes, and up to how many rounds.
@@ -125,7 +128,8 @@ Open **Settings › Pipelines**. The list has the built-in pipelines, those for 
 ## Good to know
 
 - **One run, one folder.** Two runs in one project each get their own worktree.
-- **Your phone:** the remote app shows the steps as sessions; it can't start runs yet.
+- **Archive or delete as one.** Archiving a run's parent, or deleting it, takes its sub-sessions with it: the menu says **Archive with its 3 steps**. A run that still goes is stopped first, after you confirm.
+- **Your phone:** the remote app shows runs and their steps, and can start one. See [Remote on your phone](/remote-access/#pipelines).
 - **Backup:** your pipelines are in the settings file (**Pipelines**). Runs stay on this computer.
 
 ## Related
