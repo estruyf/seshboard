@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  body {
+    background:
+      radial-gradient(560px 420px at 78% 52%, rgba(255,212,59,0.12), transparent 70%),
+      radial-gradient(700px 420px at 100% 100%, rgba(224,154,44,0.20), transparent 60%),
+      radial-gradient(600px 380px at 95% -10%, rgba(201,95,61,0.20), transparent 60%),
+      var(--bg);
+  }
+  .copy { width: 450px; }
+  .brand { margin-bottom: 26px; }
+  .os { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .os .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+
+  /* Crops of the website's real screenshots (2560×1640, demo data). --x/--y are the crop's corner
+     in screenshot pixels, --s how big a screenshot pixel is drawn. */
+  .crop { position: absolute; overflow: hidden; border-radius: 13px; background: var(--bg);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 30px 70px -10px rgba(0,0,0,0.9); }
+  .crop img { position: absolute; display: block; width: calc(2560px * var(--s));
+    left: calc(var(--x) * var(--s) * -1px); top: calc(var(--y) * var(--s) * -1px); }
+  .fade-r::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 46px; background: linear-gradient(90deg, transparent, var(--card)); }
+
+  /* Covers the pipeline header's Skip button, which the crop cuts in half. */
+  .pipe .patch { position: absolute; top: 0; right: 0; width: 44px; height: 48px; background: linear-gradient(90deg, transparent, var(--card) 30%); z-index: 1; }
+
+  /* Upcoming, the whole view, tilted and running off the right edge. */
+  .scene { position: absolute; inset: 0; perspective: 1700px; }
+  .win { left: 590px; top: 64px; width: 700px; height: 470px;
+    transform: rotateY(-18deg) rotateX(5deg) rotateZ(1.2deg); transform-origin: 0% 50%;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 40px 90px -10px rgba(0,0,0,0.9), 0 0 120px -20px rgba(255,212,59,0.3); }
+  .win::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,0.06), transparent 35%); }
+
+  /* A trigger and a pipeline run, in front. */
+  .trig { left: 800px; top: 26px; width: 372px; height: 150px; --x: 691; --y: 368; --s: 0.42; background: var(--card); }
+  .pipe { left: 560px; top: 300px; width: 386px; height: 296px; --x: 881; --y: 128; --s: 0.55; background: var(--card); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 1.1</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Out now</div>
+    <h1>Claude Code that <span class="hl">starts on its own</span></h1>
+    <p class="sub"><b>Schedules</b>, <b>triggers</b> and <b>pipelines</b>: a session every morning, one when CI fails, or plan, build, check and push in one run. See it all in <b>Upcoming</b>.</p>
+    <div class="os">Now on
+      <span class="pill">Mac</span>
+      <span class="pill">Windows</span>
+      <span class="pill">Linux</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="scene">
+    <div class="crop win" style="--x: 650; --y: 0; --s: 0.36"><img src="../../website/src/assets/screenshots/upcoming-dark.png" alt=""></div>
+  </div>
+  <div class="crop trig fade-r"><img src="../../website/src/assets/screenshots/triggers-tab-dark.png" alt=""></div>
+  <div class="crop pipe fade-r"><span class="patch"></span><img src="../../website/src/assets/screenshots/pipeline-parent-dark.png" alt=""></div>
+</body>
+</html>

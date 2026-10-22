@@ -67,7 +67,7 @@ export const SourceView = memo(function SourceView({ code, language, wrap, line,
 
   const blocks = useMemo(() => lineBlocks<string>(html ?? plain), [html, plain]);
   return (
-    <div ref={boxRef} tabIndex={0} aria-label="Source" className="min-h-0 flex-1 overflow-auto bg-code py-2 outline-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset" data-file-preview-source="" data-wrap={wrap ? 'on' : 'off'}>
+    <div ref={boxRef} tabIndex={0} aria-label="Source" className="min-h-0 flex-1 overflow-auto bg-code py-2 select-text outline-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset" data-file-preview-source="" data-wrap={wrap ? 'on' : 'off'}>
       <div className={`shiki font-mono text-ui leading-relaxed ${wrap ? 'w-full' : 'w-max min-w-full'}`}>
         {blocks.map((block) => (
           <SourceBlock key={block.first} first={block.first} lines={block.lines} html={html !== null} wrap={wrap} range={range} gutter={gutter} skip={count >= SKIP_FROM} />

@@ -33,3 +33,5 @@ It needs Google Chrome (or set `CHROME` to another Chromium binary). The `social
 | [release-1.0.0](release-1.0.0/posts.md) | Release 1.0.0: the milestone (two weeks, 24 releases, what Switchboard is) |
 | [linux-beta](linux-beta/posts.md) | Switchboard on Linux in the 1.1.0 beta (texts for your own Omarchy screenshot) |
 | [coming-1.1](coming-1.1/posts.md) | Preview of 1.1 while in beta: schedules, triggers, pipelines, Upcoming |
+| [release-1.1.0](release-1.1.0/posts.md) | Release 1.1.0: schedules, triggers, pipelines and Upcoming (Claude Code that starts on its own) |
+| [release-1.1.0-more](release-1.1.0-more/index.html) | Second image for 1.1.0: Linux, #, previews, reading mode, app icons (texts in release-1.1.0) |

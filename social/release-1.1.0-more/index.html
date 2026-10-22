@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  body {
+    background:
+      radial-gradient(560px 420px at 76% 40%, rgba(255,212,59,0.10), transparent 70%),
+      radial-gradient(700px 420px at 100% 100%, rgba(116,192,252,0.14), transparent 60%),
+      radial-gradient(600px 380px at 95% -10%, rgba(201,95,61,0.20), transparent 60%),
+      var(--bg);
+  }
+  .copy { width: 440px; }
+  .brand { margin-bottom: 26px; }
+  .also { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 22px; font-size: 13px; color: var(--faint); }
+  .also .pill { height: 26px; padding: 0 11px; font-size: 12.5px; color: var(--text); background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px var(--edge); }
+
+  /* Crops of the website's real screenshots (demo data); --x/--y in screenshot pixels, --s the scale. */
+  .crop { position: absolute; overflow: hidden; border-radius: 13px; background: var(--bg);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 30px 70px -10px rgba(0,0,0,0.9); }
+  .crop img { position: absolute; display: block; width: calc(var(--w) * var(--s) * 1px);
+    left: calc(var(--x) * var(--s) * -1px); top: calc(var(--y) * var(--s) * -1px); }
+  .fade-b::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 60px; background: linear-gradient(transparent, var(--card)); }
+
+  /* The nine app icons (Settings › Theme), at the back. */
+  .icons { left: 96px; top: 0; width: 504px; height: 196px; --w: 1280; --x: 52; --y: 178; --s: 0.42; }
+  /* A Markdown file in the preview panel, on the right. */
+  .prev { left: 330px; top: 214px; width: 270px; height: 326px; --w: 2560; --x: 1806; --y: 112; --s: 0.36; background: var(--card); }
+
+  /* The # list over the message box, in front on the left. */
+  .card { position: absolute; border-radius: 13px; background: var(--card); box-shadow: 0 0 0 1px var(--edge), 0 26px 60px -12px rgba(0,0,0,0.85); }
+  .hash { left: 0; top: 250px; width: 318px; padding: 8px; }
+  .hash .h { padding: 6px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--faint); }
+  .hash .r { display: grid; grid-template-columns: 16px auto 1fr; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; font-size: 12.5px; color: var(--text); white-space: nowrap; }
+  .hash .r.on { background: rgba(255,212,59,0.10); box-shadow: inset 0 0 0 1px rgba(255,212,59,0.35); }
+  .hash .r i { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hash .r span { overflow: hidden; text-overflow: ellipsis; }
+  .hash svg { width: 15px; height: 15px; }
+  .box { margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--edge); font-size: 13px; color: var(--text); }
+  .box .caret { display: inline-block; width: 1.5px; height: 15px; margin-left: 1px; vertical-align: -3px; background: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="dots"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <img src="../../apps/desktop/build/icon.png" alt="">
+      <span class="name">Switchboard 1.1</span>
+    </div>
+    <div class="eyebrow"><span class="dot"></span>Also new in 1.1</div>
+    <h1>Now on Linux, with <span class="hl">nine new looks</span></h1>
+    <p class="sub">Type <b>#</b> to attach a GitHub issue or pull request. <b>Preview</b> Markdown, HTML and code files, and read long replies in <b>reading mode</b>.</p>
+    <div class="also">And:
+      <span class="pill">Keep this Mac awake</span>
+      <span class="pill">Open at login</span>
+      <span class="pill">Worktrees from any branch</span>
+    </div>
+  </div>
+
+  <div class="cta">
+    <span class="btn">Download for free</span>
+    <span class="where">switchboard.struyfconsulting.com</span>
+  </div>
+
+  <div class="stage">
+    <div class="crop icons"><img src="../../website/src/assets/screenshots/settings-app-icon-dark.png" alt=""></div>
+    <div class="crop prev fade-b"><img src="../../website/src/assets/screenshots/file-preview-dark.png" alt=""></div>
+
+    <div class="card hash">
+      <div class="h">Issues</div>
+      <div class="r on"><svg viewBox="0 0 16 16" fill="none" stroke="var(--ok)" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.4" fill="var(--ok)"/></svg><i>#41</i><span>Gift wrap missing from the summary</span></div>
+      <div class="r"><svg viewBox="0 0 16 16" fill="none" stroke="var(--ok)" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.4" fill="var(--ok)"/></svg><i>#38</i><span>Checkout total ignores coupon codes</span></div>
+      <div class="h">Pull requests</div>
+      <div class="r"><svg viewBox="0 0 16 16" fill="none" stroke="var(--ok)" stroke-width="1.6"><circle cx="4.5" cy="3.5" r="1.6"/><circle cx="4.5" cy="12.5" r="1.6"/><circle cx="11.5" cy="12.5" r="1.6"/><path d="M4.5 5.1v5.8M11.5 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7"/><path d="M8.5 3l-1.5 1.5L8.5 6"/></svg><i>#44</i><span>Add dark mode toggle to settings</span></div>
+      <div class="box">Fix #<span class="caret"></span></div>
+    </div>
+  </div>
+</body>
+</html>
