@@ -182,6 +182,8 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
+  const compacting = useHosts((s) => s.hosts.get(sessionId)?.compacting === true);
   const now = useTicker(choosing && showIndicator);
   if (choosing) {
     return (
@@ -197,7 +199,8 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       </div>
     );
   }
-  if (block?.kind === 'text') {
+  // The summary it streams while compacting is for the model, not for you: show the status instead of the text.
+  if (block?.kind === 'text' && !compacting) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
         <StreamingMarkdown text={block.text} />
@@ -206,9 +209,9 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
     );
   }
   if (!running || !showIndicator) return null;
-  const label = live.waitingSince !== null ? 'Waiting for you' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const label = live.waitingSince !== null ? 'Waiting for you' : compacting ? 'Compacting the conversation' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
-    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
+    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">

@@ -105,9 +105,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown };
+    const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}) });
     }
     return;
   }

@@ -13,6 +13,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **A clearer order for permission modes.** Settings › General › Global permission mode is what new sessions start in, unless the Claude profile or the project sets a mode, and each session can still change it. A project's Permissions now offers Profile default and Global default (which skips the profile's mode), each with a Change link to where it is set. If Settings had Use project default, it is now Ask before edits, and projects and profiles still come first. A mode set in Settings no longer overrides a project's or profile's own.
 
+### Fixed
+
+- **Compacting shows after switching sessions** ([#198](https://github.com/estruyf/switchboard/issues/198)). A session that is compacting now says so when you switch to another session and back, also in pop-outs and split view, instead of only Working.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added
