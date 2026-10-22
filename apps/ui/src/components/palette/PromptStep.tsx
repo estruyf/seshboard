@@ -27,7 +27,7 @@ import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, readGlobals, startingChoices, withNewSessionMode, type Choices, type GlobalChoices } from '../newSession/choices.ts';
+import { INITIAL_CHOICES, layeredDefaults, startingChoices, withNewSessionMode, type Choices } from '../newSession/choices.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote } from '../newSession/trayLabels.ts';
 import { baseChoices } from '../newSession/worktreeBases.ts';
@@ -61,7 +61,6 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const models = useHosts((s) => s.models);
   const profiles = useProfiles((s) => s.profiles);
   const defaultProfile = useProfiles((s) => s.defaultId);
-  const [globals, setGlobals] = useState<GlobalChoices>(INITIAL_CHOICES);
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
   const [loaded, setLoaded] = useState(false);
   /** Changed here: the project's defaults arriving late must not undo it. */
@@ -102,10 +101,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         () => !cancelled && setLoaded(true),
       );
     } else {
-      client.call('appState.get', { key: DEFAULTS_KEY }).then(
-        ({ value }) => !cancelled && (setGlobals(readGlobals(value).globals), setLoaded(true)),
-        () => !cancelled && setLoaded(true),
-      );
+      setLoaded(true);
     }
     return () => {
       cancelled = true;
@@ -118,9 +114,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
       setD(questionStartingChoices(questionChoices));
       return;
     }
-    const choices = startingChoices(withNewSessionMode(globals, newSessionMode), sessionDefaults);
+    const choices = startingChoices(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults);
     setD(worktree ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, globals, newSessionMode, defaultsKey, worktree, question, questionChoices]);
+  }, [loaded, newSessionMode, defaultsKey, worktree, question, questionChoices]);
 
   // Is it a git repository, on which branch, and where would a worktree branch from.
   useEffect(() => {
@@ -167,7 +163,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
     if (moved && savedDraft(moved)) forget(moved);
   }, [moved]);
 
-  // As in New session: a choice the project doesn't decide is remembered for next time.
+  // As in New session: a change applies to this prompt only.
   const update = (patch: Partial<Choices>) => {
     touched.current = true;
     setD((current) => ({ ...current, ...patch }));
@@ -181,14 +177,6 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         });
       }
       return;
-    }
-    const remembered = globalPatch(patch, sessionDefaults);
-    if (Object.keys(remembered).length) {
-      setGlobals((current) => {
-        const next = { ...current, ...remembered };
-        void client?.call('appState.set', { key: DEFAULTS_KEY, value: { ...next, cwd: root } });
-        return next;
-      });
     }
   };
 

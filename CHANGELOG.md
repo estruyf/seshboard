@@ -35,6 +35,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **New sessions start from the project's defaults.** A model, effort, mode or workspace you change in New session now applies to that prompt only, and the next one starts from the project's defaults again. To change what a project starts with, use Save as project default or the project's configuration.
 - **Projects is one view.** The list is on the left, the project on the right. Switch with the name's menu, the arrows or ⌥↑↓, and open a project's Settings from its row. Drag a row to reorder the list, and right-click it to rename or remove the project.
 - **A clearer trigger editor.** The trigger editor is easier to follow: five numbered sections, and a sentence at the top that says what the trigger will do. A new issues trigger changes nothing on GitHub until you turn on state labels in **What happens on GitHub?**.
 - **A clearer queue line in New session.** The line under the message box now says what happens ("If you add it to the queue, it waits for “Fix login” to finish, then starts by itself"), and the **Wait for** button shows what is picked.
@@ -51,6 +52,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Fixed
 
 - **A paired computer can no longer blank the window or the remote app.** When another computer sends sessions this version can't read, for example because it runs an older or newer Switchboard, the window and the remote app now leave them out and say so, instead of showing an empty screen. The computer's page and its chip in the sidebar say what happened, and the remote app shows a banner. Updating Switchboard on both computers fixes it.
+- **Archived sessions stop following their checks.** A session's pull request checks were still read and notified after the session was archived. Once archived, it no longer follows them, and no check notification comes for it. Opening it again while it's archived doesn't start following them either.
 - **Steer and Send now on another computer's sessions.** In a session from another computer, a message you send while Claude works no longer always waits in Up next. Enter queues or steers as set in Settings › Conversation, ⌥↵ (Alt+Enter on Windows) does it the other way, ⌘⇧↵ (Ctrl+Shift+Enter) stops Claude and sends at once, and the arrow next to Queue lists all three, as on your own sessions. Up next has **Send now** there and in the remote app on your phone. The other computer needs this version.
 - **The Steer button steers.** With Enter set to steer in Settings › Conversation, clicking **Steer** next to the message box queued the message instead.
 - **Steps on your phone read like the app's.** The remote app now names each step the way the app does: a command by what it does ("Merge origin/dev"), not its raw text, and the step Claude is on while it works ("Running the tests").
