@@ -1896,7 +1896,14 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     // .native also turns Windows' short names (RUNNER~1) into the long ones the shell prints.
     if (folder && realpathSync.native(read()) !== realpathSync.native(folder)) return `failed: the shell started in ${read()}, not ${folder}`;
     await shot(win, 'terminal.png');
-    return `ok: ran a command in ${read()}`;
+    // Middle-click on a tab closes it.
+    const tabs = "document.querySelectorAll('[data-terminal-panel] [role=tab]')";
+    const before = (await js(`${tabs}.length`)) as number;
+    await js("document.querySelector('[data-terminal-panel] [data-new-terminal]').click()");
+    if (!(await waitInPage(win, `${tabs}.length === ${before + 1}`, 5_000))) return 'failed: a second tab did not open';
+    await js(`${tabs}[${before}].dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }))`);
+    if (!(await waitInPage(win, `${tabs}.length === ${before}`, 3_000))) return 'failed: middle-click did not close the tab';
+    return `ok: ran a command in ${read()}, and middle-click closed a tab`;
   } finally {
     rmSync(marker, { force: true });
     // Leave the next run's panel closed again.

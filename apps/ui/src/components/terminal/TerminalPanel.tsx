@@ -285,6 +285,11 @@ export function TerminalPanel({
                       key={t.id}
                       className={`group flex h-7 shrink-0 items-center gap-1.5 rounded-md pr-1 pl-2.5 text-ui ${selected ? 'bg-selected text-text' : 'text-muted hover:bg-border/45 hover:text-text'}`}
                       data-terminal-tab={t.kind}
+                      onAuxClick={(e) => {
+                        if (e.button !== 1) return;
+                        e.preventDefault();
+                        closeTab(t);
+                      }}
                     >
                       <button
                         type="button"

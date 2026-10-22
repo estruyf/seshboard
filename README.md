@@ -282,6 +282,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |
 | Esc | Restore the terminal (while it fills the view, outside the shell) |
 | ⌘K | Clear the terminal (in the terminal) |
+| Middle-click | Close a terminal tab (on the tab) |
 | ⌃C | Stop the action (in the terminal, while an action runs) |
 | ⌘⇧L | Pull (when the branch is behind) |
 | ⌘↩ | Create the pull request (in Create pull request) |

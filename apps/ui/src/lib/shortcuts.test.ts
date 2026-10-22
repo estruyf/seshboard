@@ -231,6 +231,7 @@ describe('the shortcut registry', () => {
       'terminal.maximize': [at({ view: 'settings' }), at({ view: 'session', session: false })],
       'terminal.restore': [{ ...SESSION, terminal: { open: true, maximized: true, actionRunning: false } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'terminal.clear': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }, SESSION],
+      'terminal.close-tab': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }, SESSION],
       'terminal.stop-action': [{ ...SESSION, terminal: { open: true, maximized: false, actionRunning: true } }, { ...SESSION, terminal: { open: true, maximized: false, actionRunning: false } }],
       'git.pull': [{ ...SESSION, behind: true }, SESSION],
       'pr.create': [SESSION, HOME],

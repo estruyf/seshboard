@@ -842,6 +842,15 @@ export const SHORTCUTS = [
     where: "terminal",
   },
   {
+    id: "terminal.close-tab",
+    keys: ["middleclick"],
+    action: "Close a terminal tab",
+    section: "session",
+    context: "On the tab",
+    when: (ctx) => withTerminal(ctx) && ctx.terminal.open,
+    where: "terminal",
+  },
+  {
     id: "terminal.stop-action",
     keys: ["ctrl+c"],
     action: "Stop the action",

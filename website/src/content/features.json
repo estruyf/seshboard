@@ -1252,6 +1252,11 @@
       "page": "terminal-changes-git/terminal"
     },
     {
+      "id": "shortcut:terminal.close-tab",
+      "name": "Close a terminal tab",
+      "page": "terminal-changes-git/terminal"
+    },
+    {
       "id": "shortcut:terminal.maximize",
       "name": "terminal.maximize",
       "page": "command-palette"
