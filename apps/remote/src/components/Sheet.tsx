@@ -8,7 +8,7 @@ import { Button } from './ui.tsx';
  * scrolling body and an optional footer. It closes with a swipe down on the grabber or the title, Escape, a tap on the
  * scrim, or the back gesture (it adds a history entry while open).
  */
-export function Sheet({ title, subtitle, onClose, children, footer, label, hook, tall = false }: { title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; label?: string; hook?: string; tall?: boolean }) {
+export function Sheet({ title, subtitle, onClose, children, footer, label, hook, tall = false, done = false }: { title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; label?: string; hook?: string; tall?: boolean; /** Done in the close button's place: a sheet of choices that apply as you pick them (Options). */ done?: boolean }) {
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -61,9 +61,15 @@ export function Sheet({ title, subtitle, onClose, children, footer, label, hook,
               <h2 className="text-title font-semibold">{title}</h2>
               {subtitle && <p className="text-meta text-muted">{subtitle}</p>}
             </div>
-            <Button variant="quiet" size="md" aria-label="Close" onClick={onClose} className="-mr-2 px-2!">
-              <X className="size-4" aria-hidden />
-            </Button>
+            {done ? (
+              <Button variant="quiet" size="md" onClick={onClose} className="-mt-2 -mr-2 px-2! font-semibold text-accent-ink!" data-remote-sheet-done>
+                Done
+              </Button>
+            ) : (
+              <Button variant="quiet" size="md" aria-label="Close" onClick={onClose} className="-mr-2 px-2!">
+                <X className="size-4" aria-hidden />
+              </Button>
+            )}
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">{children}</div>

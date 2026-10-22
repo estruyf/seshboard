@@ -49,6 +49,11 @@ async function onPhone(run: (js: (code: string) => Promise<unknown>, win: Browse
   if (typeof win === 'string') return win;
   const js = (code: string) => win.webContents.executeJavaScript(code);
   await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click()");
+  // A session or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
+  if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-new-session]'))")) {
+    await js("history.replaceState({ kind: 'list' }, ''); location.reload()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 15_000))) return 'the phone did not come back to Home';
+  }
   if (!(await waitInPage(win, "document.querySelector('[data-remote-menu-button]') && !document.querySelector('[data-remote-drawer]') && !document.querySelector('[data-remote-settings]')", 5_000))) return 'the phone is not back on Home';
   return run(js, win);
 }
@@ -142,4 +147,107 @@ export async function closeRemotePhone(): Promise<void> {
   const win = await phone;
   if (win && typeof win !== 'string') win.destroy();
   phone = null;
+}
+
+/** Opens the demo's finished session from Home ("Add rate limits to the webhooks"), on its catch-up. */
+async function openFinished(js: (code: string) => Promise<unknown>, win: BrowserWindow): Promise<string | null> {
+  await js("[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((row) => row.innerText.startsWith('Add rate limits'))?.click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view]')", 3_000))) return 'the finished session did not open';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-catchup-title]')", 5_000))) return 'the finished session has no catch-up';
+  return null;
+}
+
+/** A finished session's catch-up says what you asked as the prompt's title, without its Markdown `#`. */
+export function runPhoneCatchUpStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const title = (await js("document.querySelector('[data-remote-catchup-title]').textContent")) as string;
+    if (title.includes('#')) return `the catch-up shows the prompt's Markdown: "${title}"`;
+    if (title !== 'Rate limits for the webhooks') return `the catch-up's title is "${title}", not the prompt's heading`;
+    await js("document.querySelector('[data-remote-catchup-prompt]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-sheet=\"prompt\"] h1, [data-remote-sheet=\"prompt\"] h2')", 3_000))) return 'Show the prompt did not show it as Markdown';
+    return `ok: "${title}", and Show the prompt renders the whole prompt`;
+  });
+}
+
+/** A session's header has no ? button: Ask about this session is the first row of its round ⋯. */
+export function runPhoneSessionMoreStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    if (await js("Boolean(document.querySelector('[data-remote-session-view] [data-remote-ask]'))")) return 'the header still has the ? button';
+    await js("document.querySelector('[data-remote-session-more]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-menu-item]')", 3_000))) return '⋯ did not open';
+    const items = (await js("[...document.querySelectorAll('[role=menu] [data-remote-menu-item]')].map((el) => el.dataset.remoteMenuItem).join(',')")) as string;
+    if (!items.startsWith('ask,')) return `⋯ starts with ${items}, not Ask about this session`;
+    await js("document.querySelector('[data-remote-session-more]').click()");
+    return `ok: ⋯ has ${items.replaceAll(',', ', ')}`;
+  });
+}
+
+/** New session from Home's floating pill, with an empty box (a draft from before is cleared). */
+async function openNewSession(js: (code: string) => Promise<unknown>, win: BrowserWindow): Promise<string | null> {
+  await js("document.querySelector('[data-remote-new-float]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-options]')", 10_000))) return 'New session has no Options row';
+  await js(TYPE(''));
+  return null;
+}
+
+/** Types into New session's box the way a person does, so React sees it. */
+const TYPE = (text: string) => `(() => {
+  const box = document.querySelector('[data-remote-new-prompt]');
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+})()`;
+
+/** New session's Options: another model picked in its sheet shows in the summary, in the accent colour. */
+export function runPhoneOptionsStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openNewSession(js, win);
+    if (failed) return failed;
+    if (await js("Boolean(document.querySelector('[data-remote-new-options] [data-remote-summary-changed]'))")) return 'the summary marks a change before anything was picked';
+    await js("document.querySelector('[data-remote-new-options]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-sheet=\"options\"] [data-remote-choice=\"model\"]')", 3_000))) return 'the Options sheet has no Model row';
+    await js("document.querySelector('[data-remote-sheet=\"options\"] [data-remote-choice=\"model\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-sheet=\"choice-model\"] [role=option]')", 3_000))) return 'the Model row did not open its list';
+    const picked = (await js(`(() => {
+      const option = [...document.querySelectorAll('[data-remote-sheet="choice-model"] [role=option]')].find((o) => o.getAttribute('aria-selected') !== 'true' && !o.innerText.startsWith('Auto'));
+      const name = option.innerText.split('\\n')[0];
+      option.click();
+      return name;
+    })()`)) as string;
+    if (!(await waitInPage(win, "!document.querySelector('[data-remote-sheet=\"choice-model\"]')", 3_000))) return 'the model list did not close';
+    await js("document.querySelector('[data-remote-sheet-done]').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-remote-sheet=\"options\"]')", 3_000))) return 'Done did not close Options';
+    const changed = (await js("[...document.querySelectorAll('[data-remote-new-options] [data-remote-summary-changed]')].map((el) => el.textContent).join(', ')")) as string;
+    if (!changed.includes(picked)) return `the summary doesn't mark ${picked} (marked: ${changed || 'nothing'})`;
+    const accent = (await js(`(() => {
+      const probe = document.createElement('span');
+      probe.className = 'text-accent-ink';
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return getComputedStyle(document.querySelector('[data-remote-new-options] [data-remote-summary-changed]')).color === color;
+    })()`)) as boolean;
+    if (!accent) return `${picked} is marked but not in the accent colour`;
+    return `ok: ${picked} picked in Options shows in the accent colour`;
+  });
+}
+
+/** Start session is the floating pill: dim with an empty box (still focusable, saying why), ready once there's a task. */
+export function runPhoneStartStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openNewSession(js, win);
+    if (failed) return failed;
+    const empty = (await js("(() => { const b = document.querySelector('[data-remote-start]'); return { state: b.dataset.remoteStartState, disabled: b.disabled, label: b.getAttribute('aria-label') }; })()")) as { state: string; disabled: boolean; label: string };
+    if (empty.state !== 'empty') return `Start is ${empty.state} with an empty box`;
+    if (empty.disabled) return "Start is disabled, so it can't take the focus";
+    if (!empty.label.includes('Type a message first')) return `Start says "${empty.label}" with an empty box`;
+    await js(TYPE('Add a retry to the upload'));
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-start]').dataset.remoteStartState === 'ready'", 2_000))) return 'Start did not get ready with a task in the box';
+    // Leave no draft behind for the next run.
+    await js(TYPE(''));
+    return 'ok: Start dim and saying "Type a message first" while empty, ready with a task';
+  });
 }

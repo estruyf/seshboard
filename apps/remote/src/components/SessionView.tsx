@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ChevronDown, FileDiff, LoaderCircle, MessageCircleQuestion, Send, Square, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
 import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
@@ -19,7 +19,9 @@ import { CatchUpCard } from './CatchUpCard.tsx';
 import { ChangesSheet, CommitSheet, type ChangesState } from './ChangesSheet.tsx';
 import { useNow } from './SessionList.tsx';
 import { AnchoredMenu, MenuButton, type MenuItem } from './Menu.tsx';
-import { EffortChip, ModeChip, ModelChip } from './OptionChips.tsx';
+import { EffortChip, ModeChip, ModelChip, ModelModeChip } from './OptionChips.tsx';
+import { lastReply, turnPrompt } from '../lib/promptTitle.ts';
+import { startState } from '../lib/newOptions.ts';
 import { DockedPrompt } from './PermissionCard.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
@@ -34,7 +36,7 @@ import { closeAsk, openAsk, useSessionAsk } from './askStore.ts';
 import { withQuote } from '../lib/ask.ts';
 import { SEND_MODES, SEND_MODES_NOTE, sendKey } from '../lib/sendMode.ts';
 import { keys, MAC } from '../lib/platform.ts';
-import { Button, ComputerTag, STATUS_LABEL, StatusDot } from './ui.tsx';
+import { Button, ComputerTag, RoundButton, STATUS_LABEL, StatusDot } from './ui.tsx';
 
 const PAGE = 50;
 
@@ -211,22 +213,25 @@ export function SessionView({
   const treeRun = takesPipelines ? runs.parent : null;
   const treeSteps = treeRun ? new Set(treeRun.steps.flatMap((s) => (s.sessionId ? [s.sessionId] : []))).size : 0;
   const setArchived = (archived: boolean) => (treeRun ? client!.call('runs.archive', { runId: treeRun.run.id, archived }) : client!.call('session.setFlags', { sessionId, archived }));
-  const menu: MenuItem[] = [
+  const others: MenuItem[] = [
     ...(working ? [{ label: 'Stop', onSelect: () => void client?.call('session.interrupt', { sessionId }).catch(fail) }] : []),
     { label: 'Mark as read', disabled: !client || !unread, onSelect: () => void client?.call('session.markRead', { sessionId }).catch(fail) },
     ...(takesPipelines && session && !runs.step ? [{ label: 'Run pipeline…', disabled: !client, onSelect: () => setPipelineSheet(true) }] : []),
-    {
-      label: treeSteps ? `Archive with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Archive',
-      disabled: !client,
-      onSelect: () =>
-        void setArchived(true)
-          .then(() => {
-            toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
-            onLeave();
-          })
-          .catch(fail),
-    },
   ];
+  const archiveItem: MenuItem = {
+    label: treeSteps ? `Archive with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Archive',
+    disabled: !client,
+    hook: 'archive',
+    onSelect: () =>
+      void setArchived(true)
+        .then(() => {
+          toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
+          onLeave();
+        })
+        .catch(fail),
+  };
+  /** The sidebar layout's `⋯`, with Ask and Changes as buttons in the header. */
+  const menu: MenuItem[] = [...others, archiveItem];
   const open = prompts[0];
   const card = showsCatchUp(catchUp, working || background, Boolean(open)) ? catchUp : null;
   const files = changes?.files.length ?? 0;
@@ -275,61 +280,102 @@ export function SessionView({
     }
   };
   const modelAndMode = running && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
+  const reply = lastReply(messages);
+  const copyReply = () => {
+    if (!reply) return;
+    void navigator.clipboard.writeText(reply).then(
+      () => toast('Copied the last reply'),
+      () => toast("Couldn't copy the reply.", { tone: 'error' }),
+    );
+  };
+  /**
+   * A phone's `⋯`: Ask about this session and Changes (the header has no room for their buttons), Copy the last reply,
+   * then Archive and the rest. Rename isn't here: the remote contract can't rename a session yet.
+   */
+  const phoneMenu: MenuItem[] = [
+    { label: ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session', icon: <MessageCircleQuestion aria-hidden />, hint: ask.ready ? 'Ready' : undefined, onSelect: () => openAsk(client, sessionId), hook: 'ask' },
+    ...(changes ? [{ label: 'Changes', icon: <FileDiff aria-hidden />, hint: `${files} ${files === 1 ? 'file' : 'files'}`, disabled: files === 0, onSelect: openChanges, hook: 'changes' }] : []),
+    { label: 'Copy the last reply', icon: <Copy aria-hidden />, disabled: !reply, onSelect: copyReply, hook: 'copy' },
+    { kind: 'separator' },
+    archiveItem,
+    ...others,
+  ];
+  /** The header's title and the line under it: how it is, the project, the branch and the profile. */
+  const titleLine = (
+    <>
+      <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
+      {session && (
+        <p className="flex items-center gap-1.5 truncate text-meta text-muted">
+          {computerName && <ComputerTag name={computerName} />}
+          <StatusDot status={session.status} />
+          {STATUS_LABEL[session.status]} · {session.projectName}
+          {session.branch ? ` · ${session.branch}` : ''}
+          {profile && (
+            <>
+              {' · '}
+              <span className="inline-flex items-center gap-1" title={`Claude profile: ${profile.name}`} data-remote-profile>
+                <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />
+                {profile.name}
+              </span>
+            </>
+          )}
+        </p>
+      )}
+    </>
+  );
+  // The whole prompt behind the catch-up's Show the prompt, when its message is among those loaded.
+  const asked = card ? turnPrompt(messages, card.turnId) : null;
 
   return (
     <div className="flex h-full bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-session-view>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${lead ? 'px-2' : 'px-5'}`}>
-          {lead}
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-title font-semibold">{session?.title ?? 'Session'}</h1>
-            {session && (
-              <p className="flex items-center gap-1.5 truncate text-meta text-muted">
-                {computerName && <ComputerTag name={computerName} />}
-                <StatusDot status={session.status} />
-                {STATUS_LABEL[session.status]} · {session.projectName}
-                {session.branch ? ` · ${session.branch}` : ''}
-                {profile && (
-                  <>
-                    {' · '}
-                    <span className="inline-flex items-center gap-1" title={`Claude profile: ${profile.name}`} data-remote-profile>
-                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${PROFILE_DOT[profile.color]}`} />
-                      {profile.name}
-                    </span>
-                  </>
-                )}
-              </p>
+        {wide ? (
+          <header className={`safe-top flex items-center gap-2 border-b border-border bg-bg pb-2 pointer-fine:pb-2.5 ${lead ? 'px-2' : 'px-5'}`}>
+            {lead}
+            <div className="min-w-0 flex-1">{titleLine}</div>
+            {modelAndMode && (
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-meta text-muted lg:inline-flex" title="Model and permission mode. Change them under the message box." data-remote-model-mode>
+                <span aria-hidden className={`size-1.5 rounded-full ${MODE_DOT[session!.permissionMode!]}`} />
+                {modelAndMode}
+              </span>
             )}
-          </div>
-          {wide && modelAndMode && (
-            <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-meta text-muted lg:inline-flex" title="Model and permission mode. Change them under the message box." data-remote-model-mode>
-              <span aria-hidden className={`size-1.5 rounded-full ${MODE_DOT[session!.permissionMode!]}`} />
-              {modelAndMode}
-            </span>
-          )}
-          <Button
-            variant="quiet"
-            size="md"
-            onClick={toggleAsk}
-            aria-pressed={ask.open}
-            aria-label={ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session'}
-            title="Ask about this session"
-            className={`relative px-2! text-link! ${ask.open ? 'bg-link/15' : ''}`}
-            data-remote-ask
-          >
-            <MessageCircleQuestion className="size-4" aria-hidden />
-            {wide && <span>Ask</span>}
-            {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
-          </Button>
-          {(files > 0 || (wide && changes)) && (
-            <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
-              <FileDiff className="size-4" aria-hidden />
-              {wide && <span>Changes</span>}
-              <span className="tabular-nums">{files}</span>
+            <Button
+              variant="quiet"
+              size="md"
+              onClick={toggleAsk}
+              aria-pressed={ask.open}
+              aria-label={ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session'}
+              title="Ask about this session"
+              className={`relative px-2! text-link! ${ask.open ? 'bg-link/15' : ''}`}
+              data-remote-ask
+            >
+              <MessageCircleQuestion className="size-4" aria-hidden />
+              <span>Ask</span>
+              {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
             </Button>
-          )}
-          <MenuButton label="Session actions" items={menu} />
-        </header>
+            {(files > 0 || changes) && (
+              <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
+                <FileDiff className="size-4" aria-hidden />
+                <span>Changes</span>
+                <span className="tabular-nums">{files}</span>
+              </Button>
+            )}
+            <MenuButton label="Session actions" items={menu} />
+          </header>
+        ) : (
+          // A phone: the menu button, the title and its line, and `⋯` with Ask, Changes and the rest.
+          <header className="safe-top flex items-center gap-1 bg-bg px-2 pb-2">
+            {lead}
+            <div className="min-w-0 flex-1 pl-1">{titleLine}</div>
+            <AnchoredMenu label="Session actions" items={phoneMenu} align="right">
+              {(trigger) => (
+                <RoundButton {...trigger} aria-label={ask.ready ? 'Session actions, an answer is ready' : 'Session actions'} data-remote-session-more badge={ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2.5 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}>
+                  <MoreHorizontal aria-hidden />
+                </RoundButton>
+              )}
+            </AnchoredMenu>
+          </header>
+        )}
         {banner}
         {runState && (
           <RunBar
@@ -350,7 +396,7 @@ export function SessionView({
           onOlder={() => void loadOlder()}
           folded={Boolean(card) && !unfolded}
           onUnfold={() => setUnfolded(true)}
-          header={card && <CatchUpCard card={card} now={now} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
+          header={card && <CatchUpCard card={card} prompt={asked} now={now} wide={wide} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
         />
         {error && (
           <div className="px-3 pt-2 sm:px-6">
@@ -378,6 +424,19 @@ export function SessionView({
           sessionId={sessionId}
           fill={fill}
           features={features}
+          wide={wide}
+          modelMode={
+            running && options && session ? (
+              <ModelModeChip
+                options={options}
+                session={session}
+                disabled={!client}
+                onModel={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)}
+                onEffort={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)}
+                onMode={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)}
+              />
+            ) : null
+          }
           chips={
             running && options && session ? (
               <>
@@ -549,10 +608,12 @@ function Transcript({
         <div ref={content} className="mx-auto w-full max-w-3xl">
           {header && <div className="pb-4">{header}</div>}
           {folded ? (
-            <Button variant="quiet" size="md" onClick={onUnfold} className="w-full" data-remote-unfold>
-              <ChevronDown className="size-4" aria-hidden />
-              Show the conversation · {items.length} {items.length === 1 ? 'message' : 'messages'}
-            </Button>
+            <div className="flex justify-center">
+              <button type="button" onClick={onUnfold} aria-label={`Show the conversation, ${items.length} ${items.length === 1 ? 'message' : 'messages'}`} className="flex min-h-10 items-center gap-1.5 rounded-full border border-border bg-card px-4 text-ui text-text hover:bg-border/45 active:bg-selected pointer-fine:min-h-8" data-remote-unfold>
+                <ChevronDown className="size-4 text-muted" aria-hidden />
+                Show the conversation · <span className="tabular-nums">{items.length}</span>
+              </button>
+            </div>
           ) : (
             <>
               {hasMore && (
@@ -674,11 +735,17 @@ function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemo
  * on the computer; the menu next to Send can steer it or send it now instead (`lib/sendMode.ts`). While a prompt is
  * open, what you send answers it instead. Images and files come from the attach button, a paste or a drop
  * (`Attachments.tsx`), and show above the box with a remove button.
+ *
+ * On a phone it is one rounded box: the text on top, and under it, inside the box, a round +, the model and mode in one
+ * chip (`modelMode`, its sheet has the choices) and a round Send, grey until there is text. On a wide screen the chips
+ * sit under the box, as on the computer.
  */
 function Composer({
   sessionId,
   fill,
   features,
+  wide,
+  modelMode,
   chips,
   disabled,
   working,
@@ -694,7 +761,10 @@ function Composer({
   /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
   fill: Fill | null;
   features: readonly string[];
-  /** The running session's model and mode, under the box. */
+  wide: boolean;
+  /** A phone's one chip for the running session's model and mode, in the box. */
+  modelMode: ReactNode;
+  /** The running session's model and mode, under the box on a wide screen. */
   chips: ReactNode;
   disabled: boolean;
   working: boolean;
@@ -736,11 +806,12 @@ function Composer({
     });
   }, [fill]);
   const cantSend = disabled || busy || reading || !text.trim();
+  const sendState = startState({ connected: !disabled, project: true, text, busy, reading });
   /** While Claude works, Send queues; its menu can steer or send now instead. An answer to a prompt has one way. */
   const modes = working && !answering;
   const send = async (mode: SendMode = 'queue') => {
     const message = text.trim();
-    if (!message || busy || reading) return;
+    if (!message || busy || reading || disabled) return;
     setBusy(true);
     try {
       await onSend(message, attachments.images, attachments.files, mode);
@@ -754,6 +825,90 @@ function Composer({
       setBusy(false);
     }
   };
+  const placeholder = disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : (idle ?? 'Message Claude');
+  const sendLabel = answering ? 'Send instead' : working ? 'Add to Up next' : 'Send';
+  const field = (className: string) => (
+    <textarea
+      ref={box}
+      value={text}
+      onChange={(event) => setText(event.target.value)}
+      onPaste={attachments.onPaste}
+      onFocus={() => onFocusChange(true)}
+      onBlur={() => onFocusChange(false)}
+      onKeyDown={(event) => {
+        // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer; ⌥↵ steers, ⌘⇧↵ sends now.
+        const mode = fine ? sendKey({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }, MAC) : null;
+        if (mode) {
+          event.preventDefault();
+          void send(mode);
+        }
+      }}
+      rows={1}
+      placeholder={placeholder}
+      aria-label="Message"
+      data-remote-message
+      className={className}
+    />
+  );
+  if (!wide)
+    return (
+      <form
+        className="safe-bottom px-3 pt-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void send();
+        }}
+        onDragOver={(event) => {
+          if (!disabled) attachments.dropProps.onDragOver(event);
+        }}
+        onDragLeave={attachments.dropProps.onDragLeave}
+        onDrop={attachments.dropProps.onDrop}
+        data-remote-composer
+      >
+        <AttachmentTray state={attachments} className="pb-2" />
+        <div className={`flex flex-col rounded-[24px] border bg-card px-2.5 pt-1 pb-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
+          {field('max-h-48 min-h-11 w-full resize-none bg-transparent px-1.5 py-2.5 text-body text-text outline-none [field-sizing:content] placeholder:text-faint')}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <AttachButton state={attachments} look="plus" disabled={disabled || answering} title={answering ? 'Answer the prompt first' : undefined} />
+            <div className="flex min-w-0 flex-1">{modelMode}</div>
+            {working && (
+              <button type="button" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="flex size-9 shrink-0 items-center justify-center rounded-full border border-error/60 text-error enabled:active:bg-error/15 disabled:opacity-50" data-remote-stop>
+                <Square className="size-3 fill-current" aria-hidden />
+              </button>
+            )}
+            {modes && (
+              <AnchoredMenu
+                label="More ways to send"
+                side="above"
+                align="right"
+                items={[
+                  ...SEND_MODES.map(({ mode, label, shortcut }) => ({ label, hint: fine ? keys(shortcut) : undefined, onSelect: () => void send(mode) })),
+                  { kind: 'separator' as const },
+                  { kind: 'note' as const, label: SEND_MODES_NOTE },
+                ]}
+              >
+                {(trigger) => (
+                  <button {...trigger} type="button" disabled={cantSend} aria-label="More ways to send" className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted enabled:active:bg-selected disabled:opacity-50" data-remote-send-menu>
+                    <ChevronDown className="size-4" aria-hidden />
+                  </button>
+                )}
+              </AnchoredMenu>
+            )}
+            {/* Focusable while it can't send, saying why ("Type a message first"). */}
+            <button
+              type="submit"
+              aria-disabled={cantSend || undefined}
+              aria-label={sendState.reason ? `${sendLabel}. ${sendState.reason}` : sendLabel}
+              title={sendState.reason ?? undefined}
+              className={`flex size-9 shrink-0 items-center justify-center rounded-full transition-colors ${cantSend ? 'bg-border text-faint' : 'bg-accent text-on-accent active:brightness-90'}`}
+              data-remote-send={cantSend ? 'empty' : 'ready'}
+            >
+              <ArrowUp className="size-[18px]" strokeWidth={2.5} aria-hidden />
+            </button>
+          </div>
+        </div>
+      </form>
+    );
   return (
     <form
       className="safe-bottom px-3 pt-2 sm:px-6"
@@ -770,27 +925,7 @@ function Composer({
       <AttachmentTray state={attachments} className="mx-auto w-full max-w-3xl pb-2" />
       <div className={`mx-auto flex w-full max-w-3xl items-end gap-2 rounded-xl border bg-card p-1.5 pl-1.5 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${dragging ? 'border-accent-ink ring-4 ring-accent/20' : 'border-edge'}`}>
         <AttachButton state={attachments} disabled={disabled || answering} title={answering ? 'Answer the prompt first' : undefined} />
-        <textarea
-          ref={box}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onPaste={attachments.onPaste}
-          onFocus={() => onFocusChange(true)}
-          onBlur={() => onFocusChange(false)}
-          onKeyDown={(event) => {
-            // With a keyboard, Enter sends and Shift+Enter starts a new line, as on the computer; ⌥↵ steers, ⌘⇧↵ sends now.
-            const mode = fine ? sendKey({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }, MAC) : null;
-            if (mode) {
-              event.preventDefault();
-              void send(mode);
-            }
-          }}
-          rows={1}
-          placeholder={disabled ? 'Sending waits for the connection' : answering ? 'Or tell Claude what to do instead' : working ? 'Add to Up next' : (idle ?? 'Message Claude')}
-          aria-label="Message"
-          data-remote-message
-          className="max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1"
-        />
+        {field('max-h-48 min-h-9 flex-1 resize-none bg-transparent py-2 text-body text-text outline-none [field-sizing:content] placeholder:text-faint pointer-fine:min-h-7 pointer-fine:py-1')}
         {working && (
           <Button variant="danger" size="md" onClick={onStop} disabled={disabled} aria-label="Stop" title="Stop Claude" className="px-3!" data-remote-stop>
             <Square className="size-3 fill-current" aria-hidden />
@@ -798,7 +933,7 @@ function Composer({
           </Button>
         )}
         <div className="flex shrink-0">
-          <Button type="submit" variant="primary" size="md" disabled={cantSend} aria-label={answering ? 'Send instead' : working ? 'Add to Up next' : 'Send'} className={`px-3! ${modes ? 'rounded-r-none' : ''}`}>
+          <Button type="submit" variant="primary" size="md" disabled={cantSend} aria-label={sendLabel} className={`px-3! ${modes ? 'rounded-r-none' : ''}`}>
             <Send className="size-4" aria-hidden />
           </Button>
           {modes && (

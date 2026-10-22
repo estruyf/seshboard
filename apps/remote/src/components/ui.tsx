@@ -38,10 +38,10 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
  * The round icon buttons of a phone's headers (the menu, search, `⋯`, Back, the drawer's ×): a 42px circle with a
  * border, in a 44px target; the desktop's 32px with a mouse. Children go in the circle, and `badge` over its corner.
  */
-export function RoundButton({ className = '', children, badge, ...props }: ComponentProps<'button'> & { badge?: ReactNode }) {
+export function RoundButton({ className = '', children, badge, size = 'md', ...props }: ComponentProps<'button'> & { badge?: ReactNode; /** `sm`: a 36px circle, inside a box (the message box's +). */ size?: 'md' | 'sm' }) {
   return (
     <button type="button" {...props} className={`group relative inline-flex size-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50 pointer-fine:size-9 ${className}`}>
-      <span className="flex size-[42px] items-center justify-center rounded-full border border-border bg-card text-text transition-colors group-enabled:group-hover:bg-border/60 group-enabled:group-active:bg-selected pointer-fine:size-8 [&>svg]:size-[18px] pointer-fine:[&>svg]:size-4">{children}</span>
+      <span className={`flex items-center justify-center rounded-full border border-border bg-card text-text transition-colors group-enabled:group-hover:bg-border/60 group-enabled:group-active:bg-selected pointer-fine:size-8 [&>svg]:size-[18px] pointer-fine:[&>svg]:size-4 ${size === 'sm' ? 'size-9' : 'size-[42px]'}`}>{children}</span>
       {badge}
     </button>
   );

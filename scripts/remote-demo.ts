@@ -286,7 +286,8 @@ const CATCH_UP: CatchUp = {
   generatedAt: now - 34 * MINUTE,
   source: 'model',
   state: 'finished',
-  ask: 'Add rate limits to the webhook endpoints',
+  // The start of the prompt as it was written, in Markdown: the card's title is its heading.
+  ask: '# Rate limits for the webhooks\n\nAdd rate limits to the webhook endpoints: 100 requests a minute per customer.',
   did: ['Added a per-customer token bucket in limit.ts', 'Put the limit in front of the webhook handler', 'Wrote 3 tests for the limit and the 429 answer'],
   skipped: [],
   need: { kind: 'commit', title: 'Commit the changes', text: 'The tests pass. Look over the diff, then commit.' },
@@ -313,10 +314,13 @@ const result = (uuid: string, id: string, output: string, minutesAgo: number): T
   blocks: [{ type: 'tool_result', toolUseId: id, isError: false, text: output, truncated: false }],
 });
 
+/** The finished session's prompt, written as a Markdown brief (its catch-up shows the heading as the title). */
+const BRIEF = '# Rate limits for the webhooks\n\nAdd rate limits to the webhook endpoints: **100 requests a minute** per customer.\n\n- Answer `429` with `Retry-After` past the limit\n- Tell me what you changed';
+
 function transcript(sessionId: string): TranscriptMessage[] {
   const p = sessionId.slice(-2);
   return [
-    text(`${p}-1`, 'user', 'Add rate limits to the webhook endpoints. 100 requests a minute per customer, and tell me what you changed.', 40),
+    text(`${p}-1`, 'user', sessionId === CATCH_UP.sessionId ? BRIEF : 'Add rate limits to the webhook endpoints. 100 requests a minute per customer, and tell me what you changed.', 40),
     text(`${p}-2`, 'assistant', "I'll look at how the webhooks are routed first.", 39),
     tool(`${p}-3`, `${p}-t1`, 'Grep', { pattern: 'router.post\\(.*webhook', path: 'src' }, 39),
     result(`${p}-4`, `${p}-t1`, 'src/webhooks/router.ts:14', 39),
@@ -674,6 +678,9 @@ const hub: RemoteHub = new RemoteHub({
   setEffort: async (sessionId, effort) => void efforts.set(sessionId, effort),
   setPermissionMode: async (sessionId, mode) => void modes.set(sessionId, mode),
   autoModel: () => ({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'] }),
+  globalPermissionMode: () => 'default',
+  // No demo session is at a usage limit.
+  limit: () => null,
   models: () => [
     { value: 'default', displayName: 'Default', description: 'Opus for planning, Sonnet for the rest', supportsEffort: true },
     { value: 'opus', displayName: 'Opus', description: 'Most capable for complex work', supportsEffort: true },

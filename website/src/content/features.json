@@ -1508,7 +1508,7 @@
     },
     {
       "id": "feature:remote-catch-up",
-      "name": "Remote: catch-up on a finished session",
+      "name": "Remote: catch-up on a finished session, with what you asked as a title and Show the prompt",
       "page": "remote-access"
     },
     {
@@ -1518,7 +1518,7 @@
     },
     {
       "id": "feature:remote-session-menu",
-      "name": "Remote: Stop, Mark as read and Archive",
+      "name": "Remote: a session's ⋯ with Ask about this session, Changes, Copy the last reply, Archive, Stop and Mark as read",
       "page": "remote-access"
     },
     {
@@ -1533,7 +1533,7 @@
     },
     {
       "id": "feature:remote-new-session-options",
-      "name": "Remote: model (also Auto), effort, mode and worktree in New session",
+      "name": "Remote: model (also Auto), effort, mode, worktree and branch in New session, in one Options sheet on a phone",
       "page": "remote-access"
     },
     {
@@ -1543,7 +1543,7 @@
     },
     {
       "id": "feature:remote-model-mode-chips",
-      "name": "Remote: model, effort and mode of a running session",
+      "name": "Remote: model, effort and mode of a running session, in one chip in the message box on a phone",
       "page": "remote-access"
     },
     {
