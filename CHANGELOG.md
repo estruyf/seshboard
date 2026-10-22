@@ -34,6 +34,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **New sessions start from the project's defaults.** A model, effort, mode or workspace you change in New session now applies to that prompt only, and the next one starts from the project's defaults again. To change what a project starts with, use Save as project default or the project's configuration.
 - **Projects is one view.** The list is on the left, the project on the right. Switch with the name's menu, the arrows or ⌥↑↓, and open a project's Settings from its row. Drag a row to reorder the list, and right-click it to rename or remove the project.
 - **A clearer trigger editor.** The trigger editor is easier to follow: five numbered sections, and a sentence at the top that says what the trigger will do. A new issues trigger changes nothing on GitHub until you turn on state labels in **What happens on GitHub?**.
 - **A clearer queue line in New session.** The line under the message box now says what happens ("If you add it to the queue, it waits for “Fix login” to finish, then starts by itself"), and the **Wait for** button shows what is picked.
