@@ -211,11 +211,11 @@ export function waitingCount(list: RemoteSessions | null | undefined): number {
   return list.sessions.filter((s) => s.status === 'needs-you' || asking.has(s.id)).length;
 }
 
-/** The line under a computer's name: connected, trying, or why not. */
+/** The line under a computer's name: connected (or what it sent that this version can't read), trying, or why not. */
 export function computerLine(computer: Computer, now = Date.now()): string {
   switch (computer.state) {
     case 'connected':
-      return 'Connected';
+      return computer.problem ?? 'Connected';
     case 'connecting':
       return 'Connecting…';
     case 'unpaired':
@@ -223,6 +223,11 @@ export function computerLine(computer: Computer, now = Date.now()): string {
     case 'offline':
       return `${computer.message ?? 'Offline.'}${retryText(computer, now)}`;
   }
+}
+
+/** The computers that now say they sent what this version can't read, and didn't say so before: told once, in a toast. */
+export function newProblems(before: readonly Pick<Computer, 'id' | 'problem'>[] | undefined, after: readonly Computer[]): Computer[] {
+  return after.filter((computer) => computer.problem && before?.find((c) => c.id === computer.id)?.problem !== computer.problem);
 }
 
 /** " Trying again in 30s." while a retry is planned, else nothing. */

@@ -13,6 +13,7 @@ import {
   writeRunStub,
   type Pipeline,
   type PipelineRunState,
+  checkRemoteSessions,
   pskFromSecret,
   REMOTE_APP_URL,
   REMOTE_IMAGE_BYTES,
@@ -1068,6 +1069,9 @@ describe('what a phone sees', () => {
     const work = { id: 'work', name: 'Work', color: 'blue' as const };
     expect(remoteSessions(sources, { ...base, profiles: [work] }).sessions[0]!.profile).toBeNull();
     expect(remoteSessions(sources, { ...base, profiles: [{ id: 'default', name: 'Personal', color: 'yellow' }, work] }).sessions[0]!.profile).toEqual(work);
+    // What it sends, the remote app's own check (without zod) reads in full.
+    const sent = JSON.parse(JSON.stringify(remoteSessions(sources, { ...base, profiles: [{ id: 'default', name: 'Personal', color: 'yellow' }, work] }))) as unknown;
+    expect(checkRemoteSessions(sent)).toMatchObject({ dropped: 0, list: { sessions: [{ id: SESSION }] } });
   });
 
   it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {
