@@ -113,6 +113,8 @@ export const SessionHostInfo = z.object({
   profileId: z.string(),
   /** Background tasks still running; the session can be idle (ready for a message) while these work. */
   backgroundTasks: z.array(BackgroundTask),
+  /** Claude Code is compacting the conversation (a `/compact` or an automatic one). Missing: it isn't. */
+  compacting: z.boolean().optional(),
   /** Auto picked the model this session started on (null or missing: it didn't). */
   autoPick: AutoPick.nullable().optional(),
   /** Auto is still picking the model this session starts on; your first message waits for it. */

@@ -6786,6 +6786,39 @@ async function pipelineEditorChecks(win: BrowserWindow, js: (code: string) => Pr
   return `ok: in a narrow window the list sits above the editor, and Validate's Starts (${box.text}) is one row of ${box.height}px, above the Model row`;
 }
 
+/** A session that is compacting says so after you switch to another session and back (a stand-in the host list reports as compacting). */
+async function runCompactingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-compacting-')));
+  const standIn = `smoke-compacting-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', compacting?: boolean) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(compacting !== undefined ? { compacting } : {}) });
+  const status = `document.querySelector('[data-current-session="${standIn}"] [data-streaming][data-compacting]')?.innerText ?? ''`;
+  try {
+    if (!smokeSessionId) return 'no session to switch to';
+    host('running', true);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `${status}.includes('Compacting')`, 5_000))) return 'the session did not say it is compacting';
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000))) return 'did not switch to another session';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `${status}.includes('Compacting')`, 5_000))) return 'after switching back, the session did not say it is compacting';
+    await shot(win, 'compacting.png');
+    host('running', false);
+    if (!(await waitInPage(win, `!document.querySelector('[data-streaming][data-compacting]')`, 3_000))) return 'it kept saying it is compacting after the compact ended';
+    return 'ok: a compacting session said Compacting the conversation, still did after switching to another session and back, and stopped when the compact ended';
+  } finally {
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
 async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
@@ -9525,6 +9558,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: Stop the run, archive the run with its steps, then delete it', () => runArchiveRunStep(win));
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
+  await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });

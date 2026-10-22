@@ -326,7 +326,7 @@ export interface Engine {
    * With `stubQueueStarts` only: a stand-in session this app "runs", for the smoke test's queue step. `running` starts
    * a turn, `idle` ends it with `outcome`, `closed` takes it away.
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped' }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
   /**
    * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
    * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
@@ -1167,7 +1167,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1189,6 +1189,7 @@ export function createEngine(options: EngineOptions): Engine {
         backgroundTasks: [],
       }),
       state,
+      ...(compacting !== undefined ? { compacting } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
     };
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
