@@ -1,4 +1,4 @@
-import { cacheExpiresAt, cacheRewriteCost, formatCost, type ContextWarningPrefs, type CurrencyCode, type SessionHostInfo } from '@switchboard/protocol/client';
+import { cacheExpiresAt, cacheRewriteCost, formatCost, isLargeContext, type ContextWarningPrefs, type CurrencyCode, type SessionHostInfo } from '@switchboard/protocol/client';
 
 /** How long before an hour-long cache lapses its notification comes. */
 export const REMIND_BEFORE_MS = 5 * 60_000;
@@ -28,8 +28,8 @@ const compact = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M
  * cache a notification would come as you are reading the reply; the session's own notice says it instead.)
  */
 export function reminderDue(host: SessionHostInfo, prefs: ContextWarningPrefs): number | null {
-  if (!prefs.enabled || !prefs.notifyExpiry || host.state !== 'idle') return null;
-  if (host.cacheTtl !== '1h' || host.cacheAt == null || host.contextPercent == null || host.contextPercent < prefs.percent) return null;
+  if (!prefs.notifyExpiry || host.state !== 'idle') return null;
+  if (host.cacheTtl !== '1h' || host.cacheAt == null || !isLargeContext(host.contextTokens, prefs)) return null;
   return cacheExpiresAt(host.cacheAt, '1h') - REMIND_BEFORE_MS;
 }
 

@@ -1,8 +1,9 @@
-import { cacheExpiresAt, type CacheTtl, type ContextWarningPrefs, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheExpiresAt, isLargeContext, type CacheTtl, type ContextWarningPrefs, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
 import { HIGH_AT, levelOf, type Level } from '../../lib/levels.ts';
 
 /**
- * A session's context is "large" from the percentage in Settings › Usage on: its ring turns orange there, and the
+ * A session's context is "large" from the token count that Settings › Usage › Large from stands for (a share of a 200k
+ * window, `largeContextTokens` in `@switchboard/protocol`): its ring turns orange there, and the
  * session says when its prompt cache lapses (`@switchboard/protocol` `contextCache.ts`).
  */
 
@@ -15,28 +16,15 @@ export interface CacheUse {
   ttl: CacheTtl;
 }
 
-/** The window size to assume for a session not running here (Claude Code reports it only to a running one). */
-const ASSUMED_WINDOW = 200_000;
-const LARGE_WINDOW = 1_000_000;
-
 /**
- * How full the context window is, as a percentage: the reported one for a session running here, or an estimate from
- * the last turn's tokens otherwise (a 200k window, or 1M once it holds more than 200k).
+ * The context ring's level: orange once the tokens are large (`isLargeContext`), red from the warning's percentage of
+ * the real window (85% at least). With the warning off, the usual levels.
  */
-export function contextPercentOf(known: { percent: number } | null, estimate: number | null): number | null {
-  if (known) return known.percent;
-  if (estimate === null) return null;
-  return (estimate / (estimate > ASSUMED_WINDOW ? LARGE_WINDOW : ASSUMED_WINDOW)) * 100;
-}
-
-/** The context ring's level: orange from the warning's percentage (and red from 85%, or from there when it is higher). */
-export function contextLevel(percent: number, warning: ContextWarningPrefs): Level {
+export function contextLevel(percent: number, tokens: number, warning: ContextWarningPrefs): Level {
   if (!warning.enabled) return levelOf(percent);
-  if (!Number.isFinite(percent) || percent < warning.percent) return 'ok';
-  return percent < Math.max(HIGH_AT, warning.percent) ? 'caution' : 'high';
+  if (Number.isFinite(percent) && percent >= Math.max(HIGH_AT, warning.percent)) return 'high';
+  return isLargeContext(tokens, warning) ? 'caution' : 'ok';
 }
-
-export const isLargeContext = (percent: number | null, warning: ContextWarningPrefs): boolean => warning.enabled && percent !== null && percent >= warning.percent;
 
 /**
  * The cache from the transcript: the last reply that read or wrote it (subagents have their own), and the cache it
@@ -99,7 +87,7 @@ export function largeSessions(hosts: Iterable<SessionHostInfo>, warning: Context
   const out: LargeSession[] = [];
   for (const h of hosts) {
     if (h.state === 'closed' || h.state === 'error' || !h.contextTokens || !h.contextMax) continue;
-    if (!isLargeContext(h.contextPercent ?? (h.contextTokens / h.contextMax) * 100, warning)) continue;
+    if (!isLargeContext(h.contextTokens, warning)) continue;
     const ttl = h.cacheTtl ?? null;
     out.push({ sessionId: h.sessionId, tokens: h.contextTokens, ttl, usd: ttl && h.model ? rewriteCost(h.contextTokens, h.model, ttl) : null });
   }

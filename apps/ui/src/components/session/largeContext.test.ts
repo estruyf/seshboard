@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cacheRewriteCost, DEFAULT_CONTEXT_WARNING, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
-import { agoText, cacheState, cacheUseOf, contextLevel, contextPercentOf, largeSessions, largeSessionsText, transcriptCache, untilText } from './largeContext.ts';
+import { agoText, cacheState, cacheUseOf, contextLevel, largeSessions, largeSessionsText, transcriptCache, untilText } from './largeContext.ts';
 
 const HOUR = 60 * 60_000;
 const reply = (at: number, usage: Partial<NonNullable<TranscriptMessage['usage']>> | null, patch: Partial<TranscriptMessage> = {}): TranscriptMessage => ({
@@ -37,26 +37,22 @@ const host = (patch: Partial<SessionHostInfo>): SessionHostInfo => ({
 });
 
 describe('contextLevel', () => {
-  it('turns orange from the warning percentage and red from 85%', () => {
+  it('turns orange from the large token count and red from 85% of the window', () => {
     const at70 = { ...DEFAULT_CONTEXT_WARNING, percent: 70 };
-    expect(contextLevel(65, at70)).toBe('ok');
-    expect(contextLevel(70, at70)).toBe('caution');
-    expect(contextLevel(85, at70)).toBe('high');
+    expect(contextLevel(60, 119_000, at70)).toBe('ok');
+    expect(contextLevel(60, 140_000, at70)).toBe('caution');
+    expect(contextLevel(85, 850_000, at70)).toBe('high');
+  });
+
+  it('is orange for 384k on a 1M window, and not for 100k', () => {
+    expect(contextLevel(38, 384_000, DEFAULT_CONTEXT_WARNING)).toBe('caution');
+    expect(contextLevel(10, 100_000, DEFAULT_CONTEXT_WARNING)).toBe('ok');
   });
 
   it('goes straight to red when the percentage is past 85%, and keeps the usual levels when off', () => {
-    expect(contextLevel(88, { ...DEFAULT_CONTEXT_WARNING, percent: 90 })).toBe('ok');
-    expect(contextLevel(90, { ...DEFAULT_CONTEXT_WARNING, percent: 90 })).toBe('high');
-    expect(contextLevel(65, { ...DEFAULT_CONTEXT_WARNING, enabled: false, percent: 90 })).toBe('caution');
-  });
-});
-
-describe('contextPercentOf', () => {
-  it('estimates a 200k window, or 1M once the context is past 200k', () => {
-    expect(contextPercentOf({ percent: 42 }, 1)).toBe(42);
-    expect(contextPercentOf(null, 150_000)).toBe(75);
-    expect(contextPercentOf(null, 400_000)).toBe(40);
-    expect(contextPercentOf(null, null)).toBeNull();
+    expect(contextLevel(88, 880_000, { ...DEFAULT_CONTEXT_WARNING, percent: 90 })).toBe('caution');
+    expect(contextLevel(90, 180_000, { ...DEFAULT_CONTEXT_WARNING, percent: 90 })).toBe('high');
+    expect(contextLevel(65, 130_000, { ...DEFAULT_CONTEXT_WARNING, enabled: false, percent: 90 })).toBe('caution');
   });
 });
 
@@ -101,6 +97,7 @@ describe('largeSessions', () => {
       host({ sessionId: 'a', contextTokens: 300_000, contextPercent: 60 }),
       host({ sessionId: 'b', contextTokens: 400_000, contextPercent: 80, cacheTtl: null }),
       host({ sessionId: 'small', contextTokens: 100_000, contextPercent: 20 }),
+      host({ sessionId: 'wide', contextTokens: 100_000, contextPercent: 10, contextMax: 1_000_000 }),
       host({ sessionId: 'closed', state: 'closed' }),
     ];
     expect(largeSessions(hosts, DEFAULT_CONTEXT_WARNING, cacheRewriteCost)).toEqual([

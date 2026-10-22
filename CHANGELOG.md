@@ -13,6 +13,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **A clearer order for permission modes.** Settings › General › Global permission mode is what new sessions start in, unless the Claude profile or the project sets a mode, and each session can still change it. A project's Permissions now offers Profile default and Global default (which skips the profile's mode), each with a Change link to where it is set. If Settings had Use project default, it is now Ask before edits, and projects and profiles still come first. A mode set in Settings no longer overrides a project's or profile's own.
 
+### Fixed
+
+- **Large context notice in sessions with a 1M window.** The notice, the reminder before the cache expires and the quit prompt now count tokens: Large from in Settings › Usage is a share of a 200k window (60% is 120k), whatever the session's window. Before, a session on a 1M window only counted as large from 600k.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added
