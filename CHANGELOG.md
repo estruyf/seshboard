@@ -16,6 +16,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Fixed
 
 - **Compacting shows after switching sessions** ([#198](https://github.com/estruyf/switchboard/issues/198)). A session that is compacting now says so when you switch to another session and back, also in pop-outs and split view, instead of only Working.
+- **Large context cost follows the model you pick.** The cost in the Large context notice is now the price of the model your next message goes to, also after you pick another one in the model chip.
 
 ## [1.1.0] - 2026-10-22
 

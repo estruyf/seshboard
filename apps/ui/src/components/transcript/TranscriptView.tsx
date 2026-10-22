@@ -70,6 +70,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
+import { useSavedSettings } from '../../state/savedSettingsStore.ts';
 import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
@@ -356,6 +357,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const registryLive = useSessions((s) => s.live.get(sessionId) ?? null);
   const select = useSessions((s) => s.select);
   const host = useHosts((s) => s.hosts.get(sessionId));
+  const savedModel = useSavedSettings((s) => s.bySession[sessionId]?.model);
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const permissions = useMemo(() => [...permissionMap.values()].filter((p) => p.sessionId === sessionId), [permissionMap, sessionId]);
@@ -1870,7 +1872,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
-              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} onCompact={compact} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} chosenModel={activeHost ? (activeHost.model ?? null) : !restart && !registryLive ? savedModel : undefined} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
