@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalPatch, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
+import { INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
@@ -30,8 +30,6 @@ describe('new session choices', () => {
     expect(layeredDefaults(null, profile)).toEqual({ ...unset, model: 'opus', permissionMode: 'plan', workspace: 'worktree' });
     const globals = { ...INITIAL_CHOICES, model: 'haiku', effort: 'low' as const };
     expect(startingChoices(globals, layered)).toEqual({ ...globals, model: 'sonnet', permissionMode: 'plan', workspace: 'worktree', branch: 'develop' });
-    // Fields the profile decides are not remembered globally either.
-    expect(globalPatch({ model: 'haiku', permissionMode: 'default', effort: 'max' }, layered)).toEqual({ effort: 'max' });
     // A link takes the profile's mode, unless it never asks.
     expect(linkStartingChoices(globals, layeredDefaults(null, profile)).permissionMode).toBe('plan');
     expect(linkStartingChoices(globals, layeredDefaults(null, { ...profile, permissionMode: 'bypassPermissions' })).permissionMode).toBe('default');
@@ -54,15 +52,6 @@ describe('new session choices', () => {
     }
     expect(linkPermissionMode(null)).toBe('default');
     expect(linkPermissionMode('default')).toBe('default');
-  });
-
-  it('only remember changes globally for fields the project leaves unset', () => {
-    const project = { ...unset, model: 'opus' };
-    expect(globalPatch({ model: 'haiku', effort: 'max', branch: 'x' }, project)).toEqual({ effort: 'max' });
-    expect(globalPatch({ model: 'haiku' }, null)).toEqual({ model: 'haiku' });
-    // A branch to start a worktree from belongs to the repository, like the branch to check out.
-    expect(globalPatch({ baseRef: 'refs/heads/dev' }, null)).toEqual({});
-    expect(globalPatch({ baseRef: 'head' }, null)).toEqual({ baseRef: 'head' });
   });
 
   it('save as project defaults, dropping the branch for worktrees', () => {
