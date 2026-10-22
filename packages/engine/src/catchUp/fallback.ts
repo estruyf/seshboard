@@ -1,7 +1,8 @@
 import type { CatchUp, CatchUpNeedKind, PermissionRequest } from '@switchboard/protocol';
+import { declinedLine, failedLine, ranLine, retriedLater } from './commandText.ts';
 import type { Signals } from './signals.ts';
 import { isTestCommand } from './testCommands.ts';
-import { EDIT_TOOLS, oneLine, type ToolCall, type Turn } from './turn.ts';
+import { EDIT_TOOLS, oneLine, type Turn } from './turn.ts';
 
 export type Need = CatchUp['need'];
 
@@ -18,9 +19,6 @@ const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? p
 
 /** Commands that only look around: they say nothing about what was done. */
 const LOOKING = /^(cd|ls|cat|pwd|echo|head|tail|wc|grep|rg|find|fd|tree|which|file|stat|sed\s+-n|git\s+(status|diff|log|show|branch|rev-parse|ls-files|blame))(\s|$)/;
-
-/** A failing run in words: "npm run lint failed (exit 2)". */
-const failedLine = (call: ToolCall) => `${oneLine(call.command ?? call.name, 80)} failed${call.exitCode && call.exitCode !== 1 ? ` (exit ${call.exitCode})` : ''}`;
 
 /** The test chip's words, also used in the need's text: "14 tests passed", "2 of 9 tests fail". */
 export function testsText(tests: Signals['tests']): string {
@@ -91,8 +89,9 @@ const plainText = (text: string) =>
 
 /**
  * What Claude itself said it did, from its last reply, when there is no model to read it: the first sentence (the
- * headline of a report), then up to two bold leads ("**Finding 1: valid, but not a regression.**"). Empty when the reply
- * is only a question for you, since the need already shows it.
+ * headline of a report), then up to two bold leads ("**Finding 1: valid, but not a regression.**"). A bold line on its
+ * own without a full stop ("**What's in it**") is a section's heading, not something it did. Empty when the reply is
+ * only a question for you, since the need already shows it.
  */
 export function replyLines(finalText: string): string[] {
   const paragraphs = finalText.replace(/```[\s\S]*?```/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -103,8 +102,9 @@ export function replyLines(finalText: string): string[] {
   if (headline.length >= 15 && !headline.endsWith('?')) lines.push(oneLine(headline, 200));
   for (const paragraph of paragraphs.slice(1)) {
     if (lines.length === 3) break;
-    const lead = /^(?:[-*•]\s+)?\*\*([^*]{8,}?)\*\*/.exec(paragraph)?.[1];
-    if (!lead) continue;
+    const match = /^(?:[-*•]\s+)?\*\*([^*]{8,}?)\*\*(.*)/.exec(paragraph);
+    const lead = match?.[1];
+    if (!lead || (/^[:\s]*$/.test(match![2]!) && !/[.!]$/.test(lead.trim()))) continue;
     const line = oneLine(plainText(lead).replace(/[:.\s]+$/, ''), 200);
     if (line && !lines.includes(line)) lines.push(line);
   }
@@ -113,8 +113,9 @@ export function replyLines(finalText: string): string[] {
 
 /**
  * The card's lines without a model: Claude's own account first when `reply` is on (see `replyLines`), then what the
- * tool calls show, what was edited and run (`did`), and what failed or you declined (`skipped`). `need` follows the
- * rules above.
+ * tool calls show, what was edited and run (`did`), and what failed or you declined (`skipped`), in words rather than
+ * the commands themselves (`commandText.ts`). A command that failed and worked when it ran again is no unfinished work.
+ * `need` follows the rules above.
  */
 export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 'finished' | 'error'; error: string | null }, options: { reply?: boolean } = {}): Summary {
   const said = options.reply ? replyLines(turn.finalText) : [];
@@ -122,10 +123,11 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
   const edited = [...new Set(turn.tools.filter((t) => EDIT_TOOLS.has(t.name) && t.file && t.exitCode === 0).map((t) => t.file!))];
   if (edited.length === 1) did.push(`Edited ${nameOf(edited[0]!)}`);
   else if (edited.length > 1) did.push(`Edited ${edited.length} files`);
-  const commands = turn.tools.filter((t) => t.command && !t.declined && t.exitCode !== null && !LOOKING.test(t.command.trim()));
+  // A command that failed is in skipped, not here.
+  const commands = turn.tools.filter((t) => t.command && t.exitCode === 0 && !LOOKING.test(t.command.trim()));
   // The test run counts once, as the last one; other commands in the order they ran, each once.
-  const ran = [...new Set(commands.map((t) => oneLine(t.command!, 80)))];
-  for (const command of ran.slice(-3)) did.push(`Ran ${command}`);
+  const ran = [...new Set(commands.map(ranLine))];
+  did.push(...ran.slice(-3));
   const agents = turn.tools.filter((t) => t.name === 'Task' || t.name === 'Agent').length;
   if (agents) did.push(`Ran ${plural(agents, 'subagent')}`);
   const looked = new Set(turn.tools.filter((t) => t.name === 'Read' && t.file).map((t) => t.file));
@@ -136,12 +138,13 @@ export function fallbackSummary(turn: Turn, signals: Signals, outcome: { state: 
 
   const skipped: string[] = [];
   if (outcome.state === 'error') skipped.push(oneLine(`Stopped with an error${outcome.error ? `: ${outcome.error}` : ''}`, 200));
-  for (const call of turn.tools) {
-    if (skipped.length === 3) break;
-    if (call.declined) skipped.push(oneLine(`You declined ${call.command ?? call.name}`, 200));
+  turn.tools.forEach((call, index) => {
+    if (skipped.length === 3) return;
+    if (call.declined) skipped.push(declinedLine(call));
     // A command that only looks around failing (`ls tests` where there is none) is no unfinished work.
-    else if (call.exitCode !== null && call.exitCode !== 0 && call.command && !isTestCommand(call.command) && !LOOKING.test(call.command.trim())) skipped.push(failedLine(call));
-  }
+    else if (call.exitCode !== null && call.exitCode !== 0 && call.command && !isTestCommand(call.command) && !LOOKING.test(call.command.trim()) && !retriedLater(call, turn.tools.slice(index + 1)))
+      skipped.push(failedLine(call));
+  });
   if (signals.tests.state === 'failed' && skipped.length < 3) skipped.push(testsText(signals.tests));
 
   const question = asksBack(turn.finalText);

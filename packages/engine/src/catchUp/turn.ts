@@ -9,6 +9,8 @@ export interface ToolCall {
   file: string | null;
   /** A shell command. */
   command: string | null;
+  /** What Claude said a shell command does (the Bash tool's `description`), in plain words. */
+  description: string | null;
   /** 0 for a success, the exit code (or 1) for a failure; null until its result came back. */
   exitCode: number | null;
   /** You said no to it (a permission you denied). */
@@ -143,6 +145,7 @@ export function lastTurn(messages: readonly RawSessionMessage[]): Turn | null {
           name: String(block.name ?? 'unknown'),
           file: str(input.file_path) ?? str(input.notebook_path),
           command: block.name === 'Bash' ? str(input.command) : null,
+          description: block.name === 'Bash' ? str(input.description) : null,
           exitCode: null,
           declined: false,
           output: '',

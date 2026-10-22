@@ -89,11 +89,11 @@ The Queue and Pinned only show in **Recent**. In both orders, a session with a c
 
 In [Settings](/settings/), under **Conversation**, **Catch-up**, **Write catch-up summaries with Haiku** turns the catch-up on and off. It is on by default.
 
-Off, no banner shows and Haiku is never called. You can still ask for one: run **Catch up on this session** from the [command palette](/command-palette/), and its lines come from the tool calls ("Edited 6 files", "Ran npm run check").
+Off, no banner shows and Haiku is never called. You can still ask for one: run **Catch up on this session** from the [command palette](/command-palette/), and its lines come from the tool calls ("Edited 6 files", "Ran the tests").
 
 ### What Haiku sees
 
-Haiku gets your prompt, Claude's last reply, a list of the tool calls (the tool, the file or command, and how it ended), the signals and the plan. It never sees what is in your files, a diff or your memory. Haiku has a few seconds; if it doesn't answer in time, the banner is written without it: **What it did** starts with the opening sentence and the bold headings of Claude's last reply, followed by the tool calls ("Edited 6 files", "Ran npm run check").
+Haiku gets your prompt, Claude's last reply, a list of the tool calls (the tool, the file or command with what Claude said it does, and how it ended), the signals and the plan. It never sees what is in your files, a diff or your memory. Haiku has a few seconds; if it doesn't answer in time, the banner is written without it: **What it did** starts with the opening sentence of Claude's last reply and the points it put in bold, followed by the tool calls in words ("Edited 6 files", "Ran the tests", "Built the website"). A long command or a script is never copied into the card: it shows as what it was, such as "Ran a Python script". **Skipped or not finished** leaves out a command that failed and worked when Claude ran it again.
 
 Each summary uses a few thousand Haiku tokens on the session's Claude profile, so it counts toward that plan. In [Usage](/usage/), they show as their own row, **Catch-up summaries**. The answers to **Why?** on a permission count there too.
 
