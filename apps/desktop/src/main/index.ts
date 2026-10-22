@@ -3629,6 +3629,15 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   const remote = phone.client<RemoteContract>(socket.frames, socket.session);
   try {
     await remote.call('hello', { client: { version: 'smoke' } });
+    // The phone looks like this computer: it gets the theme in use, and the next one when another is picked.
+    const themeBefore = preferences.get().themeId;
+    const { theme } = await remote.call('theme.get', {});
+    if (!theme) return 'theme.get gave the phone no theme';
+    const changed = new Promise<string>((resolve) => remote.on('theme.changed', (next) => resolve(next.name)));
+    updatePreferences({ themeId: themeBefore === 'aluminium' ? 'nord' : 'aluminium' });
+    const name = await Promise.race([changed, new Promise<string>((resolve) => setTimeout(() => resolve(''), 5_000))]);
+    updatePreferences({ themeId: themeBefore });
+    if (name !== (themeBefore === 'aluminium' ? 'Nord' : 'Aluminium')) return `the phone did not get the theme picked here (got "${name}", had "${theme.name}")`;
     const row = '[data-connected-devices="devices"] [data-connected-device="smoke-phone"]';
     if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})?.innerText.includes('Smoke iPhone')`, 5_000))) return 'the connected test phone has no row in the sidebar';
     if (!(await js(`/since /.test(document.querySelector(${JSON.stringify(row)}).innerText)`))) return 'the row does not say since when';

@@ -81,6 +81,7 @@ export function Connected({
   focus,
   onFocus,
   onSessions: setSessions,
+  onSyncThemes,
   request,
   onAdd,
   onForget,
@@ -94,6 +95,8 @@ export function Connected({
   /** A computer's list asked for here (pull to refresh, after an answer). */
   /** A list asked for here, as it came: `Computers.setSessions` checks it. */
   onSessions: (computer: string, sessions: unknown) => void;
+  /** Sync now in Theme: `Computers.syncThemes`. */
+  onSyncThemes: () => Promise<boolean>;
   request: OpenRequest | null;
   onAdd: () => void;
   onForget: (computer: string) => void;
@@ -592,7 +595,7 @@ export function Connected({
     <>
       <Toasts />
       {notifications && <NotificationsSheet push={push} onClose={() => setNotifications(false)} />}
-      {themeOpen && <ThemeSheet computers={computers} onClose={() => setThemeOpen(false)} />}
+      {themeOpen && <ThemeSheet computers={computers} onSync={onSyncThemes} onClose={() => setThemeOpen(false)} />}
       {helpFor && <OfflineHelp state={helpFor.state} computer={nameOf(helpFor)} address={helpFor.paired.address} onClose={() => setHelp(null)} onRetry={() => helpFor.connection.retryNow()} />}
       {keysOpen && <KeysSheet onClose={() => setKeysOpen(false)} />}
       {palette && <Palette computers={computers.map((c) => ({ id: c.id, name: nameOf(c), client: clientOf(c) }))} labels={multi} sessions={merged.sessions} actions={paletteActions} onChoose={choose} onClose={() => setPalette(false)} />}
