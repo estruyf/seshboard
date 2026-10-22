@@ -70,6 +70,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
 import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
+import { useSavedSettings } from '../../state/savedSettingsStore.ts';
 import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
@@ -182,6 +183,8 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
+  // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
+  const compacting = useHosts((s) => s.hosts.get(sessionId)?.compacting === true);
   const now = useTicker(choosing && showIndicator);
   if (choosing) {
     return (
@@ -197,7 +200,8 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       </div>
     );
   }
-  if (block?.kind === 'text') {
+  // The summary it streams while compacting is for the model, not for you: show the status instead of the text.
+  if (block?.kind === 'text' && !compacting) {
     return (
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
         <StreamingMarkdown text={block.text} />
@@ -206,9 +210,9 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
     );
   }
   if (!running || !showIndicator) return null;
-  const label = live.waitingSince !== null ? 'Waiting for you' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const label = live.waitingSince !== null ? 'Waiting for you' : compacting ? 'Compacting the conversation' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
   return (
-    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming>
+    <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
@@ -353,6 +357,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const registryLive = useSessions((s) => s.live.get(sessionId) ?? null);
   const select = useSessions((s) => s.select);
   const host = useHosts((s) => s.hosts.get(sessionId));
+  const savedModel = useSavedSettings((s) => s.bySession[sessionId]?.model);
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
   const permissions = useMemo(() => [...permissionMap.values()].filter((p) => p.sessionId === sessionId), [permissionMap, sessionId]);
@@ -1867,7 +1872,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
-              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} onCompact={compact} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} chosenModel={activeHost ? (activeHost.model ?? null) : !restart && !registryLive ? savedModel : undefined} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (

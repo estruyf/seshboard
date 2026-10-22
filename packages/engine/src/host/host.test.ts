@@ -1321,6 +1321,37 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('shows a session as compacting from Claude Code\'s status until the compact ends', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const status = (value: string | null) => out.push({ type: 'system', subtype: 'status', status: value, session_id: id });
+    expect(t.infos.at(-1)!.compacting).not.toBe(true);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    status(null);
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    // The boundary, a result and going idle each end it when no status did.
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 1 }, session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'idle', session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
+    t.manager.closeAll();
+  });
+
   it('tracks background tasks and keeps their session open while they run', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });

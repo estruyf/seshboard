@@ -607,11 +607,16 @@ export class SessionHost {
     }
   }
 
+  /** A compact is over (its boundary, the turn's result or the session going idle). */
+  private endCompacting(): void {
+    if (this.info.compacting) this.update({ compacting: false });
+  }
+
   private update(patch: Partial<SessionHostInfo>): void {
     const ended = patch.state === 'closed' || patch.state === 'error';
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [] } : {}) };
+    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}) };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -691,7 +696,7 @@ export class SessionHost {
         if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
-        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
+        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}) });
         void this.refreshContext();
         this.events.usageHint?.();
         const stopped = this.stopRequested;
@@ -754,8 +759,20 @@ export class SessionHost {
     }
     if (message.subtype === 'status') {
       // Claude Code reports mode changes it makes itself here (leaving plan mode, auto mode falling back).
-      const mode = (message as { permissionMode?: PermissionMode }).permissionMode;
-      if (mode && mode !== this.info.permissionMode) this.update({ permissionMode: mode });
+      const { permissionMode: mode, status, compact_result: compactResult, compact_error: compactError } = message as { permissionMode?: PermissionMode; status?: unknown; compact_result?: string; compact_error?: string };
+      // 'compacting' while Claude Code summarises the conversation; null or 'requesting' once it moves on. Kept on the
+      // host so a view opened mid-compact (switching back to the session, a pop-out) still says so.
+      const compacting = status === 'compacting';
+      if (compactResult === 'failed') this.events.log('warn', `Session ${this.sessionId}: compacting failed${compactError ? `: ${compactError}` : ''}`);
+      const patch: Partial<SessionHostInfo> = {
+        ...(mode && mode !== this.info.permissionMode ? { permissionMode: mode } : {}),
+        ...(compacting !== (this.info.compacting === true) ? { compacting } : {}),
+      };
+      if (Object.keys(patch).length > 0) this.update(patch);
+      return;
+    }
+    if (message.subtype === 'compact_boundary') {
+      this.endCompacting();
       return;
     }
     if (message.subtype === 'background_tasks_changed') {
@@ -781,7 +798,7 @@ export class SessionHost {
     if (message.subtype === 'session_state_changed') {
       const state = STATE_FROM_SDK[(message as { state: string }).state];
       if (!state || this.closing) return;
-      this.update({ state });
+      this.update({ state, ...(state === 'idle' && this.info.compacting ? { compacting: false } : {}) });
       if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
       if (state === 'idle') {
         this.pushStream('clear', '');

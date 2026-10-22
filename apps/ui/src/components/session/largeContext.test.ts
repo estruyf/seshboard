@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cacheRewriteCost, DEFAULT_CONTEXT_WARNING, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
-import { agoText, cacheState, cacheUseOf, contextLevel, largeSessions, largeSessionsText, transcriptCache, untilText } from './largeContext.ts';
+import { cacheRewriteCost, DEFAULT_CONTEXT_WARNING, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { agoText, cacheState, cacheUseOf, contextLevel, largeSessions, largeSessionsText, nextMessageModel, transcriptCache, untilText } from './largeContext.ts';
 
 const HOUR = 60 * 60_000;
 const reply = (at: number, usage: Partial<NonNullable<TranscriptMessage['usage']>> | null, patch: Partial<TranscriptMessage> = {}): TranscriptMessage => ({
@@ -121,5 +121,34 @@ describe('largeSessions', () => {
       ),
     ).toBe('2 open sessions have a large context (412k and 180k tokens). Their caches lapse within minutes, so picking them up later reads all of it again.');
     expect(largeSessionsText([], null)).toBeNull();
+  });
+});
+
+describe('nextMessageModel', () => {
+  const option = (value: string, resolvedModel: string): ModelOption => ({ value, displayName: value, description: '', resolvedModel, supportsEffort: false });
+  const models = [option('default', 'claude-opus-5-5'), option('sonnet', 'claude-sonnet-5-5'), option('opus', 'claude-opus-5-5')];
+
+  it('resolves an alias to the model it stands for', () => {
+    expect(nextMessageModel('sonnet', models, ['claude-opus-5-5'])).toBe('claude-sonnet-5-5');
+  });
+
+  it('takes null as the default model', () => {
+    expect(nextMessageModel(null, [option('default', 'claude-sonnet-5-5'), option('opus', 'claude-opus-5-5')], ['claude-opus-5-5'])).toBe('claude-sonnet-5-5');
+  });
+
+  it('skips an unknown choice and uses the first priceable fallback', () => {
+    expect(nextMessageModel(undefined, models, [null, undefined, '', 'claude-sonnet-5-5'])).toBe('claude-sonnet-5-5');
+  });
+
+  it('falls through when the choice cannot be priced', () => {
+    expect(nextMessageModel('default', [], ['claude-opus-5-5'])).toBe('claude-opus-5-5');
+  });
+
+  it('passes a full id through', () => {
+    expect(nextMessageModel('claude-sonnet-5-5', models, ['claude-opus-5-5'])).toBe('claude-sonnet-5-5');
+  });
+
+  it('is null when nothing can be priced', () => {
+    expect(nextMessageModel('default', [], [null, 'mystery'])).toBeNull();
   });
 });

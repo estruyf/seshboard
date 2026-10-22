@@ -1,4 +1,4 @@
-import { AUTO_MODEL, type Effort, type PermissionMode, type SessionHostInfo } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type SessionHostInfo } from '@switchboard/protocol/client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { autoChipModel } from '../../lib/autoModel.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';
@@ -6,6 +6,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { findModelOption } from '../../lib/models.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import { useSavedSettings, type SavedSettings } from '../../state/savedSettingsStore.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 
 /**
@@ -63,12 +64,6 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
   );
 }
 
-interface Saved {
-  model: string | null;
-  effort: Effort | null;
-  permissionMode: PermissionMode;
-}
-
 /**
  * The chip row of a session that isn't running here: what the next message resumes it with. A change is only saved,
  * so it takes effect when the session starts again. `note` goes after the chips (why the last run failed, say).
@@ -78,15 +73,15 @@ export function SavedSessionControls({ sessionId, profileId, note }: { sessionId
   const models = useHosts((s) => s.models);
   const defaultProfile = useProfiles((s) => s.defaultId);
   const client = connection.status === 'connected' ? connection.client : null;
-  const [saved, setSaved] = useState<Saved | null>(null);
+  const saved = useSavedSettings((s) => s.bySession[sessionId]) ?? null;
+  const setSaved = useSavedSettings((s) => s.set);
 
   useEffect(() => {
     if (!client) return;
     let stale = false;
-    setSaved(null);
     client
       .call('session.savedSettings', { sessionId })
-      .then((s) => !stale && setSaved(s))
+      .then((s) => !stale && setSaved(sessionId, s))
       .catch(() => {});
     return () => {
       stale = true;
@@ -94,12 +89,12 @@ export function SavedSessionControls({ sessionId, profileId, note }: { sessionId
   }, [client, sessionId]);
 
   /** Shows the change at once; when the engine refuses it, back to what is saved. */
-  const change = (patch: Partial<Saved>, call: () => Promise<unknown> | undefined) => {
-    setSaved((s) => (s ? { ...s, ...patch } : s));
+  const change = (patch: Partial<SavedSettings>, call: () => Promise<unknown> | undefined) => {
+    setSaved(sessionId, (s) => (s ? { ...s, ...patch } : s));
     void call()?.catch(() =>
       client
         ?.call('session.savedSettings', { sessionId })
-        .then(setSaved)
+        .then((s) => setSaved(sessionId, s))
         .catch(() => {}),
     );
   };

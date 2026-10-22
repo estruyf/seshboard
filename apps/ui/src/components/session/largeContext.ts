@@ -1,4 +1,5 @@
-import { cacheExpiresAt, isLargeContext, type CacheTtl, type ContextWarningPrefs, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheExpiresAt, isLargeContext, priceOf, type CacheTtl, type ContextWarningPrefs, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { findModelOption } from '../../lib/models.ts';
 import { HIGH_AT, levelOf, type Level } from '../../lib/levels.ts';
 
 /**
@@ -107,4 +108,18 @@ export function largeSessionsText(large: readonly LargeSession[], format: ((usd:
   const cost = format && known.length > 0 ? ` (${format(known.reduce((sum, s) => sum + s.usd!, 0))})` : '';
   const within = large.some((s) => s.ttl === '1h') ? 'within the hour' : large.some((s) => s.ttl === '5m') ? 'within minutes' : 'soon after its last message';
   return `${one ? 'One open session has' : `${large.length} open sessions have`} a large context (${list} tokens). ${one ? 'Its cache lapses' : 'Their caches lapse'} ${within}, so picking ${one ? 'it' : 'them'} up later reads all of it again${cost}.`;
+}
+
+/**
+ * The model the next message goes to, for pricing it: what the model chip shows (`chosen`; null is Claude Code's
+ * default, undefined is not known), then each fallback. An alias like `sonnet` or `default` becomes the full id it
+ * resolves to, since only a full id can be priced. The first one that has a price wins.
+ */
+export function nextMessageModel(chosen: string | null | undefined, models: readonly ModelOption[], fallbacks: ReadonlyArray<string | null | undefined>): string | null {
+  const candidates = [...(chosen === undefined ? [] : [chosen ?? 'default']), ...fallbacks.filter((f): f is string => typeof f === 'string' && f !== '')];
+  for (const candidate of candidates) {
+    const resolved = findModelOption([...models], candidate)?.resolvedModel ?? candidate;
+    if (priceOf(resolved)) return resolved;
+  }
+  return null;
 }
