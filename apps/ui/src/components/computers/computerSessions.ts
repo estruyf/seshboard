@@ -1,6 +1,6 @@
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta, TranscriptMessage } from '@switchboard/protocol/client';
 import { basename } from '../../lib/format.ts';
-import { buildDisplayItems } from '../transcript/displayItems.ts';
+import { buildDisplayItems, type DisplayItem } from '../transcript/displayItems.ts';
 import { buildTurns, type Turn } from '../transcript/turns.ts';
 
 /**
@@ -249,18 +249,25 @@ export function awayBanner(computer: Pick<Computer, 'name' | 'state' | 'retryAt'
 }
 
 /**
- * Another computer's turns, from its messages' timestamps, by the same rules as this computer's (`buildTurns`): when
- * each ended and how long it took. The remote contract carries no usage, so they have no tokens.
+ * Another computer's display items and turns, from its messages, by the same rules as this computer's (`buildDisplayItems`,
+ * `buildTurns`): when each turn ended, how long it took and its tokens, from the usage the computer sent with each reply.
+ * Its replies' items keep the keys the remote items use, so a turn's line and Read find their reply.
  */
-export function remoteTurns(messages: readonly RemoteMessage[]): Turn[] {
+export function remoteDisplay(messages: readonly RemoteMessage[]): { items: DisplayItem[]; turns: Turn[] } {
   const transcript: TranscriptMessage[] = messages.map((m) => ({
     uuid: m.uuid,
     role: m.role,
     timestamp: m.timestamp,
     parentToolUseId: m.parentToolUseId,
     model: null,
-    usage: null,
+    usage: m.usage ? { id: m.usage.id, input: m.usage.input, output: m.usage.output, cacheRead: m.usage.cacheRead, cacheCreation: m.usage.cacheWrite } : null,
     blocks: m.blocks.map((b) => (b.type === 'tool_result' ? { ...b, images: [] } : b.type === 'image' ? { type: 'image' as const, mediaType: null, ref: null } : b)),
   }));
-  return buildTurns(buildDisplayItems(transcript));
+  const items = buildDisplayItems(transcript);
+  return { items, turns: buildTurns(items) };
+}
+
+/** The turns of `remoteDisplay`. */
+export function remoteTurns(messages: readonly RemoteMessage[]): Turn[] {
+  return remoteDisplay(messages).turns;
 }

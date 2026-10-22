@@ -5,6 +5,17 @@ import { projectIdOf, remoteMessage, remoteRuns, remoteSessions } from './remote
 const msg = (role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks']): TranscriptMessage => ({ uuid: 'm1', role, timestamp: 1, parentToolUseId: null, model: null, blocks });
 const user = (text: string) => remoteMessage(msg('user', [{ type: 'text', text }]));
 
+describe('remoteMessage usage', () => {
+  it('sends the tokens of a reply under the response id, for the phone to count per turn', () => {
+    const reply: TranscriptMessage = { ...msg('assistant', [{ type: 'text', text: 'Done.' }]), model: 'claude-opus-5-5', usage: { id: 'resp-1', input: 10, output: 5, cacheRead: 100, cacheCreation: 2 } };
+    expect(remoteMessage(reply)).toMatchObject({ usage: { id: 'resp-1', input: 10, output: 5, cacheRead: 100, cacheWrite: 2 } });
+  });
+
+  it('leaves usage out when Claude Code reported none', () => {
+    expect(remoteMessage(msg('assistant', [{ type: 'text', text: 'Done.' }]))).not.toHaveProperty('usage');
+  });
+});
+
 describe('remoteMessage', () => {
   it('turns a background task finishing into a line from Claude Code', () => {
     const notification =

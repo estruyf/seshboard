@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ArrowUp, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
+import { ArrowUp, BookOpen, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
 import { blanksOf, promptPreview, type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SavedPrompt, type SendMode } from '@switchboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -36,7 +36,7 @@ import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
-import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
+import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteDisplay, remoteItems, toolLine, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
 import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
@@ -46,6 +46,9 @@ import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
 import { sentLine } from '../transcript/turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
+import { MessageToolbar, REVEAL_IN_REPLY_ROW } from '../transcript/messageActions.tsx';
+import { readReply } from '../transcript/readReply.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerView.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
@@ -184,9 +187,13 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     });
 
   const items = useMemo(() => remoteItems(messages), [messages]);
-  // Each finished turn's time and duration under its last reply, from the messages' timestamps (no tokens: the
-  // remote contract has no usage), and the open turn's clock on the working line.
-  const turns = useMemo(() => remoteTurns(messages), [messages]);
+  // Each finished turn's time, duration and tokens under its last reply, from the messages (the computer's usage),
+  // and the open turn's clock on the working line. Read takes its reply from the same display items.
+  const display = useMemo(() => remoteDisplay(messages), [messages]);
+  const turns = display.turns;
+  /** The turn whose replies are open in Read (its prompt's key). */
+  const [reading, setReading] = useState<string | null>(null);
+  const readingReply = reading ? readReply(display.items, turns, reading) : null;
   const turnDetails = usePreferences((s) => s.prefs.turnDetails);
   const width = useWidth(scroller);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
@@ -283,11 +290,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           {items.map((item) =>
             item.kind === 'user' ? (
               <div key={item.key} className="flex justify-end">
-                <div className="relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
+                <div className="group/message relative max-w-[80%] min-w-0 rounded-xl border border-border bg-card px-3.5 py-2.5" data-prompt-bubble data-tooltip={item.at !== null ? sentLine(item.at, item.device) : undefined}>
                   <ClampedPrompt itemKey={item.key} className="text-body whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
                     {item.text}
                   </ClampedPrompt>
                   {item.device && <p className="mt-1 text-meta text-faint">from {item.device}</p>}
+                  <MessageToolbar itemKey={item.key} kind="user" text={item.text} copyOnly />
                 </div>
               </div>
             ) : item.kind === 'notice' ? (
@@ -295,9 +303,18 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
                 {item.text}
               </p>
             ) : item.kind === 'text' ? (
-              <div key={item.key} className="text-body">
+              <div key={item.key} className="group/message relative text-body">
                 <RemoteText text={item.text} />
-                <TurnMetaLine itemKey={item.key} className="mt-1 h-6" />
+                {/* As on this computer: the actions, then the turn's line under a turn's last reply, shown on hover or focus. */}
+                <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
+                  <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly />
+                  {turnMeta.byReply.has(item.key) && (
+                    <Button variant="quiet" size="sm" icon={<BookOpen size={13} />} className={`h-6 shrink-0 ${REVEAL_IN_REPLY_ROW}`} onClick={() => setReading(turnMeta.byReply.get(item.key)!.key)} data-remote-read>
+                      Read
+                    </Button>
+                  )}
+                  <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />
+                </div>
               </div>
             ) : (
               <ToolRun key={item.key} tools={item.tools} />
@@ -327,6 +344,13 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           )}
         </div>
         </TurnMetaContext.Provider>
+        {readingReply && (
+          <Dialog title="Read" subtitle={`${readingReply.words.toLocaleString()} ${readingReply.words === 1 ? 'word' : 'words'} · ${readingReply.minutes} min read`} width="lg" onClose={() => setReading(null)} data-remote-read-dialog>
+            <div className="flex flex-col gap-4 text-body">
+              {readingReply.blocks.flatMap((block) => (block.kind === 'text' ? [<RemoteText key={block.key} text={block.text} />] : []))}
+            </div>
+          </Dialog>
+        )}
       </div>
 
       <div className="mx-auto grid w-full max-w-3xl shrink-0 gap-2 px-6 pb-4">

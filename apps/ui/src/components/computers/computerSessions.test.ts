@@ -128,7 +128,18 @@ describe('the remote transcript', () => {
 });
 
 describe('remoteTurns', () => {
-  it('times each turn from the messages, with no tokens, keyed like the text items', () => {
+  it('counts a turn’s tokens from the usage the computer sent, once per response', () => {
+    const usage = { input: 10, output: 50, cacheRead: 1000, cacheWrite: 100 };
+    const messages: RemoteMessage[] = [
+      message('u1', 'Go', { role: 'user', timestamp: 1_000 }),
+      message('a1', 'Looking.', { timestamp: 2_000, usage: { id: 'resp-1', ...usage } }),
+      message('a2', 'Done.', { timestamp: 9_000, usage: { id: 'resp-1', ...usage } }),
+      message('a3', 'Thanks.', { timestamp: 12_000, usage: { id: 'resp-2', ...usage } }),
+    ];
+    expect(remoteTurns(messages)[0]?.tokens?.total).toBe(2 * 1160);
+  });
+
+  it('times each turn from the messages, with no tokens when none were sent, keyed like the text items', () => {
     const tool = { type: 'tool_use' as const, id: 't1', name: 'Bash', input: {}, truncated: false };
     const messages: RemoteMessage[] = [
       message('u1', 'Fix it', { role: 'user', timestamp: 1_000 }),

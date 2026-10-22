@@ -10,6 +10,7 @@ import { transcriptItems } from '../lib/steps.ts';
 import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessages, resultsByCall, type Streaming } from '../lib/transcript.ts';
 import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
+import { ReadSheet } from './ReadSheet.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { formatDuration, turnStart, workingLabel } from '../lib/working.ts';
 import { turnEnds, turnLine } from '../lib/turns.ts';
@@ -484,6 +485,9 @@ function Transcript({
   const atEnd = useRef(true);
   const [away, setAway] = useState(false);
   const [missed, setMissed] = useState(false);
+  /** The key of the reply whose turn is open in Read. */
+  const [reading, setReading] = useState<string | null>(null);
+  const readingEnd = reading ? ends.get(reading) : undefined;
   const last = messages.at(-1)?.uuid;
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -563,7 +567,7 @@ function Transcript({
                   const end = item.kind === 'text' ? ends.get(item.key) : undefined;
                   return (
                     <Fragment key={item.key}>
-                      <ItemView item={item} results={results} live={working && index === items.length - 1} />
+                      <ItemView item={item} results={results} live={working && index === items.length - 1} onRead={end ? () => setReading(item.key) : undefined} />
                       {end && (
                         <p className="-mt-3 text-meta whitespace-nowrap text-faint tabular-nums" data-turn-meta>
                           {turnLine(end)}
@@ -587,6 +591,7 @@ function Transcript({
           )}
         </div>
       </div>
+      {readingEnd && <ReadSheet texts={readingEnd.texts} onClose={() => setReading(null)} />}
       {away && (
         <Button size="md" onClick={toEnd} data-remote-jump className={`absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md ${missed ? 'border-accent-ink!' : ''}`}>
           <ArrowDown className="size-4" aria-hidden />

@@ -139,6 +139,19 @@ export const RemoteBlock = z.discriminatedUnion('type', [
 ]);
 export type RemoteBlock = z.infer<typeof RemoteBlock>;
 
+/**
+ * The tokens of the API response an assistant message came from, as the computer counts them. Claude Code writes one
+ * message per content block with the same `id` and usage, so the phone counts each `id` once per turn.
+ */
+export const RemoteUsage = z.object({
+  id: z.string(),
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+});
+export type RemoteUsage = z.infer<typeof RemoteUsage>;
+
 export const RemoteMessage = z.object({
   uuid: z.string(),
   role: z.enum(['user', 'assistant', 'system']),
@@ -147,6 +160,8 @@ export const RemoteMessage = z.object({
   blocks: z.array(RemoteBlock),
   /** The paired phone that sent it, for your own messages sent from a phone. */
   device: z.string().optional(),
+  /** Claude's tokens for this message, when the computer reported them (an older computer doesn't: no tokens shown). */
+  usage: RemoteUsage.nullable().optional(),
 });
 export type RemoteMessage = z.infer<typeof RemoteMessage>;
 

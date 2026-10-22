@@ -1412,6 +1412,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-turn-tokens-copy-read",
+      "name": "Remote app: a finished turn's tokens, Copy on your messages and Read for a reply",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:connected-devices",
       "name": "Sidebar: Connected to this Mac, the devices connected right now, their last action and Revoke",
       "page": "remote-access"
