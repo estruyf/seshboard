@@ -3262,6 +3262,11 @@
       "page": "sessions/catch-up"
     },
     {
+      "id": "feature:mark-read-after",
+      "name": "Mark as read after a few seconds of looking at a session (Settings › Sessions)",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "feature:session-hud",
       "name": "Where you landed label",
       "page": "sessions/sidebar"

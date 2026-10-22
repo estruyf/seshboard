@@ -2547,6 +2547,16 @@ async function runSessionsSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-auto-archive-less]');
   if (!(await until(() => preferences.get().archiveAfterDays === days))) return '− did not put the archive days back';
 
+  // Mark as read after: the seconds and the switch apply at once and are saved.
+  const reading = preferences.get().markReadAfter;
+  if (!(await js("!!document.querySelector('[data-mark-read-after]') && !!document.querySelector('[data-mark-read-seconds-more]')"))) return 'the Sessions page did not show Mark as read after';
+  await click(reading.seconds < 60 ? '[data-mark-read-seconds-more]' : '[data-mark-read-seconds-less]');
+  if (!(await until(() => preferences.get().markReadAfter.seconds !== reading.seconds))) return 'the seconds of Mark as read after did not change';
+  await click('[data-mark-read-after]');
+  if (!(await until(() => preferences.get().markReadAfter.enabled !== reading.enabled))) return 'the Mark as read after switch did not apply';
+  updatePreferences({ markReadAfter: reading });
+  if (!(await waitInPage(win, `document.querySelector('[data-mark-read-after]')?.getAttribute('aria-checked') === '${reading.enabled}'`, 2_000))) return 'Mark as read after did not go back';
+
   // Turning deleting on asks first; Cancel leaves it off.
   await click('[data-auto-delete]');
   if (!(await waitInPage(win, "document.querySelector('[data-delete-archived-dialog=turn-on]')", 2_000))) return 'turning deleting on did not ask first';

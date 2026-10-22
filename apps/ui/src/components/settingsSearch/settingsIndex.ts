@@ -76,6 +76,14 @@ export function settingsIndex(): SettingEntry[] {
 
     // Sessions
     {
+      id: 'mark-read-after',
+      page: 'sessions',
+      label: 'Mark as read after',
+      detail: 'A session you open unread is marked read once it has been in front of you for the seconds you set.',
+      keywords: 'unread read seen viewed delay seconds outlook',
+      target: '[data-mark-read-after]',
+    },
+    {
       id: 'auto-archive',
       page: 'sessions',
       label: 'Archive finished sessions after',

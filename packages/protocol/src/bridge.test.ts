@@ -124,6 +124,20 @@ describe('newSessionMode preference', () => {
   });
 });
 
+describe('mark as read preference', () => {
+  it('marks an opened session read after 3 seconds by default', () => {
+    expect(DEFAULT_PREFERENCES.markReadAfter).toEqual({ enabled: true, seconds: 3 });
+  });
+
+  it('takes it only as a whole: a switch and seconds between 1 and 60', () => {
+    expect(sanitizePreferences({ markReadAfter: { enabled: false, seconds: 10 } })).toEqual({ markReadAfter: { enabled: false, seconds: 10 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true, seconds: 0 } })).toEqual({ markReadAfter: { enabled: true, seconds: 1 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true, seconds: 600 } })).toEqual({ markReadAfter: { enabled: true, seconds: 60 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true } })).toEqual({});
+    expect(sanitizePreferences({ markReadAfter: 5 })).toEqual({});
+  });
+});
+
 describe('archive and delete preferences', () => {
   it('archives after 3 days and leaves deleting off by default', () => {
     expect(DEFAULT_PREFERENCES.archiveAfterDays).toBe(3);

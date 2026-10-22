@@ -1,4 +1,4 @@
-import { isKeptUnread, releaseUnread } from '../../state/keptUnread.ts';
+import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -79,6 +79,7 @@ import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
+import { useMarkRead } from './useMarkRead.ts';
 import { commandForTask } from './commandRuns.ts';
 import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
@@ -404,22 +405,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The catch-up: a briefing on the last turn, as a banner over the conversation.
   const { card: catchUp, show: catchUpShow } = useCatchUpShow(sessionId);
   const replying = useCatchUp((s) => s.replying === sessionId);
-  // When you opened this session: a catch-up made before that is what you came back to.
-  const openedAt = useRef({ sessionId, at: Date.now() });
-  if (openedAt.current.sessionId !== sessionId) openedAt.current = { sessionId, at: Date.now() };
-  /**
-   * Opening a session with a catch-up doesn't mark it read: Mark as read, or anything that ends what it needs, does. A
-   * card made while you were looking (you watched the turn end) is no news, so the session is read as usual then.
-   */
-  const keepUnread = catchUp !== null && catchUpShow !== null && catchUp.generatedAt < openedAt.current.at;
 
-  // Looking at a session marks it read, also while new output keeps arriving.
-  const unread = summary?.unread ?? false;
-  useEffect(() => {
-    if (!client || !unread || keepUnread || isKeptUnread(sessionId)) return;
-    const timer = setTimeout(() => void client.call('sessions.markViewed', { sessionId }).catch(() => {}), 600);
-    return () => clearTimeout(timer);
-  }, [client, sessionId, unread, summary?.updatedAt, keepUnread]);
+  // Looking at a session marks it read, after the seconds set in Settings › Sessions when you opened it unread. The
+  // catch-up you came back to stays open once it is read, until you fold it.
+  useMarkRead(client, sessionId, summary ?? null, () => {
+    if (catchUp && catchUpShow === 'full') useCatchUp.getState().setCollapsed(catchUp, false);
+  });
   // Marked as unread while open: it stays so until you leave the session.
   useEffect(() => () => releaseUnread(sessionId), [sessionId]);
   // Reply put you in the message box: another session isn't a reply to this one.

@@ -266,6 +266,17 @@ const UNPICKED_SOUNDS: ReadonlyArray<SoundPrefs["byEvent"]> = [
   { needsYou: "Ping", finished: "Glass", error: "Basso", actionEnded: NO_SOUND },
 ];
 
+/** How long you look at an unread session before it is read, in seconds. */
+export const MARK_READ_SECONDS = { min: 1, max: 60, default: 3 } as const;
+
+/** Settings › Sessions: "Mark as read after". Off, an unread session stays so until you mark it read. */
+export interface MarkReadAfter {
+  enabled: boolean;
+  seconds: number;
+}
+
+export const DEFAULT_MARK_READ_AFTER: MarkReadAfter = { enabled: true, seconds: MARK_READ_SECONDS.default };
+
 /** App preferences, kept by main in the app's data folder. */
 export interface Preferences {
   colorScheme: ColorScheme;
@@ -326,6 +337,8 @@ export interface Preferences {
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** Settings › Sessions: "Mark as read after". An unread session you open is read after you look at it this long. */
+  markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
   whileWorking: WhileWorking;
   /** Auto in the model menus: Haiku reads the first prompt and picks the model (Settings › Conversation). */
@@ -409,6 +422,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIconOnRemote: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
@@ -590,6 +604,10 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  const reading = raw.markReadAfter as Record<string, unknown> | null | undefined;
+  const seconds = clampDays(reading?.seconds, MARK_READ_SECONDS);
+  if (typeof reading?.enabled === "boolean" && seconds !== null)
+    out.markReadAfter = { enabled: reading.enabled, seconds };
   if (oneOf(["queue", "steer"] as const, raw.whileWorking))
     out.whileWorking = raw.whileWorking;
   const autoModel = sanitizeAutoModel(raw.autoModel);
