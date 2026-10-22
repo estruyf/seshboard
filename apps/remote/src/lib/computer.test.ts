@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { otherLine, stateLine, upFor } from './computer.ts';
+import { computerRowLine, otherLine, pairedAgo, stateLine, upFor } from './computer.ts';
 
 const NOW = 1_800_000_000_000;
 const MINUTE = 60_000;
@@ -30,5 +30,31 @@ describe('the other computers in the menu', () => {
     expect(otherLine({ kind: 'connecting', attempt: 0 }, 2)).toBe('Connecting…');
     expect(otherLine({ kind: 'offline', retryAt: null }, 2)).toBe('Offline');
     expect(otherLine({ kind: 'disconnected' }, 0)).toBe('Disconnected');
+  });
+});
+
+describe('the computer row', () => {
+  it('says the state in a few words, with the colour of its dot', () => {
+    expect(computerRowLine({ kind: 'connected', since: NOW })).toEqual({ text: 'Connected · encrypted', tone: 'ok' });
+    expect(computerRowLine({ kind: 'connecting', attempt: 0 })).toEqual({ text: 'Connecting…', tone: 'caution' });
+    expect(computerRowLine({ kind: 'connecting', attempt: 3 })).toEqual({ text: 'Reconnecting…', tone: 'caution' });
+    expect(computerRowLine({ kind: 'offline', retryAt: NOW + 4_000 })).toEqual({ text: 'Reconnecting…', tone: 'caution' });
+    expect(computerRowLine({ kind: 'offline', retryAt: null })).toEqual({ text: 'Offline', tone: 'error' });
+    expect(computerRowLine({ kind: 'disconnected' })).toEqual({ text: 'Disconnected', tone: 'faint' });
+    expect(computerRowLine({ kind: 'unpaired' })).toEqual({ text: 'Pair again', tone: 'error' });
+  });
+
+  it('can leave out encrypted, for Settings', () => {
+    expect(computerRowLine({ kind: 'connected', since: NOW }, { encrypted: false }).text).toBe('Connected');
+    expect(computerRowLine({ kind: 'disconnected' }, { encrypted: false }).text).toBe('Disconnected');
+  });
+});
+
+describe('when it was paired', () => {
+  it('says today, yesterday or how many days ago', () => {
+    expect(pairedAgo(NOW - 5 * MINUTE, NOW)).toBe('paired today');
+    expect(pairedAgo(NOW - 30 * 60 * MINUTE, NOW)).toBe('paired yesterday');
+    expect(pairedAgo(NOW - 3 * 24 * 60 * MINUTE, NOW)).toBe('paired 3 days ago');
+    expect(pairedAgo(NOW + MINUTE, NOW)).toBe('paired today');
   });
 });

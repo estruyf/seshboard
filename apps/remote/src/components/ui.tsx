@@ -35,6 +35,28 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
 }
 
 /**
+ * The round icon buttons of a phone's headers (the menu, search, `⋯`, Back, the drawer's ×): a 42px circle with a
+ * border, in a 44px target; the desktop's 32px with a mouse. Children go in the circle, and `badge` over its corner.
+ */
+export function RoundButton({ className = '', children, badge, ...props }: ComponentProps<'button'> & { badge?: ReactNode }) {
+  return (
+    <button type="button" {...props} className={`group relative inline-flex size-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50 pointer-fine:size-9 ${className}`}>
+      <span className="flex size-[42px] items-center justify-center rounded-full border border-border bg-card text-text transition-colors group-enabled:group-hover:bg-border/60 group-enabled:group-active:bg-selected pointer-fine:size-8 [&>svg]:size-[18px] pointer-fine:[&>svg]:size-4">{children}</span>
+      {badge}
+    </button>
+  );
+}
+
+/** The menu icon: three lines, the middle one shorter (lucide has none quite like it). */
+export function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+      <path d="M4 7h16M4 12h10M4 17h16" />
+    </svg>
+  );
+}
+
+/**
  * A key hint in a button or a line of text, from its stored form (`mod+k`, `a`, `enter`) so Windows readers see Ctrl.
  * `on-accent` inside a yellow button. Only shown with a mouse or trackpad: a touch screen has no keys.
  */

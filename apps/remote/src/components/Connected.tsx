@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Bell, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings } from 'lucide-react';
 import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@switchboard/protocol/remote-client';
 import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../lib/everywhere.ts';
@@ -13,6 +13,9 @@ import { keys, MAC } from '../lib/platform.ts';
 import { DECLINED } from '../lib/prompts.ts';
 import { tabTitle } from '../lib/signals.ts';
 import { lastRunOn } from '../lib/storage.ts';
+import { moreItems, type NotifyState } from '../lib/more.ts';
+import type { ModeChoice } from '../lib/theme.ts';
+import { chooseMode, modeChoice, subscribeMode } from '../lib/themeApply.ts';
 import { answer } from './answer.ts';
 import { Home, type OpenSession } from './Home.tsx';
 import { KeysSheet } from './KeysSheet.tsx';
@@ -21,26 +24,27 @@ import { Palette, type PaletteAction, type PaletteChoice } from './Palette.tsx';
 import { SessionList, type ListComputer } from './SessionList.tsx';
 import { RunView } from './RunView.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, UnreadableBanner, type ComputerProps } from './ConnectionStatus.tsx';
+import { ComputerChip, ComputerRow, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, UnreadableBanner, type ComputerProps } from './ConnectionStatus.tsx';
 import { connectionOf } from './connectionOf.ts';
 import { afterOverlays } from './overlayHistory.ts';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
-import type { MenuItem } from './Menu.tsx';
+import { AnchoredMenu, type MenuItem } from './Menu.tsx';
+import { SettingsView } from './SettingsView.tsx';
 import { toast, Toasts } from './Toasts.tsx';
-import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
+import { NotificationsSheet, PushOffer, PushStrip, pushNote, shouldOffer, switchPush } from './Notifications.tsx';
 import { UsageCard, useUsages } from './Usage.tsx';
-import { ThemeSheet } from './ThemeSheet.tsx';
+import { SHORT_MODES, ThemeSheet } from './ThemeSheet.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
 import { currentSupport, loadPrefs, offered, turnOn } from '../lib/push.ts';
-import { Button, Message } from './ui.tsx';
+import { Button, Message, RoundButton } from './ui.tsx';
 
 /**
  * `list` and `home` are the roots of a wide screen, both the view next to the sidebar. A phone has one: the first
- * screen (the sessions, where the app opens), and a `home` entry shows it too.
+ * screen (the sessions, where the app opens), and a `home` entry shows it too. `settings` is the Settings page.
  */
-export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean; computer?: string } | { kind: 'new'; projectId?: string; computer?: string };
+export type Route = { kind: 'home' } | { kind: 'list' } | { kind: 'session'; sessionId: string; changes?: boolean; computer?: string } | { kind: 'new'; projectId?: string; computer?: string } | { kind: 'settings' };
 
 /** An answer from a notification's Deny or Allow (public/sw.js), sent once connected if the prompt is still open. */
 export interface NotificationAnswer {
@@ -69,9 +73,10 @@ let handledRequest = 0;
  * sidebar shows another computer's sessions among its own, each row saying which computer it runs on once there is
  * more than one. A session and New session are on one computer (their route carries it), and so is what they show;
  * the list, Home, the palette and usage are every computer's. On a phone one view at a time, opening on the sessions
- * (its only home), with the other sessions in a drawer (its button in a session's header, or a swipe from the left
- * edge); picking one there swaps it in place, so the back gesture goes back to the sessions, not through every
- * session you looked at. On a wide screen the list stays on the left, as the sidebar does on the computer, with Home
+ * (its only home), with the other sessions in a drawer (the round menu button at the top left of Home and of every
+ * session, or a swipe from the left edge), which has Settings and the computer at its bottom; picking a session there
+ * swaps it in place, so the back gesture goes back to the sessions, not through every session you looked at. Home's
+ * `⋯` has the quick settings (Theme, Notifications, Refresh) and All settings. On a wide screen the list stays on the left, as the sidebar does on the computer, with Home
  * next to it while no session is open; below 1024px it can fold away (⌘B), and then it is the drawer. With more than
  * one computer, a chip per computer in the list's header has its menu (Disconnect, Forget), and New session has Run
  * on to pick where it starts.
@@ -117,6 +122,11 @@ export function Connected({
   const [help, setHelp] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  /** The drawer was opened from Home's search button: its search takes the focus. */
+  const [searchDrawer, setSearchDrawer] = useState(false);
+  /** The notification switches, for the `⋯` menu and Settings. */
+  const [pushPrefs, setPushPrefs] = useState(loadPrefs);
+  const themeMode = useSyncExternalStore(subscribeMode, modeChoice);
   const [offer, setOffer] = useState(() => shouldOffer(offered()));
   const [palette, setPalette] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -203,6 +213,8 @@ export function Connected({
       }),
     );
   const refresh = () => void reload().catch(() => {});
+  /** Pull to refresh, and ⋯ › Refresh: the lists again, or the newer remote app once there is one. */
+  const pullRefresh = async () => (update.state === 'none' ? reload() : reloadApp());
 
   // Back to an entry shows its screen, on its computer.
   useEffect(() => {
@@ -269,15 +281,60 @@ export function Connected({
     if (!confirm(`Forget ${nameOf(target) || 'this computer'}? You can pair again from Settings › Remote.`)) return;
     onForget(target.id);
   };
+  /** The Settings page: a step of its own on a phone (Back returns), in the main view's place on a wide screen. */
+  const openSettings = () => {
+    if (route.kind === 'settings') return;
+    if (wide) swap({ kind: 'settings' });
+    else go({ kind: 'settings' });
+  };
+  /** Another computer is the one on screen: what is open on this one goes, back to Home. */
+  const switchTo = (target: string) => {
+    onFocus(target);
+    if (routeComputer && routeComputer !== target) goHome();
+  };
+  /** The wide sidebar's `⋯`: the sheets, Settings and pairing. A phone has Home's `⋯` and the Settings page instead. */
   const menu: MenuItem[] = multi
-    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
+    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, { label: 'Settings', onSelect: openSettings, hook: 'settings' }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
     : [
         { label: 'Notifications', onSelect: () => setNotifications(true) },
         { label: 'Theme', onSelect: () => setThemeOpen(true) },
+        { label: 'Settings', onSelect: openSettings, hook: 'settings' },
         { kind: 'separator' },
         { kind: 'note', label: `Paired as ${paired.name}` },
+        { label: 'Pair another computer…', onSelect: onAdd },
         { label: 'Forget this computer…', danger: true, onSelect: () => void forget(current) },
       ];
+  const notifyState: NotifyState = currentSupport() !== 'ready' ? 'unavailable' : pushPrefs.on && (pushPrefs.needsYou || pushPrefs.finished) ? 'on' : 'off';
+  /** ⋯ › Notifications: on or off at once (on asks the browser first), or why it can't change here. */
+  const toggleNotifications = () => {
+    const note = pushNote(currentSupport(), push.targets.length > 0);
+    if (note) return toast(note);
+    void switchPush(push, notifyState !== 'on').then(
+      (prefs) => {
+        setPushPrefs(prefs);
+        toast(prefs.on ? 'Notifications are on' : 'Notifications are off');
+      },
+      (error: Error) => toast(error.message, { tone: 'error' }),
+    );
+  };
+  /** Home's `⋯` on a phone (`lib/more.ts`). */
+  const moreMenu: MenuItem[] = moreItems({ notifications: notifyState, archived: false }).flatMap((item): MenuItem[] => {
+    switch (item.id) {
+      case 'theme':
+        return [{ kind: 'segmented', label: 'Theme', icon: <Moon aria-hidden />, options: SHORT_MODES, value: themeMode, onChange: (value) => chooseMode(value as ModeChoice), hook: 'theme' }];
+      case 'notifications':
+        return [{ label: 'Notifications', icon: <Bell aria-hidden />, hint: item.state, onSelect: toggleNotifications, hook: 'notifications' }];
+      case 'refresh':
+        return [{ label: 'Refresh', icon: <RefreshCw aria-hidden />, onSelect: () => void pullRefresh().catch(() => toast("The list didn't come.", { tone: 'error' })), hook: 'refresh' }];
+      // The list can't show archived sessions yet (`archived: false` above): they leave the phone's list.
+      case 'archived':
+        return [];
+      case 'settings':
+        return [{ label: 'All settings', icon: <Settings aria-hidden />, onSelect: openSettings, hook: 'settings' }];
+      case 'separator':
+        return [{ kind: 'separator' }];
+    }
+  });
   /** A computer's connection under the header: why it is away, or with more than one, that it refused this phone. */
   const bannerOf = (c: Computer) => (
     <Fragment key={c.id}>
@@ -296,17 +353,22 @@ export function Connected({
   );
   const banner = withUpdate(bannerOf(current));
   const listTopBanner = withUpdate(listBanner);
-  const propsOf = (c: Computer): ComputerProps => ({ state: c.state, computer: nameOf(c), strip: multi, needsYou: needsYouOf(c), onDisconnect: () => disconnect(c), onConnect: () => reconnect(c), onAdd, onForget: () => forget(c) });
+  const propsOf = (c: Computer): ComputerProps => ({ state: c.state, computer: nameOf(c), strip: multi, needsYou: needsYouOf(c), onDisconnect: () => disconnect(c), onConnect: () => reconnect(c), onForget: () => forget(c) });
+  /** The computer on screen, with the others to switch to: Home's title and the drawer's computer row. */
+  const currentProps: ComputerProps = {
+    ...propsOf(current),
+    strip: false,
+    others: computers.filter((c) => c.id !== current.id).map((c) => ({ id: c.id, name: nameOf(c), state: c.state, needsYou: needsYouOf(c), onSwitch: () => switchTo(c.id) })),
+  };
   const chip = multi ? null : <ComputerChip {...propsOf(current)} />;
   const strip = multi ? computers.map((c) => <ComputerChip key={c.id} {...propsOf(c)} />) : undefined;
-  const title = (size: 'large' | 'compact') =>
-    multi ? (
-      <span className={`truncate font-semibold ${size === 'large' ? 'text-hero' : 'text-title'}`} data-remote-list-title={size}>
-        Sessions
-      </span>
-    ) : (
-      <ComputerTitle size={size} {...propsOf(current)} />
-    );
+  const title = multi ? (
+    <span className="flex min-h-11 items-center truncate px-2 text-title font-semibold" data-remote-list-title>
+      Sessions
+    </span>
+  ) : (
+    <ComputerTitle {...currentProps} />
+  );
   const computerStates = computers.map((c) => ({ id: c.id, connected: c.state.kind === 'connected' }));
   /**
    * New session, on the computer asked for (Run on, the palette), else where it started last (or, the first time, the
@@ -352,7 +414,7 @@ export function Connected({
     });
   /** The drawer's Home row: Home on a wide screen, the first screen on a phone (its only home). */
   const pickHome = () => fromDrawer(() => swap(homeRoute(wide)));
-  const pickNew = () => fromDrawer(() => (wide ? swap(newRoute()) : go(newRoute())));
+  const pickSettings = () => fromDrawer(openSettings);
   /** ⌘B, or the toggle in the session's header: the sidebar folds into the drawer, or comes back. */
   const toggleFold = () => {
     setFolded((current) => {
@@ -365,8 +427,9 @@ export function Connected({
   useEffect(() => {
     if (!drawerMode) setDrawerOpen(false);
   }, [drawerMode]);
-  // An edge swipe opens the drawer where its button is: a session on a phone, anywhere on a folded wide screen.
-  const drawerHere = drawerMode && (wide || route.kind === 'session');
+  // An edge swipe opens the drawer where its button is: Home and a session on a phone (Settings too, which has Back
+  // there), anywhere on a folded wide screen. Not over New session, a step of its own with Back.
+  const drawerHere = drawerMode && (wide || route.kind !== 'new');
   useEdgeSwipe({ enabled: drawerHere && !drawerOpen, onDrag: setEdge, onSettle: setDrawerOpen });
 
   // The wide layout's keys (lib/keys.ts): one handler, reading the latest state through a ref.
@@ -437,6 +500,7 @@ export function Connected({
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(unread.length ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
     { id: 'theme', title: 'Theme' },
+    { id: 'settings', title: 'Settings' },
     { id: 'add', title: 'Pair another computer' },
     ...(multi ? [] : [{ id: 'forget', title: 'Forget this computer' }]),
   ];
@@ -467,6 +531,8 @@ export function Connected({
         return;
       case 'action:theme':
         return setThemeOpen(true);
+      case 'action:settings':
+        return openSettings();
       case 'action:add':
         return onAdd();
       case 'action:forget':
@@ -474,6 +540,20 @@ export function Connected({
     }
   };
   const drawerButton = <DrawerButton needsYou={needsYouElsewhere(counted, currentKey)} onOpen={() => setDrawerOpen(true)} />;
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setSearchDrawer(false);
+  };
+  /** Home's `⋯` on a phone: a round button with the quick settings under it. */
+  const more = (
+    <AnchoredMenu label="More" items={moreMenu} align="right">
+      {(trigger) => (
+        <RoundButton {...trigger} aria-label="More" data-remote-more>
+          <MoreHorizontal aria-hidden />
+        </RoundButton>
+      )}
+    </AnchoredMenu>
+  );
   /** The session header's left corner: the drawer button, or where the sidebar can fold, its toggle. */
   const sessionLead = drawerMode ? (
     drawerButton
@@ -517,6 +597,22 @@ export function Connected({
         computerName={multi ? computer || 'Your computer' : undefined}
         onOpenSession={(sessionId) => openSession(id, sessionId)}
       />
+    ) : route.kind === 'settings' ? (
+      <SettingsView
+        computers={computers}
+        current={current}
+        push={push}
+        prefs={pushPrefs}
+        onPrefs={setPushPrefs}
+        onSyncThemes={onSyncThemes}
+        onSwitch={switchTo}
+        onAdd={onAdd}
+        onDisconnect={() => disconnect(current)}
+        onConnect={() => reconnect(current)}
+        onForget={() => forget(current)}
+        onBack={wide ? () => root('home') : back}
+        banner={wide ? null : banner}
+      />
     ) : route.kind === 'new' ? (
       <NewSession
         key={route.projectId ?? ''}
@@ -545,6 +641,12 @@ export function Connected({
       chip={chip}
       strip={strip}
       title={title}
+      lead={drawerButton}
+      more={more}
+      onSearch={() => {
+        setSearchDrawer(true);
+        setDrawerOpen(true);
+      }}
       menu={menu}
       selectedId={currentKey}
       newOpen={route.kind === 'new'}
@@ -552,16 +654,27 @@ export function Connected({
       onNew={() => startNew()}
       onHome={goHome}
       homeOpen={wide && atRoot}
-      onRefresh={update.state === 'none' ? reload : async () => reloadApp()}
+      onRefresh={pullRefresh}
       update={update.state !== 'none'}
       onArchived={(key) => key === currentKey && leave()}
-      top={offering && !stripOffer && <PushOffer push={push} onDone={() => setOffer(false)} />}
+      top={
+        offering &&
+        !stripOffer && (
+          <PushOffer
+            push={push}
+            onDone={() => {
+              setOffer(false);
+              setPushPrefs(loadPrefs());
+            }}
+          />
+        )
+      }
       usage={<UsageCard usage={usage} offline={listOffline} />}
       onPalette={() => setPalette(true)}
     />
   );
   const drawer = drawerMode && (
-    <SessionsDrawer open={drawerOpen} edge={edge} onClose={() => setDrawerOpen(false)}>
+    <SessionsDrawer open={drawerOpen} edge={edge} onClose={closeDrawer} focusSearch={searchDrawer}>
       <SessionList
         mode="drawer"
         sessions={merged}
@@ -569,15 +682,30 @@ export function Connected({
         banner={listBanner}
         computerOf={computerOf}
         labels={multi}
-        chip={chip}
-        strip={strip}
+        chip={null}
         menu={menu}
         selectedId={currentKey}
         newOpen={route.kind === 'new'}
         onOpen={pick}
-        onNew={pickNew}
+        onNew={() => startNew()}
         onHome={pickHome}
         homeOpen={atRoot}
+        onClose={closeDrawer}
+        footer={
+          <div className="safe-bottom flex shrink-0 flex-col gap-0.5 border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={pickSettings}
+              aria-current={route.kind === 'settings' ? 'page' : undefined}
+              className="mx-2 flex min-h-[46px] items-center gap-2.5 rounded-lg px-3 text-left hover:bg-border/45 active:bg-selected aria-[current=page]:bg-accent/15 aria-[current=page]:font-semibold"
+              data-remote-drawer-settings
+            >
+              <Settings className="size-4 shrink-0 text-muted" aria-hidden />
+              <span className="text-body">Settings</span>
+            </button>
+            <ComputerRow {...currentProps} />
+          </div>
+        }
         onRefresh={reload}
         onArchived={(key) => key === currentKey && leave()}
         headerEnd={
@@ -594,7 +722,15 @@ export function Connected({
   const overlays = (
     <>
       <Toasts />
-      {notifications && <NotificationsSheet push={push} onClose={() => setNotifications(false)} />}
+      {notifications && (
+        <NotificationsSheet
+          push={push}
+          onClose={() => {
+            setNotifications(false);
+            setPushPrefs(loadPrefs());
+          }}
+        />
+      )}
       {themeOpen && <ThemeSheet computers={computers} onSync={onSyncThemes} onClose={() => setThemeOpen(false)} />}
       {helpFor && <OfflineHelp state={helpFor.state} computer={nameOf(helpFor)} address={helpFor.paired.address} onClose={() => setHelp(null)} onRetry={() => helpFor.connection.retryNow()} />}
       {keysOpen && <KeysSheet onClose={() => setKeysOpen(false)} />}
@@ -640,7 +776,7 @@ const NOWHERE: ListComputer = { client: null, features: [], name: '', online: fa
 function routeOf(state: unknown, computers: readonly Computer[]): Route {
   const route = state as Route | null;
   if (route && (route.kind === 'session' || route.kind === 'new') && route.computer && !computers.some((c) => c.id === route.computer)) return { kind: 'list' };
-  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home') ? route : { kind: 'list' };
+  return route && (route.kind === 'session' || route.kind === 'new' || route.kind === 'home' || route.kind === 'settings') ? route : { kind: 'list' };
 }
 
 /** The sidebar folded away where it can (an iPad in portrait), kept in this browser. */

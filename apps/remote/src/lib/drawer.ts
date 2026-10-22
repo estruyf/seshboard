@@ -42,9 +42,9 @@ export function settle(from: 'open' | 'closed', dx: number, velocity: number): '
 /** The drawer's width on a screen this wide. */
 export const drawerWidth = (screen: number) => Math.min(DRAWER_MAX, Math.round(screen * DRAWER_SHARE));
 
-/** "Sessions", "Sessions, 1 needs you", "Sessions, 2 need you": the drawer button's label. */
+/** "Menu", "Sessions, 1 needs you", "Sessions, 2 need you": the menu button's label says what waits. */
 export function drawerLabel(needsYou: number): string {
-  if (needsYou <= 0) return 'Sessions';
+  if (needsYou <= 0) return 'Menu';
   return `Sessions, ${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you`;
 }
 
@@ -57,4 +57,27 @@ export const homeRoute = (wide: boolean): { kind: 'home' } | { kind: 'list' } =>
 /** What waits on you in the other sessions: the open one's prompt is on screen already. */
 export function needsYouElsewhere(sessions: readonly { id: string; status: string }[], openId: string | null): number {
   return sessions.filter((s) => s.status === 'needs-you' && s.id !== openId).length;
+}
+
+/** A place at the top of the drawer, as a row with an icon. */
+export type DrawerPlace = { id: 'home' } | { id: 'upcoming'; count: number };
+
+/**
+ * The drawer's places: Home always, Upcoming only with the computer's queue to show (`queued`, null while the remote
+ * contract has none), so a row never leads to a page that can't say anything.
+ */
+export function drawerPlaces(queued: number | null): DrawerPlace[] {
+  return queued === null ? [{ id: 'home' }] : [{ id: 'home' }, { id: 'upcoming', count: queued }];
+}
+
+/** How many sessions Recent shows in the drawer before All sessions. */
+export const RECENT = 8;
+
+/**
+ * The drawer's Recent: the sessions in the order of their groups (what needs you, what works, then the newest), the
+ * first `limit` of them, and whether there are more for All sessions.
+ */
+export function recentOf<S>(groups: readonly { sessions: readonly S[] }[], limit = RECENT): { sessions: S[]; more: boolean } {
+  const all = groups.flatMap((g) => g.sessions);
+  return { sessions: all.slice(0, limit), more: all.length > limit };
 }

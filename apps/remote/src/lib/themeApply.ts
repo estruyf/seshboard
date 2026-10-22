@@ -1,5 +1,6 @@
 import type { RemoteTheme } from '@switchboard/protocol/remote-client';
 import { cleanModeChoice, cleanTheme, resolveMode, themeVars, type ModeChoice, type ThemeMode } from './theme.ts';
+import { cleanTextSize, type TextSize } from './textSize.ts';
 
 /**
  * Puts a computer's theme on the page, and keeps what Theme needs in localStorage (not secret): which computer's theme
@@ -13,6 +14,7 @@ const CHOICE = 'switchboard-remote:theme-from';
 const THEMES = 'switchboard-remote:theme';
 const SHOWN = 'switchboard-remote:theme-shown';
 const MODE = 'switchboard-remote:mode';
+const TEXT_SIZE = 'switchboard-remote:text-size';
 
 const read = (key: string): string | null => {
   try {
@@ -125,4 +127,28 @@ export function showTheme(theme: RemoteTheme | null): void {
 export function showLastTheme(): void {
   shown = parse(read(SHOWN));
   if (shown || mode !== 'system') paint();
+}
+
+let textSize = cleanTextSize(read(TEXT_SIZE));
+const textSizeListeners = new Set<() => void>();
+
+/** Settings › Appearance › Text size. */
+export const textSizeChoice = (): TextSize => textSize;
+
+export function subscribeTextSize(listener: () => void): () => void {
+  textSizeListeners.add(listener);
+  return () => textSizeListeners.delete(listener);
+}
+
+/** `data-text-size` on `<html>`, which styles.css reads to scale the type. */
+export function showTextSize(): void {
+  if (textSize === 'default') delete document.documentElement.dataset.textSize;
+  else document.documentElement.dataset.textSize = textSize;
+}
+
+export function chooseTextSize(next: TextSize): void {
+  textSize = next;
+  write(TEXT_SIZE, next === 'default' ? null : next);
+  showTextSize();
+  for (const listener of textSizeListeners) listener();
 }

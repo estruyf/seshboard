@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Archive, Check } from 'lucide-react';
+import { startsEdgeSwipe } from '../lib/drawer.ts';
 import { addSample, axisOf, velocity, type Sample } from '../lib/gesture.ts';
 import { restingOffset, swipeOffset, swipeOutcome, type SwipeAction } from '../lib/swipe.ts';
 import { useReducedMotion } from '../lib/media.ts';
@@ -37,7 +38,8 @@ export function SwipeRow({ allowed, onAction, children }: { allowed: Record<Swip
   }, [offset]);
 
   const onPointerDown = (event: ReactPointerEvent) => {
-    if (!enabled || event.pointerType === 'mouse' || !event.isPrimary) return;
+    // A finger at the left edge opens the drawer (`useEdgeSwipe`), on Home too: it doesn't swipe the row as well.
+    if (!enabled || event.pointerType === 'mouse' || !event.isPrimary || startsEdgeSwipe(event.clientX)) return;
     if (closeOpen && offset === 0) closeOpen();
     drag.current = { x: event.clientX, y: event.clientY, start: offset, axis: null, samples: [{ x: event.clientX, t: event.timeStamp }], id: event.pointerId };
     swiped.current = false;

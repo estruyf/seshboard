@@ -18,6 +18,7 @@ import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
+import { closeRemotePhone, runPhoneDrawerStep, runPhoneMoreStep, runPhoneSettingsThemeStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -9619,6 +9620,12 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
+  // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
+  // waits for Vite's first build of the app on a fresh runner.
+  await step('remote app on a phone: the menu button opens the drawer, no app icon, Settings and the computer at the bottom', runPhoneDrawerStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: Settings switches the theme, Back returns to Home in it', runPhoneSettingsThemeStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
+  await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 90_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));

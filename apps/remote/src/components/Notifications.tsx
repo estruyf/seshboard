@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bell, X } from 'lucide-react';
-import type { PushSupport } from '../lib/pushSupport.ts';
-import { currentSupport, loadPrefs, markOffered, outdated, turnOn, update, type PushComputers } from '../lib/push.ts';
+import type { PushPrefs, PushSupport } from '../lib/pushSupport.ts';
+import { currentSupport, loadPrefs, markOffered, outdated, turnOff, turnOn, update, type PushComputers } from '../lib/push.ts';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button } from './ui.tsx';
@@ -38,7 +38,7 @@ export function PushOffer({ push, onDone }: { push: PushComputers; onDone: () =>
     }
   };
   return (
-    <section aria-label="Get notified on this phone" className="mx-3 mt-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-3" data-remote-push-offer>
+    <section aria-label="Get notified on this phone" className="mx-4 mt-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-3" data-remote-push-offer>
       <div className="flex items-start gap-2.5">
         <Bell className="mt-0.5 size-4 shrink-0 text-unread" aria-hidden />
         <div className="min-w-0 flex-1">
@@ -114,7 +114,31 @@ export function shouldOffer(alreadyOffered: boolean): boolean {
   return !alreadyOffered && !loadPrefs().on && (support === 'ready' || support === 'home-screen');
 }
 
-/** Notifications, from the `⋯` menu: Needs you and Finished, as on the computer. */
+/** Why the switches can't change here, or null when they can: not on the Home Screen, blocked, no connection. */
+export function pushNote(support: PushSupport, connected: boolean): string | null {
+  if (support === 'home-screen') return HOME_SCREEN_STEPS;
+  if (support === 'denied') return "Notifications are blocked for this page. Allow them in the browser's settings, then come back here.";
+  if (support === 'unsupported') return "This browser can't show notifications from Switchboard Remote.";
+  return connected ? null : 'Changing these needs the connection.';
+}
+
+/** Notifications on or off as a whole (Settings, the `⋯` menu). On with neither moment picked turns both on. */
+export function switchPush(push: PushComputers, on: boolean): Promise<PushPrefs> {
+  if (!on) return turnOff(push);
+  const prefs = loadPrefs();
+  return update(push, prefs.needsYou || prefs.finished ? {} : { needsYou: true, finished: true });
+}
+
+/** The look of a switch (the desktop's, apps/ui components/ui/Toggle.tsx, one size up for a finger). */
+export function SwitchLook({ checked }: { checked: boolean }) {
+  return (
+    <span aria-hidden className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-accent' : 'bg-faint/40'}`}>
+      <span className={`size-5 rounded-full shadow-sm transition-transform motion-reduce:transition-none ${checked ? 'translate-x-4 bg-on-accent' : 'bg-white'}`} />
+    </span>
+  );
+}
+
+/** Notifications, from the sidebar's `⋯` menu on a wide screen: Needs you and Finished, as on the computer. */
 export function NotificationsSheet({ push, onClose }: { push: PushComputers; onClose: () => void }) {
   const connected = push.targets.length > 0;
   const older = outdated(push);
@@ -134,16 +158,7 @@ export function NotificationsSheet({ push, onClose }: { push: PushComputers; onC
       setBusy(false);
     }
   };
-  const note =
-    support === 'home-screen'
-      ? HOME_SCREEN_STEPS
-      : support === 'denied'
-        ? "Notifications are blocked for this page. Allow them in the browser's settings, then come back here."
-        : support === 'unsupported'
-          ? "This browser can't show notifications from Switchboard Remote."
-          : !connected
-            ? 'Changing these needs the connection.'
-            : null;
+  const note = pushNote(support, connected);
   return (
     <Sheet title="Notifications" subtitle="On this device, even when this page is closed." onClose={onClose} hook="notifications">
       {note && <p className="mb-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text">{note}</p>}
@@ -166,10 +181,7 @@ export function NotificationsSheet({ push, onClose }: { push: PushComputers; onC
                 <span className="block text-ui font-semibold">{moment.label}</span>
                 <span className="block text-meta text-muted">{moment.detail}</span>
               </span>
-              {/* The desktop's Switch (apps/ui components/ui/Toggle.tsx), one size up for a finger. */}
-              <span aria-hidden className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-accent' : 'bg-faint/40'}`}>
-                <span className={`size-5 rounded-full shadow-sm transition-transform ${checked ? 'translate-x-4 bg-on-accent' : 'bg-white'}`} />
-              </span>
+              <SwitchLook checked={checked} />
             </button>
           );
         })}

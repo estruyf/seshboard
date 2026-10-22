@@ -1553,7 +1553,7 @@
     },
     {
       "id": "feature:remote-theme",
-      "name": "Remote: Theme, the phone in your computer's theme or Demo Time, light, dark or Match System, Sync now",
+      "name": "Remote: Theme on the Settings page and in Home's ⋯, the phone in your computer's theme or Demo Time, Auto, Dark or Light, Sync now",
       "page": "remote-access"
     },
     {
@@ -1608,12 +1608,22 @@
     },
     {
       "id": "feature:remote-drawer",
-      "name": "Remote: switch sessions from the sessions drawer (button or edge swipe), with the Home row",
+      "name": "Remote: the menu button on every phone screen (or an edge swipe) opens the drawer, with search, Home, Recent and All sessions, and Settings and your computer at the bottom",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-settings-page",
+      "name": "Remote: the Settings page with Appearance and Text size, Notifications, Computers, Disconnect and About",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-quick-settings",
+      "name": "Remote: quick settings in Home's ⋯ (Theme, Notifications, Refresh, All settings)",
       "page": "remote-access"
     },
     {
       "id": "feature:remote-first-screen",
-      "name": "Remote: the first screen with the usage card, what needs you and the groups",
+      "name": "Remote: a full-width Home with the usage card, what needs you and the groups, and a floating New session",
       "page": "remote-access"
     },
     {
@@ -1628,7 +1638,7 @@
     },
     {
       "id": "feature:remote-disconnect",
-      "name": "Remote: Disconnect and Connect from the computer's menu",
+      "name": "Remote: Disconnect and Connect from the computer's menu and the Settings page",
       "page": "remote-access"
     },
     {

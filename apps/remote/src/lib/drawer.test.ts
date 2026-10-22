@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dragPosition, drawerLabel, drawerWidth, homeRoute, needsYouElsewhere, settle, startsEdgeSwipe } from './drawer.ts';
+import { dragPosition, drawerLabel, drawerPlaces, drawerWidth, homeRoute, needsYouElsewhere, recentOf, settle, startsEdgeSwipe } from './drawer.ts';
 import { addSample, axisOf, velocity } from './gesture.ts';
 
 describe('the edge swipe', () => {
@@ -85,7 +85,7 @@ describe('the drawer button', () => {
   });
 
   it('says so in its label', () => {
-    expect(drawerLabel(0)).toBe('Sessions');
+    expect(drawerLabel(0)).toBe('Menu');
     expect(drawerLabel(1)).toBe('Sessions, 1 needs you');
     expect(drawerLabel(2)).toBe('Sessions, 2 need you');
   });
@@ -103,5 +103,22 @@ describe('the Home row', () => {
 
   it('goes to Home next to the sidebar on a wide screen', () => {
     expect(homeRoute(true)).toEqual({ kind: 'home' });
+  });
+});
+
+describe('the places', () => {
+  it('has Home, and Upcoming only with queue data', () => {
+    expect(drawerPlaces(null)).toEqual([{ id: 'home' }]);
+    expect(drawerPlaces(2)).toEqual([{ id: 'home' }, { id: 'upcoming', count: 2 }]);
+    expect(drawerPlaces(0)).toEqual([{ id: 'home' }, { id: 'upcoming', count: 0 }]);
+  });
+});
+
+describe('Recent', () => {
+  it('takes the first sessions in the order of their groups, and says when there are more', () => {
+    const groups = [{ sessions: ['a', 'b'] }, { sessions: ['c', 'd', 'e'] }];
+    expect(recentOf(groups, 3)).toEqual({ sessions: ['a', 'b', 'c'], more: true });
+    expect(recentOf(groups, 5)).toEqual({ sessions: ['a', 'b', 'c', 'd', 'e'], more: false });
+    expect(recentOf([], 5)).toEqual({ sessions: [], more: false });
   });
 });

@@ -96,12 +96,14 @@ if (process.platform !== 'win32') {
 // A second computer for Other computers: the real Remote hub over made-up sessions (scripts/remote-demo.ts), in a
 // throwaway folder on a free port. It writes a fresh pairing link to a file, which the smoke step pastes when it gets
 // there (a link is good for two minutes; the run is longer).
-const freePort = await new Promise<number>((resolve) => {
-  const server = createServer().listen(0, '127.0.0.1', () => {
-    const { port } = server.address() as { port: number };
-    server.close(() => resolve(port));
+const freePortNow = () =>
+  new Promise<number>((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
   });
-});
+const freePort = await freePortNow();
 const computerDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-computer-'));
 const computerLink = join(computerDir, 'link.txt');
 const otherComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
@@ -109,6 +111,19 @@ const otherComputer = spawn(process.execPath, ['--experimental-transform-types',
   stdio: 'ignore',
 });
 childEnv.SWITCHBOARD_SMOKE_COMPUTER_LINK = computerLink;
+
+// The remote app on a phone: apps/remote served by Vite, and a made-up computer of its own ("Phone Mac") whose
+// pairing links point there. The app drives it in a phone-sized window (remotePhoneSmoke.ts).
+const [vitePort, phoneHubPort] = [await freePortNow(), await freePortNow()];
+const phoneAppUrl = `http://localhost:${vitePort}/remote/`;
+const remoteApp = spawn(process.execPath, [join(appDir, '..', '..', 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(vitePort), '--strictPort'], { cwd: join(appDir, '..', 'remote'), stdio: 'ignore' });
+const phoneDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-phone-'));
+const phoneLink = join(phoneDir, 'link.txt');
+const phoneComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
+  env: { ...process.env, SWITCHBOARD_DEMO_DIR: phoneDir, SWITCHBOARD_DEMO_NAME: 'Phone Mac', SWITCHBOARD_DEMO_LINK_FILE: phoneLink, SWITCHBOARD_REMOTE_APP_URL: phoneAppUrl, PORT: String(phoneHubPort) },
+  stdio: 'ignore',
+});
+childEnv.SWITCHBOARD_SMOKE_PHONE_LINK = phoneLink;
 
 // Claude Code mods: the test mod in a throwaway folder (Claude Code writes its types into a mod's folder), a throwaway
 // Claude config folder for its profile, and an empty folder for its session.
@@ -124,7 +139,10 @@ const child = spawn(command, packaged ? [] : [appDir], {
 
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
 otherComputer.kill();
+phoneComputer.kill();
+remoteApp.kill();
 rmSync(computerDir, { recursive: true, force: true, maxRetries: 5 });
+rmSync(phoneDir, { recursive: true, force: true, maxRetries: 5 });
 rmSync(modsDir, { recursive: true, force: true, maxRetries: 5 });
 if (world) {
   world.stop();

@@ -4,7 +4,7 @@ import { App } from './App.tsx';
 import { storedAppIcon } from './lib/appIcon.ts';
 import { showAppIcon } from './lib/favicon.ts';
 import { registerWorker } from './lib/push.ts';
-import { showLastTheme } from './lib/themeApply.ts';
+import { showLastTheme, showTextSize } from './lib/themeApply.ts';
 import './styles.css';
 
 // Only for notifications (public/sw.js): it caches nothing.
@@ -13,6 +13,8 @@ registerWorker();
 showAppIcon(storedAppIcon(() => localStorage));
 // The computer's theme it showed last time, and Appearance, before the first paint (Theme, in the menu).
 showLastTheme();
+// Settings › Appearance › Text size.
+showTextSize();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

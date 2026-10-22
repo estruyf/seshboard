@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
-import { ChevronRight, House, ListTree, MoreHorizontal, Plus, Search, X } from 'lucide-react';
+import { CalendarClock, ChevronRight, House, ListTree, MoreHorizontal, Plus, Search, X } from 'lucide-react';
 import { REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PIPELINES } from '@switchboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
 import type { ListedPrompt, ListedRun, ListedSession, ListedSessions } from '../lib/everywhere.ts';
 import { childLine, keepOpenTrees, listTree, openTrees, runOfRow, treeLine, type ChildTone } from '../lib/runs.ts';
+import { drawerPlaces, recentOf, type DrawerPlace } from '../lib/drawer.ts';
+import { FAB_START, nextFab } from '../lib/fab.ts';
 import { filterCounts, filterList, matchesSearch, visibleFilter, type ListFilter } from '../lib/filter.ts';
 import { SLOP } from '../lib/gesture.ts';
+import { useReducedMotion } from '../lib/media.ts';
 import { age, GROUP_LABEL, groupSessions, shortHeadline, type SessionGroup } from '../lib/groups.ts';
 import { PROFILE_DOT } from '../lib/options.ts';
 import type { SwipeAction } from '../lib/swipe.ts';
 import type { Client } from './Connected.tsx';
 import { ConnectionLine } from './ConnectionStatus.tsx';
-import { LargeTitle } from './LargeTitle.tsx';
 import { ContextMenu, MenuButton, menuPoint, type MenuItem, type MenuPoint } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
 import { promptShort } from '../lib/prompts.ts';
@@ -19,7 +21,7 @@ import { PullToRefresh } from './PullToRefresh.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { toast } from './Toasts.tsx';
 import { useLeaving } from './useLeaving.ts';
-import { Button, ComputerTag, Kbd, Logo, PROFILE_RAIL, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
+import { Button, ComputerTag, Kbd, Logo, PROFILE_RAIL, RoundButton, SectionHeader, STATUS_RAIL, StatusDot } from './ui.tsx';
 
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
@@ -52,15 +54,16 @@ export function useNow(): number {
 }
 
 /**
- * - `phone`: the first screen, where the app opens, and a phone's only root. The computer's name as a large title
- *   (it opens the computer's menu), the usage card, every open prompt as a card (oldest first), then the groups the
- *   sidebar on the computer has. Pull it down to refresh; swipe a row to mark it read or archive it. Search takes the
- *   title's place, with the chips for what needs you and what works.
+ * - `phone`: Home, where the app opens, and a phone's only root. A header row with the menu button, the computer's
+ *   name (it opens the computer's menu), search (the drawer, with its search) and `⋯`; then, full width, the usage
+ *   card, every open prompt as a card (oldest first), and the groups the sidebar on the computer has, rows edge to
+ *   edge. Pull it down to refresh; swipe a row to mark it read or archive it. New session floats at the bottom.
  * - `sidebar`: the wide layout's sidebar. The Home row under the title, the search opens the palette, chips for what needs you and what works,
  *   prompts are rows in Needs you (their cards are on the home view), rows are the desktop's size, and the `⋯` menu
  *   sits at the bottom next to New session.
- * - `drawer`: the sessions drawer. The Home row under the title (on every screen size: Home on a wide screen, the first
- *   screen on a phone), prompts as rows, the open session picked.
+ * - `drawer`: the drawer. The search with a ×, the places (Home: Home on a wide screen, the first screen on a phone),
+ *   Recent with All sessions, prompts as rows, the open session picked; Settings and the computer at the bottom
+ *   (`footer`). While you search, every match, with the chips for what needs you and what works.
  */
 export type ListMode = 'phone' | 'sidebar' | 'drawer';
 
@@ -92,6 +95,13 @@ export function SessionList({
   chip,
   strip,
   title,
+  lead,
+  more,
+  onSearch,
+  onClose,
+  footer,
+  queued = null,
+  onUpcoming,
   menu,
   selectedId,
   newOpen,
@@ -120,8 +130,22 @@ export function SessionList({
   chip: ReactNode;
   /** With more than one computer, a chip for each, in the chip's place (on a phone, under the title). */
   strip?: ReactNode;
-  /** The first screen's title on a phone: the computer's name, large or in the bar once the list scrolled. */
-  title?: (size: 'large' | 'compact') => ReactNode;
+  /** Home's title on a phone: the computer's name, which opens its menu. */
+  title?: ReactNode;
+  /** Home's header on a phone, on the left: the menu button. */
+  lead?: ReactNode;
+  /** Home's header on a phone, on the right: the `⋯` menu with the quick settings. */
+  more?: ReactNode;
+  /** Home's search button on a phone: opens the drawer with its search. */
+  onSearch?: () => void;
+  /** The drawer's ×. */
+  onClose?: () => void;
+  /** The drawer's bottom: Settings and the computer. */
+  footer?: ReactNode;
+  /** The computer's queue for the drawer's Upcoming, null while the remote contract has none (`drawerPlaces`). */
+  queued?: number | null;
+  /** The drawer's Upcoming row, with `queued`. */
+  onUpcoming?: () => void;
   menu: MenuItem[];
   selectedId: string | null;
   newOpen: boolean;
@@ -150,11 +174,13 @@ export function SessionList({
   onPalette?: () => void;
 }) {
   const now = useNow();
+  const fab = useFab();
   const sidebar = mode === 'sidebar';
   const drawer = mode === 'drawer';
   const [chosen, setChosen] = useState<ListFilter>(savedFilter);
-  const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  /** All sessions, in the drawer: every group rather than Recent. */
+  const [expanded, setExpanded] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   // Pipeline runs (#179): sub-sessions under their parent, closed until you open the tree; a search lists every
   // session on its own, so a step is found by its name too.
@@ -167,12 +193,12 @@ export function SessionList({
       keepOpenTrees(next);
       return next;
     });
-  const search = drawer || searching ? query : '';
+  const search = drawer ? query : '';
   const flat = search.trim() !== '';
   const listed = flat ? sessions.sessions : tree.roots;
   const counts = filterCounts(listed);
-  // On a phone the chips only show, and only filter, while you search.
-  const filter = sidebar || searching ? visibleFilter(chosen, counts) : 'all';
+  // In the drawer the chips only show, and only filter, while you search; Home on a phone shows every session.
+  const filter = sidebar || (drawer && flat) ? visibleFilter(chosen, counts) : 'all';
   // In the sidebar and the drawer, a session that waits on you is a row in Needs you rather than a card.
   const filtered = mode === 'phone' ? filterList({ sessions: listed, prompts: sessions.prompts }, filter, search) : { prompts: [] as ListedPrompt[], sessions: listed.filter((s) => (filter === 'all' || s.status === filter) && matchesSearch(s, search)) };
   // A sub-session's prompt is a card too, though its row sits in its parent's tree.
@@ -242,10 +268,6 @@ export function SessionList({
       // Private browsing without storage: the chip lasts until the page closes.
     }
   };
-  const closeSearch = () => {
-    setSearching(false);
-    setQuery('');
-  };
 
   const chipButton = (value: ListFilter, label: string, count?: number) => (
     <button
@@ -263,21 +285,19 @@ export function SessionList({
   );
 
   const searchField = (
-    <label className="field flex min-h-9 flex-1 items-center gap-2 px-2.5 pointer-fine:min-h-7">
+    <label className="field flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-full! px-3.5 pointer-fine:min-h-8">
       <Search className="size-4 shrink-0 text-faint" aria-hidden />
       <input
         ref={field}
-        autoFocus={mode === 'phone'}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
-          // In the drawer, Escape clears the search first, then closes the drawer.
-          if (event.key !== 'Escape' || (drawer && !query)) return;
+          // Escape clears the search first, then closes the drawer.
+          if (event.key !== 'Escape' || !query) return;
           event.preventDefault();
-          if (drawer) setQuery('');
-          else closeSearch();
+          setQuery('');
         }}
-        placeholder="Search title, project or branch"
+        placeholder="Search sessions"
         aria-label="Search sessions"
         enterKeyHint="search"
         data-remote-search
@@ -299,55 +319,93 @@ export function SessionList({
     </div>
   );
 
-  /** A phone's top: the large title, or while you search, the field with Cancel and the chips. */
-  const phoneTop = searching ? (
-    <div className="safe-top sticky top-0 z-10 flex flex-col gap-2 border-b border-border bg-bg px-4 pb-2" data-remote-bar="search">
+  /**
+   * Home's header on a phone: the menu button, the computer's name, search and `⋯`, and under the name the
+   * connection with what happened ("● Connected · 2 finished today"); with more than one computer, their chips.
+   */
+  const phoneTop = (
+    <header className="safe-top sticky top-0 z-10 bg-bg px-2 pb-2" data-remote-bar>
       <div className="flex items-center gap-1">
-        {searchField}
-        <Button variant="quiet" size="md" onClick={closeSearch} className="-mr-2 px-2!" data-remote-search-cancel>
-          Cancel
-        </Button>
+        {lead}
+        <h1 className="flex min-w-0 flex-1 pl-1">{title}</h1>
+        <RoundButton aria-label="Search sessions" onClick={onSearch} data-remote-search-open>
+          <Search aria-hidden />
+        </RoundButton>
+        {more}
       </div>
-      <div className="-mx-4 flex px-4">{chips}</div>
-    </div>
-  ) : (
-    <LargeTitle
-      title={(size) => title?.(size)}
-      line={
-        strip ? (
-          <div className="scroll-row -mx-4 flex min-w-0 items-center gap-1.5 px-4 pt-0.5" data-remote-computers>
-            {strip}
-            <span className="shrink-0 text-meta text-muted">{shortHeadline(live, now)}</span>
-          </div>
-        ) : (
+      {strip ? (
+        <div className="scroll-row flex min-w-0 items-center gap-1.5 px-2 pt-1" data-remote-computers>
+          {strip}
+          <span className="shrink-0 text-meta text-muted">{shortHeadline(live, now)}</span>
+        </div>
+      ) : (
+        <div className={lead ? 'pl-15' : 'pl-4'}>
           <ConnectionLine state={state} detail={shortHeadline(live, now)} />
-        )
-      }
-      actions={
-        <>
-          <Button variant="quiet" size="md" aria-label="Search sessions" onClick={() => setSearching(true)} className="min-w-11 px-0! pointer-fine:min-w-8" data-remote-search-open>
-            <Search className="size-5" aria-hidden />
-          </Button>
-          <MenuButton items={menu} className="min-w-11 px-0! pointer-fine:min-w-8" />
-        </>
-      }
-    />
+        </div>
+      )}
+    </header>
   );
 
   const groups = groupSessions(shown.sessions, now);
+  const recent = recentOf(groups);
   const needsYouRows = groups.find((g) => g.group === 'needs-you')?.sessions.length ?? 0;
   const empty = sessions.sessions.length === 0;
   const nothingMatches = !empty && cards.length === 0 && groups.length === 0;
+
+  /** A session's row, with its swipes on a phone and its steps under it while its tree is open. */
+  const renderRow = (session: ListedSession) => {
+    const away = isAway(session.computer);
+    const kids = flat ? [] : (tree.children.get(session.id) ?? []);
+    // A step that is open stays in view under its parent.
+    const isOpen = kids.length > 0 && (open.has(session.id) || kids.some((kid) => kid.id === selectedId));
+    const size = mode === 'phone' ? 'phone' : 'compact';
+    const row = (
+      <SessionRow
+        session={session}
+        computer={tagOf(session.computer)}
+        size={size}
+        rail={sidebar}
+        selected={session.id === selectedId}
+        asks={mode === 'phone' ? undefined : promptOf.get(session.id)}
+        detail={flat ? null : treeLine(session, runOfRow(sessions.runs, session), kids, sessions.prompts)}
+        tree={kids.length ? { open: isOpen, count: kids.length, onToggle: () => toggleTree(session.id) } : undefined}
+        now={now}
+        onOpen={() => onOpen(session.id)}
+        onMenu={(point, element) => setRowMenu({ session, point, row: element })}
+      />
+    );
+    return (
+      <li key={session.id} className={away ? 'opacity-60' : undefined} data-remote-away={away || undefined}>
+        {/* A session that waits on you never swipes away: a prompt can't be dismissed by accident. */}
+        {mode === 'phone' && session.status !== 'needs-you' ? (
+          <SwipeRow allowed={{ read: Boolean(clientOf(session)) && session.unread, archive: Boolean(clientOf(session)) }} onAction={onSwipe(session)}>
+            {row}
+          </SwipeRow>
+        ) : (
+          row
+        )}
+        {isOpen && (
+          <ul aria-label={`Steps of ${session.title}`} data-remote-tree={session.sessionId}>
+            {kids.map((kid) => (
+              <li key={kid.id}>
+                <ChildRow session={kid} runs={sessions.runs} size={size} selected={kid.id === selectedId} now={now} onOpen={() => onOpen(kid.id)} onMenu={(point, element) => setRowMenu({ session: kid, point, row: element })} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  };
 
   const body = (
     <>
       {top}
       {offline && !empty && <p className="px-4 pt-3 text-meta text-muted">{state.kind === 'disconnected' ? 'The list from before you disconnected.' : "The list from before you lost the connection. Answering waits until you're back online."}</p>}
-      {mode === 'phone' && !searching && usage && <div className="px-3 pt-3">{usage}</div>}
+      {mode === 'phone' && usage && <div className="px-4 pt-3">{usage}</div>}
       {empty && <p className="px-4 py-10 text-center text-body text-muted">{state.kind === 'disconnected' ? 'Connect to see your sessions.' : offline ? 'Waiting for your computer.' : 'No sessions yet. Start one with New session.'}</p>}
       {nothingMatches && <p className="px-4 py-10 text-center text-body text-muted">{search ? 'No session matches.' : 'Nothing here right now.'}</p>}
       {cards.length > 0 && (
-        <section aria-labelledby="group-prompts" className="flex flex-col px-3 pb-1">
+        <section aria-labelledby="group-prompts" className="flex flex-col px-4 pb-1">
           <SectionHeader id="group-prompts" label={GROUP_LABEL['needs-you']} count={cards.length + needsYouRows} tone="text-warn" className="px-1" />
           {cards.map((prompt) => (
             <div key={prompt.requestId} className={`collapse-out mb-2 ${isAway(prompt.computer) ? 'opacity-60' : ''}`} data-remote-away={isAway(prompt.computer) || undefined} data-leaving={leaving.isLeaving(prompt.requestId) || undefined} onTransitionEnd={(event) => event.propertyName === 'grid-template-rows' && leaving.gone(prompt.requestId)}>
@@ -369,85 +427,72 @@ export function SessionList({
           ))}
         </section>
       )}
-      {groups.map(({ group, sessions: rows }) => (
-        // Under the cards, what needs you without a prompt (a run waiting at Push) goes on in their section.
-        <section key={group} aria-labelledby={group === 'needs-you' && cards.length ? 'group-prompts' : `${mode}-group-${group}`}>
-          {!(group === 'needs-you' && cards.length) && <SectionHeader id={`${mode}-group-${group}`} label={GROUP_LABEL[group]} count={rows.length} tone={GROUP_TONE[group]} />}
-          <ul>
-            {rows.map((session) => {
-              const away = isAway(session.computer);
-              const kids = flat ? [] : (tree.children.get(session.id) ?? []);
-              // A step that is open stays in view under its parent.
-              const isOpen = kids.length > 0 && (open.has(session.id) || kids.some((kid) => kid.id === selectedId));
-              const size = mode === 'phone' ? 'phone' : 'compact';
-              const row = (
-                <SessionRow
-                  session={session}
-                  computer={tagOf(session.computer)}
-                  size={size}
-                  selected={session.id === selectedId}
-                  asks={mode === 'phone' ? undefined : promptOf.get(session.id)}
-                  detail={flat ? null : treeLine(session, runOfRow(sessions.runs, session), kids, sessions.prompts)}
-                  tree={kids.length ? { open: isOpen, count: kids.length, onToggle: () => toggleTree(session.id) } : undefined}
-                  now={now}
-                  onOpen={() => onOpen(session.id)}
-                  onMenu={(point, element) => setRowMenu({ session, point, row: element })}
-                />
-              );
-              return (
-                <li key={session.id} className={away ? 'opacity-60' : undefined} data-remote-away={away || undefined}>
-                  {/* A session that waits on you never swipes away: a prompt can't be dismissed by accident. */}
-                  {mode === 'phone' && session.status !== 'needs-you' ? (
-                    <SwipeRow allowed={{ read: Boolean(clientOf(session)) && session.unread, archive: Boolean(clientOf(session)) }} onAction={onSwipe(session)}>
-                      {row}
-                    </SwipeRow>
-                  ) : (
-                    row
-                  )}
-                  {isOpen && (
-                    <ul aria-label={`Steps of ${session.title}`} data-remote-tree={session.sessionId}>
-                      {kids.map((kid) => (
-                        <li key={kid.id}>
-                          <ChildRow session={kid} runs={sessions.runs} size={size} selected={kid.id === selectedId} now={now} onOpen={() => onOpen(kid.id)} onMenu={(point, element) => setRowMenu({ session: kid, point, row: element })} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+      {drawer && !flat && !expanded ? (
+        recent.sessions.length > 0 && (
+          <section aria-labelledby="drawer-recent">
+            <SectionHeader id="drawer-recent" label="Recent" />
+            <ul>{recent.sessions.map(renderRow)}</ul>
+            {recent.more && (
+              <button type="button" onClick={() => setExpanded(true)} className="flex min-h-11 w-full items-center px-4 text-left text-ui font-semibold text-accent-ink hover:bg-border/45 active:bg-selected" data-remote-drawer-all>
+                All sessions
+              </button>
+            )}
+          </section>
+        )
+      ) : (
+        groups.map(({ group, sessions: rows }) => (
+          // Under the cards, what needs you without a prompt (a run waiting at Push) goes on in their section.
+          <section key={group} aria-labelledby={group === 'needs-you' && cards.length ? 'group-prompts' : `${mode}-group-${group}`}>
+            {!(group === 'needs-you' && cards.length) && <SectionHeader id={`${mode}-group-${group}`} label={GROUP_LABEL[group]} count={rows.length} tone={GROUP_TONE[group]} className={mode === 'phone' ? 'px-5' : 'px-4'} />}
+            <ul>{rows.map(renderRow)}</ul>
+          </section>
+        ))
+      )}
     </>
   );
 
-  // Home is the first row under the title, in the sidebar and the drawer alike, above the computers and the search.
+  // Home is the first row under the title in the sidebar, and the first place in the drawer.
   const homeButton = (
     <button
       type="button"
       onClick={onHome}
       aria-current={homeOpen ? 'page' : undefined}
-      className={`mx-2 flex items-center gap-2.5 rounded-lg px-2 text-left transition-colors ${drawer ? 'min-h-11' : 'min-h-8'} ${homeOpen ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+      className={`mx-2 flex items-center gap-2.5 rounded-lg px-2 text-left transition-colors ${drawer ? 'min-h-[46px] px-3' : 'min-h-8'} ${homeOpen ? (drawer ? 'bg-accent/15 font-semibold' : 'bg-selected') : 'hover:bg-border/45 active:bg-selected'}`}
       data-remote-home-row
     >
-      <House className="size-4 shrink-0 text-muted" aria-hidden />
+      <House className={`size-4 shrink-0 ${drawer && homeOpen ? 'text-text' : 'text-muted'}`} aria-hidden />
       <span className={drawer ? 'text-body' : 'text-ui'}>Home</span>
     </button>
   );
+  const placeRow = (place: DrawerPlace) =>
+    place.id === 'home' ? (
+      <li key="home" className="flex flex-col">
+        {homeButton}
+      </li>
+    ) : (
+      onUpcoming && (
+        <li key="upcoming" className="flex flex-col">
+          <button type="button" onClick={onUpcoming} className="mx-2 flex min-h-[46px] items-center gap-2.5 rounded-lg px-3 text-left hover:bg-border/45 active:bg-selected" data-remote-upcoming-row>
+            <CalendarClock className="size-4 shrink-0 text-muted" aria-hidden />
+            <span className="flex-1 text-body">Upcoming</span>
+            {place.count > 0 && <span className="text-meta text-faint tabular-nums">{place.count} queued</span>}
+          </button>
+        </li>
+      )
+    );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {mode !== 'phone' && (
-        <header className={`sticky top-0 z-10 flex items-center gap-2 bg-inherit pb-2 ${drawer ? 'px-3 pt-[max(0.75rem,env(safe-area-inset-top))]' : 'safe-top px-4'}`}>
+      {sidebar && (
+        <header className="safe-top sticky top-0 z-10 flex items-center gap-2 bg-inherit px-4 pb-2">
           <Logo className="size-6" />
           <h1 className="min-w-0 flex-1 truncate text-title font-semibold">Sessions</h1>
           {chip}
           {headerEnd}
         </header>
       )}
-      {(sidebar || (drawer && !query)) && <div className="pb-2">{homeButton}</div>}
-      {mode !== 'phone' && strip && (
+      {sidebar && <div className="pb-2">{homeButton}</div>}
+      {sidebar && strip && (
         <div className="scroll-row flex gap-1.5 px-3 pb-2" data-remote-computers>
           {strip}
         </div>
@@ -466,13 +511,25 @@ export function SessionList({
       )}
       {drawer && (
         <>
-          <div className="flex px-3 pb-2">{searchField}</div>
-          <div className="border-b border-border" />
+          <div className="flex items-center gap-1 pr-1 pl-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
+            {searchField}
+            <RoundButton aria-label="Close" onClick={onClose} data-remote-drawer-close>
+              <X aria-hidden />
+            </RoundButton>
+            {headerEnd}
+          </div>
+          {flat ? (
+            <div className="flex px-3 pb-2">{chips}</div>
+          ) : (
+            <nav aria-label="Places">
+              <ul className="flex flex-col gap-0.5 pb-2">{drawerPlaces(queued).map(placeRow)}</ul>
+            </nav>
+          )}
         </>
       )}
       {mode !== 'phone' && banner}
       {mode === 'phone' ? (
-        <PullToRefresh onRefresh={onRefresh} update={update} disabled={offline} className="min-h-0 flex-1 pb-3" data-remote-list>
+        <PullToRefresh onRefresh={onRefresh} update={update} disabled={offline} onScroll={fab.onScroll} className="min-h-0 flex-1 pb-28" data-remote-list>
           {phoneTop}
           {banner}
           <nav aria-label="Sessions" aria-busy={offline || undefined} className={`transition-opacity ${offline ? 'opacity-60' : ''}`}>
@@ -485,18 +542,58 @@ export function SessionList({
         </nav>
       )}
       {rowMenu && <ContextMenu label={`Session “${rowMenu.session.title}”`} items={rowItems(rowMenu.session)} point={rowMenu.point} owner={rowMenu.row} onClose={closeRowMenu} />}
-      <footer className={`safe-bottom border-t border-border bg-inherit pt-2 ${mode === 'phone' ? 'px-4' : 'px-3'}`}>
-        <div className="flex items-center gap-1">
-          <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="flex-1" data-remote-new>
-            <Plus className="size-4" aria-hidden />
+      {sidebar && (
+        <footer className="safe-bottom border-t border-border bg-inherit px-3 pt-2">
+          <div className="flex items-center gap-1">
+            <Button variant="primary" onClick={onNew} aria-pressed={newOpen} disabled={offline} className="flex-1" data-remote-new>
+              <Plus className="size-4" aria-hidden />
+              New session
+            </Button>
+            <MenuButton items={menu} side="above" />
+          </div>
+          {offline && <p className="pt-1 text-center text-meta text-faint">New session needs the connection.</p>}
+        </footer>
+      )}
+      {drawer && footer}
+      {mode === 'phone' && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center pb-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))]">
+          <button
+            type="button"
+            onClick={onNew}
+            onFocus={fab.show}
+            disabled={offline}
+            title={offline ? 'New session needs the connection.' : undefined}
+            className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 text-body font-semibold text-on-accent shadow-[var(--sb-overlay-shadow)] transition-transform duration-200 ease-out enabled:active:brightness-90 disabled:opacity-60 motion-reduce:transition-none"
+            style={fab.shown ? undefined : { transform: 'translateY(calc(100% + 1rem + env(safe-area-inset-bottom)))' }}
+            data-remote-new
+            data-remote-new-float={fab.shown ? 'shown' : 'hidden'}
+          >
+            <Plus className="size-5" aria-hidden />
             New session
-          </Button>
-          {sidebar && <MenuButton items={menu} side="above" />}
+          </button>
         </div>
-        {offline && <p className="pt-1 text-center text-meta text-faint">New session needs the connection.</p>}
-      </footer>
+      )}
     </div>
   );
+}
+
+/**
+ * Whether the floating New session is out (`lib/fab.ts`), from the list's scroll. It renders again only when that
+ * changes, not on every scroll. With reduced motion it stays out; focus brings it back, so a keyboard finds it.
+ */
+function useFab() {
+  const reduced = useReducedMotion();
+  const state = useRef(FAB_START);
+  const [shown, setShown] = useState(true);
+  const onScroll = useCallback((top: number) => {
+    state.current = nextFab(state.current, top);
+    setShown(state.current.shown);
+  }, []);
+  const show = useCallback(() => {
+    state.current = { ...state.current, shown: true };
+    setShown(true);
+  }, []);
+  return { shown: shown || reduced, onScroll, show };
 }
 
 /** A finger held this long on a row opens its menu. */
@@ -511,6 +608,7 @@ function SessionRow({
   session,
   computer,
   size,
+  rail,
   selected,
   asks,
   detail = null,
@@ -523,6 +621,8 @@ function SessionRow({
   /** The computer's name, with more than one. */
   computer: string | undefined;
   size: 'phone' | 'compact';
+  /** The 3px line on the left in the status's (or profile's) colour: the sidebar's. A phone's rows have their dot. */
+  rail: boolean;
   selected: boolean;
   asks: ListedPrompt | undefined;
   /** A run's parent or run row: where the run is, or why it needs you, in the project's place (`treeLine`). */
@@ -547,7 +647,7 @@ function SessionRow({
         data-remote-run-row={session.runRow || undefined}
         data-remote-nav="row"
         data-remote-profile={profile?.id}
-        className={`flex w-full items-center gap-2.5 border-l-[3px] text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-11 px-3 py-1' : 'min-h-14 px-4 py-2 pointer-fine:min-h-12'} ${tree ? (size === 'compact' ? 'pr-9' : 'pr-12 pointer-fine:pr-10') : ''} ${profile ? PROFILE_RAIL[profile.color] : STATUS_RAIL[session.status]} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
+        className={`flex w-full items-center gap-2.5 text-left transition-colors select-none [-webkit-touch-callout:none] focus-visible:-outline-offset-2 ${size === 'compact' ? 'min-h-11 py-1' : 'min-h-14 py-2 pointer-fine:min-h-12'} ${rail ? `border-l-[3px] px-3 ${profile ? PROFILE_RAIL[profile.color] : STATUS_RAIL[session.status]}` : size === 'compact' ? 'px-4' : 'px-5'} ${tree ? (size === 'compact' ? 'pr-9' : 'pr-12 pointer-fine:pr-10') : ''} ${selected ? 'bg-selected' : 'hover:bg-border/45 active:bg-selected'}`}
       >
         <StatusDot status={session.status} />
         <span className="min-w-0 flex-1">

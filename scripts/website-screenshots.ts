@@ -562,7 +562,7 @@ async function phoneShots(): Promise<void> {
     page.setDefaultTimeout(15_000);
     await page.goto(readFileSync(linkFile, 'utf8').trim());
     await page.getByRole('button', { name: 'Pair' }).click();
-    await page.waitForSelector('[data-remote-computer-title="large"][data-remote-connection="connected"]');
+    await page.waitForSelector('[data-remote-computer-title][data-remote-connection="connected"]');
     await page.waitForSelector('[data-remote-usage-card]');
     // The offer to turn on notifications isn't what these pictures are about.
     const notNow = page.getByRole('button', { name: 'Not now' });
@@ -580,7 +580,7 @@ async function phoneShots(): Promise<void> {
       await page.evaluate(() => document.querySelector('[data-remote-list]')?.scrollTo(0, 0));
       await shot('remote-phone-first-screen', scheme);
 
-      await page.click('[data-remote-computer-title="large"]');
+      await page.click('[data-remote-computer-title]');
       await page.waitForSelector('[role=menu]');
       await shot('remote-phone-computer-menu', scheme);
       await page.keyboard.press('Escape');

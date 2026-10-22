@@ -12,7 +12,7 @@ const MIN_SPIN_MS = 500;
  * the browser's own pull from reloading the page, so the pull is done here. Touch only. With `update`, a newer remote
  * app is on the site: it says Release to update, and `onRefresh` reloads the app.
  */
-export function PullToRefresh({ onRefresh, update = false, disabled = false, className = '', children, ...rest }: { onRefresh: () => Promise<unknown>; update?: boolean; disabled?: boolean; className?: string; children: ReactNode } & Record<`data-${string}` | `aria-${string}`, unknown>) {
+export function PullToRefresh({ onRefresh, update = false, disabled = false, className = '', onScroll, children, ...rest }: { onRefresh: () => Promise<unknown>; update?: boolean; disabled?: boolean; className?: string; /** Where the list is scrolled to (the floating New session button). */ onScroll?: (top: number) => void; children: ReactNode } & Record<`data-${string}` | `aria-${string}`, unknown>) {
   const scroller = useRef<HTMLDivElement>(null);
   const [dy, setDy] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,7 +83,7 @@ export function PullToRefresh({ onRefresh, update = false, disabled = false, cla
   const offset = refreshing ? REFRESHING_OFFSET : pullOffset(dy);
   const dragging = dy > 0;
   return (
-    <div ref={scroller} className={`relative overflow-y-auto overscroll-contain ${className}`} data-remote-scroll {...rest}>
+    <div ref={scroller} className={`relative overflow-y-auto overscroll-contain ${className}`} onScroll={onScroll && ((event) => onScroll(event.currentTarget.scrollTop))} data-remote-scroll {...rest}>
       <div aria-live="polite" className="pointer-events-none absolute inset-x-0 top-0 flex items-end justify-center overflow-hidden text-meta text-muted" style={{ height: offset }} data-remote-pull={phase}>
         {phase === 'refreshing' ? (
           <span className="flex h-11 items-center">
