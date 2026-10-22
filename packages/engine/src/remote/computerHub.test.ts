@@ -115,6 +115,33 @@ describe('Other computers', () => {
     expect(a.events[0]).toEqual({ computerId: id, name: 'sessions.changed', payload: { sessions: [], prompts: [] } });
   });
 
+  it('passes on only what this version can read, and says what it left out', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const { computers } = await a.until((s) => s.computers[0]?.state === 'connected');
+    const id = computers[0]!.id;
+    expect(computers[0]!.problem).toBeNull();
+
+    // A session the windows can't read (its title isn't text) is left out; the rest goes through.
+    const prompt = { requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: {}, title: null, description: null, alwaysLabel: null, createdAt: 1 };
+    b.server.each((rpc) => rpc.emit('sessions.changed', { sessions: [{ id: 's1', title: { evil: true } }], prompts: [prompt] } as never));
+    await a.until(() => a.events.length > 0);
+    expect(a.events[0]!.payload).toEqual({ sessions: [], prompts: [prompt] });
+    expect(a.hub.status().computers[0]!.problem).toMatch(/^Studio Mac sent 1 item in its session list this version of Switchboard can’t read/);
+
+    // What isn't a list at all doesn't reach the windows.
+    b.server.each((rpc) => rpc.emit('sessions.changed', 'garbage' as never));
+    await a.until((s) => /^Studio Mac sent data /.test(s.computers[0]!.problem ?? ''));
+    // A list it can read clears it.
+    b.server.each((rpc) => rpc.emit('sessions.changed', { sessions: [], prompts: [] }));
+    await a.until((s) => s.computers[0]!.problem === null);
+    expect(a.events.map((e) => e.payload)).toEqual([{ sessions: [], prompts: [prompt] }, { sessions: [], prompts: [] }]);
+    // Its answers go through the same check (B's sessions.list answer is a list it can read).
+    expect(await a.hub.call(id, 'sessions.list', {})).toMatchObject({ sessions: [] });
+  });
+
   it('says why pairing failed when the other computer denies it', async () => {
     const b = await otherComputer();
     const a = thisComputer();

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import type { RemoteContract, RemoteSessions, RpcClient } from '@switchboard/protocol/remote-client';
+import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@switchboard/protocol/remote-client';
 import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../lib/everywhere.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
@@ -21,7 +21,7 @@ import { Palette, type PaletteAction, type PaletteChoice } from './Palette.tsx';
 import { SessionList, type ListComputer } from './SessionList.tsx';
 import { RunView } from './RunView.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, type ComputerProps } from './ConnectionStatus.tsx';
+import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, UnreadableBanner, type ComputerProps } from './ConnectionStatus.tsx';
 import { connectionOf } from './connectionOf.ts';
 import { afterOverlays } from './overlayHistory.ts';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
@@ -92,7 +92,8 @@ export function Connected({
   /** A session or New session on another computer is on screen now. */
   onFocus: (id: string) => void;
   /** A computer's list asked for here (pull to refresh, after an answer). */
-  onSessions: (computer: string, sessions: RemoteSessions) => void;
+  /** A list asked for here, as it came: `Computers.setSessions` checks it. */
+  onSessions: (computer: string, sessions: unknown) => void;
   request: OpenRequest | null;
   onAdd: () => void;
   onForget: (computer: string) => void;
@@ -234,8 +235,10 @@ export function Connected({
     if (!notifiedClient || !fromNotification) return;
     const asked = fromNotification;
     setFromNotification(null);
-    void notifiedClient.call('sessions.list', {}).then(async (list) => {
-      setSessions(asked.computer, list);
+    void notifiedClient.call('sessions.list', {}).then(async (sent) => {
+      setSessions(asked.computer, sent);
+      const list = checkRemoteSessions(sent)?.list;
+      if (!list) return;
       const prompt = list.prompts.find((p) => p.requestId === asked.requestId);
       const title = list.sessions.find((s) => s.id === asked.sessionId)?.title;
       if (!prompt) return toast('Already answered', { detail: title });
@@ -277,6 +280,7 @@ export function Connected({
     <Fragment key={c.id}>
       <ConnectionBanner state={c.state} computer={nameOf(c)} onHelp={() => setHelp(c.id)} onRetry={() => c.connection.retryNow()} onConnect={() => reconnect(c)} />
       {multi && <UnpairedBanner state={c.state} computer={nameOf(c)} onForget={() => forget(c)} />}
+      <UnreadableBanner problem={c.problem} />
     </Fragment>
   );
   /** The list is every computer's, so it says how each one is; a session or New session only its own. */

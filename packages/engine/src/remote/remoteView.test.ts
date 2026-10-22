@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@switchboard/protocol';
 import { projectIdOf, remoteMessage, remoteRuns, remoteSessions } from './remoteView.ts';
 
 const msg = (role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks']): TranscriptMessage => ({ uuid: 'm1', role, timestamp: 1, parentToolUseId: null, model: null, blocks });
@@ -73,6 +73,12 @@ describe('remoteRuns', () => {
     expect(remote!.steps[0]).not.toHaveProperty('actions');
     expect(JSON.stringify(remote)).not.toContain(ROOT);
     expect(JSON.stringify(remote)).not.toContain('The secret plan');
+  });
+
+  it('sends runs the remote app’s own check reads (`checkRemoteSessions`, without zod)', () => {
+    const runs = remoteRuns([runState(), runState({ id: 'run-row', parentSessionId: null, task: 'Add a toggle' })], new Set(['parent']), options);
+    const list = RemoteSessions.parse({ sessions: [], prompts: [], runs });
+    expect(checkRemoteSessions(JSON.parse(JSON.stringify(list)))).toMatchObject({ dropped: 0 });
   });
 
   it('sends the runs of what the phone lists, and the run rows the sidebar lists', () => {

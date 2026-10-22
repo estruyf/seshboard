@@ -50,6 +50,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **A paired computer can no longer blank the window or the remote app.** When another computer sends sessions this version can't read, for example because it runs an older or newer Switchboard, the window and the remote app now leave them out and say so, instead of showing an empty screen. The computer's page and its chip in the sidebar say what happened, and the remote app shows a banner. Updating Switchboard on both computers fixes it.
 - **Steer and Send now on another computer's sessions.** In a session from another computer, a message you send while Claude works no longer always waits in Up next. Enter queues or steers as set in Settings › Conversation, ⌥↵ (Alt+Enter on Windows) does it the other way, ⌘⇧↵ (Ctrl+Shift+Enter) stops Claude and sends at once, and the arrow next to Queue lists all three, as on your own sessions. Up next has **Send now** there and in the remote app on your phone. The other computer needs this version.
 - **The Steer button steers.** With Enter set to steer in Settings › Conversation, clicking **Steer** next to the message box queued the message instead.
 - **Steps on your phone read like the app's.** The remote app now names each step the way the app does: a command by what it does ("Merge origin/dev"), not its raw text, and the step Claude is on while it works ("Running the tests").
