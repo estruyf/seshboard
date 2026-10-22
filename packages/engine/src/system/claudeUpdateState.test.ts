@@ -65,6 +65,14 @@ describe('Claude Code update state', () => {
     expect(state.error).toContain('still v2.1.0');
   });
 
+  it('a Homebrew cask that has not caught up says so, rather than offering the update again', () => {
+    const brew = reduce.installFound(reduce.initialClaudeUpdateState({ enabled: true, dismissedVersion: null }), found('2.1.306', { info: detectInstall('/opt/homebrew/bin/claude', '/opt/homebrew/Caskroom/claude-code/2.1.306/claude', { home: '/Users/me', channel: 'stable', platform: 'darwin' }), channel: 'stable' }));
+    const state = reduce.updateFinished(reduce.updating(reduce.checked(brew, '2.1.308', 1)), { exitCode: 0, version: '2.1.306' });
+    expect(state.status).toBe('error');
+    expect(state.error).toContain('Homebrew’s Claude Code cask is still v2.1.306');
+    expect(state.error).not.toContain('may not be available');
+  });
+
   it('an update that moved forward but not all the way still offers the newest', () => {
     const state = reduce.updateFinished(reduce.updating(reduce.checked(start(), '2.3.0', 1)), { exitCode: 0, version: '2.2.0' });
     expect(state).toMatchObject({ status: 'available', installedVersion: '2.2.0', updatedTo: '2.2.0' });

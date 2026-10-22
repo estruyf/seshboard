@@ -117,6 +117,10 @@ export function updateFinished(state: ClaudeUpdateState, result: { exitCode: num
     return { ...state, status: 'error', error: message, installedVersion: after };
   }
   if (after !== null && before !== null && compareVersions(after, before) <= 0) {
+    // Homebrew's cask trails the registry: brew has nothing newer to install, so retrying later is the fix.
+    if (state.method === 'homebrew') {
+      return { ...state, status: 'error', error: `Homebrew’s Claude Code cask is still v${after}, so brew has no newer version to install yet. Try again later, or use the native installer.`, installedVersion: after };
+    }
     const offered = state.latestVersion ? ` v${state.latestVersion} may not be available for this install yet.` : '';
     return { ...state, status: 'error', error: `The update finished, but Claude Code is still v${after}.${offered}`, installedVersion: after };
   }
