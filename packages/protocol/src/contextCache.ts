@@ -1,3 +1,4 @@
+import type { ContextWarningPrefs } from './bridge.ts';
 import { priceOf } from './costEstimate.ts';
 
 /**
@@ -27,3 +28,17 @@ export function cacheRewriteCost(tokens: number, model: string, ttl: CacheTtl): 
   const p = priceOf(model);
   return p ? (tokens * (ttl === '1h' ? p.cacheWrite1h : p.cacheWrite)) / 1_000_000 : null;
 }
+
+/** The window the "Large from" percentage is read against. */
+const LARGE_CONTEXT_WINDOW = 200_000;
+
+/**
+ * From how many tokens a context counts as large: the preference's percentage of a 200k window (60% is 120k). It is
+ * a token count, not a share of the session's own window, because what the notice, the reminder and the quit prompt
+ * are about is what reading the context again costs, and that grows with tokens: 384k costs the same on a 200k or a
+ * 1M window.
+ */
+export const largeContextTokens = (prefs: Pick<ContextWarningPrefs, 'percent'>): number => Math.round((prefs.percent / 100) * LARGE_CONTEXT_WINDOW);
+
+/** Whether a context of `tokens` is large under the preference; false when the warning is off or the size is unknown. */
+export const isLargeContext = (tokens: number | null | undefined, prefs: Pick<ContextWarningPrefs, 'enabled' | 'percent'>): boolean => prefs.enabled && tokens != null && tokens >= largeContextTokens(prefs);

@@ -55,8 +55,12 @@ describe('reminderDue', () => {
     expect(reminderDue(host({ cacheAt: 1_000 }), DEFAULT_CONTEXT_WARNING)).toBe(1_000 + HOUR - REMIND_BEFORE_MS);
   });
 
+  it('counts tokens, not the share of the window', () => {
+    expect(reminderDue(host({ contextTokens: 384_000, contextPercent: 38, contextMax: 1_000_000 }), DEFAULT_CONTEXT_WARNING)).not.toBeNull();
+  });
+
   it('skips small, busy, five-minute and switched-off sessions', () => {
-    expect(reminderDue(host({ contextPercent: 40 }), DEFAULT_CONTEXT_WARNING)).toBeNull();
+    expect(reminderDue(host({ contextTokens: 100_000, contextPercent: 10, contextMax: 1_000_000 }), DEFAULT_CONTEXT_WARNING)).toBeNull();
     expect(reminderDue(host({ state: 'running' }), DEFAULT_CONTEXT_WARNING)).toBeNull();
     expect(reminderDue(host({ cacheTtl: '5m' }), DEFAULT_CONTEXT_WARNING)).toBeNull();
     expect(reminderDue(host({ cacheAt: null }), DEFAULT_CONTEXT_WARNING)).toBeNull();

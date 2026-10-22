@@ -15,6 +15,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Large context notice in sessions with a 1M window.** The notice, the reminder before the cache expires and the quit prompt now count tokens: Large from in Settings › Usage is a share of a 200k window (60% is 120k), whatever the session's window. Before, a session on a 1M window only counted as large from 600k.
 - **Compacting shows after switching sessions** ([#198](https://github.com/estruyf/switchboard/issues/198)). A session that is compacting now says so when you switch to another session and back, also in pop-outs and split view, instead of only Working.
 - **Large context cost follows the model you pick.** The cost in the Large context notice is now the price of the model your next message goes to, also after you pick another one in the model chip.
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Layers } from 'lucide-react';
-import { cacheRewriteCost, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheRewriteCost, isLargeContext, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useSecondClock } from '../../lib/secondClock.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -8,7 +8,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { useCostFormat } from '../usage/useCost.ts';
 import { lastTurnTokens } from './ContextMeter.tsx';
-import { agoText, cacheState, cacheUseOf, compactTokens, contextPercentOf, isLargeContext, nextMessageModel, untilText } from './largeContext.ts';
+import { agoText, cacheState, cacheUseOf, compactTokens, nextMessageModel, untilText } from './largeContext.ts';
 
 /** Notices dismissed this run, per session and cache state: a lapsed cache still shows after dismissing the countdown. */
 const dismissed = new Set<string>();
@@ -47,8 +47,7 @@ export function LargeContextNotice({
   const [, setDismissed] = useState(0);
   const estimate = live ? null : lastTurnTokens(messages);
   const tokens = live?.tokens ?? estimate;
-  const percent = contextPercentOf(live, estimate);
-  const large = !working && tokens !== null && isLargeContext(percent, warning);
+  const large = !working && tokens !== null && isLargeContext(tokens, warning);
   const now = useSecondClock(large) || Date.now();
   if (!large) return null;
 

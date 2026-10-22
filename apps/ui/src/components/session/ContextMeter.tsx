@@ -133,8 +133,8 @@ export function ContextMeter({
       {known ? (
         <>
           {/* Decoration: the button's label says how full it is. */}
-          <Meter kind="ring" percent={known.percent} level={contextLevel(known.percent, warning)} />
-          Context <span className={LEVEL_TEXT[contextLevel(known.percent, warning)]}>{formatPercent(known.percent)}</span>
+          <Meter kind="ring" percent={known.percent} level={contextLevel(known.percent, known.tokens, warning)} />
+          Context <span className={LEVEL_TEXT[contextLevel(known.percent, known.tokens, warning)]}>{formatPercent(known.percent)}</span>
           <span className="text-faint @max-[860px]:hidden">
             {compactTokens(known.tokens)} / {compactTokens(known.max)}
           </span>
