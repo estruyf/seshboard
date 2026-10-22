@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contract } from './contract.ts';
-import { remoteContract, remotePairContract } from './remote.ts';
+import { RemoteTheme, remoteContract, remotePairContract } from './remote.ts';
 
 describe('the remote contracts', () => {
   it('give a phone only these methods', () => {
@@ -52,6 +52,7 @@ describe('the remote contracts', () => {
       'session.setPermissionMode',
       'session.stopTask',
       'sessions.list',
+      'theme.get',
       'transcript.get',
       'transcript.unwatch',
       'transcript.watch',
@@ -60,7 +61,7 @@ describe('the remote contracts', () => {
       'usage.tokens',
       'usage.windowCosts',
     ]);
-    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'catchup.changed', 'limits.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
+    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'catchup.changed', 'limits.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'theme.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);
   });
 
@@ -93,5 +94,12 @@ describe('the remote contracts', () => {
   it('take a session id for changes, never a folder', () => {
     expect(remoteContract.requests['changes.get'].params.safeParse({ sessionId: 's', cwd: '/tmp' }).data).toEqual({ sessionId: 's' });
     expect(remoteContract.requests['changes.commit'].params.safeParse({ sessionId: 's', message: '  ' }).success).toBe(false);
+  });
+
+  it('take only colours in a theme, by token name', () => {
+    expect(RemoteTheme.safeParse({ name: 'GitHub', light: { bg: '#ffffff', 'accent-ink': 'oklch(0.5 0.1 250)' }, dark: {} }).success).toBe(true);
+    expect(RemoteTheme.safeParse({ name: 'x', light: { bg: 'url(https://example.com)' }, dark: {} }).success).toBe(false);
+    expect(RemoteTheme.safeParse({ name: 'x', light: { bg: '#fff; color: red' }, dark: {} }).success).toBe(false);
+    expect(RemoteTheme.safeParse({ name: 'x', light: { 'not-a-token': '#ffffff' }, dark: {} }).success).toBe(false);
   });
 });

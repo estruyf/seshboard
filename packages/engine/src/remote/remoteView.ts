@@ -156,6 +156,7 @@ export const remoteMessage = (message: TranscriptMessage, device?: string): Remo
   parentToolUseId: message.parentToolUseId,
   ...remoteTurn(message.role, message.blocks.map(remoteBlock)),
   ...(device ? { device } : {}),
+  ...(message.usage ? { usage: { id: message.usage.id ?? message.uuid, input: message.usage.input, output: message.usage.output, cacheRead: message.usage.cacheRead, cacheWrite: message.usage.cacheCreation } } : {}),
 });
 
 const tag = (text: string, name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim() ?? null;

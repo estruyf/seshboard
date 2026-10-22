@@ -86,7 +86,12 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
         <Monitor size={16} aria-hidden className="shrink-0 text-remote" />
         <div className={`min-w-0 flex-1 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
           <h1 className="truncate text-title font-semibold">{computer.name}</h1>
-          <p className={`truncate text-meta ${computer.state === 'connected' ? 'text-muted' : 'text-caution'}`} data-computer-state={computer.state}>
+          <p
+            className={`truncate text-meta ${computer.state === 'connected' && !computer.problem ? 'text-muted' : 'text-caution'}`}
+            data-computer-state={computer.state}
+            data-computer-problem={computer.problem ? true : undefined}
+            data-tooltip={computer.problem ?? undefined}
+          >
             {computerLine(computer, now)}
           </p>
         </div>

@@ -84,20 +84,6 @@ export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefa
   return { ...startingChoices(globals, project), permissionMode: linkPermissionMode(project?.permissionMode) };
 }
 
-/**
- * The part of a change that updates the global defaults: fields the project (or the profile) decides
- * apply to this session only (until saved as the project's default).
- */
-export function globalPatch(patch: Partial<Choices>, project: ProjectDefaults | null | undefined): Partial<GlobalChoices> {
-  const out: Partial<GlobalChoices> = {};
-  for (const key of FIELDS) {
-    if (key === 'branch' || !(key in patch) || (project && project[key] !== null)) continue;
-    if (key === 'baseRef' && isBranchBase(patch.baseRef)) continue;
-    (out as Record<string, unknown>)[key] = patch[key];
-  }
-  return out;
-}
-
 /** The choices as a project's defaults ("Save as project default"), keeping the project's default branch, which New session doesn't choose. */
 export function toProjectDefaults(choices: Choices, defaultBranch: string | null = null): ProjectDefaults {
   return {

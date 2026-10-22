@@ -1,4 +1,4 @@
-import { ChevronDown, CircleHelp, PlugZap, RotateCw, Unplug } from 'lucide-react';
+import { ChevronDown, CircleHelp, PlugZap, RotateCw, TriangleAlert, Unplug } from 'lucide-react';
 import { otherLine, stateLine } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { offlineHelp, offlineLine, type OfflineReason } from '../lib/offline.ts';
@@ -176,6 +176,20 @@ export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }
           Try again
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Under the header while a computer sent a session list this app can't read (`checkRemoteSessions`): it may run an
+ * older or newer Switchboard. The list shows what could be read.
+ */
+export function UnreadableBanner({ problem }: { problem: string | null }) {
+  if (!problem) return null;
+  return (
+    <div role="status" className="flex items-center gap-2 border-b border-caution/30 bg-caution/10 px-4 py-2" data-remote-banner="unreadable">
+      <TriangleAlert className="size-4 shrink-0 text-caution" aria-hidden />
+      <p className="min-w-0 flex-1 text-meta text-text">{problem}</p>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   writeRunStub,
   type Pipeline,
   type PipelineRunState,
+  checkRemoteSessions,
   pskFromSecret,
   REMOTE_APP_URL,
   REMOTE_IMAGE_BYTES,
@@ -576,6 +577,23 @@ describe('Remote hub', () => {
     expect(heard).toEqual(['graphite']);
   });
 
+  it('gives the app\'s theme, kept across restarts, and tells phones only when it changes', async () => {
+    const { hub, port, on, appState } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    expect(await remote.call('theme.get', {})).toEqual({ theme: null });
+    const heard: string[] = [];
+    remote.on('theme.changed', (theme) => heard.push(theme.name));
+    const github = { name: 'GitHub', light: { bg: '#ffffff', accent: '#0969da' }, dark: { bg: '#0d1117', accent: '#58a6ff' } };
+    hub.setTheme(github);
+    hub.setTheme(structuredClone(github));
+    hub.setTheme({ ...github, name: 'Nord' });
+    await until(() => heard.length === 2);
+    expect(heard).toEqual(['GitHub', 'Nord']);
+    expect(await remote.call('theme.get', {})).toEqual({ theme: { ...github, name: 'Nord' } });
+    expect(appState.get('remote.theme')).toEqual({ ...github, name: 'Nord' });
+  });
+
   it('answers token usage for the profile signed in to an account, with projects by id and name and never their folder', async () => {
     const { hub, port, on, calls } = await setup();
     await on();
@@ -1051,6 +1069,9 @@ describe('what a phone sees', () => {
     const work = { id: 'work', name: 'Work', color: 'blue' as const };
     expect(remoteSessions(sources, { ...base, profiles: [work] }).sessions[0]!.profile).toBeNull();
     expect(remoteSessions(sources, { ...base, profiles: [{ id: 'default', name: 'Personal', color: 'yellow' }, work] }).sessions[0]!.profile).toEqual(work);
+    // What it sends, the remote app's own check (without zod) reads in full.
+    const sent = JSON.parse(JSON.stringify(remoteSessions(sources, { ...base, profiles: [{ id: 'default', name: 'Personal', color: 'yellow' }, work] }))) as unknown;
+    expect(checkRemoteSessions(sent)).toMatchObject({ dropped: 0, list: { sessions: [{ id: SESSION }] } });
   });
 
   it('takes the project\'s defaults, then the profile\'s, for what the phone leaves out', () => {

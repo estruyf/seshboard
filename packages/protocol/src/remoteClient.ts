@@ -17,8 +17,11 @@ export { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier } from './autoModel.ts
 export type { CatchUp, CatchUpNeedKind, CatchUpTests } from './catchUp.ts';
 export * from './remoteConstants.ts';
 export { APP_ICON_KEYS, appIconKey, DEFAULT_APP_ICON, remoteIconUrl, remoteManifestUrl, type AppIconKey } from './appIcons.ts';
+export { COLOR_PATTERN } from './color.ts';
+export { overlayShadow } from './themeShadow.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';
+export { checkRemoteSessions, unreadableLine, type CheckedSessions } from './remoteSessionsCheck.ts';
 export { parseBriefs, withoutBriefs, type Brief } from './sessionLinks.ts';
 export { parseGithubBlocks, withoutContext, type GithubBlock } from './githubContext.ts';
 export type { Pipeline, PipelineClaudeStep, PipelinePushStep, PipelineRunStatus, PipelineStep, PipelineStepStatus, PipelineWait, PushPreview, StepVerdict } from './pipelineSchema.ts';

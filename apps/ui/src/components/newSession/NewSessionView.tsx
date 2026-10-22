@@ -78,7 +78,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalPatch, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices, type GlobalChoices } from './choices.ts';
+import { DEFAULTS_KEY, INITIAL_CHOICES, layeredDefaults, linkStartingChoices, readGlobals, sameDefaults, startingChoices, toProjectDefaults, withNewSessionMode, type Choices } from './choices.ts';
 import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
@@ -120,7 +120,6 @@ function LocalNewSession() {
   const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
-  const [globals, setGlobals] = useState<GlobalChoices>(INITIAL_CHOICES);
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
   // Before a folder is picked, the mode is already the one Settings sets.
@@ -248,7 +247,7 @@ function LocalNewSession() {
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const defaultsKey = JSON.stringify(sessionDefaults);
   /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults over the ones last used (and the mode Settings sets). */
-  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(globals, newSessionMode), sessionDefaults));
+  const firstChoices = (): Choices => (question ? questionStartingChoices(questionChoices) : choicesFor(withNewSessionMode(INITIAL_CHOICES, newSessionMode), sessionDefaults));
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -262,7 +261,7 @@ function LocalNewSession() {
   );
   const statusOf = (root: string) => tileStatus(activity.get(root), projects.get(root)?.lastActivity ?? null, Date.now());
 
-  // Restore the last folder and global choices.
+  // Restore the last folder. Choices are not remembered: every session starts from its project's defaults.
   useEffect(() => {
     if (!client || loaded) return;
     let cancelled = false;
@@ -272,7 +271,6 @@ function LocalNewSession() {
       ([{ value }, questionValue]) => {
         if (cancelled) return;
         const stored = readGlobals(value);
-        setGlobals(stored.globals);
         setQuestionChoices(readQuestionChoices(questionValue));
         if (!folderFromLink.current) setCwd((current) => current ?? stored.cwd);
         setLoaded(true);
@@ -648,7 +646,7 @@ function LocalNewSession() {
     if (!loaded || touchedFor.current === cwd) return;
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, cwd, defaultsKey, globals, newSessionMode, autostarting, question, questionChoices]);
+  }, [loaded, cwd, defaultsKey, newSessionMode, autostarting, question, questionChoices]);
 
   // Inspect the folder (git? branch?), load its branches, and pre-warm Claude Code there.
   useEffect(() => {
@@ -699,9 +697,9 @@ function LocalNewSession() {
     if (client && cwd && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId });
   }, [client, cwd, d.workspace, d.branch, profileId]);
 
-  const persist = (next: GlobalChoices, folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { ...next, cwd: folder } });
+  const persist = (folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { cwd: folder } });
 
-  // Always build on the latest state: two quick changes (folder, then model) must not undo each other.
+  // A change applies to this session only; a project's own defaults are set in its configuration. Always build on the latest state: two quick changes (folder, then model) must not undo each other.
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
     setSavedNote(null);
@@ -718,14 +716,6 @@ function LocalNewSession() {
       }
       return;
     }
-    const remembered = globalPatch(patch, sessionDefaults);
-    if (Object.keys(remembered).length) {
-      setGlobals((current) => {
-        const next = { ...current, ...remembered };
-        persist(next, cwd);
-        return next;
-      });
-    }
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = null;
@@ -740,7 +730,7 @@ function LocalNewSession() {
     setCwd(folder);
     setAddAsProject(true);
     // Quick question is never the folder New session opens on next time: ⌘N stays on your last project.
-    if (!isQuestionsFolder(folder, questionsDir)) persist(globals, folder);
+    if (!isQuestionsFolder(folder, questionsDir)) persist(folder);
   };
 
   /** Adds a folder as a project and selects it; a folder that is already a project is only selected. */

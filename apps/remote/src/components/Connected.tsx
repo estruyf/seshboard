@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import type { RemoteContract, RemoteSessions, RpcClient } from '@switchboard/protocol/remote-client';
+import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@switchboard/protocol/remote-client';
 import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../lib/everywhere.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
@@ -21,7 +21,7 @@ import { Palette, type PaletteAction, type PaletteChoice } from './Palette.tsx';
 import { SessionList, type ListComputer } from './SessionList.tsx';
 import { RunView } from './RunView.tsx';
 import { SessionView } from './SessionView.tsx';
-import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, type ComputerProps } from './ConnectionStatus.tsx';
+import { ComputerChip, ComputerTitle, ConnectionBanner, OfflineHelp, UnpairedBanner, UnreadableBanner, type ComputerProps } from './ConnectionStatus.tsx';
 import { connectionOf } from './connectionOf.ts';
 import { afterOverlays } from './overlayHistory.ts';
 import { DrawerButton, SessionsDrawer, useEdgeSwipe } from './SessionsDrawer.tsx';
@@ -29,6 +29,7 @@ import type { MenuItem } from './Menu.tsx';
 import { toast, Toasts } from './Toasts.tsx';
 import { NotificationsSheet, PushOffer, PushStrip, shouldOffer } from './Notifications.tsx';
 import { UsageCard, useUsages } from './Usage.tsx';
+import { ThemeSheet } from './ThemeSheet.tsx';
 import { UpdateBar } from './UpdateBar.tsx';
 import { useUpdate } from './useUpdate.ts';
 import { useAskSync } from './askStore.ts';
@@ -91,7 +92,8 @@ export function Connected({
   /** A session or New session on another computer is on screen now. */
   onFocus: (id: string) => void;
   /** A computer's list asked for here (pull to refresh, after an answer). */
-  onSessions: (computer: string, sessions: RemoteSessions) => void;
+  /** A list asked for here, as it came: `Computers.setSessions` checks it. */
+  onSessions: (computer: string, sessions: unknown) => void;
   request: OpenRequest | null;
   onAdd: () => void;
   onForget: (computer: string) => void;
@@ -111,6 +113,7 @@ export function Connected({
   /** The computer whose Help sheet is open. */
   const [help, setHelp] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [offer, setOffer] = useState(() => shouldOffer(offered()));
   const [palette, setPalette] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -232,8 +235,10 @@ export function Connected({
     if (!notifiedClient || !fromNotification) return;
     const asked = fromNotification;
     setFromNotification(null);
-    void notifiedClient.call('sessions.list', {}).then(async (list) => {
-      setSessions(asked.computer, list);
+    void notifiedClient.call('sessions.list', {}).then(async (sent) => {
+      setSessions(asked.computer, sent);
+      const list = checkRemoteSessions(sent)?.list;
+      if (!list) return;
       const prompt = list.prompts.find((p) => p.requestId === asked.requestId);
       const title = list.sessions.find((s) => s.id === asked.sessionId)?.title;
       if (!prompt) return toast('Already answered', { detail: title });
@@ -262,9 +267,10 @@ export function Connected({
     onForget(target.id);
   };
   const menu: MenuItem[] = multi
-    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
+    ? [{ label: 'Notifications', onSelect: () => setNotifications(true) }, { label: 'Theme', onSelect: () => setThemeOpen(true) }, { kind: 'separator' }, { label: 'Pair another computer…', onSelect: onAdd }]
     : [
         { label: 'Notifications', onSelect: () => setNotifications(true) },
+        { label: 'Theme', onSelect: () => setThemeOpen(true) },
         { kind: 'separator' },
         { kind: 'note', label: `Paired as ${paired.name}` },
         { label: 'Forget this computer…', danger: true, onSelect: () => void forget(current) },
@@ -274,6 +280,7 @@ export function Connected({
     <Fragment key={c.id}>
       <ConnectionBanner state={c.state} computer={nameOf(c)} onHelp={() => setHelp(c.id)} onRetry={() => c.connection.retryNow()} onConnect={() => reconnect(c)} />
       {multi && <UnpairedBanner state={c.state} computer={nameOf(c)} onForget={() => forget(c)} />}
+      <UnreadableBanner problem={c.problem} />
     </Fragment>
   );
   /** The list is every computer's, so it says how each one is; a session or New session only its own. */
@@ -426,6 +433,7 @@ export function Connected({
     { id: 'home', title: 'Go to Home' },
     ...(currentSupport() === 'ready' && !loadPrefs().on ? [{ id: 'notify', title: 'Turn on notifications' }] : []),
     ...(unread.length ? [{ id: 'read-all', title: 'Mark all as read' }] : []),
+    { id: 'theme', title: 'Theme' },
     { id: 'add', title: 'Pair another computer' },
     ...(multi ? [] : [{ id: 'forget', title: 'Forget this computer' }]),
   ];
@@ -454,6 +462,8 @@ export function Connected({
           () => toast("That didn't reach your computer.", { tone: 'error' }),
         );
         return;
+      case 'action:theme':
+        return setThemeOpen(true);
       case 'action:add':
         return onAdd();
       case 'action:forget':
@@ -582,6 +592,7 @@ export function Connected({
     <>
       <Toasts />
       {notifications && <NotificationsSheet push={push} onClose={() => setNotifications(false)} />}
+      {themeOpen && <ThemeSheet computers={computers} onClose={() => setThemeOpen(false)} />}
       {helpFor && <OfflineHelp state={helpFor.state} computer={nameOf(helpFor)} address={helpFor.paired.address} onClose={() => setHelp(null)} onRetry={() => helpFor.connection.retryNow()} />}
       {keysOpen && <KeysSheet onClose={() => setKeysOpen(false)} />}
       {palette && <Palette computers={computers.map((c) => ({ id: c.id, name: nameOf(c), client: clientOf(c) }))} labels={multi} sessions={merged.sessions} actions={paletteActions} onChoose={choose} onClose={() => setPalette(false)} />}
