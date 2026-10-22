@@ -246,4 +246,21 @@ describe('ChecksWatcher', () => {
     expect(emitted).toHaveLength(1);
     watcher.close();
   });
+
+  it('stops following the checks of an archived session: no more reads, and no notice when they finish', async () => {
+    const { watcher, reads, finished } = setup([running, running, failed]);
+    await watcher.get('/repo', { sessionId: 's1' });
+    await vi.advanceTimersByTimeAsync(FOREGROUND_POLL_MS);
+    expect(reads).toHaveLength(2);
+    watcher.release('s1');
+    await vi.advanceTimersByTimeAsync(10 * FOREGROUND_POLL_MS);
+    expect(reads).toHaveLength(2);
+    expect(finished).toEqual([]);
+    // A read asked for without a live session (the archived window) doesn't start following again.
+    await watcher.get('/repo', { fresh: true });
+    await vi.advanceTimersByTimeAsync(10 * FOREGROUND_POLL_MS);
+    expect(reads).toHaveLength(3);
+    expect(finished).toEqual([]);
+    watcher.close();
+  });
 });

@@ -1548,7 +1548,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     reparented: (sessionId) => sessions.republish(sessionId),
     republishSessions: (sessionIds) => sessions.republishMany(sessionIds),
-    archiveSessions: (sessionIds, archived) => sessions.setArchivedMany(sessionIds, archived),
+    archiveSessions: (sessionIds, archived) => {
+      sessions.setArchivedMany(sessionIds, archived);
+      if (archived) for (const sessionId of sessionIds) checksWatcher.release(sessionId);
+    },
     hideSessions: (sessionIds) => sessions.hide(sessionIds),
     removed: (runId) => broadcast('runs.removed', { runId }),
     runActions: async (run, names) => {
@@ -2337,8 +2340,11 @@ export function createEngine(options: EngineOptions): Engine {
         ...(pinned !== undefined ? { pinned } : {}),
         ...(archived !== undefined ? { archived } : {}),
       });
-      // Archived: a trigger's issue loses its working or needs input label.
-      if (archived === true) triggerWatcher?.released(sessionId);
+      // Archived: a trigger's issue loses its working or needs input label, and its checks stop being followed.
+      if (archived === true) {
+        triggerWatcher?.released(sessionId);
+        checksWatcher.release(sessionId);
+      }
       return {};
     },
     'session.delete': async ({ sessionId }) => {
@@ -2981,7 +2987,10 @@ export function createEngine(options: EngineOptions): Engine {
     'runs.archive': async ({ runId, archived }) => {
       const runs = await runAction(async () => runner!.archive(runId, archived));
       // A triggered run archived by hand: its issue's state label comes off, as for a session.
-      if (archived) for (const { run } of runs) triggerWatcher?.released(run.id);
+      if (archived) for (const { run } of runs) {
+        triggerWatcher?.released(run.id);
+        checksWatcher.release(run.id);
+      }
       return { runs };
     },
     'runs.delete': async ({ runId, keepSubSessions }) => {
@@ -3158,7 +3167,9 @@ export function createEngine(options: EngineOptions): Engine {
       if (!resolver.resolve(cwd).gitDir) return { checks: null };
       const status = await worktreeStatus(cwd).catch(() => null);
       if (!status?.branch) return { checks: null };
-      return { checks: await checksWatcher.get(status.path, { sessionId, fresh, afterPush }) };
+      // An archived session doesn't start following its checks again: its window may still be open.
+      const live = sessionId && !sessions.get(sessionId)?.archivedAt ? sessionId : undefined;
+      return { checks: await checksWatcher.get(status.path, { sessionId: live, fresh, afterPush }) };
     },
     'git.prCheckLogs': async ({ cwd, checks }) => {
       if (!resolver.resolve(cwd).gitDir) throw new RpcError('NOT_A_REPO', 'Not a git repository');
