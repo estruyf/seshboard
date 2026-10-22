@@ -5661,8 +5661,14 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   const folder = join(sandbox, 'Developer');
   const target = join(folder, 'smoke-clone');
   const cleanUp = () => {
-    rmSync(sandbox, { recursive: true, force: true });
-    rmSync(bare, { recursive: true, force: true });
+    // On Windows a folder can't be removed while a process still runs in it: try for a while, then leave it in temp.
+    for (const path of [sandbox, bare]) {
+      try {
+        rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch (error) {
+        console.log(`[smoke] could not remove ${path}: ${(error as Error).message}`);
+      }
+    }
   };
   // "GitHub": acme/smoke-clone, a bare repository whose project settings bring a hook.
   const work = join(sandbox, 'work');
@@ -6244,7 +6250,13 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (await js("!!document.querySelector('[role=dialog], [role=menu]')")) pressKey(win, 'Escape');
     await click('[data-close-settings]');
     await click('[data-go-home]');
-    rmSync(dir, { recursive: true, force: true });
+    // On Windows a folder can't be removed while a process still runs in it (Claude Code warmed up for New session's
+    // folder): try for a while, then leave it in temp rather than fail the step.
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      console.log(`[smoke] could not remove ${dir}: ${(error as Error).message}`);
+    }
   };
   try {
     // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
@@ -6956,8 +6968,8 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
     await shot(win, 'upcoming.png');
 
     // The project filter: the temp folder's project keeps both.
-    // The attribute's value in double quotes, inside the single-quoted selector.
-    const pick = `document.querySelector('[role=menu] [data-upcoming-project=${JSON.stringify(folder)}]')`;
+    // Compared in JavaScript, not in a selector: a Windows path's backslashes are escapes in CSS.
+    const pick = `[...document.querySelectorAll('[role=menu] [data-upcoming-project]')].find((el) => el.dataset.upcomingProject === ${JSON.stringify(folder)})`;
     await js("document.querySelector('[data-upcoming-project-chip]').click()");
     if (!(await waitInPage(win, `!!${pick}`, 2_000))) return 'the project filter did not offer the temp folder';
     await js(`${pick}.click()`);
@@ -7309,10 +7321,11 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
     const docked = (await js(`(() => {
       const l = ${list}, d = ${dock}, lr = l.getBoundingClientRect(), dr = d.getBoundingClientRect();
       const content = l.firstElementChild.offsetHeight + parseFloat(getComputedStyle(l).paddingBottom);
-      return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
-    })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; dockTop: number; listBottom: number; dpr: number };
+      // A pixel of rounding (Windows at a fractional scale) is not a scroll.
+      return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight + 1, content, scrollHeight: l.scrollHeight, clientHeight: l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
+    })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; content: number; scrollHeight: number; clientHeight: number; dockTop: number; listBottom: number; dpr: number };
     if (!docked.outside || !docked.below) return `the closed Archived header is not docked under the list (${JSON.stringify(docked)})`;
-    if (docked.fits && docked.scrolls) return 'a list that fits still scrolls';
+    if (docked.fits && docked.scrolls) return `a list that fits still scrolls (${JSON.stringify(docked)})`;
     const sidebarShot = async (name: string) => {
       await settle(win);
       const rect = (await js("(() => { const r = document.querySelector('[data-sidebar-open]').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })()")) as Electron.Rectangle;
@@ -9452,8 +9465,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('shortcuts sheet', () => runShortcutsStep(win));
   await step('tools', () => runToolsStep(win));
   await step('split panes', () => runSplitStep(win));
-  await step('split layout: tiling panes', () => runSplitLayoutStep(win));
-  await step('split layout: window edges and the sidebar', () => runSplitEdgeStep(win));
+  // Both take about 5s locally and five times that on a CI runner.
+  await step('split layout: tiling panes', () => runSplitLayoutStep(win), { timeoutMs: 60_000 });
+  await step('split layout: window edges and the sidebar', () => runSplitEdgeStep(win), { timeoutMs: 60_000 });
   await step('archive', () => runArchiveStep(win));
   await step('rename', () => runRenameStep(win));
   await step('multi-select and archive', () => runArchiveManyStep(win));
@@ -9520,7 +9534,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
-  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win));
+  // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
+  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 90_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
