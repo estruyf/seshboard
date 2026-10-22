@@ -8026,6 +8026,11 @@ async function runToolsStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'tools.png');
   await js("document.querySelector('[data-capabilities-tab=\"commands\"]').click()");
   await shot(win, 'tools-commands.png');
+  // Refresh asks again (a session running here reads its MCP servers and plugins again first) and settles.
+  await js("document.querySelector('[data-capabilities-refresh]').click()");
+  if (!(await waitInPage(win, "document.querySelector('[data-capabilities-refresh]')?.getAttribute('aria-busy') === 'false' && document.querySelector('[data-capabilities-tab]')", 20_000))) {
+    return 'refreshing the Tools window did not finish';
+  }
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   await waitInPage(win, "!document.querySelector('[data-capabilities]')", 2_000);
   return `ok: ${counts.mcp} MCP servers, ${counts.commands} skills and commands, ${counts.agents} agents, ${counts.plugins} plugins`;

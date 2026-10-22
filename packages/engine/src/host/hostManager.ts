@@ -662,6 +662,15 @@ export class HostManager {
     this.capabilityCache.clear();
   }
 
+  /**
+   * Has every session running here read its plugins and MCP servers again (a session in a turn does so when the
+   * turn ends), and forgets the cached lists, so an MCP server added after the sessions started shows up.
+   */
+  async reloadPlugins(profileIds: readonly string[]): Promise<void> {
+    this.reloadSkills(profileIds);
+    await Promise.all([...this.hosts.values()].filter((host) => host.active).map((host) => host.reloadPlugins()));
+  }
+
   private fetchCommands(key: CommandKey): Promise<SlashCommand[]> {
     const id = keyOf(key);
     const cached = this.deps.commandCache?.get(key);
@@ -701,11 +710,15 @@ export class HostManager {
   /**
    * What a session can use. A session running here answers live (and its MCP servers can be
    * toggled); otherwise a helper process for the folder answers, cached for a minute.
+   * `reload` has a running session read its plugins and MCP servers again first.
    */
-  async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string): Promise<Capabilities> {
+  async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string, reload = false): Promise<Capabilities> {
     const host = sessionId ? this.hosts.get(sessionId) : undefined;
     const plugins = (profile: string) => () => this.deps.installedPlugins?.(profile) ?? [];
-    if (host?.active) return host.capabilities(plugins(host.info.profileId));
+    if (host?.active) {
+      if (reload) await host.reloadPlugins();
+      return host.capabilities(plugins(host.info.profileId));
+    }
     const key = keyOf({ profileId, cwd });
     const cached = this.capabilityCache.get(key);
     if (cached && !refresh && Date.now() - cached.at < 60_000) return cached.value;

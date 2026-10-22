@@ -452,6 +452,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:reload-mcp",
+      "name": "Reload MCP servers",
+      "page": "command-palette"
+    },
+    {
       "id": "palette:reload-skills",
       "name": "Reload skills",
       "page": "command-palette"
@@ -3115,6 +3120,11 @@
       "id": "feature:recovery-refs",
       "name": "Recovery refs under refs/switchboard/removed/",
       "page": "projects/worktrees"
+    },
+    {
+      "id": "feature:reload-mcp",
+      "name": "Reload MCP servers",
+      "page": "troubleshooting"
     },
     {
       "id": "feature:reload-skills",

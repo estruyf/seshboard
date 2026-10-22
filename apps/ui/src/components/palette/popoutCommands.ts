@@ -92,6 +92,7 @@ const PLANS: Record<string, Plan> = {
   // Preferences apply to every window.
   'export-theme': 'here',
   'reload-skills': 'here',
+  'reload-mcp': 'here',
   shortcuts: 'here',
   'focus-on': 'here',
   'focus-off': 'here',

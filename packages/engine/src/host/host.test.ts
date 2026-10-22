@@ -176,6 +176,19 @@ class FakeQuery {
     this.skills = [...this.newSkills];
     return { skills: this.skills };
   }
+  async mcpServerStatus() {
+    return [];
+  }
+  async supportedAgents() {
+    return [];
+  }
+  /** How often the host asked for /reload-plugins. */
+  pluginReloads = 0;
+  async reloadPlugins() {
+    this.pluginReloads++;
+    this.skills = [...this.newSkills];
+    return { commands: await this.supportedCommands(), agents: [], plugins: [{ name: 'linear', path: '/plugins/linear' }], mcpServers: [], error_count: 0 };
+  }
   async supportedModels() {
     return [{ value: 'fake', displayName: 'Fake', description: 'Test model', supportsEffort: false }];
   }
@@ -1218,6 +1231,41 @@ describe('HostManager', () => {
     await t.manager.commands(undefined, '/projects/web', 'default');
     await t.manager.commands(undefined, '/projects/web', 'work');
     expect(t.queries).toHaveLength(4);
+    t.manager.closeAll();
+  });
+
+  it('has running sessions read their plugins and MCP servers again, a busy one once its turn ends', async () => {
+    const t = setup();
+    const idle = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Hi' });
+    await until(() => lastState(t.infos, idle) === 'idle');
+    const busy = await t.manager.create({ ...base, cwd: '/work/api', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    const [first, second] = [t.queries.find((q) => q.options.sessionId === idle)!, t.queries.find((q) => q.options.sessionId === busy)!];
+    first.newSkills = [{ name: 'linear', description: 'From the plugin', argumentHint: '' }];
+    await t.manager.commands(undefined, '/projects/web', 'default');
+    const helpers = t.queries.length;
+    await t.manager.reloadPlugins(['default']);
+    expect(first.pluginReloads).toBe(1);
+    expect(second.pluginReloads).toBe(0);
+    expect((await t.manager.commands(idle, undefined, 'default')).map((c) => c.name)).toContain('linear');
+    // The folder lists are asked for again, as after Reload skills.
+    await t.manager.commands(undefined, '/projects/web', 'default');
+    expect(t.queries).toHaveLength(helpers + 1);
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => second.pluginReloads === 1);
+    t.manager.closeAll();
+  });
+
+  it('reloads a running session\'s plugins when the Tools list asks to', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const query = t.queries.at(-1)!;
+    await t.manager.capabilities(id, '/work/app', true, 'default');
+    expect(query.pluginReloads).toBe(0);
+    const caps = await t.manager.capabilities(id, '/work/app', true, 'default', true);
+    expect(query.pluginReloads).toBe(1);
+    expect(caps.plugins.map((p) => p.name)).toEqual(['linear']);
     t.manager.closeAll();
   });
 

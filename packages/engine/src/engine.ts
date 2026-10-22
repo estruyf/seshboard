@@ -2685,10 +2685,15 @@ export function createEngine(options: EngineOptions): Engine {
     'session.commands': async ({ sessionId, cwd, profileId }) => ({
       commands: await hosts.commands(sessionId, cwd, profileId ?? (sessionId ? sessionProfile(sessionId) : cwd ? folderProfile(cwd) : profiles.defaultId())),
     }),
-    'session.capabilities': ({ sessionId, cwd, refresh, profileId }) =>
-      hosts.capabilities(sessionId, cwd, refresh, profileId ?? (sessionId ? sessionProfile(sessionId) : folderProfile(cwd))),
+    'session.capabilities': ({ sessionId, cwd, refresh, reload, profileId }) =>
+      hosts.capabilities(sessionId, cwd, refresh, profileId ?? (sessionId ? sessionProfile(sessionId) : folderProfile(cwd)), reload),
     'skills.reload': () => {
       hosts.reloadSkills(profiles.runtimes().map((p) => p.id));
+      broadcast('commands.changed', {});
+      return {};
+    },
+    'mcp.reload': async () => {
+      await hosts.reloadPlugins(profiles.runtimes().map((p) => p.id));
       broadcast('commands.changed', {});
       return {};
     },

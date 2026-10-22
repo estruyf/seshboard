@@ -40,7 +40,7 @@ import { sameScope } from '../savedPrompts/fillModel.ts';
 
 import { useDrafts } from '../../state/draftsStore.ts';
 import { startLinkedSession } from '../newSession/linkedSession.ts';
-import { toast } from '../../state/toastStore.ts';
+import { toast, useToasts } from '../../state/toastStore.ts';
 import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
 import { manage } from '../sidebar/ProjectMenu.tsx';
@@ -115,6 +115,17 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       useClaudeUpdate.getState().check();
     },
     reloadSkills: () => call('reload skills', (c) => c.call('skills.reload', {})),
+    reloadMcp: () =>
+      call('reload MCP servers', async (c) => {
+        // Connecting a new server can take a few seconds; the toast says it is on its way until then.
+        const pending = toast('Reloading MCP servers…', { durationMs: 20_000 });
+        try {
+          await c.call('mcp.reload', {});
+          toast('MCP servers reloaded', { tone: 'ok' });
+        } finally {
+          useToasts.getState().dismiss(pending);
+        }
+      }),
     backup: (kind) => useBackup.getState().show(kind),
     selectTheme: (id) => useThemes.getState().select(id, { announce: true }),
     importTheme: () => void useThemes.getState().chooseImport(),

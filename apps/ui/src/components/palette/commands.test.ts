@@ -82,7 +82,7 @@ const groupIds = (ctx: PaletteContext, group: string) => visibleCommands(ctx).fi
 describe('when(): always', () => {
   it('shows the commands that need nothing open, and never the ones for a session', () => {
     const shown = ids(context());
-    for (const id of ['new-session', 'new-session-worktree', 'go-to-session', 'search', 'settings', 'manage-projects', 'add-project', 'rename-project', 'claude-update', 'reload-skills', 'export-settings', 'import-settings', 'diagnostics', 'shortcuts', 'focus-on', 'focus-set']) {
+    for (const id of ['new-session', 'new-session-worktree', 'go-to-session', 'search', 'settings', 'manage-projects', 'add-project', 'rename-project', 'claude-update', 'reload-skills', 'reload-mcp', 'export-settings', 'import-settings', 'diagnostics', 'shortcuts', 'focus-on', 'focus-set']) {
       expect(shown, id).toContain(id);
     }
     expect(groupIds(context(), 'session')).toEqual([]);
@@ -196,6 +196,7 @@ describe('when(): always', () => {
 
   it('leaves out what needs the engine while it is away', () => {
     expect(ids(context({ connected: false }))).not.toContain('reload-skills');
+    expect(ids(context({ connected: false }))).not.toContain('reload-mcp');
   });
 });
 

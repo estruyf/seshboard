@@ -802,6 +802,7 @@ export class SessionHost {
       if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
       if (state === 'idle') {
         this.pushStream('clear', '');
+        if (this.pluginsReloadOwed) void this.reloadPlugins();
         this.drain();
       }
     }
@@ -871,6 +872,36 @@ export class SessionHost {
       if (commands && this.setCommands(commands)) this.events.info(this.info);
     } catch (error) {
       this.events.log('debug', `Reloading skills failed: ${(error as Error).message}`);
+    }
+  }
+
+  /** A reload asked for during a turn, done when the turn ends. */
+  private pluginsReloadOwed = false;
+
+  /**
+   * Has Claude Code read its plugins and MCP servers again, as /reload-plugins does in the terminal, so an
+   * MCP server added to the settings or `.mcp.json` after the session started is there for its next turn.
+   * A running turn is left alone: the session reloads when it ends.
+   */
+  async reloadPlugins(): Promise<void> {
+    if (this.busy) {
+      this.pluginsReloadOwed = true;
+      return;
+    }
+    this.pluginsReloadOwed = false;
+    // A session that is still starting reads the settings as it starts.
+    if (this.info.state !== 'idle') return;
+    try {
+      const query = await this.query;
+      if (!query) return;
+      // Connecting a new server can take a while; a Claude Code that doesn't know the request may never answer.
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000).unref?.());
+      const result = await Promise.race([query.reloadPlugins(), timeout]);
+      if (!result) return;
+      this.plugins = pluginsFromInit(result.plugins) ?? this.plugins;
+      if (this.setCommands(result.commands)) this.events.info(this.info);
+    } catch (error) {
+      this.events.log('debug', `Reloading plugins failed: ${(error as Error).message}`);
     }
   }
 

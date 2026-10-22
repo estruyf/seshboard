@@ -479,7 +479,8 @@ export const contract = {
     },
     /** MCP servers, agents, skills and commands, and plugins for a session (live when it runs here) or a folder. */
     'session.capabilities': {
-      params: z.object({ sessionId: SessionId.optional(), cwd: AbsolutePath, refresh: z.boolean().default(false), profileId: ProfileId.optional() }),
+      /** `refresh` skips the folder's cached answer; `reload` also has a running session read its plugins and MCP servers again. */
+      params: z.object({ sessionId: SessionId.optional(), cwd: AbsolutePath, refresh: z.boolean().default(false), reload: z.boolean().default(false), profileId: ProfileId.optional() }),
       result: Capabilities,
     },
     /**
@@ -487,6 +488,12 @@ export const contract = {
      * Running sessions re-read their skill folders when they next list them; windows get `commands.changed`.
      */
     'skills.reload': { params: z.object({}), result: z.object({}) },
+    /**
+     * Has every session running here read its plugins and MCP servers again (as /reload-plugins does), so a server
+     * added after it started is there for its next turn; a session in a turn reloads when the turn ends.
+     * Also drops the cached lists, as `skills.reload` does.
+     */
+    'mcp.reload': { params: z.object({}), result: z.object({}) },
     /** Turns an MCP server on or off, or reconnects it, in a session running in this app. */
     'session.mcp': {
       params: z.object({ sessionId: SessionId, server: z.string().max(200), action: z.enum(['enable', 'disable', 'reconnect']) }),

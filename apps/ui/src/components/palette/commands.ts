@@ -164,6 +164,8 @@ export interface PaletteApi {
   addProject(): void;
   checkClaudeUpdate(): void;
   reloadSkills(): void;
+  /** Running sessions read their plugins and MCP servers again. */
+  reloadMcp(): void;
   backup(kind: 'export' | 'import'): void;
   selectTheme(id: string): void;
   importTheme(): void;
@@ -541,6 +543,7 @@ export const COMMANDS: PaletteCommand[] = [
   },
   { id: 'claude-update', title: 'Check for Claude Code updates…', group: 'general', icon: ArrowDownCircle, keywords: 'upgrade version cli', when: always, run: (api) => api.checkClaudeUpdate() },
   { id: 'reload-skills', title: 'Reload skills', group: 'general', icon: RefreshCw, keywords: 'refresh slash commands plugins', when: (ctx) => ctx.connected, run: (api) => api.reloadSkills() },
+  { id: 'reload-mcp', title: 'Reload MCP servers', group: 'general', icon: RefreshCw, keywords: 'refresh mcp servers plugins tools connectors', when: (ctx) => ctx.connected, run: (api) => api.reloadMcp() },
   { id: 'export-settings', title: 'Export settings…', group: 'general', icon: Upload, keywords: 'backup save move mac projects actions preferences', when: always, run: (api) => api.backup('export') },
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
   { id: 'connect-computer', title: 'Connect to another computer…', group: 'general', icon: Monitor, keywords: 'pair remote machine mac pc other computers sessions link', when: always, run: (api) => api.openSettings('remote') },
