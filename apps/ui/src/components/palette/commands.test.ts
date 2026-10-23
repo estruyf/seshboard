@@ -37,6 +37,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     focusLimit: null,
     notifications: true,
     sounds: false,
+    catchUpFolded: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
     schedules: 0,
     triggers: 0,
@@ -102,6 +103,14 @@ describe('when(): always', () => {
     expect(ids(context())).not.toContain('focus-off');
     expect(ids(context({ focusLimit: 3 }))).toEqual(expect.arrayContaining(['focus-off', 'focus-set']));
     expect(ids(context({ focusLimit: 3 }))).not.toContain('focus-on');
+  });
+
+  it('shows catch-ups folded or in full, and neither while summaries are off', () => {
+    expect(ids(context())).toContain('catch-up-folded-on');
+    expect(ids(context())).not.toContain('catch-up-folded-off');
+    expect(ids(context({ catchUpFolded: true }))).toContain('catch-up-folded-off');
+    expect(ids(context({ catchUpFolded: null }))).not.toContain('catch-up-folded-on');
+    expect(ids(context({ catchUpFolded: null }))).not.toContain('catch-up-folded-off');
   });
 
   it('turns notifications and sounds on or off', () => {

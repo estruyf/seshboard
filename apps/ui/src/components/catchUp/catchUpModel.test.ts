@@ -31,7 +31,7 @@ const card = (patch: Partial<CatchUp> = {}, signals: Partial<CatchUp['signals']>
   ...patch,
 });
 const need = (kind: CatchUp['need']['kind']) => ({ kind, title: 'x', text: 'y' });
-const ctx = (patch: Partial<ShowContext> = {}): ShowContext => ({ enabled: true, unread: true, working: false, waiting: false, collapsed: null, ...patch });
+const ctx = (patch: Partial<ShowContext> = {}): ShowContext => ({ enabled: true, folded: false, unread: true, working: false, waiting: false, collapsed: null, ...patch });
 const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike => ({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods });
 
 describe('when the catch-up shows', () => {
@@ -49,6 +49,12 @@ describe('when the catch-up shows', () => {
   it('folds into the strip once read, or when you collapsed this turn', () => {
     expect(catchUpShow(card(), ctx({ unread: false }))).toBe('strip');
     expect(catchUpShow(card(), ctx({ collapsed: true }))).toBe('strip');
+  });
+
+  it('starts folded with Show catch-ups folded on, unless the turn ended with an error', () => {
+    expect(catchUpShow(card(), ctx({ folded: true }))).toBe('strip');
+    expect(catchUpShow(card({ state: 'error' }), ctx({ folded: true }))).toBe('full');
+    expect(catchUpShow(card(), ctx({ folded: true, collapsed: false }))).toBe('full');
   });
 
   it('shows in full when you open a read session’s strip', () => {

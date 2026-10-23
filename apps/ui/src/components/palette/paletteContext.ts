@@ -94,6 +94,8 @@ export interface PaletteContext {
   /** Settings › Notifications: notifications and sounds on or off. */
   notifications: boolean;
   sounds: boolean;
+  /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
+  catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
   /** How many scheduled sessions there are (#173). */

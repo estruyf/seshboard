@@ -6,6 +6,7 @@ import { Toggle } from '../ui/Toggle.tsx';
 /** Settings › Conversation › Catch-up. */
 export function CatchUpSettings() {
   const summaries = usePreferences((s) => s.prefs.catchUpSummaries);
+  const folded = usePreferences((s) => s.prefs.catchUpFolded);
   const update = usePreferences((s) => s.update);
   return (
     <div className="grid gap-4" data-catchup-settings>
@@ -15,6 +16,14 @@ export function CatchUpSettings() {
         checked={summaries}
         attr="data-catchup-summaries"
         onChange={(catchUpSummaries) => update({ catchUpSummaries })}
+      />
+      <Toggle
+        label="Show catch-ups folded"
+        detail="A finished session shows the one-line strip instead of the full briefing. Press Space to open it. A turn that stopped with an error still opens in full."
+        checked={folded}
+        disabled={!summaries}
+        attr="data-catchup-folded"
+        onChange={(catchUpFolded) => update({ catchUpFolded })}
       />
       <Notice tone="info" icon={<Info size={13} aria-hidden />}>
         Each summary uses a few thousand Haiku tokens. They count toward your plan and show in Usage as Catch-up summaries.

@@ -102,6 +102,8 @@ const PLANS: Record<string, Plan> = {
   'notifications-on': 'here',
   'sounds-on': 'here',
   'sounds-off': 'here',
+  'catch-up-folded-on': 'here',
+  'catch-up-folded-off': 'here',
   'use-saved-prompt': 'here',
   'new-saved-prompt': 'here',
 

@@ -10,6 +10,8 @@ export type CatchUpShow = 'full' | 'strip' | null;
 export interface ShowContext {
   /** Settings › Conversation: "Write catch-up summaries with Haiku". Off, a catch-up only shows when you ask for one. */
   enabled: boolean;
+  /** Settings › Conversation: "Show catch-ups folded". On, an unread turn starts as the strip too. */
+  folded: boolean;
   /** The session has news you haven't looked at. */
   unread: boolean;
   /** Claude is working in it (a card from before is stale until the engine clears it). */
@@ -22,7 +24,8 @@ export interface ShowContext {
 
 /**
  * The banner shows when a turn ended and there is something to decide: you haven't read it, or it stopped with an error.
- * A read session keeps the strip, so the briefing is one key away and never in the way. A session that waits for a
+ * A read session keeps the strip, so the briefing is one key away and never in the way; with "Show catch-ups folded" on,
+ * an unread one does too, and only an error opens the banner by itself. A session that waits for a
  * permission or an answer has no catch-up: the card above the message box asks, and its Why? explains. With summaries
  * off there is none either, unless you ask for it (Catch up on this session); folding it then hides it.
  */
@@ -30,7 +33,7 @@ export function catchUpShow(card: CatchUp | null, ctx: ShowContext): CatchUpShow
   if (!card || ctx.working || ctx.waiting || card.state === 'waiting') return null;
   if (!ctx.enabled) return ctx.collapsed === false ? 'full' : null;
   if (ctx.collapsed !== null) return ctx.collapsed ? 'strip' : 'full';
-  return card.state === 'error' || ctx.unread ? 'full' : 'strip';
+  return card.state === 'error' || (ctx.unread && !ctx.folded) ? 'full' : 'strip';
 }
 
 /** The colours of the card, all from the status tokens. */

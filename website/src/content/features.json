@@ -247,6 +247,16 @@
       "page": "sessions/ask"
     },
     {
+      "id": "palette:catch-up-folded-on",
+      "name": "Catch-ups: show folded",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "palette:catch-up-folded-off",
+      "name": "Catch-ups: show in full",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "palette:sounds-on",
       "name": "Sounds: turn on",
       "page": "settings/notifications"
@@ -3284,6 +3294,11 @@
     {
       "id": "feature:mark-unread",
       "name": "Mark as read or Mark as unread in the session menu",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "feature:catch-up-folded",
+      "name": "Show catch-ups folded: start every catch-up as the strip (Settings › Conversation › Catch-up)",
       "page": "sessions/catch-up"
     },
     {

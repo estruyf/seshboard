@@ -155,11 +155,11 @@ export function usePaletteContext(): PaletteContext {
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
-      catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
+      catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, folded: prefs.catchUpFolded, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries]);
+  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);
@@ -198,6 +198,7 @@ export function usePaletteContext(): PaletteContext {
     focusLimit: prefs.focusLimit,
     notifications: prefs.notifications.enabled,
     sounds: prefs.sounds.enabled,
+    catchUpFolded: prefs.catchUpSummaries ? prefs.catchUpFolded : null,
     queue: { count: queue.entries.length, readyCount: queue.readyCount, firstReady: queue.firstReady ? { id: queue.firstReady.item.id, prompt: promptLabel(queue.firstReady.item.prompt, 40) } : null },
     schedules: scheduleCount,
     triggers: triggerCount,

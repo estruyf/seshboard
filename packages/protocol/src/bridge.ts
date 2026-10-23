@@ -350,6 +350,11 @@ export interface Preferences {
    */
   catchUpSummaries: boolean;
   /**
+   * Settings › Conversation: "Show catch-ups folded". On, a finished session's catch-up starts as the strip, even unread;
+   * a turn that ended with an error still opens in full.
+   */
+  catchUpFolded: boolean;
+  /**
    * Settings › Conversation: "Resume after a usage limit resets". `ask`: a session a usage limit stopped offers
    * Resume when it resets; `always`: it is armed to continue by itself at once.
    */
@@ -427,6 +432,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
+  catchUpFolded: false,
   resumeAtLimit: "ask",
   showCost: true,
   showBarCost: true,
@@ -614,6 +620,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (typeof raw.catchUpFolded === "boolean") out.catchUpFolded = raw.catchUpFolded;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
   if (typeof raw.showCost === "boolean") out.showCost = raw.showCost;
