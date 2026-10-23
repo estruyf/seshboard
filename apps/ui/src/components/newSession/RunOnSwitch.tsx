@@ -13,7 +13,8 @@ const DOT: Record<Computer['state'], string> = { connected: 'bg-ok', connecting:
 /**
  * New session's Run on switch, under its heading: This Mac or a paired computer, each with its status dot. A computer
  * that isn't connected stays in the switch, disabled, saying since when. Only shows with a paired computer; the last
- * choice is remembered (the sidebar's + opens there), and ⌘N always starts on this computer.
+ * choice is remembered (the sidebar's + opens there while a prompt typed for it is unsent), and ⌘N always starts on
+ * this computer.
  */
 export function RunOnSwitch() {
   const computers = useComputers((s) => s.status?.computers ?? NONE);

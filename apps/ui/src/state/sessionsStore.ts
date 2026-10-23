@@ -104,7 +104,7 @@ interface SessionsState {
   closeSettings(): void;
   /**
    * Opens the New session view and asks it to focus the prompt. It starts on this computer, or with `runOn: 'last'`
-   * (the sidebar's +) on the computer picked last in Run on.
+   * (the sidebar's +) on the computer picked last in Run on while a prompt typed for it there is not sent.
    */
   openNewSession(options?: { runOn?: 'here' | 'last' }): void;
   setFilter(filter: string): void;

@@ -9,7 +9,7 @@ const STORAGE_KEY = 'ui.remoteDrafts';
 
 export interface RemoteDraft {
   text: string;
-  /** A saved prompt being filled in (a session's box only); `text` is then what goes after it. */
+  /** A saved prompt being filled in; `text` is then what goes after it. */
   fill?: FillState;
 }
 
