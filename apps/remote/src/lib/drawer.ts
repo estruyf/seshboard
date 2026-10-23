@@ -60,14 +60,16 @@ export function needsYouElsewhere(sessions: readonly { id: string; status: strin
 }
 
 /** A place at the top of the drawer, as a row with an icon. */
-export type DrawerPlace = { id: 'home' } | { id: 'upcoming'; count: number };
+export type DrawerPlace = { id: 'home' } | { id: 'new' } | { id: 'upcoming'; count: number };
 
 /**
- * The drawer's places: Home always, Upcoming only with the computer's queue to show (`queued`, null while the remote
- * contract has none), so a row never leads to a page that can't say anything.
+ * The drawer's places: Home and New session always (so a session doesn't have to go back to Home to start another),
+ * Upcoming only with the computer's queue to show (`queued`, null while the remote contract has none), so a row never
+ * leads to a page that can't say anything.
  */
 export function drawerPlaces(queued: number | null): DrawerPlace[] {
-  return queued === null ? [{ id: 'home' }] : [{ id: 'home' }, { id: 'upcoming', count: queued }];
+  const always: DrawerPlace[] = [{ id: 'home' }, { id: 'new' }];
+  return queued === null ? always : [...always, { id: 'upcoming', count: queued }];
 }
 
 /** How many sessions Recent shows in the drawer before All sessions. */

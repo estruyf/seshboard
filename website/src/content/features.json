@@ -1623,7 +1623,7 @@
     },
     {
       "id": "feature:remote-drawer",
-      "name": "Remote: the menu button on every phone screen (or an edge swipe) opens the drawer, with search, Home, Recent and All sessions, and Settings and your computer at the bottom",
+      "name": "Remote: the menu button on every phone screen (or an edge swipe) opens the drawer, with search, Home, New session, Recent and All sessions, and Settings and your computer at the bottom",
       "page": "remote-access"
     },
     {

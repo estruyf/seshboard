@@ -17,6 +17,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 - **On a phone, sessions and New session match the new look:** round buttons, a cleaner catch-up, one composer, and an Options sheet instead of seven chips.
 - **The remote app on a phone:** a menu button on every screen, a drawer with Settings and your computer at the bottom, a full-width Home, and a Settings page.
+- **New session from the remote app's drawer.** In a session, open the drawer and tap **New session** under Home: no need to go back to Home first. Back from New session goes to your sessions.
 - **A clearer order for permission modes.** Settings › General › Global permission mode is what new sessions start in, unless the Claude profile or the project sets a mode, and each session can still change it. A project's Permissions now offers Profile default and Global default (which skips the profile's mode), each with a Change link to where it is set. If Settings had Use project default, it is now Ask before edits, and projects and profiles still come first. A mode set in Settings no longer overrides a project's or profile's own.
 
 ### Fixed

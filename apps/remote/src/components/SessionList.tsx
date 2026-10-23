@@ -469,6 +469,21 @@ export function SessionList({
       <li key="home" className="flex flex-col">
         {homeButton}
       </li>
+    ) : place.id === 'new' ? (
+      <li key="new" className="flex flex-col">
+        <button
+          type="button"
+          onClick={onNew}
+          disabled={offline}
+          aria-current={newOpen ? 'page' : undefined}
+          className="mx-2 flex min-h-[46px] items-center gap-2.5 rounded-lg px-3 text-left enabled:hover:bg-border/45 enabled:active:bg-selected disabled:opacity-60 aria-[current=page]:bg-accent/15 aria-[current=page]:font-semibold"
+          data-remote-drawer-new
+        >
+          <Plus className="size-4 shrink-0 text-accent-ink" aria-hidden />
+          <span className="flex-1 text-body">New session</span>
+          {offline && <span className="text-meta text-faint">Needs the connection</span>}
+        </button>
+      </li>
     ) : (
       onUpcoming && (
         <li key="upcoming" className="flex flex-col">

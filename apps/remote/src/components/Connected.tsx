@@ -415,6 +415,11 @@ export function Connected({
   /** The drawer's Home row: Home on a wide screen, the first screen on a phone (its only home). */
   const pickHome = () => fromDrawer(() => swap(homeRoute(wide)));
   const pickSettings = () => fromDrawer(openSettings);
+  /**
+   * The drawer's New session row: in place of the open session or page, as a picked session is, so Back goes to the
+   * list; from the list or Home it is a step of its own. Already on New session, the drawer only closes.
+   */
+  const pickNew = () => fromDrawer(() => (route.kind === 'new' ? undefined : atRoot ? go(newRoute()) : swap(newRoute())));
   /** ⌘B, or the toggle in the session's header: the sidebar folds into the drawer, or comes back. */
   const toggleFold = () => {
     setFolded((current) => {
@@ -687,7 +692,7 @@ export function Connected({
         selectedId={currentKey}
         newOpen={route.kind === 'new'}
         onOpen={pick}
-        onNew={() => startNew()}
+        onNew={pickNew}
         onHome={pickHome}
         homeOpen={atRoot}
         onClose={closeDrawer}

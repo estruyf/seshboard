@@ -186,6 +186,22 @@ export function runPhoneSessionMoreStep(): Promise<string> {
   });
 }
 
+/** In a session, the drawer's New session opens New session in the session's place: Back goes to the list, not the session. */
+export function runPhoneDrawerNewStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    await js("document.querySelector('[data-remote-menu-button]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-drawer=\"open\"] [data-remote-drawer-new]')", 3_000))) return 'the drawer has no New session row';
+    await js("document.querySelector('[data-remote-drawer-new]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session]') && !document.querySelector('[data-remote-drawer]')", 5_000))) return 'New session did not open from the drawer';
+    if ((await js('history.state?.kind')) !== 'new') return 'New session has no history entry';
+    await js('history.back()');
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title]') && !document.querySelector('[data-remote-session-view], [data-remote-new-session]')", 3_000))) return 'Back from New session did not go to the list';
+    return 'ok: New session from the drawer in a session, and Back went to the list';
+  });
+}
+
 /** New session from Home's floating pill, with an empty box (a draft from before is cleared). */
 async function openNewSession(js: (code: string) => Promise<unknown>, win: BrowserWindow): Promise<string | null> {
   await js("document.querySelector('[data-remote-new-float]').click()");

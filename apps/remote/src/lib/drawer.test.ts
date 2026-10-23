@@ -107,10 +107,10 @@ describe('the Home row', () => {
 });
 
 describe('the places', () => {
-  it('has Home, and Upcoming only with queue data', () => {
-    expect(drawerPlaces(null)).toEqual([{ id: 'home' }]);
-    expect(drawerPlaces(2)).toEqual([{ id: 'home' }, { id: 'upcoming', count: 2 }]);
-    expect(drawerPlaces(0)).toEqual([{ id: 'home' }, { id: 'upcoming', count: 0 }]);
+  it('has Home and New session, and Upcoming only with queue data', () => {
+    expect(drawerPlaces(null)).toEqual([{ id: 'home' }, { id: 'new' }]);
+    expect(drawerPlaces(2)).toEqual([{ id: 'home' }, { id: 'new' }, { id: 'upcoming', count: 2 }]);
+    expect(drawerPlaces(0)).toEqual([{ id: 'home' }, { id: 'new' }, { id: 'upcoming', count: 0 }]);
   });
 });
 
