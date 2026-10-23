@@ -4,9 +4,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
-import { basename, join, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
 import type { RemoteContract } from '@switchboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@switchboard/protocol/client';
@@ -29,6 +29,7 @@ import { SoundPlayer } from './sounds.ts';
 import { KeepAwake } from './keepAwake.ts';
 import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
+import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
@@ -394,6 +395,36 @@ ipcMain.on(IpcChannel.openLoginItemsSettings, () => {
 });
 
 /**
+ * The `switchboard` and `seshboard` shell commands (Settings › General › Shell command), or null in a development
+ * build, whose commands would start Electron. Scripted runs keep them in their throwaway profile and never touch the PATH.
+ */
+function shellCommandHere(): ShellCommandPlan | null {
+  if (!app.isPackaged && !scripted) return null;
+  const dir = scripted ? join(app.getPath('userData'), 'shell-command') : shellCommandDir(process.platform, { home: homedir(), userData: app.getPath('userData') });
+  // macOS opens the bundle (…/Switchboard.app); an AppImage runs from a folder that changes each time, so its own file.
+  const target = process.platform === 'darwin' ? resolve(process.execPath, '../../..') : process.env.APPIMAGE || process.execPath;
+  // A scripted run looks only in its own profile, so the machine's commands never change what it sees.
+  const lookIn = scripted ? [] : commandFolders(process.platform, homedir(), process.env.PATH);
+  return shellCommandPlan(process.platform, dir, target, process.env, lookIn);
+}
+ipcMain.handle(IpcChannel.shellCommand, async (_event, action: unknown): Promise<ShellCommandResult> => {
+  const plan = shellCommandHere();
+  if (!plan) return { state: { status: 'unavailable', names: [...SHELL_COMMAND_NAMES], dir: '', taken: [] }, error: null };
+  // On Windows the commands' folder goes on the user's PATH.
+  const editsPath = process.platform === 'win32' && !scripted;
+  let error: string | null = null;
+  try {
+    if (action === 'install') await installShellCommand(plan, editsPath);
+    else if (action === 'remove') await removeShellCommand(plan, editsPath);
+  } catch (caught) {
+    if (!(caught instanceof Cancelled)) error = caught instanceof Error ? caught.message : String(caught);
+  }
+  // Reading the PATH can fail too (no PowerShell); the files still say most of it.
+  const state = await readShellCommand(plan, pathCheck(plan, editsPath)).catch(() => readShellCommand(plan));
+  return { state, error };
+});
+
+/**
  * Where the traffic lights sit: the default, or inside the 80px minimal sidebar. They are 54px wide, and
  * a few pixels more on newer macOS, so the rail leaves room on both sides instead of matching them exactly.
  */
@@ -555,13 +586,36 @@ function openDeepLink(url: string): void {
     return;
   }
   const parsed = parseDeepLink(url);
-  const message: DeepLinkMessage = parsed.ok ? { link: parsed.link } : { error: parsed.error };
   console.log(`[main] link: ${parsed.ok ? parsed.link.action : `refused (${parsed.error})`}`);
+  deliverLinkMessage(parsed.ok ? { link: parsed.link } : { error: parsed.error });
+}
+
+/** Hands a link (or why one was refused) to the window, or keeps it until the window is ready. */
+function deliverLinkMessage(message: DeepLinkMessage): void {
   if (!app.isReady()) {
     pendingMessages.push(IpcChannel.deepLink, message);
     return;
   }
   sendToWindow(showWindow(), IpcChannel.deepLink, message);
+}
+
+/**
+ * A folder on the command line opens New session there: `switchboard .` runs the executable with the folder on Windows
+ * and Linux (on macOS it sends a link). Returns false when the command line has no folder.
+ */
+function openFolderArgument(argv: string[], workingDirectory: string): boolean {
+  // A development build runs as `electron <app>`.
+  const folder = folderFromArgv(argv.slice(process.defaultApp ? 2 : 1), workingDirectory, process.platform);
+  if (!folder) return false;
+  let isFolder = false;
+  try {
+    isFolder = statSync(folder).isDirectory();
+  } catch {
+    // Not there: said below.
+  }
+  if (isFolder) openDeepLink(`${DEEP_LINK_SCHEME}://new-session?cwd=${encodeURIComponent(folder)}`);
+  else deliverLinkMessage({ error: `${folder} is not a folder.` });
+  return true;
 }
 
 // The smoke test checks quitting without ending its own run.
@@ -6155,6 +6209,46 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The `switchboard .` shell command. Settings › General › Terminal installs the commands and removes them again (in the
+ * throwaway profile: a scripted run never writes /usr/local/bin or the PATH). Then a folder on the command line, as the
+ * Windows and Linux commands pass it, opens New session there, and one that isn't a folder says so. Nothing is sent.
+ */
+async function runShellCommandStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const dir = join(app.getPath('userData'), 'shell-command');
+
+  await click('[data-open-settings]');
+  await click('[data-settings-section="general"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"general\"] [data-shell-command=\"missing\"] [data-shell-command-action=\"install\"]')", 5_000))) {
+    return `Settings › General showed no Install for the shell command (${String(await js("document.querySelector('[data-shell-command]')?.dataset.shellCommand"))})`;
+  }
+  await click('[data-shell-command-action="install"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-shell-command=\"installed\"] [data-shell-command-action=\"remove\"]')", 5_000))) {
+    return `Install did not install the shell command (${String(await js("document.querySelector('[data-shell-command-error]')?.innerText ?? document.querySelector('[data-shell-command]')?.dataset.shellCommand"))})`;
+  }
+  const files = SHELL_COMMAND_NAMES.map((name) => join(dir, process.platform === 'win32' ? `${name}.cmd` : name));
+  if (!files.every((file) => existsSync(file) && readFileSync(file, 'utf8').includes('New session'))) return `the commands are not all in ${dir}`;
+  await shot(win, 'shell-command.png');
+  await click('[data-shell-command-action="remove"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-shell-command=\"missing\"]')", 5_000)) || files.some((file) => existsSync(file))) return 'Remove left the shell command in place';
+  await click('[data-close-settings]');
+
+  // What the Windows and Linux commands run: the executable with the folder, relative to where the command ran.
+  const argv = (...args: string[]) => [...process.argv.slice(0, process.defaultApp ? 2 : 1), ...args];
+  const folder = homedir();
+  openFolderArgument(argv(basename(folder)), join(folder, '..'));
+  if (!(await waitInPage(win, `document.querySelector('[data-new-session-view] [data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) {
+    return `a folder argument did not open New session in it (${String(await js("document.querySelector('[data-folder-select]')?.dataset.value"))})`;
+  }
+  openFolderArgument(argv('switchboard-smoke-no-such-folder'), folder);
+  if (!(await waitInPage(win, "document.querySelector('[data-link-error]')?.innerText.includes('is not a folder')", 3_000))) return 'a missing folder showed no error';
+  await click('[data-link-error] button');
+  if (!(await js("!!document.querySelector('[data-new-session-view]') && !document.querySelector('[data-current-session]')"))) return 'the folder argument left New session (was something started?)';
+  return 'ok: installed the three commands and removed them, a folder argument opened New session there, a missing one said so';
+}
+
+/**
  * The VS Code companion, the way the extension uses it: connect to the engine's socket with the token from
  * engine.json, then send a reference to some lines and a piece of terminal output to New session on a folder inside
  * the throwaway profile. They must show as chips there. The Add context picker (⌘⇧A) then adds a file from the same
@@ -9565,6 +9659,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
+  await step('shell command: Settings installs and removes switchboard, seshboard and sesh, a folder argument opens New session', () => runShellCommandStep(win));
   await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
@@ -9720,6 +9815,7 @@ app.whenReady().then(() => {
   if (app.isPackaged && !scripted && !app.isDefaultProtocolClient(DEEP_LINK_SCHEME)) app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
   const launchLink = linkFromArgv(process.argv);
   if (launchLink) openDeepLink(launchLink);
+  else if (!scripted) openFolderArgument(process.argv, process.cwd());
 
   app.on('activate', () => {
     if (!mainWindow) createWindow();
@@ -9750,10 +9846,11 @@ app.on('open-url', (event, url) => {
   openDeepLink(url);
 });
 
-app.on('second-instance', (_event, argv) => {
-  // Elsewhere a link arrives as an argument to a second instance.
+app.on('second-instance', (_event, argv, workingDirectory) => {
+  // Elsewhere a link arrives as an argument to a second instance, and so does the shell command's folder.
   const link = linkFromArgv(argv);
   if (link) return openDeepLink(link);
+  if (openFolderArgument(argv, workingDirectory)) return;
   // Launching the app again shows it, with a new window if they were all closed.
   if (app.isReady()) showWindow();
 });

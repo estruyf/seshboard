@@ -23,6 +23,7 @@ import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
+import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
 import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
@@ -443,6 +444,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </Section>
           <Section title="Sleep">
             <KeepAwakeSetting />
+          </Section>
+          <Section title="Terminal">
+            <ShellCommandSetting />
           </Section>
           <Section title="New sessions">
             <div className="flex items-center justify-between gap-4" data-setting-row>

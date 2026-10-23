@@ -57,6 +57,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:install-shell-command",
+      "name": "Install the switchboard command",
+      "page": "links"
+    },
+    {
       "id": "palette:claude-update",
       "name": "Check for Claude Code updates…",
       "page": "settings/updates"
@@ -4270,6 +4275,11 @@
       "id": "feature:open-at-login",
       "name": "Settings: General, Open at login",
       "page": "settings"
+    },
+    {
+      "id": "feature:shell-command",
+      "name": "Settings: General, Shell command (switchboard ., seshboard . and sesh .)",
+      "page": "links"
     },
     {
       "id": "feature:keep-awake",

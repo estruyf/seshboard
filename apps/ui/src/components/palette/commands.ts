@@ -163,6 +163,8 @@ export interface PaletteApi {
   memoryTransfer(kind: 'import-export' | 'paste' | 'copy'): void;
   addProject(): void;
   checkClaudeUpdate(): void;
+  /** Installs the `switchboard`, `seshboard` and `sesh` shell commands, and says how that went. */
+  installShellCommand(): void;
   reloadSkills(): void;
   /** Running sessions read their plugins and MCP servers again. */
   reloadMcp(): void;
@@ -541,6 +543,7 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.projectCount > 0 && ctx.connected,
     next: () => ({ kind: 'projects', purpose: 'rename-project', worktree: false, chip: 'Rename project' }),
   },
+  { id: 'install-shell-command', title: 'Install the switchboard command', group: 'general', icon: SquareTerminal, keywords: 'shell terminal cli command line path code . seshboard sesh open folder', when: always, run: (api) => api.installShellCommand() },
   { id: 'claude-update', title: 'Check for Claude Code updates…', group: 'general', icon: ArrowDownCircle, keywords: 'upgrade version cli', when: always, run: (api) => api.checkClaudeUpdate() },
   { id: 'reload-skills', title: 'Reload skills', group: 'general', icon: RefreshCw, keywords: 'refresh slash commands plugins', when: (ctx) => ctx.connected, run: (api) => api.reloadSkills() },
   { id: 'reload-mcp', title: 'Reload MCP servers', group: 'general', icon: RefreshCw, keywords: 'refresh mcp servers plugins tools connectors', when: (ctx) => ctx.connected, run: (api) => api.reloadMcp() },

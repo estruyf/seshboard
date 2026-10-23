@@ -52,6 +52,7 @@ const PLANS: Record<string, Plan> = {
   'clean-up-worktrees': 'hide',
   'import-theme': 'hide',
   'claude-update': 'hide',
+  'install-shell-command': 'hide',
   'export-settings': 'hide',
   'import-settings': 'hide',
   'memory-import-export': 'hide',

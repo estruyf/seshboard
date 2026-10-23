@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Open a folder from the terminal.** Type `switchboard .` (or `seshboard .`, or just `sesh .`) in a terminal to open New session in that folder, like `code .` for VS Code. Install the commands in Settings › General › Terminal, or press ⌘K and choose **Install the switchboard command**. On a Mac they go in /usr/local/bin, which may ask for your password; on Windows Switchboard adds them to your PATH; on Linux they go in ~/.local/bin. A name another program already uses, such as the tmux tool sesh, is left alone.
 - **Light or dark in the remote app.** Open **Theme** in the remote app's **⋯** menu and set Appearance to Match System, Light or Dark. **Sync now** there asks your computers for their theme again.
 - **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
 - **Reload MCP servers.** Added an MCP server to your Claude Code settings or a project's `.mcp.json` while sessions were open? Press ⌘K and choose **Reload MCP servers**: running sessions pick it up for their next message without restarting, and the refresh button in a session's Tools does the same for that session.

@@ -70,6 +70,7 @@ export const IpcChannel = {
   getOpenAtLogin: "switchboard:get-open-at-login",
   setOpenAtLogin: "switchboard:set-open-at-login",
   openLoginItemsSettings: "switchboard:open-login-items-settings",
+  shellCommand: "switchboard:shell-command",
   keepAwakeStatus: "switchboard:keep-awake-status",
   getPopouts: "switchboard:get-popouts",
   popOut: "switchboard:pop-out",
@@ -889,6 +890,8 @@ export interface SwitchboardBridge {
   setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
   /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
   openLoginItemsSettings(): void;
+  /** How the `switchboard` and `seshboard` shell commands stand, or installs or removes them; answers how they stand afterwards. */
+  shellCommand(action?: "install" | "remove"): Promise<ShellCommandResult>;
   /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
   keepAwakeStatus(): Promise<boolean>;
   /** The session this window shows on its own (a pop-out), or null for the main window. Read once when the page loads. */
@@ -936,6 +939,28 @@ export interface SwitchboardBridge {
  * you to allow it there. `unavailable`: a development build, which would add Electron itself, or Linux.
  */
 export type OpenAtLogin = "on" | "off" | "needs-approval" | "unavailable";
+
+/**
+ * The `switchboard`, `seshboard` and `sesh` shell commands (`switchboard .` opens New session in that folder). A name
+ * another program already has a file for is left alone and listed in `taken`; the status is about the others.
+ * `installed`: each is this build's script (on Windows, with its folder on the PATH). `outdated`: some are missing or
+ * written by another copy of Switchboard. `taken`: every name belongs to another program. `unavailable`: a development
+ * build, whose commands would start Electron.
+ */
+export interface ShellCommandState {
+  status: "installed" | "missing" | "outdated" | "taken" | "unavailable";
+  names: string[];
+  /** The folder the commands go in. */
+  dir: string;
+  /** Files of these names that belong to another program, which Switchboard skips. */
+  taken: string[];
+}
+
+/** How the shell commands stand after a change, and why the change failed (null when it worked or was cancelled). */
+export interface ShellCommandResult {
+  state: ShellCommandState;
+  error: string | null;
+}
 
 /** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
 export type NotificationPermission = "allowed" | "blocked" | "unknown";
