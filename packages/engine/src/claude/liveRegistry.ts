@@ -15,7 +15,8 @@ export function normaliseStatus(raw: string): LiveStatus {
   return 'running';
 }
 
-function isAlive(pid: number): boolean {
+/** Whether a process is still running. */
+export function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

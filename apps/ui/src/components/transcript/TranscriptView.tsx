@@ -439,12 +439,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
   const activeHost = isActiveHost(host) ? host : null;
   const live = activeHost ? hostAsLive(activeHost) : registryLive;
-  const openElsewhere = !activeHost && registryLive !== null;
+  /** Still running from before the app last quit or crashed: sending stops that process and continues here, no fork. */
+  const leftover = !activeHost && registryLive?.leftover === true;
+  const openElsewhere = !activeHost && registryLive !== null && !leftover;
   // Last, the host's own folder: a session whose Claude Code failed (or stopped) before it wrote a transcript has no
   // other, and without one the message box would stay shut.
   const cwd = activeHost?.cwd ?? summary?.cwd ?? registryLive?.cwd ?? host?.cwd ?? null;
   /** Failed before it wrote a transcript: nothing to resume, so the next message starts it again as a new session. */
-  const restart = restartAsNew(host, { hasTranscript: summary !== null, openElsewhere });
+  const restart = restartAsNew(host, { hasTranscript: summary !== null, openElsewhere: registryLive !== null });
   /** A quick question: no project actions, and no git (nothing to diff, commit or branch). The terminal still opens, in its folder. */
   const question = useProjects((s) => isQuestionsFolder(projectRoot ?? cwd, s.questionsDir));
   const options = sessionOptions(question);
@@ -1866,13 +1868,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <strong className="font-medium text-text">fork</strong>: a new session that continues from this conversation, leaving the original untouched.
                 </Notice>
               )}
+              {leftover && (
+                <Notice role="note" data-leftover-host>
+                  This session is still running from before Switchboard restarted. Sending stops that process and continues the session here.
+                </Notice>
+              )}
               {actionError && (
                 <Notice tone="error" onDismiss={() => setActionError(null)} data-action-error>
                   {actionError}
                 </Notice>
               )}
               <AutoSuggestNote sessionId={sessionId} pick={autoPick} items={items} contextTokens={host?.contextTokens ?? null} />
-              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} chosenModel={activeHost ? (activeHost.model ?? null) : !restart && !registryLive ? savedModel : undefined} onCompact={compact} />
+              <LargeContextNotice sessionId={sessionId} live={contextLive} host={host} messages={messages} working={running} chosenModel={activeHost ? (activeHost.model ?? null) : !restart && (!registryLive || leftover) ? savedModel : undefined} onCompact={compact} />
               {autoPick && <AutoPickPopover sessionId={sessionId} pick={autoPick} items={items} cwd={cwd} />}
               {actionsMenu.overlays}
               {restored && (
@@ -1948,7 +1955,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   controls={
                     activeHost ? (
                       <SessionControls host={activeHost} />
-                    ) : !restart && !registryLive ? (
+                    ) : !restart && (!registryLive || leftover) ? (
                       // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
                       <SavedSessionControls
                         sessionId={sessionId}

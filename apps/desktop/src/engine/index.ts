@@ -84,6 +84,23 @@ const engine = createEngine({
   ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
 });
 
+// Main stops the engine with SIGTERM (utilityProcess.kill() when the app quits, restarts or installs an update). Left to
+// Node's default, the process ends on the spot: the hosts never close, and neither does the SDK's own `exit` hook that
+// stops its Claude Code processes. A session with a background task then kept running with nothing to talk to, holding
+// the session open "elsewhere". Closing the engine ends the hosts' turns as `quit`, and the exit stops the processes.
+let shuttingDown = false;
+const shutDown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    engine.close();
+  } catch (error) {
+    console.error(`[engine] closing on shutdown failed: ${(error as Error).message}`);
+  }
+  process.exit(0);
+};
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, shutDown);
+
 // One misbehaving session must never take the whole engine (and every other session) down.
 process.on('uncaughtException', (error) => engine.log('error', `Uncaught: ${error.stack ?? error.message}`));
 process.on('unhandledRejection', (reason) =>

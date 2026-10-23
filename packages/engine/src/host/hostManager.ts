@@ -52,6 +52,8 @@ export interface HostManagerDeps {
   claudePath: () => Promise<string | undefined>;
   /** True when a Claude Code process outside this app has the session open. */
   isOpenElsewhere: (sessionId: string) => boolean;
+  /** Stops the process an earlier run of the engine left holding the session, when that is what has it open. True when it did. */
+  stopLeftover?: (sessionId: string) => boolean;
   /** Re-reads the live registry now (instead of waiting for the next poll). */
   refreshLive?: () => void;
   /** The folder a session ran in (resumes must start there, or tools act in the wrong place). */
@@ -309,6 +311,9 @@ export class HostManager {
     if (!fork && this.deps.isOpenElsewhere(sessionId) && this.recentlyClosed(sessionId)) {
       await this.waitForExit(sessionId);
     }
+    // A process the engine left running when it last ended (killed or crashed) still holds the session, and nothing can
+    // talk to it: stop it and resume here, as if the engine had closed it then.
+    if (!fork && this.deps.isOpenElsewhere(sessionId) && this.deps.stopLeftover?.(sessionId)) await this.waitForExit(sessionId);
     if (!fork && this.deps.isOpenElsewhere(sessionId)) throw new RpcError('SESSION_BUSY_ELSEWHERE', busyMessage);
     const cwd = this.deps.sessionCwd(sessionId);
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');

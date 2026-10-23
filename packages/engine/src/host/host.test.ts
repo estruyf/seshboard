@@ -239,6 +239,7 @@ function setup(
     profiles?: Record<string, string>;
     settings?: SessionSettingsStore;
     refreshLive?: () => void;
+    stopLeftover?: HostManagerDeps['stopLeftover'];
     upNext?: ReturnType<typeof memoryUpNext>;
     /** Pre-warmed processes fail to start, at once or after a while (no login, a crash). */
     warmFails?: { message: string; afterMs?: number };
@@ -300,6 +301,7 @@ function setup(
     sessionCwd: (id) => opts.cwds?.[id] ?? null,
     sessionProfile: (id) => opts.profiles?.[id] ?? 'default',
     refreshLive: opts.refreshLive,
+    stopLeftover: opts.stopLeftover,
     onInfo: (i) => infos.push(i),
     onStream: (d) => streams.push(d),
     onMessages: (id, m) => messages.push({ id, messages: m }),
@@ -859,6 +861,30 @@ describe('HostManager', () => {
     expect(t.infos.filter((i) => i.sessionId === 'busy')).toEqual([]);
     expect(t.messages.every((m) => m.id === forked.sessionId)).toBe(true);
     expect(t.manager.list().hosts.map((h) => h.sessionId)).toEqual([forked.sessionId]);
+    t.manager.closeAll();
+  });
+
+  it('stops a process an earlier run left holding the session, and resumes it here instead', async () => {
+    const elsewhere = ['left', 'busy'];
+    const stopped: string[] = [];
+    const t = setup({
+      openElsewhere: elsewhere,
+      cwds: { left: '/repo', busy: '/repo' },
+      // Only 'left' is a leftover; it leaves the registry once stopped.
+      stopLeftover: (id) => {
+        if (id !== 'left') return false;
+        stopped.push(id);
+        elsewhere.splice(elsewhere.indexOf(id), 1);
+        return true;
+      },
+    });
+    const sent = await t.manager.send({ sessionId: 'left', text: 'hi', attachments: [], fork: false });
+    expect(stopped).toEqual(['left']);
+    expect(sent.sessionId).toBe('left');
+    expect(t.queries[0]!.options).toMatchObject({ resume: 'left' });
+    expect(t.queries[0]!.options.forkSession).toBeUndefined();
+    // A process that isn't a leftover is still someone else's.
+    await expect(t.manager.send({ sessionId: 'busy', text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'SESSION_BUSY_ELSEWHERE' });
     t.manager.closeAll();
   });
 

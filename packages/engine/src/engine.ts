@@ -118,6 +118,7 @@ import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
+import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
@@ -579,7 +580,12 @@ export function createEngine(options: EngineOptions): Engine {
   const ephemeral = new Set<string>();
   /** Running Claude Code processes, from each profile's `sessions` folder. */
   const registries = new Map<string, LiveRegistry>();
-  const liveList = (): LiveSession[] => [...registries.values()].flatMap((r) => r.list());
+  /** The hosts' Claude Code processes, so a later engine knows the ones this one leaves behind if it dies. */
+  const hostProcesses = new HostProcesses(join(options.dataDir, 'host-processes.json'));
+  /** Records the hosts' processes after each registry change (set up with the hosts, below). */
+  let recordHostProcesses: (() => void) | undefined;
+  const liveList = (): LiveSession[] =>
+    [...registries.values()].flatMap((r) => r.list().map((l) => (hostProcesses.isLeftover(l) ? { ...l, leftover: true } : l)));
   const scanLive = () => registries.forEach((r) => r.scan());
   /** One registry per profile folder; started ones follow profiles being added and removed. */
   const syncRegistries = (start: boolean) => {
@@ -598,6 +604,7 @@ export function createEngine(options: EngineOptions): Engine {
         profileId: profile.id,
         resolveRoot: (cwd) => resolver.resolve(cwd).root,
         onChange: () => {
+          recordHostProcesses?.();
           broadcast('sessions.live', { live: liveList() });
           void autoStarter?.check();
           runner?.check();
@@ -820,6 +827,17 @@ export function createEngine(options: EngineOptions): Engine {
     env: envFor,
     claudePath: async () => (await claude)?.path,
     isOpenElsewhere: (id) => !hosts.has(id) && liveList().some((l) => l.sessionId === id),
+    stopLeftover: (id) => {
+      const leftover = liveList().find((l) => l.sessionId === id && l.leftover);
+      if (!leftover) return false;
+      log('info', `Stopping the Claude Code process (pid ${leftover.pid}) an earlier run left holding session ${id}`);
+      try {
+        process.kill(leftover.pid, 'SIGTERM');
+      } catch {
+        // Already gone.
+      }
+      return true;
+    },
     refreshLive: scanLive,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
     sessionProfile,
@@ -921,6 +939,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
   });
+  recordHostProcesses = () => hostProcesses.record(liveList(), (id) => hosts.has(id));
+  recordHostProcesses();
 
   // Armed resumes kept from before start their timers (one due while the app was closed goes shortly).
   limits.start();

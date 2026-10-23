@@ -143,6 +143,11 @@ export const LiveSession = z.object({
   profileId: z.string(),
   /** Descriptions of background tasks still running. Only known for sessions running in this app. */
   background: z.array(z.string()).optional(),
+  /**
+   * A process this app started before it last quit or crashed, still running with nothing to talk to. Sending to the
+   * session stops it and continues here, instead of forking.
+   */
+  leftover: z.boolean().optional(),
 });
 export type LiveSession = z.infer<typeof LiveSession>;
 
