@@ -38,6 +38,7 @@ import {
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { LimitsState } from './usageLimit.ts';
+import { SignInState } from './signIn.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
@@ -554,6 +555,15 @@ export const contract = {
     'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Resume when it resets: arms (or disarms) a session to continue by itself shortly after its profile's limit resets. */
     'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
+    /** Profiles whose login stopped working (signed out, expired), and the sessions it stopped; `signIn.changed` follows each change. */
+    'signIn.state': { params: z.object({}), result: SignInState },
+    /**
+     * Sign in: runs `claude auth login` with the session's profile in a terminal tab of the session. When it succeeds, the
+     * sessions the login stopped start again and continue where they left off.
+     */
+    'signIn.start': { params: z.object({ sessionId: SessionId }), result: TerminalInfo },
+    /** Signed in some other way: the sessions the profile's login stopped start again and continue where they left off. */
+    'signIn.continue': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
 
     // --- Folders, files and editors -----------------------------------------------------------
     /**
@@ -1493,6 +1503,8 @@ export const contract = {
     'limits.changed': LimitsState,
     /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */
     'limits.resumed': z.object({ sessionId: z.string() }),
+    /** A profile's login stopped working, or works again, or Sign in started or ended. */
+    'signIn.changed': SignInState,
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
     /** Actions changed (saved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */

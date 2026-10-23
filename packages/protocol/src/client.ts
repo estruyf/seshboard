@@ -17,6 +17,7 @@ export type * from './actions.ts';
 export { ACTION_ICONS, type ActionIcon } from './actionIcons.ts';
 export type * from './usage.ts';
 export type * from './usageLimit.ts';
+export type * from './signIn.ts';
 export { SHARE_WEIGHTS, sharesOf, weightOf } from './usageWeights.ts';
 export * from './costEstimate.ts';
 export * from './contextCache.ts';

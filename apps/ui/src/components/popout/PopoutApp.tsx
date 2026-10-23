@@ -4,6 +4,7 @@ import { useReadyReport } from '../../engine/useReadyReport.ts';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { useAskSync } from '../../state/askStore.ts';
 import { useLimitsSync } from '../../state/limitsStore.ts';
+import { useSignInSync } from '../../state/signInStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferencesSync } from '../../state/preferencesStore.ts';
 import { useProfilesSync } from '../../state/profilesStore.ts';
@@ -79,6 +80,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   useUpNextSync();
   useModsSync();
   useLimitsSync();
+  useSignInSync();
   useAskSync();
   // Saved prompts reach the slash menu and the message box here too; a change made in any window shows in all.
   useSavedPromptsSync();

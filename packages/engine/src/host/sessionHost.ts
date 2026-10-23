@@ -27,6 +27,7 @@ import { modsBridge } from './modsBridge.ts';
 import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
+import { isSignInError } from '../signIn/signInError.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -59,6 +60,8 @@ export interface HostEvents {
   limitHit?(sessionId: string, stop: LimitStop): void;
   /** A turn finished without an error: whatever limit the profile was at no longer holds. */
   turnOk?(sessionId: string): void;
+  /** Claude Code's login stopped working (signed out, expired) and failed the turn, with Claude Code's message. */
+  signedOut?(sessionId: string, message: string | null): void;
   /** The profile is at a usage limit: what is queued waits until it is cleared. */
   limited?(): boolean;
   /** What this session's mods tell the windows; without it, mods never attach. */
@@ -407,6 +410,8 @@ export class SessionHost {
   private lastRateLimit: RateLimitUpdate | null = null;
   /** The text of an error Claude Code reported as an assistant message this turn (a usage limit comes as one). */
   private assistantError: string | null = null;
+  /** The SDK's error code on this turn's failed assistant message (`authentication_failed`, `rate_limit`…). */
+  private assistantErrorCode: string | null = null;
 
   /**
    * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
@@ -673,7 +678,10 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null) return;
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
-        if (message.error) this.assistantError = textOf(message) ?? this.assistantError;
+        if (message.error) {
+          this.assistantError = textOf(message) ?? this.assistantError;
+          this.assistantErrorCode = message.error;
+        }
         this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
@@ -689,12 +697,16 @@ export class SessionHost {
         const stop = outcome.ok
           ? null
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
+        const signedOut = !outcome.ok && !stop && isSignInError(this.assistantErrorCode, this.assistantError ?? outcome.error);
+        const signInMessage = this.assistantError ?? outcome.error;
         this.rejected = null;
         this.assistantError = null;
+        this.assistantErrorCode = null;
         // A failed turn leaves the queue for you to decide, unless you stopped it yourself (held already, or let go on
         // purpose) or sent a message now. A usage limit holds it instead, until the limit is cleared.
         if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
+        else if (signedOut) this.events.signedOut?.(this.sessionId, signInMessage);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
         this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}) });
         void this.refreshContext();

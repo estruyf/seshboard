@@ -165,6 +165,7 @@ import type { ShellEnv } from './system/shellEnv.ts';
 import { LimitStore } from './usageLimit/limitStore.ts';
 import { remoteLimit, RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
 import { UsageLimits } from './usageLimit/usageLimits.ts';
+import { SignIns } from './signIn/signIns.ts';
 import { PipelineStore } from './pipelines/pipelineStore.ts';
 import { isRunId, RunStore } from './pipelines/runStore.ts';
 import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
@@ -818,8 +819,28 @@ export function createEngine(options: EngineOptions): Engine {
     onResumed: (sessionId) => broadcast('limits.resumed', { sessionId }),
     log,
   });
+  // --- Signing in again ---------------------------------------------------------------------------------------------
+  /** Profiles whose login stopped working (signed out, expired): their sessions offer Sign in. */
+  const signIns = new SignIns({ onChange: (state) => broadcast('signIn.changed', state) });
+  /**
+   * You signed in again: each session the login stopped starts a new process (one started before you signed in may
+   * still hold the old login) and continues where it left off.
+   */
+  const continueAfterSignIn = async (profileId: string) => {
+    for (const sessionId of signIns.signedIn(profileId)) {
+      try {
+        if (hosts.list().hosts.some((h) => h.sessionId === sessionId && (h.state === 'running' || h.state === 'needs-you'))) continue;
+        await hosts.release(sessionId);
+        await hosts.send({ sessionId, text: RESUME_PROMPT, attachments: [], fork: false });
+        sessions.wake(sessionId);
+      } catch (error) {
+        log('warn', `Could not continue ${sessionId} after signing in: ${(error as Error).message}`);
+      }
+    }
+  };
   const hosts = new HostManager({
     limits,
+    signIns,
     sdk,
     ephemeral,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
@@ -1044,7 +1065,10 @@ export function createEngine(options: EngineOptions): Engine {
       for (const viewer of terminalViewers.get(id) ?? []) viewer.emit('terminal.data', { id, data });
     },
     onChange: (list) => broadcast('terminals.changed', { terminals: list }),
-    onExit: (info, run) => reportRun(info, run),
+    onExit: (info, run) => {
+      reportRun(info, run);
+      signInEnded(info);
+    },
     log,
   });
   /** The terminals each connection is attached to, so one dispose hook per connection detaches it from all of them. */
@@ -1749,6 +1773,17 @@ export function createEngine(options: EngineOptions): Engine {
    * A run that reports back has ended: its exit code and the end of its output go to the session as your message, held
    * in Up next while Claude works. A line under the output says where it went, or why it couldn't go.
    */
+  /** Terminals running `claude auth login`, by the profile they sign in to; kept after they end, so Restart signs in again. */
+  const signInTerminals = new Map<string, string>();
+  /** A Sign in terminal ended: signed in (it exited with 0), so the sessions continue; otherwise Sign in can be tried again. */
+  const signInEnded = (info: TerminalInfo) => {
+    const profileId = signInTerminals.get(info.id);
+    if (!profileId) return;
+    signIns.signingIn(profileId, null);
+    if (info.exitCode !== 0) return;
+    terminals.note(info.id, '↳ Signed in. The session continues.');
+    void continueAfterSignIn(profileId);
+  };
   const reportRun = (info: TerminalInfo, run: { output: string; stopped: boolean }) => {
     const report = runReports.get(info.id);
     if (!report) return;
@@ -2250,6 +2285,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     limits.forget(sessionId);
+    signIns.forget(sessionId);
     triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
@@ -2613,6 +2649,30 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'limits.arm': ({ sessionId, armed }) => {
       limits.arm(sessionId, armed);
+      return {};
+    },
+    'signIn.state': () => signIns.state(),
+    'signIn.start': async ({ sessionId }) => {
+      const profileId = sessionProfile(sessionId);
+      const running = signIns.of(profileId)?.terminalId;
+      const open = running ? terminals.list().find((t) => t.id === running && t.exitCode === null) : undefined;
+      if (open) return open;
+      const [path, userShell] = await Promise.all([claude.then((c) => c?.path), terminals.shell()]);
+      const program = path ? `${userShell.kind === 'powershell' ? '& ' : ''}${userShell.quote(path)}` : 'claude';
+      // The session's folder, so the tab sits with it; a folder that is gone (a removed worktree) can't hold a terminal.
+      const folder = sessionCwd(sessionId);
+      const cwd = folder && existsSync(folder) ? folder : homedir();
+      try {
+        const info = await terminals.open({ sessionId, cwd, kind: 'action', command: `${program} auth login`, title: 'Sign in', cols: 100, rows: 20, fork: false, env: profileEnv(profileId) });
+        signInTerminals.set(info.id, profileId);
+        signIns.signingIn(profileId, info.id);
+        return info;
+      } catch (error) {
+        throw new RpcError('TERMINAL_FAILED', (error as Error).message);
+      }
+    },
+    'signIn.continue': async ({ sessionId }) => {
+      await continueAfterSignIn(sessionProfile(sessionId));
       return {};
     },
     'session.forkAt': async ({ sessionId, messageUuid }) => {
@@ -3424,6 +3484,7 @@ export function createEngine(options: EngineOptions): Engine {
       terminalViewers.delete(id);
       actionRuns.delete(id);
       runReports.delete(id);
+      signInTerminals.delete(id);
       return {};
     },
     'terminal.stop': ({ id }) => {
@@ -3679,6 +3740,8 @@ export function createEngine(options: EngineOptions): Engine {
         if (action.sendOutput) runReports.set(id, { sessionId: run.sessionId, command: change.command!, action: action.name });
         else runReports.delete(id);
       }
+      const signInProfile = signInTerminals.get(id);
+      if (signInProfile) signIns.signingIn(signInProfile, id);
       try {
         return await terminals.restart(id, change);
       } catch (error) {

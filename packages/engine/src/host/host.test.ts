@@ -99,6 +99,14 @@ class FakeQuery {
         state('idle');
         continue;
       }
+      if (text.startsWith('signed out')) {
+        // The login expired: Claude Code says so as an error message, and the turn ends as an error.
+        const said = 'OAuth token has expired · Please run /login';
+        this.out.push({ type: 'assistant', uuid: `a-${text}`, error: 'authentication_failed', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: said }] } });
+        this.out.push({ type: 'result', subtype: 'success', is_error: true, result: said, total_cost_usd: 0, session_id: sessionId });
+        state('idle');
+        continue;
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -248,6 +256,7 @@ function setup(
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
+    signIns?: HostManagerDeps['signIns'];
     links?: HostManagerDeps['links'];
     readOnly?: HostManagerDeps['readOnly'];
     planApproved?: HostManagerDeps['planApproved'];
@@ -311,6 +320,7 @@ function setup(
     onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
     limits: opts.limits,
+    signIns: opts.signIns,
     links: opts.links,
     readOnly: opts.readOnly,
     planApproved: opts.planApproved,
@@ -445,6 +455,21 @@ describe('HostManager', () => {
     await until(() => t.turns.length === 2);
     expect(limit).toBeNull();
     await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('reports a turn the login stopped, and clears it once a turn gets through', async () => {
+    const hits: Array<{ profileId: string; sessionId: string; message: string | null }> = [];
+    const oks: string[] = [];
+    const t = setup({ signIns: { hit: (profileId, sessionId, message) => hits.push({ profileId, sessionId, message }), ok: (profileId) => oks.push(profileId) } });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'signed out' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hits).toEqual([{ profileId: 'default', sessionId: id, message: 'OAuth token has expired · Please run /login' }]);
+    expect(oks).toEqual([]);
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(hits).toHaveLength(1);
+    expect(oks).toEqual(['default']);
     t.manager.closeAll();
   });
 

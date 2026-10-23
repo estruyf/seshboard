@@ -26,6 +26,7 @@ import { toast } from '../../state/toastStore.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
+import { SignInNotice } from '../session/SignInNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -1892,6 +1893,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }}
                 />
               )}
+              {profileId && <SignInNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} />}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
               {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
               <StartsAfterBand sessionId={sessionId} />

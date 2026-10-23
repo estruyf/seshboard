@@ -107,6 +107,8 @@ export interface HostManagerDeps {
    * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
    */
   limits?: { of(profileId: string): UsageLimitHit | null; hit(profileId: string, sessionId: string, stop: LimitStop): void; ok(profileId: string, sessionId: string): void };
+  /** Profiles whose login stopped working: a failed turn reports it, a turn that gets through clears it. */
+  signIns?: { hit(profileId: string, sessionId: string, message: string | null): void; ok(profileId: string): void };
   /**
    * Where sessions' mods report to (the `mods.*` events). `ask` goes to the windows; their answer comes back through
    * `answerModPrompt`. Without it, sessions never attach mods.
@@ -1072,7 +1074,11 @@ export class HostManager {
           this.deps.onTurnEnd?.(sessionId, outcome);
         },
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
-        turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
+        turnOk: (sessionId) => {
+          this.deps.limits?.ok(config.profileId, sessionId);
+          this.deps.signIns?.ok(config.profileId);
+        },
+        signedOut: (sessionId, message) => this.deps.signIns?.hit(config.profileId, sessionId, message),
         limited: () => !!this.deps.limits?.of(config.profileId),
         ...(this.deps.links ? { expand: (id: string, text: string) => this.deps.links!.expand(id, text) } : {}),
         mods: this.deps.mods ? { ...this.deps.mods, ask: (ask) => this.askWindow(ask), diagnostics: this.deps.log } : undefined,

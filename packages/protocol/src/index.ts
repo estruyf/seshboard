@@ -42,6 +42,7 @@ export * from './remoteConstants.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';
 export * from './usageLimit.ts';
+export * from './signIn.ts';
 export * from './mods.ts';
 export * from './usageWeights.ts';
 export * from './costEstimate.ts';

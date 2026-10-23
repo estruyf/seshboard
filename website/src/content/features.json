@@ -3392,6 +3392,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sign-in-again",
+      "name": "Signed out: Sign in runs claude auth login in the session's terminal panel, and the session continues once you are signed in",
+      "page": "troubleshooting"
+    },
+    {
       "id": "feature:sidebar-search-filter",
       "name": "Search sessions filter",
       "page": "sessions/sidebar"
