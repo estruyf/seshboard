@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { loadRemoteDraft, remoteNewDraftKey } from './remoteDrafts.ts';
+import { hasRemoteNewDraft } from './remoteDrafts.ts';
 import { THIS_COMPUTER } from './remoteRows.ts';
 import { newSessionTarget } from './runOn.ts';
 
@@ -42,10 +42,7 @@ export const useRunOn = create<RunOnState>()((set) => ({
   },
   openOn: (where) =>
     set((s) => ({
-      target: newSessionTarget(where, s.last, (computerId) => {
-        const draft = loadRemoteDraft(remoteNewDraftKey(computerId));
-        return !!draft.text.trim() || !!draft.fill;
-      }),
+      target: newSessionTarget(where, s.last, hasRemoteNewDraft),
     })),
   setProject: (computerId, projectId) =>
     set((s) => {

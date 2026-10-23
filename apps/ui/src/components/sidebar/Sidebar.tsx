@@ -5,9 +5,9 @@ import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
-import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
+import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
-import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
+import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
@@ -585,6 +585,7 @@ export function Sidebar() {
   const unsent = useUnsent();
   const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
   const newDraft = useNewSessionDraft();
+  const remoteNewDraft = useRemoteNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
@@ -1064,20 +1065,25 @@ export function Sidebar() {
           />
         </label>
         {/* The sidebar's one primary action: a yellow fill, like every primary button. With an unsent New session
-            prompt it carries a pen, and opens New session on that prompt's project. */}
+            prompt it carries a pen, and opens New session on that prompt's project (or on the computer Run on last
+            picked, for a prompt typed for it). */}
         <span className="no-drag relative flex shrink-0">
           <Button
             variant="primary"
             size="lg"
             iconOnly
             icon={<Plus size={17} strokeWidth={2.4} aria-hidden />}
-            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : 'New session'}
+            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'}
             shortcut="session.new"
             data-new-session
             onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
             className={`rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
           />
-          {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
+          {newDraft ? (
+            <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />
+          ) : (
+            remoteNewDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-remote-new-session-draft={remoteNewDraft.computerId} />
+          )}
         </span>
       </div>
 

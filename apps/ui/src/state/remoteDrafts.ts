@@ -1,3 +1,4 @@
+import { create } from 'zustand';
 import type { FillState } from '../components/savedPrompts/fillModel.ts';
 
 /**
@@ -5,7 +6,7 @@ import type { FillState } from '../components/savedPrompts/fillModel.ts';
  * to it. Kept in localStorage, read and written only when asked (so nothing touches storage at load), which every
  * window shares. Sending, or starting the session, clears it.
  */
-const STORAGE_KEY = 'ui.remoteDrafts';
+export const REMOTE_DRAFTS_STORAGE_KEY = 'ui.remoteDrafts';
 
 export interface RemoteDraft {
   text: string;
@@ -46,17 +47,34 @@ export function withRemoteDraft(drafts: Record<string, RemoteDraft>, key: string
 
 export function loadRemoteDraft(key: string): RemoteDraft {
   try {
-    return parseRemoteDrafts(localStorage.getItem(STORAGE_KEY))[key] ?? { text: '' };
+    return parseRemoteDrafts(localStorage.getItem(REMOTE_DRAFTS_STORAGE_KEY))[key] ?? { text: '' };
   } catch {
     return { text: '' };
   }
 }
 
+/** True while New session on that computer holds a prompt that wasn't sent (the pen on the sidebar's +). */
+export const hasRemoteNewDraft = (computerId: string) => {
+  const draft = loadRemoteDraft(remoteNewDraftKey(computerId));
+  return !!draft.text.trim() || !!draft.fill;
+};
+
+/**
+ * Bumped when a draft comes or goes (not on every keystroke), so what shows a pen for one reads storage again. Another
+ * window's change arrives through the `storage` event on `REMOTE_DRAFTS_STORAGE_KEY`.
+ */
+export const useRemoteDraftsChanged = create<{ version: number; bump(): void }>()((set) => ({
+  version: 0,
+  bump: () => set((s) => ({ version: s.version + 1 })),
+}));
+
 export function saveRemoteDraft(key: string, draft: RemoteDraft): void {
   try {
-    const drafts = withRemoteDraft(parseRemoteDrafts(localStorage.getItem(STORAGE_KEY)), key, draft);
-    if (Object.keys(drafts).length) localStorage.setItem(STORAGE_KEY, JSON.stringify(drafts));
-    else localStorage.removeItem(STORAGE_KEY);
+    const before = parseRemoteDrafts(localStorage.getItem(REMOTE_DRAFTS_STORAGE_KEY));
+    const drafts = withRemoteDraft(before, key, draft);
+    if (Object.keys(drafts).length) localStorage.setItem(REMOTE_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+    else localStorage.removeItem(REMOTE_DRAFTS_STORAGE_KEY);
+    if (key in before !== key in drafts) useRemoteDraftsChanged.getState().bump();
   } catch {
     // Storage is full or off: the draft just isn't kept.
   }

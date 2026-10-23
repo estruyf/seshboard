@@ -3845,7 +3845,9 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-saved-prompt-option=\"smoke-remote-prompt\"]')", 3_000))) return 'typing / in New session on the other computer did not list the saved prompt';
   await js(`document.querySelector('[data-remote-new-session] [data-saved-prompt-option="smoke-remote-prompt"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-saved-prompt-header]') && document.querySelector('[data-remote-new-session] textarea').value === ''", 3_000))) return `picking the saved prompt did not put it over the message box, without the / (the box has "${await js("document.querySelector('[data-remote-new-session] textarea')?.value")}")`;
-  // A prompt typed for it: the sidebar's + stays on the other computer, with the prompt.
+  // A prompt typed for it: the sidebar's + carries the pen, and stays on the other computer, with the prompt.
+  const pen = `document.querySelector('[data-remote-new-session-draft]')?.dataset.remoteNewSessionDraft === ${JSON.stringify(computerId)} && document.querySelector('[data-new-session]').getAttribute('aria-label') === 'New session · unsent prompt on Smoke Mac'`;
+  if (!(await waitInPage(win, pen, 3_000))) return `the sidebar’s + has no pen for the prompt typed for the other computer (${await js("document.querySelector('[data-new-session]').getAttribute('aria-label')")})`;
   await click('[data-new-session]');
   await settle(win);
   if (!(await js("Boolean(document.querySelector('[data-remote-new-session] [data-saved-prompt-header]'))"))) return 'the sidebar’s + left the other computer while a prompt was typed for it';
@@ -3854,6 +3856,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'computers-new-session.png');
   await click('[data-remote-start]');
   if (!(await waitInPage(win, `document.querySelector('[data-remote-header] h1')?.innerText === ${JSON.stringify(prompt)}`, 10_000))) return `the session started on the other computer did not open here (${await js("document.querySelector('[data-computer-empty]')?.innerText ?? document.querySelector('[data-remote-header] h1')?.innerText")})`;
+  if (!(await waitInPage(win, "!document.querySelector('[data-remote-new-session-draft]')", 3_000))) return 'the pen stayed on the sidebar’s + after the session started on the other computer';
 
   // Clean up: Run on back on this computer, the saved prompt deleted and the computer removed.
   await click('[data-new-session]');
