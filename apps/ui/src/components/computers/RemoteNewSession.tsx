@@ -9,6 +9,8 @@ import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
 import { canClone, planLine } from '../clone/cloneModel.ts';
 import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { PromptChips } from '../savedPrompts/PromptChips.tsx';
+import { PromptFiller } from '../savedPrompts/PromptFiller.tsx';
 import { clearRemoteDraft, loadRemoteDraft, remoteNewDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
 import { remoteProjectKey } from '../../state/remoteRows.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
@@ -23,6 +25,7 @@ import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
+import { SavedPromptMenu, useRemoteSavedPrompts } from './useRemoteSavedPrompts.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { ChipMenu, RemoteEffortChip, RemoteModeChip, RemoteModelChip, RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
 import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice, type RemoteTile } from './remoteNewSession.ts';
@@ -50,7 +53,9 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   // The prompt stays for that computer when you go elsewhere and come back, also after a restart, until the session starts.
-  const [prompt, setPrompt] = useState(() => loadRemoteDraft(remoteNewDraftKey(computer.id)).text);
+  const draftKey = remoteNewDraftKey(computer.id);
+  const [saved] = useState(() => loadRemoteDraft(draftKey));
+  const [prompt, setPrompt] = useState(saved.text);
   const [starting, setStarting] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
@@ -63,6 +68,9 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const composer = useRef<HTMLDivElement>(null);
   const name = computer.name;
   const connected = computer.state === 'connected';
+  // Saved prompts (this computer's, for every project): the / menu and the chips above the box.
+  const savedPrompts = useRemoteSavedPrompts({ key: draftKey, draft: prompt, setDraft: setPrompt, areaRef: box, initialFill: saved.fill, disabled: !connected });
+  const { fill, menu } = savedPrompts;
   const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
   // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
   const options = useRemoteOptions(client, computer);
@@ -75,7 +83,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const trust = useTrustQuestion();
   const [reload, setReload] = useState(0);
 
-  useEffect(() => saveRemoteDraft(remoteNewDraftKey(computer.id), { text: prompt }), [computer.id, prompt]);
+  useEffect(() => saveRemoteDraft(draftKey, { text: prompt, ...(fill ? { fill } : {}) }), [draftKey, prompt, fill]);
 
   useEffect(() => {
     if (!client || !connected) return;
@@ -174,9 +182,13 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
 
   const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
-  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : !prompt.trim() ? 'Type a message first' : null;
+  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : !prompt.trim() && !fill ? 'Type a message first' : null;
   const start = async () => {
     if (blocked || starting || attachments.reading || !client || (!project && !cloning)) return;
+    // A saved prompt with a blank still empty: that blank gets the focus instead.
+    const sentFill = fill;
+    const text = savedPrompts.message();
+    if (!text) return;
     setStarting(true);
     const { images, files } = attachments;
     try {
@@ -198,7 +210,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       const inClone = fresh !== null && !fresh.reused;
       const { sessionId } = await callComputer(client, computer.id, 'session.create', {
         projectId,
-        prompt: prompt.trim(),
+        prompt: text,
         // Only a computer that takes them gets these: an older one would drop them without a word.
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
@@ -207,8 +219,9 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         ...(checkoutBranch && !fresh ? { checkoutBranch } : {}),
       });
       if (fresh) closeClone();
-      clearRemoteDraft(remoteNewDraftKey(computer.id));
+      clearRemoteDraft(draftKey);
       setPrompt('');
+      savedPrompts.sent(sentFill);
       setChanges({});
       setBranch(null);
       attachments.clear();
@@ -221,6 +234,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (savedPrompts.onMenuKey(event)) return;
     if ((event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) || matches(event.nativeEvent, 'new-session.start')) {
       event.preventDefault();
       void start();
@@ -291,6 +305,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
           )}
           {trust.dialog}
 
+          <PromptChips root={null} draftKey={connected ? draftKey : undefined} />
+
           <div className="rounded-xl">
             <div className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-xl border border-b-0 border-remote/45 bg-border/25 px-1.5 py-1" data-route-tray>
               <ComputerChip name={name} size="header" offline={!connected} />
@@ -350,17 +366,28 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
             </div>
             <div ref={composer} className="relative rounded-xl rounded-t-none border border-remote/45 bg-card px-3 pt-2.5 pb-2 shadow-sm" data-remote-composer>
               <DropOverlay drop={attachments.drop} />
+              {menu && <SavedPromptMenu menu={menu} onChoose={savedPrompts.choose} projectName={project?.name ?? name} />}
+              {fill && (
+                <>
+                  <PromptFiller ref={savedPrompts.fillerRef} state={fill} onChange={savedPrompts.setFill} projectName={project?.name ?? name} root={null} cwd={null} disabled={!connected} onClear={savedPrompts.clearFill} onSend={() => void start()} onLeave={() => box.current?.focus()} />
+                  <div aria-hidden className="my-2 border-t border-dashed border-edge" />
+                </>
+              )}
               <RemoteAttachmentList state={attachments} className="mb-2 px-1 pt-1" />
               <textarea
                 ref={box}
                 value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                  savedPrompts.updateMenu(event.target.value, event.target.selectionStart);
+                }}
+                onBlur={() => setTimeout(() => savedPrompts.setMenu(null), 100)}
                 onKeyDown={onKeyDown}
                 onPaste={attachments.onPaste}
                 rows={1}
                 autoFocus
                 disabled={!connected}
-                placeholder={`What should Claude work on? It runs on ${name}.`}
+                placeholder={fill ? 'Add more context… (optional, sent after the prompt)' : savedPrompts.hasPrompts ? `What should Claude work on? It runs on ${name}. Type / for saved prompts.` : `What should Claude work on? It runs on ${name}.`}
                 aria-label={`Message to Claude on ${name}`}
                 className="block field-sizing-content max-h-80 min-h-24 w-full min-w-0 resize-none bg-transparent px-1 pt-1 text-title leading-relaxed font-normal text-text outline-none placeholder:text-faint disabled:opacity-60"
                 data-composer

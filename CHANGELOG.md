@@ -20,6 +20,8 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
+- **Saved prompts in New session on another computer.** With another computer picked in Run on, type `/` or click a chip above the message box to use a saved prompt, as on this computer.
+- **New session starts on this computer.** The **+** button in the sidebar no longer opens New session on the other computer you picked last. It only goes back there when you typed a prompt for it that you haven't started yet.
 - **The remote app follows your computer's theme again.** A phone also paired with a computer that no longer connects stayed in Demo Time and missed theme changes. It now uses the first computer that sends its theme.
 - **The preview remote app keeps working on the Beta channel.** With the update channel in Settings › About set to Beta, a phone that uses the beta remote app stays connected after you install a stable release. On Stable, only the regular remote app connects.
 - **Large context notice in sessions with a 1M window.** The notice, the reminder before the cache expires and the quit prompt now count tokens: Large from in Settings › Usage is a share of a 200k window (60% is 120k), whatever the session's window. Before, a session on a 1M window only counted as large from 600k.

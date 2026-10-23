@@ -3762,6 +3762,19 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
     return `the second computer did not connect: ${await js("document.querySelector('[data-computers-settings]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200)")}`;
   }
   const computerId = (await js("document.querySelector('[data-computer]').dataset.computer")) as string;
+  // A saved prompt for every project, plain text, to use in New session on that computer (4).
+  const savedText = `Smoke saved prompt ${Date.now()}`;
+  const savedRow = '[data-saved-prompt-row="smoke-remote-prompt"]';
+  await click('[data-settings-section="prompts"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-saved-prompts-new]')", 3_000))) return 'Settings › Prompts has no New prompt';
+  await click('[data-saved-prompts-new]');
+  if (!(await waitInPage(win, `document.querySelector('[data-prompt-editor-dialog] [data-prompt-use-in="global"]')`, 3_000))) return 'New prompt did not open';
+  await setFieldValue(win, '[data-prompt-editor-name]', 'Smoke remote prompt');
+  await click('[data-prompt-use-in="global"]');
+  await js("document.querySelector('[data-prompt-editor] [data-prompt-run]').focus()");
+  await win.webContents.insertText(savedText);
+  await click('[data-prompt-editor-save]');
+  if (!(await waitInPage(win, `!document.querySelector('[data-prompt-editor-dialog]') && document.querySelector(${JSON.stringify(savedRow)})`, 3_000))) return 'the saved prompt was not listed in Settings › Prompts';
   // Close Settings: the sidebar stays, the main area comes back.
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
@@ -3807,6 +3820,11 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
   await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer showed none of its projects';
+  // Nothing typed for it: the sidebar's + starts on this computer again.
+  await click('[data-new-session]');
+  if (!(await waitInPage(win, `!document.querySelector('[data-remote-new-session]') && document.querySelector('[data-run-on]')?.dataset.runOn === 'local'`, 3_000))) return 'the sidebar’s + opened New session on the other computer with nothing typed for it';
+  await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-remote-project]')", 10_000))) return 'Run on the other computer did not come back';
   // tideline by name, not the first tile: tiles follow that computer's activity, and harbor-api's profile (Work) starts
   // in a new worktree, which shows no branch.
   const tideline = `[data-remote-new-session] [data-remote-project][data-tooltip="tideline"]`;
@@ -3820,19 +3838,35 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('[data-menu="remote-branch"] [data-choice="feat/onboarding"]')`, 3_000))) return 'the branch menu does not list the other computer’s branches';
   await click('[data-menu="remote-branch"] [data-choice="feat/onboarding"]');
   if (!(await waitInPage(win, `${routeBranch} === 'feat/onboarding'`, 3_000))) return `picking a branch did not show in the route (${await js(routeBranch)})`;
-  const prompt = `Smoke test ${Date.now()}`;
-  await setFieldValue(win, '[data-remote-new-session] textarea', prompt);
+  // The saved prompt, picked with / in the message box.
+  const prompt = savedText;
+  await js("document.querySelector('[data-remote-new-session] textarea').focus()");
+  await win.webContents.insertText('/smoke');
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-saved-prompt-option=\"smoke-remote-prompt\"]')", 3_000))) return 'typing / in New session on the other computer did not list the saved prompt';
+  await js(`document.querySelector('[data-remote-new-session] [data-saved-prompt-option="smoke-remote-prompt"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-saved-prompt-header]') && document.querySelector('[data-remote-new-session] textarea').value === ''", 3_000))) return `picking the saved prompt did not put it over the message box, without the / (the box has "${await js("document.querySelector('[data-remote-new-session] textarea')?.value")}")`;
+  // A prompt typed for it: the sidebar's + stays on the other computer, with the prompt.
+  await click('[data-new-session]');
+  await settle(win);
+  if (!(await js("Boolean(document.querySelector('[data-remote-new-session] [data-saved-prompt-header]'))"))) return 'the sidebar’s + left the other computer while a prompt was typed for it';
   if (!(await waitInPage(win, "document.querySelector('[data-remote-start]') && !document.querySelector('[data-remote-start]').disabled", 3_000))) return 'Start on Smoke Mac stayed disabled with a project and a prompt';
   const label = (await js("document.querySelector('[data-remote-start]').innerText")) as string;
   await shot(win, 'computers-new-session.png');
   await click('[data-remote-start]');
   if (!(await waitInPage(win, `document.querySelector('[data-remote-header] h1')?.innerText === ${JSON.stringify(prompt)}`, 10_000))) return `the session started on the other computer did not open here (${await js("document.querySelector('[data-computer-empty]')?.innerText ?? document.querySelector('[data-remote-header] h1')?.innerText")})`;
 
-  // Clean up: Run on back on this computer, and the computer removed.
+  // Clean up: Run on back on this computer, the saved prompt deleted and the computer removed.
   await click('[data-new-session]');
   await waitInPage(win, `document.querySelector('[data-run-on-option="local"]')`, 3_000);
   await click('[data-run-on-option="local"]');
   await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="prompts"]')`, 3_000);
+  await click('[data-settings-section="prompts"]');
+  if (await waitInPage(win, `document.querySelector(${JSON.stringify(`${savedRow} [data-saved-prompt-menu]`)})`, 3_000)) {
+    await click(`${savedRow} [data-saved-prompt-menu]`);
+    await waitInPage(win, "document.querySelector('[role=menu] [data-prompt-delete]')", 2_000);
+    await click('[role=menu] [data-prompt-delete]');
+  }
   await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
   await click('[data-settings-section="remote"]');
   if (await waitInPage(win, "document.querySelector('[data-computer-forget]')", 3_000)) {
@@ -3843,7 +3877,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
-  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, "${label}" started "${prompt}" there, removed again`;
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
 }
 
 /**
