@@ -20,8 +20,10 @@ files:
 # Native modules must live outside the asar archive to be loaded and (spawn-helper) executed.
 asarUnpack:
   - node_modules/node-pty/**
-# The UI is English-only; skip Chromium's other locales.
-electronLanguages: [en]
+# The UI is English-only; skip Chromium's other locales. A name keeps the files called that or a prefix of it: `en` is
+# macOS's en.lproj, while Windows and Linux need en-US.pak and en-GB.pak (Chromium's pick for English outside the US).
+# Without a locale file there, app.getLocale() is '' and Intl throws on it (scripts/dist.mjs checks they are there).
+electronLanguages: [en, en-US, en-GB]
 # node-pty ships N-API prebuilds that work in Electron as-is; no rebuild needed.
 npmRebuild: false
 mac:
