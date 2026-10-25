@@ -1,4 +1,4 @@
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import { safeLocale, type RemoteMessage } from '@switchboard/protocol/remote-client';
 
 /**
  * Under the last reply of each finished turn, when it ended, how long it took and its tokens ("14:32 · 2m 14s · 18.4k
@@ -107,6 +107,7 @@ const dayNumber = (at: number, timeZone?: string) => {
 
 /** "14:32" today (in the phone's own time format), "Mon 09:12" this week, "3 Oct 14:32" this year, "12 Dec 2025" before. */
 export function formatTurnTime(at: number, now = Date.now(), locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   const date = new Date(at);
   const cycle = new Intl.DateTimeFormat(locale, { hour: 'numeric' }).resolvedOptions().hourCycle;
   const time = date.toLocaleTimeString(locale, { hour: cycle === 'h23' || cycle === 'h24' ? '2-digit' : 'numeric', minute: '2-digit', timeZone });

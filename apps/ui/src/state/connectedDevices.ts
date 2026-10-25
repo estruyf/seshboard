@@ -1,4 +1,4 @@
-import type { RemoteStatus } from '@switchboard/protocol/client';
+import { safeLocale, type RemoteStatus } from '@switchboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteAge } from '../components/remote/remoteText.ts';
 
@@ -93,6 +93,7 @@ const clock = (at: number, locale?: string) => new Date(at).toLocaleTimeString(l
 
 /** "since 14:02" today, "since yesterday 22:10", or "since 12 Oct" further back, in the user's time format. */
 export function sinceText(since: number, now = Date.now(), locale?: string): string {
+  locale = safeLocale(locale);
   const day = new Date(since).toDateString();
   if (day === new Date(now).toDateString()) return `since ${clock(since, locale)}`;
   const yesterday = new Date(now);

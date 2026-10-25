@@ -20,6 +20,7 @@ export type * from './usageLimit.ts';
 export type * from './signIn.ts';
 export { SHARE_WEIGHTS, sharesOf, weightOf } from './usageWeights.ts';
 export * from './costEstimate.ts';
+export * from './locale.ts';
 export * from './contextCache.ts';
 export { accountKey } from './accountKey.ts';
 export type * from './profiles.ts';

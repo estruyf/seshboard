@@ -54,4 +54,15 @@ describe('currencies', () => {
     expect(formatCost(0.001, 'USD', 'en-US')).toBe('<$0.01');
     expect(formatCost(0, 'USD', 'en-US')).toBe('$0.00');
   });
+
+  it("formats in the system's locale when the locale is missing or one Intl can't read", () => {
+    const system = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(convertUsd(3.2, 'EUR'));
+    expect(formatCost(3.2, 'EUR')).toBe(system);
+    // '' is what Electron's app.getLocale() returns in the Windows build, which ships no locale file for the language.
+    for (const locale of ['', 'en_US', 'nl-BE.UTF-8']) {
+      expect(formatCost(3.2, 'EUR', locale)).toBe(system);
+      expect(formatCost(1234.56, 'USD', locale)).toBe(formatCost(1234.56, 'USD'));
+      expect(formatCost(0.001, 'USD', locale)).toBe(formatCost(0.001, 'USD'));
+    }
+  });
 });

@@ -46,6 +46,7 @@ export * from './signIn.ts';
 export * from './mods.ts';
 export * from './usageWeights.ts';
 export * from './costEstimate.ts';
+export * from './locale.ts';
 export * from './contextCache.ts';
 export * from './accountKey.ts';
 export * from './savedPrompts.ts';
