@@ -2,7 +2,7 @@
   "name": "switchboard-companion",
   "displayName": "Seshboard Companion",
   "description": "Send the open file, selected lines, problems and terminal output from VS Code to a Seshboard session.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "publisher": "eliostruyf",
   "author": "Elio Struyf",

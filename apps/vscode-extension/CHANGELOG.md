@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0]
 
 - Works with Seshboard on Linux: it starts Seshboard and brings it up there with `xdg-open`.
 - Switchboard is now Seshboard. The settings are `seshboard.*` now (`seshboard.bringToFront` and the others): the ones you set as `switchboard.*` are copied over. The commands are `seshboard.*` too; keybindings you made with the old `switchboard.*` ids keep working.
