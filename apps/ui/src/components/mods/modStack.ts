@@ -1,5 +1,5 @@
 /**
- * What sits between the conversation and the message box, top to bottom: Switchboard's own permission or question
+ * What sits between the conversation and the message box, top to bottom: Seshboard's own permission or question
  * cards always first (a mod can never push them down or stand in for them), then the mods' bands in plugin order,
  * then Up next. Pure, so it can be tested.
  */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { TranscriptMessage } from '@switchboard/protocol/client';
+import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 export interface TranscriptState {

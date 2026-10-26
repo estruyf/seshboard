@@ -1,4 +1,4 @@
-import type { MainWindowRequest } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest } from '@seshboard/protocol/bridge';
 import type { PaletteContext } from './paletteContext.ts';
 
 /**

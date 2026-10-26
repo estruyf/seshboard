@@ -1,4 +1,4 @@
-import type { PushPreview, WorktreeStatus } from '@switchboard/protocol';
+import type { PushPreview, WorktreeStatus } from '@seshboard/protocol';
 import { commitContext } from '../git/commitMessage.ts';
 import { git, GitError, stageForCommit, worktreeStatus } from '../git/gitChanges.ts';
 import { createPullRequest, draftRefusal, firstUsefulLine, PrFailure, readPrDraft, type GhCommand } from '../git/pullRequest.ts';

@@ -1,4 +1,4 @@
-import type { ClaudeChannel, ClaudeUpdateState } from '@switchboard/protocol';
+import type { ClaudeChannel, ClaudeUpdateState } from '@seshboard/protocol';
 import { compareVersions, type ClaudeInstallInfo } from './claudeInstall.ts';
 
 /**
@@ -39,7 +39,7 @@ export interface FoundInstall {
   version: string | null;
   info: ClaudeInstallInfo;
   channel: ClaudeChannel;
-  /** The path came from Switchboard's settings, not a search: show the command, never run it. */
+  /** The path came from Seshboard's settings, not a search: show the command, never run it. */
   override: boolean;
   quiet: boolean;
 }
@@ -50,9 +50,9 @@ export function installFound(state: ClaudeUpdateState, found: FoundInstall | nul
     return { ...state, status: state.status === 'updating' ? 'updating' : 'missing', path: null, installedVersion: null, method: 'unknown', command: null, canUpdate: false, manualReason: null };
   }
   const manualReason = found.override
-    ? 'Claude Code runs from a custom path, so Switchboard leaves updating it to you.'
+    ? 'Claude Code runs from a custom path, so Seshboard leaves updating it to you.'
     : !found.info.run
-      ? 'Switchboard can’t tell how this Claude Code was installed.'
+      ? 'Seshboard can’t tell how this Claude Code was installed.'
       : null;
   const channelChanged = found.channel !== state.channel;
   return {

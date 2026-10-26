@@ -1,4 +1,4 @@
-import type { Computer, Contract, RemoteSession, RpcClient } from '@switchboard/protocol/client';
+import type { Computer, Contract, RemoteSession, RpcClient } from '@seshboard/protocol/client';
 import { useComputers } from '../../state/computersStore.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';

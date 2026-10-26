@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { remoteLinkFragment, type RemoteLink } from '@switchboard/protocol/remote-client';
+import { remoteLinkFragment, type RemoteLink } from '@seshboard/protocol/remote-client';
 import { Connected, type OpenRequest } from './components/Connected.tsx';
 import { LinkEntry } from './components/LinkEntry.tsx';
 import { Button, Message } from './components/ui.tsx';
@@ -181,14 +181,14 @@ export function App() {
       return null;
     case 'welcome':
       return (
-        <Message title="Switchboard Remote" actions={<LinkEntry onLink={(fragment) => void open(fragment)} />}>
+        <Message title="Seshboard Remote" actions={<LinkEntry onLink={(fragment) => void open(fragment)} />}>
           {STANDALONE ? (
             <>
-              Follow and steer your Claude Code sessions from your phone. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here.
+              Follow and steer your Claude Code sessions from your phone. On your computer, open Seshboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here.
             </>
           ) : (
             <>
-              Follow and steer your Claude Code sessions from your phone or another computer. On your computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a device</b> and scan the QR code with your phone's camera. On another computer, click <b>Copy link</b> under the code and paste the link here.
+              Follow and steer your Claude Code sessions from your phone or another computer. On your computer, open Seshboard, go to Settings › Remote, turn on <b>Allow access from my phone</b>, click <b>Pair a device</b> and scan the QR code with your phone's camera. On another computer, click <b>Copy link</b> under the code and paste the link here.
             </>
           )}
         </Message>
@@ -198,11 +198,11 @@ export function App() {
         <Message title="Pair another computer" actions={linkEntry}>
           {STANDALONE ? (
             <>
-              On the other computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here. Your other computers stay paired.
+              On the other computer, open Seshboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, tap <b>Copy link</b> on the page that opens, and paste the link here. Your other computers stay paired.
             </>
           ) : (
             <>
-              On the other computer, open Switchboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, or click <b>Copy link</b> under the code and paste the link here. Your other computers stay paired.
+              On the other computer, open Seshboard, go to Settings › Remote, turn on <b>Allow access from my phone</b> and click <b>Pair a device</b>. Scan the QR code with your phone's camera, or click <b>Copy link</b> under the code and paste the link here. Your other computers stay paired.
             </>
           )}
         </Message>

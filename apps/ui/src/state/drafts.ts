@@ -1,4 +1,4 @@
-import { isAbsolutePath, isWorktreeBase, toPlainText, type ContextItem, type HostState, type PromptScope } from '@switchboard/protocol/client';
+import { isAbsolutePath, isWorktreeBase, toPlainText, type ContextItem, type HostState, type PromptScope } from '@seshboard/protocol/client';
 import { fillMessage, type FillState } from '../components/savedPrompts/fillModel.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { addChips, chipsSummary, type ContextChip } from '../components/composer/contextItems.ts';

@@ -1,6 +1,6 @@
 import { ArrowUp, Clock, Copy, EyeOff, MessageCircleQuestion, Plus, Quote, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { MAX_SIDE_QUESTION_LENGTH } from '@switchboard/protocol/client';
+import { MAX_SIDE_QUESTION_LENGTH } from '@seshboard/protocol/client';
 import { agoText } from '../../lib/format.ts';
 import { currentThread, lastQuestion, threadRows, type AskEntry, type SessionAsk } from '../../state/ask.ts';
 import { useAsk } from '../../state/askStore.ts';

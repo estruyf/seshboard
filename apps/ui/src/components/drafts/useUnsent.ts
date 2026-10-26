@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { isQuestionsFolder, QUESTION_LABEL } from '../../lib/questions.ts';
 import { draftList, draftListSignature, type DraftItem } from '../../state/drafts.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTEXT_BUDGET, parseGithubBlocks, UNREACHABLE_NOTE, writeGithubStub, writeStub, type GithubIssueDetail, type GithubPrDetail } from '@switchboard/protocol';
+import { CONTEXT_BUDGET, parseGithubBlocks, UNREACHABLE_NOTE, writeGithubStub, writeStub, type GithubIssueDetail, type GithubPrDetail } from '@seshboard/protocol';
 import { expandMessage, GithubExpander, type GithubSource } from './githubExpand.ts';
 
 const issue = (number: number, body = 'The text.'): GithubIssueDetail => ({

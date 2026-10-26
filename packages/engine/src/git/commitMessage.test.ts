@@ -10,7 +10,7 @@ const write = (path: string, text: string) => writeFileSync(join(repo, path), te
 const run = (...args: string[]) => git(repo, args);
 
 beforeEach(async () => {
-  repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-commit-msg-')));
+  repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-commit-msg-')));
   await run('init', '-q', '-b', 'main');
   await run('config', 'user.email', 'test@example.com');
   await run('config', 'user.name', 'Test');

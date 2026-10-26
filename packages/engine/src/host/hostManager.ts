@@ -25,7 +25,7 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
@@ -68,9 +68,9 @@ export interface HostManagerDeps {
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
   onPermissionResolved: (requestId: string, sessionId: string) => void;
-  /** A session this app created (for the "Switchboard" origin badge). */
+  /** A session this app created (for the "Seshboard" origin badge). */
   onCreated: (sessionId: string) => void;
-  /** You sent a message to an existing session from this app (it now counts as a Switchboard session). */
+  /** You sent a message to an existing session from this app (it now counts as a Seshboard session). */
   onContinued?: (sessionId: string) => void;
   log: (level: LogLevel, message: string) => void;
   /** Close processes idle for longer than this (default 30 min). The transcript stays; sending resumes. */
@@ -191,7 +191,7 @@ export interface CreateParams {
   pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
-const NOT_RUNNING_MESSAGE = 'This session is not running in Switchboard';
+const NOT_RUNNING_MESSAGE = 'This session is not running in Seshboard';
 
 const DEFAULT_MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
@@ -738,7 +738,7 @@ export class HostManager {
 
   async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
     const host = this.hosts.get(sessionId);
-    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Switchboard to change its MCP servers.');
+    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Seshboard to change its MCP servers.');
     try {
       await host.mcp(server, action);
     } catch (error) {

@@ -1,4 +1,4 @@
-// Retakes every picture the video is cut from: the real Switchboard (and, for
+// Retakes every picture the video is cut from: the real Seshboard (and, for
 // the companion beat, a real VS Code), driven by Playwright in the demo world.
 //
 //   node scripts/capture.mjs              everything
@@ -272,8 +272,8 @@ try {
     code = await openCode({ dataDir, folder: ACME, file: join(ACME, 'src', 'lib', 'theme.ts') });
     const editor = code.page;
     await editor.locator('.monaco-editor .view-lines').first().waitFor({ state: 'visible', timeout: 30_000 });
-    // Connected to this Switchboard, or nothing is clicked: the companion opens Switchboard itself (`open -b`) when it
-    // finds none, and that would be the real app. Its status bar item says "Switchboard isn't running" until then.
+    // Connected to this Seshboard, or nothing is clicked: the companion opens Seshboard itself (`open -b`) when it
+    // finds none, and that would be the real app. Its status bar item says "Seshboard isn't running" until then.
     await editor
       .waitForFunction(() => {
         const label = document.getElementById('eliostruyf.switchboard-companion.switchboard.status')?.getAttribute('aria-label');
@@ -281,9 +281,9 @@ try {
       }, null, { timeout: 90_000 })
       .catch(async () => {
         await editor.screenshot({ path: join(PUBLIC, 'failed-code.png') });
-        throw new Error('the companion did not connect to the demo Switchboard (see public/failed-code.png)');
+        throw new Error('the companion did not connect to the demo Seshboard (see public/failed-code.png)');
       });
-    const button = editor.locator('.editor-actions [aria-label^="Add Selection to Switchboard"]').first();
+    const button = editor.locator('.editor-actions [aria-label^="Add Selection to Seshboard"]').first();
     await button.waitFor({ state: 'visible', timeout: 15_000 });
     await editor.mouse.move(1180, 760);
     await settle(editor, 800);

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { CircleAlert, CircleCheck, CircleDashed, CircleMinus, CircleStop, CircleX, Clock, GitFork, ListTree, LoaderCircle, Play, Repeat, RotateCcw, SkipForward, Square, TriangleAlert } from 'lucide-react';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { anotherRound, continueRun, retryStep, skipStep, stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { currentIndex, runHeaderLine, stepLabel, stepView, type StepView } from '../../state/pipelines.ts';

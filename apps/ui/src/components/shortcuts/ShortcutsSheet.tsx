@@ -1,4 +1,4 @@
-import { isAbsolutePath } from '@switchboard/protocol/client';
+import { isAbsolutePath } from '@seshboard/protocol/client';
 import { Search } from 'lucide-react';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useOverlay } from '../../state/overlayStore.ts';

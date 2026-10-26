@@ -1,4 +1,4 @@
-import { toolStepLabel, type RemoteBlock, type RemoteMessage } from '@switchboard/protocol/remote-client';
+import { toolStepLabel, type RemoteBlock, type RemoteMessage } from '@seshboard/protocol/remote-client';
 import { visibleMessages } from './transcript.ts';
 
 export type ToolUse = Extract<RemoteBlock, { type: 'tool_use' }>;

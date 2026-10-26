@@ -1,5 +1,5 @@
-import type { GithubStar } from '@switchboard/protocol/bridge';
-import type { GithubStarStatus } from '@switchboard/protocol/client';
+import type { GithubStar } from '@seshboard/protocol/bridge';
+import type { GithubStarStatus } from '@seshboard/protocol/client';
 
 /** Star on GitHub waits until you have this many sessions in the sidebar, so a first launch isn't a request. */
 export const STAR_AFTER_SESSIONS = 5;

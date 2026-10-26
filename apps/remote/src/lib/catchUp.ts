@@ -1,4 +1,4 @@
-import type { CatchUp } from '@switchboard/protocol/remote-client';
+import type { CatchUp } from '@seshboard/protocol/remote-client';
 
 /**
  * The catch-up card's wording, the same as the desktop's (apps/ui `catchUpModel.ts`), so a finished session reads

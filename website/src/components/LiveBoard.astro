@@ -1,6 +1,6 @@
 ---
 /**
- * The homepage's moving picture: a small, scripted Switchboard window. Sessions go from Working to Needs you and
+ * The homepage's moving picture: a small, scripted Seshboard window. Sessions go from Working to Needs you and
  * back, a permission gets allowed, a queued prompt turns ready and starts, and a finished session gets its
  * catch-up, in the app's status colours. Behind the window, patch cables carry a pulse in the colour of each
  * event (the switchboard the app is named after). It is drawn in HTML, not a video, so it follows the site's
@@ -63,7 +63,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
   data-live-board
   data-initial={initial}
   role="img"
-  aria-label="A Switchboard window in motion: a session asks for permission and is allowed, another finishes, a queued prompt starts, and a finished session shows its catch-up with Commit."
+  aria-label="A Seshboard window in motion: a session asks for permission and is allowed, another finishes, a queued prompt starts, and a finished session shows its catch-up with Commit."
 >
   <svg class="lb-cables" viewBox="0 0 2016 564" preserveAspectRatio="none" aria-hidden="true">
     <defs>
@@ -84,7 +84,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     <aside class="lb-side">
       <div class="lb-titlebar">
         <span class="lb-lights"><i></i><i></i><i></i></span>
-        <span class="lb-appname">Switchboard</span>
+        <span class="lb-appname">Seshboard</span>
       </div>
       <div class="lb-tools">
         <span class="lb-search">
@@ -224,7 +224,7 @@ const initial = JSON.stringify(rows.map(({ id, group, state, sub, age }) => ({ i
     <div class="lb-toast" data-toast>
       <img src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/favicon.svg`} alt="" width="28" height="28" />
       <span>
-        <span class="lb-toast-app">Switchboard</span>
+        <span class="lb-toast-app">Seshboard</span>
         <span class="lb-toast-title">Claude wants to use Bash</span>
         <span class="lb-toast-text">Upgrade Stripe SDK to v18</span>
       </span>

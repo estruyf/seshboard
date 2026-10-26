@@ -1,5 +1,5 @@
 import { Check, ListEnd } from 'lucide-react';
-import type { LaterItem, QueueWaitFor } from '@switchboard/protocol/client';
+import type { LaterItem, QueueWaitFor } from '@seshboard/protocol/client';
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { contextMenuPoint, isContextMenuKey } from '../../lib/contextMenu.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
@@ -38,7 +38,7 @@ export function waitForEntries(options: { current: QueueWaitFor; busy: readonly 
 
 /**
  * "Start by itself", the check item under "Wait for…": the item starts once what it waits for has finished cleanly.
- * Disabled, with the reason, while it waits for nothing or for a session Switchboard doesn't run.
+ * Disabled, with the reason, while it waits for nothing or for a session Seshboard doesn't run.
  */
 export function startByItself(item: LaterItem, rows: readonly SessionRowData[]): MenuEntry {
   const blocked = autoStartBlock(item.waitFor, { cwd: item.cwd, sessions: rows.map(queueSession), started: useLater.getState().started });

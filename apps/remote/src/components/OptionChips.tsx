@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -87,7 +87,7 @@ export function ModelChip({
       options={[
         ...(offerAuto ? [{ value: AUTO_MODEL, label: 'Auto', description: autoDescription(options.auto?.allowed ?? []), icon: <Wand className="mt-0.5 size-3.5" />, separatorAfter: true }] : []),
         // The default (null) only when the list has no "default" of its own.
-        ...(listDefault ? [] : [{ value: DEFAULT, label: 'Default model', description: 'What Switchboard starts sessions with' }]),
+        ...(listDefault ? [] : [{ value: DEFAULT, label: 'Default model', description: 'What Seshboard starts sessions with' }]),
         ...(value && !known ? [{ value, label: modelLabel(options.models, value) }] : []),
         ...options.models.map((m) => ({ value: m.value, label: m.displayName, description: m.description })),
       ]}
@@ -180,7 +180,7 @@ export function BranchChip({ branches, value, onPick, look }: { branches: Remote
 
 /**
  * A running session's model and mode in one chip, in a phone's message box ("Opus 5.5 · Auto"): it opens a sheet with
- * Model, Effort (for a model that takes one, from a Switchboard that sends it) and Mode as rows, each with its list.
+ * Model, Effort (for a model that takes one, from a Seshboard that sends it) and Mode as rows, each with its list.
  */
 export function ModelModeChip({ options, session, disabled, onModel, onEffort, onMode }: { options: RemoteOptions; session: Pick<RemoteSession, 'model' | 'auto' | 'effort' | 'permissionMode'>; disabled: boolean; onModel: (model: string | null) => void; onEffort: (effort: Effort | null) => void; onMode: (mode: RemotePermissionMode) => void }) {
   const [open, setOpen] = useState(false);

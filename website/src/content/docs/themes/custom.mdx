@@ -9,7 +9,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-A theme is one JSON file. You can import a theme someone shared, export any theme to start from, and edit your imported themes while Switchboard shows the result as you save.
+A theme is one JSON file. You can import a theme someone shared, export any theme to start from, and edit your imported themes while Seshboard shows the result as you save.
 
 <Screenshot name="settings-theme" alt="Settings on Theme, with Open themes folder and Import… above the theme cards, and a dashed card that says Drop a theme .json here" eager />
 
@@ -34,7 +34,7 @@ A theme is one JSON file. You can import a theme someone shared, export any them
 
 </Steps>
 
-If you already have a theme with that name, Switchboard asks whether to **Replace** it or **Keep both** (the copy gets a "2" after its name). A built-in theme's name always keeps both.
+If you already have a theme with that name, Seshboard asks whether to **Replace** it or **Keep both** (the copy gets a "2" after its name). A built-in theme's name always keeps both.
 
 If the file can't be used, **Can't import this theme** says what is wrong with it, and nothing is added.
 
@@ -49,9 +49,9 @@ Every theme card has a **⋯** menu (or right-click the card):
 
 ## Edit a theme file
 
-**Open themes folder** shows where your imported themes are kept: <code><Os mac="~/Library/Application Support/Switchboard/themes" windows="%APPDATA%\Switchboard\themes" /></code>. Open a file there in your editor and save it: Switchboard applies the change to the theme in use at once.
+**Open themes folder** shows where your imported themes are kept: <code><Os mac="~/Library/Application Support/Seshboard/themes" windows="%APPDATA%\Seshboard\themes" /></code>. Open a file there in your editor and save it: Seshboard applies the change to the theme in use at once.
 
-If a change isn't valid, Switchboard keeps the last version that worked and says what is wrong in Settings → Theme. Fix the file and save again.
+If a change isn't valid, Seshboard keeps the last version that worked and says what is wrong in Settings → Theme. Fix the file and save again.
 
 <Aside>
 Theme files hold colours only. A theme can't change anything else in the app, and a value that isn't a colour refuses the whole file.
@@ -59,7 +59,7 @@ Theme files hold colours only. A theme can't change anything else in the app, an
 
 ## Write your own theme
 
-The smallest theme is a background (`canvas`) and an `accent` for one mode. Switchboard works out every other colour from those two, readable on that background:
+The smallest theme is a background (`canvas`) and an `accent` for one mode. Seshboard works out every other colour from those two, readable on that background:
 
 ```json
 {

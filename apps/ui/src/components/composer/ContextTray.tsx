@@ -1,6 +1,6 @@
 import { CircleX, ClipboardPaste, FileText, Folder, Link2, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { ContextItem, WorktreePullRequest } from '@switchboard/protocol/client';
+import type { ContextItem, WorktreePullRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { chipLabel, GITHUB_CHIP_HINT, LINKED_SESSION_HINT, pastePreview, type ContextChip } from './contextItems.ts';

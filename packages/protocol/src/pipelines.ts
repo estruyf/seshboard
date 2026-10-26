@@ -273,7 +273,7 @@ export function nextStep(run: Pick<PipelineRun, 'step' | 'round' | 'sentBackTo'>
   const name = waitedOn?.name ?? 'The step';
   if (last.outcome === 'error') return { kind: 'stop', reason: `${name} ended with an error.` };
   if (last.outcome === 'stopped') return { kind: 'stop', reason: `${name} was stopped.` };
-  if (last.outcome === 'quit') return { kind: 'stop', reason: 'Paused: Switchboard was closed. The run goes on at the next start.' };
+  if (last.outcome === 'quit') return { kind: 'stop', reason: 'Paused: Seshboard was closed. The run goes on at the next start.' };
   const step = steps[run.step];
   if (!step || step.kind === 'push') return enterStep(steps, run.step + 1, run.autoPush);
   if (run.sentBackTo !== null) {

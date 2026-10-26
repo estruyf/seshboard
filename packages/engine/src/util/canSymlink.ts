@@ -10,7 +10,7 @@ let result: boolean | undefined;
  */
 export function canSymlink(): boolean {
   if (result !== undefined) return result;
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-symlink-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-symlink-'));
   try {
     writeFileSync(join(dir, 'target'), '');
     symlinkSync(join(dir, 'target'), join(dir, 'link'));

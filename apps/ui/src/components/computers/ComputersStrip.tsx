@@ -1,5 +1,5 @@
 import { Monitor } from 'lucide-react';
-import type { Computer } from '@switchboard/protocol/client';
+import type { Computer } from '@seshboard/protocol/client';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { offlineLine, showsOnly, THIS_COMPUTER, toggleOnly } from '../../state/remoteRows.ts';

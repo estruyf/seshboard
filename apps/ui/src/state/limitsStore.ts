@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { LimitsState } from '@switchboard/protocol/client';
+import type { LimitsState } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 /**

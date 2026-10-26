@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 
 // The sidebar's tree (#179) in this window: which parents are open (closed by default, not saved), and where the runs
 // come from for code that orders the sidebar without React (⌃⇥, ⌘P). The rules are in `pipelineTree.ts`.

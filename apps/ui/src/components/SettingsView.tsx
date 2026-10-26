@@ -1,7 +1,7 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
@@ -264,7 +264,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard."
+            detail="Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
@@ -336,7 +336,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               <span>
                 <span className="block text-ui">Clicking a file link</span>
                 <span className="block text-meta text-muted">
-                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
+                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Seshboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
                 </span>
               </span>
               <Select<FileLinkClick>
@@ -344,7 +344,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.fileLinkClick}
                 onChange={(fileLinkClick) => update({ fileLinkClick })}
                 options={[
-                  { value: 'switchboard', label: 'Open in Switchboard' },
+                  { value: 'switchboard', label: 'Open in Seshboard' },
                   { value: 'file-manager', label: `Show in ${fileManagerName()}` },
                   { value: 'editor', label: 'Open in editor' },
                 ]}
@@ -404,7 +404,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'notifications':
       return (
-        <Section title="Notifications and sounds" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
+        <Section title="Notifications and sounds" description="How Seshboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
           <NotificationsSettings />
         </Section>
       );
@@ -449,7 +449,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Memory"
-          description="What Claude Code remembers about you and your projects. Personal memory sits in a folder you choose (iCloud, Dropbox, git) and loads in every project; nothing is locked into Switchboard."
+          description="What Claude Code remembers about you and your projects. Personal memory sits in a folder you choose (iCloud, Dropbox, git) and loads in every project; nothing is locked into Seshboard."
         >
           <MemorySettings />
         </Section>
@@ -457,7 +457,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'general':
       return (
         <>
-          <Section title="On startup" description="Whether Switchboard opens at login, and what it shows when it opens.">
+          <Section title="On startup" description="Whether Seshboard opens at login, and what it shows when it opens.">
             <OpenAtLoginSetting />
             <RadioGroup label="On startup" className="grid gap-2.5">
               {STARTUP.map(({ value, label, detail }) => (
@@ -531,7 +531,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Switchboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
+          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Seshboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
             <CloneSettings />
           </Section>
         </>
@@ -540,7 +540,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="VS Code"
-          description="The Switchboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
+          description="The Seshboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
         >
           <CompanionSettings />
         </Section>
@@ -559,13 +559,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'mods':
       return (
-        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Switchboard only draws what they return.">
+        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Seshboard only draws what they return.">
           <ModsSettings />
         </Section>
       );
     case 'diagnostics':
       return (
-        <Section title="Diagnostics" description="The engine behind Switchboard, the Claude Code it runs, and its recent log.">
+        <Section title="Diagnostics" description="The engine behind Seshboard, the Claude Code it runs, and its recent log.">
           <EngineDiagnostics />
         </Section>
       );

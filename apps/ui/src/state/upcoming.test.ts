@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { UpcomingRun } from '@switchboard/protocol/client';
+import type { UpcomingRun } from '@seshboard/protocol/client';
 import { dayGroups, inProject, projectCounts, readFilter, runLabel, listedSchedules, scheduleDone, skippedToast, upcomingCount, upcomingHint, upcomingNavLabel, visibleCards, type UpcomingFold } from './upcoming.ts';
 
 const savedTz = process.env.TZ;

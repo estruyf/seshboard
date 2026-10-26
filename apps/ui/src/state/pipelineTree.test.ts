@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, type LiveSession, type PipelineRunState, type SessionSummary } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, type LiveSession, type PipelineRunState, type SessionSummary } from '@seshboard/protocol/client';
 import { asksWords, childTone, parentRunLine, pipelinesRunning, runRowLine, sidebarForest, stepMeta, treeNeedsYouLine } from './pipelineTree.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { buildListRows, buildSessionList, groupSessions, isActive, rowStatus } from './sidebarRows.ts';

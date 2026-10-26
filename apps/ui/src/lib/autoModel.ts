@@ -1,4 +1,4 @@
-import { AUTO_MODEL, AUTO_TIERS, estimatePhrase, estimateVsOpus, tierLabel, type AutoPick, type AutoTier, type ModelOption } from '@switchboard/protocol/client';
+import { AUTO_MODEL, AUTO_TIERS, estimatePhrase, estimateVsOpus, tierLabel, type AutoPick, type AutoTier, type ModelOption } from '@seshboard/protocol/client';
 import type { Choice } from '../components/newSession/ChoiceMenu.tsx';
 
 /** "Haiku, Sonnet or Opus": the models, in tier order, joined for a sentence. */

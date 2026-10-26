@@ -6,7 +6,7 @@ export interface AwakeCommand {
 
 /**
  * What keeps a Mac awake: `caffeinate -s` holds system sleep off while on power (the display can still sleep), and
- * `-w` ends it with Switchboard's process, so a crash doesn't leave it running. Null elsewhere: Windows and Linux use
+ * `-w` ends it with Seshboard's process, so a crash doesn't leave it running. Null elsewhere: Windows and Linux use
  * Electron's sleep blocker instead.
  */
 export function awakeCommand(platform: string, pid: number): AwakeCommand | null {
@@ -27,7 +27,7 @@ export interface SleepBlocker {
 
 export interface KeepAwakeOptions {
   platform: string;
-  /** Switchboard's own process, which `caffeinate` waits for. */
+  /** Seshboard's own process, which `caffeinate` waits for. */
   pid: number;
   spawn(file: string, args: string[]): AwakeChild;
   blocker: SleepBlocker;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageLimit, UsageSnapshot } from '@switchboard/protocol/client';
+import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
 import { costComputersNotes, limitCosts, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary } from './usageFormat.ts';
 
 const limit = (overrides: Partial<UsageLimit>): UsageLimit => ({ kind: 'session', group: 'session', percent: 10, resetsAt: null, scope: null, severity: 'normal', isActive: false, ...overrides });

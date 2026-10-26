@@ -57,7 +57,7 @@ export async function commitContext(cwd: string): Promise<CommitContext | null> 
   };
   const staged = await read();
   if (staged) return staged;
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-commit-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-commit-'));
   try {
     const indexPath = (await git(root, ['rev-parse', '--git-path', 'index'])).trim();
     const index = isAbsolute(indexPath) ? indexPath : resolve(root, indexPath);

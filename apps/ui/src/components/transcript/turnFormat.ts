@@ -1,5 +1,5 @@
-import type { TurnDetails } from '@switchboard/protocol/bridge';
-import { safeLocale } from '@switchboard/protocol/client';
+import type { TurnDetails } from '@seshboard/protocol/bridge';
+import { safeLocale } from '@seshboard/protocol/client';
 import { claudeMs, type Turn, type TurnTokens } from './turns.ts';
 
 /**

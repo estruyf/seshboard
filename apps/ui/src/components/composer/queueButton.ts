@@ -1,4 +1,4 @@
-import type { SendMode } from '@switchboard/protocol/client';
+import type { SendMode } from '@seshboard/protocol/client';
 import { matches, type ShortcutId } from '../../lib/shortcuts.ts';
 
 /** What the message box's send button can do while Claude is working. */

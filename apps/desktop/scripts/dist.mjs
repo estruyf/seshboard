@@ -1,4 +1,4 @@
-// Packages Switchboard for the OS this runs on, with that platform's flags in one place; any other arguments
+// Packages Seshboard for the OS this runs on, with that platform's flags in one place; any other arguments
 // (--config, --publish, -c.publish.channel=beta) are passed on to electron-builder, on Windows through a config
 // file (windowsBuildConfig.mjs). Afterwards it checks that the app's archive holds only the app, and that the Windows
 // and Linux builds kept Chromium's English locale.
@@ -22,7 +22,7 @@ const PLATFORM_ARGS = {
 
 let platformArgs = PLATFORM_ARGS[process.platform];
 if (!platformArgs) {
-  console.error(`Switchboard is packaged on macOS, Windows and Linux, not on ${process.platform}.`);
+  console.error(`Seshboard is packaged on macOS, Windows and Linux, not on ${process.platform}.`);
   process.exit(1);
 }
 // The .rpm needs rpmbuild (the rpm package on Debian and Ubuntu, rpm-tools on Arch). Without it a local build
@@ -33,7 +33,7 @@ if (process.platform === 'linux' && spawnSync('rpmbuild', ['--version']).error) 
 }
 /** The app's archive in each build this OS makes. */
 const ARCHIVES = {
-  darwin: ['mac-arm64/Switchboard.app/Contents/Resources/app.asar'],
+  darwin: ['mac-arm64/Seshboard.app/Contents/Resources/app.asar'],
   win32: ['win-unpacked/resources/app.asar', 'win-arm64-unpacked/resources/app.asar'],
   linux: ['linux-unpacked/resources/app.asar', 'linux-arm64-unpacked/resources/app.asar'],
 };
@@ -77,7 +77,7 @@ function builderArgs(passed) {
     console.error(error.message);
     process.exit(1);
   }
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-dist-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-dist-'));
   const file = join(dir, 'electron-builder.windows.json');
   writeFileSync(file, JSON.stringify({ extends: resolve(appDir, built.base), ...built.config }, null, 2));
   return { args: ['--config', file, ...built.rest], cleanup: () => rmSync(dir, { recursive: true, force: true }) };

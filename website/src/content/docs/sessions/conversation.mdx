@@ -79,7 +79,7 @@ Messages you queue stay above the message box, under the conversation, until the
 - **Remove** (×, or <Kbd shortcut="upnext.remove" />) takes a message out. **Undo** in the toast puts it back.
 - If you stop Claude, or a turn fails, nothing goes by itself. Up next says so and shows **Send next**. Sending a message yourself ends the pause.
 
-Messages in Up next are kept when you look at other sessions, stop the session or quit Switchboard. A session that stopped shows them again, waiting: **Send next** or **Send now** brings the session back and sends, and so does a message of your own.
+Messages in Up next are kept when you look at other sessions, stop the session or quit Seshboard. A session that stopped shows them again, waiting: **Send next** or **Send now** brings the session back and sends, and so does a message of your own.
 
 ## Follow what Claude does
 
@@ -89,7 +89,7 @@ A command Claude runs without a description shows what it runs, not its script. 
 
 - A **Tasks** pill above the message box shows Claude's to-do list ("Tasks 2 of 5"); click it to open the list.
 - A green pill above the message box lists what runs in the background, such as a long command or an agent, with a way to stop each one. Click a command's name to see its output in the [Commands panel](/sessions/commands/), or an agent's name to open it in the [Agents panel](/sessions/agents/).
-- A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link, and so is the **Show** or **Open** chip beside a tool run that read or changed a file. Click it to preview a Markdown, HTML or code file in Switchboard (see [Preview files](/sessions/file-preview/)), or to show any other file in <Os mac="Finder" windows="File Explorer" />, where it is selected. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead, at that line. Right-click it (or press <Kbd shortcut="context-menu" />) for **Open in Switchboard** (previewable files only), **Show in <Os mac="Finder" windows="File Explorer" />**, **Open in** your editor and **Copy path**, above the message's **Quote** and **Remember this…**. If the file is gone, the link turns red and says so. To change what a click does, change **Clicking a file link** in [Settings, Conversation](/settings/#conversation).
+- A file Claude names in a reply, such as `src/search/suggestions.ts:69`, is a link, and so is the **Show** or **Open** chip beside a tool run that read or changed a file. Click it to preview a Markdown, HTML or code file in Seshboard (see [Preview files](/sessions/file-preview/)), or to show any other file in <Os mac="Finder" windows="File Explorer" />, where it is selected. <Kbd shortcut="transcript.file-link-other" /> opens it in your editor instead, at that line. Right-click it (or press <Kbd shortcut="context-menu" />) for **Open in Seshboard** (previewable files only), **Show in <Os mac="Finder" windows="File Explorer" />**, **Open in** your editor and **Copy path**, above the message's **Quote** and **Remember this…**. If the file is gone, the link turns red and says so. To change what a click does, change **Clicking a file link** in [Settings, Conversation](/settings/#conversation).
 - Images in your messages show above the text, so **Show more** never hides them: one image at its own shape, two to four as thumbnails, and five or more as tiles with +N for the rest. Hover one for its type, size and pixel size.
 - Images open full size with a click. <Kbd keys="arrowleft|arrowright" /> (or the filmstrip at the bottom) step through all of a message's images.
 
@@ -163,16 +163,16 @@ After a compaction the whole conversation stays: a *Conversation compacted* line
 
 ### Large context
 
-Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Switchboard is open: only the time since the last message counts.
+Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Seshboard is open: only the time since the last message counts.
 
 When a session's context is large (60% full or more, by default), the ring turns orange and a note above the message box says so while the session waits for you:
 
 - While the cache is kept: *Large context: 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again (≈$3.20).* **Compact now** compacts it while that is still cheap.
 - After the cache expired, such as the next morning: *Its cache expired 14 h ago, so your next message reads all of it again (≈$3.20).* Compacting now would read it all again too, so the note doesn't offer it.
 
-The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Switchboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Switchboard starts.
+The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Seshboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Seshboard starts.
 
-With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Switchboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
+With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Seshboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
 
 ## Reading mode
 
@@ -183,7 +183,7 @@ Reading mode shows one reply on its own, in the full window, with an outline of 
 Open it with **Read** in a reply's actions, with <Kbd shortcut="read.toggle" />, or with *Read the last reply* in the command palette.
 
 - **In this reply.** The outline lists the reply's headings. Click one to jump there. Under it: how many tools were used and how long the reply takes to read.
-- **Aa.** Opens the text settings: **Font**, **Size**, **Width** and **Show tool calls**. Switchboard keeps them for next time.
+- **Aa.** Opens the text settings: **Font**, **Size**, **Width** and **Show tool calls**. Seshboard keeps them for next time.
 - **Selecting text.** A toolbar shows above the selection with **Reply with quote**, **Copy** and **Ask about this**. **Reply with quote** and **Ask about this** close reading mode and put the text in the message box.
 - **Other sessions.** <Kbd shortcut="sidebar.toggle" /> shows the session list over the page. When Claude needs you in another session, a line under the top bar says so, with **Go** to open it.
 
@@ -229,15 +229,15 @@ When Claude asks you something, you can answer each question under a quote of it
 
 ## Continue a past session
 
-Open any session and type below it. If it isn't running, the header says **Not running** and the message box says "Message Claude to resume this session". Sending picks the session up in Switchboard. The chips under the message box set the model, effort and permission mode it resumes with, so you can change them before you send. If its last run failed, the reason shows next to the chips.
+Open any session and type below it. If it isn't running, the header says **Not running** and the message box says "Message Claude to resume this session". Sending picks the session up in Seshboard. The chips under the message box set the model, effort and permission mode it resumes with, so you can change them before you send. If its last run failed, the reason shows next to the chips.
 
-If the session is still open somewhere else, such as a terminal, Switchboard says so above the message box. Sending then starts a **fork**: a new session that continues from this conversation, leaving the original untouched. The send button says **Fork and send**.
+If the session is still open somewhere else, such as a terminal, Seshboard says so above the message box. Sending then starts a **fork**: a new session that continues from this conversation, leaving the original untouched. The send button says **Fork and send**.
 
 ## Agents and tools
 
 - **Agents:** the agents Claude starts, background ones included, show in the [Agents panel](/sessions/agents/) next to the conversation. Open it with the **Agents** button in the header, or from the background tasks above the message box.
 - **Commands:** the commands Claude runs in the background, and monitors, show in the [Commands panel](/sessions/commands/) with their output, live while they run.
-- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Switchboard, you can turn a server on or off, or reconnect it. With **Use Claude in Chrome** on in [Settings › General](/settings/#new-sessions), sessions you start or resume list **claude-in-chrome** here, with the browser tools of the Claude in Chrome extension.
+- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Seshboard, you can turn a server on or off, or reconnect it. With **Use Claude in Chrome** on in [Settings › General](/settings/#new-sessions), sessions you start or resume list **claude-in-chrome** here, with the browser tools of the Claude in Chrome extension.
 
 <Screenshot name="tools" alt="The Tools dialog on the MCP servers tab: each server with its status and number of tools, and tabs for skills and commands, agents and plugins" />
 
@@ -246,7 +246,7 @@ If the session is still open somewhere else, such as a terminal, Switchboard say
 The **⋯** button in the header holds:
 
 - **Open in** your editor, terminal or <Os mac="Finder" windows="File Explorer" /> (<Kbd shortcut="editor.open" /> opens the folder in your editor), and **Claude Code**, which opens the session in Claude Code's own terminal interface, in the terminal panel.
-- **Continue in VS Code:** stops the session in Switchboard and opens it in Claude Code's VS Code extension, in the window for its folder. It shows when VS Code is installed, and waits until Claude is done. Also *Continue in VS Code* in the command palette.
+- **Continue in VS Code:** stops the session in Seshboard and opens it in Claude Code's VS Code extension, in the window for its folder. It shows when VS Code is installed, and waits until Claude is done. Also *Continue in VS Code* in the command palette.
 - The project's [actions](/projects/actions/).
 - **Profile** (with more than one Claude profile), **Rename…**, **Agents**, and **Check transcript…**, which explains why a conversation looks empty or short.
 - **Memories from this session**, when Claude saved memories during it. Click one to open it in the editor.

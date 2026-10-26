@@ -1,6 +1,6 @@
 import { Folder, FolderDown, FolderGit2, FolderPlus, MessageCircleQuestion, Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
+import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
 import { basename, tildify } from '../../lib/format.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -274,7 +274,7 @@ export function FolderPicker({
     const items = [...e.dataTransfer.items].filter((item) => item.kind === 'file');
     const files = [...e.dataTransfer.files];
     if (files.length !== 1 || !items[0]?.webkitGetAsEntry()?.isDirectory) return;
-    const path = window.switchboard?.getPathForFile(files[0]!);
+    const path = window.seshboard?.getPathForFile(files[0]!);
     if (path) add(path);
   };
 

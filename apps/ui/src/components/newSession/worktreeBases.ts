@@ -1,4 +1,4 @@
-import { branchOfBase, isBranchBase, type BranchBase, type WorktreeBase } from '@switchboard/protocol/client';
+import { branchOfBase, isBranchBase, type BranchBase, type WorktreeBase } from '@seshboard/protocol/client';
 import type { Choice } from './ChoiceMenu.tsx';
 import { freshBase } from './trayLabels.ts';
 
@@ -19,7 +19,7 @@ export interface BaseMenuInput {
 
 /**
  * The "Branch from" menu of a new worktree: Claude Code's two starting points first, then every other local branch and
- * the remote ones, which Switchboard starts the worktree from itself. The branch checked out and the remote's default
+ * the remote ones, which Seshboard starts the worktree from itself. The branch checked out and the remote's default
  * branch are left out of that list: `head` and `fresh` already are them.
  */
 export function baseChoices({ remote, baseBranch, current, branches, remoteBranches, selected }: BaseMenuInput): Array<Choice<WorktreeBase>> {

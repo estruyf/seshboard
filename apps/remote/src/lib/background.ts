@@ -1,4 +1,4 @@
-import type { BackgroundTask, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { BackgroundTask, RemoteSession } from '@seshboard/protocol/remote-client';
 
 /**
  * What a session keeps running after its turn, in the desktop's words (apps/ui `backgroundTasks.ts`), so a session in
@@ -42,7 +42,7 @@ export function backgroundSummary(tasks: readonly Pick<BackgroundTask, 'type'>[]
 
 /**
  * Its turn ended but something it started still runs: Claude carries on when that finishes, so the session is still at
- * work and its catch-up waits. Also while it is unread (the status says unread first, as in the sidebar). A Switchboard
+ * work and its catch-up waits. Also while it is unread (the status says unread first, as in the sidebar). A Seshboard
  * from before phones knew the tasks only says so through the status.
  */
 export function inBackground(session: Pick<RemoteSession, 'status' | 'background'> | null): boolean {

@@ -1,4 +1,4 @@
-import { FOCUS_LIMIT_DEFAULT, FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@switchboard/protocol/bridge';
+import { FOCUS_LIMIT_DEFAULT, FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@seshboard/protocol/bridge';
 
 /** The limit is remembered while it's off, so turning it back on keeps the number you chose. */
 const LAST_LIMIT_KEY = 'focus.lastLimit';

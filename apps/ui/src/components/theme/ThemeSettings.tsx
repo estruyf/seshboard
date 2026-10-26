@@ -1,8 +1,8 @@
 import { trashName } from '../../lib/platform.ts';
 import { Check, Copy, Download, FolderOpen, MoreHorizontal, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import type { ColorScheme } from '@switchboard/protocol/bridge';
-import type { ThemeEntry, ThemeMode } from '@switchboard/protocol/theme-format';
+import type { ColorScheme } from '@seshboard/protocol/bridge';
+import type { ThemeEntry, ThemeMode } from '@seshboard/protocol/theme-format';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { resolveTheme, themeModes } from '../../lib/themeResolve.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -51,7 +51,7 @@ function ThemeCard({ entry, selected, mode, onMenu }: { entry: ThemeEntry; selec
   const only = onlyLabel(entry);
   // "Ethan Schoonover (ported by …)" reads as "Ethan Schoonover" on the card, so "built in" stays in view (the full line is its tooltip).
   const author = entry.file.author?.trim();
-  const shortAuthor = author?.replace(/\s*\(ported by [^)]*\)$|,\s*ported for Switchboard$/i, '');
+  const shortAuthor = author?.replace(/\s*\(ported by [^)]*\)$|,\s*ported for Seshboard$/i, '');
   // The ring is the theme's own accent, so the selected card reads as that theme.
   const ring = selected ? { boxShadow: `0 0 0 2px ${resolved[mode].tokens.accent}`, borderColor: 'transparent' } : undefined;
   return (
@@ -147,7 +147,7 @@ export function ThemeSettings() {
       data: { 'data-theme-duplicate': entry.id },
       onSelect: () =>
         void run(async () => {
-          const id = await window.switchboard?.duplicateTheme(entry.id);
+          const id = await window.seshboard?.duplicateTheme(entry.id);
           const copy = useThemes.getState().themes.find((t) => t.id === id);
           return copy ? `Added “${copy.file.name}”. Its file is in the themes folder, ready to edit.` : null;
         }),
@@ -155,7 +155,7 @@ export function ThemeSettings() {
     ...(entry.builtIn
       ? []
       : ([
-          { label: 'Show file', icon: <FolderOpen size={14} aria-hidden />, data: { 'data-theme-show': entry.id }, onSelect: () => window.switchboard?.showThemeFile(entry.id) },
+          { label: 'Show file', icon: <FolderOpen size={14} aria-hidden />, data: { 'data-theme-show': entry.id }, onSelect: () => window.seshboard?.showThemeFile(entry.id) },
           'separator',
           { label: 'Remove', icon: <Trash2 size={14} aria-hidden />, danger: true, data: { 'data-theme-remove': entry.id }, onSelect: () => setRemoving(entry) },
         ] satisfies MenuEntry[])),
@@ -177,7 +177,7 @@ export function ThemeSettings() {
 
       <section className="grid gap-3" aria-label="Theme">
         <Heading title="Theme" description="Colours for the app, the code blocks and the terminal. Themes are JSON files you can share.">
-          <Button variant="quiet" icon={<FolderOpen size={14} aria-hidden />} onClick={() => window.switchboard?.openThemesFolder()} data-theme-folder>
+          <Button variant="quiet" icon={<FolderOpen size={14} aria-hidden />} onClick={() => window.seshboard?.openThemesFolder()} data-theme-folder>
             Open themes folder
           </Button>
           <Button icon={<Upload size={14} aria-hidden />} onClick={() => void useThemes.getState().chooseImport()} data-theme-import>
@@ -187,7 +187,7 @@ export function ThemeSettings() {
 
         {themeProblems.map((theme) => (
           <Notice key={theme.id} tone="warn" data-theme-problem={theme.id}>
-            Your last change to “{theme.file.name}” can't be used: {problems[theme.id]} Switchboard keeps the last version that worked.
+            Your last change to “{theme.file.name}” can't be used: {problems[theme.id]} Seshboard keeps the last version that worked.
           </Notice>
         ))}
 
@@ -230,7 +230,7 @@ export function ThemeSettings() {
             {flash}
           </Notice>
         )}
-        <Notice tone="info">Editing a theme file? Switchboard reloads the active theme when its file changes.</Notice>
+        <Notice tone="info">Editing a theme file? Seshboard reloads the active theme when its file changes.</Notice>
       </section>
 
       <AppIconSettings />
@@ -241,10 +241,10 @@ export function ThemeSettings() {
           title={`Remove “${removing.file.name}”?`}
           danger
           confirmLabel={`Move to ${trashName()}`}
-          body={<>Its file moves to the {trashName()}, so you can get it back from there.{removing.id === active.id && ' Switchboard goes back to Demo Time.'}</>}
+          body={<>Its file moves to the {trashName()}, so you can get it back from there.{removing.id === active.id && ' Seshboard goes back to Demo Time.'}</>}
           onConfirm={async () => {
             try {
-              await window.switchboard?.removeTheme(removing.id);
+              await window.seshboard?.removeTheme(removing.id);
             } catch (e) {
               throw new Error(bridgeError(e));
             }

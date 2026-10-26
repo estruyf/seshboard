@@ -1,4 +1,4 @@
-import { isSameOrInside, MEMORY_INDEX_LIMIT, parseSections, validMemoryName, type InstructionFile, type ShareTarget, type ShareWarning } from '@switchboard/protocol/client';
+import { isSameOrInside, MEMORY_INDEX_LIMIT, parseSections, validMemoryName, type InstructionFile, type ShareTarget, type ShareWarning } from '@seshboard/protocol/client';
 import type { PillTone } from '../ui/buttonStyles.ts';
 
 /** The memory types as the editor offers them, in this order. */

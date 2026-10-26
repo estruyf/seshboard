@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { nextIndex } from '../lib/keys.ts';
-import type { RemoteChangedFile } from '@switchboard/protocol/remote-client';
+import type { RemoteChangedFile } from '@seshboard/protocol/remote-client';
 import { changesSummary, diffLines } from '../lib/diff.ts';
 import type { Client } from './Connected.tsx';
 import { Sheet } from './Sheet.tsx';

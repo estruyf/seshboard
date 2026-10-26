@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LaterItem, QueueSession, SessionHostInfo, UsageLimitHit } from '@switchboard/protocol';
+import type { LaterItem, QueueSession, SessionHostInfo, UsageLimitHit } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
 import { QueueAutoStarter, type AutoSkipped, type AutoStarted } from './autoStart.ts';
@@ -24,7 +24,7 @@ const host = (sessionId: string, state: SessionHostInfo['state']) => ({ sessionI
 
 /** A queue on a real SQLite file, sessions the test drives, and the starter between them. */
 function world(options: { focusLimit?: number | null } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-autostart-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-autostart-'));
   dirs.push(dir);
   const { db } = openCacheDatabase(join(dir, 'cache.sqlite'));
   databases.push(db);

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { NotificationPermission } from '@switchboard/protocol/bridge';
+import type { NotificationPermission } from '@seshboard/protocol/bridge';
 
 // macOS 26 stopped updating com.apple.ncprefs, so on a newer Mac this answers `unknown` and the page shows a hint instead.
 // To know for sure, a native addon could ask UNUserNotificationCenter.getNotificationSettings from inside the app.
@@ -40,15 +40,15 @@ const run = (command: string, args: string[]) =>
     execFile(command, args, { timeout: 5_000, windowsHide: true }, (_error, stdout) => resolve(String(stdout ?? '')));
   });
 
-/** The bundle id of the running app (Switchboard's, or Electron's in development), from its Info.plist. */
+/** The bundle id of the running app (Seshboard's, or Electron's in development), from its Info.plist. */
 async function macBundleId(): Promise<string> {
-  // …/Switchboard.app/Contents/MacOS/Switchboard → …/Switchboard.app/Contents/Info.plist
+  // …/Seshboard.app/Contents/MacOS/Seshboard → …/Seshboard.app/Contents/Info.plist
   const plist = join(dirname(dirname(process.execPath)), 'Info.plist');
   return (await run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', plist])).trim();
 }
 
 /**
- * Asks the system whether notifications are turned off for Switchboard. Read-only: it reads the system's
+ * Asks the system whether notifications are turned off for Seshboard. Read-only: it reads the system's
  * notification settings and never changes them. `appUserModelId` is the id Windows shows the notifications under.
  */
 export async function notificationPermission(appUserModelId: string): Promise<NotificationPermission> {
@@ -73,7 +73,7 @@ export async function notificationPermission(appUserModelId: string): Promise<No
   return 'unknown';
 }
 
-/** The system's notification settings: Switchboard's own page in System Settings, the Notifications page in Windows. */
+/** The system's notification settings: Seshboard's own page in System Settings, the Notifications page in Windows. */
 export async function notificationSettingsUrl(): Promise<string | null> {
   if (process.platform === 'darwin') {
     const bundleId = await macBundleId().catch(() => '');

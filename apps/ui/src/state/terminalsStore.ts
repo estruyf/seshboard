@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { TerminalInfo, TerminalKind } from '@switchboard/protocol/client';
+import type { TerminalInfo, TerminalKind } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { clampPanelHeight, clampPanelWidth, PANEL_DEFAULT_HEIGHT, PANEL_DEFAULT_WIDTH, parseDock, type TerminalDock } from '../components/terminal/terminalLayout.ts';

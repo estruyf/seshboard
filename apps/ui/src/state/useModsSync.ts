@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import type { ModPromptAsk, ModToast, RpcClient } from '@switchboard/protocol/client';
-import type { Contract } from '@switchboard/protocol/client';
+import type { ModPromptAsk, ModToast, RpcClient } from '@seshboard/protocol/client';
+import type { Contract } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { modComposer } from '../components/mods/modComposer.ts';
 import { modShown } from '../components/mods/modVisibility.ts';

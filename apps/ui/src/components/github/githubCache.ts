@@ -1,4 +1,4 @@
-import type { GithubSearchResult, ResultOf, RpcClient, Contract } from '@switchboard/protocol/client';
+import type { GithubSearchResult, ResultOf, RpcClient, Contract } from '@seshboard/protocol/client';
 import { filterLocal } from './githubList.ts';
 
 /**

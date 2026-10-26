@@ -1,6 +1,6 @@
 # Themes
 
-A theme colours Switchboard: the app, code blocks and diffs, and the terminal, in a light and a dark version. It is one JSON file. Pick, import and export themes in **Settings → Theme**; see the [README](../README.md#themes) for how that works. This page is the file format.
+A theme colours Seshboard: the app, code blocks and diffs, and the terminal, in a light and a dark version. It is one JSON file. Pick, import and export themes in **Settings → Theme**; see the [README](../README.md#themes) for how that works. This page is the file format.
 
 - [The smallest theme](#the-smallest-theme)
 - [The file](#the-file)
@@ -25,7 +25,7 @@ A background (`canvas`) and an `accent` per mode are enough. Everything else is 
 }
 ```
 
-This one has only a dark version, so in light mode Switchboard uses Demo Time.
+This one has only a dark version, so in light mode Seshboard uses Demo Time.
 
 ## The file
 
@@ -50,7 +50,7 @@ This one has only a dark version, so in light mode Switchboard uses Demo Time.
 - Files may have comments (`//`, `/* */`) and trailing commas, as VS Code's theme files do.
 - **Unknown keys are ignored**, and the import lists them ("Ignored 2 unknown keys: `colors.tab-bg`, `fonts`").
 
-Here is a short Solarized with both modes, a few colours of its own, its terminal and Shiki's Solarized code colours. The Solarized that ships with Switchboard sets every colour; it is in [apps/ui/src/themes/solarized.json](../apps/ui/src/themes/solarized.json).
+Here is a short Solarized with both modes, a few colours of its own, its terminal and Shiki's Solarized code colours. The Solarized that ships with Seshboard sets every colour; it is in [apps/ui/src/themes/solarized.json](../apps/ui/src/themes/solarized.json).
 
 ```json
 {
@@ -148,7 +148,7 @@ Nothing is added then. The same check applies to the terminal and to inline code
 
 ## How missing colours are generated
 
-For each mode, Switchboard first generates every token from `canvas` and `accent`, then applies `colors` on top, then works out the tokens that follow from others (`selected` from `text`, `focus-ring` from `accent-ink`, `diff-added` and `diff-removed` from `ok` and `error`) unless `colors` sets them. The maths is in OKLCH, so lightness steps look even:
+For each mode, Seshboard first generates every token from `canvas` and `accent`, then applies `colors` on top, then works out the tokens that follow from others (`selected` from `text`, `focus-ring` from `accent-ink`, `diff-added` and `diff-removed` from `ok` and `error`) unless `colors` sets them. The maths is in OKLCH, so lightness steps look even:
 
 | Tokens | Generated as |
 |---|---|
@@ -247,7 +247,7 @@ The background of code is always the theme's `code-bg`, never the syntax theme's
 ## Importing, exporting and editing
 
 - **Import** (Settings → Theme → *Import…*, *Import theme…* in the command palette, or a `.json` dropped on the window outside a session's message box) checks the file and shows a preview before anything is added. A theme with the name of one you have asks whether to replace it or keep both (the copy is named "Solarized 2"); a built-in theme's name always keeps both.
-- **Imported themes** are files in the `themes` folder of Switchboard's app data (`~/Library/Application Support/Switchboard/themes`); *Open themes folder* shows it. Switchboard watches the folder: edit the theme in use and it applies when you save. If the change isn't valid, the last version that worked stays in use and Settings → Theme says what is wrong.
+- **Imported themes** are files in the `themes` folder of Seshboard's app data (`~/Library/Application Support/Seshboard/themes`); *Open themes folder* shows it. Seshboard watches the folder: edit the theme in use and it applies when you save. If the change isn't valid, the last version that worked stays in use and Settings → Theme says what is wrong.
 - **Export** writes the theme as `<name>.json` (`solarized.json`), always with `$schema`. It writes `canvas` and `accent` and only the colours that differ from what those generate, so the file stays short and imports to exactly the same colours. Exporting Demo Time writes every token.
 - **Duplicate** saves a copy of any theme as a new imported one, ready to edit.
 - **Remove** moves an imported theme's file to the Trash. Built-in themes can't be removed. Removing the theme in use goes back to Demo Time.
@@ -268,9 +268,9 @@ They are theme files like any other ([apps/ui/src/themes](../apps/ui/src/themes)
 ## Credits and licences
 
 - **Demo Time**: [estruyf/vscode-demo-time-theme](https://github.com/estruyf/vscode-demo-time-theme), MIT.
-- **Catppuccin**: [catppuccin.com](https://catppuccin.com/), its palette from [catppuccin/palette](https://github.com/catppuccin/palette) mapped as [catppuccin/vscode](https://github.com/catppuccin/vscode) does, ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2021 Catppuccin. Its code colours are Shiki's bundled `catppuccin-latte` and `catppuccin-mocha`.
-- **Nord**: [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) by Sven Greb, ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2016-present Sven Greb. Its code colours are Shiki's bundled `nord`.
-- **Solarized**: the [Solarized](https://ethanschoonover.com/solarized/) palette by Ethan Schoonover ([altercation/solarized](https://github.com/altercation/solarized)), ported for Switchboard by Elio Struyf. MIT License, Copyright (c) 2011 Ethan Schoonover. Its code colours are Shiki's bundled `solarized-light` and `solarized-dark`.
+- **Catppuccin**: [catppuccin.com](https://catppuccin.com/), its palette from [catppuccin/palette](https://github.com/catppuccin/palette) mapped as [catppuccin/vscode](https://github.com/catppuccin/vscode) does, ported for Seshboard by Elio Struyf. MIT License, Copyright (c) 2021 Catppuccin. Its code colours are Shiki's bundled `catppuccin-latte` and `catppuccin-mocha`.
+- **Nord**: [nordtheme/visual-studio-code](https://github.com/nordtheme/visual-studio-code) by Sven Greb, ported for Seshboard by Elio Struyf. MIT License, Copyright (c) 2016-present Sven Greb. Its code colours are Shiki's bundled `nord`.
+- **Solarized**: the [Solarized](https://ethanschoonover.com/solarized/) palette by Ethan Schoonover ([altercation/solarized](https://github.com/altercation/solarized)), ported for Seshboard by Elio Struyf. MIT License, Copyright (c) 2011 Ethan Schoonover. Its code colours are Shiki's bundled `solarized-light` and `solarized-dark`.
 
 The MIT License for Solarized, Nord and Catppuccin (each with its own copyright line above):
 

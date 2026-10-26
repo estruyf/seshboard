@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatchUp } from '@switchboard/protocol/remote-client';
+import type { CatchUp } from '@seshboard/protocol/remote-client';
 import { catchUpChips, commitTitle, reviewLabel, showsCatchUp, stateLabel, withHashes } from './catchUp.ts';
 
 const card = (change: Partial<CatchUp> = {}, signals: Partial<CatchUp['signals']> = {}): CatchUp => ({

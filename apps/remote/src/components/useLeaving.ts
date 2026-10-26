@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { RemotePrompt } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt } from '@seshboard/protocol/remote-client';
 
 /**
  * Cards that were answered fold away before they leave: they stay in the list (even once the computer dropped the

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProjectInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { ProjectInfo, SessionSummary } from '@seshboard/protocol/client';
 import { emptyHistory } from './navHistory.ts';
 import { goInHistory, startRecording, useNavHistory } from './navHistoryStore.ts';
 import { openProject, useProjectPage } from './projectPageStore.ts';
@@ -7,7 +7,7 @@ import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 import { openUsage, useUsageView } from './usageViewStore.ts';
 
-// The engine connection needs the preload's window.switchboard; these tests only move between views.
+// The engine connection needs the preload's window.seshboard; these tests only move between views.
 vi.mock('../engine/useEngine.ts', () => ({ useEngineConnection: () => ({ status: 'connecting' }) }));
 
 describe('goInHistory', () => {

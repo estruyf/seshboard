@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cacheRewriteCost, DEFAULT_CONTEXT_WARNING, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheRewriteCost, DEFAULT_CONTEXT_WARNING, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@seshboard/protocol/client';
 import { agoText, cacheState, cacheUseOf, contextLevel, largeSessions, largeSessionsText, nextMessageModel, transcriptCache, untilText } from './largeContext.ts';
 
 const HOUR = 60 * 60_000;

@@ -32,7 +32,7 @@ window.addEventListener(
 );
 
 // A pop-out opens with the panels its session had open in the main window, from its first paint.
-if (popoutSession) receiveSessionView(popoutSession, window.switchboard?.popoutView);
+if (popoutSession) receiveSessionView(popoutSession, window.seshboard?.popoutView);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

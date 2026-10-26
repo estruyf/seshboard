@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ModInfo } from '@switchboard/protocol/client';
+import type { ModInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { ABOVE_PROMPT_INSTANCE } from '@switchboard/protocol/client';
+import { ABOVE_PROMPT_INSTANCE } from '@seshboard/protocol/client';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { modActionFailed, ModFrame } from './ModFrame.tsx';
@@ -21,7 +21,7 @@ const FRAME_CHROME_PX = 24 + 16;
 
 /**
  * The mods' bands above the message box (`AbovePrompt`), each in its own frame with its name, in plugin order. They
- * sit under Switchboard's own permission cards and above Up next (see `promptStack`). A band is at most 160px tall
+ * sit under Seshboard's own permission cards and above Up next (see `promptStack`). A band is at most 160px tall
  * and scrolls inside.
  */
 export function ModBands({ sessionId, profileId, working }: { sessionId: string; profileId: string | null; working: boolean }) {

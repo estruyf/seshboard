@@ -11,7 +11,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-You have a Claude plan of your own and one from work. In a terminal you would switch `CLAUDE_CONFIG_DIR` by hand. In Switchboard each account is a Claude profile: link each project to its account once, and its sessions use the right one, with their usage kept apart.
+You have a Claude plan of your own and one from work. In a terminal you would switch `CLAUDE_CONFIG_DIR` by hand. In Seshboard each account is a Claude profile: link each project to its account once, and its sessions use the right one, with their usage kept apart.
 
 ## Add the second profile
 
@@ -21,14 +21,14 @@ Your first profile is Claude Code's own folder, usually <Os mac="~/.claude" wind
 
 1. Open Settings (<Kbd shortcut="settings" />) and choose **Claude profiles**.
 2. Click **Add profile**, give it a name such as "Work" and pick a colour.
-3. Check the **Config folder**. For "Work", Switchboard suggests `.claude-work` in your home folder. Leave **Sign in now** on and click **Add profile**.
-4. Switchboard's terminal opens next to Settings, with Claude Code running on the new folder. Follow its steps and sign in with the other account. If it doesn't ask, type `/login`.
+3. Check the **Config folder**. For "Work", Seshboard suggests `.claude-work` in your home folder. Leave **Sign in now** on and click **Add profile**.
+4. Seshboard's terminal opens next to Settings, with Claude Code running on the new folder. Follow its steps and sign in with the other account. If it doesn't ask, type `/login`.
 
 </Steps>
 
 Signing in later works too: the profile says **Not signed in yet**, with a **Sign in** button that does the same. It also shows a command to run in your own terminal instead. See [Sign in](/settings/claude-profiles/#sign-in).
 
-The profile then says **Signed in as** with the account's email. Switchboard never handles your login: Claude Code does. Choose **Default** on the profile most of your projects should use. See [Claude profiles](/settings/claude-profiles/).
+The profile then says **Signed in as** with the account's email. Seshboard never handles your login: Claude Code does. Choose **Default** on the profile most of your projects should use. See [Claude profiles](/settings/claude-profiles/).
 
 <Screenshot name="settings-profiles" alt="Settings on Claude profiles: a Personal profile in yellow and a Work profile in blue, each with its config folder, the account it is signed in with and the Default choice" />
 

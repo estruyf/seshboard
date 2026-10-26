@@ -1,6 +1,6 @@
 import { Fragment, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { X } from 'lucide-react';
-import type { PromptBlank } from '@switchboard/protocol/client';
+import type { PromptBlank } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
 import { Button } from '../ui/Button.tsx';

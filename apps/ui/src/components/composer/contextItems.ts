@@ -1,4 +1,4 @@
-import { isAbsolutePath, joinPath, MAX_CONTEXT_ITEMS, MAX_PROMPT_LENGTH, parseBriefs, parseGithubBlocks, pathInside, separatorOf, writeGithubStub, writeStub, type ContextItem } from '@switchboard/protocol/client';
+import { isAbsolutePath, joinPath, MAX_CONTEXT_ITEMS, MAX_PROMPT_LENGTH, parseBriefs, parseGithubBlocks, pathInside, separatorOf, writeGithubStub, writeStub, type ContextItem } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 
 /** A chip in the context tray: an item to send with the message, and an id to remove it by. */

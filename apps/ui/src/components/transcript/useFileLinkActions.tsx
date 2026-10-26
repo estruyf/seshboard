@@ -1,6 +1,6 @@
 import { Code, Copy, Eye, Folder } from 'lucide-react';
 import { useContext, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { previewKind } from '@switchboard/protocol/client';
+import { previewKind } from '@seshboard/protocol/client';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { fileManagerName } from '../../lib/platform.ts';
 import { clickKeysFor, formatKeys } from '../../lib/shortcuts.ts';

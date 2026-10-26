@@ -70,5 +70,5 @@ export function useSidebarSync(): void {
   }, [client, width, state]);
 
   // The traffic lights move into the rail while it shows, and back for the open sidebar and the headers.
-  useEffect(() => window.switchboard?.setWindowButtons?.(shown === 'minimal' ? 'rail' : 'default'), [shown]);
+  useEffect(() => window.seshboard?.setWindowButtons?.(shown === 'minimal' ? 'rail' : 'default'), [shown]);
 }

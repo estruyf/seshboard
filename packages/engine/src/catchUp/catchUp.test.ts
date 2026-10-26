@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { writeStub } from '@switchboard/protocol';
+import { writeStub } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { commandKey, failedLine, pastTense, ranLine } from './commandText.ts';
 import { asksBack, fallbackSummary, needKind, replyLines, testsText, waitingNeed } from './fallback.ts';

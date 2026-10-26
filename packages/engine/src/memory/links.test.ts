@@ -42,7 +42,7 @@ describe('renaming with links', () => {
   let personal: string;
   let service: MemoryService;
   beforeEach(() => {
-    base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-links-')));
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-links-')));
     const root = join(base, 'project');
     mkdirSync(root);
     dir = join(base, 'config', 'projects', encodeProjectPath(root), 'memory');

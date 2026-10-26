@@ -1,5 +1,5 @@
 import { Pause, Play, SkipForward } from 'lucide-react';
-import type { Schedule } from '@switchboard/protocol/client';
+import type { Schedule } from '@seshboard/protocol/client';
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { contextMenuPoint, isContextMenuKey } from '../../lib/contextMenu.ts';
 import { deleteSchedule, nextRunToSkip, runScheduleNow, setSchedulePaused, skipRun, useSchedules } from '../../state/schedulesStore.ts';

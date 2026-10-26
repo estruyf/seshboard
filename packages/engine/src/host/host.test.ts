@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
+import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
@@ -991,7 +991,7 @@ describe('HostManager', () => {
   });
 
   it('ignores a startup message without a session id, so the session list keeps working', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-host-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-host-'));
     const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
     try {
       const t = setup({ settings: createSessionSettingsStore(cache.db), onQuery: (q) => q.out.push({ type: 'system', subtype: 'init' }) });

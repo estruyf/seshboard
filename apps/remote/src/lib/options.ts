@@ -1,4 +1,4 @@
-import { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { AUTO_MODEL, AUTO_TIERS, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteSession } from '@seshboard/protocol/remote-client';
 
 /**
  * New session's choices on a phone, worded as on the computer (apps/ui `lib/modes.ts`, `newSession/route.ts`). Pure,
@@ -63,7 +63,7 @@ export interface Choice {
   worktree: boolean;
 }
 
-/** The profiles, also from a computer whose Switchboard doesn't send them yet. */
+/** The profiles, also from a computer whose Seshboard doesn't send them yet. */
 export const profilesOf = (options: RemoteOptions | null): RemoteProfile[] => options?.profiles ?? [];
 
 /** The profile a new session in the project runs with unless you pick another: the project's, else the default. */
@@ -115,7 +115,7 @@ export function modelLabel(models: RemoteOptions['models'], value: string | null
 /** Whether a model takes an effort (the default one does). */
 export const takesEffort = (models: RemoteOptions['models'], value: string | null) => !value || (models.find((m) => m.value === value)?.supportsEffort ?? true);
 
-/** Auto is on in Settings › Conversation (a Switchboard from before phones knew it says nothing: off). */
+/** Auto is on in Settings › Conversation (a Seshboard from before phones knew it says nothing: off). */
 export const autoOn = (options: RemoteOptions | null) => options?.auto?.enabled ?? false;
 
 /** "Sonnet or Opus", "Haiku, Sonnet or Opus": the models Auto may pick, in tier order. */

@@ -1,6 +1,6 @@
 ---
 title: First launch
-description: What you see when you open Switchboard for the first time, and how to add your projects.
+description: What you see when you open Seshboard for the first time, and how to add your projects.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -10,27 +10,27 @@ import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-When Switchboard opens, you see the sidebar on the left and Home in the rest of the window. The first thing to do is add the projects you work in, the folders you start Claude Code sessions in.
+When Seshboard opens, you see the sidebar on the left and Home in the rest of the window. The first thing to do is add the projects you work in, the folders you start Claude Code sessions in.
 
 <Screenshot name="home" alt="Home: a session that needs you, one that is working, the queue, four project tiles to start in, and the two Claude profiles" eager />
 
 ## Open it
 
-Switchboard opens on Home. You can always go back there with <Kbd shortcut="home" />, **Home** at the top of the sidebar, or *Home* in the command palette.
+Seshboard opens on Home. You can always go back there with <Kbd shortcut="home" />, **Home** at the top of the sidebar, or *Home* in the command palette.
 
 ## If Claude Code isn't installed
 
-Switchboard runs sessions with your own Claude Code. When it can't find `claude` on your <Os mac="Mac" windows="PC" />, it opens **Install Claude Code** right away, with the commands to install it (each with a copy button) and a link to the setup guide.
+Seshboard runs sessions with your own Claude Code. When it can't find `claude` on your <Os mac="Mac" windows="PC" />, it opens **Install Claude Code** right away, with the commands to install it (each with a copy button) and a link to the setup guide.
 
 <Steps>
 
 1. Run one of the commands in a terminal.
 2. Run `claude` once in a new terminal and sign in.
-3. Back in Switchboard, choose **Check Again**. When it finds Claude Code, the dialog shows its version and path.
+3. Back in Seshboard, choose **Check Again**. When it finds Claude Code, the dialog shows its version and path.
 
 </Steps>
 
-Choose **Not Now** to look around first. Starting a session then fails with *Claude Code isn't installed, or Switchboard can't find it*. To open the dialog again, choose **Install Claude Code…** in Settings → About.
+Choose **Not Now** to look around first. Starting a session then fails with *Claude Code isn't installed, or Seshboard can't find it*. To open the dialog again, choose **Install Claude Code…** in Settings → About.
 
 ## What you see
 
@@ -39,7 +39,7 @@ Choose **Not Now** to look around first. Starting a session then fails with *Cla
 
 <OnlyOn os="windows">
 
-On Windows, the window has the usual Windows title bar. The menu bar (File, Edit, View, Window and Help) is hidden until you press Alt; most of what it has is also in the [command palette](/command-palette/). See [Switchboard on Windows](/getting-started/windows/) for everything else that differs.
+On Windows, the window has the usual Windows title bar. The menu bar (File, Edit, View, Window and Help) is hidden until you press Alt; most of what it has is also in the [command palette](/command-palette/). See [Seshboard on Windows](/getting-started/windows/) for everything else that differs.
 
 </OnlyOn>
 
@@ -60,9 +60,9 @@ You can add more later with the folder button next to the project filter in the 
 
 ## Your existing sessions
 
-By default the sidebar lists the sessions you start or continue in Switchboard. To also see the sessions you run in a terminal, in Claude desktop or in your editor, turn on **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar). The sidebar's empty state has a **Show sessions from other apps** button for this too.
+By default the sidebar lists the sessions you start or continue in Seshboard. To also see the sessions you run in a terminal, in Claude desktop or in your editor, turn on **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar). The sidebar's empty state has a **Show sessions from other apps** button for this too.
 
-With it on, a session running in your terminal shows up live: you see when it is working and when it waits for you, and you get a notification when a terminal session is waiting. Click any session to read it, or type below it to continue it in Switchboard.
+With it on, a session running in your terminal shows up live: you see when it is working and when it waits for you, and you get a notification when a terminal session is waiting. Click any session to read it, or type below it to continue it in Seshboard.
 
 <Aside type="tip">
 Search across every conversation with <Kbd shortcut="search" />, and jump to any session or project with <Kbd shortcut="palette.goto" />.
@@ -70,7 +70,7 @@ Search across every conversation with <Kbd shortcut="search" />, and jump to any
 
 ## Settings
 
-- [Settings, General](/settings/#general): *On startup* picks what Switchboard shows when it opens: **Home** (the default), **The last session** or **New session**.
+- [Settings, General](/settings/#general): *On startup* picks what Seshboard shows when it opens: **Home** (the default), **The last session** or **New session**.
 - [Settings, Sidebar](/settings/#sidebar): the sidebar style, what collapsing it does, and **Show sessions from other apps**.
 
 ## Next steps

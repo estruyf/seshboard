@@ -288,7 +288,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
               {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the {trashName()}, so you can
               restore them {restoreFrom()}. Files Claude changed in your project are not touched.
               {deleting.some((target) => isActiveHost(hosts.get(target.id))) &&
-                (deleting.length === 1 ? ' It is running in Switchboard and will be stopped first.' : ' Sessions running in Switchboard will be stopped first.')}
+                (deleting.length === 1 ? ' It is running in Seshboard and will be stopped first.' : ' Sessions running in Seshboard will be stopped first.')}
             </>
           }
           onConfirm={async () => {
@@ -323,7 +323,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, requestDelete: setDeleting, requestRename: setRenaming, overlays };
 }
 
-/** Waits until a session in Switchboard has stopped working (or a few seconds pass), so archiving comes after its last activity. */
+/** Waits until a session in Seshboard has stopped working (or a few seconds pass), so archiving comes after its last activity. */
 function untilStopped(sessionId: string, timeoutMs = 5_000): Promise<void> {
   const busy = () => {
     const state = useHosts.getState().hosts.get(sessionId)?.state;
@@ -344,7 +344,7 @@ function untilStopped(sessionId: string, timeoutMs = 5_000): Promise<void> {
 }
 
 /**
- * Archive on a session that works or waits for you asks first. Running in Switchboard (or on another computer), it is
+ * Archive on a session that works or waits for you asks first. Running in Seshboard (or on another computer), it is
  * stopped, then archived. Running in another app, nothing here can stop it: archiving says it keeps running there.
  */
 function StopAndArchive({ data, hosted, stop, archive, onClose }: { data: SessionRowData; hosted: boolean; stop(): Promise<void>; archive(): void; onClose(): void }) {

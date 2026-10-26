@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Check, RefreshCw } from 'lucide-react';
-import { REMOTE_FEATURE_THEME, type RemoteTheme } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_THEME, type RemoteTheme } from '@seshboard/protocol/remote-client';
 import { nameOf, type Computer } from '../lib/computers.ts';
 import { OWN_THEME, swatchOf, themeComputer, type ModeChoice } from '../lib/theme.ts';
 import { chooseMode, chooseTheme, modeChoice, modeNow, subscribeMode, subscribeThemeChoice, themeChoice } from '../lib/themeApply.ts';
@@ -25,8 +25,8 @@ export const SHORT_MODES: readonly { value: ModeChoice; label: string }[] = [
 /** Why a computer's theme can't be picked yet; null when it can. */
 function unavailable(computer: Computer): string | null {
   if (computer.theme) return null;
-  if (computer.state.kind === 'connected' && !computer.state.features.includes(REMOTE_FEATURE_THEME)) return 'Update Switchboard there to use its theme.';
-  return computer.state.kind === 'connected' ? 'Shows once Switchboard is open there.' : 'Shows once it connects.';
+  if (computer.state.kind === 'connected' && !computer.state.features.includes(REMOTE_FEATURE_THEME)) return 'Update Seshboard there to use its theme.';
+  return computer.state.kind === 'connected' ? 'Shows once Seshboard is open there.' : 'Shows once it connects.';
 }
 
 /** Three dots of a theme's colours (background, accent, text), in the mode the page shows. */
@@ -83,7 +83,7 @@ export function ColourChoices({ computers, onSync, inset = false }: { computers:
     setSyncing(true);
     const synced = await onSync();
     setSyncing(false);
-    if (!synced) toast('No computer answered', { detail: 'Open Switchboard there and try again.', tone: 'error' });
+    if (!synced) toast('No computer answered', { detail: 'Open Seshboard there and try again.', tone: 'error' });
   };
   const row = (id: string, label: string, detail: string, theme: RemoteTheme | null, disabled = false) => {
     const isPicked = picked === id;
@@ -123,7 +123,7 @@ export function ColourChoices({ computers, onSync, inset = false }: { computers:
           const why = unavailable(c);
           return row(c.id, nameOf(c) || 'Your computer', why ?? c.theme!.name, c.theme, why !== null);
         })}
-        {row(OWN_THEME, 'Demo Time', "Switchboard's own look", null)}
+        {row(OWN_THEME, 'Demo Time', "Seshboard's own look", null)}
       </div>
     </section>
   );

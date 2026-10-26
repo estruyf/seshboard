@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { withoutContext, type SearchHit, type TranscriptMessage } from '@switchboard/protocol';
+import { withoutContext, type SearchHit, type TranscriptMessage } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import { normaliseMessage } from '../claude/transcript.ts';
 
@@ -165,7 +165,7 @@ export class SearchIndex {
 
   /**
    * The best matches, at most `limit`. `only` keeps them to those sessions; it is applied before the limit,
-   * so sessions left out (other apps', with "Switchboard sessions only") can't take every place.
+   * so sessions left out (other apps', with "Seshboard sessions only") can't take every place.
    */
   search(input: string, limit: number, only?: Iterable<string>): SearchHit[] {
     const query = toFtsQuery(input);

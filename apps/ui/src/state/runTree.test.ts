@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, type PipelineRunState } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, type PipelineRunState } from '@seshboard/protocol/client';
 import { archiveTreeLabel, deleteTreeText, runGoesOn, runRowMenu, treeRunsOf, treeSessionCount } from './runTree.ts';
 
 const pipeline = { ...BUILT_IN_PIPELINES[1]!, builtIn: true, createdAt: 0, updatedAt: 0 };
@@ -35,10 +35,10 @@ describe('a run as one tree', () => {
   });
 
   it('says what Delete… takes away and that the transcripts stay', () => {
-    expect(deleteTreeText('Add dark mode', 4, false)).toEqual({ title: 'Delete “Add dark mode”?', body: 'The run and its 4 sub-sessions go away from Switchboard. Their Claude Code transcripts stay on disk.' });
-    expect(deleteTreeText('Add dark mode', 1, false).body).toBe('The run and its sub-session go away from Switchboard. Their Claude Code transcripts stay on disk.');
-    expect(deleteTreeText('Add dark mode', 0, false).body).toBe('The run goes away from Switchboard.');
-    expect(deleteTreeText('Add dark mode', 4, false, true).body).toBe('The run goes away from Switchboard. Its 4 sub-sessions stay, on their own.');
-    expect(deleteTreeText('Fix login', 2, true).body).toBe('This session, its run and its 2 sub-sessions go away from Switchboard. Their Claude Code transcripts stay on disk.');
+    expect(deleteTreeText('Add dark mode', 4, false)).toEqual({ title: 'Delete “Add dark mode”?', body: 'The run and its 4 sub-sessions go away from Seshboard. Their Claude Code transcripts stay on disk.' });
+    expect(deleteTreeText('Add dark mode', 1, false).body).toBe('The run and its sub-session go away from Seshboard. Their Claude Code transcripts stay on disk.');
+    expect(deleteTreeText('Add dark mode', 0, false).body).toBe('The run goes away from Seshboard.');
+    expect(deleteTreeText('Add dark mode', 4, false, true).body).toBe('The run goes away from Seshboard. Its 4 sub-sessions stay, on their own.');
+    expect(deleteTreeText('Fix login', 2, true).body).toBe('This session, its run and its 2 sub-sessions go away from Seshboard. Their Claude Code transcripts stay on disk.');
   });
 });

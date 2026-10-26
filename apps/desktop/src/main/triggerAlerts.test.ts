@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TriggerNotice } from '@switchboard/protocol/client';
+import type { TriggerNotice } from '@seshboard/protocol/client';
 import { triggerAlerts } from './triggerAlerts.ts';
 
 const notice = (over: Partial<TriggerNotice>): TriggerNotice => ({

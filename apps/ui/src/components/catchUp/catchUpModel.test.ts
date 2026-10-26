@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatchUp } from '@switchboard/protocol/client';
+import type { CatchUp } from '@seshboard/protocol/client';
 import {
   actionLabel,
   catchUpKey,

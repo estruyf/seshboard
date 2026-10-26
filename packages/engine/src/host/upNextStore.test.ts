@@ -8,7 +8,7 @@ import { UpNextStore, type StoredUpNext } from './upNextStore.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const cachePath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-upnext-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-upnext-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
 };

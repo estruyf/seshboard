@@ -1,4 +1,4 @@
-import type { ComputerEvent, ComputerMethod, Contract, EventPayload, ParamsOf, RemoteContract, ResultOf, RpcClient } from '@switchboard/protocol/client';
+import type { ComputerEvent, ComputerMethod, Contract, EventPayload, ParamsOf, RemoteContract, ResultOf, RpcClient } from '@seshboard/protocol/client';
 
 /**
  * A request to another computer, typed with its remote contract. The engine passes it on as is; the other computer

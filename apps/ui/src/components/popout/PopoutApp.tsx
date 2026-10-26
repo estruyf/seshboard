@@ -119,7 +119,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
 function usePopoutWindow(sessionId: string): void {
   useEffect(() => {
     useSessions.getState().select(sessionId);
-    window.switchboard?.reportFocus(sessionId);
+    window.seshboard?.reportFocus(sessionId);
   }, [sessionId]);
 
   // Closing the session (the header's ×) leaves nothing to show here: the window goes, the session keeps running.
@@ -133,7 +133,7 @@ function usePopoutWindow(sessionId: string): void {
 
   const title = useSessions((s) => s.sessions.get(sessionId)?.title ?? s.live.get(sessionId)?.name ?? null);
   useEffect(() => {
-    document.title = title ? `${title} · Switchboard` : 'Switchboard';
+    document.title = title ? `${title} · Seshboard` : 'Seshboard';
   }, [title]);
 
   useEffect(() => {
@@ -141,7 +141,7 @@ function usePopoutWindow(sessionId: string): void {
       if (event.defaultPrevented || !MAIN_WINDOW_KEYS.some((id) => matches(event, id))) return;
       event.preventDefault();
       const { key, code, metaKey, ctrlKey, altKey, shiftKey } = event;
-      window.switchboard?.forwardKeys({ key, code, metaKey, ctrlKey, altKey, shiftKey });
+      window.seshboard?.forwardKeys({ key, code, metaKey, ctrlKey, altKey, shiftKey });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

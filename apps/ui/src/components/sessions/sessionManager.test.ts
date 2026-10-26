@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession, SessionSummary } from '@switchboard/protocol/client';
+import type { LiveSession, SessionSummary } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import {
   DEFAULT_FILTERS,

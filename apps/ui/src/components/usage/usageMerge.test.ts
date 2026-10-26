@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_FEATURE_COSTS, REMOTE_FEATURE_USAGE_TOKENS, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageRow } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_COSTS, REMOTE_FEATURE_USAGE_TOKENS, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageRow } from '@seshboard/protocol/client';
 import { addWindowCosts, computersToAsk, engineGroup, mergeBreakdowns, notCounted, THIS_COMPUTER_KEY } from './usageMerge.ts';
 
 const HOUR = 3_600_000;
@@ -108,7 +108,7 @@ describe('mergeBreakdowns', () => {
     expect(mergeBreakdowns(local, [], 'session')).toEqual({ ...local, uncosted: [] });
   });
 
-  it('adds up the costs, and says which computer sent none (an older Switchboard)', () => {
+  it('adds up the costs, and says which computer sent none (an older Seshboard)', () => {
     const mystic = { id: 'mystic', name: 'mystic' };
     const priced = (rows: UsageRow[], cost: number) => breakdown(rows, { totals: { ...breakdown(rows).totals, cost } });
     const local = priced([row('opus', 100, { key: 'claude-opus-5-5', cost: 2 })], 2);
@@ -140,13 +140,13 @@ describe('computersToAsk', () => {
   it('asks connected computers that answer usage.tokens, and says why the others are not counted', () => {
     const { ask, uncounted } = computersToAsk([computer('studio', 'connected'), computer('old', 'connected', ['attachments']), computer('laptop', 'offline'), computer('mini', 'unpaired'), computer('new', 'connecting')]);
     expect(ask).toEqual([{ id: 'studio', name: 'Studio' }]);
-    expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Switchboard.', 'Laptop is offline.', 'Mini is offline.', 'Connecting to New.']);
+    expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Seshboard.', 'Laptop is offline.', 'Mini is offline.', 'Connecting to New.']);
   });
 
   it("asks for the plan windows' costs only computers that answer them", () => {
     const { ask, uncounted } = computersToAsk([computer('studio', 'connected', [REMOTE_FEATURE_USAGE_TOKENS, REMOTE_FEATURE_COSTS]), computer('old', 'connected')], REMOTE_FEATURE_COSTS);
     expect(ask).toEqual([{ id: 'studio', name: 'Studio' }]);
-    expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Switchboard.']);
+    expect(uncounted.map((u) => u.reason)).toEqual(['Old needs a newer Seshboard.']);
   });
 
   it('says why an asked computer is not counted', () => {

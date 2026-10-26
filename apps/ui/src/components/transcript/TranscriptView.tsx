@@ -2,7 +2,7 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
+import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -138,7 +138,7 @@ import { useCatchUpShow } from '../../state/catchUpShow.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { WhyPanel } from '../session/WhyPanel.tsx';
 
-const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Switchboard', unknown: '' } as const;
+const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Seshboard', unknown: '' } as const;
 
 /**
  * The status word in the header's meta line takes the colour of its state: yellow while working,
@@ -1548,7 +1548,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             iconOnly
             icon={<SquareArrowDownLeft size={15} aria-hidden />}
             data-move-to-main-window
-            onClick={() => window.switchboard?.popIn()}
+            onClick={() => window.seshboard?.popIn()}
             data-tooltip="Move back to main window"
             aria-label="Move back to main window"
             className="no-drag shrink-0"
@@ -1708,7 +1708,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <AutoPickLine sessionId={sessionId} pick={autoPick} />
                 </div>
               )}
-              {/* Switchboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
+              {/* Seshboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
               {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
               {status === 'ready' && (
                 <div className="mx-auto max-w-3xl px-6 pb-4">
@@ -1861,7 +1861,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   ))}
                 </div>
               )}
-              {/* Mods' bands: under Switchboard's own cards, above Up next. */}
+              {/* Mods' bands: under Seshboard's own cards, above Up next. */}
               <ModBands sessionId={sessionId} profileId={profileId} working={running} />
               {openElsewhere && (
                 <Notice role="note" data-open-elsewhere>
@@ -1871,7 +1871,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {leftover && (
                 <Notice role="note" data-leftover-host>
-                  This session is still running from before Switchboard restarted. Sending stops that process and continues the session here.
+                  This session is still running from before Seshboard restarted. Sending stops that process and continues the session here.
                 </Notice>
               )}
               {actionError && (
@@ -1975,9 +1975,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                         {host?.state === 'error' ? (
                           <span className="text-error select-text">Last run failed: {host.error}</span>
                         ) : registryLive ? (
-                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
+                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
                         ) : (
-                          'Not running in Switchboard. Send a message to pick it up here.'
+                          'Not running in Seshboard. Send a message to pick it up here.'
                         )}
                       </span>
                     )

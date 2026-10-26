@@ -71,7 +71,7 @@ export type QueueStarted = z.infer<typeof QueueStarted>;
 /**
  * How the turn of a session that queued items wait on ended. `clean`: a normal end. `error`: an error result (or the
  * process failed). `stopped`: you stopped Claude mid-turn, or closed the session while it worked. `quit`: no end was
- * seen in this run, usually because Switchboard closed while it worked; nothing starts after it.
+ * seen in this run, usually because Seshboard closed while it worked; nothing starts after it.
  */
 export const SessionOutcome = z.enum(['clean', 'error', 'stopped', 'quit']);
 export type SessionOutcome = z.infer<typeof SessionOutcome>;

@@ -22,35 +22,35 @@ export const edges: Phase = async (c) => {
   };
   const enc = encodeURIComponent;
   const links = [
-    `switchboard://new-session?prompt=${enc('hello')}&cwd=${enc(acme)}`,
-    `switchboard://new-session?prompt=${enc('auto')}&cwd=${enc(acme)}&autostart=1`,
-    `switchboard://new-session?project=acme-store&autostart=yes&prompt=x`,
-    `switchboard://new-session?cwd=${enc(acme + '/../acme-store')}`,
-    `switchboard://new-session?cwd=${enc(acme + '​')}`,
-    `switchboard://new-session?cwd=${enc('‮' + acme)}`,
-    `switchboard://new-session?prompt=${enc('a'.repeat(5_001))}`,
-    `switchboard://new-session?prompt=${enc('x'.repeat(31_000))}`,
-    `switchboard://new-session?prompt=${enc('\u0000null')}`,
-    `switchboard://new-session?prompt=${enc('👩‍👩‍👧')}&question=1`,
-    `switchboard://new-session?autostart=maybe`,
-    `switchboard://new-session?repo=evil/../../x`,
-    `switchboard://new-session?cwd=${enc(home + '/does-not-exist')}&autostart=1&prompt=x`,
-    `switchboard://new-session?cwd=${enc(acme + '/package.json')}&autostart=1&prompt=x`,
-    `switchboard://new-session?cwd=${enc(acme)}&autostart=1&mode=bypassPermissions&permissionMode=bypassPermissions&prompt=bypass`,
-    `switchboard://new-session?cwd=${enc(acme)}&autostart=1&mode=auto&prompt=auto`,
-    `switchboard://new-session?cwd=${enc(acme)}&autostart=1&dangerouslySkipPermissions=1&prompt=skip`,
-    `switchboard://session/not-a-real-session`,
-    `switchboard://session/${'a'.repeat(100)}`,
-    `switchboard://session/${c.world.sessions.hero}`,
-    `switchboard://session/../../etc/passwd`,
-    `switchboard://%E0%A4%A`,
-    `switchboard://delete-everything`,
+    `seshboard://new-session?prompt=${enc('hello')}&cwd=${enc(acme)}`,
+    `seshboard://new-session?prompt=${enc('auto')}&cwd=${enc(acme)}&autostart=1`,
+    `seshboard://new-session?project=acme-store&autostart=yes&prompt=x`,
+    `seshboard://new-session?cwd=${enc(acme + '/../acme-store')}`,
+    `seshboard://new-session?cwd=${enc(acme + '​')}`,
+    `seshboard://new-session?cwd=${enc('‮' + acme)}`,
+    `seshboard://new-session?prompt=${enc('a'.repeat(5_001))}`,
+    `seshboard://new-session?prompt=${enc('x'.repeat(31_000))}`,
+    `seshboard://new-session?prompt=${enc('\u0000null')}`,
+    `seshboard://new-session?prompt=${enc('👩‍👩‍👧')}&question=1`,
+    `seshboard://new-session?autostart=maybe`,
+    `seshboard://new-session?repo=evil/../../x`,
+    `seshboard://new-session?cwd=${enc(home + '/does-not-exist')}&autostart=1&prompt=x`,
+    `seshboard://new-session?cwd=${enc(acme + '/package.json')}&autostart=1&prompt=x`,
+    `seshboard://new-session?cwd=${enc(acme)}&autostart=1&mode=bypassPermissions&permissionMode=bypassPermissions&prompt=bypass`,
+    `seshboard://new-session?cwd=${enc(acme)}&autostart=1&mode=auto&prompt=auto`,
+    `seshboard://new-session?cwd=${enc(acme)}&autostart=1&dangerouslySkipPermissions=1&prompt=skip`,
+    `seshboard://session/not-a-real-session`,
+    `seshboard://session/${'a'.repeat(100)}`,
+    `seshboard://session/${c.world.sessions.hero}`,
+    `seshboard://session/../../etc/passwd`,
+    `seshboard://%E0%A4%A`,
+    `seshboard://delete-everything`,
     `switchboard:new-session?prompt=path-form`,
-    `switchboard://show`,
-    `switchboard://show?x=1`,
+    `seshboard://show`,
+    `seshboard://show?x=1`,
     `SWITCHBOARD://NEW-SESSION?prompt=upper`,
-    `switchboard://new-session?cwd=${enc('//server/share')}`,
-    `switchboard://new-session?cwd=${enc('file:///etc')}`,
+    `seshboard://new-session?cwd=${enc('//server/share')}`,
+    `seshboard://new-session?cwd=${enc('file:///etc')}`,
     `x`.repeat(40_000),
   ];
   for (const url of links) {
@@ -65,20 +65,20 @@ export const edges: Phase = async (c) => {
   }
   // Links while a dialog is open, and many at once.
   await c.page.keyboard.press('Meta+/');
-  await link(`switchboard://new-session?prompt=${enc('while the shortcuts sheet is open')}&cwd=${enc(acme)}`);
+  await link(`seshboard://new-session?prompt=${enc('while the shortcuts sheet is open')}&cwd=${enc(acme)}`);
   await c.page.screenshot({ path: join(c.options.outDir, `${c.tag}-link-over-dialog.png`) });
   await closeAll(c);
   await c.page.locator('[data-open-settings]').first().click();
-  await link(`switchboard://session/${c.world.sessions.hero}`);
+  await link(`seshboard://session/${c.world.sessions.hero}`);
   await sleep(1_000);
   const inSettings = await c.page.evaluate(() => !!document.querySelector('[data-settings]')).catch(() => false);
   c.log('link-from-settings', '', { stillInSettings: inSettings });
   await closeAll(c);
-  for (let i = 0; i < 30; i++) void c.app.evaluate(({ app }, i) => void app.emit('open-url', { preventDefault() {} }, `switchboard://new-session?prompt=burst${i}`), i);
+  for (let i = 0; i < 30; i++) void c.app.evaluate(({ app }, i) => void app.emit('open-url', { preventDefault() {} }, `seshboard://new-session?prompt=burst${i}`), i);
   await sleep(3_000);
   // A link that arrives while the window reloads.
   void c.page.reload();
-  await link(`switchboard://new-session?prompt=${enc('during reload')}`);
+  await link(`seshboard://new-session?prompt=${enc('during reload')}`);
   await sleep(5_000);
   await closeAll(c);
 

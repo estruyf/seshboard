@@ -1,5 +1,6 @@
+import { basename } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { byRecentUse, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, RpcError, SavedPromptId, type PromptScope, type SavedPrompt, type SavedPromptInput } from '@switchboard/protocol';
+import { byRecentUse, PROMPT_NAME_MAX, PROMPT_TEXT_MAX, RpcError, SavedPromptId, type PromptScope, type SavedPrompt, type SavedPromptInput } from '@seshboard/protocol';
 import { slugify } from '../actions/actionStore.ts';
 import { entriesOf, readSharedFile, removeEntry, SHARED_FILE, upsertEntry, writeSharedFile } from '../actions/sharedFile.ts';
 
@@ -27,7 +28,7 @@ const scopeName = (scope: PromptScope) => (scope.kind === 'global' ? 'every proj
 
 /**
  * Saved prompts with blanks: yours for every project or one project (in the database), and the ones shared in a
- * project's .switchboard.json under `prompts`. How often you use a shared one stays in the database, never in the file.
+ * project's .seshboard.json under `prompts`. How often you use a shared one stays in the database, never in the file.
  */
 export class SavedPromptStore {
   private readonly statements;
@@ -131,7 +132,7 @@ export class SavedPromptStore {
     const read = readSharedFile(root);
     if (read.error) return { prompts: [], errors: [read.error] };
     const entries = entriesOf(read.data, 'prompts');
-    if (!entries) return { prompts: [], errors: [`${SHARED_FILE}: expected { "prompts": [...] }`] };
+    if (!entries) return { prompts: [], errors: [`${basename(read.file)}: expected { "prompts": [...] }`] };
     const uses = new Map((this.statements.sharedUses.all(root) as unknown as Array<{ id: string; uses: number; last_used_at: number | null }>).map((row) => [row.id, row]));
     const prompts: SavedPrompt[] = [];
     const errors: string[] = [];
@@ -148,7 +149,7 @@ export class SavedPromptStore {
               ? `another prompt has the id "${id}"`
               : null;
       if (problem) {
-        errors.push(`${SHARED_FILE} prompt ${i + 1}: ${problem}`);
+        errors.push(`${basename(read.file)} prompt ${i + 1}: ${problem}`);
         continue;
       }
       seen.add(id);

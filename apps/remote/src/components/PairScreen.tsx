@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { remoteLinkFragment, type RemoteLink } from '@switchboard/protocol/remote-client';
+import { remoteLinkFragment, type RemoteLink } from '@seshboard/protocol/remote-client';
 import { pairPhone } from '../lib/connection.ts';
 import type { Paired } from '../lib/link.ts';
 import { STANDALONE } from '../lib/platform.ts';

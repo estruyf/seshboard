@@ -1,5 +1,5 @@
 /**
- * The dot over Switchboard's taskbar button on Windows while sessions need you: the counterpart of the Dock's
+ * The dot over Seshboard's taskbar button on Windows while sessions need you: the counterpart of the Dock's
  * badge, which Windows doesn't have. Drawn as a raw BGRA bitmap, so no image file ships for it. Pure, for testing.
  */
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
+import type { RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
 import {
   filterBySource,
   isRemoteProjectKey,

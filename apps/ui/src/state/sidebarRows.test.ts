@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LaterItem, LiveSession, SessionHostInfo } from '@switchboard/protocol/client';
+import type { LaterItem, LiveSession, SessionHostInfo } from '@seshboard/protocol/client';
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
@@ -138,7 +138,7 @@ describe('buildSessionList', () => {
     expect(ids(list.archived)).toEqual(['gone-recent', 'old', 'older']);
   });
 
-  it('lists only Switchboard sessions in that scope', () => {
+  it('lists only Seshboard sessions in that scope', () => {
     const mixed = [row('mine', { inApp: true }), row('cli')];
     expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, archiveAfterDays: DAYS, scope: 'switchboard' }).active)).toEqual(['mine']);
     expect(ids(buildSessionList(mixed, { search: '', project: null, now: NOW, archiveAfterDays: DAYS, scope: 'all' }).active)).toEqual(['mine', 'cli']);

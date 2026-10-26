@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
-import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/client';
+import type { PermissionDecision, RemotePrompt } from '@seshboard/protocol/client';
 import { DenyButton, ErrorLine, FeedbackField, OptionRow, useCardShortcuts, Waiting } from '../session/PermissionCard.tsx';
 import { Button } from '../ui/Button.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';

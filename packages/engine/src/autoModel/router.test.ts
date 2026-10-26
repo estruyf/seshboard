@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AUTO_MODEL, type AutoModelPrefs } from '@switchboard/protocol';
+import { DEFAULT_AUTO_MODEL, type AutoModelPrefs } from '@seshboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { clampTier, ModelRouter, parseRoute, ROUTE_FAILURES, stubRoute, type RoutingRecord } from './router.ts';
 import { ROUTING_PROMPT_MAX, routingSystemPrompt, routingUserMessage } from './routingRules.ts';

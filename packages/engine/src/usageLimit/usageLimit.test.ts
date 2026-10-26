@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LimitsState } from '@switchboard/protocol';
+import type { LimitsState } from '@seshboard/protocol';
 import { isUsageLimitText, limitPrefixes, limitStop, remoteLimit, resetMs, RESUME_GRACE_MS, resumeTime, snapshotReset } from './usageLimit.ts';
 
 const PREFIXES = ["You've hit your", "You've reached your", "You're out of usage credits"];

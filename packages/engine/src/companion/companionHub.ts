@@ -7,7 +7,7 @@ import {
   type Contract,
   type HandlerContext,
   type PermissionDecision,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { CompanionServer } from './companionServer.ts';
 import { companionSessions, promptsFor, sessionsFor, type ListingOptions, type SessionSources } from './companionSessions.ts';
 
@@ -15,12 +15,14 @@ type SessionScope = NonNullable<ListingOptions['scope']>;
 
 export interface CompanionHubOptions {
   infoDir: string;
+  /** See `CompanionServerOptions.legacyInfoDir`. */
+  legacyInfoDir?: string;
   appVersion: string;
   /** Everything the engine knows about sessions right now. */
   sources(): SessionSources;
   /** Settings › Sessions: the archive days, so the editor lists what the sidebar lists. */
   archiveAfterDays(): number;
-  /** Switchboard windows attached to the engine. */
+  /** Seshboard windows attached to the engine. */
   windows(): number;
   /** Answers a permission prompt, question or plan (throws NOT_FOUND when it was already answered). */
   respond(requestId: string, decision: PermissionDecision, acceptEdits: boolean): void | Promise<void>;
@@ -38,7 +40,7 @@ interface Delivery {
 
 /**
  * The VS Code companion, engine side: answers the extension over the socket and hands the context it sends to the
- * Switchboard window that reported focus last, which adds it as chips and confirms. Windows tell it which session
+ * Seshboard window that reported focus last, which adds it as chips and confirms. Windows tell it which session
  * is on screen (`companion.focus`); the extension asks for that to send context there first.
  */
 export class CompanionHub {
@@ -53,6 +55,7 @@ export class CompanionHub {
   constructor(private readonly options: CompanionHubOptions) {
     this.server = new CompanionServer({
       infoDir: options.infoDir,
+      ...(options.legacyInfoDir ? { legacyInfoDir: options.legacyInfoDir } : {}),
       appVersion: options.appVersion,
       log: options.log,
       ...(options.socketParent ? { socketParent: options.socketParent } : {}),
@@ -66,13 +69,13 @@ export class CompanionHub {
         },
         'context.add': ({ target, items, reveal }) => {
           const window = this.focusWindow();
-          if (target.kind === 'session' && !this.knows(target.sessionId)) throw new RpcError('NOT_FOUND', 'Switchboard has no session with that id');
+          if (target.kind === 'session' && !this.knows(target.sessionId)) throw new RpcError('NOT_FOUND', 'Seshboard has no session with that id');
           if (target.kind === 'new' && !existsSync(target.cwd)) throw new RpcError('NOT_FOUND', `Folder not found: ${target.cwd}`);
           const deliveryId = randomUUID();
           const delivered = new Promise<void>((resolve, reject) => {
             const timer = setTimeout(() => {
               this.deliveries.delete(deliveryId);
-              reject(new RpcError('TIMEOUT', 'Switchboard did not add the context in time'));
+              reject(new RpcError('TIMEOUT', 'Seshboard did not add the context in time'));
             }, this.options.deliveryTimeoutMs ?? 10_000);
             this.deliveries.set(deliveryId, { resolve, reject, timer });
           });
@@ -80,7 +83,7 @@ export class CompanionHub {
           return delivered.then(() => ({}));
         },
         'session.reveal': ({ sessionId }) => {
-          if (!this.knows(sessionId)) throw new RpcError('NOT_FOUND', 'Switchboard has no session with that id');
+          if (!this.knows(sessionId)) throw new RpcError('NOT_FOUND', 'Seshboard has no session with that id');
           this.focusWindow().emit('companion.reveal', { sessionId });
           return {};
         },
@@ -100,7 +103,7 @@ export class CompanionHub {
     clearTimeout(this.changeTimer);
     for (const [id, delivery] of this.deliveries) {
       clearTimeout(delivery.timer);
-      delivery.reject(new RpcError('DISCONNECTED', 'Switchboard is quitting'));
+      delivery.reject(new RpcError('DISCONNECTED', 'Seshboard is quitting'));
       this.deliveries.delete(id);
     }
     this.server.stop();
@@ -172,7 +175,7 @@ export class CompanionHub {
   /** The window context goes to: the one that reported focus last. */
   private focusWindow(): HandlerContext<Contract> {
     const window = this.windowFocus.at(-1)?.context;
-    if (!window) throw new RpcError('NO_WINDOW', 'Switchboard has no window open');
+    if (!window) throw new RpcError('NO_WINDOW', 'Seshboard has no window open');
     return window;
   }
 

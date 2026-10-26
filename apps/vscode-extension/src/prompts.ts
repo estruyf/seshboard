@@ -1,8 +1,8 @@
-import type { PermissionRequest } from '@switchboard/protocol/companion-client';
+import type { PermissionRequest } from '@seshboard/protocol/companion-client';
 
 /**
- * Switchboard's prompts (a permission, a question, a plan) as VS Code notifications: what they say, and the answer
- * they send back. Pure (no `vscode` import), so it can be tested; the cards in Switchboard are the model.
+ * Seshboard's prompts (a permission, a question, a plan) as VS Code notifications: what they say, and the answer
+ * they send back. Pure (no `vscode` import), so it can be tested; the cards in Seshboard are the model.
  */
 
 export type PromptKind = 'tool' | 'question' | 'plan';
@@ -73,7 +73,7 @@ export const promptPlan = (request: Pick<PermissionRequest, 'input'>): string =>
 };
 
 /**
- * The notification's text: the session, then what Claude asks, as Switchboard's card heads it ("Claude wants to
+ * The notification's text: the session, then what Claude asks, as Seshboard's card heads it ("Claude wants to
  * run npm test"), with the command when the heading doesn't already say it.
  */
 export function promptMessage(request: PermissionRequest, sessionTitle: string | null): string {
@@ -101,7 +101,7 @@ export function alwaysText(label: string): string {
 
 /**
  * The input to answer an AskUserQuestion prompt with: its own input plus `answers`, each question's picks (and
- * what you typed) joined with commas, as Switchboard's card sends them. Null while a question has no answer.
+ * what you typed) joined with commas, as Seshboard's card sends them. Null while a question has no answer.
  */
 export function questionAnswers(request: Pick<PermissionRequest, 'input'>, picks: Readonly<Record<string, readonly string[]>>): Record<string, unknown> | null {
   const questions = promptQuestions(request);

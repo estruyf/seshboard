@@ -46,7 +46,7 @@ Run the related tests, the typecheck and `npm run smoke:demo -- --only "<step la
    - **While dragging:** the row lifts (a shadow, slightly transparent), and an `accent` line shows where it will drop. The list scrolls by itself near its top and bottom edges.
    - **Saving.** The order is saved on drop, with one call, and the sidebar and New session follow right away. Esc while dragging cancels.
    - **While searching,** dragging is off: the grip doesn't show, and a hover tooltip says "Clear the search to reorder".
-   - **The keyboard:** ⌥⇧↑ and ⌥⇧↓ move the selected project one place. A polite announcement says "Switchboard moved to position 3 of 11".
+   - **The keyboard:** ⌥⇧↑ and ⌥⇧↓ move the selected project one place. A polite announcement says "Seshboard moved to position 3 of 11".
    - **Errors.** If saving fails, the row goes back to where it was, with an error toast.
    - Remove the ↑ and ↓ buttons.
    - **Reuse code.** If the app already has a drag-to-reorder helper (the queue in the sidebar and the pipeline editor's steps both reorder by dragging), reuse it rather than writing a new one.
@@ -85,7 +85,7 @@ Run the related tests, the typecheck and `npm run smoke:demo -- --only "<step la
    - Folder, with Show
    - Claude profile
    - Defaults (`ProjectDefaultsEditor`)
-   - Remove, as "Remove from Switchboard…" in `error`, with the explanation from today's intro paragraph.
+   - Remove, as "Remove from Seshboard…" in `error`, with the explanation from today's intro paragraph.
 
 ## Step 5: from the sidebar
 

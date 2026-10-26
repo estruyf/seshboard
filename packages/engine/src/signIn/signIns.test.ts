@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SignInState } from '@switchboard/protocol';
+import type { SignInState } from '@seshboard/protocol';
 import { SignIns } from './signIns.ts';
 
 function make() {

@@ -14,7 +14,7 @@ export const modKey = (event: { metaKey: boolean; ctrlKey: boolean }) =>
   isMac() ? event.metaKey : event.ctrlKey;
 
 /**
- * In the terminal, which keys are Switchboard's rather than the shell's: ⌘ keys on macOS, where the shell has ⌃ and
+ * In the terminal, which keys are Seshboard's rather than the shell's: ⌘ keys on macOS, where the shell has ⌃ and
  * ⌥; Ctrl+Shift keys elsewhere, where Ctrl+R, Ctrl+C and the rest are the shell's (as in Windows Terminal and VS Code).
  */
 export const appKeyInTerminal = (event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>
@@ -211,7 +211,7 @@ export const shortcutGlyphs = (keys: string) =>
 export const sameShortcut = (a: string, b: string) =>
   normalizeShortcut(a) === normalizeShortcut(b);
 
-// The registry: every shortcut Switchboard has, in one place. Handlers ask `matches(event, id)`, buttons
+// The registry: every shortcut Seshboard has, in one place. Handlers ask `matches(event, id)`, buttons
 // show `keysFor(id)`, the command palette, the shortcuts sheet (⌘/), the actions editor's reserved keys
 // and the README table all read from here, so a key is written down once.
 
@@ -371,7 +371,7 @@ export const SHORTCUTS = [
     keys: ["mod+q mod+q"],
     action: "Quit",
     section: "general",
-    context: "Switchboard asks first",
+    context: "Seshboard asks first",
     note: "Press once if you turned that off",
     menu: true,
   },

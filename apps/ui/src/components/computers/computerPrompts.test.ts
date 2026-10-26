@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemotePrompt } from '@switchboard/protocol/client';
+import type { RemotePrompt } from '@seshboard/protocol/client';
 import { promptKind, promptQuestions, promptSubject, promptTitle, questionDecision, toolLabel } from './computerPrompts.ts';
 
 const prompt = (toolName: string, input: unknown, title: string | null = null): RemotePrompt => ({ requestId: 'r', sessionId: 's', toolName, input: input as RemotePrompt['input'], title, description: null, alwaysLabel: null, createdAt: 1 });

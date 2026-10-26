@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { McpServerStatus, Query } from '@anthropic-ai/claude-agent-sdk';
-import type { Capabilities, McpServerInfo, PluginInfo } from '@switchboard/protocol';
+import type { Capabilities, McpServerInfo, PluginInfo } from '@seshboard/protocol';
 
 const STATUSES = new Set(['connected', 'failed', 'needs-auth', 'pending', 'disabled']);
 

@@ -1,12 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { GithubOrigin } from '@switchboard/protocol';
+import type { GithubOrigin } from '@seshboard/protocol';
 
 /** Why push and Create pull request are off in a session from a fork's pull request (the header says the same). */
 export const FORK_READ_ONLY = "From a fork you can't push to.";
 
 /**
  * `session_github`: the issue or pull request each session was started from (New session from it), and whether it is
- * a pull request from a fork Switchboard can't push to. In that session push and Create pull request are off, in the
+ * a pull request from a fork Seshboard can't push to. In that session push and Create pull request are off, in the
  * header and in the engine (`readOnlyAt`). Set when the session starts and never read back from a transcript, so it
  * is kept like the other user choices.
  */
@@ -32,7 +32,7 @@ export class GithubOriginStore {
     return row ? { type: row.type, repo: row.repo, number: row.number, readOnly: row.readOnly === 1 } : null;
   }
 
-  /** A fork's pull request that Switchboard can't push to is checked out in `cwd` on `branch`. */
+  /** A fork's pull request that Seshboard can't push to is checked out in `cwd` on `branch`. */
   readOnlyAt(cwd: string, branch: string | null): boolean {
     return branch !== null && this.statements.readOnlyAt.get(cwd, branch) !== undefined;
   }

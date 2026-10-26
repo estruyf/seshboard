@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { accountKey, type PlanHistory, type RemoteUsageBreakdown, type UsageBreakdown, type UsageGroup, type UsagePeriod } from '@switchboard/protocol/client';
+import { accountKey, type PlanHistory, type RemoteUsageBreakdown, type UsageBreakdown, type UsageGroup, type UsagePeriod } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useComputers } from '../../state/computersStore.ts';

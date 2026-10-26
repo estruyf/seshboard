@@ -23,7 +23,7 @@ export {
   type ParentRow,
   type StopNotice,
   type VerdictView,
-} from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
 
 /** A project action's result in a step's prompt, in a few words: "exit 0 · 214 passed", "exit 1 · 2 problems · last 40 lines attached". */
 export function actionDetail(action: { exitCode: number | null; tail: string }): string {

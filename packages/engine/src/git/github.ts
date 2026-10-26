@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { z } from 'zod';
-import type { GithubIssueDetail, GithubItemType, GithubListItem, GithubPrDetail, GithubReason, GithubReviewComment, GithubSearchResult } from '@switchboard/protocol';
+import type { GithubIssueDetail, GithubItemType, GithubListItem, GithubPrDetail, GithubReason, GithubReviewComment, GithubSearchResult } from '@seshboard/protocol';
 import { classifyGhFailure, firstUsefulLine, ghStatus, runGh, type GhCommand, type RunResult } from './pullRequest.ts';
 import { githubPage } from './remotes.ts';
 

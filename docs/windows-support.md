@@ -1,6 +1,6 @@
 # Windows support
 
-The plan for running Switchboard on Windows with the same features as on macOS. It is written for whoever does the work (a person or an agent); the README stays about using the app.
+The plan for running Seshboard on Windows with the same features as on macOS. It is written for whoever does the work (a person or an agent); the README stays about using the app.
 
 Status: **All three phases done, checked on Windows and macOS.** See the outcome of each phase below. The first Windows release needs Windows signing set up (decision 9).
 
@@ -117,14 +117,14 @@ Goal: `npm run check` passes on Windows and macOS. On Windows you can add projec
 
 ### 1.9 Deep links (moved here from 2.3)
 
-The queue's smoke step fills New session through a `switchboard://` link, so links had to take Windows folders in phase 1.
+The queue's smoke step fills New session through a `seshboard://` link, so links had to take Windows folders in phase 1.
 - `parseDeepLink(raw, platform)`: on Windows a folder is a drive path (`C:\…` or `C:/…`).
 - Still refused there: `/…` (it means "the current drive"), `C:folder`, UNC and other network paths, `.` and `..` segments, and a colon after the drive (an alternate data stream).
 - The macOS rules are unchanged.
 
 **Done when:**
 - `npm run check` passes on Windows and on macOS.
-- On Windows you can add a project and a profile, start a session that answers (with `SWITCHBOARD_SMOKE_LIVE_CWD` on a throwaway repo), open the terminal, run an action, and @-mention a file.
+- On Windows you can add a project and a profile, start a session that answers (with `SESHBOARD_SMOKE_LIVE_CWD` on a throwaway repo), open the terminal, run an action, and @-mention a file.
 - The remaining smoke failures are listed here.
 
 ### Phase 1 outcome
@@ -148,7 +148,7 @@ The skipped tests on Windows:
 The one smoke failure left is the VS Code companion (2.4).
 
 Still open for phase 1:
-- A live session through the SDK on Windows (`SWITCHBOARD_SMOKE_LIVE_CWD` on a throwaway repo).
+- A live session through the SDK on Windows (`SESHBOARD_SMOKE_LIVE_CWD` on a throwaway repo).
 
 Real bugs found and fixed on the way, beyond those in "Where we start":
 - **Paths from git.** Git prints `C:/…` on Windows. `worktreeStatus` returned that form, and compared it with `C:\…`, so every checkout counted as a worktree. Git paths now go through `resolve` (`topLevel` in `gitChanges.ts`).
@@ -159,7 +159,7 @@ Real bugs found and fixed on the way, beyond those in "Where we start":
 - **A drive root keeps its separator** when trailing ones are trimmed (`trimTrailingSeparators`): `C:\\` in a link or `E:/` typed in New session stays the root, not `C:` (the current folder on that drive).
 
 Changes to the smoke test:
-- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Switchboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. The session whose folder later steps use also isn't one in a running session's folder or inside it (`inRunningFolder`). A folder around it, such as the main checkout while a session works in one of its worktrees, is another folder. AGENTS.md says so.
+- **Running sessions are left alone.** The smoke test used to pick the newest session with messages, even one running in Claude Code at that moment, then type drafts into it and run its test actions in that project's folder. On this machine that was another live Claude Code desktop session. Steps that pick a session now skip `runningSessions()`: Claude Code's live registry and Seshboard's own hosts, plus `CLAUDE_CODE_SESSION_ID`, the session that started the run. The session whose folder later steps use also isn't one in a running session's folder or inside it (`inRunningFolder`). A folder around it, such as the main checkout while a session works in one of its worktrees, is another folder. AGENTS.md says so.
 - **Fixes for races and assumptions** that any machine can hit:
   - the Changes button shows until the engine answers that a folder isn't a git checkout;
   - the Archived dock was measured while it was still sliding;
@@ -172,7 +172,7 @@ Changes to the smoke test:
 From the code review:
 - **Values in actions on Windows.** No quoting is safe for every program there: when an action calls a `.cmd` or `.bat` program (gradlew.bat, mvnw.cmd), `cmd.exe` reads its arguments again, so a branch named `x&whoami` would run `whoami`. An action now refuses to run when a value it uses holds `& | < > ^ % ! "`, a line break or a NUL, and says which one (`UNSAFE_VALUE`, `windowsUnsafe` in `shell.ts`).
 - **Quotes for Windows PowerShell 5.1.** It hands an argument to a program without escaping its double quotes, so a commit message `a "b" --amend` reached git as several arguments. `windowsPowershellQuote` escapes them the way programs read them. PowerShell 7.3 and later do that themselves; 7.0 to 7.2 don't, so `userShell` reads pwsh's version from the `pwsh.deps.json` next to it and quotes for those as for 5.1. Commit messages and branch names only go to `git.exe` and `gh.exe`, so they need no refusing.
-- **`-ExecutionPolicy Bypass`**, for the PowerShell Switchboard starts only: Windows PowerShell refuses scripts by default, and `npm`, `npx` and `pnpm` are `.ps1` scripts there. A policy set by Group Policy still wins.
+- **`-ExecutionPolicy Bypass`**, for the PowerShell Seshboard starts only: Windows PowerShell refuses scripts by default, and `npm`, `npx` and `pnpm` are `.ps1` scripts there. A policy set by Group Policy still wins.
 - **Exit codes:** PowerShell reports any failure as 1; the program's own code is passed on now, as a POSIX shell does.
 - **The trash guard** resolves folders to their long names on Windows and refuses a colon after the drive, so `.git` can't be reached as `GIT~1` or as the NTFS stream `.git::$INDEX_ALLOCATION`.
 - **Known limit:** a command runs as `-EncodedCommand` (base64 of UTF-16), which makes it about 2.7 times longer, so one over roughly 12,000 characters exceeds Windows' 32,767-character command line and fails to start.
@@ -191,7 +191,7 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 ### 2.1 Window and menu
 
 - `createWindow`: on Windows, use `titleBarStyle: 'hidden'` with `titleBarOverlay` (colours from the active theme, updated on theme and scheme changes), instead of `hiddenInset` and the traffic lights.
-- The renderer gets the platform through the preload (`window.switchboard.platform` already exists). The UI then makes room for the window controls on the right instead of the traffic lights on the left:
+- The renderer gets the platform through the preload (`window.seshboard.platform` already exists). The UI then makes room for the window controls on the right instead of the traffic lights on the left:
   - `SidebarToggle` and `SidebarRail`;
   - `sidebarStore` and `sidebarWidth` (the 80px rail exists for the traffic lights; on Windows it can be narrower);
   - the header of every view, with drag regions checked.
@@ -235,7 +235,7 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 - `companionServer.ts` on Windows:
   - listens on `\\.\pipe\switchboard-<random>`. The random name and the token in `engine.json` take the place of the `0700` folder.
   - Optionally restrict the pipe to the current user with a security descriptor. Node can't set one, so rely on the token and an unguessable name, and note it in `docs/vscode-companion.md`.
-- `engine.json` lives under `%APPDATA%\Switchboard\companion` (Electron's `userData`). `APP_DATA_FOLDERS` and `discovery.ts` in the extension look there on Windows, and accept a pipe name as `socket`.
+- `engine.json` lives under `%APPDATA%\Seshboard\companion` (Electron's `userData`). `APP_DATA_FOLDERS` and `discovery.ts` in the extension look there on Windows, and accept a pipe name as `socket`.
 - `connection.ts` connects to the pipe; `createConnection` takes it as is.
 - Un-skip the companion tests from 1.7.
 - Release a new extension version (`apps/vscode-extension/CHANGELOG.md`, only when asked).
@@ -256,7 +256,7 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 
 - Settings → Terminal: choose PowerShell 7, Windows PowerShell, Command Prompt or Git Bash (when found), stored as a preference. The default is from 1.4.
 - Actions run in the chosen shell with matching quoting (cmd's quoting is its own; `^`-escaping or refusing variables that cmd can't quote safely).
-- `resolveShellEnv` on Windows: the process environment is already complete for apps started from the Start menu, so no login-shell read. Check that PATH changes made after Switchboard starts are picked up (re-read `HKCU\Environment` and `HKLM\…\Environment`, or tell the user to restart).
+- `resolveShellEnv` on Windows: the process environment is already complete for apps started from the Start menu, so no login-shell read. Check that PATH changes made after Seshboard starts are picked up (re-read `HKCU\Environment` and `HKLM\…\Environment`, or tell the user to restart).
 - Claude Code on Windows can need Git Bash. Detect `CLAUDE_CODE_GIT_BASH_PATH` or Git for Windows. If Claude Code reports it missing, show a clear message on the Home and New session views, with a link to install Git.
 
 ### 2.7 Claude Code updates
@@ -278,7 +278,7 @@ Goal: every feature in the README works on Windows, and looks and feels native t
 ### 2.9 Trash, data folder and file names
 
 - `shell.trashItem` sends to the Recycle Bin. Run the trash guard's tests with Windows paths (case-insensitive, drive letters).
-- The data folder is `%APPDATA%\Switchboard` (and `Switchboard Dev`). Check settings export and import between a Mac and a Windows machine: paths in an export are offered for remapping (`settingsTransfer.ts`).
+- The data folder is `%APPDATA%\Seshboard` (and `Seshboard Dev`). Check settings export and import between a Mac and a Windows machine: paths in an export are offered for remapping (`settingsTransfer.ts`).
 - Long paths (over 260 characters) in worktrees: test a deep `.claude\worktrees\…` path with git and node-pty.
 
 ### 2.10 Copy and docs
@@ -297,7 +297,7 @@ On branch `feat/windows-feature-parity`, one commit per section, with phase 1 an
 
 What was done differently from the plan above, and why:
 - **2.1 Window:** the system's own title bar on Windows, not `titleBarOverlay`. The overlay puts the window buttons over the top-right corner, and three different headers end up there (the conversation, Changes, a terminal docked right), each of which would need room for them. The native frame follows light and dark mode (`nativeTheme.themeSource`). Moving to the overlay is polish for later.
-- **2.2 Shortcuts in the terminal:** Ctrl keys are the shell's and Ctrl+Shift keys are Switchboard's (as in Windows Terminal), with Ctrl+C copying a selection and Ctrl+V pasting. VS Code instead lets its own shortcuts (Ctrl+B, Ctrl+P) win over the shell. Decision 7 below.
+- **2.2 Shortcuts in the terminal:** Ctrl keys are the shell's and Ctrl+Shift keys are Seshboard's (as in Windows Terminal), with Ctrl+C copying a selection and Ctrl+V pasting. VS Code instead lets its own shortcuts (Ctrl+B, Ctrl+P) win over the shell. Decision 7 below.
 - **2.6 Shell choice:** not built. macOS has no picker either (it's `$SHELL`), and safe quoting for Command Prompt is hard (`%VAR%` expands inside quotes). What was fixed instead:
   - chained commands work in Windows PowerShell 5.1 (`UserShell.sequence`, no `&&` there);
   - the environment on Windows is the process's own, with `PATH` under that name;
@@ -308,8 +308,8 @@ What was done differently from the plan above, and why:
 
 From the code review:
 - **The VS Code companion connected where `engine.json` said.** On Windows it took any `\\.\pipe\…` name, and Windows reads `/` and `..` in one (`\\.\pipe\x/../../UNC/server/pipe/y` is a pipe on another computer). The App Data Folder setting could come from a workspace's `.vscode/settings.json`, in Restricted Mode too, and could name a network share, which Windows signs in to just to read it. Now the extension takes only the pipe the engine makes (`switchboard-` and 32 hex digits), the setting is user-level only (`application` scope, and restricted in untrusted workspaces), and a folder that isn't on this computer is ignored.
-- **The extension started and showed Switchboard with macOS's `open`.** On Windows it opens `switchboard://` links through the system's URL handler (`rundll32 url.dll,FileProtocolHandler`), and the new `switchboard://show` brings the window up without changing what it shows, as `open -b` does on macOS.
-- **Closing the window asked first during a Windows shutdown or sign-out**, which held them up. Switchboard now quits without asking then (`session-end`).
+- **The extension started and showed Seshboard with macOS's `open`.** On Windows it opens `seshboard://` links through the system's URL handler (`rundll32 url.dll,FileProtocolHandler`), and the new `seshboard://show` brings the window up without changing what it shows, as `open -b` does on macOS.
+- **Closing the window asked first during a Windows shutdown or sign-out**, which held them up. Seshboard now quits without asking then (`session-end`).
 - **Updating an npm install** names its prefix (`npm install -g --prefix …`), as another npm first on PATH would install into its own. When it fails, it says to stop the sessions first: Windows can't replace a `claude.exe` that runs.
 - **A WinGet install for every user** (`C:\Program Files\WinGet\Packages`) is recognised too.
 - **Delayed expansion:** `cmd.exe` runs with `/v:off`, so a user who turned delayed expansion on in the registry doesn't get `!PATH!` in a file name replaced.
@@ -325,7 +325,7 @@ Still to check by hand on Windows:
 - the title bar and menu (Alt) in light and dark mode;
 - a real notification and the taskbar dot;
 - Continue in VS Code;
-- a live session through the SDK (`SWITCHBOARD_SMOKE_LIVE_CWD` on a throwaway repo).
+- a live session through the SDK (`SESHBOARD_SMOKE_LIVE_CWD` on a throwaway repo).
 
 ## Phase 3: building and releasing for Windows
 
@@ -337,7 +337,7 @@ Goal: a signed installer that updates itself, built by CI with every release.
   - a `win` section with the `nsis` target for `x64` and `arm64`, and `build/icon.ico` made by `npm run icon`;
   - stop excluding `node-pty/prebuilds/win32-*`, and exclude `darwin-*` from Windows builds instead;
   - per-user install (no admin);
-  - `switchboard://` registered by NSIS (`protocols` already covers this);
+  - `seshboard://` registered by NSIS (`protocols` already covers this);
   - `perMachine: false`.
 - `afterPack.mjs` returns early on Windows (it already checks `darwin`).
 - `npm run dist` takes the platform: `dist:mac` and `dist:win`. `dist` builds for the current OS.
@@ -348,7 +348,7 @@ Goal: a signed installer that updates itself, built by CI with every release.
   - no "run from the DMG" case;
   - the install restarts the app;
   - `beforeInstall` and `installFailed` still bring the engine down and back.
-- `SWITCHBOARD_MOCK_UPDATES` (`scripts/mock-update-server.ts`) serves the Windows files too, so it can be tested locally.
+- `SESHBOARD_MOCK_UPDATES` (`scripts/mock-update-server.ts`) serves the Windows files too, so it can be tested locally.
 
 ### 3.3 Signing
 
@@ -372,7 +372,7 @@ Goal: a signed installer that updates itself, built by CI with every release.
 
 ### Phase 3 outcome
 
-On branch `feat/windows-release`. `npm run dist` on Windows 11 builds `Switchboard-<version>-setup.exe` (unsigned without a certificate), `npm run smoke:packaged` passes all 59 steps against the packaged app, and with the mock update feed it is offered an update from `latest.yml`. On macOS the build matches phase 2's (the same files in the app, update settings and `Info.plist`), and the packaged smoke run and the mock update check pass as before. How to build, sign and release is in [Building and signing](building-and-signing.md#windows).
+On branch `feat/windows-release`. `npm run dist` on Windows 11 builds `Seshboard-<version>-setup.exe` (unsigned without a certificate), `npm run smoke:packaged` passes all 59 steps against the packaged app, and with the mock update feed it is offered an update from `latest.yml`. On macOS the build matches phase 2's (the same files in the app, update settings and `Info.plist`), and the packaged smoke run and the mock update check pass as before. How to build, sign and release is in [Building and signing](building-and-signing.md#windows).
 
 What was done differently from the plan above, and why:
 - **3.1 One installer for both architectures**, not one each: electron-builder's default, and `latest.yml` then names one file. It's about twice the download (about 210 MB, nearly all of it Electron); updates download only the changed blocks.
@@ -389,7 +389,7 @@ What was done differently from the plan above, and why:
 From the code review:
 - **A Windows preview build got the update feed.** `dist.mjs` passed `-c.extraMetadata.name` next to `--config electron-builder.preview.yml`, and electron-builder then loaded electron-builder.yml on top of the preview config, so its GitHub feed beat `publish: null`. It also read `-c.` values that look like numbers or booleans as such (a certificate profile named `12345`). On Windows, `dist.mjs` now writes the build's own settings into a config file that extends the one asked for (`windowsBuildConfig.mjs`), with any `-c.` options as written; macOS passes its arguments as before. Checked with electron-builder's own config loading, and by building: a preview has no `app-update.yml`.
 - **The signature check didn't compare the signer with the publisher.** With Azure signing, the publisher the app checks updates against comes from `AZURE_SIGNING_PUBLISHER`; a typo would have shipped, and installed copies would then refuse every later update. `checkWindowsSignatures.mjs` compares each signer with `publisherName` in both apps' `app-update.yml`, the way electron-updater does (a full DN, every part; a plain name, the CN).
-- **Uninstalling removed any `switchboard://` handler**, also one another app or a copy run from elsewhere registered since. It now removes it only when its command starts this install's `Switchboard.exe`.
+- **Uninstalling removed any `seshboard://` handler**, also one another app or a copy run from elsewhere registered since. It now removes it only when its command starts this install's `Seshboard.exe`.
 
 Still to do, by the maintainer or with them:
 - check signing with a dry run (Actions → Release → Run workflow), then publish a release;
@@ -406,7 +406,7 @@ These shape the work. The defaults in brackets are what is built until they are 
 4. **README shortcuts table** [macOS keys, with a note that ⌘ is Ctrl on Windows].
 5. **Code signing** [no Windows release until there is a certificate].
 6. **Windows on ARM** [built, but tested only when someone has the hardware].
-7. **Shortcuts in the terminal on Windows** [Ctrl+Shift keys are Switchboard's, Ctrl keys the shell's; the alternative is VS Code's way, where Switchboard's own shortcuts such as Ctrl+B win over the shell].
+7. **Shortcuts in the terminal on Windows** [Ctrl+Shift keys are Seshboard's, Ctrl keys the shell's; the alternative is VS Code's way, where Seshboard's own shortcuts such as Ctrl+B win over the shell].
 8. **Window frame on Windows** [the system's title bar; `titleBarOverlay` for a frameless look is later polish].
 9. **How to sign on Windows** [Azure Trusted Signing; a `.pfx` also works if you have an exportable certificate]. It needs an Azure subscription and an identity check by Microsoft.
 

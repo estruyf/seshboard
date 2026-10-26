@@ -1,7 +1,7 @@
 import { FolderSearch, MoreHorizontal, Pencil, Share2, Trash2 } from 'lucide-react';
 import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { bodyTokens, memoryMeta, splitFrontmatter, type MemoryFile } from '@switchboard/protocol/client';
+import { bodyTokens, memoryMeta, splitFrontmatter, type MemoryFile } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { agoText, basename } from '../../lib/format.ts';

@@ -1,4 +1,4 @@
-import { safeLocale, type PlanSeries, type TokenCounts, type UsageBucket, type UsageLimit, type UsagePeriod, type UsageRow } from '@switchboard/protocol/client';
+import { safeLocale, type PlanSeries, type TokenCounts, type UsageBucket, type UsageLimit, type UsagePeriod, type UsageRow } from '@seshboard/protocol/client';
 
 /** The periods in their order on screen (and keys 1 to 4). */
 export const PERIODS: readonly UsagePeriod[] = ['window', 'day', 'week', 'month'];

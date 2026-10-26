@@ -1,5 +1,5 @@
-import type { Brief, CatchUp, SessionSummary, WorktreePullRequest } from '@switchboard/protocol';
-import { stubBrief } from '@switchboard/protocol';
+import type { Brief, CatchUp, SessionSummary, WorktreePullRequest } from '@seshboard/protocol';
+import { stubBrief } from '@seshboard/protocol';
 
 /** Everything a brief says about a linked session, gathered by `LinkService` from what the engine holds. */
 export interface BriefSource {

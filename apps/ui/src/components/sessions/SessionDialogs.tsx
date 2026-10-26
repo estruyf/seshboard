@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ClaudeProfile } from '@switchboard/protocol/client';
+import type { ClaudeProfile } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { trashName } from '../../lib/platform.ts';
@@ -168,7 +168,7 @@ export function CleanupPeriodDialog({
   onSaved,
 }: {
   periods: readonly ProfileCleanup[];
-  /** When Switchboard deletes a session, in days after its last activity (archive days plus delete days); null while deleting is off. */
+  /** When Seshboard deletes a session, in days after its last activity (archive days plus delete days); null while deleting is off. */
   deleteAfter: number | null;
   onClose(): void;
   onSaved(): void;
@@ -229,11 +229,11 @@ export function CleanupPeriodDialog({
             ...[...new Set([...CLEANUP_DAYS, ...(p.days !== null ? [p.days] : [])])].sort((a, b) => a - b).map((days) => ({ value: String(days), label: daysLabel(days) })),
           ];
           const note = p.error
-            ? `Switchboard can't read this file, so it won't change it: ${p.error}`
+            ? `Seshboard can't read this file, so it won't change it: ${p.error}`
             : deleteAfter !== null && effective < deleteAfter
-              ? `Shorter than Switchboard's delete setting (${deleteAfter} days after the last activity): Claude Code deletes these sessions first.`
+              ? `Shorter than Seshboard's delete setting (${deleteAfter} days after the last activity): Claude Code deletes these sessions first.`
               : value === null
-                ? "The default. Applies even when Switchboard's deleting is off."
+                ? "The default. Applies even when Seshboard's deleting is off."
                 : null;
           return (
             <li key={p.profileId} className="flex items-start gap-3 border-t border-border py-3 first:border-t-0 first:pt-0" data-cleanup-profile={p.profileId}>

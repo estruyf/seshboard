@@ -1,6 +1,6 @@
 # Event triggers
 
-A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `switchboard` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
+A trigger starts a session, or a pipeline, when something happens: CI fails on `main`, an issue gets the `seshboard` label, a reviewer asks for changes on a pull request a session opened, or a script you wrote reports an error. Schedules start sessions at a time. Triggers start them when there is work.
 
 This note is the design. Phase 1 (CI fails on a branch, issues for you) and phase 3 (start a pipeline) are built; [Built in phase 1](#built-in-phase-1) and [Built in phase 3](#built-in-phase-3) say where they differ from the design below. Places in the code are named as they are on `dev` on 2026-10-20.
 
@@ -12,8 +12,8 @@ This note is the design. Phase 1 (CI fails on a branch, issues for you) and phas
 - **GitHub goes through `gh`** (`packages/engine/src/git/github.ts`): no shell, always `--json`, an answer cached for `GITHUB_CACHE_MS`, and failures sorted into not installed, signed out, rate limited and offline. The checks watcher (`prChecks.ts`) polls every 30 seconds in the foreground and every 5 minutes in the background, and `readCheckLogs` reads a failed job's log.
 - **New session from an issue or pull request** fills in the worktree and the prompt, and gives Claude the text as **context to read, not instructions** (`githubContext.ts`).
 - **Session linking knows which session opened which pull request** (`session_prs`, `links/prDetect.ts`).
-- **Deep links** (`docs/deep-links.md`): `switchboard://new-session?…&autostart=1` already lets any script or alert start a session. That is a push from outside, with no dedupe, no limit and no history. Triggers are the pull side.
-- **Switchboard is a desktop app.** There is no server to receive a webhook. Remote access has a tunnel, but opening it to the internet for webhooks is a different risk (see [Decisions](#decisions)).
+- **Deep links** (`docs/deep-links.md`): `seshboard://new-session?…&autostart=1` already lets any script or alert start a session. That is a push from outside, with no dedupe, no limit and no history. Triggers are the pull side.
+- **Seshboard is a desktop app.** There is no server to receive a webhook. Remote access has a tunnel, but opening it to the internet for webhooks is a different risk (see [Decisions](#decisions)).
 
 So a trigger is a schedule whose rule is "when this source has a new event", with a dedupe store and a prompt that gets the event.
 
@@ -21,7 +21,7 @@ So a trigger is a schedule whose rule is "when this source has a new event", wit
 
 The project *acme-store* has a trigger **CI fails on main**.
 
-1. Every 5 minutes, while Switchboard is open, the engine runs `gh run list --branch main --status failure --limit 5 --json databaseId,headSha,workflowName,displayTitle,url,createdAt`.
+1. Every 5 minutes, while Seshboard is open, the engine runs `gh run list --branch main --status failure --limit 5 --json databaseId,headSha,workflowName,displayTitle,url,createdAt`.
 2. Run `8812` of the workflow *test* failed on commit `4e1a…`. The trigger hasn't seen that workflow fail on that commit, so it is an event. The same workflow failing again on the same commit (a re-run) is not.
 3. The engine reads the failed job's log with `readCheckLogs`, cut to its last 150 lines.
 4. It starts a session in a new worktree from `main`, with the trigger's prompt filled in: *CI failed on main in the test workflow. Find the cause and fix it. Don't push.*, followed by the log as a context block.
@@ -59,12 +59,12 @@ type Trigger = {
   maxAtOnce: number;                    // default 3 in worktrees; always 1 in the project's folder
   /** Events that may wait for a slot; beyond that they are recorded as skipped. */
   maxWaiting: number;                   // default 10
-  missed: 'run' | 'skip';               // events from while Switchboard was closed
+  missed: 'run' | 'skip';               // events from while Seshboard was closed
   paused: boolean;
 };
 ```
 
-Starting a [pipeline](pipelines.md) is where the two features meet: *an issue assigned to me with the `switchboard` label → Plan, execute, validate, push*, with the push step still waiting for you.
+Starting a [pipeline](pipelines.md) is where the two features meet: *an issue assigned to me with the `seshboard` label → Plan, execute, validate, push*, with the push step still waiting for you.
 
 ## Set up on the project
 
@@ -74,7 +74,7 @@ The project's **⋯** menu in the sidebar gets *Triggers…*, and **Start ▾ �
 
 ## Which issues: a label, an assignee, or both
 
-On a repository more people work on, "an issue with the `switchboard` label" is everyone's issue. So the issue trigger has a filter, and at least one part of it must be set:
+On a repository more people work on, "an issue with the `seshboard` label" is everyone's issue. So the issue trigger has a filter, and at least one part of it must be set:
 
 ```ts
 type IssueMatch = {
@@ -87,8 +87,8 @@ type IssueMatch = {
 
 | Filter | Picks up | Fits |
 |---|---|---|
-| **Label** `switchboard` | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
-| **Assigned to me** | every open issue assigned to you | a team: each person's Switchboard picks up only their issues |
+| **Label** `seshboard` | every open issue with the label | a repository you work on alone, or a team where one person runs the triggers |
+| **Assigned to me** | every open issue assigned to you | a team: each person's Seshboard picks up only their issues |
 | **Label and assigned to me** | issues with the label that are assigned to you | a team where you also choose which of your issues Claude takes |
 
 - **Me** is the account `gh` is signed in with, read with the `viewer { login }` query `github.ts` already makes. The dialog shows it: *Assigned to estruyf (the account gh uses)*. When `gh` switches accounts, the trigger follows and says so in its history.
@@ -109,14 +109,14 @@ Label ten issues on a Monday morning and ten sessions would start together. `max
 
 ## State labels
 
-For **issues for you**, the trigger can keep a second label on the issue that says where the work is, so you and your team see it on GitHub without opening Switchboard. It is off by default, and turned on per trigger.
+For **issues for you**, the trigger can keep a second label on the issue that says where the work is, so you and your team see it on GitHub without opening Seshboard. It is off by default, and turned on per trigger.
 
 ```ts
 type StateLabels = {
-  working: string;      // default "switchboard: working"
-  needsYou: string;     // default "switchboard: needs input"
-  done: string;         // default "switchboard: pr open"
-  failed: string;       // default "switchboard: failed"
+  working: string;      // default "seshboard: working"
+  needsYou: string;     // default "seshboard: needs input"
+  done: string;         // default "seshboard: pr open"
+  failed: string;       // default "seshboard: failed"
   /** Take the trigger label off when the work starts, so adding it again starts it again. */
   removeTrigger: boolean;   // default true
 };
@@ -124,19 +124,19 @@ type StateLabels = {
 
 | When | The issue gets |
 |---|---|
-| The event is picked up (it may still wait for a slot) | `switchboard: working`, and the trigger label comes off (when the filter has one) |
-| The session or a pipeline step needs you | `switchboard: needs input` |
-| It goes on again | `switchboard: working` |
-| A pull request is opened that closes the issue (`session_prs`) | `switchboard: pr open` |
-| It ends with an error, is stopped, or the run stops for good | `switchboard: failed` |
+| The event is picked up (it may still wait for a slot) | `seshboard: working`, and the trigger label comes off (when the filter has one) |
+| The session or a pipeline step needs you | `seshboard: needs input` |
+| It goes on again | `seshboard: working` |
+| A pull request is opened that closes the issue (`session_prs`) | `seshboard: pr open` |
+| It ends with an error, is stopped, or the run stops for good | `seshboard: failed` |
 | You archive or delete the session, or remove its queued item, while it says working or needs input | The state label comes off (`pr open` and `failed` stay) |
 
 - **One state label at a time**: setting one takes the others off, in one `gh issue edit --add-label … --remove-label …`.
 - **Missing labels** are made with `gh label create` the first time, with a colour per state. Without the right to make labels, the trigger says so and runs without state labels.
-- **They make the trigger safe on more than one computer**: an issue that already has a state label is skipped, so two Switchboards with the same trigger don't both start on it. A small race is left (two computers in the same minute); the first `gh issue edit` wins and the other one sees the label and stops before the session starts.
+- **They make the trigger safe on more than one computer**: an issue that already has a state label is skipped, so two Seshboards with the same trigger don't both start on it. A small race is left (two computers in the same minute); the first `gh issue edit` wins and the other one sees the label and stops before the session starts.
 - **Starting again** is adding the trigger label again, or for an assignee-only filter, taking the state label off: either way the issue matches again and a new session starts.
-- **Archived, deleted or removed from the queue**: the work ended by hand, so the state label comes off and isn't moved again, also when you unarchive the session. With an assignee alone the issue would match again without it; Switchboard remembers it took the label off, so it doesn't start again until the issue leaves the filter and comes back (unassigned and assigned again).
-- **Changed by hand**: when you take `switchboard: working` off on GitHub, Switchboard doesn't put it back. It leaves the issue alone until the next state change.
+- **Archived, deleted or removed from the queue**: the work ended by hand, so the state label comes off and isn't moved again, also when you unarchive the session. With an assignee alone the issue would match again without it; Seshboard remembers it took the label off, so it doesn't start again until the issue leaves the filter and comes back (unassigned and assigned again).
+- **Changed by hand**: when you take `seshboard: working` off on GitHub, Seshboard doesn't put it back. It leaves the issue alone until the next state change.
 
 ## Guardrails
 
@@ -153,7 +153,7 @@ A trigger starts work while you look elsewhere, from text other people wrote. Th
 
 On this computer only, in the engine's database, like schedules: `triggers` and `trigger_events` (trigger id, event key, at, result, session id, reason), a migration, and a **Triggers** section in the settings file for backup and import (imported paused).
 
-Not in `.switchboard.json` in phase 1: a file in the repository that starts sessions on everyone's computer is too much to accept by committing it. Later, a project could **suggest** triggers there, each turned on by hand.
+Not in `.seshboard.json` in phase 1: a file in the repository that starts sessions on everyone's computer is too much to accept by committing it. Later, a project could **suggest** triggers there, each turned on by hand.
 
 ## UI
 
@@ -181,7 +181,7 @@ The palette commands, the project's Triggers tab, the Upcoming filter and the di
 ## Edge cases
 
 - **The computer sleeps** for a night: on wake, `missed: skip` records the night's events as missed. `missed: run` lets them wait for a slot like new events, still within `maxAtOnce` and `maxWaiting`.
-- **The same event on two computers**: with Assigned to me, an issue is only one person's. For your own two computers, or a label alone, state labels decide (see [State labels](#state-labels)). For CI failures and issues without state labels, each Switchboard with the trigger starts a session, and the editor says so.
+- **The same event on two computers**: with Assigned to me, an issue is only one person's. For your own two computers, or a label alone, state labels decide (see [State labels](#state-labels)). For CI failures and issues without state labels, each Seshboard with the trigger starts a session, and the editor says so.
 - **A force-push** on `main` changes the commit: a new event, which is right.
 - **The issue is assigned to someone else** while its session works: the session goes on (stopping work is your call), and its header says *#57 is now assigned to mara-k*. The trigger doesn't pick the issue up again unless it matches again.
 - **The label is removed and added again**: with state labels, that starts it again. Without them, the issue number was seen, so nothing starts; **Check now › Run for #57** starts it by hand.
@@ -192,7 +192,7 @@ The palette commands, the project's Triggers tab, the Upcoming filter and the di
 1. **CI fails on a branch** and **issues for you** (label, assignee or both), starting a session, set up on the project's Triggers tab. State labels, Assign to me when picked up, how many at once, Upcoming's Triggers filter, the dialog, notifications and the guardrails above.
 2. **Changes requested**, sent to the session that opened the pull request, and **a command** source.
 3. **Start a pipeline** from a trigger (needs pipelines phase 1).
-4. **Suggested triggers** in `.switchboard.json`, each turned on by hand. Maybe a webhook through the remote tunnel, after its own security review.
+4. **Suggested triggers** in `.seshboard.json`, each turned on by hand. Maybe a webhook through the remote tunnel, after its own security review.
 
 ## Tests
 
@@ -215,10 +215,10 @@ A page `website/src/content/docs/new-session/triggers.mdx` next to Schedules, wi
 Phase 1 is in `packages/protocol/src/triggers.ts` (the rules) and `triggerSchema.ts` (zod), `packages/engine/src/triggers/` (`triggerStore.ts`, `watcher.ts`, `sources/ci.ts`, `sources/issues.ts`, `sources/gh.ts`), and `apps/ui/src/components/triggers/`. The user docs are `website/src/content/docs/projects/triggers.mdx`. What changed from the design while building it:
 
 - **`authorAssociation` isn't a field of `gh issue list --json`.** The list asks for `number,title,url,labels,assignees,author,body,updatedAt`, and one GraphQL call reads `authorAssociation` for the issues that may start (new ones, without a state label), so a check that finds nothing new asks nothing more. An issue whose association can't be read counts as an outsider.
-- **What is new.** A trigger keeps what matched in its last answer (`seen_json` on its row: each key `match`, `held` for an issue with a state label that keeps it out, or `released` for one whose state label Switchboard took off when its work ended by hand, which isn't new while it stays in the answer). An item is new when it matches now and didn't then. An issue that leaves the answer and comes back (labelled again, or its state label taken off) is new again; a CI failure never comes back, since `gh run list` is newest first. The first check of a new, resumed or re-sourced trigger records what is there and starts nothing (`seededAt`). There is no `missed` rule: what came while Switchboard was closed is new at the next check, within `maxAtOnce` and `maxWaiting`.
+- **What is new.** A trigger keeps what matched in its last answer (`seen_json` on its row: each key `match`, `held` for an issue with a state label that keeps it out, or `released` for one whose state label Seshboard took off when its work ended by hand, which isn't new while it stays in the answer). An item is new when it matches now and didn't then. An issue that leaves the answer and comes back (labelled again, or its state label taken off) is new again; a CI failure never comes back, since `gh run list` is newest first. The first check of a new, resumed or re-sourced trigger records what is there and starts nothing (`seededAt`). There is no `missed` rule: what came while Seshboard was closed is new at the next check, within `maxAtOnce` and `maxWaiting`.
 - **Events.** `trigger_events` keeps one row per key (the unique index). An issue that matches again takes its row over; the session the first one started keeps its own line in `trigger_sessions` (trigger, event, name, `CI #4512` or `#212`, link), which the bolt and the header read. A fifth status, `queued`, is an event the focus limit or a usage limit sent to the queue; it follows the session once the item starts (`TriggerWatcher.queuedStarted`). Events are pruned to the last 50 per trigger, plus every one that waits.
 - **Which state labels keep an issue out.** With a label in the filter, only `working` and `needs input` do: an issue that ended (`pr open`, `failed`) and has the trigger's label again was labelled again by hand, so it starts again, and the old state label comes off in the pick-up edit. With an assignee alone, any state label keeps it out until it is taken off.
-- **State labels follow the session.** Picked up (also while waiting): `working`, the trigger label off, and `--add-assignee @me` in the same edit when Assign to me is on. Needs you: `needs input`. A pull request of the session (session linking's `session_prs`, open or merged): `pr open`, after which the label isn't moved again. An error or a stop (`onTurnEnd`), a host that broke without a turn end (its state `error`: the process died or couldn't start), or a start that failed: `failed`. The session archived (`sessions.setFlags`, also from the phone) or deleted, or its queued item removed (`later.remove`, which skips the event): `working` or `needs input` comes off (`TriggerWatcher.released`, `queueRemoved`), at the start of the next pass, before any check reads the source. A turn that ends cleanly without a pull request leaves the label as it is. Labels move only when the state changes from the one Switchboard set last, so a label changed by hand isn't put back. Missing labels are made once per run with `gh label create` (yellow, pink, green, red); without the right to, the event says why.
+- **State labels follow the session.** Picked up (also while waiting): `working`, the trigger label off, and `--add-assignee @me` in the same edit when Assign to me is on. Needs you: `needs input`. A pull request of the session (session linking's `session_prs`, open or merged): `pr open`, after which the label isn't moved again. An error or a stop (`onTurnEnd`), a host that broke without a turn end (its state `error`: the process died or couldn't start), or a start that failed: `failed`. The session archived (`sessions.setFlags`, also from the phone) or deleted, or its queued item removed (`later.remove`, which skips the event): `working` or `needs input` comes off (`TriggerWatcher.released`, `queueRemoved`), at the start of the next pass, before any check reads the source. A turn that ends cleanly without a pull request leaves the label as it is. Labels move only when the state changes from the one Seshboard set last, so a label changed by hand isn't put back. Missing labels are made once per run with `gh label create` (yellow, pink, green, red); without the right to, the event says why.
 - **Reassigned issues.** At each check, the issues whose sessions are busy are looked at (from the answer, or `gh issue view` when they left it); one assigned to someone else gets `reassignedTo`, which the header shows.
 - **What the session reads.** CI: the last 300 lines of `gh run view <id> --log-failed` (the design said 150). Issues: the text and comments from `gh issue view`, as GitHub context's block (`writeGithubContext`), cut to 16,000 characters.
 - **Timer.** The watcher has none: the Scheduler calls its `tick` dep after every look (each minute at most, on wake, after a clock jump), and the watcher checks the triggers that are due. Host changes nudge it a second later, so a free slot is used at once. Reads go through a one-minute cache; Check now skips it.

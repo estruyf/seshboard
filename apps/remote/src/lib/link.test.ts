@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateKeyPair, newPairingSecret, remoteLinkFragment, type RemoteMessage } from '@switchboard/protocol/remote-client';
+import { generateKeyPair, newPairingSecret, remoteLinkFragment, type RemoteMessage } from '@seshboard/protocol/remote-client';
 import { computerId, currentComputer, pastedLink, reconnectDelay, startFrom, type Paired } from './link.ts';
 import { appendMessages, applyStream, applyUpdate, editLines, NOT_STREAMING, prependMessages, resultsByCall, toolSummary, visibleMessages } from './transcript.ts';
 
@@ -43,7 +43,7 @@ describe('opening the remote app', () => {
 
   it('takes the link out of what was pasted, a whole link or only its fragment', () => {
     const fragment = pairLink().slice(1);
-    expect(pastedLink(`  https://switchboard.struyfconsulting.com/remote/#${fragment}\n`)).toBe(fragment);
+    expect(pastedLink(`  https://seshboard.app/remote/#${fragment}\n`)).toBe(fragment);
     expect(pastedLink(fragment)).toBe(fragment);
     expect(startFrom(pastedLink(`https://x/remote/#${fragment}`), [], null)).toMatchObject({ kind: 'pair' });
     expect(startFrom(pastedLink('hello'), [], null)).toEqual({ kind: 'bad-link' });

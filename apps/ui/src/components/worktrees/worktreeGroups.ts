@@ -1,4 +1,4 @@
-import { isSameOrInside, type WorktreeEntry, type WorktreeSize } from '@switchboard/protocol/client';
+import { isSameOrInside, type WorktreeEntry, type WorktreeSize } from '@seshboard/protocol/client';
 
 // The worktree overview's decisions, without React or the stores: which group each worktree is in and why, which
 // rows can be picked for clean-up, what a selection frees, and the words the table and its summary use.

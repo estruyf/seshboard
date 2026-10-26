@@ -1,6 +1,6 @@
 # Pipelines
 
-A pipeline is a saved set of steps that Switchboard runs for one task, each step in its own **sub-session** under the session you started it from:
+A pipeline is a saved set of steps that Seshboard runs for one task, each step in its own **sub-session** under the session you started it from:
 
 ```
 Add a usage cost toggle            ← the parent: where you set it off
@@ -23,12 +23,12 @@ This note is the design. Phases 1 and 2 are built (see [Phases 1 and 2 as built]
 ## What exists today, and what it means for this design
 
 - **The queue** (`later_prompts`, `LaterDraft` in `packages/protocol/src/later.ts`) holds a prompt with its model, effort, permission mode, workspace and profile. `QueueWaitFor` can wait for a project, a session or another item, and `autoStart` starts it once that finishes cleanly (`QueueAutoStarter`, `packages/engine/src/later/autoStart.ts`). A queued item always **starts a new session** with `cwd` set to the project's root, and with `workspace: 'worktree'` it makes a new worktree instead of using the last step's.
-- **How a session ended** is known for sessions Switchboard runs: `SessionOutcome` (`clean`, `error`, `stopped`, `quit`). The ready rules in `packages/protocol/src/queueStates.ts` already deal with the focus limit and usage limits.
+- **How a session ended** is known for sessions Seshboard runs: `SessionOutcome` (`clean`, `error`, `stopped`, `quit`). The ready rules in `packages/protocol/src/queueStates.ts` already deal with the focus limit and usage limits.
 - **Forks** exist (Fork from here, *Fork session…*, `sessionHost.ts`): a new session with the conversation up to a message. A forked child keeps the parent's context and its prompt cache, and is still its own session.
 - **Briefs** from session linking (`packages/engine/src/links/brief.ts`, `buildBrief`) describe a session: folder, branch, pull request, catch-up and last reply. The engine expands a `session` stub into a brief right before Claude reads the prompt.
 - **Read only** answers exist for Ask about this session: the `isReadOnlyTool` hook (`host/sideQuestions.ts`).
 - **The catch-up** (`packages/engine/src/catchUp/`) says how a turn ended without a model: tests, diff size, files outside the ask, plan followed or not, and whether Claude waits for an answer (`need`).
-- **Project actions** run a command or ask Claude (`docs/project-actions.md`), and can be shared in `.switchboard.json`.
+- **Project actions** run a command or ask Claude (`docs/project-actions.md`), and can be shared in `.seshboard.json`.
 - **Commit and pull requests**: Ask Claude to commit (with a Haiku message from the diff), Create pull request (`packages/engine/src/git/pullRequest.ts`), the checks watcher (`prChecks.ts`) and Fix failing checks with Claude.
 - **The sidebar is flat**: sessions are grouped by project, and a session has no parent. Forks show as unrelated rows.
 
@@ -50,7 +50,7 @@ The parent's transcript gets a row for each step as it ends (*Plan approved*, *V
 ## The tree
 
 - **The parent** is the session you start a pipeline from. From New session (**Start ▾ › Run pipeline**), there is no conversation yet, so the parent is a **run row**: it holds the task and the tree, and has no Claude session of its own until you write in it.
-- **Sub-sessions** are ordinary Claude Code sessions, with `parentId` set in Switchboard's database. You can open, read, reply in and stop any of them as you do now. Claude Code doesn't know about the tree.
+- **Sub-sessions** are ordinary Claude Code sessions, with `parentId` set in Seshboard's database. You can open, read, reply in and stop any of them as you do now. Claude Code doesn't know about the tree.
 - **In the sidebar** the parent row shows the run's progress, *Validate · 3 of 4*, and a chevron. Open, its sub-sessions show under it, indented, in step order, rounds included. Closed by default. The parent's status is the most urgent of its own and its children's: a child that needs you makes the parent Needs you.
 - **The parent's view** shows the step tree above the conversation: each step with its model, its state and its catch-up's one line. Click a step to open its sub-session. The buttons for the run are there: **Continue**, **Run this step again**, **Skip this step**, **Stop the run**.
 - **Sub-session headers** say *Execute · step 2 of Plan, execute, validate, push* with a link back to the parent.
@@ -84,15 +84,15 @@ type PipelineStep =
 type Pipeline = {
   id: string;
   name: string;
-  /** This project, or All projects. Shared with the project (`.switchboard.json`) is phase 3. */
+  /** This project, or All projects. Shared with the project (`.seshboard.json`) is phase 3. */
   scope: { kind: 'project'; root: string } | { kind: 'all' };
   steps: PipelineStep[];
-  /** Push without asking. Only for your own pipelines: ignored in `.switchboard.json`. */
+  /** Push without asking. Only for your own pipelines: ignored in `.seshboard.json`. */
   autoPush: boolean;
 };
 ```
 
-- **Two kinds of step.** A `claude` step is a sub-session. A `push` step is Switchboard's own: commit, push and Create pull request, no model. Actions run inside a `claude` step (`actionsFirst`) rather than as steps of their own, so their results always reach a model that can read them.
+- **Two kinds of step.** A `claude` step is a sub-session. A `push` step is Seshboard's own: commit, push and Create pull request, no model. Actions run inside a `claude` step (`actionsFirst`) rather than as steps of their own, so their results always reach a model that can read them.
 - **Fork or fresh.** Execute forks Plan, because building needs everything planning learned. Validate starts fresh, because a reviewer that shares the author's context grades its own work.
 - **One folder.** A run makes one workspace when it starts: a new worktree from the parent's branch, or the parent's worktree when it has one. Every step runs in it; sub-sessions never make their own.
 - **The verdict** is read from the step's last reply, `Verdict: pass` or `Verdict: changes needed` (any case, in bold or code too), with the list after it (`readVerdict`). No verdict line stops the run, so a confused reviewer never lets work through.
@@ -123,7 +123,7 @@ The run stops at the step, and the parent turns to Needs you, when:
 - a verdict is still *changes needed* after its rounds, or missing;
 - the next step is in `confirmBefore`, or is a push step.
 
-You can reply in the sub-session that stopped: when that turn ends cleanly, the run goes on by itself. Quitting Switchboard pauses a run; it resumes when the app opens again.
+You can reply in the sub-session that stopped: when that turn ends cleanly, the run goes on by itself. Quitting Seshboard pauses a run; it resumes when the app opens again.
 
 When a verdict is still *changes needed* after its rounds, there are two ways on besides Continue (which goes on without the changes):
 
@@ -132,7 +132,7 @@ When a verdict is still *changes needed* after its rounds, there are two ways on
 
 ## Where pipelines are saved
 
-Like saved prompts and actions: **This project**, **All projects**, or **Shared with the project**, which writes them to `.switchboard.json` under `pipelines`:
+Like saved prompts and actions: **This project**, **All projects**, or **Shared with the project**, which writes them to `.seshboard.json` under `pipelines`:
 
 ```json
 {
@@ -208,7 +208,7 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 
 1. **The tree.** `parentId`, the nested sidebar, the parent's step tree and the run row. `claude` steps with `fresh` and `fork`, one shared folder, the stop rules. Saved for this project or all projects. The built-in without Validate's actions and verdict.
 2. **Validate and push.** `actionsFirst`, verdicts and rounds, the `push` step, `confirmBefore`, and the parent's brief of the run.
-3. **Shared pipelines.** `.switchboard.json`, the rules for shared files, Settings › Pipelines' import and duplicate.
+3. **Shared pipelines.** `.seshboard.json`, the rules for shared files, Settings › Pipelines' import and duplicate.
 4. **Side by side.** A step that runs N sub-sessions at once in their own worktrees (best of N), and a step that picks one. The tree already has room for it.
 
 ## Tests
@@ -219,7 +219,7 @@ All copy follows AGENTS.md › Copy. New palette commands and the Settings secti
 
 ## Docs and website
 
-A page `website/src/content/docs/sessions/pipelines.mdx` and the sidebar entry, a section in `projects/actions.mdx` on `pipelines` in `.switchboard.json`, `sessions/sidebar.mdx` for nested rows, `features.json` entries for the palette commands and Settings › Pipelines, and screenshots of the tree in the sidebar, the parent's view and the editor.
+A page `website/src/content/docs/sessions/pipelines.mdx` and the sidebar entry, a section in `projects/actions.mdx` on `pipelines` in `.seshboard.json`, `sessions/sidebar.mdx` for nested rows, `features.json` entries for the palette commands and Settings › Pipelines, and screenshots of the tree in the sidebar, the parent's view and the editor.
 
 ## Decisions
 

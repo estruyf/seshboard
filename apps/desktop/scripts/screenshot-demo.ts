@@ -392,7 +392,7 @@ const ATTACHED_ISSUE = [
 // ---------------------------------------------------------------------------------------------------------
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
-export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpdir(), 'switchboard-demo-')))): DemoWorld {
+export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpdir(), 'seshboard-demo-')))): DemoWorld {
   // Personal projects run on the personal login, payments-api on the work one.
   const configDir = join(home, '.claude');
   const workConfigDir = join(home, '.claude-work');

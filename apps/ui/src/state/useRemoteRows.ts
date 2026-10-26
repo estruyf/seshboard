@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Computer } from '@switchboard/protocol/client';
+import type { Computer } from '@seshboard/protocol/client';
 import { useComputers } from './computersStore.ts';
 import { selectionOf } from './remoteSelection.ts';
 import { remoteRows, THIS_COMPUTER } from './remoteRows.ts';

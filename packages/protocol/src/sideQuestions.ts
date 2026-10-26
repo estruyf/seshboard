@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * A question asked about a session (Ask about this session, or `/btw`) and its answer. Claude answers from the
  * session's conversation and the project, with read-only tools, and nothing of it goes into the conversation: it is
- * kept by Switchboard, per session, apart from the transcript.
+ * kept by Seshboard, per session, apart from the transcript.
  */
 export const AskItem = z.object({
   id: z.string(),

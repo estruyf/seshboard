@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteProfileUsage, RemotePrompt, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage, RemotePrompt, RemoteSession } from '@seshboard/protocol/remote-client';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from './everywhere.ts';
 import { groupSessions, nextNeedsYou } from './groups.ts';
 import { filterList } from './filter.ts';

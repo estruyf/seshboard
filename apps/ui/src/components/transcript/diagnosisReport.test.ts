@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TranscriptDiagnosis } from '@switchboard/protocol/client';
+import type { TranscriptDiagnosis } from '@seshboard/protocol/client';
 import { diagnosisReport, formatBytes } from './diagnosisReport.ts';
 
 describe('diagnosisReport', () => {
@@ -29,7 +29,7 @@ describe('diagnosisReport', () => {
       ],
     };
     const report = diagnosisReport(diagnosis, { title: 'CI fix', version: '0.0.12' });
-    expect(report).toContain('Switchboard transcript check (Switchboard 0.0.12)');
+    expect(report).toContain('Seshboard transcript check (Seshboard 0.0.12)');
     expect(report).toContain('Session: abc (CI fix)');
     expect(report).toContain("- Error: Claude Code's reader failed: boom");
     expect(report).toContain('2.0 MB, modified 2026-10-08T00:00:00.000Z, 10 lines (1 invalid), 8 messages, 2 compactions, last line incomplete');

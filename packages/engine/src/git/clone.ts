@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { isSameOrInside, repoLabel, type ClonePhase, type GithubRepoRef, type RepoBrings, type RepoHook } from '@switchboard/protocol';
+import { isSameOrInside, repoLabel, type ClonePhase, type GithubRepoRef, type RepoBrings, type RepoHook } from '@seshboard/protocol';
 import { githubRepos } from './remotes.ts';
 import { firstUsefulLine, ghEnv, runGh, type GhCommand } from './pullRequest.ts';
 

@@ -16,7 +16,7 @@ afterEach(() => {
   }
 });
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-folders-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-folders-')));
   dirs.push(dir);
   return dir;
 };

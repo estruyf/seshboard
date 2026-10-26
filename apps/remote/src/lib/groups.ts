@@ -1,4 +1,4 @@
-import type { RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteSession } from '@seshboard/protocol/remote-client';
 import { inBackground } from './background.ts';
 
 /** The sidebar's sections on the computer (apps/ui sidebarRows.ts), without Pinned: what needs attention, then by day. */

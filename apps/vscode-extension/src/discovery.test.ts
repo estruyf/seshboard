@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { COMPANION_PROTOCOL } from '@switchboard/protocol/companion-client';
+import { COMPANION_PROTOCOL } from '@seshboard/protocol/companion-client';
 import { infoFiles, pickInfo } from './discovery.ts';
 
 const info = (pid: number, protocol = COMPANION_PROTOCOL) => JSON.stringify({ protocol, socket: `/tmp/sb-${pid}/engine.sock`, token: 'abc', pid, startedAt: 1, appVersion: '1.2.3' });
 
 describe('discovery', () => {
-  it('looks for the installed app first, then a development build, or where the settings say', () => {
+  it('looks for the installed app first, then a development build, then both by their names before the rename, or where the settings say', () => {
     expect(infoFiles('/Users/me', '', 'darwin')).toEqual([
+      '/Users/me/Library/Application Support/Seshboard/companion/engine.json',
+      '/Users/me/Library/Application Support/Seshboard Dev/companion/engine.json',
       '/Users/me/Library/Application Support/Switchboard/companion/engine.json',
       '/Users/me/Library/Application Support/Switchboard Dev/companion/engine.json',
     ]);
@@ -15,12 +17,14 @@ describe('discovery', () => {
 
   it('looks in %APPDATA% on Windows and ~/.config on Linux, where Electron keeps app data', () => {
     expect(infoFiles('C:\\Users\\me', '', 'win32', { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' })).toEqual([
+      'C:\\Users\\me\\AppData\\Roaming\\Seshboard\\companion\\engine.json',
+      'C:\\Users\\me\\AppData\\Roaming\\Seshboard Dev\\companion\\engine.json',
       'C:\\Users\\me\\AppData\\Roaming\\Switchboard\\companion\\engine.json',
       'C:\\Users\\me\\AppData\\Roaming\\Switchboard Dev\\companion\\engine.json',
     ]);
-    expect(infoFiles('C:\\Users\\me', '', 'win32', {})[0]).toBe('C:\\Users\\me\\AppData\\Roaming\\Switchboard\\companion\\engine.json');
+    expect(infoFiles('C:\\Users\\me', '', 'win32', {})[0]).toBe('C:\\Users\\me\\AppData\\Roaming\\Seshboard\\companion\\engine.json');
     expect(infoFiles('C:\\Users\\me', '~\\sb-data', 'win32', {})).toEqual(['C:\\Users\\me\\sb-data\\companion\\engine.json']);
-    expect(infoFiles('/home/me', '', 'linux', {})[0]).toBe('/home/me/.config/Switchboard/companion/engine.json');
+    expect(infoFiles('/home/me', '', 'linux', {})[0]).toBe('/home/me/.config/Seshboard/companion/engine.json');
   });
 
   it('never reads a folder from the settings that is on another computer, or relative', () => {
@@ -61,7 +65,7 @@ describe('discovery', () => {
     expect(pickInfo([{ file: 'a', text: info(1) }], () => false)).toEqual({ kind: 'none' });
   });
 
-  it('says when the running Switchboard speaks another version of the protocol', () => {
+  it('says when the running Seshboard speaks another version of the protocol', () => {
     expect(pickInfo([{ file: 'a', text: info(1, COMPANION_PROTOCOL + 1) }], () => true)).toMatchObject({ kind: 'incompatible', info: { protocol: COMPANION_PROTOCOL + 1 } });
   });
 });

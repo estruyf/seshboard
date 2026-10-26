@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import { BUILTIN_PROFILE_ID, type LiveSession, type LiveStatus } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, type LiveSession, type LiveStatus } from '@seshboard/protocol';
 import { coalesce } from '../util/coalesce.ts';
 import { originFromEntrypoint } from './origin.ts';
 

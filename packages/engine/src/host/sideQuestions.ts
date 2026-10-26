@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { ASK_THREADS_KEPT, threadTitle, type AskEvent, type AskItem, type AskThread, type AskThreadList, type LogLevel, type TokenCounts } from '@switchboard/protocol';
+import { ASK_THREADS_KEPT, threadTitle, type AskEvent, type AskItem, type AskThread, type AskThreadList, type LogLevel, type TokenCounts } from '@seshboard/protocol';
 
 /*
  * Ask about this session (and `/btw`, which asks the same way): questions about a session that Claude answers from

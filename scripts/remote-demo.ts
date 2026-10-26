@@ -1,5 +1,5 @@
 /**
- * The remote app against a made-up computer, to see it in a browser without a real Switchboard: the real Remote hub
+ * The remote app against a made-up computer, to see it in a browser without a real Seshboard: the real Remote hub
  * (handshakes, contract, what a phone may do) on top of demo sessions, prompts, transcripts and changes. Pairing is
  * allowed by itself.
  *
@@ -9,22 +9,22 @@
  * Nothing here touches ~/.claude or a real project: the database and the key live in a folder in the temp folder (so a
  * paired browser stays paired across runs), and every answer only changes the demo world.
  *
- * The smoke test runs it as a second computer for the app (Other computers): `SWITCHBOARD_DEMO_DIR` puts the database
- * and key in a throwaway folder, `SWITCHBOARD_DEMO_NAME` names the computer, `PORT` picks the port, and the line
- * `pairing-link: …` is the link to paste. A pairing link is good for two minutes, so with `SWITCHBOARD_DEMO_LINK_FILE`
+ * The smoke test runs it as a second computer for the app (Other computers): `SESHBOARD_DEMO_DIR` puts the database
+ * and key in a throwaway folder, `SESHBOARD_DEMO_NAME` names the computer, `PORT` picks the port, and the line
+ * `pairing-link: …` is the link to paste. A pairing link is good for two minutes, so with `SESHBOARD_DEMO_LINK_FILE`
  * a fresh one is written there every minute. New session there adds a session with the prompt as its title.
- * `SWITCHBOARD_DEMO_THEME` names the built-in theme it shows (`catppuccin`, `nord`…; Demo Time without it).
+ * `SESHBOARD_DEMO_THEME` names the built-in theme it shows (`catppuccin`, `nord`…; Demo Time without it).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@switchboard/protocol';
-import type { ThemeFile, ThemeModeFile } from '@switchboard/protocol/theme-format';
+import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
+import type { ThemeFile, ThemeModeFile } from '@seshboard/protocol/theme-format';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 
-const APP_URL = process.env.SWITCHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
+const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
 const MINUTE = 60_000;
 const now = Date.now();
@@ -368,7 +368,7 @@ function transcript(sessionId: string): TranscriptMessage[] {
   ];
 }
 
-const dir = process.env.SWITCHBOARD_DEMO_DIR ?? join(tmpdir(), 'switchboard-remote-demo');
+const dir = process.env.SESHBOARD_DEMO_DIR ?? join(tmpdir(), 'seshboard-remote-demo');
 mkdirSync(dir, { recursive: true });
 const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
@@ -394,7 +394,7 @@ const REPLY = [
   'export const REFILL_MS = 1_000;',
   '```',
   '',
-  'See [the docs](https://switchboard.struyfconsulting.com/) for more.',
+  'See [the docs](https://seshboard.app/) for more.',
 ].join('\n');
 function streamReply(sessionId: string) {
   const words = REPLY.split(/(?<=\s)/);
@@ -621,7 +621,7 @@ const hub: RemoteHub = new RemoteHub({
   appVersion: 'demo',
   appUrl: APP_URL,
   filesDir: join(dir, 'remote-files'),
-  computerName: () => process.env.SWITCHBOARD_DEMO_NAME ?? "Elio's iMac",
+  computerName: () => process.env.SESHBOARD_DEMO_NAME ?? "Elio's iMac",
   identity: async () => new Uint8Array(readFileSync(keyFile)),
   sources: () => ({ summaries: summaries().filter((s) => !archived.has(s.id)), live: [], hosts: hosts(), permissions }),
   archiveAfterDays: () => 30,
@@ -716,9 +716,9 @@ const hub: RemoteHub = new RemoteHub({
   log: (level, message) => console.log(`[${level}] ${message}`),
 });
 
-// The theme the demo computer shows (Theme on the phone): `SWITCHBOARD_DEMO_THEME=catppuccin` takes a built-in theme's
+// The theme the demo computer shows (Theme on the phone): `SESHBOARD_DEMO_THEME=catppuccin` takes a built-in theme's
 // own colours (without the app's generator, which needs the renderer), else Demo Time's.
-const themeName = process.env.SWITCHBOARD_DEMO_THEME ?? 'demo-time';
+const themeName = process.env.SESHBOARD_DEMO_THEME ?? 'demo-time';
 const themeFile = JSON.parse(readFileSync(new URL(`../apps/ui/src/themes/${themeName}.json`, import.meta.url), 'utf8')) as ThemeFile;
 const modeOf = (mode: ThemeModeFile | undefined) => (mode ? { ...(mode.canvas ? { bg: mode.canvas } : {}), ...(mode.accent ? { accent: mode.accent } : {}), ...mode.colors } : {});
 hub.setTheme({ name: themeFile.name, light: modeOf(themeFile.light), dark: modeOf(themeFile.dark) });
@@ -728,7 +728,7 @@ const { url } = hub.startPairing();
 console.log(`\nA browser paired before connects by itself at ${APP_URL}. To pair one, open this link (good for two minutes):\n\n  ${url}\n`);
 // For scripts (the smoke test pairs the app with it).
 console.log(`pairing-link: ${url}`);
-const linkFile = process.env.SWITCHBOARD_DEMO_LINK_FILE;
+const linkFile = process.env.SESHBOARD_DEMO_LINK_FILE;
 if (linkFile) writeFileSync(linkFile, url);
 const renew = linkFile
   ? setInterval(() => {

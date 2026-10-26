@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { GitPullRequestArrow, LoaderCircle, RefreshCw } from 'lucide-react';
-import type { PipelineRunState, PushPreview } from '@switchboard/protocol/client';
+import type { PipelineRunState, PushPreview } from '@seshboard/protocol/client';
 import { continueRun, loadPushPreview, stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';

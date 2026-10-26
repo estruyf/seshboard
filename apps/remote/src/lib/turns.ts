@@ -1,4 +1,4 @@
-import { safeLocale, type RemoteMessage } from '@switchboard/protocol/remote-client';
+import { safeLocale, type RemoteMessage } from '@seshboard/protocol/remote-client';
 
 /**
  * Under the last reply of each finished turn, when it ended, how long it took and its tokens ("14:32 · 2m 14s · 18.4k

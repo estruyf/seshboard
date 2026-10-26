@@ -29,7 +29,7 @@ Run the related tests, the typecheck and `npm run smoke:demo -- --only "<step la
 
 ## Step 2: the layout
 
-1. **The title.** "New trigger: <name>", with the name editable in place: a text input styled as the title, with a dashed underline and a pencil icon. The project name follows in muted text ("· Switchboard").
+1. **The title.** "New trigger: <name>", with the name editable in place: a text input styled as the title, with a dashed underline and a pencil icon. The project name follows in muted text ("· Seshboard").
    - The name is filled in from the source (as `defaultTriggerName` does) until you edit it.
    - Remove the Name row.
    - "Edit trigger: <name>" when editing.

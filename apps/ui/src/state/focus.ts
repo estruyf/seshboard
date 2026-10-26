@@ -1,5 +1,5 @@
-// The focus limit's rules are shared with the engine (`@switchboard/protocol/client`); what is left here is wording.
-export { focusLevel, focusSessions, focusVerdict, type FocusInput, type FocusLevel, type FocusPrefs, type FocusSession, type FocusState, type FocusVerdict } from '@switchboard/protocol/client';
+// The focus limit's rules are shared with the engine (`@seshboard/protocol/client`); what is left here is wording.
+export { focusLevel, focusSessions, focusVerdict, type FocusInput, type FocusLevel, type FocusPrefs, type FocusSession, type FocusState, type FocusVerdict } from '@seshboard/protocol/client';
 
 /** "4th": the position a new session would take, for "Start a 4th session?". */
 export function ordinal(n: number): string {

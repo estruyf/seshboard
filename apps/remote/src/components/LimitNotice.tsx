@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Clock, Gauge, Play } from 'lucide-react';
-import type { RemoteLimitStanding } from '@switchboard/protocol/remote-client';
+import type { RemoteLimitStanding } from '@seshboard/protocol/remote-client';
 import { heldLine, limitHeadline, limitHolds, resumeLine } from '../lib/limit.ts';
 import type { Client } from './Connected.tsx';
 import { Button } from './ui.tsx';

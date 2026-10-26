@@ -1,6 +1,6 @@
 import { bundledThemes } from 'shiki/themes';
 import { describe, expect, it } from 'vitest';
-import { SHIKI_THEMES, type InlineSyntaxTheme } from '@switchboard/protocol/theme-format';
+import { SHIKI_THEMES, type InlineSyntaxTheme } from '@seshboard/protocol/theme-format';
 import { highlightCacheKey, highlightWith, inlineRegistration, setSyntaxThemes, SYNTAX_THEMES, syntaxKey, syntaxThemeId } from './highlight.ts';
 
 const inline: InlineSyntaxTheme = { name: 'Mine', tokenColors: [{ scope: ['comment'], settings: { foreground: '#00ff00', fontStyle: 'italic' } }, { scope: 'keyword', settings: { foreground: '#ff0000' } }] };

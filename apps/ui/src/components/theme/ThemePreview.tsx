@@ -1,4 +1,4 @@
-import type { ThemeMode, ThemeTokens } from '@switchboard/protocol/theme-format';
+import type { ThemeMode, ThemeTokens } from '@seshboard/protocol/theme-format';
 
 /**
  * A window in miniature, drawn with a theme's own tokens (so each card shows its theme, whatever is

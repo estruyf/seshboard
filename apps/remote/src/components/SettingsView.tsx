@@ -130,7 +130,7 @@ export function SettingsView({
             />
             {older.length > 0 && (
               <p className="border-t border-border px-3 py-2 text-ui text-text" data-remote-push-outdated>
-                {older.join(', ')} can't send notifications next to your other computers yet. Update Switchboard there to get them.
+                {older.join(', ')} can't send notifications next to your other computers yet. Update Seshboard there to get them.
               </p>
             )}
           </Group>
@@ -195,7 +195,7 @@ export function SettingsView({
             </div>
             {appVersion && (
               <div className="flex min-h-12 items-center gap-3 border-t border-border px-3">
-                <span className="min-w-0 flex-1 truncate text-body">Switchboard on {name}</span>
+                <span className="min-w-0 flex-1 truncate text-body">Seshboard on {name}</span>
                 <span className="text-ui text-muted tabular-nums">{appVersion}</span>
               </div>
             )}

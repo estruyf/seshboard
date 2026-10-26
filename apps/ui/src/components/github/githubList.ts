@@ -1,4 +1,4 @@
-import type { GithubItemType, GithubListItem, GithubSearchResult } from '@switchboard/protocol/client';
+import type { GithubItemType, GithubListItem, GithubSearchResult } from '@seshboard/protocol/client';
 
 /** How long typing waits before asking gh again (what was found before shows at once). */
 export const SEARCH_DEBOUNCE_MS = 200;

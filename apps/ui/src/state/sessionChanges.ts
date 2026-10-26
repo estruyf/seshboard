@@ -1,4 +1,4 @@
-import type { SessionsChanged, SessionSummary } from '@switchboard/protocol/client';
+import type { SessionsChanged, SessionSummary } from '@seshboard/protocol/client';
 
 /**
  * Applies `sessions.changed` events, oldest first, to a copy of the sessions map: one copy however many events

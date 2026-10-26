@@ -1,4 +1,4 @@
-import { safeLocale, type RemoteStatus } from '@switchboard/protocol/client';
+import { safeLocale, type RemoteStatus } from '@seshboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteAge } from '../components/remote/remoteText.ts';
 

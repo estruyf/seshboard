@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { SessionHostInfo, SessionSummary } from '@seshboard/protocol/client';
 import { focusSessions } from '../../state/focus.ts';
 import { patchedSessions } from '../../state/sessionChanges.ts';
 

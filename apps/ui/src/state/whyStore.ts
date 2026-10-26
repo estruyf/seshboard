@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RequestWhy } from '@switchboard/protocol/client';
+import type { RequestWhy } from '@seshboard/protocol/client';
 
 /** One request's "why", as far as it got. */
 export type WhyResult = { status: 'loading' } | { status: 'done'; why: RequestWhy } | { status: 'error'; error: string };

@@ -1,5 +1,5 @@
 import type { HighlighterCore, ThemeRegistration } from 'shiki/core';
-import type { InlineSyntaxTheme, ShikiThemeName, ThemeMode, ThemeSyntax } from '@switchboard/protocol/theme-format';
+import type { InlineSyntaxTheme, ShikiThemeName, ThemeMode, ThemeSyntax } from '@seshboard/protocol/theme-format';
 import { SizedCache } from './sizedCache.ts';
 
 /** Fence names → Shiki grammar, loaded only when first needed. */

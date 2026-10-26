@@ -9,7 +9,7 @@ const write = (path: string, text: string) => writeFileSync(join(repo, path), te
 const run = (...args: string[]) => git(repo, args);
 
 beforeEach(async () => {
-  repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-git-')));
+  repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-git-')));
   await run('init', '-q', '-b', 'main');
   await run('config', 'user.email', 'test@example.com');
   await run('config', 'user.name', 'Test');
@@ -147,7 +147,7 @@ describe('fileDiff, stage and revert', () => {
   });
 
   it('unstages in a repository without commits', async () => {
-    const empty = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-git-empty-')));
+    const empty = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-git-empty-')));
     try {
       await git(empty, ['init', '-q', '-b', 'main']);
       writeFileSync(join(empty, 'first.txt'), 'x\n');
@@ -231,7 +231,7 @@ describe('worktrees', () => {
 
 describe('sync', () => {
   it('counts commits ahead of and behind the upstream, and builds pull, push and PR commands', async () => {
-    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remote-')));
+    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-')));
     try {
       await git(remote, ['init', '-q', '--bare', '-b', 'main']);
       await run('remote', 'add', 'origin', remote);
@@ -267,7 +267,7 @@ describe('sync', () => {
   });
 
   it('fetches and fast-forwards without a terminal, and refuses to merge', async () => {
-    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remote-')));
+    const remote = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-')));
     const env = { HOME: process.env.HOME ?? '', PATH: process.env.PATH ?? '' };
     const theirs = async (message: string) => {
       await git(other, ['-c', 'user.email=o@example.com', '-c', 'user.name=O', 'commit', '-q', '--allow-empty', '-m', message]);

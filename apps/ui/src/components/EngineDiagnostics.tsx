@@ -1,7 +1,7 @@
 import { fileManagerName } from '../lib/platform.ts';
 import { useEffect, useState, type ReactNode } from 'react';
 import { FolderOpen } from 'lucide-react';
-import type { LogLevel, ModLog } from '@switchboard/protocol/client';
+import type { LogLevel, ModLog } from '@seshboard/protocol/client';
 import { useDiagnostics } from '../engine/useDiagnostics.ts';
 import { useEngineConnection, useEngineStalled } from '../engine/useEngine.ts';
 import { CodeBlock } from './transcript/CodeBlock.tsx';
@@ -98,7 +98,7 @@ export function EngineDiagnostics() {
   const connectionRow =
     connection.status === 'unavailable' ? (
       <span className="flex items-center gap-2">
-        <Dot tone="error" /> Not running inside the Switchboard app
+        <Dot tone="error" /> Not running inside the Seshboard app
       </span>
     ) : connection.status === 'connecting' ? (
       <span className="flex items-center gap-2">
@@ -153,7 +153,7 @@ export function EngineDiagnostics() {
             </span>
           ) : (
             <span className="flex items-center gap-2">
-              <Dot tone="error" /> Not found on your PATH. Install Claude Code, check that <Mono>claude</Mono> runs in Terminal, then reopen Switchboard.
+              <Dot tone="error" /> Not found on your PATH. Install Claude Code, check that <Mono>claude</Mono> runs in Terminal, then reopen Seshboard.
             </span>
           )}
         </Row>

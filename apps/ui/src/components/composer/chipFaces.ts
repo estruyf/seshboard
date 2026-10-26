@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode } from '@switchboard/protocol/client';
+import type { Effort, PermissionMode } from '@seshboard/protocol/client';
 
 /**
  * How compact the message box's chips are. 0: everything. 1: the profile shows only its dot. 2: the model

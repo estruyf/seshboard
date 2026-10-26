@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { Trigger, TriggerEvent, TriggerRepoInfo, TriggerSave, TriggerSession } from '@switchboard/protocol/client';
+import type { Trigger, TriggerEvent, TriggerRepoInfo, TriggerSave, TriggerSession } from '@seshboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { openProject } from './projectPageStore.ts';

@@ -1,4 +1,4 @@
-import type { ActionScope } from '@switchboard/protocol/client';
+import type { ActionScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import {
   available,

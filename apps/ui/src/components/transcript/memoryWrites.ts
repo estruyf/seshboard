@@ -1,4 +1,4 @@
-import { expandHome, isSameOrInside, memoryMeta, splitFrontmatter } from '@switchboard/protocol/client';
+import { expandHome, isSameOrInside, memoryMeta, splitFrontmatter } from '@seshboard/protocol/client';
 import { basename, dirnameOf } from '../../lib/format.ts';
 
 /** Where memory lives, to tell a memory write from any other file edit. */

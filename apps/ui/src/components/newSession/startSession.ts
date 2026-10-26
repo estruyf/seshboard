@@ -1,4 +1,4 @@
-import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@switchboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';

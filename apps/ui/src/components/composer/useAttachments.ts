@@ -1,5 +1,5 @@
 import { useState, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import type { ContextItem, ImageAttachment } from '@switchboard/protocol/client';
+import type { ContextItem, ImageAttachment } from '@seshboard/protocol/client';
 import { droppedItems } from './contextItems.ts';
 import { dropVerdict, MAX_ATTACHMENTS, mergeAttachments, planDrop, readImage } from './images.ts';
 import { insertMentions, mentionFor } from './mentions.ts';
@@ -56,10 +56,10 @@ export function useAttachments(options: AttachmentsOptions): Attachments {
   };
 
   // A dropped file's place on disk, for an @ mention; empty outside the app or for files not on disk.
-  const canMention = typeof window.switchboard?.getPathForFile === 'function';
+  const canMention = typeof window.seshboard?.getPathForFile === 'function';
   const pathOf = (file: File) => {
     try {
-      return window.switchboard?.getPathForFile(file) ?? '';
+      return window.seshboard?.getPathForFile(file) ?? '';
     } catch {
       return '';
     }

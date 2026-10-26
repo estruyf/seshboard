@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate, type WorktreePullRequest, type WorktreeStatus } from '@switchboard/protocol';
+import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate, type WorktreePullRequest, type WorktreeStatus } from '@seshboard/protocol';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 
 /**
- * How to start the GitHub CLI: `gh` from the PATH, or the program `SWITCHBOARD_GH` names (the smoke test's fake, so
+ * How to start the GitHub CLI: `gh` from the PATH, or the program `SESHBOARD_GH` names (the smoke test's fake, so
  * it never reaches GitHub). Tests pass Node and a script, which works the same on Windows.
  */
 export interface GhCommand {
@@ -13,7 +13,7 @@ export interface GhCommand {
   args: string[];
 }
 
-export const defaultGh = (): GhCommand => ({ file: process.env.SWITCHBOARD_GH || 'gh', args: [] });
+export const defaultGh = (): GhCommand => ({ file: process.env.SESHBOARD_GH || 'gh', args: [] });
 
 /** gh never asks anything (there is no terminal), and prints plain text. */
 export const ghEnv = (env: Record<string, string>): Record<string, string> => ({ ...env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', GH_SPINNER_DISABLED: '1', NO_COLOR: '1' });
@@ -291,7 +291,7 @@ export async function createPullRequest(
   if (request.web) {
     const url = (await git(status.path, ['remote', 'get-url', remote]).catch(() => '')).trim();
     const where = parseRemoteUrl(url);
-    if (!where) throw new PrFailure(failure('UNKNOWN', `Switchboard can't tell which website ${remote} is on.`));
+    if (!where) throw new PrFailure(failure('UNKNOWN', `Seshboard can't tell which website ${remote} is on.`));
     return { compareUrl: compareUrl(where, request.base, branch, request.title) };
   }
 

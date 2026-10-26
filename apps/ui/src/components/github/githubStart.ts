@@ -1,8 +1,8 @@
-import type { GithubItemType, GithubPrDetail, WorktreeStatus } from '@switchboard/protocol/client';
+import type { GithubItemType, GithubPrDetail, WorktreeStatus } from '@seshboard/protocol/client';
 
 /**
  * New session from an issue or pull request, as plain functions: the worktree's name, the prompt, where a pull request
- * can be worked on, and when Switchboard can't push it back. Plain TypeScript, so it is tested without a window.
+ * can be worked on, and when Seshboard can't push it back. Plain TypeScript, so it is tested without a window.
  */
 
 /** How long the title part of a worktree's name gets, at most. */
@@ -72,15 +72,15 @@ export function currentCheckoutBlocked(status: Pick<WorktreeStatus, 'uncommitted
 }
 
 /**
- * Whether Switchboard can't push a pull request back from where it is worked on: one from a fork you can't push to,
+ * Whether Seshboard can't push a pull request back from where it is worked on: one from a fork you can't push to,
  * and any fork's in a new worktree (its branch there tracks nothing, so a push would go to this repository instead).
  * Push and Create pull request are then off in that session. Current checkout uses `gh pr checkout`, which sets up a
  * fork you can push to.
  */
 export const readOnlyFork = (pr: Pick<GithubPrDetail, 'isCrossRepository' | 'canPush'>, where: PrWhere) => pr.isCrossRepository && (!pr.canPush || where === 'worktree');
 
-/** The caution line in the Where menu for a pull request Switchboard can't push back. */
-export const forkCaution = (number: number) => `#${number} is from a fork. Claude can change it here, but Switchboard can't push it back. Create pull request is off for it.`;
+/** The caution line in the Where menu for a pull request Seshboard can't push back. */
+export const forkCaution = (number: number) => `#${number} is from a fork. Claude can change it here, but Seshboard can't push it back. Create pull request is off for it.`;
 
 /** A link's or the list's item from another repository than the project's. */
 export const otherRepository = (type: GithubItemType, projectName: string) => `This ${type === 'pr' ? 'pull request' : 'issue'} is from another repository than ${projectName}.`;

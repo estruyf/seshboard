@@ -1,5 +1,5 @@
 import { AtSign, ImageOff, ImagePlus } from 'lucide-react';
-import type { ImageAttachment } from '@switchboard/protocol/client';
+import type { ImageAttachment } from '@seshboard/protocol/client';
 import { dropMessage } from './images.ts';
 import type { DropState } from './useDropTarget.ts';
 

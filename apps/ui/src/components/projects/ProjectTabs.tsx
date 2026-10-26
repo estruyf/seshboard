@@ -1,6 +1,6 @@
 import { Check, FolderOpen, GitBranch, Image, Plus, RotateCcw, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { ListedAction, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import type { ListedAction, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -280,7 +280,7 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   );
 }
 
-const SCOPE_LABEL: Record<ListedAction['scope'], string> = { project: 'This project', shared: 'Shared (.switchboard.json)', global: 'Every project' };
+const SCOPE_LABEL: Record<ListedAction['scope'], string> = { project: 'This project', shared: 'Shared (.seshboard.json)', global: 'Every project' };
 
 /** Actions: the project's actions (yours, shared and global), each opening the editor; New action starts one. */
 export function ProjectActionsTab({ root }: { root: string }) {
@@ -363,7 +363,7 @@ function SettingRow({ label, hint, children, ...rest }: { label: string; hint?: 
   );
 }
 
-/** The project's name in Switchboard, edited in place: ↩ or leaving the field saves it, Esc puts it back, empty is the folder's name. */
+/** The project's name in Seshboard, edited in place: ↩ or leaving the field saves it, Esc puts it back, empty is the folder's name. */
 function NameField({ project }: { project: ProjectInfo }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -444,7 +444,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   };
   return (
     <div className="grid max-w-3xl" data-project-defaults-tab>
-      <SettingRow label="Name" hint={`Only Switchboard uses this name. The folder stays ${basename(project.root)}.`}>
+      <SettingRow label="Name" hint={`Only Seshboard uses this name. The folder stays ${basename(project.root)}.`}>
         <NameField project={project} />
       </SettingRow>
       <SettingRow label="Icon">
@@ -502,10 +502,10 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
       </SettingRow>
       <SettingRow
         label="Remove"
-        hint="Removing a project only takes it off Switchboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."
+        hint="Removing a project only takes it off Seshboard's lists: nothing on disk changes, and its sessions stay in search and under sessions from other apps."
       >
         <Button variant="danger" onClick={() => setRemoving(true)} data-project-remove>
-          Remove from Switchboard…
+          Remove from Seshboard…
         </Button>
       </SettingRow>
       {removing && <RemoveProjectDialog root={project.root} name={project.name} onClose={() => setRemoving(false)} />}

@@ -18,7 +18,7 @@ import {
   type RemoteLink,
   type RemotePairContract,
   type RpcClient,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { CLOSE } from './remoteServer.ts';
 
 /**
@@ -37,7 +37,7 @@ export interface OpenSocket {
 
 /**
  * Why a socket didn't open or was refused: no answer in time, nothing listening, an HTTP status instead of a socket
- * (403: a Switchboard there from before it took other computers), or a close code from the other engine.
+ * (403: a Seshboard there from before it took other computers), or a close code from the other engine.
  */
 export type LinkFailure = { kind: 'timeout' } | { kind: 'refused' } | { kind: 'http'; status: number } | { kind: 'closed'; code: number } | { kind: 'dropped' };
 
@@ -273,7 +273,7 @@ export class ComputerLink {
       const hello = await client.call('hello', { client: { version: CLIENT_VERSION } });
       if (!current()) return;
       this.attempt = 0;
-      // An older Switchboard there says no features.
+      // An older Seshboard there says no features.
       this.set({ kind: 'connected', name: hello.computer.name, version: hello.app.version, features: hello.features ?? [] });
       const code = await socket.closed;
       if (!current()) return;

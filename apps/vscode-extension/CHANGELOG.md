@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Works with Switchboard on Linux: it starts Switchboard and brings it up there with `xdg-open`.
+- Works with Seshboard on Linux: it starts Seshboard and brings it up there with `xdg-open`.
 
 ## [0.2.0]
 

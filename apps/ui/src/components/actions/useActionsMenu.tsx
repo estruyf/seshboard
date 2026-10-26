@@ -1,6 +1,6 @@
 import { Settings2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { isAbsolutePath, type ListedAction } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ListedAction } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
@@ -192,7 +192,7 @@ export function useActionsMenu({
                 <p className="mb-2">
                   {pending.action.scope === 'shared' ? (
                     <>
-                      This action comes from the project’s <code className="font-mono">.switchboard.json</code>. Check the command before you approve it; you won’t be asked
+                      This action comes from the project’s <code className="font-mono">.seshboard.json</code>. Check the command before you approve it; you won’t be asked
                       again unless it changes.
                     </>
                   ) : (

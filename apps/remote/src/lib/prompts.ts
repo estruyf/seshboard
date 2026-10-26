@@ -1,4 +1,4 @@
-import type { RemotePrompt } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt } from '@seshboard/protocol/remote-client';
 import { toolSummary } from './transcript.ts';
 
 /** What the computer's card says when you decline (apps/ui PermissionCard). */

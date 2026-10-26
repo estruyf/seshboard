@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ContextItem } from '@switchboard/protocol/client';
-import { MAX_PROMPT_LENGTH } from '@switchboard/protocol/client';
+import type { ContextItem } from '@seshboard/protocol/client';
+import { MAX_PROMPT_LENGTH } from '@seshboard/protocol/client';
 import { addChips, chipLabel, chipsSummary, contextFromPrompt, fenceFor, isLongPaste, mentionFor, PASTE_CARD_CHARS, PASTE_CARD_LINES, pastedItem, pasteSize, pasteTooLongReason, promptWithContext, tooLongReason } from './contextItems.ts';
 
 const file = (path: string, extra: Partial<Extract<ContextItem, { kind: 'file' }>> = {}): Extract<ContextItem, { kind: 'file' }> => ({ kind: 'file', path, directory: false, ...extra });

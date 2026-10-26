@@ -2,13 +2,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LiveSession } from '@switchboard/protocol';
+import type { LiveSession } from '@seshboard/protocol';
 import { HostProcesses } from './hostProcesses.ts';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const file = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-hostprocs-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-hostprocs-'));
   dirs.push(dir);
   return join(dir, 'host-processes.json');
 };

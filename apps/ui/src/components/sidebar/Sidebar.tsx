@@ -1,8 +1,8 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
-import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
-import type { CatchUp } from '@switchboard/protocol/client';
+import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
@@ -1109,7 +1109,7 @@ export function Sidebar() {
     <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar" style={{ width }} data-sidebar-open>
       {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
       <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
-        <span className="text-body font-semibold text-text/90">Switchboard</span>
+        <span className="text-body font-semibold text-text/90">Seshboard</span>
       </div>
 
       {/* The session list stays while Settings is open (a sheet over the main area), so "Needs you" stays in view. */}
@@ -1190,7 +1190,7 @@ export function Sidebar() {
                 : projectFilter
                   ? `No sessions in this project yet. Start one with ${formatKeys(keysFor('session.new'))}.`
                   : scope === 'switchboard'
-                    ? `Sessions you start or continue in Switchboard show up here. Start one with ${formatKeys(keysFor('session.new'))}.`
+                    ? `Sessions you start or continue in Seshboard show up here. Start one with ${formatKeys(keysFor('session.new'))}.`
                     : `No Claude Code sessions found yet. Start one with ${formatKeys(keysFor('session.new'))}.`}
             </p>
             {search && (

@@ -1,4 +1,4 @@
-import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@switchboard/protocol/client';
+import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@seshboard/protocol/client';
 import { isRunRow, runIsActive, runTreeStatus } from './pipelines.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
@@ -38,7 +38,7 @@ const ROW_OF: Record<TreeStatus, RowStatus> = { needsYou: 'needs-you', working: 
 /** A row's state in the tree's words. */
 export const toTreeStatus = (status: RowStatus): TreeStatus => (status ? TREE_OF[status] : 'idle');
 
-export { asksWords, childMeta as stepMeta, parentRunLine, runRowLine, treeNeedsYouLine } from '@switchboard/protocol/client';
+export { asksWords, childMeta as stepMeta, parentRunLine, runRowLine, treeNeedsYouLine } from '@seshboard/protocol/client';
 
 export interface SidebarForest {
   /** What the sidebar lists: sessions without a listed parent, and run rows, each with its state lifted by its children. */

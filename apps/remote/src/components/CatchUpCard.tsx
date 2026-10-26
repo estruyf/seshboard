@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CatchUp } from '@switchboard/protocol/remote-client';
+import type { CatchUp } from '@seshboard/protocol/remote-client';
 import { age } from '../lib/groups.ts';
 import { catchUpChips, reviewLabel, stateLabel, withHashes, type CatchUpTone } from '../lib/catchUp.ts';
 import { promptTitle } from '../lib/promptTitle.ts';

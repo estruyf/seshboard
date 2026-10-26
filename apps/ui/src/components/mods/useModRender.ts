@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RpcError, type ModComponent, type ModRenderResult } from '@switchboard/protocol/client';
+import { RpcError, type ModComponent, type ModRenderResult } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { instanceKey, useMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';

@@ -19,7 +19,7 @@ Add a usage cost toggle            ← the session you run it from
 └─ Push        commit, push, pull request (waits for you)
 ```
 
-Plan it with Opus, build it with Sonnet, have a fresh session check the diff and the tests, then push and open a pull request. Switchboard starts each step when the one before is done, and stops when it needs you.
+Plan it with Opus, build it with Sonnet, have a fresh session check the diff and the tests, then push and open a pull request. Seshboard starts each step when the one before is done, and stops when it needs you.
 
 <Screenshot name="pipeline-parent" alt="The session Add gift wrap at checkout with its step tree: Plan and Execute done, Validate working in round 2 of 2, Push waiting, its steps open under it in the sidebar, and a row per finished step in the conversation" eager />
 
@@ -76,7 +76,7 @@ When the verdict still asks for changes after its last round, the run stops and 
 
 ## Push
 
-Push is Switchboard's own step. It waits for you with the commit message Claude writes from the diff, the number of files and the branches. Choose **Commit, push and open PR**, **Edit message** first, or **Stop here**. The pull request's title and description come from the task, the plan and the last verdict. It needs the GitHub CLI (`gh`), signed in.
+Push is Seshboard's own step. It waits for you with the commit message Claude writes from the diff, the number of files and the branches. Choose **Commit, push and open PR**, **Edit message** first, or **Stop here**. The pull request's title and description come from the task, the plan and the last verdict. It needs the GitHub CLI (`gh`), signed in.
 
 Your own pipelines can push without asking: turn on **Push without asking** on their Push step.
 
@@ -89,7 +89,7 @@ A step is done when its turn ended cleanly, Claude doesn't wait for you, and its
 - **Validate has no verdict:** its last reply doesn't end with a verdict.
 - **Still changes needed after 2 rounds:** **Another round** sends the changes back to Execute. Or **Continue** to go on anyway, or **Stop the run**.
 - **A step with Wait for me before this step:** **Continue** starts it.
-- **Paused: Switchboard was closed.** The run goes on at the next start.
+- **Paused: Seshboard was closed.** The run goes on at the next start.
 
 When you reply in the step that stopped, the run goes on once that turn ends cleanly. Notifications say when a run needs you, stopped, or is done.
 

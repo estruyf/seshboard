@@ -1,4 +1,4 @@
-import type { FolderEntry, ProjectInfo } from '@switchboard/protocol/client';
+import type { FolderEntry, ProjectInfo } from '@seshboard/protocol/client';
 import { knownFolders } from '../../state/projectList.ts';
 
 /**

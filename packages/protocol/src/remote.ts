@@ -45,32 +45,32 @@ export const RemoteSession = z.object({
   updatedAt: z.number(),
   /**
    * When its turn began (Claude Code's registry: when it went busy), which the Working section orders by: the last
-   * write moves all the time. Null when not known; left out by a Switchboard from before phones ordered by it.
+   * write moves all the time. Null when not known; left out by a Seshboard from before phones ordered by it.
    */
   workingSince: z.number().nullable().optional(),
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
-  /** While it runs in Switchboard: its model, effort and permission mode, for the chips in the message box. */
+  /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
-  /** Null: the model's own. Left out by a Switchboard from before a phone could change it. */
+  /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
   effort: Effort.nullable().optional(),
   permissionMode: PermissionMode.nullable(),
   /** The Claude profile (login) it runs with; null while there is only one profile (the app shows none then), or not known. */
   profile: RemoteSessionProfile.nullable(),
   /**
    * Auto picked the model it started on, until you change the model: what it picked (null: picking failed, the default
-   * model), or `choosing` while it still picks. Null without Auto; left out by a Switchboard from before phones knew it.
+   * model), or `choosing` while it still picks. Null without Auto; left out by a Seshboard from before phones knew it.
    */
   auto: z.object({ picked: AutoTierSchema.nullable(), choosing: z.boolean() }).nullable().optional(),
   /**
-   * What it keeps running after its turn (a shell command, an agent, a workflow), while it runs in Switchboard; each
-   * can be stopped with `session.stopTask`. Left out by a Switchboard from before phones knew them.
+   * What it keeps running after its turn (a shell command, an agent, a workflow), while it runs in Seshboard; each
+   * can be stopped with `session.stopTask`. Left out by a Seshboard from before phones knew them.
    */
   background: z.array(BackgroundTask).optional(),
   /**
    * The session or run row it sits under: a pipeline step's sub-session under the session the run started from, or
-   * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Switchboard from before phones knew runs.
+   * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
    */
   parentId: z.string().nullable().optional(),
 });
@@ -206,7 +206,7 @@ export type RemoteProfile = z.infer<typeof RemoteProfile>;
 
 /**
  * New session's choices: the models, efforts and profiles, and each project's profile and defaults. A new session
- * takes the project's defaults, then its profile's, then Switchboard's own.
+ * takes the project's defaults, then its profile's, then Seshboard's own.
  */
 export const RemoteOptions = z.object({
   models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })),
@@ -217,7 +217,7 @@ export const RemoteOptions = z.object({
   defaultProfileId: z.string(),
   /**
    * Auto model (Settings › Conversation): when on, New session offers Auto, and Haiku picks one of `allowed` from the
-   * first prompt. Off, a default of Auto starts on the default model. Left out by a Switchboard from before phones knew it.
+   * first prompt. Off, a default of Auto starts on the default model. Left out by a Seshboard from before phones knew it.
    */
   auto: z.object({ enabled: z.boolean(), allowed: z.array(AutoTierSchema) }).optional(),
   projects: z.array(
@@ -279,7 +279,7 @@ export const RemoteProfileUsage = z.object({
   /**
    * The account it signs in to as `accountTag` (never the account, nor the key `usage.tokens` takes): the same on
    * every computer, so Home shows a profile once when several computers sign in to it. Null without an account; left
-   * out by a Switchboard from before.
+   * out by a Seshboard from before.
    */
   account: z.string().nullable().optional(),
 });
@@ -383,7 +383,7 @@ export const remoteContract = {
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string().min(1).max(200) }), result: z.object({}) },
     /** Answers a permission prompt, question or plan. NOT_FOUND when it was already answered. */
     'session.respond': { params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision }), result: z.object({}) },
-    /** A new session in a project Switchboard knows. What it leaves out of the options is the project's default. */
+    /** A new session in a project Seshboard knows. What it leaves out of the options is the project's default. */
     'session.create': {
       params: z
         .object({
@@ -396,7 +396,7 @@ export const remoteContract = {
         .extend(RemoteSessionOptions.shape),
       result: z.object({ sessionId: z.string() }),
     },
-    /** Puts a prompt in Switchboard's queue (Later) for a project, to start when you choose. */
+    /** Puts a prompt in Seshboard's queue (Later) for a project, to start when you choose. */
     'later.add': { params: z.object({ projectId: ProjectId, prompt: Prompt }).extend(RemoteSessionOptions.shape), result: z.object({ id: z.string() }) },
     /**
      * Ask about this session, as on the computer: Claude answers from the conversation and the project with read-only
@@ -601,17 +601,27 @@ export const REMOTE_DEFAULT_PORT = 47615;
 
 /**
  * Where the remote app lives: one fixed HTTPS address, so a phone pairs once whatever the tunnel's address is, and
- * the app's code comes from Switchboard's own site rather than from the tunnel. The engine only accepts sockets
+ * the app's code comes from Seshboard's own site rather than from the tunnel. The engine only accepts sockets
  * from this origin.
  */
-export const REMOTE_APP_URL = 'https://switchboard.struyfconsulting.com/remote/';
+export const REMOTE_APP_URL = 'https://seshboard.app/remote/';
 
 /**
  * The remote app on the website's preview, built from `dev` by Cloudflare Pages. Development and beta builds also
  * accept sockets from it (`previewApp`), so the remote app's next version can be tried before it ships; a release
  * never does, so code that is only on `dev` can't talk to anyone's computer.
  */
-export const REMOTE_PREVIEW_APP_URL = 'https://switch-dev.struyfconsulting.com/remote/';
+export const REMOTE_PREVIEW_APP_URL = 'https://beta.seshboard.app/remote/';
+
+/**
+ * Where the remote app and the preview lived before seshboard.app, by the address that replaced each. A phone keeps
+ * its pairing on the origin it paired on, so the engine still accepts sockets from these until people have paired
+ * on the new site. Remove in 1.3.0.
+ */
+export const REMOTE_LEGACY_APP_URLS: Readonly<Record<string, string>> = {
+  [REMOTE_APP_URL]: 'https://switchboard.struyfconsulting.com/remote/',
+  [REMOTE_PREVIEW_APP_URL]: 'https://switch-dev.struyfconsulting.com/remote/',
+};
 
 /**
  * How a phone reaches this computer from anywhere:
@@ -662,7 +672,7 @@ export const RemoteStatus = z.object({
       z.object({ kind: z.literal('failed'), message: z.string() }),
     ])
     .nullable(),
-  /** Paired devices: phones, browsers on a computer, and Switchboard on other computers. */
+  /** Paired devices: phones, browsers on a computer, and Seshboard on other computers. */
   devices: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['phone', 'browser', 'computer']).default('phone'), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
   connections: z.array(z.object({ deviceId: z.string(), name: z.string(), since: z.number() })),
   /**

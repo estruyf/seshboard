@@ -7,7 +7,7 @@ export const SavedPromptId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, 'Use 
 
 /**
  * Where a saved prompt is kept: `global` in every project, `personal` in one project just for you (both in the
- * engine's database), or `shared` in one project's .switchboard.json, under `prompts`, for everyone who has it.
+ * engine's database), or `shared` in one project's .seshboard.json, under `prompts`, for everyone who has it.
  */
 export const PromptScope = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('global') }),

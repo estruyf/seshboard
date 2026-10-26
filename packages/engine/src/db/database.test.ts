@@ -10,7 +10,7 @@ import { migrations } from './migrations.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-db-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-db-'));
   dirs.push(dir);
   return dir;
 };

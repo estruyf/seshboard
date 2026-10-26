@@ -1,4 +1,4 @@
-import type { LiveSession } from '@switchboard/protocol/client';
+import type { LiveSession } from '@seshboard/protocol/client';
 
 const label: Record<LiveSession['status'], string> = {
   running: 'Claude is working',

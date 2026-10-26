@@ -1,4 +1,4 @@
-import { AUTO_TIERS, type AutoPick, type AutoTier } from '@switchboard/protocol/client';
+import { AUTO_TIERS, type AutoPick, type AutoTier } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../components/transcript/displayItems.ts';
 
 /** What a session shows of its size, read from the transcript alone (no model call). */

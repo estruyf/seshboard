@@ -8,7 +8,7 @@
 //                                        app-icons/<key>/ for the others (remoteIconDir in the protocol). Graphite's
 //                                        PNGs there are the ones the remote app always had, kept as they are.
 // Renders with Electron (app-icons.cjs), so it runs on any OS. The output is committed: builds don't run this.
-// Usage: npm run icon:variants -w @switchboard/desktop
+// Usage: npm run icon:variants -w @seshboard/desktop
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -63,7 +63,7 @@ for (const { key } of APP_ICONS) {
   );
 }
 
-const scratch = mkdtempSync(join(tmpdir(), 'switchboard-app-icons-'));
+const scratch = mkdtempSync(join(tmpdir(), 'seshboard-app-icons-'));
 try {
   const list = join(scratch, 'jobs.json');
   writeFileSync(list, JSON.stringify(jobs));

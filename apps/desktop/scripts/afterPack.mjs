@@ -16,7 +16,7 @@ export default async function afterPack(context) {
     if (!entry.endsWith('.app')) continue;
     const plist = join(frameworks, entry, 'Contents', 'Info.plist');
     if (!existsSync(plist)) continue;
-    // "Switchboard Helper (GPU).app" → "Switchboard Helper (GPU)"
+    // "Seshboard Helper (GPU).app" → "Seshboard Helper (GPU)"
     execFileSync('plutil', ['-replace', 'CFBundleName', '-string', entry.slice(0, -'.app'.length), plist]);
   }
 }

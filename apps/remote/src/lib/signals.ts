@@ -3,8 +3,8 @@
  * the dot.
  */
 
-/** "(2) Switchboard Remote", or in a session "(2) Publish the beta · Switchboard". */
+/** "(2) Seshboard Remote", or in a session "(2) Publish the beta · Seshboard". */
 export function tabTitle(needsYou: number, sessionTitle: string | null): string {
   const count = needsYou > 0 ? `(${needsYou}) ` : '';
-  return sessionTitle ? `${count}${sessionTitle} · Switchboard` : `${count}Switchboard Remote`;
+  return sessionTitle ? `${count}${sessionTitle} · Seshboard` : `${count}Seshboard Remote`;
 }

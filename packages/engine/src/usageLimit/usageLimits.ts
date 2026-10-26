@@ -1,4 +1,4 @@
-import { RpcError, type LimitResume, type LimitsState, type LogLevel, type ResumeAtLimit, type UsageLimitHit } from '@switchboard/protocol';
+import { RpcError, type LimitResume, type LimitsState, type LogLevel, type ResumeAtLimit, type UsageLimitHit } from '@seshboard/protocol';
 import type { LimitStore } from './limitStore.ts';
 import { MAX_RESUME_ATTEMPTS, resumeTime, type LimitStop } from './usageLimit.ts';
 

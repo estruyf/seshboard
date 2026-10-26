@@ -38,7 +38,7 @@ export interface ListingState {
   unread: boolean;
   /** The last activity. */
   updatedAt: number;
-  /** Open in Switchboard (a process idling elsewhere doesn't count). */
+  /** Open in Seshboard (a process idling elsewhere doesn't count). */
   openInApp: boolean;
 }
 

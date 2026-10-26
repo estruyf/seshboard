@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { newPairingSecret, pskFromSecret } from '@switchboard/protocol';
+import { newPairingSecret, pskFromSecret } from '@seshboard/protocol';
 
 /** How long a QR code can be scanned. */
 export const PAIRING_OFFER_MS = 2 * 60 * 1000;

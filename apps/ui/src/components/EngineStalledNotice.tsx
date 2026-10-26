@@ -14,7 +14,7 @@ export function EngineStalledNotice() {
       {/* The notice's tint is see-through; the overlay surface under it keeps the view behind from showing. */}
       <div className="max-w-md rounded-lg overlay">
         <Notice tone="caution" icon={<Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden />}>
-          Switchboard's engine isn't answering. Waiting for it…
+          Seshboard's engine isn't answering. Waiting for it…
         </Notice>
       </div>
     </div>

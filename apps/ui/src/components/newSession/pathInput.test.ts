@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FolderEntry, ProjectInfo } from '@switchboard/protocol/client';
+import type { FolderEntry, ProjectInfo } from '@seshboard/protocol/client';
 import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 
 const project = (root: string, name: string, added: boolean, sessionCount = 1, lastActivity = 1, exists = true): ProjectInfo => ({

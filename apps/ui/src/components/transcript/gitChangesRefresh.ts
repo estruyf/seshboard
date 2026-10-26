@@ -1,4 +1,4 @@
-import type { GitChanges } from '@switchboard/protocol/client';
+import type { GitChanges } from '@seshboard/protocol/client';
 
 /** How often the changed files are checked again while the window is visible. */
 export const GIT_POLL_MS = 5000;

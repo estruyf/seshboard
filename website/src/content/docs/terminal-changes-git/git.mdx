@@ -33,7 +33,7 @@ Switching uses `git switch`:
 - Uncommitted changes that don't conflict come along to the new branch.
 - When they would be overwritten, git refuses and you stay where you are, with git's message in the menu. Nothing is ever stashed or thrown away.
 - It waits while Claude is working in this folder. Stop Claude, or wait for it to finish, to switch.
-- When other sessions work in the same folder, Switchboard asks first, since they see the new branch too.
+- When other sessions work in the same folder, Seshboard asks first, since they see the new branch too.
 
 A session in a worktree has its own checkout, so it can't switch branches. Its branch button opens the [worktree menu](#finish-a-worktree) instead.
 
@@ -83,7 +83,7 @@ Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unst
 
 ### Create a pull request
 
-**Create PR…** opens the **Create pull request** dialog. You write the pull request in Switchboard, and it is created without a browser or a terminal.
+**Create PR…** opens the **Create pull request** dialog. You write the pull request in Seshboard, and it is created without a browser or a terminal.
 
 <Screenshot name="pr-dialog" alt="The Create pull request dialog over a session: feat/dark-mode into main with 3 commits and 3 files, the title Dark mode, the description from .github/pull_request_template.md, Draft, the counter 138 / 65,536 and Pushes 3 commits to origin first next to Cancel and Create pull request" />
 
@@ -91,13 +91,13 @@ Stage files in the [Changes panel](/terminal-changes-git/changes/#stage-and-unst
 
 1. Check the branches at the top: your branch, **into** the base branch. That is the project's **Default branch** or its **Worktree base** branch when it has one (its [Settings tab](/projects/settings/)), else the repository's default branch. Click the base branch to pick another one; type in **Filter branches** to find it. The line on the right says how many commits, files and lines the pull request has.
 2. Write the **Title**. It starts as the commit's message when the branch has one commit, otherwise as the branch name (`feat/sessions-archive` becomes *Sessions archive*).
-3. Write the **Description**. It starts from the repository's pull request template when it has one, otherwise from the list of commits. **From** on the right picks another start: each template, **Commit list** or **Empty**. When you have changed the text, Switchboard asks before it replaces it.
+3. Write the **Description**. It starts from the repository's pull request template when it has one, otherwise from the list of commits. **From** on the right picks another start: each template, **Commit list** or **Empty**. When you have changed the text, Seshboard asks before it replaces it.
 4. Tick **Draft** to open it as a draft.
 5. Click **Create pull request** or press <Kbd shortcut="pr.create" />.
 
 </Steps>
 
-Switchboard pushes the branch first, as the line at the bottom left says (*Pushes 3 commits to origin first*, or *Already pushed*). A branch without an upstream is published with `git push -u`. Then the [GitHub CLI](https://cli.github.com) creates the pull request. The footer shows each step, and the fields wait until it is done. A message then says **Pull request #123 created**, with **Open** and **Copy link**, and the git button shows **View PR #123**.
+Seshboard pushes the branch first, as the line at the bottom left says (*Pushes 3 commits to origin first*, or *Already pushed*). A branch without an upstream is published with `git push -u`. Then the [GitHub CLI](https://cli.github.com) creates the pull request. The footer shows each step, and the fields wait until it is done. A message then says **Pull request #123 created**, with **Open** and **Copy link**, and the git button shows **View PR #123**.
 
 Templates are found where GitHub looks for them: `pull_request_template.md` in `.github/`, the top folder or `docs/`, and every file in `.github/PULL_REQUEST_TEMPLATE/`.
 
@@ -107,7 +107,7 @@ GitHub takes a description of up to 65,536 characters. The counter under the des
 
 Everything you typed stays in the dialog. Close it without creating, and it comes back the next time you open it for the same branch.
 
-<Screenshot name="pr-dialog-error" alt="The Create pull request dialog with the notice Not signed in to GitHub. Sign in once in a terminal; Switchboard picks it up, and a Run gh auth login button" />
+<Screenshot name="pr-dialog-error" alt="The Create pull request dialog with the notice Not signed in to GitHub. Sign in once in a terminal; Seshboard picks it up, and a Run gh auth login button" />
 
 - **GitHub CLI isn't installed.** **How to install** opens the GitHub CLI's website. **Open on GitHub instead** pushes the branch and opens GitHub's page for a new pull request, with your title.
 - **Not signed in to GitHub.** **Run gh auth login** opens a terminal tab with the command typed in. Press <Kbd keys="enter" /> there, sign in, and open the dialog again.
@@ -118,20 +118,20 @@ Creating a pull request needs the GitHub CLI (`gh`), signed in to the account th
 
 ### Checks
 
-Once the branch has an open pull request, Switchboard shows its checks: the GitHub Actions jobs, and the statuses of other services, that run on the pull request.
+Once the branch has an open pull request, Seshboard shows its checks: the GitHub Actions jobs, and the statuses of other services, that run on the pull request.
 
 <Screenshot name="git-checks" alt="The git menu of feat/dark-mode with View PR #42 and a Checks group: test (ubuntu-latest) failed after 3m 42s with a Fix with Claude button on its row, deploy-preview running, build and lint passed, then Fix failing checks with Claude" />
 
 - **View PR #123** on the git button gets an icon: a green check when all checks passed, a red cross when one failed, a spinning circle while they run. Hover it to see how many, such as *1 of 5 checks failed* or *2 checks running*.
 - The git menu has a **Checks** group: each check with its workflow and how long it ran, failed ones first. Click a check to open it on GitHub. With more than eight checks, **N more on GitHub** opens the pull request's checks.
-- While checks run, Switchboard reads them again every 30 seconds, and every 5 minutes while none of its windows is in front. After a push, it looks for the new checks while GitHub starts them. An archived session no longer follows its checks, also when you open it, and gets no check notification.
+- While checks run, Seshboard reads them again every 30 seconds, and every 5 minutes while none of its windows is in front. After a push, it looks for the new checks while GitHub starts them. An archived session no longer follows its checks, also when you open it, and gets no check notification.
 - When the checks finish while you are in another session or app, a notification says **Checks failed on PR #123** or **Checks passed on PR #123**. Click it to open the session. With [sounds](/settings/notifications/#sounds) on, failed checks play the sound for **Stopped with an error**, and passed ones the sound for **Project action ended**.
 
 #### Fix failing checks with Claude
 
 **Fix failing checks with Claude**, under the checks in the git menu, hands the failed checks to Claude. A failed check's row has its own **Fix with Claude** button, for that check only. The command palette has *Fix failing checks with Claude* too.
 
-Switchboard reads the end of each failed job's log on GitHub: its last 150 lines, without colours and timestamps. It puts a prompt in the session's message box that names the checks, with each log as a chip under it, so the box stays short and Claude gets the whole log. A check that isn't a GitHub Actions job, such as a deployment, is named with its description and link.
+Seshboard reads the end of each failed job's log on GitHub: its last 150 lines, without colours and timestamps. It puts a prompt in the session's message box that names the checks, with each log as a chip under it, so the box stays short and Claude gets the whole log. A check that isn't a GitHub Actions job, such as a deployment, is named with its description and link.
 
 Nothing is sent yet: add to the prompt if you like, then send it. While Claude is working, it waits in Up next like any message you send then.
 
@@ -168,7 +168,7 @@ It also waits while a session is working in the main checkout.
 
 ### Remove the worktree
 
-**Remove worktree…** deletes the worktree's folder and stops this session in Switchboard. The conversation stays in your history.
+**Remove worktree…** deletes the worktree's folder and stops this session in Seshboard. The conversation stays in your history.
 
 **Also delete the branch** is on by default. When the branch has commits that aren't in the base branch and aren't pushed, the confirmation warns that deleting the branch loses them. Untick it to keep the branch.
 
@@ -180,9 +180,9 @@ To see and clean up all of a project's worktrees at once, use the [Worktrees tab
 
 ## Settings
 
-Git has no settings in Switchboard. It uses your own git configuration, credentials and environment (your login shell's on a Mac, the one Windows gives apps on a PC), so ssh keys and credential helpers work as in your terminal.
+Git has no settings in Seshboard. It uses your own git configuration, credentials and environment (your login shell's on a Mac, the one Windows gives apps on a PC), so ssh keys and credential helpers work as in your terminal.
 
-On Windows, Switchboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). **Create PR** runs git and `gh` directly, without a shell, so it works the same with Windows PowerShell 5.1 and PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).
+On Windows, Seshboard needs [Git for Windows](https://gitforwindows.org). It runs git with `core.longpaths` on, so files whose full path is longer than 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). **Create PR** runs git and `gh` directly, without a shell, so it works the same with Windows PowerShell 5.1 and PowerShell 7. A project's default branch for new sessions is on its [Settings tab](/projects/settings/).
 
 ## Related
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemotePrompt, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt, RemoteSession } from '@seshboard/protocol/remote-client';
 import { filterCounts, filterList, matchesSearch, visibleFilter } from './filter.ts';
 
 const session = (id: string, status: RemoteSession['status'], extra: Partial<RemoteSession> = {}): RemoteSession => ({

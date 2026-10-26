@@ -1,4 +1,4 @@
-import { COLOR_PATTERN, overlayShadow, type RemoteTheme } from '@switchboard/protocol/remote-client';
+import { COLOR_PATTERN, overlayShadow, type RemoteTheme } from '@seshboard/protocol/remote-client';
 
 /**
  * A computer's theme on the phone (docs/remote-access.md, Theme). The computer sends every token of both modes,

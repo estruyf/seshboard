@@ -7,7 +7,7 @@ import { readJsonFile, writeFileAtomic } from './jsonFile.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-json-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-json-'));
   dirs.push(dir);
   return dir;
 };

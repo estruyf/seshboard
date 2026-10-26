@@ -1,7 +1,7 @@
-import { REMOTE_ATTACHMENT_BYTES, REMOTE_FEATURE_ATTACHMENTS, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES, type RemoteFile, type RemoteImage } from '@switchboard/protocol/remote-client';
+import { REMOTE_ATTACHMENT_BYTES, REMOTE_FEATURE_ATTACHMENTS, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES, type RemoteFile, type RemoteImage } from '@seshboard/protocol/remote-client';
 
 /**
- * What a message to the computer carries: images (resized, `lib/images.ts`) and, from a Switchboard that says
+ * What a message to the computer carries: images (resized, `lib/images.ts`) and, from a Seshboard that says
  * `REMOTE_FEATURE_ATTACHMENTS`, files as they are. Together they fit `REMOTE_ATTACHMENT_BYTES` of base64, the most one
  * line of the channel takes. Older computers take images with `session.send` only. The planning is pure, with tests.
  */
@@ -50,7 +50,7 @@ export function fileName(name: string): string {
 export function placeFor(file: { type: string; size: number; name: string }, items: readonly Attachment[], accepts: Accepts): { as: 'image' | 'file' } | { skip: string } {
   const image = file.type.startsWith('image/');
   if (image && accepts.images && count(items, 'image') < REMOTE_MAX_IMAGES) return { as: 'image' };
-  if (!accepts.files) return { skip: image && accepts.images ? `A message takes up to ${REMOTE_MAX_IMAGES} images.` : 'Update Switchboard on your computer to send files.' };
+  if (!accepts.files) return { skip: image && accepts.images ? `A message takes up to ${REMOTE_MAX_IMAGES} images.` : 'Update Seshboard on your computer to send files.' };
   if (count(items, 'file') >= REMOTE_MAX_FILES) return { skip: `A message takes up to ${REMOTE_MAX_FILES} files.` };
   if (base64Length(file.size) > REMOTE_ATTACHMENT_BYTES - attachedBytes(items)) return { skip: `${file.name || 'That file'} is too big to send. A message takes ${megabytes(REMOTE_ATTACHMENT_BYTES)} in all.` };
   return { as: 'file' };

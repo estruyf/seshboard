@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_PREVIEW_BYTES, RpcError } from '@switchboard/protocol';
+import { MAX_PREVIEW_BYTES, RpcError } from '@seshboard/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { inlineHtmlImages, readPreview, readPreviewImage, sniffImage, withPreviewCsp } from './filePreview.ts';
 

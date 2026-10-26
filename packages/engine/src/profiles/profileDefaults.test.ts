@@ -10,7 +10,7 @@ const unset = { model: null, effort: null, permissionMode: null, workspace: null
 
 let base: string;
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-profile-defaults-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-profile-defaults-')));
 });
 afterEach(() => rmSync(base, { recursive: true, force: true }));
 

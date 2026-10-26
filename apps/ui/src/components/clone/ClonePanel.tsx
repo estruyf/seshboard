@@ -1,6 +1,6 @@
 import { CheckCircle2, FolderDown, GitBranch } from 'lucide-react';
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
+import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { canClone, planLine, progressLine } from './cloneModel.ts';
