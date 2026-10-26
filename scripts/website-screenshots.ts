@@ -2533,9 +2533,9 @@ const demoMods = ['agent-watch', 'pr-status'].map((name) => {
   return folder;
 });
 mkdirSync(join(world.home, '.claude-mods'));
-mkdirSync(join(modsDir, 'switchboard'));
+mkdirSync(join(modsDir, 'seshboard'));
 const modsStarted = join(modsDir, 'started.json');
-const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'switchboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
+const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'seshboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
 
 const electronPath = createRequire(join(appDir, 'package.json'))('electron') as unknown as string;
 const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;

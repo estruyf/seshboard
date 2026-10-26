@@ -15,7 +15,7 @@ import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
-import { adoptLegacyEnv, legacyDataFolder } from './rename.ts';
+import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
@@ -57,7 +57,7 @@ if (process.argv.includes('--version')) {
 }
 
 /** The running build. The commit is baked in at build time (electron.vite.config.ts). */
-const appInfo: AppInfo = { version: app.getVersion(), commit: __SESHBOARD_COMMIT__ || null, dev: !app.isPackaged };
+const appInfo: AppInfo = { version: app.getVersion(), commit: __SESHBOARD_COMMIT__ || null, dev: !app.isPackaged, fromSwitchboard: false };
 ipcMain.on(IpcChannel.getAppInfo, (event) => {
   event.returnValue = appInfo;
 });
@@ -90,8 +90,9 @@ if (scripted) {
 // The single-instance lock belongs to the data folder. Development builds keep their own ("Seshboard Dev"), so
 // `npm run dev` starts next to the installed app instead of handing over to it, and a newer migration never touches
 // the installed app's database. SESHBOARD_DATA_DIR picks another folder, for a second dev build (another worktree).
-// Before the rename the folders were called Switchboard and Switchboard Dev: the old one moves to the new name the
-// first time, or stays in use where it is when it can't (rename.ts). A development build never moves the installed app's.
+// Before the rename the folders were called Switchboard and Switchboard Dev: the old one moves to the new name (or into
+// the new folder, when one without data is there already) the first time, or stays in use where it is while a running
+// copy uses it or it can't move (rename.ts). A development build never moves the installed app's.
 if (!scripted) {
   const appData = app.getPath('appData');
   let dataDir = process.env.SESHBOARD_DATA_DIR || (app.isPackaged ? undefined : legacyDataFolder(join(appData, 'Seshboard Dev'), join(appData, 'Switchboard Dev')));
@@ -107,6 +108,9 @@ if (!scripted) {
     app.setPath('userData', dataDir);
   }
 }
+// The window explains the rename once to people whose data comes from Switchboard. Scripted runs use a throwaway
+// profile, so the smoke test asks for it (SESHBOARD_SMOKE_FROM_SWITCHBOARD).
+appInfo.fromSwitchboard = scripted ? process.env.SESHBOARD_SMOKE_FROM_SWITCHBOARD === '1' : cameFromSwitchboard(app.getPath('userData'));
 
 // A second launch hands its arguments to the running instance (its second-instance event) and stops here.
 // app.quit() would let this module run on: the updater would delete the running instance's update marker and
@@ -10020,7 +10024,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
-  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 90_000 });
+  // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.
+  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 150_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });

@@ -665,6 +665,8 @@ export interface AppInfo {
   commit: string | null;
   /** A development or unpackaged build: show `dev`, never a release number. */
   dev: boolean;
+  /** The data folder is the one Switchboard used (the app's name before 1.2.0): the window explains the rename once. */
+  fromSwitchboard: boolean;
 }
 
 /** `releases/tag/v…` for a version, where its release notes are. */
