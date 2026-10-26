@@ -1,4 +1,5 @@
 import type { LaterItem, QueueStarted, QueueWaitFor, SessionOutcome } from './later.ts';
+import { safeLocale } from './locale.ts';
 import { trimTrailingSeparators } from './paths.ts';
 import type { UsageLimitHit } from './usageLimit.ts';
 
@@ -84,6 +85,7 @@ export function promptLabel(prompt: string, max = 48): string {
 
 /** "15:16" today, or "Mon 15:16" further away. `locale` is for tests; the app uses the system's. */
 export function clockTime(at: number, now = Date.now(), locale?: string): string {
+  locale = safeLocale(locale);
   const time = new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
   return sameDay ? time : `${new Date(at).toLocaleDateString(locale, { weekday: 'short' })} ${time}`;

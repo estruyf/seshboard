@@ -1,4 +1,5 @@
 import { utilityProcess, type MessagePortMain, type UtilityProcess } from 'electron';
+import { guarded } from './guarded.ts';
 
 export interface EngineProcessOptions {
   entry: string;
@@ -51,11 +52,14 @@ export class EngineProcess {
       if (this.stopping) return;
       const delay = Math.min(10_000, 200 * 2 ** this.consecutiveCrashes++);
       console.error(`[main] engine exited with code ${code}; restarting in ${delay}ms`);
-      setTimeout(() => {
-        if (this.stopping) return;
-        this.start();
-        this.options.onRestarted();
-      }, delay);
+      setTimeout(
+        guarded('engine restart', () => {
+          if (this.stopping) return;
+          this.start();
+          this.options.onRestarted();
+        }),
+        delay,
+      );
     });
   }
 

@@ -34,6 +34,7 @@ import { ThemeStore } from './themes.ts';
 import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
+import { guarded } from './guarded.ts';
 import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } from './windowState.ts';
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
@@ -9842,7 +9843,7 @@ app.whenReady().then(() => {
   // comes before the next window's focus, so it looks once that has settled.
   const sendForeground = () => engine.sendStanding({ type: 'foreground', foreground: BrowserWindow.getFocusedWindow() !== null });
   app.on('browser-window-focus', sendForeground);
-  app.on('browser-window-blur', () => setTimeout(sendForeground, 100));
+  app.on('browser-window-blur', () => setTimeout(guarded('foreground update', sendForeground), 100));
   // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
   // sees a clock or time zone change within a minute.
   powerMonitor.on('resume', () => engine.send({ type: 'wake' }));

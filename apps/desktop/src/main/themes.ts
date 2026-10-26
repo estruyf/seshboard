@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
 import { DEFAULT_THEME_ID, parseColor, parseJsonc, parseThemeFile, THEME_SCHEMA_URL, themeSlug, toHex, uniqueThemeName, type ThemeEntry, type ThemeFile, type ThemeFileCheck, type ThemeState } from '@switchboard/protocol/theme';
+import { guarded } from './guarded.ts';
 import { writeFileAtomic } from './jsonFile.ts';
 
 /** A theme file is a few KB; anything this big isn't one. */
@@ -138,10 +139,13 @@ export class ThemeStore {
         clearTimeout(this.#timers.get(name));
         this.#timers.set(
           name,
-          setTimeout(() => {
-            this.#timers.delete(name);
-            this.#reload(name);
-          }, RELOAD_DEBOUNCE_MS),
+          setTimeout(
+            guarded('theme reload', () => {
+              this.#timers.delete(name);
+              this.#reload(name);
+            }),
+            RELOAD_DEBOUNCE_MS,
+          ),
         );
       });
       this.#watcher.on('error', () => this.close());

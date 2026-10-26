@@ -49,6 +49,8 @@ export class CacheReminder {
       now?: () => number;
       setTimer?: (run: () => void, ms: number) => ReturnType<typeof setTimeout>;
       clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
+      /** Where a reminder that failed is logged (the console's error). */
+      log?: (message: string, error: unknown) => void;
     },
   ) {}
 
@@ -73,19 +75,27 @@ export class CacheReminder {
     this.#timer = undefined;
   }
 
-  /** Sends what is due now, then waits for the next one. */
+  /**
+   * Sends what is due now, then waits for the next one. It runs on a timer in the main process, where a throw shows a
+   * crash dialog: a reminder that fails (a formatting bug, say) is logged and skipped, and the next host update
+   * schedules the rest again.
+   */
   check(): void {
-    const now = this.#now();
-    const prefs = this.options.prefs();
-    for (const host of this.#hosts.values()) {
-      const due = reminderDue(host, prefs.contextWarning);
-      const key = `${host.sessionId}:${host.cacheAt}`;
-      if (due === null || due > now || this.#reminded.has(key) || now >= cacheExpiresAt(host.cacheAt!, '1h')) continue;
-      this.#reminded.add(key);
-      const usd = prefs.showCost && host.model && host.contextTokens ? cacheRewriteCost(host.contextTokens, host.model, '1h') : null;
-      this.options.remind({ sessionId: host.sessionId, tokens: host.contextTokens ? compact(host.contextTokens) : `${Math.round(host.contextPercent ?? 0)}%`, cost: usd === null ? null : `≈${formatCost(usd, prefs.costCurrency, prefs.locale)}` });
+    try {
+      const now = this.#now();
+      const prefs = this.options.prefs();
+      for (const host of this.#hosts.values()) {
+        const due = reminderDue(host, prefs.contextWarning);
+        const key = `${host.sessionId}:${host.cacheAt}`;
+        if (due === null || due > now || this.#reminded.has(key) || now >= cacheExpiresAt(host.cacheAt!, '1h')) continue;
+        this.#reminded.add(key);
+        const usd = prefs.showCost && host.model && host.contextTokens ? cacheRewriteCost(host.contextTokens, host.model, '1h') : null;
+        this.options.remind({ sessionId: host.sessionId, tokens: host.contextTokens ? compact(host.contextTokens) : `${Math.round(host.contextPercent ?? 0)}%`, cost: usd === null ? null : `≈${formatCost(usd, prefs.costCurrency, prefs.locale)}` });
+      }
+      this.schedule(false);
+    } catch (error) {
+      (this.options.log ?? console.error)('[main] cache reminder failed', error);
     }
-    this.schedule(false);
   }
 
   #now(): number {

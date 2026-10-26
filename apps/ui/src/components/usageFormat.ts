@@ -1,4 +1,4 @@
-import { formatCost, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@switchboard/protocol/client';
+import { formatCost, safeLocale, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@switchboard/protocol/client';
 
 /** "5h", "7d", "7d · Fable" for the server's meter kinds. */
 export function limitLabel(limit: UsageLimit): string {
@@ -23,6 +23,7 @@ export function countdown(resetsAt: number, now = Date.now()): string {
  * weekday ("Mon"). `locale` is for tests; the app uses the system's.
  */
 export function resetLabel(resetsAt: number, now = Date.now(), locale?: string): string {
+  locale = safeLocale(locale);
   const minutes = Math.max(0, Math.round((resetsAt - now) / 60_000));
   if (minutes < 1) return 'now';
   if (minutes >= 24 * 60) return new Date(resetsAt).toLocaleDateString(locale, { weekday: 'short' });
