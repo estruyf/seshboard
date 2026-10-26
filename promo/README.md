@@ -55,7 +55,7 @@ check they're the demo's and delete them.
 - The app keeps its database and preferences in a throwaway data folder (`SESHBOARD_DATA_DIR`), and the Claude
   Code update check reads a mock registry.
 - VS Code runs with its own profile and extensions folder, and with HOME pointed at the demo. Its companion is
-  told where the demo app's data is (`switchboard.appDataFolder`, which replaces where it would otherwise look),
+  told where the demo app's data is (`seshboard.appDataFolder`, which replaces where it would otherwise look),
   and the capture clicks nothing until the companion's status bar item says it's connected. Otherwise it would
   open Seshboard itself (`open -b`), and that would be your real app.
 - Both apps run with `--use-mock-keychain`. With HOME pointed at the demo, macOS can't find your login keychain

@@ -14,7 +14,7 @@ import { focusedTarget, folderFor, isWithin, sessionRow, statusBarView } from '.
 const APP_ID = 'dev.switchboard.app';
 const DOWNLOAD_URL = 'https://github.com/estruyf/switchboard/releases/latest';
 
-const config = () => vscode.workspace.getConfiguration('switchboard');
+const config = () => vscode.workspace.getConfiguration('seshboard');
 const workspaceFolders = () => (vscode.workspace.workspaceFolders ?? []).filter((f) => f.uri.scheme === 'file').map((f) => f.uri.fsPath);
 
 /**
@@ -34,7 +34,8 @@ const run = (command: string, args: string[], cwd?: string) =>
 
 /**
  * Opens a `switchboard://` link with whichever Seshboard the system knows: `open` on macOS, the shell's URL handler
- * on Windows (no shell in between, so nothing in the link is read as a command), `xdg-open` on Linux.
+ * on Windows (no shell in between, so nothing in the link is read as a command), `xdg-open` on Linux. Seshboard
+ * takes `seshboard://` links too, but versions from before the rename only know `switchboard://`.
  */
 const openLink = (link: string) =>
   process.platform === 'win32' ? run('rundll32.exe', ['url.dll,FileProtocolHandler', link]) : run(process.platform === 'darwin' ? 'open' : 'xdg-open', [link]);
@@ -42,7 +43,35 @@ const openLink = (link: string) =>
 /** Brings Seshboard up without changing what it shows: by its bundle id on macOS, with `switchboard://show` elsewhere. */
 const showApp = () => (process.platform === 'darwin' ? run('open', ['-b', APP_ID]) : openLink('switchboard://show'));
 
+/** The settings, which were `switchboard.*` before the rename. */
+const SETTINGS = ['bringToFront', 'statusBar', 'prompts', 'quickFix', 'editorTitleButton', 'appDataFolder'] as const;
+
+/**
+ * Copies `switchboard.*` settings to their `seshboard.*` names, once for the user settings and once per workspace,
+ * unless the new name already has a value there. The old values stay: VS Code only writes settings an extension
+ * declares. The App Data Folder is application scoped, so only the user settings count for it.
+ */
+async function moveSettings(context: vscode.ExtensionContext): Promise<void> {
+  const before = vscode.workspace.getConfiguration('switchboard');
+  const after = vscode.workspace.getConfiguration('seshboard');
+  const scopes = [
+    { state: context.globalState, target: vscode.ConfigurationTarget.Global, value: 'globalValue' },
+    { state: context.workspaceState, target: vscode.ConfigurationTarget.Workspace, value: 'workspaceValue' },
+  ] as const;
+  for (const { state, target, value } of scopes) {
+    if (state.get('settingsMoved') || (target === vscode.ConfigurationTarget.Workspace && !vscode.workspace.workspaceFolders)) continue;
+    for (const key of SETTINGS) {
+      if (key === 'appDataFolder' && target !== vscode.ConfigurationTarget.Global) continue;
+      const old = before.inspect(key)?.[value];
+      if (old === undefined || after.inspect(key)?.[value] !== undefined) continue;
+      await after.update(key, old, target).then(undefined, () => {});
+    }
+    await state.update('settingsMoved', true);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  void moveSettings(context);
   const output = vscode.window.createOutputChannel('Seshboard', { log: true });
   const connection = new SeshboardConnection({
     appDataFolder: () => config().get<string>('appDataFolder', ''),
@@ -105,9 +134,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
-  const command = (id: string, handler: (...args: never[]) => unknown) => context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+  // The commands were `switchboard.*` before the rename: the old ids still run, for keybindings made with them.
+  const command = (name: string, handler: (...args: never[]) => unknown) =>
+    context.subscriptions.push(vscode.commands.registerCommand(`seshboard.${name}`, handler), vscode.commands.registerCommand(`switchboard.${name}`, handler));
 
-  command('switchboard.addSelection', async () => {
+  command('addSelection', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return void vscode.window.showInformationMessage('Open a file first.');
     const { document } = editor;
@@ -117,7 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   // The quick fix on an error or warning: the problem, and the lines it is on.
-  command('switchboard.fixProblems', async (uri?: vscode.Uri, diagnostics?: vscode.Diagnostic[]) => {
+  command('fixProblems', async (uri?: vscode.Uri, diagnostics?: vscode.Diagnostic[]) => {
     const editor = vscode.window.activeTextEditor;
     const target = uri ?? editor?.document.uri;
     if (!target || target.scheme !== 'file') return void vscode.window.showInformationMessage('Open a file first.');
@@ -134,15 +165,15 @@ export function activate(context: vscode.ExtensionContext): void {
     await send([...(await rangeItems(document, [lines])), problems]);
   });
 
-  command('switchboard.addFile', async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+  command('addFile', async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
     const picked = uris?.length ? uris : uri ? [uri] : vscode.window.activeTextEditor ? [vscode.window.activeTextEditor.document.uri] : [];
     await send(await resources(picked));
   });
 
-  command('switchboard.addOpenEditors', async () => send(await resources(vscode.window.tabGroups.all.flatMap((group) => group.tabs.map(tabUri)))));
-  command('switchboard.addEditorGroup', async () => send(await resources(vscode.window.tabGroups.activeTabGroup.tabs.map(tabUri))));
+  command('addOpenEditors', async () => send(await resources(vscode.window.tabGroups.all.flatMap((group) => group.tabs.map(tabUri)))));
+  command('addEditorGroup', async () => send(await resources(vscode.window.tabGroups.activeTabGroup.tabs.map(tabUri))));
 
-  command('switchboard.addProblems', async (uri?: vscode.Uri) => {
+  command('addProblems', async (uri?: vscode.Uri) => {
     const target = uri ?? vscode.window.activeTextEditor?.document.uri;
     if (!target || target.scheme !== 'file') return void vscode.window.showInformationMessage('Open a file first.');
     const item = problemsItem(toProblems([[target, vscode.languages.getDiagnostics(target)]]), shortPath, target.fsPath);
@@ -150,7 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await send([item]);
   });
 
-  command('switchboard.addWorkspaceProblems', async () => {
+  command('addWorkspaceProblems', async () => {
     const folders = workspaceFolders();
     const all = vscode.languages.getDiagnostics().filter(([uri]) => uri.scheme === 'file' && (folders.length === 0 || folderFor(uri.fsPath, folders)));
     const item = problemsItem(toProblems(all), shortPath, null);
@@ -158,7 +189,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await send([item], folders[0] ?? null);
   });
 
-  command('switchboard.addTerminalSelection', async () => {
+  command('addTerminalSelection', async () => {
     const terminal = vscode.window.activeTerminal;
     if (!terminal) return void vscode.window.showInformationMessage('Open a terminal first.');
     const item = terminalItem((await terminalSelection(terminal)) ?? '', terminal.name);
@@ -167,7 +198,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await send([item], cwd ?? workspaceFolders()[0] ?? null);
   });
 
-  command('switchboard.addChanges', async (...args: unknown[]) => {
+  command('addChanges', async (...args: unknown[]) => {
     const uris = args.length ? scmUris(args) : await gitChanges();
     if (uris.length === 0) return void vscode.window.showInformationMessage('No changed files to add.');
     await send(await resources(uris));
@@ -183,19 +214,19 @@ export function activate(context: vscode.ExtensionContext): void {
     if (target?.kind === 'session') await client.call('session.reveal', { sessionId: target.sessionId });
     else if (target?.kind === 'new') await openLink(`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`);
   };
-  command('switchboard.showSessions', () => showSessions().catch((error: Error) => vscode.window.showErrorMessage(`Couldn't reach Seshboard: ${error.message}`)));
-  command('switchboard.answerPrompts', async () => {
+  command('showSessions', () => showSessions().catch((error: Error) => vscode.window.showErrorMessage(`Couldn't reach Seshboard: ${error.message}`)));
+  command('answerPrompts', async () => {
     const client = await connection.connect();
     if (!client) return void showOffline(connection);
     const snapshot = await client.call('sessions.list', { folders: workspaceFolders() });
     if (prompts.showAll(snapshot) === 0) void vscode.window.showInformationMessage('Nothing in this workspace is waiting for you in Seshboard.');
   });
-  command('switchboard.reconnect', async () => {
+  command('reconnect', async () => {
     const client = await connection.reconnect();
     if (client) vscode.window.setStatusBarMessage('$(check) Connected to Seshboard', 3_000);
     else showOffline(connection);
   });
-  command('switchboard.statusBarClick', async () => {
+  command('statusBarClick', async () => {
     const reveal = statusBar.view.reveal;
     const client = connection.client;
     if (reveal && client) await client.call('session.reveal', { sessionId: reveal }).catch(() => showSessions());
@@ -206,8 +237,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new FixInSeshboard(), { providedCodeActionKinds: FixInSeshboard.kinds }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => statusBar.watch()),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('switchboard.appDataFolder')) void connection.reconnect();
-      if (event.affectsConfiguration('switchboard.statusBar')) statusBar.render();
+      if (event.affectsConfiguration('seshboard.appDataFolder')) void connection.reconnect();
+      if (event.affectsConfiguration('seshboard.statusBar')) statusBar.render();
     }),
   );
   void connection.connect();
@@ -217,7 +248,7 @@ export function deactivate(): void {}
 
 /** The status bar item: what needs you in Seshboard for this workspace, kept up to date by the engine. */
 class StatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('switchboard.status', vscode.StatusBarAlignment.Left, 0);
+  private readonly item = vscode.window.createStatusBarItem('seshboard.status', vscode.StatusBarAlignment.Left, 0);
   private snapshot: CompanionSessions | null = null;
   private off: (() => void) | null = null;
   private readonly stop: () => void;
@@ -228,7 +259,7 @@ class StatusBar implements vscode.Disposable {
     private readonly onSnapshot: (snapshot: CompanionSessions | null) => void,
   ) {
     this.item.name = 'Seshboard';
-    this.item.command = 'switchboard.statusBarClick';
+    this.item.command = 'seshboard.statusBarClick';
     this.stop = connection.onChange(() => this.watch());
     this.render();
   }
@@ -288,7 +319,7 @@ class FixInSeshboard implements vscode.CodeActionProvider {
     if (diagnostics.length === 0) return [];
     const action = new vscode.CodeAction('Fix in Seshboard', vscode.CodeActionKind.QuickFix);
     action.diagnostics = diagnostics;
-    action.command = { command: 'switchboard.fixProblems', title: 'Fix in Seshboard', arguments: [document.uri, diagnostics] };
+    action.command = { command: 'seshboard.fixProblems', title: 'Fix in Seshboard', arguments: [document.uri, diagnostics] };
     return [action];
   }
 }

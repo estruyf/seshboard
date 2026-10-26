@@ -11,7 +11,7 @@ export type ConnectionState =
   | { kind: 'offline'; reason: 'not-running' | 'incompatible' | 'failed'; detail: string };
 
 export interface ConnectionOptions {
-  /** `switchboard.appDataFolder`: where to look for `engine.json` instead of the usual places. */
+  /** `seshboard.appDataFolder`: where to look for `engine.json` instead of the usual places. */
   appDataFolder(): string;
   version: string;
   log(message: string): void;

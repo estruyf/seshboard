@@ -276,7 +276,7 @@ try {
     // finds none, and that would be the real app. Its status bar item says "Seshboard isn't running" until then.
     await editor
       .waitForFunction(() => {
-        const label = document.getElementById('eliostruyf.switchboard-companion.switchboard.status')?.getAttribute('aria-label');
+        const label = document.getElementById('eliostruyf.switchboard-companion.seshboard.status')?.getAttribute('aria-label');
         return label && !label.includes("isn't running");
       }, null, { timeout: 90_000 })
       .catch(async () => {

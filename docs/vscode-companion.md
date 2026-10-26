@@ -19,9 +19,9 @@ This page is about how it works. For what it does and how to use it, see the ext
    `<app data>` is `~/Library/Application Support/Seshboard` for the installed app and `Seshboard Dev` for `npm run dev` (`%APPDATA%\Seshboard` on Windows, `~/.config/Seshboard` on Linux). The socket is not in the app data folder because macOS limits socket paths to 104 bytes.
 
    Windows has no Unix sockets: there the engine listens on a named pipe with a random name (`\\.\pipe\switchboard-<32 hex characters>`), and `socket` in `engine.json` is that name. File modes don't apply there; `%APPDATA%` is only readable by your account, and the token is what lets an editor in.
-2. The extension reads `engine.json` (the installed app's first, then the dev build's, or the folder in `switchboard.appDataFolder`), skips a file whose process is gone, connects, and sends `hello` with the token.
+2. The extension reads `engine.json` (the installed app's first, then the dev build's, or the folder in `seshboard.appDataFolder`), skips a file whose process is gone, connects, and sends `hello` with the token.
 3. The engine closes any connection whose first message isn't `hello` with the right token (compared in constant time), or that says nothing for 5 seconds. Every message after that is validated against the contract; a line that isn't JSON, or is longer than 8 MB, closes the connection too.
-4. When Seshboard isn't running, the extension opens it (`open -b dev.switchboard.app`, or a `seshboard://new-session?cwd=…` link for a build macOS knows by its scheme only) and waits up to 20 seconds for `engine.json` to appear.
+4. When Seshboard isn't running, the extension opens it (`open -b dev.switchboard.app`, or a `switchboard://new-session?cwd=…` link for a build macOS knows by its scheme only; every version of the app takes that scheme) and waits up to 20 seconds for `engine.json` to appear.
 
 The engine process is stopped when Seshboard quits, so `engine.json` can stay behind: the extension ignores a file whose process is gone, and the next start replaces it and removes the old socket's folder. `SESHBOARD_NO_COMPANION=1` starts the engine without the socket.
 
@@ -42,7 +42,7 @@ A context item (`packages/protocol/src/context.ts`) is a file or folder by refer
 
 ## Prompts
 
-The engine re-sends `sessions.changed` when a prompt appears or is answered (`session.permission`, `session.permissionResolved`). The extension (`promptNotifier.ts`, with the pure parts in `prompts.ts`) announces each new prompt once as a warning notification: a permission with Allow, Always allow and Deny…; a question with Answer… (a quick pick per question) and Skip; a plan with Read the plan (a read-only Markdown preview under the `switchboard-plan:` scheme), then Approve or Keep planning…. VS Code can't close a notification itself, so one answered in Seshboard stays until you click it, and then says it was already answered. `switchboard.prompts` turns the notifications off.
+The engine re-sends `sessions.changed` when a prompt appears or is answered (`session.permission`, `session.permissionResolved`). The extension (`promptNotifier.ts`, with the pure parts in `prompts.ts`) announces each new prompt once as a warning notification: a permission with Allow, Always allow and Deny…; a question with Answer… (a quick pick per question) and Skip; a plan with Read the plan (a read-only Markdown preview under the `seshboard-plan:` scheme), then Approve or Keep planning…. VS Code can't close a notification itself, so one answered in Seshboard stays until you click it, and then says it was already answered. `seshboard.prompts` turns the notifications off.
 
 `prompts` is optional in the contract, so an older engine just has none, and an older extension ignores it; `prompt.respond` on an older engine fails with `METHOD_NOT_FOUND`, which the extension reports as "Update Seshboard". The protocol version stays 1.
 

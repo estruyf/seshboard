@@ -66,12 +66,12 @@ The connection is a socket only your user account can open, with a token Seshboa
 
 | Setting | What it does |
 |---|---|
-| `switchboard.bringToFront` | Bring Seshboard to the front on the session when you add something (on by default). Turn it off to add context quietly. |
-| `switchboard.statusBar` | Show the status bar item (on by default). |
-| `switchboard.prompts` | Show prompts, questions and plans from this workspace's sessions as notifications you can answer (on by default). |
-| `switchboard.quickFix` | Offer **Fix in Seshboard** in the quick fixes of errors and warnings (on by default). |
-| `switchboard.editorTitleButton` | A button in the editor title bar that adds the selection or the file (off by default). |
-| `switchboard.appDataFolder` | Where Seshboard keeps its data, for a build started with `SESHBOARD_DATA_DIR`. |
+| `seshboard.bringToFront` | Bring Seshboard to the front on the session when you add something (on by default). Turn it off to add context quietly. |
+| `seshboard.statusBar` | Show the status bar item (on by default). |
+| `seshboard.prompts` | Show prompts, questions and plans from this workspace's sessions as notifications you can answer (on by default). |
+| `seshboard.quickFix` | Offer **Fix in Seshboard** in the quick fixes of errors and warnings (on by default). |
+| `seshboard.editorTitleButton` | A button in the editor title bar that adds the selection or the file (off by default). |
+| `seshboard.appDataFolder` | Where Seshboard keeps its data, for a build started with `SESHBOARD_DATA_DIR`. |
 
 ## Commands
 

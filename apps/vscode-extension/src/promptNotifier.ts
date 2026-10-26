@@ -5,7 +5,7 @@ import { alwaysText, newPrompts, promptKind, promptMessage, promptPlan, promptQu
 
 const DECLINED = 'The user declined this action.';
 /** Plans open read-only in a Markdown preview under this scheme; the query is the prompt's request id. */
-const PLAN_SCHEME = 'switchboard-plan';
+const PLAN_SCHEME = 'seshboard-plan';
 
 /**
  * Seshboard's prompts for this workspace (permissions, questions, plans) as notifications you can answer here.

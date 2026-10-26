@@ -255,7 +255,7 @@ const CODE_PORT = 9339;
  *  companion loaded from apps/vscode-extension) on `folder`, with `file` open.
  *
  *  It can only ever reach the Seshboard opened by `openApp`: the companion's
- *  `switchboard.appDataFolder` points at that app's data folder, which replaces
+ *  `seshboard.appDataFolder` points at that app's data folder, which replaces
  *  the usual places it looks rather than adding to them, and HOME is the demo
  *  home, where no other Seshboard keeps its data either. */
 export async function openCode({ dataDir, folder, file }) {
@@ -335,9 +335,9 @@ export async function openCode({ dataDir, folder, file }) {
 
 /** VS Code as it comes, minus what would sit over the shot: no AI side bar, no tips, no update or git prompts. */
 const CODE_SETTINGS = (dataDir) => ({
-  'switchboard.appDataFolder': dataDir,
-  'switchboard.editorTitleButton': true,
-  'switchboard.bringToFront': false,
+  'seshboard.appDataFolder': dataDir,
+  'seshboard.editorTitleButton': true,
+  'seshboard.bringToFront': false,
   'workbench.colorTheme': 'Default Dark Modern',
   'workbench.startupEditor': 'none',
   'workbench.tips.enabled': false,
