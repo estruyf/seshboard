@@ -19,9 +19,9 @@ const base: UpdateState = {
 
 describe('version and update labels', () => {
   it('never shows a release number for a development build', () => {
-    expect(versionLabel({ version: '0.0.3', commit: 'abc1234', dev: false })).toBe('v0.0.3');
-    expect(versionLabel({ version: '0.0.3', commit: 'abc1234', dev: true })).toBe('dev · abc1234');
-    expect(versionLabel({ version: '0.0.3', commit: null, dev: true })).toBe('dev');
+    expect(versionLabel({ version: '0.0.3', commit: 'abc1234', dev: false, fromSwitchboard: false })).toBe('v0.0.3');
+    expect(versionLabel({ version: '0.0.3', commit: 'abc1234', dev: true, fromSwitchboard: false })).toBe('dev · abc1234');
+    expect(versionLabel({ version: '0.0.3', commit: null, dev: true, fromSwitchboard: false })).toBe('dev');
   });
 
   it('shows a toast only when there is something to act on', () => {
