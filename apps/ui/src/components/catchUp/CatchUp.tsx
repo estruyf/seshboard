@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import type { CatchUp as CatchUpCardData, GitChanges } from '@switchboard/protocol/client';
+import type { CatchUp as CatchUpCardData, GitChanges } from '@seshboard/protocol/client';
 import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { closeChanges } from '../../state/changesPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';

@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage, UsageLimit } from '@seshboard/protocol/remote-client';
 import { PROFILE_DOT } from '../lib/options.ts';
 import type { ListedUsage } from '../lib/everywhere.ts';
 import { cardRows, windowPercent } from '../lib/profiles.ts';
@@ -50,7 +50,7 @@ export function useUsages(computers: ReadonlyArray<{ id: string; client: Client 
     const offs: Array<() => void> = [];
     for (const { id, client } of latest.current) {
       if (!client) continue;
-      // A Switchboard from before Remote had usage doesn't know the method: an empty list says so.
+      // A Seshboard from before Remote had usage doesn't know the method: an empty list says so.
       const load = () => void client.call('usage.get', {}).then(({ profiles }) => change(id, () => profiles), () => change(id, (current) => current ?? []));
       loads.push(load);
       offs.push(client.on('usage.changed', ({ profileId, usage }) => change(id, (current) => current && withUsage(current, profileId, usage))));
@@ -78,7 +78,7 @@ export function UsageSection({ usage, offline = false, className = '' }: { usage
     <section aria-labelledby="home-usage" aria-busy={usage === null || undefined} className={`flex flex-col ${className}`} data-remote-usage>
       <SectionHeader id="home-usage" label={usage && usage.length > 1 ? 'Profiles' : 'Usage'} className="px-0" />
       {usage === null || usage.length === 0 ? (
-        <p className="pt-1 text-meta text-faint">{usage ? 'Update Switchboard on your computer to see usage here.' : offline ? 'Usage shows once your computer is back.' : 'Loading usage…'}</p>
+        <p className="pt-1 text-meta text-faint">{usage ? 'Update Seshboard on your computer to see usage here.' : offline ? 'Usage shows once your computer is back.' : 'Loading usage…'}</p>
       ) : (
         <div className={`grid grid-cols-1 gap-3 pt-1 transition-opacity lg:grid-cols-2 ${offline ? 'opacity-60' : ''}`}>
           {usage.map((entry) => (

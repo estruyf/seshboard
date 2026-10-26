@@ -1,5 +1,5 @@
 import { Gauge } from 'lucide-react';
-import { CONTEXT_WARNING_PERCENTS, CURRENCIES, largeContextTokens, RATES_DATE, type ContextWarningPrefs, type CurrencyCode } from '@switchboard/protocol/client';
+import { CONTEXT_WARNING_PERCENTS, CURRENCIES, largeContextTokens, RATES_DATE, type ContextWarningPrefs, type CurrencyCode } from '@seshboard/protocol/client';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -64,7 +64,7 @@ export function UsageSettings() {
 
 const PERCENT_OPTIONS = CONTEXT_WARNING_PERCENTS.map((p) => ({ value: String(p), label: `${p}% (${compactTokens(largeContextTokens({ percent: p }))})` }));
 
-/** Settings › Usage › Large context: when a session's context counts as large, and what Switchboard says about it. */
+/** Settings › Usage › Large context: when a session's context counts as large, and what Seshboard says about it. */
 export function LargeContextSettings() {
   const warning = usePreferences((s) => s.prefs.contextWarning);
   const updatePrefs = usePreferences((s) => s.update);

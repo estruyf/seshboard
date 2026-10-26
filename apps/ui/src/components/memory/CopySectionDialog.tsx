@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { firstSentence, MEMORY_TYPES, sectionBody, slugify, type SectionCopy } from '@switchboard/protocol/client';
+import { firstSentence, MEMORY_TYPES, sectionBody, slugify, type SectionCopy } from '@seshboard/protocol/client';
 import { pathTail } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';

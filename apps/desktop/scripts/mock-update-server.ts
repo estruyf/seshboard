@@ -1,11 +1,11 @@
 /**
- * A local update feed for testing Switchboard's updater without publishing anything.
+ * A local update feed for testing Seshboard's updater without publishing anything.
  *
  *   node scripts/mock-update-server.ts --dir dist            # serve a real build (latest-mac.yml + .zip, latest.yml + .exe)
  *   node scripts/mock-update-server.ts --fake 0.0.9          # serve a made-up feed offering v0.0.9
  *   node scripts/mock-update-server.ts --fake 0.0.9-beta.1
  *
- * Then start Switchboard with SWITCHBOARD_MOCK_UPDATES=1 (and SWITCHBOARD_MOCK_UPDATES_URL if you
+ * Then start Seshboard with SESHBOARD_MOCK_UPDATES=1 (and SESHBOARD_MOCK_UPDATES_URL if you
  * changed --port). A fake feed is enough to see a check find an update and its release notes; the
  * download then fails, since there is no build behind it. See docs/building-and-signing.md.
  */
@@ -35,8 +35,8 @@ if (!dir && !values.fake) {
 function fakeFeeds(version: string): Map<string, string> {
   const channel = /-beta\./.test(version) ? 'beta' : 'latest';
   return new Map([
-    [`${channel}-mac.yml`, fakeFeed(version, `Switchboard-${version}-arm64-mac.zip`)],
-    [`${channel}.yml`, fakeFeed(version, `Switchboard-${version}-setup.exe`)],
+    [`${channel}-mac.yml`, fakeFeed(version, `Seshboard-${version}-arm64-mac.zip`)],
+    [`${channel}.yml`, fakeFeed(version, `Seshboard-${version}-setup.exe`)],
   ]);
 }
 
@@ -93,5 +93,5 @@ createServer((request, response) => {
   createReadStream(file).pipe(response);
 }).listen(port, '127.0.0.1', () => {
   console.log(`Mock update feed on http://localhost:${port} (${fake ? `fake ${[...fake.keys()].join(' and ')} offering ${values.fake}` : dir})`);
-  console.log(`Start Switchboard with SWITCHBOARD_MOCK_UPDATES=1${port === 8484 ? '' : ` SWITCHBOARD_MOCK_UPDATES_URL=http://localhost:${port}`}`);
+  console.log(`Start Seshboard with SESHBOARD_MOCK_UPDATES=1${port === 8484 ? '' : ` SESHBOARD_MOCK_UPDATES_URL=http://localhost:${port}`}`);
 });

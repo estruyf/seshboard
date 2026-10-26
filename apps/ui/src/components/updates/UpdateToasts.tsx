@@ -66,7 +66,7 @@ function Progress({ percent }: { percent: number }) {
 }
 
 /**
- * News about updates to Switchboard and to Claude Code, on top of the toast stack. Closing an offer hides it until
+ * News about updates to Seshboard and to Claude Code, on top of the toast stack. Closing an offer hides it until
  * the next step (or the next launch); closing "Updated" or a Claude Code version tells main or the engine it was seen.
  */
 export function UpdateToasts() {
@@ -94,14 +94,14 @@ export function UpdateToasts() {
             appToast.action && (
               <Button
                 variant="primary"
-                onClick={() => (appToast.action?.run === 'install' ? install() : window.switchboard?.update(appToast.action!.run))}
+                onClick={() => (appToast.action?.run === 'install' ? install() : window.seshboard?.update(appToast.action!.run))}
                 data-update-toast-action={appToast.action.run}
               >
                 {appToast.action.label}
               </Button>
             )
           }
-          onClose={() => (appToast.close === 'dismiss' ? window.switchboard?.update('dismiss') : hide(appKey))}
+          onClose={() => (appToast.close === 'dismiss' ? window.seshboard?.update('dismiss') : hide(appKey))}
           closeLabel={appToast.close === 'dismiss' ? 'Dismiss' : 'Not now'}
           data-update-toast={app?.status}
         />

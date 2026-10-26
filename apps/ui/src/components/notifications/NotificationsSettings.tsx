@@ -1,6 +1,6 @@
 import { Bell, BellOff, Play, Volume2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NO_SOUND, resolveSound, type NotificationPermission, type SoundEvent, type SoundList } from '@switchboard/protocol/bridge';
+import { NO_SOUND, resolveSound, type NotificationPermission, type SoundEvent, type SoundList } from '@seshboard/protocol/bridge';
 import { currentPlatform } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -48,12 +48,12 @@ function Row({ label, detail, off, className = '', children, ...data }: { label:
   );
 }
 
-/** Asks main whether the system lets Switchboard notify: when the page opens, and each time the window is focused again. */
+/** Asks main whether the system lets Seshboard notify: when the page opens, and each time the window is focused again. */
 function useNotificationPermission(): NotificationPermission {
   const [permission, setPermission] = useState<NotificationPermission>('unknown');
   useEffect(() => {
     let live = true;
-    const check = () => void window.switchboard?.notificationPermission().then((value) => live && setPermission(value), () => {});
+    const check = () => void window.seshboard?.notificationPermission().then((value) => live && setPermission(value), () => {});
     check();
     window.addEventListener('focus', check);
     return () => {
@@ -76,7 +76,7 @@ export function NotificationsSettings() {
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     let live = true;
-    void window.switchboard?.listSounds().then((sounds) => live && setList(sounds));
+    void window.seshboard?.listSounds().then((sounds) => live && setList(sounds));
     return () => {
       live = false;
       clearTimeout(hover.current);
@@ -87,11 +87,11 @@ export function NotificationsSettings() {
   const soundsOff = !sounds.enabled;
   const play = (id: string, volume = sounds.volume) => {
     clearTimeout(hover.current);
-    window.switchboard?.playSound(id, volume);
+    window.seshboard?.playSound(id, volume);
   };
   const preview = (id: string) => {
     clearTimeout(hover.current);
-    if (id !== NO_SOUND) hover.current = setTimeout(() => window.switchboard?.playSound(id, sounds.volume), HOVER_DELAY_MS);
+    if (id !== NO_SOUND) hover.current = setTimeout(() => window.seshboard?.playSound(id, sounds.volume), HOVER_DELAY_MS);
   };
   // A sound this computer lacks (chosen on a Mac, imported on Windows) shows as the one that plays instead.
   const current = (event: SoundEvent) => (list ? resolveSound(sounds.byEvent[event], list, event) : null);
@@ -107,13 +107,13 @@ export function NotificationsSettings() {
           tone="caution"
           icon={<BellOff size={14} aria-hidden />}
           actions={
-            <Button size="sm" onClick={() => window.switchboard?.openNotificationSettings()} data-open-notification-settings>
+            <Button size="sm" onClick={() => window.seshboard?.openNotificationSettings()} data-open-notification-settings>
               {windows ? 'Open Windows settings' : 'Open System Settings'}
             </Button>
           }
           data-notifications-blocked
         >
-          Notifications are off for Switchboard in {systemSettings}. Sounds and the {windows ? 'taskbar dot' : 'Dock badge'} still work.
+          Notifications are off for Seshboard in {systemSettings}. Sounds and the {windows ? 'taskbar dot' : 'Dock badge'} still work.
         </Notice>
       )}
 
@@ -121,13 +121,13 @@ export function NotificationsSettings() {
         <CardHeader label="Notifications" detail="A system notification when Claude needs you, finishes or stops with an error, and when a project action ends." icon={<Bell size={16} aria-hidden />}>
           <Switch checked={notifications.enabled} onChange={(enabled) => update({ notifications: { enabled } })} dataAttrs={{ 'data-notifications-toggle': true }} />
         </CardHeader>
-        <Row label="Check that they come through." detail={cantTell ? `Nothing showed up? Check that Switchboard is allowed to send notifications in ${systemSettings}.` : undefined} off={!notifications.enabled}>
+        <Row label="Check that they come through." detail={cantTell ? `Nothing showed up? Check that Seshboard is allowed to send notifications in ${systemSettings}.` : undefined} off={!notifications.enabled}>
           {cantTell && (
-            <Button variant="quiet" size="sm" onClick={() => window.switchboard?.openNotificationSettings()} data-open-notification-settings-hint>
+            <Button variant="quiet" size="sm" onClick={() => window.seshboard?.openNotificationSettings()} data-open-notification-settings-hint>
               {windows ? 'Open Windows settings' : 'Open System Settings'}
             </Button>
           )}
-          <Button variant="quiet" size="sm" disabled={!notifications.enabled} onClick={() => window.switchboard?.testNotification()} data-notifications-test>
+          <Button variant="quiet" size="sm" disabled={!notifications.enabled} onClick={() => window.seshboard?.testNotification()} data-notifications-test>
             Send a test notification
           </Button>
         </Row>

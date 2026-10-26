@@ -1,4 +1,4 @@
-import type { CatchUp, LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { CatchUp, LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@seshboard/protocol/client';
 import { catchUpShow, type CatchUpShow } from '../components/catchUp/catchUpModel.ts';
 import { turnKey, useCatchUp } from './catchUpStore.ts';
 import { HOST_TO_LIVE, isActiveHost, useHosts } from './hostsStore.ts';

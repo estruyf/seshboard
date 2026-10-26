@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
+import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { globalModeLabel, MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';

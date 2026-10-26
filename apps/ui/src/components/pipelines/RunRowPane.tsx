@@ -1,5 +1,5 @@
 import { Ellipsis, ListTree } from 'lucide-react';
-import { runProgress } from '@switchboard/protocol/client';
+import { runProgress } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { runRowData } from '../../state/pipelineTree.ts';

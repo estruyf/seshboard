@@ -1,4 +1,4 @@
-import { DAY_NAMES, DAY_SHORT, formatDay, formatRun, nextRuns, oneTimeDone, projectOf, speakDay, type Schedule, type UpcomingRun } from '@switchboard/protocol/client';
+import { DAY_NAMES, DAY_SHORT, formatDay, formatRun, nextRuns, oneTimeDone, projectOf, speakDay, type Schedule, type UpcomingRun } from '@seshboard/protocol/client';
 
 // Upcoming: one view for everything queued and scheduled. Its logic without React or the stores: the day groups of the
 // timeline and their folding, the sidebar entry's hint and count, and the filters. The runs come from the protocol's

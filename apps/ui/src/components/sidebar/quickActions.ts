@@ -1,5 +1,5 @@
-import type { QuickActionsShow } from '@switchboard/protocol/bridge';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { QuickActionsShow } from '@seshboard/protocol/bridge';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import type { ShortcutId } from '../../lib/shortcuts.ts';
 import { runGoesOn, treeRunsOf } from '../../state/runTree.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
@@ -27,7 +27,7 @@ export interface QuickActionRow {
   readable: boolean;
   /** A run row or a pipeline's parent: Archive takes its sub-sessions too. */
   tree: boolean;
-  /** Stop has something to stop: a session running in Switchboard, a run that goes on, or another computer's session. */
+  /** Stop has something to stop: a session running in Seshboard, a run that goes on, or another computer's session. */
   canStop: boolean;
 }
 
@@ -46,7 +46,7 @@ export interface QuickAction {
 }
 
 /**
- * What the rules read from a sidebar row. `archived`: listed under Archived. `hosted`: the session runs in Switchboard
+ * What the rules read from a sidebar row. `archived`: listed under Archived. `hosted`: the session runs in Seshboard
  * (`isActiveHost`), so Stop can reach it. `runs`: every pipeline run, for a run row or a pipeline's parent.
  */
 export function quickRowOf(data: SessionRowData, archived: boolean, context: { hosted: boolean; runs: Iterable<PipelineRunState> }): QuickActionRow {

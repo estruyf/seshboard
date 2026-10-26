@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LoadEntry } from '@switchboard/protocol/client';
+import type { LoadEntry } from '@seshboard/protocol/client';
 import { barSegments, indexLevel, legendItems, loadSummary } from './loadOrderView.ts';
 
 const e = (path: string, kind: LoadEntry['kind'], bytes: number, extra: Partial<LoadEntry> = {}): LoadEntry => ({ path, kind, scope: 'project', when: 'launch', bytes, lines: 10, ...extra });

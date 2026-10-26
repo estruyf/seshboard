@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Contract, RpcClient } from '@switchboard/protocol/client';
+import type { Contract, RpcClient } from '@seshboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import type { DisplayItem } from './displayItems.ts';
 import { updateTurns, type AgentTokens, type Turn, type TurnContext, type TurnsState, type Wait } from './turns.ts';

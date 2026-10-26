@@ -30,7 +30,7 @@ import {
   type TriggerEvent,
   type TriggerNotice,
   type TriggerWorkState,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { GITHUB_CACHE_MS } from '../git/github.ts';
 import type { RunHold } from '../schedules/scheduler.ts';
 import { readFailedLog, readFailedRuns } from './sources/ci.ts';
@@ -225,7 +225,7 @@ export class TriggerWatcher {
   private async pass(): Promise<void> {
     const now = this.now();
     const before = this.snapshot();
-    // First, so a check in this pass already knows which state labels Switchboard took off.
+    // First, so a check in this pass already knows which state labels Seshboard took off.
     await this.releaseLabels();
     for (const trigger of this.deps.store.list()) {
       const forced = this.forced.delete(trigger.id);
@@ -397,7 +397,7 @@ export class TriggerWatcher {
   }
 
   /**
-   * An event is picked up: it starts now or waits for a slot. An issue gets `switchboard: working` and loses the trigger's
+   * An event is picked up: it starts now or waits for a slot. An issue gets `seshboard: working` and loses the trigger's
    * label (state labels on), and is assigned to you (Assign to me when picked up), in one `gh issue edit`.
    */
   private async pickUp(trigger: Trigger, event: TriggerEvent): Promise<void> {
@@ -551,7 +551,7 @@ export class TriggerWatcher {
     }
   }
 
-  /** Moves an issue's state label to `state`'s, when it is a change from the one Switchboard put there last. */
+  /** Moves an issue's state label to `state`'s, when it is a change from the one Seshboard put there last. */
   private async moveLabel(trigger: Trigger, event: TriggerEvent, state: TriggerWorkState): Promise<void> {
     if (!trigger.stateLabels.on || event.kind !== 'issue' || !event.label) return;
     const key = nextStateLabel(state);

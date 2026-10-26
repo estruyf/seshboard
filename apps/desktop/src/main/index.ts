@@ -6,16 +6,17 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@switchboard/protocol/bridge';
-import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@switchboard/protocol/paths';
-import type { RemoteContract } from '@switchboard/protocol';
-import { previewKind, type ScheduleRunEvent } from '@switchboard/protocol/client';
-import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@switchboard/protocol/companion-client';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
+import type { RemoteContract } from '@seshboard/protocol';
+import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
-import { DEEP_LINK_SCHEME, isShowLink, linkFromArgv, parseDeepLink } from './deepLink.ts';
+import { adoptLegacyEnv, legacyDataFolder } from './rename.ts';
+import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
@@ -39,58 +40,67 @@ import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } f
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
-const smokeOutDir = process.env.SWITCHBOARD_SMOKE_OUT;
+// Variables named before the rename (SWITCHBOARD_…) still count, before anything reads them.
+adoptLegacyEnv(process.env);
+const smokeOutDir = process.env.SESHBOARD_SMOKE_OUT;
 // npm run screenshots: a tour through the app in a made-up home folder, for the README.
-const screenshotOutDir = process.env.SWITCHBOARD_SCREENSHOTS_OUT;
+const screenshotOutDir = process.env.SESHBOARD_SCREENSHOTS_OUT;
 // npm run website:screenshots: Playwright drives the window from outside (scripts/website-screenshots.ts); the app
 // only has to run on a throwaway profile, like the tours above.
-const driven = process.env.SWITCHBOARD_DRIVEN === '1';
+const driven = process.env.SESHBOARD_DRIVEN === '1';
 const scripted = Boolean(smokeOutDir || screenshotOutDir || driven);
 
-// `Switchboard --version` prints the version for scripts and support, before any window opens.
+// `Seshboard --version` prints the version for scripts and support, before any window opens.
 if (process.argv.includes('--version')) {
   process.stdout.write(`${app.getVersion()}\n`);
   app.exit(0);
 }
 
 /** The running build. The commit is baked in at build time (electron.vite.config.ts). */
-const appInfo: AppInfo = { version: app.getVersion(), commit: __SWITCHBOARD_COMMIT__ || null, dev: !app.isPackaged };
+const appInfo: AppInfo = { version: app.getVersion(), commit: __SESHBOARD_COMMIT__ || null, dev: !app.isPackaged };
 ipcMain.on(IpcChannel.getAppInfo, (event) => {
   event.returnValue = appInfo;
 });
 
 // The smoke test and the screenshots run against a throwaway profile so they never touch real app data. A driven run
-// may name its own folder (SWITCHBOARD_DRIVEN_PROFILE), so a restart finds the same profile (scripts/chaos); never one
+// may name its own folder (SESHBOARD_DRIVEN_PROFILE), so a restart finds the same profile (scripts/chaos); never one
 // inside the app data folder, where the installed app keeps the user's real data.
-const drivenProfile = driven ? process.env.SWITCHBOARD_DRIVEN_PROFILE : undefined;
+const drivenProfile = driven ? process.env.SESHBOARD_DRIVEN_PROFILE : undefined;
 if (drivenProfile && isAbsolutePath(drivenProfile) && !isSameOrInside(drivenProfile, app.getPath('appData'))) {
   mkdirSync(drivenProfile, { recursive: true });
   app.setPath('userData', drivenProfile);
-} else if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'switchboard-smoke-')));
+} else if (scripted) app.setPath('userData', mkdtempSync(join(tmpdir(), 'seshboard-smoke-')));
 // The engine inherits these: the Claude Code check reads a mock registry that offers a newer version, and an
 // update is refused even if one were clicked, so the user's real `claude` is never touched.
 if (scripted) {
-  process.env.SWITCHBOARD_CLAUDE_REGISTRY ??= `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '999.0.0', stable: '999.0.0' }))}`;
-  process.env.SWITCHBOARD_NO_CLAUDE_UPDATE = '1';
+  process.env.SESHBOARD_CLAUDE_REGISTRY ??= `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '999.0.0', stable: '999.0.0' }))}`;
+  process.env.SESHBOARD_NO_CLAUDE_UPDATE = '1';
   // Auto model never calls a real model here: the engine picks from the prompt's words instead.
-  process.env.SWITCHBOARD_STUB_ROUTER = '1';
+  process.env.SESHBOARD_STUB_ROUTER = '1';
   // Ask about this session (and /btw) gets a made-up answer, so nothing here asks a model.
-  process.env.SWITCHBOARD_STUB_BTW = '1';
+  process.env.SESHBOARD_STUB_BTW = '1';
   // Catch-up cards are written from the tool calls, never by a model.
-  process.env.SWITCHBOARD_STUB_CATCHUP = '1';
+  process.env.SESHBOARD_STUB_CATCHUP = '1';
   // Queued items that start by themselves leave the queue without sending their prompt to Claude.
-  process.env.SWITCHBOARD_STUB_QUEUE = '1';
+  process.env.SESHBOARD_STUB_QUEUE = '1';
   // Clone from GitHub clones from local bare repositories in the throwaway profile, never from the network.
-  process.env.SWITCHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
+  process.env.SESHBOARD_CLONE_SOURCE ??= join(app.getPath('userData'), 'clone-source');
 }
 
-// The single-instance lock belongs to the data folder. Development builds keep their own ("Switchboard Dev"), so
+// The single-instance lock belongs to the data folder. Development builds keep their own ("Seshboard Dev"), so
 // `npm run dev` starts next to the installed app instead of handing over to it, and a newer migration never touches
-// the installed app's database. SWITCHBOARD_DATA_DIR picks another folder, for a second dev build (another worktree).
+// the installed app's database. SESHBOARD_DATA_DIR picks another folder, for a second dev build (another worktree).
+// Before the rename the folders were called Switchboard and Switchboard Dev: the old one moves to the new name the
+// first time, or stays in use where it is when it can't (rename.ts). A development build never moves the installed app's.
 if (!scripted) {
-  const dataDir = process.env.SWITCHBOARD_DATA_DIR || (app.isPackaged ? undefined : join(app.getPath('appData'), 'Switchboard Dev'));
+  const appData = app.getPath('appData');
+  let dataDir = process.env.SESHBOARD_DATA_DIR || (app.isPackaged ? undefined : legacyDataFolder(join(appData, 'Seshboard Dev'), join(appData, 'Switchboard Dev')));
+  if (!dataDir && app.isPackaged) {
+    const folder = legacyDataFolder(app.getPath('userData'), join(appData, 'Switchboard'));
+    if (folder !== app.getPath('userData')) dataDir = folder;
+  }
   if (dataDir) {
-    const installedPreferences = join(app.getPath('userData'), 'preferences.json');
+    const installedPreferences = [app.getPath('userData'), join(appData, 'Switchboard')].map((dir) => join(dir, 'preferences.json')).find((file) => existsSync(file)) ?? '';
     mkdirSync(dataDir, { recursive: true });
     // A fresh folder starts with the installed app's theme and layout rather than the defaults.
     if (!existsSync(join(dataDir, 'preferences.json')) && existsSync(installedPreferences)) copyFileSync(installedPreferences, join(dataDir, 'preferences.json'));
@@ -115,8 +125,8 @@ if (process.platform === 'linux' && !app.commandLine.hasSwitch('password-store')
   app.commandLine.appendSwitch('password-store', 'gnome-libsecret');
 }
 
-// SWITCHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
-const forcedScheme = process.env.SWITCHBOARD_COLOR_SCHEME;
+// SESHBOARD_COLOR_SCHEME=light|dark forces a scheme without saving it (to check both in the smoke test).
+const forcedScheme = process.env.SESHBOARD_COLOR_SCHEME;
 const preferences = new PreferencesStore(join(app.getPath('userData'), 'preferences.json'), sanitizePreferences({ colorScheme: forcedScheme }).colorScheme);
 // The smoke steps need sessions to click; on the real ~/.claude most were started elsewhere. Star on GitHub stays out
 // of the screenshots (the smoke step that checks it asks for it).
@@ -134,8 +144,8 @@ const updateWindowBackgrounds = () => {
   for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(windowBackground());
 };
 
-// SWITCHBOARD_MOCK_UPDATES=1 points the updater at a local feed (scripts/mock-update-server.ts).
-const mockFeedUrl = process.env.SWITCHBOARD_MOCK_UPDATES === '1' ? (process.env.SWITCHBOARD_MOCK_UPDATES_URL ?? 'http://localhost:8484') : undefined;
+// SESHBOARD_MOCK_UPDATES=1 points the updater at a local feed (scripts/mock-update-server.ts).
+const mockFeedUrl = process.env.SESHBOARD_MOCK_UPDATES === '1' ? (process.env.SESHBOARD_MOCK_UPDATES_URL ?? 'http://localhost:8484') : undefined;
 const updater = new Updater({
   currentVersion: app.getVersion(),
   channel: preferences.get().updateChannel,
@@ -260,13 +270,13 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
         title: 'Import a theme',
         defaultPath: app.getPath('downloads'),
         properties: ['openFile'],
-        filters: [{ name: 'Switchboard theme', extensions: ['json', 'jsonc'] }],
+        filters: [{ name: 'Seshboard theme', extensions: ['json', 'jsonc'] }],
       };
       const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
       return result.canceled ? null : (result.filePaths[0] ?? null);
     }
     case 'check-file':
-      return typeof command.path === 'string' && isLocalAbsolutePath(command.path, process.platform) ? themes.check(command.path) : { ok: false, error: "Switchboard couldn't read this file.", fileName: '' };
+      return typeof command.path === 'string' && isLocalAbsolutePath(command.path, process.platform) ? themes.check(command.path) : { ok: false, error: "Seshboard couldn't read this file.", fileName: '' };
     case 'add':
       return themes.add(command.raw, command.how === 'replace' || command.how === 'keep-both' ? command.how : 'add');
     case 'duplicate':
@@ -302,7 +312,7 @@ ipcMain.handle(IpcChannel.themeCommand, async (event, command: ThemeCommand) => 
         const options: Electron.SaveDialogOptions = {
           title: 'Export theme',
           defaultPath: join(app.getPath('documents'), name),
-          filters: [{ name: 'Switchboard theme', extensions: ['json'] }],
+          filters: [{ name: 'Seshboard theme', extensions: ['json'] }],
           properties: ['createDirectory', 'showOverwriteConfirmation'],
         };
         const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
@@ -341,7 +351,7 @@ const popoutViews = new Map<string, SessionView>();
 /** The session on screen in each window (by webContents id), as its renderer reports it. */
 const focusedSessions = new Map<number, string | null>();
 
-/** The session on screen in the window in front, or null when no Switchboard window has focus. */
+/** The session on screen in the window in front, or null when no Seshboard window has focus. */
 function sessionOnScreen(): string | null {
   const win = BrowserWindow.getFocusedWindow();
   return win ? (focusedSessions.get(win.webContents.id) ?? null) : null;
@@ -370,7 +380,7 @@ ipcMain.on(IpcChannel.openNotificationSettings, () => {
 });
 ipcMain.on(IpcChannel.testNotification, () => notifier?.test());
 
-/** Open at login for scripted runs, which never add Switchboard to the real login items. */
+/** Open at login for scripted runs, which never add Seshboard to the real login items. */
 let scriptedOpenAtLogin: OpenAtLogin = 'off';
 /** How Open at login stands. A development build would add Electron itself, and Electron has no login items on Linux. */
 function readOpenAtLogin(): OpenAtLogin {
@@ -396,13 +406,13 @@ ipcMain.on(IpcChannel.openLoginItemsSettings, () => {
 });
 
 /**
- * The `switchboard` and `seshboard` shell commands (Settings › General › Shell command), or null in a development
+ * The `seshboard`, `sesh` and `switchboard` shell commands (Settings › General › Shell command), or null in a development
  * build, whose commands would start Electron. Scripted runs keep them in their throwaway profile and never touch the PATH.
  */
 function shellCommandHere(): ShellCommandPlan | null {
   if (!app.isPackaged && !scripted) return null;
   const dir = scripted ? join(app.getPath('userData'), 'shell-command') : shellCommandDir(process.platform, { home: homedir(), userData: app.getPath('userData') });
-  // macOS opens the bundle (…/Switchboard.app); an AppImage runs from a folder that changes each time, so its own file.
+  // macOS opens the bundle (…/Seshboard.app); an AppImage runs from a folder that changes each time, so its own file.
   const target = process.platform === 'darwin' ? resolve(process.execPath, '../../..') : process.env.APPIMAGE || process.execPath;
   // A scripted run looks only in its own profile, so the machine's commands never change what it sees.
   const lookIn = scripted ? [] : commandFolders(process.platform, homedir(), process.env.PATH);
@@ -525,7 +535,7 @@ const quitGuard = new QuitGuard({
     // No window to ask in (all closed, or still loading): ask natively. This is the one prompt that stays
     // system UI on purpose, since there is no renderer to draw the themed one in.
     void dialog
-      .showMessageBox({ type: 'question', message: 'Quit Switchboard?', detail: 'Sessions running in Switchboard will stop.', buttons: ['Quit', 'Cancel'], defaultId: 0, cancelId: 1 })
+      .showMessageBox({ type: 'question', message: 'Quit Seshboard?', detail: 'Sessions running in Seshboard will stop.', buttons: ['Quit', 'Cancel'], defaultId: 0, cancelId: 1 })
       .then(({ response }) => quitGuard.answer(response === 0 ? 'quit' : 'cancel'));
   },
   quit: () => quitApp(),
@@ -577,11 +587,11 @@ function sendToWindow(win: BrowserWindow, channel: string, payload: unknown, opt
 }
 
 /**
- * Opens a `switchboard://` link. It is validated here, then handed to the window, which fills in New
+ * Opens a `seshboard://` link. It is validated here, then handed to the window, which fills in New
  * session (never sends) or shows the session. A refused link only shows why.
  */
 function openDeepLink(url: string): void {
-  // Only brings the window up (the VS Code companion starting Switchboard); before 'ready' the window opens anyway.
+  // Only brings the window up (the VS Code companion starting Seshboard); before 'ready' the window opens anyway.
   if (isShowLink(url)) {
     if (app.isReady()) showWindow();
     return;
@@ -601,7 +611,7 @@ function deliverLinkMessage(message: DeepLinkMessage): void {
 }
 
 /**
- * A folder on the command line opens New session there: `switchboard .` runs the executable with the folder on Windows
+ * A folder on the command line opens New session there: `seshboard .` runs the executable with the folder on Windows
  * and Linux (on macOS it sends a link). Returns false when the command line has no folder.
  */
 function openFolderArgument(argv: string[], workingDirectory: string): boolean {
@@ -628,7 +638,7 @@ function openSettings(section: 'about' | null = null): void {
   sendToWindow(showWindow(), IpcChannel.openSettings, section, { latestOnly: true });
 }
 
-/** Switchboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
+/** Seshboard → Check for Updates…: checks, and opens Settings → About where the result shows. */
 function checkForUpdates(): void {
   updater.run('check');
   openSettings('about');
@@ -640,13 +650,13 @@ function checkForUpdates(): void {
  */
 function installMenu(): void {
   const mac = process.platform === 'darwin';
-  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Switchboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (asksBeforeQuit() ? quitGuard.request() : quitApp()) };
+  const quit: MenuItemConstructorOptions = { id: 'quit', label: mac ? 'Quit Seshboard' : 'Exit', accelerator: 'CmdOrCtrl+Q', click: () => (asksBeforeQuit() ? quitGuard.request() : quitApp()) };
   const settings: MenuItemConstructorOptions = { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() };
   const checkUpdates: MenuItemConstructorOptions = { id: 'check-updates', label: 'Check for Updates…', click: () => checkForUpdates() };
   const top: MenuItemConstructorOptions[] = mac
     ? [
         {
-          label: 'Switchboard',
+          label: 'Seshboard',
           submenu: [
             { role: 'about' },
             checkUpdates,
@@ -706,7 +716,7 @@ function installMenu(): void {
           click: (_item, focused) => sendToWindow(popoutIn(focused) ?? showWindow(), IpcChannel.toggleShortcuts, null, { latestOnly: true }),
         },
         // On macOS these are in the app menu; Windows and Linux have none.
-        ...(mac ? [] : ([{ type: 'separator' }, checkUpdates, { label: 'About Switchboard', click: () => openSettings('about') }] satisfies MenuItemConstructorOptions[])),
+        ...(mac ? [] : ([{ type: 'separator' }, checkUpdates, { label: 'About Seshboard', click: () => openSettings('about') }] satisfies MenuItemConstructorOptions[])),
       ],
     },
   ];
@@ -872,7 +882,7 @@ function popOut(sessionId: string, view: unknown = null): void {
   });
   popouts.set(sessionId, win);
   win.once('ready-to-show', () => win.show());
-  // Looking at a pop-out is looking at Switchboard: the main window's taskbar button stops flashing (Notifier).
+  // Looking at a pop-out is looking at Seshboard: the main window's taskbar button stops flashing (Notifier).
   if (process.platform !== 'darwin') win.on('focus', () => mainWindow?.flashFrame(false));
   win.on('closed', () => {
     if (popouts.get(sessionId) !== win) return;
@@ -980,9 +990,9 @@ interface TimedReport extends RendererReadyReport {
 }
 ipcMain.handle(IpcChannel.pickFolder, async (event, defaultPath: unknown) => {
   // A smoke or screenshot run has no one to answer the dialog: a step that needs one sets the folder to pick, once.
-  const answer = scripted ? process.env.SWITCHBOARD_PICK_FOLDER : undefined;
+  const answer = scripted ? process.env.SESHBOARD_PICK_FOLDER : undefined;
   if (answer) {
-    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    delete process.env.SESHBOARD_PICK_FOLDER;
     return answer;
   }
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -1038,11 +1048,11 @@ const smokeSettingsFile = () => join(app.getPath('userData'), 'smoke-settings-ex
 ipcMain.handle(IpcChannel.chooseExportFile, async (event, defaultName: unknown) => {
   if (smokeOutDir) return smokeSettingsFile();
   const win = BrowserWindow.fromWebContents(event.sender);
-  const name = typeof defaultName === 'string' && /^[\w.-]+\.json$/.test(defaultName) ? defaultName : 'switchboard-settings.json';
+  const name = typeof defaultName === 'string' && /^[\w.-]+\.json$/.test(defaultName) ? defaultName : 'seshboard-settings.json';
   const options: Electron.SaveDialogOptions = {
-    title: 'Export Switchboard settings',
+    title: 'Export Seshboard settings',
     defaultPath: join(app.getPath('documents'), name),
-    filters: [{ name: 'Switchboard settings', extensions: ['json'] }],
+    filters: [{ name: 'Seshboard settings', extensions: ['json'] }],
     properties: ['createDirectory', 'showOverwriteConfirmation'],
   };
   const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
@@ -1054,10 +1064,10 @@ ipcMain.handle(IpcChannel.chooseImportFile, async (event) => {
   if (smokeOutDir) return smokeSettingsFile();
   const win = BrowserWindow.fromWebContents(event.sender);
   const options: Electron.OpenDialogOptions = {
-    title: 'Import Switchboard settings',
+    title: 'Import Seshboard settings',
     defaultPath: app.getPath('documents'),
     properties: ['openFile'],
-    filters: [{ name: 'Switchboard settings', extensions: ['json'] }],
+    filters: [{ name: 'Seshboard settings', extensions: ['json'] }],
   };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
@@ -1254,7 +1264,7 @@ async function chooseChoice(win: BrowserWindow, name: string, value: string, sco
 }
 
 /**
- * Optional live step (SWITCHBOARD_SMOKE_LIVE_CWD): starts a real Haiku session
+ * Optional live step (SESHBOARD_SMOKE_LIVE_CWD): starts a real Haiku session
  * through the UI, approves its permission prompt and waits for the reply.
  */
 async function runLiveSessionStep(win: BrowserWindow, cwd: string): Promise<string> {
@@ -1491,7 +1501,7 @@ let smokeSessionId: string | null = null;
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
 // npm run smoke -- --only "<pattern>": only the steps whose label matches (case-insensitive), to check one while building.
-const smokeOnly = process.env.SWITCHBOARD_SMOKE_ONLY ? new RegExp(process.env.SWITCHBOARD_SMOKE_ONLY, 'i') : null;
+const smokeOnly = process.env.SESHBOARD_SMOKE_ONLY ? new RegExp(process.env.SESHBOARD_SMOKE_ONLY, 'i') : null;
 const RESTART_STEP = 'engine restarted and renderer reconnected';
 const smokeRun = new SmokeRun({ log: (line) => console.log(line), cleanup: () => closeOverlays(mainWindow ?? undefined), only: smokeOnly });
 
@@ -2177,7 +2187,7 @@ async function runAppTerminalStep(win: BrowserWindow): Promise<string> {
 /** ⌘Q asks first; Cancel keeps the app open; a second ⌘Q while asking quits (recorded, not performed, in smoke mode). */
 async function runQuitStep(win: BrowserWindow): Promise<boolean> {
   const pressQuit = () => Menu.getApplicationMenu()?.getMenuItemById('quit')?.click();
-  const prompt = "[...document.querySelectorAll('[role=alertdialog]')].find((el) => el.innerText.includes('Quit Switchboard'))";
+  const prompt = "[...document.querySelectorAll('[role=alertdialog]')].find((el) => el.innerText.includes('Quit Seshboard'))";
   pressQuit();
   if (!(await waitInPage(win, prompt, 3_000))) return false;
   await shot(win, 'quit.png');
@@ -2253,7 +2263,7 @@ async function runSettingsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-settings-page=\"conversation\"]')", 3_000))) return 'settings did not reopen on the same section';
   if (!everyStep) return 'Every step did not show the tool cards, or Close did not leave Settings';
 
-  // Turning off "sessions from other apps" leaves only Switchboard's own in the sidebar.
+  // Turning off "sessions from other apps" leaves only Seshboard's own in the sidebar.
   await section('sidebar');
   await click('[data-session-scope]');
   const scoped = await withSettingsClosed("document.querySelector('[data-session-list]') && !document.querySelector('[data-session-id][data-in-app=\"false\"]')");
@@ -2745,7 +2755,7 @@ function openProjectRowMenu(win: BrowserWindow, root: string): Promise<boolean> 
 
 /**
  * Takes a project off the throwaway profile's list again, the way someone would: Projects, a right-click on its row,
- * Remove from Switchboard…, Remove. Nothing on disk changes. Returns what went wrong, or null.
+ * Remove from Seshboard…, Remove. Nothing on disk changes. Returns what went wrong, or null.
  */
 async function removeProjectInProjects(win: BrowserWindow, root: string): Promise<string | null> {
   if (!(await openProjectsView(win))) return 'Projects did not open';
@@ -2776,7 +2786,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await click('[data-empty-add-project]');
   if (!(await waitInPage(win, "document.querySelector('[data-add-project-dialog] [data-known-project]')", 5_000))) return 'no folders with sessions offered';
   const known = (await js("document.querySelectorAll('[data-known-project]').length")) as number;
-  // Switchboard's own repository when Claude Code has sessions there (a git repository, so the Worktrees tab has
+  // Seshboard's own repository when Claude Code has sessions there (a git repository, so the Worktrees tab has
   // something to show), else the first folder offered.
   const ownRepo = sourceRepository();
   const preferred = ownRepo ? ((await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(ownRepo)}][data-added="false"]`)})?.dataset.knownProject ?? null`)) as string | null) : null;
@@ -2831,7 +2841,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${page('[data-overview-defaults]')}?.innerText.includes('high effort')`, 3_000))) return 'the effort default was not saved';
   await shot(win, 'projects.png');
 
-  // Renaming only changes the name Switchboard shows, in place on the Settings tab; it reaches the list and the sidebar filter too.
+  // Renaming only changes the name Seshboard shows, in place on the Settings tab; it reaches the list and the sidebar filter too.
   const renameDialog = "document.querySelector('[data-rename-project-dialog]')";
   const folder = basename(root);
   await js(`${page('[data-project-tab="settings"]')}.click()`);
@@ -2900,7 +2910,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, page('[data-project-tab="settings"]'), 3_000))) return 'Projects did not open on the project last open';
   await js(`${page('[data-project-tab="settings"]')}.click()`);
   if (!(await waitInPage(win, `${page('[data-default-effort]')}?.dataset.value === 'low'`, 3_000))) return 'the saved default did not reach the Projects view';
-  // Removing is on the Settings tab too (it only takes the project off Switchboard's list).
+  // Removing is on the Settings tab too (it only takes the project off Seshboard's list).
   await js(`${page('[data-project-remove]')}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-confirm]')", 3_000))) return 'no confirmation before removing';
   await click('[data-confirm]');
@@ -3531,7 +3541,7 @@ async function runAboutStep(win: BrowserWindow): Promise<string> {
 /**
  * Settings → About's Claude Code section, checked against the mock registry (which offers v999.0.0): the installed
  * version and the update or the command to run show, the toast appears and Dismiss hides it. Update is
- * never clicked, and the engine refuses it in smoke runs anyway (SWITCHBOARD_NO_CLAUDE_UPDATE).
+ * never clicked, and the engine refuses it in smoke runs anyway (SESHBOARD_NO_CLAUDE_UPDATE).
  */
 async function checkClaudeUpdates(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -3560,7 +3570,7 @@ async function checkClaudeUpdates(win: BrowserWindow): Promise<string> {
 
 /**
  * Settings › Remote: with Remote off and nothing paired, the three setup steps; then My own address and Turn on
- * Remote, and the status card (Running, or the port in use when another Switchboard has it, fixed with Use port …);
+ * Remote, and the status card (Running, or the port in use when another Seshboard has it, fixed with Use port …);
  * Change… and Advanced open; a made-up device (written straight into the throwaway profile's cache, so no phone is
  * needed) is renamed in place, and its Revoke asks first and Escape cancels. Remote is turned off again.
  */
@@ -3591,7 +3601,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-turn-on]');
   if (!(await waitInPage(win, "document.querySelector('[data-remote-status][role=status]')", 10_000))) return 'Turn on Remote showed no status card';
   let title = (await js("document.querySelector('[data-remote-status]').dataset.remoteStatusTitle")) as string;
-  // Another Switchboard on this computer may have the port: the card's own fix moves to a free one.
+  // Another Seshboard on this computer may have the port: the card's own fix moves to a free one.
   if (title.startsWith('Port ')) {
     await click('[data-remote-action="use-port"]');
     if (!(await waitInPage(win, "!document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle.startsWith('Port ')", 10_000))) return `Use port didn't help: ${title}`;
@@ -3633,7 +3643,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
 async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
-  const { generateKeyPair, keyPairFromSecret, toBase64Url, REMOTE_APP_URL } = await import('@switchboard/protocol');
+  const { generateKeyPair, keyPairFromSecret, toBase64Url, REMOTE_APP_URL } = await import('@seshboard/protocol');
   const phone = await import('../../../../packages/engine/src/remote/testPhone.ts');
 
   if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
@@ -3643,7 +3653,7 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   if ((await js("document.querySelector('[data-remote-enabled]').getAttribute('aria-checked')")) !== 'true') await click('[data-remote-enabled]');
   const title = () => js("document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle ?? ''") as Promise<string>;
   await waitInPage(win, "document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle", 10_000);
-  // My own address, so no tunnel tool is needed; and the card's own fix when another Switchboard has the port.
+  // My own address, so no tunnel tool is needed; and the card's own fix when another Seshboard has the port.
   if ((await title()) === 'Add your address' || (await js("document.querySelector('[data-remote-connection]')?.innerText.includes('My own address')")) === false) {
     await click('[data-remote-change-connection]');
     await waitInPage(win, "document.querySelector('[data-remote-tunnel-option=\"custom\"]')", 3_000);
@@ -3679,7 +3689,7 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
   }
   if (!port) return 'Remote has no port in the cache';
   const engineKey = keyPairFromSecret(new Uint8Array(Buffer.from(throwawayRemoteKey('identity'), 'base64'))).publicKey;
-  const origin = new URL(process.env.SWITCHBOARD_REMOTE_APP_URL ?? REMOTE_APP_URL).origin;
+  const origin = new URL(process.env.SESHBOARD_REMOTE_APP_URL ?? REMOTE_APP_URL).origin;
   const socket = await phone.handshake(port, 'connect', keys, engineKey, undefined, origin);
   if (!socket.session) return `the test phone was refused (close code ${socket.code})`;
   const remote = phone.client<RemoteContract>(socket.frames, socket.session);
@@ -3747,7 +3757,7 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
  * computer and the computer is removed again.
  */
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
-  const linkFile = process.env.SWITCHBOARD_SMOKE_COMPUTER_LINK;
+  const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
   if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
@@ -4357,7 +4367,7 @@ async function runGitStep(win: BrowserWindow): Promise<string> {
  * with the title filled in and selected, the base branch, the counter and the push line. The base menu filters, the
  * description switches to Empty, a description over GitHub's limit turns the counter red, disables Create and offers
  * Use commit titles only; switching the source after an edit asks first; Escape closes it. Create is never pressed,
- * and on macOS gh is the smoke test's fake (SWITCHBOARD_GH), so nothing reaches GitHub either way.
+ * and on macOS gh is the smoke test's fake (SESHBOARD_GH), so nothing reaches GitHub either way.
  */
 async function runPullRequestStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -4442,7 +4452,7 @@ async function runPullRequestStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Read-only: file paths in Claude's replies that exist became links, and the chips beside file tools do the same. What a
- * click does is the setting Clicking a file link (Open in Switchboard by default: Markdown, HTML and code files preview there,
+ * click does is the setting Clicking a file link (Open in Seshboard by default: Markdown, HTML and code files preview there,
  * the rest show in the file manager): the label and tooltip say it and what Shift-click does instead, and the right-click and
  * Shift+F10 menus list every way and Copy path above the message's Quote and Remember this…. Switching the setting in
  * Settings › Conversation flips them. Nothing is ever clicked: that would open Explorer, Finder, the preview or the user's
@@ -4452,7 +4462,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const fileManager = process.platform === 'win32' ? 'File Explorer' : process.platform === 'darwin' ? 'Finder' : 'Files';
   const original = preferences.get().fileLinkClick;
-  if (original !== 'switchboard') return `the setting started as ${original}, not Open in Switchboard`;
+  if (original !== 'switchboard') return `the setting started as ${original}, not Open in Seshboard`;
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const LINK = "[data-transcript] [data-file-link]";
   const shiftClick = /(Shift\+click|⇧-click) (opens|shows) it in /;
@@ -4481,7 +4491,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
       const path = link.target.replace(/:\d+$/, '');
       const expectedAction = actionFor(mode, path);
       // The preview and the editor go to the line; the file manager can't.
-      const start = expectedAction === 'preview' ? `Preview ${link.target} in Switchboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
+      const start = expectedAction === 'preview' ? `Preview ${link.target} in Seshboard. ` : expectedAction === 'show' ? `Show ${path} in ${fileManager}. ` : `Open ${link.target} in `;
       if (!link.href.startsWith('file:///') || !isAbsolutePath(path)) return `a file link is wrong: ${JSON.stringify(link)}`;
       if (!link.tooltip.startsWith(start) || !shiftClick.test(link.tooltip) || link.action !== expectedAction) return `with ${mode} set, a link to ${path} says "${link.tooltip}" (${link.action})`;
       if (expectedAction === 'editor' && !link.tooltip.includes(`shows it in ${fileManager}`)) return `with ${mode} set, a link says "${link.tooltip}"`;
@@ -4519,7 +4529,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     const ids = items.map((item) => item.id).join(',');
     const expected = previewable(target.replace(/:\d+$/, '')) ? 'preview,show,editor,copy' : 'show,editor,copy';
     if (ids !== expected) return `the ${how} menu on ${target} lists ${ids}, not ${expected}`;
-    const labels = expected.startsWith('preview') ? ['Open in Switchboard', `Show in ${fileManager}`] : [`Show in ${fileManager}`];
+    const labels = expected.startsWith('preview') ? ['Open in Seshboard', `Show in ${fileManager}`] : [`Show in ${fileManager}`];
     const rest = items.slice(labels.length);
     if (items.slice(0, labels.length).some((item, i) => item.label !== labels[i]) || !rest[0]!.label.startsWith('Open in ') || rest[1]!.label !== 'Copy path') return `the ${how} menu reads ${JSON.stringify(items.map((item) => item.label))}`;
     if (!inside) return `focus did not move into the ${how} menu`;
@@ -4534,7 +4544,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "document.querySelector('[data-file-link-click]')", 2_000))) return 'Settings › Conversation has no Clicking a file link';
     const shownValue = (await js("document.querySelector('[data-file-link-click]').dataset.value")) as string;
     const text = (await js("document.querySelector('[data-file-link-click]').innerText")) as string;
-    const expectedText = shownValue === 'switchboard' ? 'Open in Switchboard' : shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
+    const expectedText = shownValue === 'switchboard' ? 'Open in Seshboard' : shownValue === 'file-manager' ? `Show in ${fileManager}` : 'Open in editor';
     if (!text.includes(expectedText)) return `the setting reads "${text}", not "${expectedText}"`;
     await shot(win, 'settings-file-link-click.png');
     if (!(await chooseOption(win, '[data-file-link-click]', value))) return `could not choose ${value}`;
@@ -4566,7 +4576,7 @@ async function runFileLinksStep(win: BrowserWindow): Promise<string> {
       const wrongToo = check(await read(), mode);
       if (wrongToo) return wrongToo;
     }
-    return `ok: ${first.links.length} links and ${first.chips.length} chips preview Markdown and HTML in Switchboard and show the rest in ${fileManager} (Shift-click for the editor), then show in ${fileManager} and open in the editor as set; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
+    return `ok: ${first.links.length} links and ${first.chips.length} chips preview Markdown and HTML in Seshboard and show the rest in ${fileManager} (Shift-click for the editor), then show in ${fileManager} and open in the editor as set; ${menus}; e.g. "${first.links[0]?.tooltip ?? first.chips[0]?.tooltip ?? 'none on screen'}"`;
   } finally {
     // Put the setting back for the steps after this one (and close Settings if a failure left it open).
     if (await js("!!document.querySelector('[data-close-settings]')")) await js("document.querySelector('[data-close-settings]').click()");
@@ -4589,12 +4599,12 @@ const SMOKE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD
  */
 async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-preview-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-preview-')));
   const md = join(dir, 'notes.md');
   const html = join(dir, 'page.html');
   const big = join(dir, 'big.md');
   const code = join(dir, 'main.ts');
-  const open = (path: string) => js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: ${JSON.stringify(path)} }))`);
+  const open = (path: string) => js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: ${JSON.stringify(path)} }))`);
   const DIALOG = "document.querySelector('[data-file-preview][role=dialog]')";
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const title = (await js('document.title')) as string;
@@ -4661,7 +4671,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
       pressKey(win, 'Escape');
       if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
       const PANEL = `document.querySelector('[data-current-session="${session}"] [data-file-preview-place="panel"]')`;
-      await js(`window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
+      await js(`window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path: ${JSON.stringify(code)}, sessionId: ${JSON.stringify(session)}, line: 20, endLine: 24 } }))`);
       // Detached in an earlier run of this window, it would open in the dialog: dock it first.
       if (await waitInPage(win, `${DIALOG}?.querySelector('[data-file-preview-dock]')`, 1_000)) await js(`${DIALOG}.querySelector('[data-file-preview-dock]').click()`);
       if (!(await waitInPage(win, `${PANEL}?.querySelectorAll('[data-line-marked]').length === 5`, 5_000))) return 'the file did not open in the side panel with lines 20 to 24 marked';
@@ -4680,7 +4690,7 @@ async function runFilePreviewStep(win: BrowserWindow): Promise<string> {
     }
 
     await open(big);
-    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Switchboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
+    if (!(await waitInPage(win, "document.querySelector('[data-file-preview-too-large]')?.innerText.includes('Seshboard previews files up to 2 MB')", 5_000))) return 'a file over 2 MB did not say so';
 
     pressKey(win, 'Escape');
     if (!(await waitInPage(win, `!${DIALOG}`, 3_000))) return 'Escape did not close the preview';
@@ -5192,7 +5202,7 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
   type ReadState = { open: boolean; position: string; focus: string | null; scroll: number };
   try {
     // The demo home has a session with two long replies and headings: that is the one to read.
-    const demoRow = process.env.SWITCHBOARD_SMOKE_DEMO
+    const demoRow = process.env.SESHBOARD_SMOKE_DEMO
       ? ((await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null)
       : null;
     if (demoRow) {
@@ -5726,7 +5736,7 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
   const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
   const field = '[data-folder-list] input';
   const list = '[data-new-session-view] [data-folder-select][data-project-list]';
-  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-list-')));
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-list-')));
   const names = ['intranet', 'vscode-demo-time', 'pf-app-customizer', 'doctor', 'playwright-msteams-reporter', 'vscode-front-matter', 'pointfire-document-summarization', 'tideline-web', 'engage-time', 'voice-snippets'];
   const dirs = names.map((name) => join(parent, name));
   for (const dir of dirs) mkdirSync(dir);
@@ -5842,7 +5852,7 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
       if (removed) console.log(`[smoke] could not remove the project ${dir}: ${removed}`);
     }
     // New session back on its folder (the ones added are about to go), or on none.
-    if (before) openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    if (before) openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(before)}`);
     else pressKey(win, 'N', [MOD_MODIFIER]);
     await waitInPage(win, one('[data-new-session-view]'), 3_000);
     try {
@@ -5863,7 +5873,7 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
   const field = '[data-folder-list] input';
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-add-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-add-')));
   mkdirSync(join(dir, 'inner'));
   const suggestion = (path: string) => one(`[data-path-suggestion=${JSON.stringify(path)}]`);
   pressKey(win, 'N', ['meta']);
@@ -5913,7 +5923,7 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   const removed = await removeProjectInProjects(win, dir);
   if (removed) return removed === 'the project is not in Projects' ? 'the added folder is not in Projects' : removed;
   if (before) {
-    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return 'New session did not go back to its folder';
   }
   // On Windows the folder can't be removed while a process still runs in it (New session warms Claude Code up for the
@@ -5929,7 +5939,7 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
 /**
  * Clone from GitHub, never from the network and never starting a session: Settings › Projects turns it on with a
  * throwaway Clone into folder (the folder dialog answered here), a GitHub URL in New session's folder field offers
- * Clone owner/name, and ↩ clones a local bare repository (the engine clones from SWITCHBOARD_CLONE_SOURCE in a smoke
+ * Clone owner/name, and ↩ clones a local bare repository (the engine clones from SESHBOARD_CLONE_SOURCE in a smoke
  * run), which is added as a project and picked, without a worktree. Start then asks about the hook the repository
  * brings; Cancel keeps the prompt and starts nothing. Ends as it started: the project removed, the setting off, the
  * folders gone.
@@ -5937,9 +5947,9 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
 async function runCloneStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
-  const source = process.env.SWITCHBOARD_CLONE_SOURCE;
-  if (!source) return 'no SWITCHBOARD_CLONE_SOURCE: the engine would clone from GitHub';
-  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-clone-')));
+  const source = process.env.SESHBOARD_CLONE_SOURCE;
+  if (!source) return 'no SESHBOARD_CLONE_SOURCE: the engine would clone from GitHub';
+  const sandbox = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-clone-')));
   const bare = join(source, 'acme', 'smoke-clone.git');
   const folder = join(sandbox, 'Developer');
   const target = join(folder, 'smoke-clone');
@@ -5971,10 +5981,10 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, one('[data-settings-section="projects"]'), 3_000))) return (cleanUp(), 'Settings has no Projects page');
   await js(`${one('[data-settings-section="projects"]')}.click()`);
   if (!(await waitInPage(win, `${one('[data-settings-page="projects"]')} && ${one('[data-clone-enabled]')} && ${one('[data-project-order]')}`, 3_000))) return (cleanUp(), 'Settings › Projects has no Clone from GitHub or Project order');
-  process.env.SWITCHBOARD_PICK_FOLDER = folder;
+  process.env.SESHBOARD_PICK_FOLDER = folder;
   await js(`${one('[data-clone-enabled]')}.click()`);
   if (!(await waitInPage(win, `${one('[data-clone-enabled]')}.getAttribute('aria-checked') === 'true' && ${one(`[data-clone-folder-path=${JSON.stringify(folder)}]`)}`, 3_000))) {
-    delete process.env.SWITCHBOARD_PICK_FOLDER;
+    delete process.env.SESHBOARD_PICK_FOLDER;
     return (cleanUp(), 'turning on Clone from GitHub did not ask for its folder and turn on');
   }
   await js(`${one('[data-close-settings]')}.click()`);
@@ -6043,7 +6053,7 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
   // The session open now, to come back to (its row may be in a closed sidebar section): a session link opens it.
   const session = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   const leaveNewSession = async () => {
-    if (session) openDeepLink(`switchboard://session/${session}`);
+    if (session) openDeepLink(`seshboard://session/${session}`);
     else pressKey(win, 'H', ['meta', 'shift']);
     return waitInPage(win, session ? `document.querySelector('[data-current-session=${JSON.stringify(JSON.stringify(session)).slice(1, -1)}]')` : "!document.querySelector('[data-new-session-view]')", 3_000);
   };
@@ -6098,7 +6108,7 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
     // A tile when it is a project; otherwise a link picks it, since a typed path would add it to the projects (and the
     // throwaway profile must have none until the projects step).
     if (await js(`!!${optionFor(before)}`)) await js(`${optionFor(before)}.click()`);
-    else openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    else openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(before)}`);
     if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(before)} && !document.querySelector('[data-route-question]')`, 3_000))) {
       return 'could not pick a project again from Quick question';
     }
@@ -6122,7 +6132,7 @@ async function runQuickQuestionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * `switchboard://` links, fed to the handler directly (no `open`, so the system's link handlers are
+ * `seshboard://` links, fed to the handler directly (no `open`, so the system's link handlers are
  * untouched). A new-session link fills in the folder and prompt and says where the prompt came from,
  * but sends nothing; a bad link shows why and changes nothing; a repo with no checkout leaves the folder
  * empty; a session link opens the session under test again.
@@ -6136,7 +6146,7 @@ let smokeGithubFolder: string | null = null;
  */
 function smokeGithubCheckout(): string {
   if (smokeGithubFolder) return smokeGithubFolder;
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-gh-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-gh-')));
   const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' });
   git('init', '-q', '-b', 'main');
   writeFileSync(join(dir, 'README.md'), '# Smoke repo\n');
@@ -6150,7 +6160,7 @@ function smokeGithubCheckout(): string {
 /** Opens New session on the smoke's GitHub checkout with an empty box; false when it didn't get there. */
 async function newSessionOnSmokeGithub(win: BrowserWindow): Promise<string | null> {
   const root = smokeGithubCheckout();
-  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}`);
+  openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(root)}`);
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
   if (!(await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(root)} && ${composer} && !${composer}.disabled`, 8_000))) return null;
   await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
@@ -6275,7 +6285,7 @@ async function runGithubNewSessionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-menu=\"workspace\"] [data-github-fork-caution]')", 3_000))) return fail('no caution line for the fork in the Where menu');
   const menu = (await js("document.querySelector('[data-menu=\"workspace\"]').innerText")) as string;
   // The heading is in small capitals (CSS), so its text comes back in upper case.
-  if (!menu.toLowerCase().includes('work on #149 in') || !menu.includes('New worktree from the pull request') || !menu.includes("#149 is from a fork. Claude can change it here, but Switchboard can't push it back.")) {
+  if (!menu.toLowerCase().includes('work on #149 in') || !menu.includes('New worktree from the pull request') || !menu.includes("#149 is from a fork. Claude can change it here, but Seshboard can't push it back.")) {
     return fail(`the Where menu reads ${JSON.stringify(menu)}`);
   }
   await shot(win, 'github-pr-where.png');
@@ -6296,7 +6306,7 @@ async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
   const root = smokeGithubCheckout();
   const fail = async (why: string) => (await emptyNewSessionBox(win), why);
-  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=32&autostart=1`);
+  openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(root)}&issue=32&autostart=1`);
   const prompt = 'Fix #32: Start a session from a GitHub issue or pull request';
   if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-from-link-banner]')`, 10_000))) {
     return fail(`the link did not fill in New session (${JSON.stringify(await js(`${composer}?.value`))})`);
@@ -6309,7 +6319,7 @@ async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'github-link.png');
   await emptyNewSessionBox(win);
   // An issue of another repository than the project's is refused, and nothing is filled in.
-  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(root)}&issue=${encodeURIComponent('https://github.com/smoke-owner/other-repo/issues/32')}`);
+  openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(root)}&issue=${encodeURIComponent('https://github.com/smoke-owner/other-repo/issues/32')}`);
   if (!(await waitInPage(win, "document.querySelector('[data-github-start-error]')?.innerText.includes('This issue is from another repository than')", 10_000))) {
     return fail(`another repository's issue was not refused (${String(await js("document.querySelector('[data-github-start-error]')?.innerText ?? document.querySelector('[data-from-link-banner]')?.innerText"))})`);
   }
@@ -6319,7 +6329,7 @@ async function runGithubLinkStep(win: BrowserWindow): Promise<string> {
 
 /** In the demo world, a sent message with an attached issue: its Attached row, and What Claude got. */
 async function attachedRowInDemo(win: BrowserWindow): Promise<string> {
-  if (!process.env.SWITCHBOARD_SMOKE_DEMO) return 'no message with an attached issue to read here (the demo world has one)';
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'no message with an attached issue to read here (the demo world has one)';
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const title = 'Write a getting started guide';
   await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes(${JSON.stringify(title)}))?.click()`);
@@ -6338,7 +6348,7 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   const prompt = 'Smoke test from a link:\nsummarise this folder.';
   const folder = homedir();
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
-  openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+  openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
   if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) {
     return `the link did not fill in New session (${String(await js(`${composer}?.value + ' in ' + document.querySelector('[data-folder-select]')?.dataset.value`))})`;
   }
@@ -6346,7 +6356,7 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'deep-link.png');
 
   // A refused link explains itself and leaves the prompt alone.
-  openDeepLink('switchboard://delete-everything?cwd=/');
+  openDeepLink('seshboard://delete-everything?cwd=/');
   if (!(await waitInPage(win, "document.querySelector('[data-link-error]')?.innerText.includes('delete-everything')", 3_000))) return 'an unknown action showed no error';
   await shot(win, 'deep-link-error.png');
   if ((await js(`${composer}?.value`)) !== prompt) return 'a refused link changed the prompt';
@@ -6358,13 +6368,13 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await js("!!document.querySelector('[data-new-session-view]') && !document.querySelector('[data-current-session]')"))) return 'the link left New session (was something started?)';
 
   // A project that isn't one of yours is refused before anything changes.
-  openDeepLink('switchboard://new-session?project=switchboard-smoke-no-such-project&prompt=hi');
+  openDeepLink('seshboard://new-session?project=switchboard-smoke-no-such-project&prompt=hi');
   if (!(await waitInPage(win, "document.querySelector('[data-link-error]')?.innerText.includes('switchboard-smoke-no-such-project')", 5_000))) return 'an unknown project showed no error';
   if ((await js(`${composer}?.value`)) !== '') return 'an unknown project still filled in the prompt';
   await js("document.querySelector('[data-link-error] button').click()");
 
   // No folder in the link: nothing is guessed, the folder list opens, and even autostart waits.
-  openDeepLink('switchboard://new-session?prompt=Wait%20for%20me&autostart=1');
+  openDeepLink('seshboard://new-session?prompt=Wait%20for%20me&autostart=1');
   if (!(await waitInPage(win, `${composer}?.value === 'Wait for me' && document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-folder-select]')?.getAttribute('aria-expanded') === 'true'`, 5_000))) {
     return 'a link without a folder did not leave it empty with the folder list open';
   }
@@ -6375,7 +6385,7 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
 
   // No checkout of this repository: the folder is left empty, with the reason.
-  openDeepLink('switchboard://new-session?repo=switchboard-smoke/no-such-repo&prompt=hi');
+  openDeepLink('seshboard://new-session?repo=switchboard-smoke/no-such-repo&prompt=hi');
   if (!(await waitInPage(win, "document.querySelector('[data-folder-select]')?.dataset.value === '' && document.querySelector('[data-route-hint]')?.innerText.includes('switchboard-smoke/no-such-repo')", 20_000))) {
     return `a repo without a checkout did not leave the folder empty (${String(await js("document.querySelector('[data-route-hint]')?.innerText"))})`;
   }
@@ -6385,13 +6395,13 @@ async function runDeepLinkStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${composer}?.value === ''`, 2_000))) return 'could not empty the prompt the links left';
 
   if (!smokeSessionId) return 'ok: filled in folder and prompt, refused a bad link, empty folder for an unknown repo (no session to open)';
-  openDeepLink(`switchboard://session/${smokeSessionId}`);
+  openDeepLink(`seshboard://session/${smokeSessionId}`);
   if (!(await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000))) return 'a session link did not open the session';
   return 'ok: filled in folder and prompt with a notice, sent nothing, refused a bad link and an unknown project, no folder (even with autostart) opens the list and waits, empty folder for an unknown repo, opened a session';
 }
 
 /**
- * The `switchboard .` shell command. Settings › General › Terminal installs the commands and removes them again (in the
+ * The `seshboard .` shell command. Settings › General › Terminal installs the commands and removes them again (in the
  * throwaway profile: a scripted run never writes /usr/local/bin or the PATH). Then a folder on the command line, as the
  * Windows and Linux commands pass it, opens New session there, and one that isn't a folder says so. Nothing is sent.
  */
@@ -6551,18 +6561,18 @@ async function runCompanionStep(win: BrowserWindow): Promise<string> {
  * every project with a pull request and a text blank, made in Settings › Prompts; picked with / in New session, both
  * blanks filled (the pull request typed, as without gh), more context under it, and sent to the queue (never to
  * Claude), where it is the filled text without braces; then moved to just for you, shared (in the sandbox's
- * .switchboard.json) and back to every project (out of that file), and deleted.
+ * .seshboard.json) and back to every project (out of that file), and deleted.
  */
 async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
   const click = (selector: string) => js(`${one(selector)}?.click()`);
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-prompts-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-smoke-prompts-')));
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
   git('init', '-q', '-b', 'main');
   git('-c', 'user.email=smoke@example.com', '-c', 'user.name=Smoke', 'commit', '-q', '--allow-empty', '-m', 'initial');
   git('branch', 'feat/smoke-prompts');
-  const sharedFile = join(dir, '.switchboard.json');
+  const sharedFile = join(dir, '.seshboard.json');
   const readShared = () => (existsSync(sharedFile) ? (JSON.parse(readFileSync(sharedFile, 'utf8')) as { prompts?: Array<{ id: string; text: string }> }) : null);
   const id = 'smoke-fix-a-pull-request';
   const row = `[data-saved-prompt-row="${id}"]`;
@@ -6583,7 +6593,7 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
   };
   try {
     // New session on the sandbox, through a link (so it isn't remembered as New session's folder).
-    openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(dir)}`);
+    openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(dir)}`);
     if (!(await waitInPage(win, `${one('[data-folder-select]')}?.dataset.value === ${JSON.stringify(dir)} && ${one(box)}`, 5_000))) return 'New session did not open on the sandbox';
     // Typed in once, so Settings knows the project "just for you" and "Share" mean.
     await js(`${one(box)}.focus()`);
@@ -6691,9 +6701,9 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "!!document.querySelector('[data-prompt-share-toast=\"shared\"] [data-prompt-show-change]')", 2_000))) return 'sharing did not say to commit the file, with Show the change';
     await shot(win, 'saved-prompt-shared.png');
     const shared = readShared()?.prompts?.find((p) => p.id === id);
-    if (shared?.text !== 'Fix {{pr:pr}} because {{reason}}') return `the sandbox's .switchboard.json did not have the prompt (${JSON.stringify(readShared())})`;
+    if (shared?.text !== 'Fix {{pr:pr}} because {{reason}}') return `the sandbox's .seshboard.json did not have the prompt (${JSON.stringify(readShared())})`;
     if (!(await moveTo('global'))) return 'Use in › Every project did not move it back';
-    if (readShared()?.prompts) return `making it global again left it in .switchboard.json (${JSON.stringify(readShared())})`;
+    if (readShared()?.prompts) return `making it global again left it in .seshboard.json (${JSON.stringify(readShared())})`;
     await click(`${row} [data-saved-prompt-menu]`);
     await click('[role=menu] [data-prompt-delete]');
     if (!(await waitInPage(win, `!${one(row)} && !!document.querySelector('[data-prompt-deleted-toast]')`, 3_000))) return 'Delete did not take it out, with Undo';
@@ -6706,7 +6716,7 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
       await js(closeToasts);
       await settle(win);
     }
-    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .switchboard.json, with Show the change) and back (out of it), deleted';
+    return 'ok: made in Settings › Prompts (Add blank and {{), picked first under Saved prompts in /, ⌫ took out an empty blank, Clear took the prompt out and kept the text under it, #142 typed and a reason filled, Tab to the context, queued as the filled text, used 1×, moved to just for you, shared (in .seshboard.json, with Show the change) and back (out of it), deleted';
   } finally {
     await cleanUp();
   }
@@ -6720,14 +6730,14 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
 async function runQueueStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   // The real path: the folder picker and the engine compare folders by it (/var is /private/var on macOS).
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-queue-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-queue-')));
   const sidebarItems = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
   const started = "!!document.querySelector('[data-current-session]')";
   try {
     if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
     if ((await js(`${sidebarItems}.length`)) !== 0) return 'the throwaway profile already had a queue';
     const queuePrompt = async (prompt: string) => {
-      openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+      openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
       const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
       // Add to queue is in Start's menu (the ▾ next to Start).
       if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return false;
@@ -6827,13 +6837,13 @@ async function runQueueStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Start by itself (#172), in the throwaway profile and against a temp folder: a stand-in session "works" there (the
- * engine's `smokeQueueHost`, as `SWITCHBOARD_STUB_QUEUE` allows), and Start after this one… on its row opens New session
+ * engine's `smokeQueueHost`, as `SESHBOARD_STUB_QUEUE` allows), and Start after this one… on its row opens New session
  * with Wait for on it and Start by itself on. Queued, the row says "starts after". A clean finish starts it once and
  * takes it off the queue (the stub never sends the prompt to Claude); after an error a second item stays, ready, and
  * says why. Both notifications are recorded.
  */
 /**
- * Pipelines (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): nothing reaches Claude Code, no worktree is made
+ * Pipelines (#179), with stand-in steps (`SESHBOARD_STUB_QUEUE`): nothing reaches Claude Code, no worktree is made
  * and no command runs. Runs Execute and validate from the smoke session through its ⋯ menu, checks the step tree and
  * that each step's first prompt links the right sessions, has Validate find changes (a round 2 starts after Execute's
  * turn), then pass, and checks the run is done.
@@ -6865,10 +6875,10 @@ async function runPipelineStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-pipeline-menu]')", 3_000))) return 'the ⋯ menu has no Run pipeline ›';
   } else {
     // No session that is safe to use: New session in a throwaway repository, Run as › Execute and validate, a run row.
-    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pipeline-')));
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pipeline-')));
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
     execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
-    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent('Smoke pipeline: add a usage cost toggle')}&cwd=${encodeURIComponent(folder)}`);
+    openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent('Smoke pipeline: add a usage cost toggle')}&cwd=${encodeURIComponent(folder)}`);
     const ready = `document.querySelector('[data-new-session-view] [data-composer]')?.value === 'Smoke pipeline: add a usage cost toggle' && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`;
     if (!(await waitInPage(win, `${ready} && !!document.querySelector('[data-new-session-view] [data-run-as]')`, 8_000))) return 'New session did not open on the throwaway repository with Run as';
     await js("document.querySelector('[data-new-session-view] [data-run-as]').click()");
@@ -6923,13 +6933,13 @@ async function runPipelineStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Run as in New session (#179), with stand-in steps (`SWITCHBOARD_STUB_QUEUE`): in a throwaway repository, Run as ›
+ * Run as in New session (#179), with stand-in steps (`SESHBOARD_STUB_QUEUE`): in a throwaway repository, Run as ›
  * Execute and validate turns Start into Run pipeline with two pills under the box, ⌘↵ runs it as a run row with Execute
  * working, and New session is back on One session. The run is stopped at the end, so later steps see none going.
  */
 async function runRunAsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-run-as-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-run-as-')));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
   execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
   const view = '[data-new-session-view]';
@@ -6937,7 +6947,7 @@ async function runRunAsStep(win: BrowserWindow): Promise<string> {
   const submit = `document.querySelector('${view} [data-composer-submit]')`;
   const opened = (prompt: string) =>
     `${chip} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(prompt)}`;
-  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(folder)}`);
   if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open on the throwaway repository with the Run as chip';
   if ((await js(`${chip}.dataset.runAs`)) !== 'one') return `Run as did not start on One session (${String(await js(`${chip}.dataset.runAs`))})`;
   await js(`${chip}.click()`);
@@ -6957,7 +6967,7 @@ async function runRunAsStep(win: BrowserWindow): Promise<string> {
   const runId = (await js(`${tree}.closest('[data-run-row]')?.dataset.runRow ?? ''`)) as string;
   await js(`${tree}.querySelector('[data-run-stop-button]')?.click()`);
   if (!(await waitInPage(win, `${tree}?.dataset.runStatus === 'stopped'`, 5_000))) return 'Stop the run did not stop it';
-  openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(folder)}`);
+  openDeepLink(`seshboard://new-session?cwd=${encodeURIComponent(folder)}`);
   if (!(await waitInPage(win, opened(''), 8_000))) return 'New session did not open again';
   if ((await js(`${chip}.dataset.runAs`)) !== 'one') return 'Run as did not go back to One session after the run started';
   return `ok: Run as › Execute and validate made Start Run pipeline with two pills, ⌘↵ ran it as a run row${runId ? ` (${runId})` : ''} with Execute working, and New session is back on One session`;
@@ -6980,12 +6990,12 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   };
   const before = starts().length;
   const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-archive-run-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-archive-run-')));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
   execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
   const view = '[data-new-session-view]';
   const task = 'Smoke archive run: tidy the settings page';
-  openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+  openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
   if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
   await js(`document.querySelector('${view} [data-run-as]').click()`);
   if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
@@ -7029,7 +7039,7 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[role=menu] [data-run-row-action=\"delete\"]').click()");
   if (!(await waitInPage(win, "!!document.querySelector('[data-run-delete-confirm]') && !!document.querySelector('[data-run-delete-keep]')", 2_000))) return 'Delete… did not ask, with Keep the sub-sessions';
   const body = (await js("document.querySelector('[data-run-delete-confirm]').innerText")) as string;
-  if (!body.includes('The run and its 2 sub-sessions go away from Switchboard')) return `Delete… did not say what goes (${body})`;
+  if (!body.includes('The run and its 2 sub-sessions go away from Seshboard')) return `Delete… did not say what goes (${body})`;
   await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
   if (!(await waitInPage(win, `!${row}`, 5_000))) return 'Delete did not take the run row away';
   if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
@@ -7077,7 +7087,7 @@ async function pipelineEditorChecks(win: BrowserWindow, js: (code: string) => Pr
 /** A session that is compacting says so after you switch to another session and back (a stand-in the host list reports as compacting). */
 async function runCompactingStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-compacting-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-compacting-')));
   const standIn = `smoke-compacting-${randomUUID()}`;
   const host = (state: 'running' | 'idle' | 'closed', compacting?: boolean) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(compacting !== undefined ? { compacting } : {}) });
   const status = `document.querySelector('[data-current-session="${standIn}"] [data-streaming][data-compacting]')?.innerText ?? ''`;
@@ -7109,7 +7119,7 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
 
 async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-autostart-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-autostart-')));
   const standIn = `smoke-autostart-${randomUUID()}`;
   const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean' | 'error') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
   const sidebarItems = "[...document.querySelectorAll('[data-session-list] [data-queue-item]')].map((el) => el.dataset.queueItem)";
@@ -7185,7 +7195,7 @@ async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
 /**
  * Scheduled sessions (#173), in the throwaway profile: a demo prompt in New session goes through Start ▾ › Schedule…
  * (every day, a minute from now), and shows on Home. The engine's schedule clock (`smokeScheduleClock`, with
- * `SWITCHBOARD_STUB_QUEUE`, which also keeps the run from sending anything to Claude) moves on: the run is titled
+ * `SESHBOARD_STUB_QUEUE`, which also keeps the run from sending anything to Claude) moves on: the run is titled
  * "<name> · <day>", notified, and the row shows Last. Paused, a day later nothing runs. Delete, then Undo, puts it back;
  * it is deleted for good at the end.
  */
@@ -7202,7 +7212,7 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
     return true;
   };
   const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-schedules-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-schedules-')));
   const goHome = async () => {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
     await waitInPage(win, "!!document.querySelector('[data-home], [data-onboarding]')", 3_000);
@@ -7210,7 +7220,7 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
   try {
     // A folder of its own, opened with a link, so the run finds it (and nothing real is touched).
     const text = `${name}\nList yesterday's open pull requests.`;
-    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
     if (!(await waitInPage(win, `${prompt}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)}`, 5_000))) return 'New session did not open on the schedule\'s folder';
     await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
     if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-schedule-add]')", 2_000))) return 'Start ▾ has no Schedule…';
@@ -7281,7 +7291,7 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
  */
 async function runUpcomingStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-upcoming-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-upcoming-')));
   const name = 'Smoke upcoming: standup summary';
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
   const view = '[data-upcoming]';
@@ -7293,7 +7303,7 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
    */
   const laterRun = `[...document.querySelectorAll('${view} [data-upcoming-run]')].filter((el) => el.innerText.includes(${JSON.stringify(name)}) && el.dataset.upcomingRunState === 'next').pop()`;
   const fill = async (text: string) => {
-    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
+    openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(text)}&cwd=${encodeURIComponent(folder)}`);
     if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(text)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return false;
     await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
     return waitInPage(win, "!!document.querySelector('[role=menu] [data-queue-add]')", 2_000);
@@ -7376,10 +7386,10 @@ async function runUpcomingStep(win: BrowserWindow): Promise<string> {
 /**
  * Event triggers (#180), in the throwaway profile, against a temp folder and the smoke's fake gh, whose repository is
  * the file FAKE_GH_TRIGGERS names (tests/fixtures/fake-gh-triggers.cjs): nothing reaches GitHub. A prompt in New
- * session goes through Start ▾ › Start when… to an issues trigger on the `switchboard` label with state labels on. Its first
+ * session goes through Start ▾ › Start when… to an issues trigger on the `seshboard` label with state labels on. Its first
  * check starts nothing. A new labelled issue and the engine's moved clock (`smokeScheduleClock`) start one session with
- * the filled prompt (the stub records it, with `SWITCHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
- * saw `--add-label "switchboard: working" --remove-label switchboard`. Paused, a new issue starts nothing. The trigger and the
+ * the filled prompt (the stub records it, with `SESHBOARD_STUB_QUEUE`, and never sends it to Claude), and the fake
+ * saw `--add-label "seshboard: working" --remove-label seshboard`. Paused, a new issue starts nothing. The trigger and the
  * project are removed again.
  */
 async function runTriggersStep(win: BrowserWindow): Promise<string> {
@@ -7389,9 +7399,9 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
   if (!stateFile) return 'ok: skipped, no fake gh on this platform';
   const callsFile = `${stateFile}.calls`;
   const startsFile = join(app.getPath('userData'), 'smoke-trigger-starts.jsonl');
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-triggers-')));
   const composer = "document.querySelector('[data-new-session-view] [data-composer]')";
-  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['seshboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
   type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
   const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
   const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
@@ -7400,11 +7410,11 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
   const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
   const clock = (ms: number) => engine.send({ type: 'smokeScheduleClock', ms });
   const startsBefore = starts().length;
-  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['seshboard'], issues: [issue(1, 'Already there before the trigger')] });
   writeFileSync(callsFile, '');
   try {
     const prompt = 'Smoke trigger: work on {{event.title}} ({{event.url}}).';
-    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
+    openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(prompt)}&cwd=${encodeURIComponent(folder)}`);
     if (!(await waitInPage(win, `${composer}?.value === ${JSON.stringify(prompt)} && document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(folder)} && !document.querySelector('[data-new-session-view] [data-start-menu]')?.disabled`, 5_000))) return 'New session did not open on the temp folder';
     await js("document.querySelector('[data-new-session-view] [data-start-menu]').click()");
     if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-trigger-add]')", 2_000))) return 'Start ▾ has no Start when…';
@@ -7416,11 +7426,11 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     // The summary says what Issues for you does, with the login the fake gh gives; the temp folder isn't a git
     // repository, so New session hands over the project folder, one at a time.
     const summary = `document.querySelector('${editor} [data-trigger-summary]')?.innerText`;
-    const expected = "When an issue with the switchboard label is assigned to @smoke-user, start a session in the project's folder. One at a time.";
+    const expected = "When an issue with the seshboard label is assigned to @smoke-user, start a session in the project's folder. One at a time.";
     if (!(await waitInPage(win, `${summary} === ${JSON.stringify(expected)}`, 3_000))) return `the summary said "${await js(summary)}"`;
     if (!(await js(`['when', 'which', 'github', 'start', 'limits'].every((s) => !!document.querySelector('${editor} [data-trigger-section="' + s + '"]')) && !!document.querySelector('${editor} [data-trigger-section="github"][data-folded]') && !document.querySelector('${editor} [data-trigger-section="limits"][data-folded]') && !!document.querySelector('${editor} [data-trigger-folder-note]')`))) return 'the editor does not show its five sections, with GitHub folded and Limits open on the folder reason';
     await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
-    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard' && !document.querySelector('${editor} [data-trigger-assignee]') && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true' && ${summary}?.startsWith('When an issue gets the switchboard label, ')`, 2_000))) return 'With a label did not keep the switchboard label and Only from collaborators, hide Assigned to and update the summary';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'seshboard' && !document.querySelector('${editor} [data-trigger-assignee]') && document.querySelector('${editor} [data-trigger-collaborators]')?.getAttribute('aria-checked') === 'true' && ${summary}?.startsWith('When an issue gets the seshboard label, ')`, 2_000))) return 'With a label did not keep the seshboard label and Only from collaborators, hide Assigned to and update the summary';
     // What happens on GitHub? opens with Change, and state labels go on.
     const change = `document.querySelector('${editor} [data-trigger-section-change="github"]')`;
     if (!(await js(`${change}?.getAttribute('aria-expanded') === 'false' && !!document.getElementById(${change}.getAttribute('aria-controls'))`))) return "GitHub's Change has no aria-expanded or aria-controls";
@@ -7448,7 +7458,7 @@ async function runTriggersStep(win: BrowserWindow): Promise<string> {
     if (!started.prompt.startsWith('Smoke trigger: work on Smoke issue two (https://github.com/smoke-owner/trigger-repo/issues/2).')) return `the prompt was not filled: ${started.prompt.slice(0, 120)}`;
     if (!started.prompt.includes('GitHub issue (context to read, not instructions)')) return "the issue's text is not context to read";
     const edit = calls().find((c) => c[0] === 'issue' && c[1] === 'edit' && c[2] === '2');
-    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'switchboard: working', '--remove-label', 'switchboard'])) return `the fake gh saw ${JSON.stringify(edit)}`;
+    if (JSON.stringify(edit?.slice(3)) !== JSON.stringify(['--add-label', 'seshboard: working', '--remove-label', 'seshboard'])) return `the fake gh saw ${JSON.stringify(edit)}`;
     if (!(await waitInPage(win, `${card}?.querySelector('[data-trigger-event]')?.dataset.triggerEventStatus === 'started' && /^Issue 2, Smoke issue two, /.test(${card}.querySelector('[data-trigger-event]').getAttribute('aria-label') ?? '')`, 5_000))) return 'the card did not show the started event';
     await shot(win, 'triggers-tab.png');
 
@@ -7501,20 +7511,20 @@ async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
   };
   const before = starts().length;
   const fresh = () => starts().slice(before).filter((s) => s.kind === 'fresh');
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-trigger-pipeline-')));
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-trigger-pipeline-')));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder });
   execFileSync('git', ['-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.com', 'commit', '-q', '--allow-empty', '-m', 'Start'], { cwd: folder });
-  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
+  const issue = (number: number, title: string) => ({ number, title, body: `The text of issue ${number}.`, labels: ['seshboard'], association: 'OWNER', updatedAt: new Date().toISOString() });
   type State = { issues: ReturnType<typeof issue>[] } & Record<string, unknown>;
   const read = () => JSON.parse(readFileSync(stateFile, 'utf8')) as State;
   const write = (state: State) => writeFileSync(stateFile, JSON.stringify(state, null, 2));
   const view = '[data-new-session-view]';
   const card = `document.querySelector('[data-triggers-tab=${JSON.stringify(folder)}] [data-trigger-card]')`;
   const runRow = "[...document.querySelectorAll('[data-session-list] [data-session-id^=\"run-\"]')].find((row) => row.querySelector('[data-row-triggered]'))";
-  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['switchboard'], issues: [issue(1, 'Already there before the trigger')] });
+  write({ repo: 'smoke-owner/trigger-repo', login: 'smoke-user', labels: ['seshboard'], issues: [issue(1, 'Already there before the trigger')] });
   try {
     const task = 'Smoke pipeline trigger: {{event.title}} ({{event.url}}).';
-    openDeepLink(`switchboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
+    openDeepLink(`seshboard://new-session?prompt=${encodeURIComponent(task)}&cwd=${encodeURIComponent(folder)}`);
     if (!(await waitInPage(win, `!!document.querySelector('${view} [data-run-as]') && document.querySelector('${view} [data-composer]')?.value === ${JSON.stringify(task)}`, 8_000))) return 'New session did not open on the throwaway repository';
     await js(`document.querySelector('${view} [data-run-as]').click()`);
     if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-run-as-option=\"builtin-execute-validate\"]')", 3_000))) return 'Run as did not list Execute and validate';
@@ -7530,7 +7540,7 @@ async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
     await js(`document.querySelector('${editor} [data-trigger-unattended]').click()`);
     if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-unattended]')?.getAttribute('aria-checked') === 'true'`, 2_000))) return 'Run without stopping for me did not turn on';
     await js(`document.querySelector('${editor} [data-trigger-which="label"]').click()`);
-    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'switchboard'`, 2_000))) return 'Label did not keep the switchboard label';
+    if (!(await waitInPage(win, `document.querySelector('${editor} [data-trigger-label]')?.value === 'seshboard'`, 2_000))) return 'Label did not keep the seshboard label';
     await js(`document.querySelector('${editor} [data-trigger-save]').click()`);
     if (!(await waitInPage(win, `!document.querySelector('${editor}')`, 3_000))) return 'Create trigger did not close the editor';
 
@@ -7631,7 +7641,7 @@ async function runStarStep(win: BrowserWindow): Promise<string> {
     }
     const mode = (await js("document.querySelector('[data-star-prompt]').dataset.starPrompt")) as string;
     // The smoke test's gh never reaches GitHub, so it can't tell: the button opens the page instead.
-    if (process.env.SWITCHBOARD_GH && mode !== 'open-page') return `Star on GitHub would ${mode} with a gh that can't reach GitHub`;
+    if (process.env.SESHBOARD_GH && mode !== 'open-page') return `Star on GitHub would ${mode} with a gh that can't reach GitHub`;
     // The bottom of the sidebar (or the rail) with the button, in both schemes, to look at.
     const scheme = preferences.get().colorScheme;
     for (const colorScheme of ['light', 'dark'] as const) {
@@ -9141,7 +9151,7 @@ async function runSendNowStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Ask about this session in the smoke session, answered by the engine's stub (SWITCHBOARD_STUB_BTW), so no model is
+ * Ask about this session in the smoke session, answered by the engine's stub (SESHBOARD_STUB_BTW), so no model is
  * called and nothing reaches the session: the transcript and Up next must not change. Questions go through the Ask
  * button, the panel's field and `/btw`, never through Send, so a broken button could never send one as a message.
  */
@@ -9486,7 +9496,7 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   let busy = (await js(working$)) as string | null;
   let registryEntry: string | null = null;
   const configDir = process.env.CLAUDE_CONFIG_DIR;
-  if (!busy && process.env.SWITCHBOARD_SMOKE_DEMO && configDir) {
+  if (!busy && process.env.SESHBOARD_SMOKE_DEMO && configDir) {
     const other = (await js(`[...document.querySelectorAll('[data-session-id]')].find((r) => r.dataset.indexed === 'true' && r.dataset.sessionId !== ${JSON.stringify(id)} && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)})?.dataset.sessionId ?? null`)) as string | null;
     if (other) {
       registryEntry = join(configDir, 'sessions', `${process.pid}.json`);
@@ -9628,7 +9638,7 @@ async function closeOverlays(win: BrowserWindow | undefined): Promise<string | n
 }
 
 /**
- * Sessions running in Claude Code right now, in Switchboard or anywhere else, and their folders, plus the Claude
+ * Sessions running in Claude Code right now, in Seshboard or anywhere else, and their folders, plus the Claude
  * Code session that started this run (CLAUDE_CODE_SESSION_ID, in case the registry doesn't list it yet, with the
  * folder the run started in). Smoke steps never type into them or run anything in their folders. Null when the
  * engine can't be asked: then no session is safe.
@@ -9751,13 +9761,13 @@ async function runDiagnosticsStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Claude Code mods: a session in a throwaway profile loads the test mod (tests/fixtures/smoke-mod, copied by the
- * launcher into SWITCHBOARD_SMOKE_MODS) and starts with its own `/smoke-ping`, which the mod answers without the model.
+ * launcher into SESHBOARD_SMOKE_MODS) and starts with its own `/smoke-ping`, which the mod answers without the model.
  * Checks its band above the message box, its pane's tab, its status chip, that a press reaches the mod (the band and
  * status change and a toast comes), and that Show mods off takes all of it away without a restart.
  */
 async function runModsStep(win: BrowserWindow): Promise<string> {
-  const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { out: string } | null;
-  if (!spec) return 'ok: skipped, the launcher made no test mod (SWITCHBOARD_SMOKE_MODS)';
+  const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { out: string } | null;
+  if (!spec) return 'ok: skipped, the launcher made no test mod (SESHBOARD_SMOKE_MODS)';
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const text = (selector: string) => `(document.querySelector('${selector}')?.innerText ?? '')`;
   engine.sendStanding({ type: 'smokeMods' });
@@ -9940,7 +9950,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.
   await step('links', () => runDeepLinkStep(win), { timeoutMs: 45_000 });
-  await step('shell command: Settings installs and removes switchboard, seshboard and sesh, a folder argument opens New session', () => runShellCommandStep(win));
+  await step('shell command: Settings installs and removes seshboard, sesh and switchboard, a folder argument opens New session', () => runShellCommandStep(win));
   await step('# lists issues and pull requests (fake gh), ↩ adds a chip, Esc keeps typing, an Attached row (nothing sent)', () => runGithubListStep(win), { timeoutMs: 45_000 });
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
@@ -9964,7 +9974,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('usage band above the composer', async () => {
     if (!(await waitInPage(win, "document.querySelector('[data-usage-band]')", 15_000))) {
       // Under a session the band needs Claude Code's usage report, which takes a login the demo home doesn't have.
-      return process.env.SWITCHBOARD_SMOKE_DEMO ? 'ok: skipped, no login in the demo home to read usage from' : 'failed: not shown';
+      return process.env.SESHBOARD_SMOKE_DEMO ? 'ok: skipped, no login in the demo home to read usage from' : 'failed: not shown';
     }
     await shot(win, 'usage.png');
     return `ok: ${await js("document.querySelector('[data-usage-band]').innerText.replace(/\\s+/g, ' ')")}`;
@@ -10017,7 +10027,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   rendering = (await js(
     "({ diffs: document.querySelectorAll('[data-diff]').length, highlighted: document.querySelectorAll('.shiki').length, codeBlocks: document.querySelectorAll('.code-block').length, todos: document.querySelectorAll('[data-todos]').length, images: document.querySelectorAll('[data-transcript-image] img').length })",
   )) as Record<string, number>;
-  const liveCwd = process.env.SWITCHBOARD_SMOKE_LIVE_CWD;
+  const liveCwd = process.env.SESHBOARD_SMOKE_LIVE_CWD;
   if (liveCwd) await step('live session through the UI', () => runLiveSessionStep(win, liveCwd), { timeoutMs: 180_000 });
   // With --only, the engine restart runs only when it is picked.
   if (smokeOnly && !smokeOnly.test(RESTART_STEP)) {
@@ -10044,7 +10054,7 @@ app.whenReady().then(() => {
   keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
-    applicationName: 'Switchboard',
+    applicationName: 'Seshboard',
     applicationVersion: appInfo.dev ? `${appInfo.version} (dev)` : appInfo.version,
     version: appInfo.commit ?? '',
     iconPath: join(here, '../../build/icon.png'),
@@ -10061,8 +10071,8 @@ app.whenReady().then(() => {
   });
   sendEngineSettings(preferences.get());
   engine.start();
-  // The website's screenshots draw a session with demo mods (SWITCHBOARD_SMOKE_MODS), started as the app opens.
-  if (driven && process.env.SWITCHBOARD_SMOKE_MODS) engine.sendStanding({ type: 'smokeMods' });
+  // The website's screenshots draw a session with demo mods (SESHBOARD_SMOKE_MODS), started as the app opens.
+  if (driven && process.env.SESHBOARD_SMOKE_MODS) engine.sendStanding({ type: 'smokeMods' });
   themes.watch();
   installMenu();
   notifier = new Notifier({
@@ -10096,7 +10106,9 @@ app.whenReady().then(() => {
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
   // Development and smoke builds leave the system's link handlers alone.
-  if (app.isPackaged && !scripted && !app.isDefaultProtocolClient(DEEP_LINK_SCHEME)) app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+  if (app.isPackaged && !scripted) {
+    for (const scheme of [DEEP_LINK_SCHEME, LEGACY_DEEP_LINK_SCHEME]) if (!app.isDefaultProtocolClient(scheme)) app.setAsDefaultProtocolClient(scheme);
+  }
   const launchLink = linkFromArgv(process.argv);
   if (launchLink) openDeepLink(launchLink);
   else if (!scripted) openFolderArgument(process.argv, process.cwd());
@@ -10108,7 +10120,7 @@ app.whenReady().then(() => {
   // finished for a while, and still writes what ran. Not a limit on the whole run: as steps were added, a slow CI
   // runner needed more than three minutes for all of them and was stopped halfway, every step after it failing.
   if (smokeOutDir) {
-    const quietMs = process.env.SWITCHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000;
+    const quietMs = process.env.SESHBOARD_SMOKE_LIVE_CWD ? 300_000 : 180_000;
     let finished = -1;
     let since = Date.now();
     setInterval(() => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Info, Monitor, Zap } from 'lucide-react';
-import type { UsageLimit, UsagePeriod, UsageScan } from '@switchboard/protocol/client';
+import type { UsageLimit, UsagePeriod, UsageScan } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -148,7 +148,7 @@ export function RowComputer({ row }: { row: MergedRow }) {
   return row.computer ? <ComputerChip name={row.computer.name} data-usage-row-computer={row.computer.id} /> : null;
 }
 
-/** Why paired computers' tokens aren't in the numbers: offline, an older Switchboard, another account, or no account here. */
+/** Why paired computers' tokens aren't in the numbers: offline, an older Seshboard, another account, or no account here. */
 export function NotCounted({ uncounted, noAccount, inline = false }: { uncounted: readonly Uncounted[]; noAccount: boolean; inline?: boolean }) {
   if (!noAccount && uncounted.length === 0) return null;
   const text = noAccount ? "This profile isn't signed in to a claude.ai account, so other computers can't be matched to it." : `Not counted: ${uncounted.map((u) => u.reason).join(' ')}`;
@@ -310,8 +310,8 @@ export function LimitsTab({ profileId, period }: { profileId: string; period: Us
               <p className="text-ui font-semibold">History starts now</p>
               <p className="max-w-[48ch] text-balance text-ui text-muted">
                 {series.length === 0 || since === null
-                  ? 'Switchboard records your plan % each time it checks. The chart fills in from today.'
-                  : `Switchboard has recorded your plan % since ${recordedSince('day', since, 0)}. This chart fills in over the next days. Pick 24 hours to see it now.`}
+                  ? 'Seshboard records your plan % each time it checks. The chart fills in from today.'
+                  : `Seshboard has recorded your plan % since ${recordedSince('day', since, 0)}. This chart fills in over the next days. Pick 24 hours to see it now.`}
               </p>
             </div>
           ) : (

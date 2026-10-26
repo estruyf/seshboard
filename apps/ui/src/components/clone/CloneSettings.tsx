@@ -1,6 +1,6 @@
 import { FolderOpen } from 'lucide-react';
 import { useState } from 'react';
-import type { CloneSettings as Settings } from '@switchboard/protocol/client';
+import type { CloneSettings as Settings } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useClone } from '../../state/cloneStore.ts';
@@ -29,7 +29,7 @@ export function CloneSettings() {
     }
   };
   /** The system folder dialog; null when it was cancelled. */
-  const pick = async () => (await window.switchboard?.pickFolder(settings?.folder ?? home ?? undefined)) ?? null;
+  const pick = async () => (await window.seshboard?.pickFolder(settings?.folder ?? home ?? undefined)) ?? null;
   const choose = async () => {
     const folder = await pick();
     if (folder) await save({ folder });
@@ -66,7 +66,7 @@ export function CloneSettings() {
         </p>
       )}
       <p className="text-meta text-muted">
-        A cloned repository can bring its own hooks, MCP servers and permission rules. Before its first session, Switchboard lists them and asks.
+        A cloned repository can bring its own hooks, MCP servers and permission rules. Before its first session, Seshboard lists them and asks.
       </p>
     </div>
   );

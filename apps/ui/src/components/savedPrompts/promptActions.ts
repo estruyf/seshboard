@@ -1,11 +1,11 @@
-import { joinPath, type PromptScope, type SavedPrompt } from '@switchboard/protocol/client';
+import { joinPath, type PromptScope, type SavedPrompt } from '@seshboard/protocol/client';
 import { showInChanges } from '../../state/showInChanges.ts';
 import { toast } from '../../state/toastStore.ts';
 import { sameScope } from './fillModel.ts';
 import { engineClient } from './savedPromptsStore.ts';
 
 /** The project's shared settings file, where shared prompts are kept with its actions. */
-export const SHARED_FILE = '.switchboard.json';
+export const SHARED_FILE = '.seshboard.json';
 
 const client = () => {
   const c = engineClient();

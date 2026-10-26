@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LimitsState, ResumeAtLimit } from '@switchboard/protocol';
+import type { LimitsState, ResumeAtLimit } from '@seshboard/protocol';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { LimitStore } from './limitStore.ts';
 import { MAX_RESUME_ATTEMPTS, RESUME_GRACE_MS } from './usageLimit.ts';

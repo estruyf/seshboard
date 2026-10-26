@@ -1,6 +1,6 @@
 import type { SessionRowData } from './sessionsStore.ts';
-import type { SidebarSort } from '@switchboard/protocol/bridge';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { SidebarSort } from '@seshboard/protocol/bridge';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import { sidebarForest } from './pipelineTree.ts';
 import { treeRuns, usePipelineTree } from './pipelineTreeStore.ts';
 import { buildSessionList, groupsFor, quickestGroups, rowStatus, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';

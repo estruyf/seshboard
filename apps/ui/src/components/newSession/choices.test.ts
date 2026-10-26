@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
 import { globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 

@@ -21,11 +21,11 @@ describe('VAPID', () => {
   it('signs a JWT for the push service\'s origin that the public key verifies', () => {
     const keys = generateVapidKeys();
     expect(b64(keys.publicKey)).toHaveLength(65);
-    const header = vapidAuthorization('https://fcm.googleapis.com/fcm/send/abc', keys, 'https://switchboard.struyfconsulting.com', 1_000_000);
+    const header = vapidAuthorization('https://fcm.googleapis.com/fcm/send/abc', keys, 'https://seshboard.app', 1_000_000);
     const [, token, key] = /^vapid t=([^,]+), k=(.+)$/.exec(header)!;
     expect(key).toBe(keys.publicKey);
     const [h, c, s] = token!.split('.');
-    expect(JSON.parse(Buffer.from(c!, 'base64url').toString())).toEqual({ aud: 'https://fcm.googleapis.com', exp: 1_000 + 12 * 3600, sub: 'https://switchboard.struyfconsulting.com' });
+    expect(JSON.parse(Buffer.from(c!, 'base64url').toString())).toEqual({ aud: 'https://fcm.googleapis.com', exp: 1_000 + 12 * 3600, sub: 'https://seshboard.app' });
     expect(verify('sha256', Buffer.from(`${h}.${c}`), { key: vapidPublicKey(keys), dsaEncoding: 'ieee-p1363' }, Buffer.from(s!, 'base64url'))).toBe(true);
   });
 });
@@ -38,7 +38,7 @@ describe('a device\'s own VAPID key', () => {
     expect(keys.publicKey).toHaveLength(87);
     expect(keys.privateKey).toHaveLength(43);
     expect(validVapidKeys(keys)).toBe(true);
-    expect(vapidAuthorization('https://web.push.apple.com/x', keys, 'https://switchboard.struyfconsulting.com').endsWith(`k=${keys.publicKey}`)).toBe(true);
+    expect(vapidAuthorization('https://web.push.apple.com/x', keys, 'https://seshboard.app').endsWith(`k=${keys.publicKey}`)).toBe(true);
   });
 
   it('refuses a private key that isn\'t the public key\'s, or no key at all', () => {

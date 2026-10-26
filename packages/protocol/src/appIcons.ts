@@ -1,6 +1,6 @@
 /**
  * The app icon's colourways (Settings › Theme › App icon): the same patch panel in other colours. Each one's source
- * is `assets/app-icons/<key>.svg`; `npm run icon:variants -w @switchboard/desktop` makes every file below from it,
+ * is `assets/app-icons/<key>.svg`; `npm run icon:variants -w @seshboard/desktop` makes every file below from it,
  * and they are committed, so builds don't need it.
  */
 export const APP_ICONS = [

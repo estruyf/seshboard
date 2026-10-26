@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PR_BODY_LIMIT, type PrDraft } from '@switchboard/protocol/client';
+import { PR_BODY_LIMIT, type PrDraft } from '@seshboard/protocol/client';
 import { commitList, counterText, defaultSource, defaultTitle, draftProblem, noticeFor, overLimit, pushLine, readableBranch, saveDraft, savedDraft, sourceLabel, sourceText, statsText } from './pullRequest.ts';
 
 const draft = (patch: Partial<PrDraft> = {}): PrDraft => ({

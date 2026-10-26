@@ -1,5 +1,5 @@
 {
-  "$comment": "Every user-facing feature of Switchboard and the docs page that covers it. Checked by website/src/features.test.ts (npm run check).",
+  "$comment": "Every user-facing feature of Seshboard and the docs page that covers it. Checked by website/src/features.test.ts (npm run check).",
   "features": [
     {
       "id": "palette:action:*",
@@ -58,7 +58,7 @@
     },
     {
       "id": "palette:install-shell-command",
-      "name": "Install the switchboard command",
+      "name": "Install the seshboard command",
       "page": "links"
     },
     {
@@ -813,7 +813,7 @@
     },
     {
       "id": "saved-prompts:shared",
-      "name": "Shared prompts in .switchboard.json",
+      "name": "Shared prompts in .seshboard.json",
       "page": "sessions/saved-prompts"
     },
     {
@@ -2098,7 +2098,7 @@
     },
     {
       "id": "feature:check-for-updates-menu",
-      "name": "Switchboard → Check for Updates…",
+      "name": "Seshboard → Check for Updates…",
       "page": "settings/updates"
     },
     {
@@ -2268,7 +2268,7 @@
     },
     {
       "id": "feature:deep-link-new-session",
-      "name": "switchboard://new-session",
+      "name": "seshboard://new-session",
       "page": "links"
     },
     {
@@ -2278,12 +2278,12 @@
     },
     {
       "id": "feature:deep-link-session",
-      "name": "switchboard://session/<id>",
+      "name": "seshboard://session/<id>",
       "page": "links"
     },
     {
       "id": "feature:deep-links",
-      "name": "switchboard:// links",
+      "name": "seshboard:// links",
       "page": "links"
     },
     {
@@ -2378,7 +2378,7 @@
     },
     {
       "id": "feature:file-link-click",
-      "name": "Clicking a file link: open in Switchboard, show in the file manager or open in the editor (Settings, Conversation)",
+      "name": "Clicking a file link: open in Seshboard, show in the file manager or open in the editor (Settings, Conversation)",
       "page": "settings"
     },
     {
@@ -2738,7 +2738,7 @@
     },
     {
       "id": "feature:new-session-link",
-      "name": "switchboard://new-session links",
+      "name": "seshboard://new-session links",
       "page": "new-session/form"
     },
     {
@@ -2913,7 +2913,7 @@
     },
     {
       "id": "feature:profile-sign-in",
-      "name": "Sign in to a profile in Switchboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
+      "name": "Sign in to a profile in Seshboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
       "page": "settings/claude-profiles"
     },
     {
@@ -3208,12 +3208,12 @@
     },
     {
       "id": "feature:remove-project",
-      "name": "Remove a project from Switchboard, in its Settings or from its row menu",
+      "name": "Remove a project from Seshboard, in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
       "id": "feature:rename-project",
-      "name": "Rename a project (Switchboard name only), in its Settings or from its row menu",
+      "name": "Rename a project (Seshboard name only), in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
@@ -3238,7 +3238,7 @@
     },
     {
       "id": "feature:link-issue-pr",
-      "name": "issue and pr parameters in switchboard://new-session links",
+      "name": "issue and pr parameters in seshboard://new-session links",
       "page": "links"
     },
     {
@@ -3543,12 +3543,12 @@
     },
     {
       "id": "feature:switchboard-json",
-      "name": "Shared actions in .switchboard.json",
+      "name": "Shared actions in .seshboard.json",
       "page": "projects/actions"
     },
     {
       "id": "feature:switchboard-updates",
-      "name": "Switchboard updates (Download, Restart to update)",
+      "name": "Seshboard updates (Download, Restart to update)",
       "page": "settings/updates"
     },
     {
@@ -3743,7 +3743,7 @@
     },
     {
       "id": "feature:vscode-fix-in-switchboard",
-      "name": "Fix in Switchboard quick fix",
+      "name": "Fix in Seshboard quick fix",
       "page": "vscode-companion"
     },
     {
@@ -3768,7 +3768,7 @@
     },
     {
       "id": "feature:windows-app-data-folder",
-      "name": "App data in %APPDATA%\\Switchboard (personal memory, themes)",
+      "name": "App data in %APPDATA%\\Seshboard (personal memory, themes)",
       "page": "memory/personal-memory"
     },
     {
@@ -3813,7 +3813,7 @@
     },
     {
       "id": "feature:windows-deep-links",
-      "name": "switchboard:// links on Windows (drive paths, Start-Process)",
+      "name": "seshboard:// links on Windows (drive paths, Start-Process)",
       "page": "links"
     },
     {
@@ -3883,7 +3883,7 @@
     },
     {
       "id": "feature:windows-support",
-      "name": "Switchboard on Windows 10 and 11",
+      "name": "Seshboard on Windows 10 and 11",
       "page": "getting-started/windows"
     },
     {
@@ -3903,7 +3903,7 @@
     },
     {
       "id": "feature:windows-terminal-keys",
-      "name": "Ctrl keys for the shell, Ctrl+Shift for Switchboard in the terminal",
+      "name": "Ctrl keys for the shell, Ctrl+Shift for Seshboard in the terminal",
       "page": "terminal-changes-git/terminal"
     },
     {
@@ -4198,7 +4198,7 @@
     },
     {
       "id": "feature:linux-support",
-      "name": "Switchboard on Linux (x64 and Arm64)",
+      "name": "Seshboard on Linux (x64 and Arm64)",
       "page": "getting-started/linux"
     },
     {
@@ -4333,7 +4333,7 @@
     },
     {
       "id": "feature:shell-command",
-      "name": "Settings: General, Shell command (switchboard ., seshboard . and sesh .)",
+      "name": "Settings: General, Shell command (seshboard ., sesh . and switchboard .)",
       "page": "links"
     },
     {

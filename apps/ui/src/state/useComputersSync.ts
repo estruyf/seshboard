@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { ComputersStatus, RemoteSessions } from '@switchboard/protocol/client';
+import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
 import { callComputer } from '../components/computers/callComputer.ts';
 import { newProblems } from '../components/computers/computerSessions.ts';
 import { toast } from './toastStore.ts';

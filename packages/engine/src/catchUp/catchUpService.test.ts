@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CatchUp, PermissionRequest } from '@switchboard/protocol';
+import type { CatchUp, PermissionRequest } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { git, listChanges } from '../git/gitChanges.ts';
@@ -26,7 +26,7 @@ let askedWhy: string[];
 let useModel: boolean;
 
 beforeEach(async () => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-catchup-')));
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-catchup-')));
   repo = join(dir, 'repo');
   await git(dir, ['init', '-q', '-b', 'main', repo]);
   await git(repo, ['config', 'user.email', 'test@example.com']);

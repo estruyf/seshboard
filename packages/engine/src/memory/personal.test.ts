@@ -22,7 +22,7 @@ const write = (path: string, text: string) => {
 const projectMemory = (configDir: string) => join(configDir, 'projects', encodeProjectPath(root), 'memory');
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-personal-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-personal-')));
   home = join(base, 'home');
   root = join(home, 'code', 'app');
   work = join(base, 'work-profile');
@@ -66,7 +66,7 @@ describe('the marked block in CLAUDE.md', () => {
   });
 
   it('escapes spaces and uses ~ for the import line', () => {
-    expect(importLine('/Users/me/Library/Application Support/Switchboard/memory', '/Users/me')).toBe('@~/Library/Application\\ Support/Switchboard/memory/MEMORY.md');
+    expect(importLine('/Users/me/Library/Application Support/Seshboard/memory', '/Users/me')).toBe('@~/Library/Application\\ Support/Seshboard/memory/MEMORY.md');
   });
 
   it('installs in every profile’s CLAUDE.md, follows a new folder, and removes only the block', () => {
@@ -162,6 +162,6 @@ describe('synced folders', () => {
     expect(syncedBy('/Users/me/Library/CloudStorage/GoogleDrive-me@x.com/My Drive/M', '/Users/me', no)).toBe('Google Drive');
     expect(syncedBy('/Users/me/Library/CloudStorage/OneDrive-Personal/M', '/Users/me', no)).toBe('OneDrive');
     expect(syncedBy('/Users/me/notes/memory', '/Users/me', (d) => d === '/Users/me/notes')).toBe('a git repository');
-    expect(syncedBy('/Users/me/Library/Application Support/Switchboard/memory', '/Users/me', no)).toBeNull();
+    expect(syncedBy('/Users/me/Library/Application Support/Seshboard/memory', '/Users/me', no)).toBeNull();
   });
 });

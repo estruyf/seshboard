@@ -5,7 +5,7 @@
 
 /**
  * - `address`: a quick tunnel's address that no longer answers (it gets a new one each time it starts);
- * - `tunnel`: the address answers at once but nothing is behind it (Switchboard, Remote or the tunnel is off);
+ * - `tunnel`: the address answers at once but nothing is behind it (Seshboard, Remote or the tunnel is off);
  * - `asleep`: nothing answers at all (the computer sleeps or is offline);
  * - `no-network`: this phone has no network;
  * - `unknown`: the connection dropped, or something else went wrong.
@@ -55,17 +55,17 @@ export function offlineHelp(reason: OfflineReason, computer: string, address: st
     case 'tunnel':
       return {
         title: `${computer} doesn't answer`,
-        text: [`The address answers, but Switchboard doesn't.`, `Check that Switchboard is open on ${computer}, and that Settings › Remote shows the tunnel as running.`],
+        text: [`The address answers, but Seshboard doesn't.`, `Check that Seshboard is open on ${computer}, and that Settings › Remote shows the tunnel as running.`],
       };
     case 'asleep':
       return {
         title: `${computer} doesn't answer`,
-        text: [`Nothing answers at ${hostOf(address)}.`, `${computer} may be asleep, offline, or Switchboard is closed. Wake it, or check its network.`],
+        text: [`Nothing answers at ${hostOf(address)}.`, `${computer} may be asleep, offline, or Seshboard is closed. Wake it, or check its network.`],
       };
     case 'no-network':
-      return { title: 'This phone is offline', text: ['Connect to Wi-Fi or mobile data. Switchboard Remote reconnects by itself.'] };
+      return { title: 'This phone is offline', text: ['Connect to Wi-Fi or mobile data. Seshboard Remote reconnects by itself.'] };
     case 'unknown':
-      return { title: 'The connection dropped', text: [`Switchboard Remote tries again by itself. If it keeps failing, check that Switchboard is open on ${computer}.`] };
+      return { title: 'The connection dropped', text: [`Seshboard Remote tries again by itself. If it keeps failing, check that Seshboard is open on ${computer}.`] };
   }
 }
 

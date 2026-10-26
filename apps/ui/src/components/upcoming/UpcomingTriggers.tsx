@@ -1,6 +1,6 @@
 import { Pause, Play, Zap } from 'lucide-react';
 import { useMemo } from 'react';
-import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
+import type { Trigger, TriggerEvent } from '@seshboard/protocol/client';
 import { checkedLine, eventDetail, eventTitle, pausedLine, speakEvent, triggerCounts } from '../../state/triggers.ts';
 import { openTriggersTab, setTriggerPaused, startTriggerEvent } from '../../state/triggersStore.ts';
 import { toast } from '../../state/toastStore.ts';

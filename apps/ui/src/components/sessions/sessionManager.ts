@@ -1,4 +1,4 @@
-import { DAY_MS, dueForDeletion, KEEP_REASON_TEXT, keepReason, type DeletionState, type KeepReason, type SessionOrigin } from '@switchboard/protocol/client';
+import { DAY_MS, dueForDeletion, KEEP_REASON_TEXT, keepReason, type DeletionState, type KeepReason, type SessionOrigin } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { archivedSince, rowListing, rowStatus } from '../../state/sidebarRows.ts';
 
@@ -13,7 +13,7 @@ export type StatusFilter = 'all' | 'listed' | 'archived' | 'pinned';
 /** The app a session was started in (`origin`); `other` holds the SDK and unknown ones. */
 export type AppFilter = 'all' | 'app' | 'cli' | 'ide' | 'desktop' | 'other';
 
-export const APP_LABEL: Record<Exclude<AppFilter, 'all'>, string> = { app: 'Switchboard', cli: 'Terminal', ide: 'Editor', desktop: 'Claude desktop', other: 'Other' };
+export const APP_LABEL: Record<Exclude<AppFilter, 'all'>, string> = { app: 'Seshboard', cli: 'Terminal', ide: 'Editor', desktop: 'Claude desktop', other: 'Other' };
 export const appOf = (origin: SessionOrigin | undefined): Exclude<AppFilter, 'all'> =>
   origin === 'app' || origin === 'cli' || origin === 'ide' || origin === 'desktop' ? origin : 'other';
 

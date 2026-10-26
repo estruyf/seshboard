@@ -7,7 +7,7 @@ import { readCleanupPeriod, readProfileCleanup, withCleanupPeriod, writeProfileC
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 const folder = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-cleanup-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-cleanup-'));
   dirs.push(dir);
   return dir;
 };

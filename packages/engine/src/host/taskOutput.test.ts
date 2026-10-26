@@ -9,7 +9,7 @@ afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force
 
 /** A tasks folder laid out as Claude Code does: `claude/<project>/<session>/tasks`. */
 const tasksDir = () => {
-  const root = mkdtempSync(join(tmpdir(), 'switchboard-tasks-'));
+  const root = mkdtempSync(join(tmpdir(), 'seshboard-tasks-'));
   dirs.push(root);
   const dir = join(root, 'claude', 'E--repos-demo', '5305d406-06de-45f9-92a6-a348df95aeb7', 'tasks');
   mkdirSync(dir, { recursive: true });

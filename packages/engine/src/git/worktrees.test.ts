@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { WorktreeEntry } from '@switchboard/protocol';
+import type { WorktreeEntry } from '@seshboard/protocol';
 import { git } from './gitChanges.ts';
 import { ignoredFiles, listWorktrees, measureSize, parseWorktreeList, removalRefusal, removeWorktrees, sessionsBlocking, unlockWorktree, type SessionActivity } from './worktrees.ts';
 
@@ -26,7 +26,7 @@ async function commit(cwd: string, file: string, text: string) {
 const byName = (list: { worktrees: WorktreeEntry[] }, name: string) => list.worktrees.find((w) => w.name === name)!;
 
 beforeEach(async () => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-worktrees-')));
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-worktrees-')));
   const origin = join(dir, 'origin.git');
   await git(dir, ['init', '-q', '--bare', '-b', 'main', origin]);
   repo = join(dir, 'repo');
@@ -209,7 +209,7 @@ describe('removeWorktrees', () => {
     expect(released).toEqual([]);
   });
 
-  it('stops a session idle in Switchboard before removing its worktree', async () => {
+  it('stops a session idle in Seshboard before removing its worktree', async () => {
     const path = await addWorktree('idle');
     const released: string[] = [];
     const [result] = await removeWorktrees(repo, [{ path, deleteBranch: false, recoveryRef: false }], {

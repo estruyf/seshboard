@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { isSameOrInside, separatorOf, type LoadEntry } from '@switchboard/protocol/client';
+import { isSameOrInside, separatorOf, type LoadEntry } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { pathTail, tildify } from '../../lib/format.ts';
 import { useProfiles } from '../../state/profilesStore.ts';

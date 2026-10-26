@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
-import type { PermissionRequest } from '@switchboard/protocol/client';
+import type { PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';

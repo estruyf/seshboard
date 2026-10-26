@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { accountKey, REMOTE_FEATURE_COSTS, type WindowCost } from '@switchboard/protocol/client';
+import { accountKey, REMOTE_FEATURE_COSTS, type WindowCost } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';

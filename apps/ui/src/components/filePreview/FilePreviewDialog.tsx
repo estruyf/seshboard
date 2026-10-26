@@ -25,8 +25,8 @@ export function FilePreviewDialog() {
       if (typeof detail === 'string') useFilePreview.getState().openDialog(detail);
       else if (detail && typeof detail.path === 'string') useFilePreview.getState().open(detail.path, { sessionId: detail.sessionId ?? null, line: detail.line, endLine: detail.endLine });
     };
-    window.addEventListener('switchboard:preview-file', onOpen);
-    return () => window.removeEventListener('switchboard:preview-file', onOpen);
+    window.addEventListener('seshboard:preview-file', onOpen);
+    return () => window.removeEventListener('seshboard:preview-file', onOpen);
   }, []);
   return target ? <PreviewDialog key={target.path} target={target} /> : null;
 }

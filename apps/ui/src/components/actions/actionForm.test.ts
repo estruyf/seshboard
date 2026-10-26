@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ActionSuggestion, ListedAction } from '@switchboard/protocol/client';
+import type { ActionSuggestion, ListedAction } from '@seshboard/protocol/client';
 import { applySavedAction, EMPTY_DRAFT, friendlySaveError, groupActions, insertVariable, projectName, scopeParams, slug, validateDraft, visibleSuggestions, withoutAction } from './actionForm.ts';
 
 const action = (over: Partial<ListedAction>): ListedAction => ({
@@ -88,9 +88,9 @@ describe('validateDraft', () => {
     expect(validateDraft(draft, [action({})], null).name).toBe('Your action “Test” for this project already uses this name.');
     expect(validateDraft(draft, [action({})], { scope: 'project', id: 'test' })).toEqual({});
   });
-  it('refuses a shortcut Switchboard uses', () => {
-    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+k' }, [], null).shortcut).toBe('⌘K is used by Switchboard.');
-    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+shift+f' }, [], null).shortcut).toMatch(/Switchboard/);
+  it('refuses a shortcut Seshboard uses', () => {
+    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+k' }, [], null).shortcut).toBe('⌘K is used by Seshboard.');
+    expect(validateDraft({ ...EMPTY_DRAFT, name: 'X', command: 'ls', shortcut: 'cmd+shift+f' }, [], null).shortcut).toMatch(/Seshboard/);
   });
   it('refuses a shortcut another action already has, in any scope', () => {
     const list = [action({ id: 'build', name: 'Build', shortcut: 'cmd+shift+b', scope: 'global' })];

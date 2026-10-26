@@ -1,6 +1,6 @@
 ---
 name: social-post
-description: Make a social media announcement for a Switchboard feature or release, with a 1200×630 image in the app's look and post texts for X, Bluesky, Mastodon and LinkedIn, in the repo's social/ folder. Use when asked for a social image, a social post, an announcement, an Open Graph or share image, or "something to post about" a feature, a release or the VS Code companion.
+description: Make a social media announcement for a Seshboard feature or release, with a 1200×630 image in the app's look and post texts for X, Bluesky, Mastodon and LinkedIn, in the repo's social/ folder. Use when asked for a social image, a social post, an announcement, an Open Graph or share image, or "something to post about" a feature, a release or the VS Code companion.
 ---
 
 # Social post
@@ -13,14 +13,14 @@ Take what the feature does from the repo, not from memory:
 
 - `CHANGELOG.md` (the `## [Unreleased]` section or the release's section) for the wording people already see;
 - the README, `docs/`, and for the VS Code companion `apps/vscode-extension/README.md`, `CHANGELOG.md` and `package.json` (publisher and name make the Marketplace and Open VSX links);
-- the real UI: `docs/screenshots/*.png`, and component names and labels in `apps/ui/src` so the mockup shows real labels ("Add Selection to Switchboard", "Allow", "Always allow", "Deny…").
+- the real UI: `docs/screenshots/*.png`, and component names and labels in `apps/ui/src` so the mockup shows real labels ("Add Selection to Seshboard", "Allow", "Always allow", "Deny…").
 
-Check what is released: the version in `apps/desktop/package.json`, `git tag`, and "needs Switchboard X" notes. If part of the feature isn't released yet, say so in `posts.md` and tell the user. If the request is ambiguous (a typo, which feature), take the reading the repo supports and say which one you took.
+Check what is released: the version in `apps/desktop/package.json`, `git tag`, and "needs Seshboard X" notes. If part of the feature isn't released yet, say so in `posts.md` and tell the user. If the request is ambiguous (a typo, which feature), take the reading the repo supports and say which one you took.
 
 ## 2. Make the image
 
 1. Copy `social/_template/` to `social/<slug>/` (a short kebab-case name for the feature).
-2. Left column: the brand (the app icon `../../apps/desktop/build/icon.png`, or the companion's `../../apps/vscode-extension/assets/icon.png`), an eyebrow ("New in Switchboard", "New for VS Code"), a headline of at most about eight words with one phrase in `<span class="hl">`, and one or two sentences with the key words in `<b>`. The call to action at the bottom says where to get it.
+2. Left column: the brand (the app icon `../../apps/desktop/build/icon.png`, or the companion's `../../apps/vscode-extension/assets/icon.png`), an eyebrow ("New in Seshboard", "New for VS Code"), a headline of at most about eight words with one phrase in `<span class="hl">`, and one or two sentences with the key words in `<b>`. The call to action at the bottom says where to get it.
 3. Right column (`.stage`, 600×540): a small, made-up mockup of the feature at work, built in HTML and CSS, not a screenshot. Use the classes in `shared/base.css` (`.sb` message box, `.chip`, `.cable`) and add the rest in the page's `<style>`. Show the moment the feature helps: two or three overlapping cards, with a cable in the icon's colours (`--warm1`/`--warm2`, `--gold1`/`--gold2`) when something goes from one place to another. Use the demo world of the screenshots (acme-store, "Add dark mode toggle to settings", `theme.ts`), never real projects or paths.
 4. Colours come from the tokens in `base.css` (the app's dark theme). Other apps in the mockup, such as VS Code, use their own colours, as page variables.
 5. Copy follows AGENTS.md: plain, short sentences, no em dashes.

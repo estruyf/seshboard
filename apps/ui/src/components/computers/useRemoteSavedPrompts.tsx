@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
-import { blanksOf, promptPreview, type SavedPrompt } from '@switchboard/protocol/client';
+import { blanksOf, promptPreview, type SavedPrompt } from '@seshboard/protocol/client';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { tokenAtCaret } from '../composer/tokens.ts';
 import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';

@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -155,7 +155,7 @@ function LocalNewSession() {
    * `undefined` while nothing was changed, so changes made before a folder is picked (`null`) count too.
    */
   const touchedFor = useRef<string | null | undefined>(undefined);
-  /** A `switchboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
+  /** A `seshboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
   const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
   /** Replaces the prompt: a link's prompt, or clearing it. */
@@ -345,7 +345,7 @@ function LocalNewSession() {
     const preferred = projectFilter && folders.includes(projectFilter) ? projectFilter : folders[0];
     if (loaded && !cwd && preferred && !folderFromLink.current) setCwd((c) => c ?? preferred);
   }, [loaded, folders, cwd, projectFilter]);
-  // A `switchboard://new-session` link: fill in its folder and prompt. Unless it says `autostart`, nothing
+  // A `seshboard://new-session` link: fill in its folder and prompt. Unless it says `autostart`, nothing
   // is sent; the user reads it and presses Enter.
   useEffect(() => {
     if (!linkRequest) return;
@@ -752,7 +752,7 @@ function LocalNewSession() {
   };
   /** The system folder dialog, and the folder chosen there is added and selected. Cancelling changes nothing. */
   const chooseFolder = async () => {
-    const picked = await window.switchboard?.pickFolder(cwd ?? undefined);
+    const picked = await window.seshboard?.pickFolder(cwd ?? undefined);
     if (picked) await addFolder(picked);
   };
 
@@ -778,7 +778,7 @@ function LocalNewSession() {
   });
 
   // Filled in from an issue or pull request. A pull request is worked on in a new worktree or here (after
-  // `gh pr checkout`, only without changes); a fork's that Switchboard can't push back turns push and Create PR off.
+  // `gh pr checkout`, only without changes); a fork's that Seshboard can't push back turns push and Create PR off.
   const githubPr = fromGithub?.pr ?? null;
   const githubItem = fromGithub?.issue ?? githubPr;
   const prCurrentBlocked = githubPr ? currentCheckoutBlocked(gitStatus) : null;

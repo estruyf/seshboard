@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanSeries, UsageRow } from '@switchboard/protocol/client';
+import type { PlanSeries, UsageRow } from '@seshboard/protocol/client';
 import {
   bucketLabel,
   cacheHitRate,

@@ -41,7 +41,7 @@ export const Title: React.FC = () => {
           <div style={{ position: 'absolute', inset: -80, borderRadius: '50%', background: `radial-gradient(closest-side, rgba(${T.glow},0.35), transparent 70%)` }} />
           <Img src={staticFile('icon.png')} style={{ position: 'relative', width: 176, height: 176, filter: 'drop-shadow(0 24px 50px rgba(0,0,0,0.7))' }} />
         </div>
-        <div style={{ ...line(22), marginTop: 34, fontSize: 132, fontWeight: 800, letterSpacing: -4.5, color: T.bright }}>Switchboard</div>
+        <div style={{ ...line(22), marginTop: 34, fontSize: 132, fontWeight: 800, letterSpacing: -4.5, color: T.bright }}>Seshboard</div>
         <div style={{ ...line(34), marginTop: 6, fontSize: 40, fontWeight: 500, letterSpacing: -0.6, color: T.text }}>
           All your Claude Code sessions, in one window.
         </div>

@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CHANGELOG_URL, releaseUrl, type UpdateChannel } from '@switchboard/protocol/bridge';
+import { CHANGELOG_URL, releaseUrl, type UpdateChannel } from '@seshboard/protocol/bridge';
 import appIcon from '../../assets/app-icon.png';
 import { lastChecked, updateStatusText, versionLabel } from '../../lib/updates.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -30,7 +30,7 @@ function useNow(): number {
 
 /** Settings → About: the build you're running, and the updater's controls. */
 export function AboutSettings() {
-  const info = window.switchboard?.appInfo ?? null;
+  const info = window.seshboard?.appInfo ?? null;
   const state = useUpdates((s) => s.state);
   const prefs = usePreferences((s) => s.prefs);
   const update = usePreferences((s) => s.update);
@@ -46,7 +46,7 @@ export function AboutSettings() {
       <div className="flex items-center gap-4">
         <img src={appIcon} alt="" width={48} height={48} draggable={false} />
         <div className="grid gap-0.5">
-          <h3 className="text-[14px] font-semibold">Switchboard</h3>
+          <h3 className="text-[14px] font-semibold">Seshboard</h3>
           {info && (
             <p className="text-[12.5px] text-muted">
               <span data-app-version={info.version} data-app-dev={info.dev}>
@@ -92,7 +92,7 @@ export function AboutSettings() {
           </div>
           <div className="flex shrink-0 gap-2">
             {state?.status === 'available' && (
-              <Button onClick={() => window.switchboard?.update('download')} data-update-download>
+              <Button onClick={() => window.seshboard?.update('download')} data-update-download>
                 Download
               </Button>
             )}
@@ -102,11 +102,11 @@ export function AboutSettings() {
               </Button>
             )}
             {state?.status === 'error' && state.canRetry && !state.downloadedVersion && (
-              <Button onClick={() => window.switchboard?.update('retry')} data-update-retry>
+              <Button onClick={() => window.seshboard?.update('retry')} data-update-retry>
                 Retry
               </Button>
             )}
-            <Button disabled={off || busy} onClick={() => window.switchboard?.update('check')} data-check-updates>
+            <Button disabled={off || busy} onClick={() => window.seshboard?.update('check')} data-check-updates>
               Check for Updates
             </Button>
           </div>
@@ -121,7 +121,7 @@ export function AboutSettings() {
 
         <Toggle
           label="Check for updates automatically"
-          detail="Shortly after Switchboard opens, then every few hours. Nothing downloads until you choose to."
+          detail="Shortly after Seshboard opens, then every few hours. Nothing downloads until you choose to."
           checked={prefs.autoUpdate}
           attr="data-auto-update"
           onChange={(autoUpdate) => update({ autoUpdate })}
@@ -139,7 +139,7 @@ export function AboutSettings() {
                 onSelect={() => {
                   // The preference saves through main, which also checks the new channel right away.
                   usePreferences.getState().replace({ ...prefs, updateChannel: value });
-                  window.switchboard?.setUpdateChannel(value);
+                  window.seshboard?.setUpdateChannel(value);
                 }}
                 dataAttrs={{ 'data-update-channel': value }}
               >
@@ -159,7 +159,7 @@ export function AboutSettings() {
 
 /** The version, quietly at the bottom of Settings' sidebar; it links to its release notes. */
 export function SettingsVersion() {
-  const info = window.switchboard?.appInfo;
+  const info = window.seshboard?.appInfo;
   if (!info) return null;
   const label = versionLabel(info);
   const className = 'mx-2.5 mt-auto truncate pt-2 text-meta text-faint';

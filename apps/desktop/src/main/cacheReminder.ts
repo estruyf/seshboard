@@ -1,4 +1,4 @@
-import { cacheExpiresAt, cacheRewriteCost, formatCost, isLargeContext, type ContextWarningPrefs, type CurrencyCode, type SessionHostInfo } from '@switchboard/protocol/client';
+import { cacheExpiresAt, cacheRewriteCost, formatCost, isLargeContext, type ContextWarningPrefs, type CurrencyCode, type SessionHostInfo } from '@seshboard/protocol/client';
 
 /** How long before an hour-long cache lapses its notification comes. */
 export const REMIND_BEFORE_MS = 5 * 60_000;

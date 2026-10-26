@@ -1,8 +1,8 @@
 {
-  "name": "switchboard-promo",
+  "name": "seshboard-promo",
   "version": "1.0.0",
   "private": true,
-  "description": "The Switchboard promo video, cut with Remotion from a scripted capture of the real app (and VS Code) in a made-up demo world.",
+  "description": "The Seshboard promo video, cut with Remotion from a scripted capture of the real app (and VS Code) in a made-up demo world.",
   "license": "MIT",
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 ---
 title: Claude Code memory
-description: What Claude Code memory is, where it lives, and how Switchboard lets you read and edit it.
+description: What Claude Code memory is, where it lives, and how Seshboard lets you read and edit it.
 sidebar:
   label: Overview
 ---
@@ -12,15 +12,15 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this computer. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Switchboard is an editor for those files, so you can see what Claude remembers about a project and correct it when it is wrong or out of date.
+Claude Code keeps what it learns about a project as *memory*: small Markdown files in a folder of its own, private to you and to this computer. A <Pill tone="memory">MEMORY.md</Pill> index lists them and loads at the start of every session. Seshboard is an editor for those files, so you can see what Claude remembers about a project and correct it when it is wrong or out of date.
 
 <Screenshot name="project-memory" alt="The Memory tab of acme-store: What loads in a session here at the top, the Project memory list with its MEMORY.md meter, Instructions and Personal" eager />
 
 ## Nothing is locked in
 
-Switchboard writes memory where Claude Code already looks, in the format it already uses. Memory works the same in `claude` in a terminal, the VS Code extension and the desktop app, and keeps working if you uninstall Switchboard. Nothing in Switchboard's own database is the source of truth.
+Seshboard writes memory where Claude Code already looks, in the format it already uses. Memory works the same in `claude` in a terminal, the VS Code extension and the desktop app, and keeps working if you uninstall Seshboard. Nothing in Seshboard's own database is the source of truth.
 
-Switchboard never changes a memory on its own: every change is one you start. It never stages, commits or pushes anything.
+Seshboard never changes a memory on its own: every change is one you start. It never stages, commits or pushes anything.
 
 ## Open it
 
@@ -34,7 +34,7 @@ Switchboard never changes a memory on its own: every change is one you start. It
 | What | Where | Loaded |
 |---|---|---|
 | A project's memory | `<config folder>/projects/<project>/memory/`, for each [Claude profile](/settings/claude-profiles/). A repository and all its worktrees share one folder. | The start of its `MEMORY.md` in every session; the other files when Claude reads them. |
-| Personal memory | One folder you choose (by default <code><Os mac="~/Library/Application Support/Switchboard/memory" windows="%APPDATA%\Switchboard\memory" /></code>) | Through one line in each profile's `CLAUDE.md`. See [Personal memory](/memory/personal-memory/). |
+| Personal memory | One folder you choose (by default <code><Os mac="~/Library/Application Support/Seshboard/memory" windows="%APPDATA%\Seshboard\memory" /></code>) | Through one line in each profile's `CLAUDE.md`. See [Personal memory](/memory/personal-memory/). |
 | Project instructions | `CLAUDE.md` (at the root, else `.claude/CLAUDE.md`), `CLAUDE.local.md`, `.claude/rules/*.md`, `CLAUDE.md` in subfolders, `.claude/agent-memory/` | See [What loads in a session](/memory/what-loads/). |
 | Your own instructions | `<config folder>/CLAUDE.md` and `<config folder>/rules/` (`~/.claude/` for the built-in profile) | In every project. |
 
@@ -59,9 +59,9 @@ The sidebar groups sessions in this order: …
 - **name** is how other memories [link](/memory/links-and-search/) to it, as `[[sidebar-order]]`.
 - **description** is the one line Claude sees in `MEMORY.md`.
 - **type** is `user` (about you), `feedback` (how you like Claude to work), `project` or `reference`.
-- Other fields Claude Code keeps in the file stay as they are when you save in Switchboard.
+- Other fields Claude Code keeps in the file stay as they are when you save in Seshboard.
 
-`MEMORY.md` is the index: one line per memory, with a link to its file and a short hook. When you create, rename, move or delete a memory in Switchboard, only that memory's line changes, written in the style of the lines already there.
+`MEMORY.md` is the index: one line per memory, with a link to its file and a short hook. When you create, rename, move or delete a memory in Seshboard, only that memory's line changes, written in the style of the lines already there.
 
 ## What you can do
 
@@ -74,7 +74,7 @@ The sidebar groups sessions in this order: …
 - [Check memory's health](/memory/health/).
 
 <Aside>
-Deleting a memory moves it to the <Os mac="Trash" windows="Recycle Bin" />, with Undo. Switchboard never deletes `MEMORY.md`.
+Deleting a memory moves it to the <Os mac="Trash" windows="Recycle Bin" />, with Undo. Seshboard never deletes `MEMORY.md`.
 </Aside>
 
 ## Settings

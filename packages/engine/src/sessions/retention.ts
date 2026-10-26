@@ -1,4 +1,4 @@
-import { DEFAULT_PREFERENCES, type DeleteArchived, type LaterItem, type RetentionCandidate, type SessionSummary } from '@switchboard/protocol';
+import { DEFAULT_PREFERENCES, type DeleteArchived, type LaterItem, type RetentionCandidate, type SessionSummary } from '@seshboard/protocol';
 import { companionStatus, type SessionSources } from '../companion/companionSessions.ts';
 
 /** The two settings from Settings › Sessions that the engine needs (main keeps the preferences and sends them). */

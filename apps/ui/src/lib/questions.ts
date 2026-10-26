@@ -1,4 +1,4 @@
-import { isSameOrInside, type Effort, type PermissionMode, type ProjectInfo } from '@switchboard/protocol/client';
+import { isSameOrInside, type Effort, type PermissionMode, type ProjectInfo } from '@seshboard/protocol/client';
 import { linkPermissionMode, type Choices } from '../components/newSession/choices.ts';
 
 /**

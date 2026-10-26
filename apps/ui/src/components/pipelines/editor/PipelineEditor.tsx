@@ -1,6 +1,6 @@
 import { Copy, Lock, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type DragEvent } from 'react';
-import { PIPELINE_LIMITS, type Pipeline, type PipelineScope } from '@switchboard/protocol/client';
+import { PIPELINE_LIMITS, type Pipeline, type PipelineScope } from '@seshboard/protocol/client';
 import { useHosts } from '../../../state/hostsStore.ts';
 import { useProjects } from '../../../state/projectsStore.ts';
 import { useProjectActionList } from '../../actions/useActions.ts';

@@ -1,6 +1,6 @@
 import { Brain, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, FolderGit2, GitBranch, Plus, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { ProjectInfo, WorktreeStatus } from '@switchboard/protocol/client';
+import type { ProjectInfo, WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';

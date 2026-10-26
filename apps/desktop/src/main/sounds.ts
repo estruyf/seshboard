@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { SOUND_EVENTS, type SoundEvent, type SoundList } from '@switchboard/protocol/bridge';
+import { SOUND_EVENTS, type SoundEvent, type SoundList } from '@seshboard/protocol/bridge';
 
 /**
  * Where each platform keeps its system sounds, their file type, and the ones a missing choice falls back to: a
@@ -72,7 +72,7 @@ export class SoundPlayer {
     return this.options.platform ?? process.platform;
   }
 
-  /** Read once: the system sounds don't change while Switchboard runs. */
+  /** Read once: the system sounds don't change while Seshboard runs. */
   list(): SoundList {
     if (!this.#list) {
       let files: string[] = [];

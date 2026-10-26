@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteStatus } from '@switchboard/protocol/client';
+import type { RemoteStatus } from '@seshboard/protocol/client';
 import { addressCanChange, connectionLine, joinNames, remoteStatusView } from './remoteStatusView.ts';
 
 const HOUR = 60 * 60 * 1000;

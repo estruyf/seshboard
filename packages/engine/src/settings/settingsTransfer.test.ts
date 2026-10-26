@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BACKUP_SECTIONS, BUILT_IN_PIPELINES, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@switchboard/protocol';
+import { BACKUP_SECTIONS, BUILT_IN_PIPELINES, DEFAULT_PREFERENCES, FILE_LINK_CLICK_REVISION, parseSettingsFile, ProjectAction } from '@seshboard/protocol';
 import { ActionStore } from '../actions/actionStore.ts';
 import { createAppStateStore } from '../db/appState.ts';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
@@ -19,12 +19,12 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-settings-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-settings-')));
   dirs.push(dir);
   return dir;
 };
 
-/** One Mac's Switchboard: a real cache database and icon folder. */
+/** One Mac's Seshboard: a real cache database and icon folder. */
 function mac() {
   const data = tempDir();
   const cache = openCacheDatabase(join(data, 'cache.sqlite'));
@@ -363,8 +363,8 @@ describe('settings export and import', () => {
       return join(dir, name);
     };
     expect(() => readSettingsFile(write('a.json', 'not json'))).toThrow(/not valid JSON/);
-    expect(() => readSettingsFile(write('b.json', '{"actions": []}'))).toThrow(/not a Switchboard settings file/);
-    expect(() => readSettingsFile(write('c.json', '{"kind": "switchboard-settings", "format": 99}'))).toThrow(/newer version of Switchboard/);
+    expect(() => readSettingsFile(write('b.json', '{"actions": []}'))).toThrow(/not a Seshboard settings file/);
+    expect(() => readSettingsFile(write('c.json', '{"kind": "switchboard-settings", "format": 99}'))).toThrow(/newer version of Seshboard/);
     expect(() => readSettingsFile(write('d.json', '{"kind": "switchboard-settings", "format": 1, "projects": "nope"}'))).toThrow(/damaged/);
     expect(() => readSettingsFile(join(dir, 'missing.json'))).toThrow(/No file/);
   });
@@ -380,6 +380,19 @@ describe('settings export and import', () => {
     expect(kept).toHaveLength(10);
     expect(join(dir, kept.at(-1)!)).toBe(last);
     expect(JSON.parse(readFileSync(last, 'utf8'))).toMatchObject({ kind: 'switchboard-settings' });
+  });
+
+  it('counts the backups named before the rename by their time, so the oldest go first', () => {
+    const { stores } = mac();
+    const dir = join(tempDir(), 'backups');
+    mkdirSync(dir);
+    const file = exportSettings(stores, { sections: BACKUP_SECTIONS, preferences: DEFAULT_PREFERENCES, appVersion: '1' });
+    for (let i = 0; i < 10; i++) writeFileSync(join(dir, `switchboard-settings-before-import-2025-01-01T00-00-0${i}-000Z.json`), '{}');
+    writeBackup(dir, file, new Date(Date.UTC(2026, 0, 1)));
+    const kept = readdirSync(dir);
+    expect(kept).toHaveLength(10);
+    expect(kept).toContain('seshboard-settings-before-import-2026-01-01T00-00-00-000Z.json');
+    expect(kept).not.toContain('switchboard-settings-before-import-2025-01-01T00-00-00-000Z.json');
   });
 
   it('carries imported themes: adds new ones, keeps or replaces one with the same name, and skips broken ones', () => {

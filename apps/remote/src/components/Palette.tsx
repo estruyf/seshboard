@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Plus, Search, Zap } from 'lucide-react';
-import type { RemoteProject } from '@switchboard/protocol/remote-client';
+import type { RemoteProject } from '@seshboard/protocol/remote-client';
 import { listKey, type ListedSession } from '../lib/everywhere.ts';
 import { nextIndex } from '../lib/keys.ts';
 import { paletteGroups, type PaletteItem } from '../lib/palette.ts';

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowUp, Copy, EyeOff, MessageCircleQuestion, Plus, Quote, X } from 'lucide-react';
-import { MAX_SIDE_QUESTION_LENGTH } from '@switchboard/protocol/remote-client';
+import { MAX_SIDE_QUESTION_LENGTH } from '@seshboard/protocol/remote-client';
 import { age } from '../lib/groups.ts';
 import { ASK_SUGGESTIONS, currentThread, lastQuestion, newThread, pickedThread, threadRows, type AskEntry, type SessionAsk } from '../lib/ask.ts';
 import { askAbout, retryAsk, updateAsk } from './askStore.ts';

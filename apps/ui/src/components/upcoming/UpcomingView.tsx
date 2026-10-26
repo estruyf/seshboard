@@ -1,5 +1,5 @@
 import { CalendarClock, Check, ChevronDown, GripVertical, History, Info, ListEnd, MoreHorizontal, Pause, Play, Repeat, SkipForward } from 'lucide-react';
-import { describe, formatPast, pastRuns, SKIPPED_BY_YOU, upcomingRuns, type PastRun, type Schedule, type ScheduleLastRun, type UpcomingRun } from '@switchboard/protocol/client';
+import { describe, formatPast, pastRuns, SKIPPED_BY_YOU, upcomingRuns, type PastRun, type Schedule, type ScheduleLastRun, type UpcomingRun } from '@seshboard/protocol/client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { useHosts } from '../../state/hostsStore.ts';

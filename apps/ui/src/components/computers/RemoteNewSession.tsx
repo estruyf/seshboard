@@ -1,6 +1,6 @@
 import { FolderDown, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@switchboard/protocol/client';
+import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -38,7 +38,7 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * in the same list of rows as here (the same columns, ⌘1 to ⌘9 still pick, two letters for an icon and no monitor badge:
  * the Run on switch already says where), the route tray with its chip, and Start, which asks it to start the session with
  * `session.create` and opens it here. Profile, model, effort, mode and where only show when that computer answers
- * `options.get` (an older Switchboard doesn't); they start from the project's defaults, then its profile's, and only
+ * `options.get` (an older Seshboard doesn't); they start from the project's defaults, then its profile's, and only
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
  * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
  * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
@@ -71,7 +71,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const savedPrompts = useRemoteSavedPrompts({ key: draftKey, draft: prompt, setDraft: setPrompt, areaRef: box, initialFill: saved.fill, disabled: !connected });
   const { fill, menu } = savedPrompts;
   const attachments = useRemoteAttachments({ computer, rootRef: composer, newSession: true, disabledReason: connected ? null : `${name} is not connected` });
-  // An older Switchboard there has no options.get: then New session sends only the project and the prompt.
+  // An older Seshboard there has no options.get: then New session sends only the project and the prompt.
   const options = useRemoteOptions(client, computer);
   // Clone from GitHub, on that computer: the same form as here (kept when Run on changes), the clone there.
   const cloneEnabled = useCloneEnabled();
@@ -293,7 +293,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
             {projects === null && !loadError ? (
               <p className="py-3 text-center text-ui text-muted">{connected ? `Loading the projects on ${name}…` : `The projects show once ${name} is back.`}</p>
             ) : tiles.length === 0 && !loadError ? (
-              <Notice>No projects on {name} yet. Add one in Switchboard there, and it shows here.</Notice>
+              <Notice>No projects on {name} yet. Add one in Seshboard there, and it shows here.</Notice>
             ) : (
               <>
                 <div

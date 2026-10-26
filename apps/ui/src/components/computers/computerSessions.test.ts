@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
+import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
 import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, newProblems, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
@@ -65,7 +65,7 @@ describe('another computer’s list', () => {
     const computer: Computer = { id: 'c', name: 'Studio Mac', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, features: [], lastSeen: null, problem: null };
     expect(computerLine(computer, 1_000)).toBe('Studio Mac doesn’t answer. Trying again in 30s.');
     expect(computerLine({ ...computer, retryAt: 120_000 }, 0)).toBe('Studio Mac doesn’t answer. Trying again in 2 min.');
-    expect(computerLine({ ...computer, state: 'connected', message: null, problem: 'Studio Mac sent data this version of Switchboard can’t read.' })).toBe('Studio Mac sent data this version of Switchboard can’t read.');
+    expect(computerLine({ ...computer, state: 'connected', message: null, problem: 'Studio Mac sent data this version of Seshboard can’t read.' })).toBe('Studio Mac sent data this version of Seshboard can’t read.');
   });
 
   it('tells a computer’s problem once', () => {

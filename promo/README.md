@@ -1,9 +1,9 @@
 # The promo video
 
-About a minute of Switchboard, cut with [Remotion](https://www.remotion.dev): React rendered to frames, so the
+About a minute of Seshboard, cut with [Remotion](https://www.remotion.dev): React rendered to frames, so the
 timeline is a table of numbers in a `.tsx` file and changing the pace is changing a number and rendering again.
 
-It leads with what makes Switchboard different (several Claude accounts in one list, a page per project with its
+It leads with what makes Seshboard different (several Claude accounts in one list, a page per project with its
 worktrees, the VS Code companion), then shows the rest at a glance (split view, Changes, the command palette,
 search).
 
@@ -34,7 +34,7 @@ Remotion's own (`scripts/ffmpeg.mjs`), already in `node_modules`; `PROMO_FFMPEG`
 
 ## Where the pictures come from
 
-Everything on screen is the real app, running, driven by Playwright: Switchboard through Playwright's Electron
+Everything on screen is the real app, running, driven by Playwright: Seshboard through Playwright's Electron
 support (`scripts/harness.mjs`), and for the companion beat a real VS Code over its debugging port, with the
 companion installed from its `.vsix`. Nothing is a mock-up and nothing is retouched.
 
@@ -42,7 +42,7 @@ companion installed from its `.vsix`. Nothing is a mock-up and nothing is retouc
 projects and two Claude Code config folders, a personal login and a work one, with made-up sessions. The harness
 adds a few worktrees to acme-store, one for each group of the Worktrees tab, dated a few days back.
 
-It's built in `/Users/Shared`, not in the temporary folder: Switchboard only shortens paths to `~/…` under
+It's built in `/Users/Shared`, not in the temporary folder: Seshboard only shortens paths to `~/…` under
 `/Users/<name>`, and a temporary home shows every project as `/private/var/folders/…`. The harness only adds
 `.claude`, `.claude-work`, `.local`, `Developer`, `.vscode` and `.vscode-shared` there, refuses to start when one
 of them already exists, and removes them again when it's done (also on Ctrl-C). If a crash leaves them behind,
@@ -52,12 +52,12 @@ check they're the demo's and delete them.
 
 - HOME and CLAUDE_CONFIG_DIR point at the demo, so neither the app nor Claude Code sees your projects or
   transcripts. The demo logins have no credentials, so nothing is ever sent to Claude.
-- The app keeps its database and preferences in a throwaway data folder (`SWITCHBOARD_DATA_DIR`), and the Claude
+- The app keeps its database and preferences in a throwaway data folder (`SESHBOARD_DATA_DIR`), and the Claude
   Code update check reads a mock registry.
 - VS Code runs with its own profile and extensions folder, and with HOME pointed at the demo. Its companion is
   told where the demo app's data is (`switchboard.appDataFolder`, which replaces where it would otherwise look),
   and the capture clicks nothing until the companion's status bar item says it's connected. Otherwise it would
-  open Switchboard itself (`open -b`), and that would be your real app.
+  open Seshboard itself (`open -b`), and that would be your real app.
 - Both apps run with `--use-mock-keychain`. With HOME pointed at the demo, macOS can't find your login keychain
   when VS Code asks for its storage key, and it offers to **reset** it. Never press Reset if that dialog shows
   up; press Cancel and look at why the switch didn't take.
@@ -75,7 +75,7 @@ about it are worth knowing before changing anything:
   outside the page, so a crop that includes a window's top-left corner puts them back, as the README's framed
   screenshots do.
 - **Frames only come when the page paints**, so each stream is resampled onto a fixed 30 fps grid. The companion
-  beat records VS Code and Switchboard at the same time on one clock, so frame N of one is the same moment as
+  beat records VS Code and Seshboard at the same time on one clock, so frame N of one is the same moment as
   frame N of the other. Both are launched with Chromium's switches against occluded and background windows, or
   the one underneath stops painting.
 

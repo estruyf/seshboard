@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -42,12 +42,12 @@ const LIST_FROM = 3;
 const DRAFT: DraftKey = { kind: 'new' };
 
 /**
- * New session in one of your projects, the ones you added in Switchboard. The tiles (one row that scrolls sideways)
+ * New session in one of your projects, the ones you added in Seshboard. The tiles (one row that scrolls sideways)
  * say what's going on in each, most recent first; the project you last started in (or the one with the newest session)
  * is picked for you, so most of the time you only type. On a phone, All projects opens them as a list in a sheet, with
  * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. In the project's folder,
- * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Switchboard's queue instead,
+ * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Seshboard's queue instead,
  * while the project has a session working. While the keyboard is up on a phone, only the prompt and the buttons stay: the
  * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
  * right above it, and Hide keyboard brings the tiles and the chips back.
@@ -227,7 +227,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setError(null);
     try {
       await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
-      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}${runOn ? ` on ${computerName}` : ''}. Start it from the queue in Switchboard.` });
+      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}${runOn ? ` on ${computerName}` : ''}. Start it from the queue in Seshboard.` });
       clearDraft(DRAFT);
       setPrompt('');
     } catch (e) {
@@ -330,7 +330,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           {phone && !typing && (
             <section aria-label="Project" className="flex flex-col px-4">
               {projects === null && !error && <p className="text-ui text-muted">Loading projects…</p>}
-              {projects?.length === 0 && <p className="rounded-lg bg-sidebar p-3 text-ui text-muted">Add a project in Switchboard on your computer first. New sessions start in the projects you added there.</p>}
+              {projects?.length === 0 && <p className="rounded-lg bg-sidebar p-3 text-ui text-muted">Add a project in Seshboard on your computer first. New sessions start in the projects you added there.</p>}
               {projects && projects.length > 0 && (
                 <ProjectRow project={picked} status={picked ? projectStatus(picked.id, sessions, now) : null} branch={branchShown} onChange={() => setListOpen(true)} />
               )}
@@ -372,7 +372,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               )}
             </div>
             {projects === null && !error && <p className="px-4 text-ui text-muted sm:px-6">Loading projects…</p>}
-            {projects?.length === 0 && <p className="mx-4 rounded-lg bg-sidebar p-3 text-ui text-muted sm:mx-6">Add a project in Switchboard on your computer first. New sessions start in the projects you added there.</p>}
+            {projects?.length === 0 && <p className="mx-4 rounded-lg bg-sidebar p-3 text-ui text-muted sm:mx-6">Add a project in Seshboard on your computer first. New sessions start in the projects you added there.</p>}
             <div ref={row} role="radiogroup" aria-labelledby="pick-project" className="scroll-row flex snap-x scroll-px-4 gap-2 px-4 pt-1 pb-2 sm:scroll-px-6 sm:px-6">
               {shown.map((project) => {
                 const isPicked = projectId === project.id;

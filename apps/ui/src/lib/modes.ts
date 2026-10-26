@@ -1,4 +1,4 @@
-import type { NewSessionMode, PermissionMode } from '@switchboard/protocol/client';
+import type { NewSessionMode, PermissionMode } from '@seshboard/protocol/client';
 
 export const MODE_LABEL: Record<PermissionMode, string> = {
   default: 'Ask before edits',
@@ -34,4 +34,4 @@ export function nextMode(mode: PermissionMode): PermissionMode {
 }
 
 /** A random three-word worktree name; shared with the engine, which names a queued item's worktree the same way. */
-export { randomWorktreeName } from '@switchboard/protocol/client';
+export { randomWorktreeName } from '@seshboard/protocol/client';

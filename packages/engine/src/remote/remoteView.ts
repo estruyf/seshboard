@@ -24,7 +24,7 @@ import {
   type RemoteUsageBreakdown,
   type UsageBreakdown,
   type WorktreeBase,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
 /**

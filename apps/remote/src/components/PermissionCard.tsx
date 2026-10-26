@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/remote-client';
+import type { PermissionDecision, RemotePrompt } from '@seshboard/protocol/remote-client';
 import { DECLINED, promptAsk, promptKind, toolLabel } from '../lib/prompts.ts';
 import { editLines, toolSummary } from '../lib/transcript.ts';
 import { answer } from './answer.ts';

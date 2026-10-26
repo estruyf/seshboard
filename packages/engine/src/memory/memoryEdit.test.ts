@@ -15,7 +15,7 @@ const read = (path: string) => readFileSync(path, 'utf8');
 const CLAUDE_FILE = '---\nname: sidebar-order\ndescription: Needs you first\nmetadata:\n  node_type: memory\n  type: feedback\n  originSessionId: 9b9414df\n  modified: 2026-10-04T14:16:33.977Z\n---\n\nNeeds you, then Working.\n';
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-memory-edit-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-memory-edit-')));
   root = join(base, 'project');
   const configDir = join(base, 'config');
   mkdirSync(root, { recursive: true });

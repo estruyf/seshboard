@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteBlock, RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteBlock, RemoteMessage } from '@seshboard/protocol/remote-client';
 import { runLabel, runSummary, stepText, transcriptItems } from './steps.ts';
 
 let n = 0;

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { BackgroundTask } from '@switchboard/protocol/client';
+import type { BackgroundTask } from '@seshboard/protocol/client';
 import type { DisplayItem } from './displayItems.ts';
 import { commandRuns, type CommandRun } from './commandRuns.ts';
 

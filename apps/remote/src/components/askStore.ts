@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { AskEvent } from '@switchboard/protocol/remote-client';
+import type { AskEvent } from '@seshboard/protocol/remote-client';
 import { closed, currentThread, EMPTY_ASK, opened, withAsked, withEvent, withoutItem, withThreads, type SessionAsk } from '../lib/ask.ts';
 import type { Client } from './Connected.tsx';
 

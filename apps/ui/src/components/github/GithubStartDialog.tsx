@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import type { GithubItemType, GithubListItem, GithubSearchResult } from '@switchboard/protocol/client';
+import type { GithubItemType, GithubListItem, GithubSearchResult } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
 import { Dialog } from '../ui/Dialog.tsx';

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * GitHub issues and pull requests through the GitHub CLI (`gh`), for the `#` list in the message box, New session from
- * an issue or pull request, and saved prompts' `issue` and `pr` blanks. Switchboard only reads from GitHub.
+ * an issue or pull request, and saved prompts' `issue` and `pr` blanks. Seshboard only reads from GitHub.
  */
 
 /**
@@ -94,7 +94,7 @@ export type GithubSearchResult = z.infer<typeof GithubSearchResult>;
 
 /**
  * Where a session started from: the issue or pull request New session filled in. `readOnly` is a pull request from a
- * fork you can't push to: Switchboard doesn't push or create a pull request from that session.
+ * fork you can't push to: Seshboard doesn't push or create a pull request from that session.
  */
 export const GithubOrigin = z.object({
   type: GithubItemType,

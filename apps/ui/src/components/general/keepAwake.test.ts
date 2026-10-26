@@ -11,8 +11,8 @@ describe('keepAwakeLabel', () => {
 
 describe('keepAwakeDetail', () => {
   it('says on power only on macOS', () => {
-    expect(keepAwakeDetail('darwin')).toBe('Stops sleep while Switchboard is open and on power. The display can still sleep.');
-    expect(keepAwakeDetail('win32')).toBe('Stops sleep while Switchboard is open. The display can still sleep.');
+    expect(keepAwakeDetail('darwin')).toBe('Stops sleep while Seshboard is open and on power. The display can still sleep.');
+    expect(keepAwakeDetail('win32')).toBe('Stops sleep while Seshboard is open. The display can still sleep.');
     expect(keepAwakeDetail('linux')).toBe(keepAwakeDetail('win32'));
   });
 });

@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { GithubOrigin } from '@switchboard/protocol/client';
+import type { GithubOrigin } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 /**
  * The issue or pull request each session was started from (`github.origin`), read once per session: a session from a
- * fork's pull request Switchboard can't push to has push and Create pull request off (the git button, the palette).
+ * fork's pull request Seshboard can't push to has push and Create pull request off (the git button, the palette).
  */
 interface GithubOriginState {
   origins: Map<string, GithubOrigin | null>;
@@ -17,7 +17,7 @@ export const useGithubOrigins = create<GithubOriginState>()((set) => ({
   set: (sessionId, origin) => set((s) => ({ origins: new Map(s.origins).set(sessionId, origin) })),
 }));
 
-/** Whether a session works on a fork's pull request Switchboard can't push back (read on first use). */
+/** Whether a session works on a fork's pull request Seshboard can't push back (read on first use). */
 export function useReadOnlyFork(sessionId: string | null): boolean {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;

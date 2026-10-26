@@ -109,12 +109,12 @@ describe('queue states, shared by the UI and the engine', () => {
     expect(limited.entries[0]!.label).toMatch(/^usage limit until /);
   });
 
-  it("can't start by itself while it waits for nothing, or for a session Switchboard doesn't run", () => {
+  it("can't start by itself while it waits for nothing, or for a session Seshboard doesn't run", () => {
     const sessions = [session('deploy', true, { title: 'Deploy check', elsewhere: 'terminal' }), session('ide', true, { title: 'Refactor', elsewhere: 'app', projectRoot: '/work/other' })];
     const started = [{ itemId: 'x', sessionId: 'deploy' }];
     expect(autoStartBlock({ kind: 'none' }, { cwd: '/work/switchboard', sessions, started })).toBe('Choose what it waits for first.');
     expect(autoStartBlock({ kind: 'session', sessionId: 'deploy' }, { cwd: '/work/switchboard', sessions, started })).toBe(
-      '“Deploy check” runs in the terminal, so Switchboard can\'t tell when it finishes. Start this one yourself.',
+      '“Deploy check” runs in the terminal, so Seshboard can\'t tell when it finishes. Start this one yourself.',
     );
     expect(autoStartBlock({ kind: 'session', sessionId: 'ide' }, { cwd: '/work/switchboard', sessions, started })).toMatch(/runs in another app/);
     expect(autoStartBlock({ kind: 'item', itemId: 'x' }, { cwd: '/work/switchboard', sessions, started })).toMatch(/^“Deploy check”/);

@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@switchboard/protocol';
+import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine } from './engine.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
@@ -70,7 +70,7 @@ const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
 function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string } = {}) {
-  const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
   mkdirSync(projectDir, { recursive: true });
@@ -236,7 +236,7 @@ describe('engine over a MessagePort', () => {
     expect(ran).toEqual([`started:${run.title}`, 'skipped:null']);
   });
 
-  it('pauses the schedules of a project removed from Switchboard, and a run whose folder is gone', async () => {
+  it('pauses the schedules of a project removed from Seshboard, and a run whose folder is gone', async () => {
     const { client, dataDir } = connect({ sdk: fakeSdk([]) });
     const folder = join(dataDir, 'web');
     mkdirSync(folder);
@@ -281,7 +281,7 @@ describe('engine over a MessagePort', () => {
   it('starts a queued worktree from a saved branch, and lets Claude Code make the others', async () => {
     const created: Array<{ cwd?: string; worktree?: string | null }> = [];
     const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-base-')));
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-base-')));
     cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
     const run = (...args: string[]) => git(repo, args);
     await run('init', '-q', '-b', 'main');
@@ -315,7 +315,7 @@ describe('engine over a MessagePort', () => {
   it('takes a file as neither a project folder nor a session folder', async () => {
     const created: Array<{ cwd?: string }> = [];
     const { client, dataDir } = connect({ sdk: fakeSdk(created) });
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-file-')));
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-file-')));
     cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
     await git(repo, ['init', '-q', '-b', 'main']);
     const file = join(repo, 'package.json');
@@ -542,9 +542,9 @@ describe('engine over a MessagePort', () => {
 
   it('runs shell actions in a terminal tab and refuses unapproved shared ones', async () => {
     const spawned: Array<{ file: string; args: string[]; cwd: string }> = [];
-    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
-    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ id: 'shared', name: 'Shared', command: 'make it' }] }));
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
+    const project = mkdtempSync(join(tmpdir(), 'seshboard-project-'));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'shared', name: 'Shared', command: 'make it' }] }));
     const engine = createEngine({
       dataDir,
       claudeConfigDir: join(dataDir, 'claude'),
@@ -584,7 +584,7 @@ describe('engine over a MessagePort', () => {
     const changed: Array<string | null> = [];
     client.on('actions.changed', ({ root }) => void changed.push(root));
     await client.call('actions.save', { projectRoot: project, shared: true, action: { id: 'lint', name: 'Lint', command: 'npm run lint' } });
-    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8')).actions.map((a: { id: string }) => a.id)).toEqual(['shared', 'lint']);
+    expect(JSON.parse(readFileSync(join(project, '.seshboard.json'), 'utf8')).actions.map((a: { id: string }) => a.id)).toEqual(['shared', 'lint']);
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'lint' })).resolves.toMatchObject({ kind: 'terminal' });
     await client.call('actions.delete', { projectRoot: project, shared: true, id: 'lint' });
     expect((await client.call('actions.list', { projectRoot: project })).actions.map((a) => a.id)).toEqual(['shared', 'greet']);
@@ -595,7 +595,7 @@ describe('engine over a MessagePort', () => {
   it('sends what a command printed, and how it ended, to the session when a run that reports back ends', async () => {
     const ptys: Array<{ emit: (data: string) => void; exit: (event: { exitCode: number }) => void }> = [];
     const prompts: string[] = [];
-    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
+    const project = mkdtempSync(join(tmpdir(), 'seshboard-project-'));
     // A Claude Code that takes in what it is sent and never answers.
     const sdk: SdkRuntime = {
       query: ({ prompt }) =>
@@ -612,7 +612,7 @@ describe('engine over a MessagePort', () => {
         }) as never,
       startup: async () => ({ query: () => ({}) as never, close: () => {} }) as never,
     };
-    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
     const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
@@ -666,9 +666,9 @@ describe('engine over a MessagePort', () => {
 
   it('stops an action terminal and restarts it in the same tab, checking the action again', async () => {
     const spawned: Array<{ args: string[]; exit: (event: { exitCode: number; signal?: number }) => void; written: string[] }> = [];
-    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
-    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
-    const sharedFile = join(project, '.switchboard.json');
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
+    const project = mkdtempSync(join(tmpdir(), 'seshboard-project-'));
+    const sharedFile = join(project, '.seshboard.json');
     writeFileSync(sharedFile, JSON.stringify({ actions: [{ id: 'dev', name: 'Dev', command: 'npm run dev' }] }));
     const engine = createEngine({
       dataDir,
@@ -808,10 +808,10 @@ describe('Claude profiles', () => {
 
   it('lists, searches and runs sessions from two config folders, each with its own login', async () => {
     const previous = process.env.CLAUDE_CONFIG_DIR;
-    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-engine-'));
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
     const personal = join(dataDir, 'claude');
     const work = join(dataDir, 'claude-work');
-    const project = mkdtempSync(join(tmpdir(), 'switchboard-project-'));
+    const project = mkdtempSync(join(tmpdir(), 'seshboard-project-'));
     const PERSONAL_ID = '44444444-4444-4444-8444-444444444444';
     const WORK_ID = '55555555-5555-4555-8555-555555555555';
     transcript(personal, PERSONAL_ID, BLOG, 'Write the personal blog post');
@@ -910,7 +910,7 @@ describe('Claude profiles', () => {
   it("starts fresh worktrees from a project's own default branch, and compares against it", async () => {
     const created: Array<{ cwd?: string; worktree?: string | null }> = [];
     const { client } = connect({ sdk: fakeSdk(created), path: process.env.PATH ?? '' });
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-default-branch-')));
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-default-branch-')));
     cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
     const run = (...args: string[]) => git(repo, args);
     await run('init', '-q', '-b', 'main');
@@ -930,7 +930,7 @@ describe('Claude profiles', () => {
     await client.call('projects.setDefaults', { root: repo, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: 'dev' } });
     expect((await client.call('worktree.status', { cwd: repo })).baseBranch).toBe('dev');
 
-    // Switchboard makes the worktree itself, from dev, instead of asking Claude Code for one from origin's HEAD.
+    // Seshboard makes the worktree itself, from dev, instead of asking Claude Code for one from origin's HEAD.
     await client.call('session.create', { cwd: repo, prompt: 'hi', worktree: { name: 'from-dev', baseRef: 'fresh' } });
     await until(async () => created.length === 1);
     expect(created[0]!.worktree).toBeUndefined();
@@ -940,7 +940,7 @@ describe('Claude profiles', () => {
 
   it('switches the branch of a checkout, keeps uncommitted work and refuses while Claude works there', async () => {
     const { client, dataDir } = connect();
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-switch-')));
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-switch-')));
     cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
     const run = (...args: string[]) => git(repo, args);
     await run('init', '-q', '-b', 'main');
@@ -992,7 +992,7 @@ describe('Claude profiles', () => {
 
   it('refuses to switch, merge into or remove a checkout while another session works there', async () => {
     const { client, dataDir } = connect();
-    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-busy-')));
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-busy-')));
     cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
     const run = (...args: string[]) => git(repo, args);
     await run('init', '-q', '-b', 'main');

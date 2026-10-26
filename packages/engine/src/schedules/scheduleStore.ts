@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { LaterDraft, Schedule, SCHEDULE_HISTORY, SCHEDULE_SKIPS, ScheduleLastRun, ScheduleMissedSchema, ScheduleRuleSchema, ScheduleSave, type ScheduleSession } from '@switchboard/protocol';
+import { LaterDraft, Schedule, SCHEDULE_HISTORY, SCHEDULE_SKIPS, ScheduleLastRun, ScheduleMissedSchema, ScheduleRuleSchema, ScheduleSave, type ScheduleSession } from '@seshboard/protocol';
 
 interface Row {
   id: string;
@@ -78,7 +78,7 @@ export class ScheduleStore {
 
   /**
    * Creates a schedule or changes one. It keeps its age, its runs and the runs you skipped; its runs count from now, so
-   * a time already past today doesn't run at once. Resuming it here (paused off) clears the reason Switchboard paused it for.
+   * a time already past today doesn't run at once. Resuming it here (paused off) clears the reason Seshboard paused it for.
    */
   save(input: ScheduleSave): Schedule {
     const parsed = ScheduleSave.parse(input);
@@ -105,7 +105,7 @@ export class ScheduleStore {
     return this.get(parsed.id)!;
   }
 
-  /** Pauses (with Switchboard's reason, or null when you paused it) or resumes. Null when it is gone. */
+  /** Pauses (with Seshboard's reason, or null when you paused it) or resumes. Null when it is gone. */
   setPaused(id: string, paused: boolean, reason: string | null = null): Schedule | null {
     if (!this.get(id)) return null;
     const now = this.now();

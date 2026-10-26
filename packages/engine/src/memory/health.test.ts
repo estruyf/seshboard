@@ -51,7 +51,7 @@ describe('memory health', () => {
   const memory = (folder: string, name: string, description: string, body: string) => write(join(folder, `${name}.md`), `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`);
 
   beforeEach(async () => {
-    base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-health-')));
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-health-')));
     root = join(base, 'project');
     dir = join(base, 'config', 'projects', encodeProjectPath(root), 'memory');
     personal = join(base, 'personal');

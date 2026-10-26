@@ -1,4 +1,4 @@
-import type { ProjectOrder, SessionSummary } from '@switchboard/protocol/client';
+import type { ProjectOrder, SessionSummary } from '@seshboard/protocol/client';
 import { shortAge, tildify } from '../../lib/format.ts';
 import { fuzzyScore } from '../../lib/fuzzy.ts';
 import { realBranch, type SessionRowData } from '../../state/sessionsStore.ts';

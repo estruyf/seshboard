@@ -1,6 +1,6 @@
 import { Check, ChevronRight, Copy, FolderOpen, LogIn, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@switchboard/protocol/client';
+import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
@@ -26,7 +26,7 @@ const slug = (name: string) =>
 /** Shell-quotes a path for the sign-in command (paths with spaces are common on macOS). */
 const quote = (path: string) => (/^[\w./~-]+$/.test(path) ? path : `'${path.replace(/'/g, `'\\''`)}'`);
 
-/** The command that signs Claude Code in for one config folder. Switchboard never handles credentials itself. */
+/** The command that signs Claude Code in for one config folder. Seshboard never handles credentials itself. */
 export const loginCommand = (profile: Pick<ClaudeProfile, 'configDir' | 'builtin'>) => (profile.builtin ? 'claude' : `CLAUDE_CONFIG_DIR=${quote(profile.configDir)} claude`);
 
 /**
@@ -176,8 +176,8 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
             iconOnly
             icon={<X size={14} />}
             onClick={onRemove}
-            data-tooltip="Remove from Switchboard (the folder and its login stay on disk)"
-            aria-label={`Remove the ${profile.name} profile from Switchboard`}
+            data-tooltip="Remove from Seshboard (the folder and its login stay on disk)"
+            aria-label={`Remove the ${profile.name} profile from Seshboard`}
             // Removing is the one thing this button does, so it warns on hover.
             className="hover:text-error!"
             data-remove-profile
@@ -198,7 +198,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
         <div className="grid gap-1.5 text-ui text-muted">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
             <p className="min-w-0 flex-1">
-              Not signed in yet. Sign in opens Claude Code with this profile in Switchboard’s terminal. Follow its steps, or type <code className="font-mono">/login</code>.
+              Not signed in yet. Sign in opens Claude Code with this profile in Seshboard’s terminal. Follow its steps, or type <code className="font-mono">/login</code>.
             </p>
             <Button
               variant="primary"
@@ -282,7 +282,7 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
           spellCheck={false}
           data-new-profile-folder
         />
-        <Button icon={<FolderOpen size={13} aria-hidden />} className="shrink-0" onClick={() => void window.switchboard?.pickFolder(path || undefined).then((picked) => picked && setFolder(picked))}>
+        <Button icon={<FolderOpen size={13} aria-hidden />} className="shrink-0" onClick={() => void window.seshboard?.pickFolder(path || undefined).then((picked) => picked && setFolder(picked))}>
           Choose…
         </Button>
       </div>
@@ -291,7 +291,7 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
         run <code className="font-mono">CLAUDE_CONFIG_DIR=… claude</code>) to see its sessions.
       </p>
       <Checkbox checked={signIn} onChange={setSignIn} className="w-fit text-ui text-text" dataAttrs={{ 'data-new-profile-sign-in': true }}>
-        Sign in now: open Claude Code with this profile in Switchboard’s terminal
+        Sign in now: open Claude Code with this profile in Seshboard’s terminal
       </Checkbox>
       {error && (
         <p role="alert" className="text-ui text-error">
@@ -346,7 +346,7 @@ function SetupGuide() {
             <span className="font-medium text-text">Add it here.</span>
             <span>
               Choose <span className="text-text">Add profile</span>, give it a name and colour, and pick the folder <code className="font-mono">{folder}</code>. Its sessions
-              show up in the sidebar. You can also add the profile first: Switchboard creates the folder and opens Claude Code in its terminal, so you sign in there.
+              show up in the sidebar. You can also add the profile first: Seshboard creates the folder and opens Claude Code in its terminal, so you sign in there.
             </span>
           </li>
           <li className={step}>
@@ -360,7 +360,7 @@ function SetupGuide() {
             <span className="font-medium text-text">Optional: a shortcut for the terminal.</span>
             <span>
               Add <CopyCommand command={`alias claude-work='CLAUDE_CONFIG_DIR=${folder} claude'`} /> to <code className="font-mono">~/.zshrc</code> to start Claude Code with that
-              account outside Switchboard too.
+              account outside Seshboard too.
             </span>
           </li>
         </ol>

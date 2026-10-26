@@ -1,4 +1,4 @@
-import type { SignedOut, SignInState } from '@switchboard/protocol';
+import type { SignedOut, SignInState } from '@seshboard/protocol';
 
 export interface SignInsDeps {
   onChange(state: SignInState): void;

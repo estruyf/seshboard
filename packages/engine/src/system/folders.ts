@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import { access, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, resolve, sep } from 'node:path';
-import type { FolderEntry } from '@switchboard/protocol';
+import type { FolderEntry } from '@seshboard/protocol';
 import { branchOf, ownGitDir } from '../claude/projectResolver.ts';
 import { HOME_SKIP_DIRS } from './files.ts';
 

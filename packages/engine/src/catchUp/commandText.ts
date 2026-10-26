@@ -1,4 +1,4 @@
-import { commandLabel } from '@switchboard/protocol';
+import { commandLabel } from '@seshboard/protocol';
 import { isTestCommand } from './testCommands.ts';
 import { oneLine, type ToolCall } from './turn.ts';
 

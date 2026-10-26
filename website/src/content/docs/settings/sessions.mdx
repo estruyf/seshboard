@@ -23,7 +23,7 @@ Archived sessions leave the sidebar but stay on disk. Deleting one moves its tra
 
 ### Archive finished sessions after
 
-A finished session moves to Archived after this many days without activity: 3 by default, anything from 1 to 365. Working, needs you, unread and pinned sessions stay in the list, and so does a session open in Switchboard. New activity brings a session back, and so does unarchiving it yourself.
+A finished session moves to Archived after this many days without activity: 3 by default, anything from 1 to 365. Working, needs you, unread and pinned sessions stay in the list, and so does a session open in Seshboard. New activity brings a session back, and so does unarchiving it yourself.
 
 The [VS Code companion](/vscode-companion/) lists the same sessions as the sidebar, so it follows this setting too.
 
@@ -40,28 +40,28 @@ These are always kept:
 
 Turning the switch on asks first: **Turn on deleting after 30 days?** says how many sessions go today and how much space that frees. **Review the N** closes the question and shows exactly those sessions in the table below, so you can unarchive or pin the ones you want to keep. **Turn on** starts it. Making the days shorter while it is on asks the same way when more sessions would go at once.
 
-Switchboard checks when it starts and once a day while it is open. Each run is written to the log in [Settings › Diagnostics](/settings/#diagnostics): how many sessions moved, how much space that freed, and how many were kept.
+Seshboard checks when it starts and once a day while it is open. Each run is written to the log in [Settings › Diagnostics](/settings/#diagnostics): how many sessions moved, how much space that freed, and how many were kept.
 
 <Aside type="note">
-Sessions only ever go to the <Os mac="Trash" windows="Recycle Bin" />, so you can put them back from there. When Switchboard can't move files to the <Os mac="Trash" windows="Recycle Bin" />, it deletes nothing.
+Sessions only ever go to the <Os mac="Trash" windows="Recycle Bin" />, so you can put them back from there. When Seshboard can't move files to the <Os mac="Trash" windows="Recycle Bin" />, it deletes nothing.
 </Aside>
 
 ### Claude Code's own cleanup
 
-Claude Code deletes old transcripts by itself, even when Switchboard's deleting is off. It removes sessions that have been quiet for `cleanupPeriodDays` days (30 when the setting is missing), for every app that uses that Claude profile. The note under the switches says what each [Claude profile](/settings/claude-profiles/) uses, for example *Personal after 30 days, Work after 90 days*.
+Claude Code deletes old transcripts by itself, even when Seshboard's deleting is off. It removes sessions that have been quiet for `cleanupPeriodDays` days (30 when the setting is missing), for every app that uses that Claude profile. The note under the switches says what each [Claude profile](/settings/claude-profiles/) uses, for example *Personal after 30 days, Work after 90 days*.
 
-**Change…** opens one row per profile, with its colour, its name, its `settings.json` and a days menu (**(default)** when the setting is missing). A warning shows under a profile when Claude Code would delete its sessions before Switchboard does. **Save** changes only `cleanupPeriodDays` in the files you changed, and keeps everything else in them. Nothing is written until you press **Save**.
+**Change…** opens one row per profile, with its colour, its name, its `settings.json` and a days menu (**(default)** when the setting is missing). A warning shows under a profile when Claude Code would delete its sessions before Seshboard does. **Save** changes only `cleanupPeriodDays` in the files you changed, and keeps everything else in them. Nothing is written until you press **Save**.
 
 ## All sessions
 
-Under the settings, **All sessions** lists every session Claude Code has, also those from other apps when the sidebar shows only Switchboard's. The line under the heading says how many there are, how much space they take, how many are archived, and how many of those have been archived for more than 30 days. **Reveal in <Os mac="Finder" windows="File Explorer" />** opens the folder where Claude Code keeps them (with several profiles, pick which).
+Under the settings, **All sessions** lists every session Claude Code has, also those from other apps when the sidebar shows only Seshboard's. The line under the heading says how many there are, how much space they take, how many are archived, and how many of those have been archived for more than 30 days. **Reveal in <Os mac="Finder" windows="File Explorer" />** opens the folder where Claude Code keeps them (with several profiles, pick which).
 
 ### Find sessions
 
 - **Filter by title, branch or project**: type to narrow the list.
 - **Any time**, **7 days**, **30 days**, **Older than 30 days**: by last activity.
 - **All projects**: one project only.
-- **From any app**: where the session started: **Switchboard**, **Terminal**, **Editor**, **Claude desktop** or **Other**.
+- **From any app**: where the session started: **Seshboard**, **Terminal**, **Editor**, **Claude desktop** or **Other**.
 - **All**, **In the list**, **Archived**, **Pinned**: where the session is now.
 
 The table groups sessions by month, newest first. Each row shows the project and title (with the branch and project under it), the status, when it was last active, its size on disk and the app it came from. Click a row, or press <Kbd keys="enter" /> on it, to open the session; Settings closes.

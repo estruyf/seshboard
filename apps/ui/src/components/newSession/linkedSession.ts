@@ -1,4 +1,4 @@
-import { linkLabel, uniqueLabel } from '@switchboard/protocol/client';
+import { linkLabel, uniqueLabel } from '@seshboard/protocol/client';
 import { newDraftKey } from '../../state/drafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';

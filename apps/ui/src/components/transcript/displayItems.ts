@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptMessage } from '@switchboard/protocol/client';
+import type { ImageRef, TranscriptMessage } from '@seshboard/protocol/client';
 
 export interface ToolResultView {
   text: string;

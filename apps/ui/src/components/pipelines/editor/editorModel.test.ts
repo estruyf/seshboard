@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, PIPELINE_LIMITS, type Pipeline, type PipelineClaudeStep } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, PIPELINE_LIMITS, type Pipeline, type PipelineClaudeStep } from '@seshboard/protocol/client';
 import {
   addStep,
   canMove,

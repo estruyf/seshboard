@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastOf } from '@switchboard/protocol/color';
+import { contrastOf } from '@seshboard/protocol/color';
 import { liftContrast, modToken, resolveModColor } from './modColor.ts';
 import { boxStyle, cells, textStyle, wrapMode } from './modLayout.ts';
 import { safeHref } from './modLinks.ts';

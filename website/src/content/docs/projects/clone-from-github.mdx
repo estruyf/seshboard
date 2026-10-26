@@ -1,6 +1,6 @@
 ---
 title: Clone from GitHub
-description: Start a project from a GitHub URL. Switchboard clones it into a folder you set, adds it as a project and runs your first prompt there.
+description: Start a project from a GitHub URL. Seshboard clones it into a folder you set, adds it as a project and runs your first prompt there.
 sidebar:
   badge: New
 ---
@@ -11,7 +11,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Paste `https://github.com/owner/name`, type your first prompt and press Start. Switchboard clones the repository into the folder you set for it, adds it to your projects and starts the session there, on this computer or on another one. It saves the three steps of cloning in a terminal, adding the folder as a project and opening New session, for trying out a library, reviewing someone's repository or picking up a project on a second computer.
+Paste `https://github.com/owner/name`, type your first prompt and press Start. Seshboard clones the repository into the folder you set for it, adds it to your projects and starts the session there, on this computer or on another one. It saves the three steps of cloning in a terminal, adding the folder as a project and opening New session, for trying out a library, reviewing someone's repository or picking up a project on a second computer.
 
 <Screenshot name="clone-from-github" alt="New session with the Clone from GitHub form: the URL of a repository, the folder it goes in under ~/Developer, the finished clone added to your projects, and a prompt in the message box under it" eager />
 
@@ -20,7 +20,7 @@ Paste `https://github.com/owner/name`, type your first prompt and press Start. S
 Clone from GitHub is off until you turn it on:
 
 1. Open Settings › **Projects**.
-2. Turn on **Clone from GitHub**. Switchboard asks for the folder new projects go in first, such as `~/Developer`.
+2. Turn on **Clone from GitHub**. Seshboard asks for the folder new projects go in first, such as `~/Developer`.
 3. To change that folder later, click **Choose…** next to **Clone into**.
 
 Each computer has its own setting and folder: a clone on [another computer](/other-computers/) goes in that computer's **Clone into** folder. While the setting is off, none of the ways in below show.
@@ -30,9 +30,9 @@ Each computer has its own setting and folder: a clone on [another computer](/oth
 - **New session**: click **Clone from GitHub…** above the project tiles, and paste the URL. Or paste a GitHub URL in the project filter (type a letter on a tile, or click **Filter**), and choose **Clone owner/name**.
 - **Command palette**: run *New session from a GitHub repository…*, paste the URL and press <Kbd keys="enter" />. New session opens with the clone running.
 - **Sidebar**: the add project menu (the project filter at the top of the sidebar) has **Clone from GitHub…**. It clones and adds the project, without starting a session.
-- **Links**: when a `switchboard://new-session` link names a `repo` you have no checkout of, the line above the message box offers **Clone owner/name**. See [Links](/links/).
+- **Links**: when a `seshboard://new-session` link names a `repo` you have no checkout of, the line above the message box offers **Clone owner/name**. See [Links](/links/).
 
-Switchboard takes these forms:
+Seshboard takes these forms:
 
 - `https://github.com/owner/name`, with or without `.git`;
 - `git@github.com:owner/name.git`;
@@ -54,10 +54,10 @@ A fresh clone runs in the clone itself, so **New worktree** isn't offered.
 
 When the folder is there already:
 
-- It's a checkout of the same repository: Switchboard uses it, with no second clone. The form says "Already cloned in ~/Developer/name".
+- It's a checkout of the same repository: Seshboard uses it, with no second clone. The form says "Already cloned in ~/Developer/name".
 - It's something else: the form says "~/Developer/name already exists". Type another name.
 
-Switchboard clones with the [GitHub CLI](https://cli.github.com/) when `gh` is signed in, so private repositories work and your choice of HTTPS or SSH is kept. Without it, it clones with git over HTTPS, which works for public repositories. Switchboard only reads from GitHub: it never forks, stars or writes anything there.
+Seshboard clones with the [GitHub CLI](https://cli.github.com/) when `gh` is signed in, so private repositories work and your choice of HTTPS or SSH is kept. Without it, it clones with git over HTTPS, which works for public repositories. Seshboard only reads from GitHub: it never forks, stars or writes anything there.
 
 ## Before the first session
 
@@ -74,7 +74,7 @@ A link never clones and starts on its own: a link with `autostart` doesn't start
 With **Run on** set to another computer in [New session](/new-session/form/), **Clone from GitHub…** clones there, in that computer's **Clone into** folder, and the session starts there. The new project shows as a tile of that computer.
 
 - When that computer has Clone from GitHub off, the form says "Turn on Clone from GitHub in Settings on mystic to clone there."
-- When that computer runs an older Switchboard, the form says "Update Switchboard on mystic to clone there."
+- When that computer runs an older Seshboard, the form says "Update Seshboard on mystic to clone there."
 
 See [Other computers](/other-computers/#set-it-up) for pairing with another computer.
 

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Loader2, SquareTerminal } from 'lucide-react';
-import type { ShellCommandState } from '@switchboard/protocol/bridge';
+import type { ShellCommandState } from '@seshboard/protocol/bridge';
 import { Button } from '../ui/Button.tsx';
 import { currentPlatform } from '../../lib/platform.ts';
 import { shellCommandAction, shellCommandStatus } from './shellCommand.ts';
 
 /**
- * Settings › General › Shell command: installs `switchboard`, `seshboard` and `sesh`, so `switchboard .` in a terminal opens
+ * Settings › General › Shell command: installs `seshboard`, `sesh` and `switchboard`, so `seshboard .` in a terminal opens
  * New session in that folder. Main writes the files; it is asked again each time the window is focused, since the
  * files can be changed from a terminal too.
  */
@@ -16,7 +16,7 @@ export function ShellCommandSetting() {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    const check = () => void window.switchboard?.shellCommand().then((result) => live && setState(result.state), () => {});
+    const check = () => void window.seshboard?.shellCommand().then((result) => live && setState(result.state), () => {});
     check();
     window.addEventListener('focus', check);
     return () => {
@@ -30,7 +30,7 @@ export function ShellCommandSetting() {
     if (!next || busy) return;
     setBusy(true);
     setError(null);
-    window.switchboard
+    window.seshboard
       ?.shellCommand(next.action)
       .then((result) => {
         setState(result.state);
@@ -46,8 +46,8 @@ export function ShellCommandSetting() {
           <span className="block text-ui">Shell command</span>
           {/* The same words as shellCommandDetail (Settings search), with the commands in monospace. */}
           <span className="block text-meta text-muted">
-            Type <code className="font-mono">switchboard .</code> in a terminal to open New session in that folder. <code className="font-mono">seshboard .</code> and{' '}
-            <code className="font-mono">sesh .</code> do the same.
+            Type <code className="font-mono">seshboard .</code> in a terminal to open New session in that folder. <code className="font-mono">sesh .</code> and{' '}
+            <code className="font-mono">switchboard .</code> do the same.
             {currentPlatform() === 'linux' && ' ~/.local/bin has to be on your PATH.'}
           </span>
         </span>

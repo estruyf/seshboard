@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { hostname } from 'node:os';
-import { REMOTE_DEVICE_NAME_MAX } from '@switchboard/protocol';
+import { REMOTE_DEVICE_NAME_MAX } from '@seshboard/protocol';
 
 /**
  * The name people know this computer by ("Elio's iMac"), for the phone's connection chip and its offline help. On

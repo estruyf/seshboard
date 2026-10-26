@@ -2,7 +2,7 @@ import { usePaletteBus } from '../../state/paletteBus.ts';
 
 /** Import from Claude export…: picks the export's files, then shows the preview. */
 export async function importFromClaudeExport(): Promise<void> {
-  const paths = (await window.switchboard?.chooseMemoryExport()) ?? [];
+  const paths = (await window.seshboard?.chooseMemoryExport()) ?? [];
   if (paths.length) usePaletteBus.getState().showDialog({ kind: 'memory-import', source: { kind: 'export', paths } });
 }
 

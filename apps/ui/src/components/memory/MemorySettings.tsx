@@ -1,7 +1,7 @@
 import { ChevronRight, ClipboardCopy, Plus, ClipboardPaste, Download, FolderInput, FolderSearch, Plug, Unplug } from 'lucide-react';
 import { fileManagerName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { MEMORY_INDEX_LIMIT, type MemoryFile } from '@switchboard/protocol/client';
+import { MEMORY_INDEX_LIMIT, type MemoryFile } from '@seshboard/protocol/client';
 import type { ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { guardMemoryEdits, useMemoryView } from '../../state/memoryStore.ts';
@@ -68,7 +68,7 @@ function BlockPreviewDialog({ onClose, onInstalled, readOnly }: { onClose(): voi
   return (
     <Dialog
       title={readOnly ? 'The line in Claude Code' : 'Add personal memory to Claude Code'}
-      subtitle="One import line in each profile's CLAUDE.md, inside a block Switchboard owns. The rest of the file stays as it is."
+      subtitle="One import line in each profile's CLAUDE.md, inside a block Seshboard owns. The rest of the file stays as it is."
       width="lg"
       placement="top"
       onClose={onClose}
@@ -206,7 +206,7 @@ export function MemorySettings({ actions }: { actions?: ReactNode }) {
 
   const changeFolder = async () => {
     if (!client || !personal) return;
-    const picked = await window.switchboard?.pickFolder(personal.dir);
+    const picked = await window.seshboard?.pickFolder(personal.dir);
     if (!picked) return;
     try {
       set(await client.call('memory.setPersonalDir', { path: picked }));
@@ -322,7 +322,7 @@ export function MemorySettings({ actions }: { actions?: ReactNode }) {
           title="Remove from Claude Code?"
           danger
           confirmLabel="Remove the line"
-          body="Switchboard takes its block out of each profile's CLAUDE.md, and Claude stops loading your personal memory. The memory files stay where they are."
+          body="Seshboard takes its block out of each profile's CLAUDE.md, and Claude stops loading your personal memory. The memory files stay where they are."
           onConfirm={async () => {
             if (!client) throw new Error('Not connected to the engine');
             set(await client.call('memory.removeBlock', {}));

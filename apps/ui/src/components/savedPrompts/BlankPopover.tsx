@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check } from 'lucide-react';
-import type { GithubListItem, PromptBlank } from '@switchboard/protocol/client';
+import type { GithubListItem, PromptBlank } from '@seshboard/protocol/client';
 import { reasonLine } from '../github/githubText.ts';
 import { fuzzyScore } from '../../lib/fuzzy.ts';
 import { Kbd } from '../ui/Kbd.tsx';

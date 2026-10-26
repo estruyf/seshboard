@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, Maximize2, Minimize2, PanelBottom, PanelRight, Plus, RotateCcw, Sparkles, Square, SquareTerminal, Timer, X } from 'lucide-react';
 import { useEffect, useId, useMemo, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import type { TerminalInfo, TerminalKind } from '@switchboard/protocol/client';
+import type { TerminalInfo, TerminalKind } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, tildify } from '../../lib/format.ts';
 import { ENGINE_RESTARTED, openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';

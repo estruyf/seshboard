@@ -31,7 +31,7 @@ console.log(`demo home: ${world.home}`);
 let code: number;
 try {
   // HOME and CLAUDE_CONFIG_DIR both point into the demo, so neither the app nor Claude Code sees real data.
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SWITCHBOARD_SCREENSHOTS_OUT: rawDir, ELECTRON_ENABLE_LOGGING: '0' };
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SESHBOARD_SCREENSHOTS_OUT: rawDir, ELECTRON_ENABLE_LOGGING: '0' };
   code = await run([appDir], env);
 } finally {
   world.stop();

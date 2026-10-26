@@ -32,7 +32,7 @@ if (process.platform !== 'darwin') {
   process.exit(2);
 }
 if (!existsSync(join(repoRoot, 'apps', 'desktop', 'out', 'main', 'index.js'))) {
-  console.error('Build the app first: npm run build -w @switchboard/desktop (npm run chaos does it for you).');
+  console.error('Build the app first: npm run build -w @seshboard/desktop (npm run chaos does it for you).');
   process.exit(2);
 }
 

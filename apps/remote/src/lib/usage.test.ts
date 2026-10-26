@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage, UsageLimit } from '@seshboard/protocol/remote-client';
 import { countdown, levelOf, limitName, onComputers, spokenLimit, usageMessage, visibleLimits, withUsage } from './usage.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();

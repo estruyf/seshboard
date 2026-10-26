@@ -1,5 +1,5 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import type { PlanHistory, PlanSeries, UsageSnapshot } from '@switchboard/protocol';
+import type { PlanHistory, PlanSeries, UsageSnapshot } from '@seshboard/protocol';
 import type { PlanSample } from './shares.ts';
 
 /** Readings older than this are dropped: the longest period shown is 30 days. */

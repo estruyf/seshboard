@@ -4,7 +4,7 @@
 # The smoke test builds the app, launches the real Electron window with a throwaway profile and drives the UI
 # step by step (see docs/development.md#tests). A runner's home folder has no ~/.claude, so it runs in the made-up
 # home the README screenshots use (npm run smoke:demo): a few git projects with sessions, one of them running. It
-# has no login, so nothing is sent, and the live steps (SWITCHBOARD_SMOKE_LIVE_CWD) never run here. Its
+# has no login, so nothing is sent, and the live steps (SESHBOARD_SMOKE_LIVE_CWD) never run here. Its
 # screenshots and result.json from apps/desktop/.smoke are uploaded as an artifact, also when it fails.
 name: Check
 
@@ -48,13 +48,13 @@ jobs:
       # The engine's tests make real git repositories and commits.
       - name: Git identity for the tests
         run: |
-          git config --global user.name "Switchboard CI"
+          git config --global user.name "Seshboard CI"
           git config --global user.email "ci@switchboard.invalid"
 
       - name: Typecheck and unit tests
         run: npm run check
 
-      # Switchboard drives the user's own claude binary; installing it lets the steps that read its version and
+      # Seshboard drives the user's own claude binary; installing it lets the steps that read its version and
       # command list see a real one. It is never logged in, so nothing is sent.
       - name: Install Claude Code
         if: ${{ !cancelled() }}

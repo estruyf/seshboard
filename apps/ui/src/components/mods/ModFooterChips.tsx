@@ -1,6 +1,6 @@
 import { Puzzle, ShieldCheck } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { ModStatus } from '@switchboard/protocol/client';
+import type { ModStatus } from '@seshboard/protocol/client';
 import { useSessionMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Popover } from '../ui/Popover.tsx';

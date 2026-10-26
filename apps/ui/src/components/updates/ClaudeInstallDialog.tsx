@@ -9,7 +9,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { CommandToCopy } from './ClaudeCodeUpdates.tsx';
 
 /**
- * Switchboard runs the user's own `claude`; without one no session can start. Opens by itself at launch when the
+ * Seshboard runs the user's own `claude`; without one no session can start. Opens by itself at launch when the
  * engine can't find it (and from Settings → About), shows how to install it, and looks again on request.
  */
 export function ClaudeInstallDialog() {
@@ -34,7 +34,7 @@ export function ClaudeInstallDialog() {
     <Dialog
       width="md"
       title={found ? 'Claude Code is installed' : 'Install Claude Code'}
-      subtitle={found ? undefined : `Switchboard runs sessions with your own Claude Code, and can’t find it on this ${machine}.`}
+      subtitle={found ? undefined : `Seshboard runs sessions with your own Claude Code, and can’t find it on this ${machine}.`}
       onClose={close}
       data-claude-install-dialog
       data-claude-install-found={found}
@@ -89,7 +89,7 @@ export function ClaudeInstallDialog() {
           </section>
           <section className="grid gap-2">
             <h3 className="font-medium">3. Come back here</h3>
-            <p className="text-muted">Choose Check Again. Switchboard finds it the way your terminal does.</p>
+            <p className="text-muted">Choose Check Again. Seshboard finds it the way your terminal does.</p>
           </section>
           {lookedOnce && !looking && (
             <Notice tone="caution" data-claude-install-still-missing>

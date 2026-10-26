@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { QueuedMessage } from '@switchboard/protocol/client';
+import type { QueuedMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 /**

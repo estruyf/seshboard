@@ -1,4 +1,4 @@
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 
 // A pipeline run as one thing in the sidebar (#179): its parent (a session, or the run row) and its sub-sessions. The
 // words and rules of its menu and its dialogs, without React or the stores, so they can be tested.
@@ -39,7 +39,7 @@ export function runRowMenu(state: PipelineRunState, options: { archived: boolean
 }
 
 /**
- * Delete…'s question: what goes away from Switchboard, and that the transcripts stay. `keep`: Keep the sub-sessions is
+ * Delete…'s question: what goes away from Seshboard, and that the transcripts stay. `keep`: Keep the sub-sessions is
  * on, so they stay, on their own.
  */
 export function deleteTreeText(title: string, sessions: number, parentSession: boolean, keep = false): { title: string; body: string } {
@@ -48,9 +48,9 @@ export function deleteTreeText(title: string, sessions: number, parentSession: b
   const head = { title: `Delete “${short}”?` };
   if (keep && sessions) {
     const what = parentSession ? 'This session and its run go' : 'The run goes';
-    return { ...head, body: `${what} away from Switchboard. ${sessions === 1 ? 'Its sub-session stays' : `Its ${sessions} sub-sessions stay`}, on their own.` };
+    return { ...head, body: `${what} away from Seshboard. ${sessions === 1 ? 'Its sub-session stays' : `Its ${sessions} sub-sessions stay`}, on their own.` };
   }
   const what = parentSession ? (sessions ? `This session, its run and ${subs} go` : 'This session and its run go') : sessions ? `The run and ${subs} go` : 'The run goes';
   const stay = !parentSession && !sessions ? '' : parentSession && !sessions ? ' Its Claude Code transcript stays on disk.' : ' Their Claude Code transcripts stay on disk.';
-  return { ...head, body: `${what} away from Switchboard.${stay}` };
+  return { ...head, body: `${what} away from Seshboard.${stay}` };
 }

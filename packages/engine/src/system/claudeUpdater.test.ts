@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ClaudeUpdateState } from '@switchboard/protocol';
+import type { ClaudeUpdateState } from '@seshboard/protocol';
 import { findClaude } from './claudeBinary.ts';
 import { ClaudeUpdater, cleanOutput, type ClaudeUpdaterOptions } from './claudeUpdater.ts';
 import { appStateFake } from './testing.ts';
@@ -17,7 +17,7 @@ const registry = (tags: Record<string, string>) => `data:application/json,${enco
  * version in a file next to it, and whose `update` writes `updateTo` there (or fails with `exit`).
  */
 function fakeNativeInstall(version: string, update: { to?: string; exit?: number } = {}) {
-  const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-'));
+  const home = mkdtempSync(join(tmpdir(), 'seshboard-claude-update-'));
   dirs.push(home);
   const versions = join(home, '.local', 'share', 'claude', 'versions');
   mkdirSync(versions, { recursive: true });
@@ -139,7 +139,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeUpdater', () => {
 
 describe.skipIf(process.platform !== 'win32')('ClaudeUpdater on Windows', () => {
   it('updates an npm install through the npm.cmd on PATH, run by cmd.exe, and reads the new version', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-win-'));
+    const home = mkdtempSync(join(tmpdir(), 'seshboard-claude-update-win-'));
     dirs.push(home);
     // npm's package (its claude.exe needn't run here: findClaude reads the version from a file instead).
     const exe = join(home, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
@@ -170,7 +170,7 @@ describe.skipIf(process.platform !== 'win32')('ClaudeUpdater on Windows', () => 
   });
 
   it('says to stop the sessions when an npm update fails, as Windows keeps a running claude.exe', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'switchboard-claude-update-win-'));
+    const home = mkdtempSync(join(tmpdir(), 'seshboard-claude-update-win-'));
     dirs.push(home);
     const exe = join(home, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
     mkdirSync(join(exe, '..'), { recursive: true });

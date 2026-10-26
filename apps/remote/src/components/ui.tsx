@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { Monitor } from 'lucide-react';
-import type { CompanionStatus, RemoteSessionProfile } from '@switchboard/protocol/remote-client';
+import type { CompanionStatus, RemoteSessionProfile } from '@seshboard/protocol/remote-client';
 import { keys } from '../lib/platform.ts';
 
 /**
@@ -114,7 +114,7 @@ export const STATUS_RAIL: Record<CompanionStatus, string> = {
 };
 
 /**
- * With more than one Claude profile, a row's rail is its profile's colour instead (as in Switchboard's sidebar), so
+ * With more than one Claude profile, a row's rail is its profile's colour instead (as in Seshboard's sidebar), so
  * you see whose account a session uses at a glance; the status still shows in the dot, the age and the group.
  */
 export const PROFILE_RAIL: Record<RemoteSessionProfile['color'], string> = {
@@ -143,7 +143,7 @@ export function StatusDot({ status }: { status: CompanionStatus }) {
 }
 
 /**
- * The computer a session runs on, with more than one paired: a monitor and its name, as Switchboard marks a session on
+ * The computer a session runs on, with more than one paired: a monitor and its name, as Seshboard marks a session on
  * another computer. Neutral rather than the computer's violet: here every session is on another computer.
  */
 export function ComputerTag({ name, size = 'row', className = '' }: { name: string; size?: 'row' | 'header'; className?: string }) {

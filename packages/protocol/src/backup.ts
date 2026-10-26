@@ -13,7 +13,7 @@ const SessionId = z.string().min(1).max(200);
 /** Image types a project icon can have (the same ones Settings accepts). */
 export const ICON_EXTENSIONS = ['.svg', '.png', '.ico', '.jpg', '.jpeg', '.webp', '.gif'] as const;
 
-/** A custom project icon. Images travel inside the file (base64), since the copy Switchboard keeps is per Mac. */
+/** A custom project icon. Images travel inside the file (base64), since the copy Seshboard keeps is per Mac. */
 export const ExportedIcon = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('emoji'), value: z.string().min(1).max(16) }),
   z.object({ kind: z.literal('none') }),
@@ -106,9 +106,9 @@ export type SettingsFile = z.infer<typeof SettingsFile>;
 /** Validates a parsed settings file, with a message meant for the person importing it. */
 export function parseSettingsFile(raw: unknown): { file: SettingsFile } | { error: string } {
   const head = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-  if (head.kind !== 'switchboard-settings') return { error: 'This is not a Switchboard settings file.' };
+  if (head.kind !== 'switchboard-settings') return { error: 'This is not a Seshboard settings file.' };
   if (typeof head.format === 'number' && head.format > SETTINGS_FILE_FORMAT) {
-    return { error: `This file was exported by a newer version of Switchboard (format ${head.format}). Update Switchboard, then import it again.` };
+    return { error: `This file was exported by a newer version of Seshboard (format ${head.format}). Update Seshboard, then import it again.` };
   }
   const parsed = SettingsFile.safeParse(raw);
   if (!parsed.success) {
@@ -144,7 +144,7 @@ export const ImportPreview = z.object({
 });
 export type ImportPreview = z.infer<typeof ImportPreview>;
 
-/** Merge adds what's missing and keeps your values on conflict; Replace makes Switchboard match the file. */
+/** Merge adds what's missing and keeps your values on conflict; Replace makes Seshboard match the file. */
 export const ImportMode = z.enum(['merge', 'replace']);
 export type ImportMode = z.infer<typeof ImportMode>;
 

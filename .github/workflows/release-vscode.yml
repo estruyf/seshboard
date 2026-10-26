@@ -82,7 +82,7 @@ jobs:
       - name: Typecheck and unit tests
         working-directory: .
         run: |
-          npm run typecheck -w @switchboard/protocol -w switchboard-companion
+          npm run typecheck -w @seshboard/protocol -w switchboard-companion
           npx vitest run apps/vscode-extension packages/protocol
 
       - name: Package

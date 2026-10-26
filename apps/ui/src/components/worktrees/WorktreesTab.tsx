@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Copy, Ellipsis, FolderOpen, GitBranch, GitMerge, HardDrive, Lock, LockOpen, MessagesSquare, RefreshCw, Search, SquarePen, Trash2, ArrowUp } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@switchboard/protocol/client';
+import { isSameOrInside, type WorktreeEntry, type WorktreeRemoveResult } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';

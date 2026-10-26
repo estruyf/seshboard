@@ -1,4 +1,4 @@
-import { formatCost, safeLocale, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@switchboard/protocol/client';
+import { formatCost, safeLocale, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@seshboard/protocol/client';
 
 /** "5h", "7d", "7d · Fable" for the server's meter kinds. */
 export function limitLabel(limit: UsageLimit): string {

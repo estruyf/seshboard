@@ -1,4 +1,4 @@
-import type { ClaudeProfile, Computer, ProfileColor, RemoteSession, RemoteSessions } from '@switchboard/protocol/client';
+import type { ClaudeProfile, Computer, ProfileColor, RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteRowId } from './remoteSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -75,7 +75,7 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
     archivedAt: null,
     restoredAt: null,
     unread: session.unread,
-    // Every session that computer lists runs in its Switchboard, so it counts under "Only Switchboard's sessions".
+    // Every session that computer lists runs in its Seshboard, so it counts under "Only Seshboard's sessions".
     inApp: true,
     error: status === 'error',
     // Profiles are that computer's own: none of this computer's can match.

@@ -1,9 +1,9 @@
 {
   "name": "smoke-mod",
   "version": "0.1.0",
-  "description": "Switchboard's smoke test mod: a band, a pane, a status and a toast",
+  "description": "Seshboard's smoke test mod: a band, a pane, a status and a toast",
   "types": "./types/index.d.ts",
   "author": {
-    "name": "Switchboard"
+    "name": "Seshboard"
   }
 }

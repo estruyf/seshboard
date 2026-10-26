@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { cacheRewriteCost } from '@switchboard/protocol/client';
+import { cacheRewriteCost } from '@seshboard/protocol/client';
 import { isActiveHost, useHosts } from '../state/hostsStore.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { useTerminals } from '../state/terminalsStore.ts';
@@ -41,7 +41,7 @@ function useQuitLargeContext(): { text: string; tip: boolean } | null {
   const large = warning.enabled && (warning.onQuit || !warning.quitTipShown) ? largeSessions(hosts.values(), warning, cacheRewriteCost) : [];
   const text = largeSessionsText(large, format);
   const ask = text !== null;
-  useEffect(() => window.switchboard?.setQuitContext(ask), [ask]);
+  useEffect(() => window.seshboard?.setQuitContext(ask), [ask]);
   return text ? { text, tip: !warning.onQuit } : null;
 }
 
@@ -62,7 +62,7 @@ export function QuitPrompt() {
 
   useEffect(
     () =>
-      window.switchboard?.onQuitRequested(() => {
+      window.seshboard?.onQuitRequested(() => {
         answered.current = false;
         const now = largeRef.current;
         setShown(now);
@@ -77,7 +77,7 @@ export function QuitPrompt() {
   const answer = (value: 'quit' | 'cancel') => {
     if (answered.current) return;
     answered.current = true;
-    window.switchboard?.answerQuit(value);
+    window.seshboard?.answerQuit(value);
   };
 
   const cancel = () => {
@@ -86,7 +86,7 @@ export function QuitPrompt() {
   };
   return (
     <ConfirmDialog
-      title="Quit Switchboard?"
+      title="Quit Seshboard?"
       body={
         <>
           {summary.length > 0 && <p data-quit-unsent={unsent || undefined}>{summary.join(' ')}</p>}

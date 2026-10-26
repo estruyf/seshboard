@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stamps homebrew/switchboard.rb with a released version and its checksum, and with --push commits it
+# Stamps homebrew/seshboard.rb with a released version and its checksum, and with --push commits it
 # to the Homebrew tap.
 #
 #   ./homebrew/publish-cask.sh              stamp the cask and print it
@@ -19,7 +19,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CASK="homebrew/switchboard.rb"
+CASK="homebrew/seshboard.rb"
 TAP_REPO="${TAP_REPO:-estruyf/homebrew-tap}"
 PUSH=0
 
@@ -34,7 +34,7 @@ if [ -z "${VERSION:-}" ]; then
   VERSION="$(node -p "require('./apps/desktop/package.json').version")"
 fi
 VERSION="${VERSION#v}"
-NAME="Switchboard-$VERSION-arm64-mac.zip"
+NAME="Seshboard-$VERSION-arm64-mac.zip"
 
 # Prefer the archive the build just produced: it is the exact bytes attached to the release, so
 # hashing it can't race the CDN.
@@ -54,7 +54,7 @@ if [ ! -f "$ZIP" ]; then
 fi
 
 SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
-echo "==> Switchboard $VERSION"
+echo "==> Seshboard $VERSION"
 echo "    archive $ZIP"
 echo "    sha256  $SHA"
 
@@ -73,7 +73,7 @@ if ! grep -q "^  version \"$VERSION\"$" "$CASK" || ! grep -q "^  sha256 \"$SHA\"
 fi
 
 # A cask is Ruby, so this catches a botched substitution without Homebrew's rubocop bundle.
-# `brew style homebrew/switchboard.rb` is the fuller check to run by hand.
+# `brew style homebrew/seshboard.rb` is the fuller check to run by hand.
 if command -v ruby >/dev/null 2>&1; then
   ruby -c "$CASK" > /dev/null
 fi
@@ -99,17 +99,27 @@ trap 'rm -rf "$WORK"' EXIT
 git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP_REPO}.git" "$WORK/tap"
 
 mkdir -p "$WORK/tap/Casks"
-cp "$CASK" "$WORK/tap/Casks/switchboard.rb"
+cp "$CASK" "$WORK/tap/Casks/seshboard.rb"
+# The cask was called switchboard before the rename: cask_renames.json tells `brew upgrade` to move
+# those installs to seshboard, and the old file goes so the tap has one cask for the app.
+node -e '
+const fs = require("fs");
+const file = process.argv[1];
+const renames = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+renames.switchboard = "seshboard";
+fs.writeFileSync(file, JSON.stringify(renames, null, 2) + "\n");
+' "$WORK/tap/cask_renames.json"
+git -C "$WORK/tap" rm --quiet --ignore-unmatch Casks/switchboard.rb
 
 git -C "$WORK/tap" config user.name "github-actions[bot]"
 git -C "$WORK/tap" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git -C "$WORK/tap" add Casks/switchboard.rb
+git -C "$WORK/tap" add Casks/seshboard.rb cask_renames.json
 
 if git -C "$WORK/tap" diff --cached --quiet; then
   echo "==> $TAP_REPO already serves $VERSION; nothing to push."
   exit 0
 fi
 
-git -C "$WORK/tap" commit -m "switchboard $VERSION"
+git -C "$WORK/tap" commit -m "seshboard $VERSION"
 git -C "$WORK/tap" push
-echo "==> Pushed switchboard $VERSION to $TAP_REPO"
+echo "==> Pushed seshboard $VERSION to $TAP_REPO"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemotePrompt, RemoteRunState, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt, RemoteRunState, RemoteSession } from '@seshboard/protocol/remote-client';
 import { mergeSessions } from './everywhere.ts';
 import { childLine, listTree, runOfRow, runsOf, treeLine } from './runs.ts';
 

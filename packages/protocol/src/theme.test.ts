@@ -78,7 +78,7 @@ describe('theme files', () => {
     expect(refused({ name: 'x'.repeat(49), version: 1, dark: {} })).toBe('name is longer than 48 characters.');
     expect(refused({ name: 'A', dark: {} })).toBe('version is missing.');
     expect(refused({ name: 'A', version: 1 })).toMatch(/neither a light nor a dark mode/);
-    expect(refused({ name: 'A', version: 2, dark: {} })).toMatch(/newer Switchboard/);
+    expect(refused({ name: 'A', version: 2, dark: {} })).toMatch(/newer Seshboard/);
     expect(refused([])).toMatch(/one JSON object/);
   });
 
@@ -100,7 +100,7 @@ describe('theme files', () => {
 
   it('checks syntax themes: the Shiki allowlist and inline TextMate themes', () => {
     expect(ok({ name: 'A', version: 1, dark: { syntax: 'solarized-dark' } }).theme.dark?.syntax).toBe('solarized-dark');
-    expect(refused({ name: 'A', version: 1, dark: { syntax: 'solarized-drak' } })).toBe('dark.syntax uses “solarized-drak”, which isn\'t one of the code themes Switchboard ships. Did you mean “solarized-dark”?');
+    expect(refused({ name: 'A', version: 1, dark: { syntax: 'solarized-drak' } })).toBe('dark.syntax uses “solarized-drak”, which isn\'t one of the code themes Seshboard ships. Did you mean “solarized-dark”?');
     expect(refused({ name: 'A', version: 1, dark: { syntax: 'zzzzzzzzzzzzzzzz' } })).not.toMatch(/Did you mean/);
     const inline = (rule: unknown) => refused({ name: 'A', version: 1, light: { syntax: { tokenColors: [rule] } } });
     expect(inline({ scope: 'comment', settings: { foreground: 'url(x)' } })).toMatch(/^light\.syntax\.tokenColors\[0\]\.settings\.foreground uses url/);

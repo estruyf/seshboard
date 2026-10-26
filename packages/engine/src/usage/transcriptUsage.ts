@@ -1,4 +1,4 @@
-import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
+import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
 
 /**
  * Token usage from Claude Code's transcript lines. Only `assistant` lines carry a `message.usage`; Claude Code writes

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@switchboard/protocol/remote-client';
+import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -182,7 +182,7 @@ export function SessionView({
     if (!client) return;
     void client.call('changes.get', { sessionId }).then(setChanges, (e: Error) => setChanges({ files: [], branch: null, error: e.message }));
   };
-  // A session running in Switchboard can change its model and mode from here: the chips need the lists.
+  // A session running in Seshboard can change its model and mode from here: the chips need the lists.
   const running = session?.permissionMode != null;
   useEffect(() => {
     if (client && running && !options) void client.call('options.get', {}).then(setOptions, () => {});
@@ -441,7 +441,7 @@ export function SessionView({
             running && options && session ? (
               <>
                 <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
-                {/* Only from a Switchboard that sends the effort, and for a model that takes one. */}
+                {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
                 {session.effort !== undefined && takesEffort(options.models, session.model) && (
                   <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
                 )}

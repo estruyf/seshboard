@@ -1,5 +1,5 @@
 import { Bookmark, CircleDot, Folder, GitBranch, GitPullRequest, Globe, List, Type, User, Users, type LucideIcon } from 'lucide-react';
-import type { BlankType, PromptScope } from '@switchboard/protocol/client';
+import type { BlankType, PromptScope } from '@seshboard/protocol/client';
 
 /** Each type's icon, on chips and in the Add blank menu. */
 export const BLANK_ICONS: Record<BlankType, LucideIcon> = { issue: CircleDot, pr: GitPullRequest, branch: GitBranch, choice: List, text: Type, file: Folder };

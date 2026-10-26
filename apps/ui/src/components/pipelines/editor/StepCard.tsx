@@ -1,6 +1,6 @@
 import { AlertCircle, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useId, useState, type DragEvent, type ReactNode } from 'react';
-import { PIPELINE_LIMITS, type Effort, type ModelOption, type PermissionMode, type PipelineClaudeStep, type PipelinePushStep } from '@switchboard/protocol/client';
+import { PIPELINE_LIMITS, type Effort, type ModelOption, type PermissionMode, type PipelineClaudeStep, type PipelinePushStep } from '@seshboard/protocol/client';
 import { modelLabel } from '../../../lib/autoModel.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../../lib/modes.ts';
 import { mentionChoices, stepSummary } from '../../../state/pipelines.ts';

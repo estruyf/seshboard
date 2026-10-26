@@ -11,7 +11,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Give Claude a task in one of your projects, then get on with something else: Switchboard tells you when the session needs you and when it is done. A session is one conversation with Claude Code in a folder. You start one from **New session**: pick a project, write what Claude should work on, and press Start. Switchboard runs your own `claude` with your login and settings.
+Give Claude a task in one of your projects, then get on with something else: Seshboard tells you when the session needs you and when it is done. A session is one conversation with Claude Code in a folder. You start one from **New session**: pick a project, write what Claude should work on, and press Start. Seshboard runs your own `claude` with your login and settings.
 
 <Screenshot name="new-session" alt="New session with a project picked, the choice between the current checkout and a new worktree, and a prompt typed in the message box with the profile, model, effort and mode chips under it" eager />
 
@@ -54,17 +54,17 @@ All the states are on [Session states](/sessions/states/).
 
 ### Notifications and the badge
 
-Switchboard sends a <Os mac="macOS" windows="Windows" /> notification when a session needs you ("Claude wants to use Bash", "Claude has a question"), when Claude finishes, and when a run fails. Click the notification to open the session. You don't get one for the session you are looking at. To turn them off, or to hear a sound as well, see [Notifications](/settings/notifications/).
+Seshboard sends a <Os mac="macOS" windows="Windows" /> notification when a session needs you ("Claude wants to use Bash", "Claude has a question"), when Claude finishes, and when a run fails. Click the notification to open the session. You don't get one for the session you are looking at. To turn them off, or to hear a sound as well, see [Notifications](/settings/notifications/).
 
 <OnlyOn os="mac">
 
-The Dock icon shows a badge with the number of sessions waiting for you, and bounces once when a session starts waiting while Switchboard is in the background.
+The Dock icon shows a badge with the number of sessions waiting for you, and bounces once when a session starts waiting while Seshboard is in the background.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-Windows has no badge count. While sessions wait for you, a pink dot sits on Switchboard's taskbar button (hover it to read how many). When a session starts waiting while Switchboard is in the background, the taskbar button flashes until you switch to the window.
+Windows has no badge count. While sessions wait for you, a pink dot sits on Seshboard's taskbar button (hover it to read how many). When a session starts waiting while Seshboard is in the background, the taskbar button flashes until you switch to the window.
 
 </OnlyOn>
 
@@ -81,7 +81,7 @@ When this works, go on to [Things to try next](/getting-started/next-steps/): a 
 
 ## Settings
 
-Projects can have their own defaults for new sessions (model, effort, permission mode, worktree and branch) on the [project's Settings tab](/projects/settings/). Turn on a [focus limit](/focus-limit/) in [Settings, Focus](/settings/#focus) if you want Switchboard to say when you have enough sessions going.
+Projects can have their own defaults for new sessions (model, effort, permission mode, worktree and branch) on the [project's Settings tab](/projects/settings/). Turn on a [focus limit](/focus-limit/) in [Settings, Focus](/settings/#focus) if you want Seshboard to say when you have enough sessions going.
 
 ## Related
 

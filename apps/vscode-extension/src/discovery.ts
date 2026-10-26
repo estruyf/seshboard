@@ -1,8 +1,8 @@
 import { posix, win32 } from 'node:path';
-import { APP_DATA_FOLDERS, COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, type CompanionInfo } from '@switchboard/protocol/companion-client';
+import { APP_DATA_FOLDERS, COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, type CompanionInfo } from '@seshboard/protocol/companion-client';
 
 /**
- * Finding a running Switchboard: its engine writes `engine.json` (the socket and a token) in the app's data folder.
+ * Finding a running Seshboard: its engine writes `engine.json` (the socket and a token) in the app's data folder.
  * Pure apart from the reads it is given, so it can be tested.
  */
 
@@ -67,7 +67,7 @@ export type Found = { kind: 'found'; info: CompanionInfo; file: string } | { kin
 
 /**
  * The first file of a running engine that speaks this extension's protocol. A file left behind by a crash (its
- * process is gone) is skipped; one from a newer or older Switchboard says so.
+ * process is gone) is skipped; one from a newer or older Seshboard says so.
  */
 export function pickInfo(files: ReadonlyArray<{ file: string; text: string | null }>, alive: (pid: number) => boolean): Found {
   let incompatible: CompanionInfo | null = null;

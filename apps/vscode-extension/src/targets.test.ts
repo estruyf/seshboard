@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CompanionSession, CompanionSessions } from '@switchboard/protocol/companion-client';
+import type { CompanionSession, CompanionSessions } from '@seshboard/protocol/companion-client';
 import { focusedTarget, folderFor, sessionRow, statusBarView } from './targets.ts';
 
 const session = (id: string, over: Partial<CompanionSession> = {}): CompanionSession => ({ id, title: id, cwd: '/repo', projectRoot: '/repo', branch: null, status: 'idle', updatedAt: 0, inApp: true, ...over });
@@ -37,11 +37,11 @@ describe('sessionRow', () => {
 describe('statusBarView', () => {
   it('shows what needs you first, and opens it on click', () => {
     const view = statusBarView(snapshot([session('a', { status: 'working' }), session('b', { status: 'needs-you', title: 'Fix login' })]));
-    expect(view).toMatchObject({ text: '$(bell-dot) Switchboard: 1 needs you', warning: true, reveal: 'b' });
+    expect(view).toMatchObject({ text: '$(bell-dot) Seshboard: 1 needs you', warning: true, reveal: 'b' });
   });
 
-  it('counts working sessions, and says when Switchboard is not running', () => {
-    expect(statusBarView(snapshot([session('a', { status: 'working' }), session('b', { status: 'working' })]))).toMatchObject({ text: '$(loading~spin) Switchboard: 2 working', reveal: null });
-    expect(statusBarView(null).text).toBe('$(circle-slash) Switchboard');
+  it('counts working sessions, and says when Seshboard is not running', () => {
+    expect(statusBarView(snapshot([session('a', { status: 'working' }), session('b', { status: 'working' })]))).toMatchObject({ text: '$(loading~spin) Seshboard: 2 working', reveal: null });
+    expect(statusBarView(null).text).toBe('$(circle-slash) Seshboard');
   });
 });

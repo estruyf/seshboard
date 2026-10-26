@@ -1,6 +1,6 @@
 import { Brain, Search } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { MAX_SEARCH_QUERY_LENGTH, type MemoryHit, type SearchHit } from '@switchboard/protocol/client';
+import { MAX_SEARCH_QUERY_LENGTH, type MemoryHit, type SearchHit } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
@@ -112,7 +112,7 @@ export function SearchDialog() {
   const groups = useMemo(() => {
     const bySession = new Map<string, SearchHit[]>();
     for (const hit of hits) {
-      // Same sessions as the sidebar: with "Switchboard sessions only", the engine searches only those.
+      // Same sessions as the sidebar: with "Seshboard sessions only", the engine searches only those.
       const list = bySession.get(hit.sessionId) ?? [];
       list.push(hit);
       bySession.set(hit.sessionId, list);

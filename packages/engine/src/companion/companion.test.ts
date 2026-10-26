@@ -16,10 +16,10 @@ import {
   type Contract,
   type DomLikePort,
   type RpcClient,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import { createEngine } from '../engine.ts';
-import type { PermissionDecision, PermissionRequest, SessionSummary } from '@switchboard/protocol';
+import type { PermissionDecision, PermissionRequest, SessionSummary } from '@seshboard/protocol';
 import { CompanionHub } from './companionHub.ts';
 import { companionSessions, inFolders, isWithin, promptsFor, sessionsFor } from './companionSessions.ts';
 
@@ -51,15 +51,15 @@ async function until<T>(read: () => T | Promise<T>, ok: (value: T) => boolean, t
 }
 
 /** An engine listening for the companion, and a window attached to it. */
-async function start() {
-  const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-companion-'));
+async function start(options: { legacyDataDir?: string } = {}) {
+  const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
   const engine = createEngine({
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
     sessionSource: source,
-    companion: { appVersion: '9.9.9' },
+    companion: { appVersion: '9.9.9', ...options },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -115,6 +115,15 @@ describe('companion socket', () => {
     }
     expect(info).toMatchObject({ protocol: COMPANION_PROTOCOL, appVersion: '9.9.9', pid: process.pid });
     expect(info.token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('also writes engine.json where companions from before the rename look, and takes both away when it stops', async () => {
+    const legacyDataDir = join(mkdtempSync(join(tmpdir(), 'seshboard-legacy-')), 'Switchboard');
+    const { infoFile } = await start({ legacyDataDir });
+    const legacyFile = join(legacyDataDir, COMPANION_DIR, COMPANION_INFO_FILE);
+    expect(readFileSync(legacyFile, 'utf8')).toBe(readFileSync(infoFile, 'utf8'));
+    cleanups.splice(0).forEach((fn) => fn());
+    expect(existsSync(legacyFile)).toBe(false);
   });
 
   it('refuses a wrong token and closes the connection', async () => {
@@ -222,7 +231,7 @@ describe('prompts', () => {
   });
 
   it('hands an editor the prompts of its folders, and its answers to the engine', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-companion-'));
+    const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
     const answers: Array<[string, PermissionDecision, boolean]> = [];
     const summary = { id: SESSION_ID, title: 'Fix the login form', firstPrompt: null, customTitle: null, cwd: WEB, projectRoot: WEB, gitBranch: 'main', worktree: null, origin: 'app', createdAt: null, updatedAt: Date.now(), fileSize: null, tag: null, pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, unread: false, inApp: true, profileId: 'default' } satisfies SessionSummary;
     const hub = new CompanionHub({
@@ -345,13 +354,13 @@ describe('which sessions are listed', () => {
     expect(ids(list, { archiveAfterDays: 7 })).toEqual(['two-days', 'five-days']);
   });
 
-  it('lists only sessions from Switchboard under its default scope', () => {
+  it('lists only sessions from Seshboard under its default scope', () => {
     const list = [summary('app'), summary('terminal', { inApp: false })];
     expect(ids(list, { scope: 'switchboard' })).toEqual(['app']);
     expect(ids(list, { scope: 'all' })).toEqual(['app', 'terminal']);
   });
 
-  it('keeps the session open in Switchboard', () => {
+  it('keeps the session open in Seshboard', () => {
     const list = [summary('open', { archivedAt: now, inApp: false })];
     expect(ids(list, { scope: 'switchboard' })).toEqual([]);
     expect(ids(list, { scope: 'switchboard', keep: 'open' })).toEqual(['open']);

@@ -1,4 +1,4 @@
-import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate } from '@switchboard/protocol/client';
+import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate } from '@seshboard/protocol/client';
 
 /** Where the description started from: a template, the commit list, or nothing. */
 export type DescriptionSource = { kind: 'template'; path: string } | { kind: 'commits' } | { kind: 'empty' };
@@ -78,9 +78,9 @@ export function noticeFor(error: PrError, branch: string): PrNotice {
   const output: NoticeAction[] = error.output ? ['output'] : [];
   switch (error.code) {
     case 'GH_MISSING':
-      return { tone: 'warn', title: "GitHub CLI isn't installed.", detail: 'Switchboard uses gh to create the pull request.', actions: ['install', 'web'] };
+      return { tone: 'warn', title: "GitHub CLI isn't installed.", detail: 'Seshboard uses gh to create the pull request.', actions: ['install', 'web'] };
     case 'GH_AUTH':
-      return { tone: 'warn', title: 'Not signed in to GitHub.', detail: 'Sign in once in a terminal; Switchboard picks it up.', actions: ['sign-in'] };
+      return { tone: 'warn', title: 'Not signed in to GitHub.', detail: 'Sign in once in a terminal; Seshboard picks it up.', actions: ['sign-in'] };
     case 'PUSH_REJECTED':
       return { tone: 'error', title: 'Push rejected.', detail: error.message, actions: ['pull', ...output] };
     case 'PR_EXISTS':

@@ -15,7 +15,7 @@ import {
   type RpcServer,
   type TextStream,
   type Transport,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 
 /** Every companion request but `hello`, which the server answers itself once the token checks out. */
 export type CompanionHandlers = Omit<Handlers<CompanionContract>, 'hello'>;
@@ -23,6 +23,11 @@ export type CompanionHandlers = Omit<Handlers<CompanionContract>, 'hello'>;
 export interface CompanionServerOptions {
   /** Where `engine.json` goes (created `0700`). */
   infoDir: string;
+  /**
+   * Also written there: the companion folder of the data folder from before the rename (`…/Switchboard/companion`),
+   * where VS Code companions up to 0.2.0 look. Remove in 1.3.0.
+   */
+  legacyInfoDir?: string;
   appVersion: string;
   handlers: CompanionHandlers;
   log(level: 'info' | 'warn' | 'error', message: string): void;
@@ -88,6 +93,11 @@ export class CompanionServer {
     return join(this.options.infoDir, COMPANION_INFO_FILE);
   }
 
+  /** Every `engine.json` this engine writes: its own, and the one older companions look for. */
+  private get infoFiles(): string[] {
+    return [this.infoFile, ...(this.options.legacyInfoDir ? [join(this.options.legacyInfoDir, COMPANION_INFO_FILE)] : [])];
+  }
+
   async start(): Promise<void> {
     try {
       this.removeStale();
@@ -97,7 +107,7 @@ export class CompanionServer {
       if (windows) {
         socketPath = `\\\\.\\pipe\\switchboard-${randomBytes(16).toString('hex')}`;
       } else {
-        this.socketDir = mkdtempSync(join(this.options.socketParent ?? tmpdir(), 'switchboard-'));
+        this.socketDir = mkdtempSync(join(this.options.socketParent ?? tmpdir(), 'seshboard-'));
         chmodSync(this.socketDir, 0o700);
         socketPath = join(this.socketDir, 'engine.sock');
       }
@@ -129,23 +139,34 @@ export class CompanionServer {
     this.server?.close();
     this.server = null;
     // Only our own file: another engine (a second build on the same data folder) may have written it since.
-    try {
-      const info = JSON.parse(readFileSync(this.infoFile, 'utf8')) as Partial<CompanionInfo>;
-      if (info.token === this.token) rmSync(this.infoFile, { force: true });
-    } catch {
-      // Not there, or not ours to read.
+    for (const file of this.infoFiles) {
+      try {
+        const info = JSON.parse(readFileSync(file, 'utf8')) as Partial<CompanionInfo>;
+        if (info.token === this.token) rmSync(file, { force: true });
+      } catch {
+        // Not there, or not ours to read.
+      }
     }
     if (this.socketDir) rmSync(this.socketDir, { recursive: true, force: true });
     this.socketDir = null;
   }
 
   private writeInfo(info: CompanionInfo): void {
-    mkdirSync(this.options.infoDir, { recursive: true, mode: 0o700 });
-    chmodSync(this.options.infoDir, 0o700);
-    // Written aside and renamed, so a reader never sees half a file.
-    const temporary = `${this.infoFile}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(info, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temporary, this.infoFile);
+    for (const file of this.infoFiles) {
+      const dir = dirname(file);
+      try {
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
+        chmodSync(dir, 0o700);
+        // Written aside and renamed, so a reader never sees half a file.
+        const temporary = `${file}.${process.pid}.tmp`;
+        writeFileSync(temporary, `${JSON.stringify(info, null, 2)}\n`, { mode: 0o600 });
+        renameSync(temporary, file);
+      } catch (error) {
+        // Only the engine's own file has to be there; older companions just don't find this one.
+        if (file === this.infoFile) throw error;
+        this.options.log('warn', `Companion: couldn't write ${file}: ${(error as Error).message}`);
+      }
+    }
   }
 
   /** The socket folder of an engine that crashed without cleaning up (its process is gone). */
@@ -155,7 +176,8 @@ export class CompanionServer {
       const info = JSON.parse(readFileSync(this.infoFile, 'utf8')) as Partial<CompanionInfo>;
       if (typeof info.pid === 'number' && info.pid !== process.pid && alive(info.pid)) return;
       const dir = typeof info.socket === 'string' ? dirname(info.socket) : null;
-      if (dir && basename(dir).startsWith('switchboard-')) rmSync(dir, { recursive: true, force: true });
+      // seshboard-, or switchboard- from before the rename.
+      if (dir && /^(seshboard|switchboard)-/.test(basename(dir))) rmSync(dir, { recursive: true, force: true });
     } catch {
       // Unreadable: it is about to be replaced anyway.
     }

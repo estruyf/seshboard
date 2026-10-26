@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession } from '@switchboard/protocol/client';
+import type { LiveSession } from '@seshboard/protocol/client';
 import { branchButton, filterBranches, sharedWarning, sharingCheckout } from './branchMenu.ts';
 
 const live = (sessionId: string, cwd: string | null): LiveSession => ({

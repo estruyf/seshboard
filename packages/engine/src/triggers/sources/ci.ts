@@ -1,4 +1,4 @@
-import { runQuery, TRIGGER_LOG_LINES, type CiRunItem } from '@switchboard/protocol';
+import { runQuery, TRIGGER_LOG_LINES, type CiRunItem } from '@seshboard/protocol';
 import { cleanLog, tail } from '../../git/prChecks.ts';
 import { json, readFailure, type GhRun, type SourceRead } from './gh.ts';
 

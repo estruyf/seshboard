@@ -1,4 +1,4 @@
-import { firstSentence, memoryMeta, slugify, splitFrontmatter, yamlScalar, type MemoryKind } from '@switchboard/protocol';
+import { firstSentence, memoryMeta, slugify, splitFrontmatter, yamlScalar, type MemoryKind } from '@seshboard/protocol';
 
 /**
  * The Claude app's data export, as far as memory goes. Undocumented and recently changed, so everything here is lenient:

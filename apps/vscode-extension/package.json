@@ -1,7 +1,7 @@
 {
   "name": "switchboard-companion",
-  "displayName": "Switchboard Companion",
-  "description": "Send the open file, selected lines, problems and terminal output from VS Code to a Switchboard session.",
+  "displayName": "Seshboard Companion",
+  "description": "Send the open file, selected lines, problems and terminal output from VS Code to a Seshboard session.",
   "version": "0.2.0",
   "license": "MIT",
   "publisher": "eliostruyf",
@@ -51,65 +51,65 @@
     "commands": [
       {
         "command": "switchboard.addSelection",
-        "title": "Add Selection to Switchboard",
-        "category": "Switchboard",
+        "title": "Add Selection to Seshboard",
+        "category": "Seshboard",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "switchboard.addFile",
-        "title": "Add to Switchboard",
-        "category": "Switchboard",
+        "title": "Add to Seshboard",
+        "category": "Seshboard",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "switchboard.addOpenEditors",
-        "title": "Add Open Editors to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Open Editors to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.addEditorGroup",
-        "title": "Add Editors in This Group to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Editors in This Group to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.addProblems",
-        "title": "Add Problems in This File to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Problems in This File to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.fixProblems",
-        "title": "Fix in Switchboard",
-        "category": "Switchboard"
+        "title": "Fix in Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.addWorkspaceProblems",
-        "title": "Add Problems in the Workspace to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Problems in the Workspace to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.addTerminalSelection",
-        "title": "Add Terminal Selection to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Terminal Selection to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.addChanges",
-        "title": "Add Changes to Switchboard",
-        "category": "Switchboard"
+        "title": "Add Changes to Seshboard",
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.answerPrompts",
         "title": "Answer Prompts",
-        "category": "Switchboard"
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.showSessions",
         "title": "Show Sessions",
-        "category": "Switchboard"
+        "category": "Seshboard"
       },
       {
         "command": "switchboard.reconnect",
         "title": "Reconnect",
-        "category": "Switchboard"
+        "category": "Seshboard"
       }
     ],
     "menus": {
@@ -194,38 +194,38 @@
       }
     ],
     "configuration": {
-      "title": "Switchboard",
+      "title": "Seshboard",
       "properties": {
         "switchboard.bringToFront": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Bring Switchboard to the front on the session when you add something to it. Turn off to add context quietly; it waits in the session's message box."
+          "markdownDescription": "Bring Seshboard to the front on the session when you add something to it. Turn off to add context quietly; it waits in the session's message box."
         },
         "switchboard.statusBar": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show what needs you in Switchboard (for this workspace) in the status bar."
+          "markdownDescription": "Show what needs you in Seshboard (for this workspace) in the status bar."
         },
         "switchboard.prompts": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show permission prompts, questions and plans from this workspace's sessions as notifications, and answer them in VS Code. Dismissing one leaves it waiting in Switchboard; **Switchboard: Answer Prompts** shows it again."
+          "markdownDescription": "Show permission prompts, questions and plans from this workspace's sessions as notifications, and answer them in VS Code. Dismissing one leaves it waiting in Seshboard; **Seshboard: Answer Prompts** shows it again."
         },
         "switchboard.quickFix": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Offer **Fix in Switchboard** in the quick fixes of an error or warning: it adds the problem and its lines to a session."
+          "markdownDescription": "Offer **Fix in Seshboard** in the quick fixes of an error or warning: it adds the problem and its lines to a session."
         },
         "switchboard.editorTitleButton": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Show a button in the editor title bar that adds the selection (or the file) to Switchboard."
+          "markdownDescription": "Show a button in the editor title bar that adds the selection (or the file) to Seshboard."
         },
         "switchboard.appDataFolder": {
           "type": "string",
           "default": "",
           "scope": "application",
-          "markdownDescription": "Where Switchboard keeps its data, when it isn't in the usual place (a build started with `SWITCHBOARD_DATA_DIR`). Leave empty to find the installed app, then a development build."
+          "markdownDescription": "Where Seshboard keeps its data, when it isn't in the usual place (a build started with `SESHBOARD_DATA_DIR`). Leave empty to find the installed app, then a development build."
         }
       }
     }
@@ -237,7 +237,7 @@
     "package": "node scripts/build.ts --production && npx --yes @vscode/vsce@4 package --no-dependencies"
   },
   "devDependencies": {
-    "@switchboard/protocol": "*",
+    "@seshboard/protocol": "*",
     "@types/vscode": "~1.95.0",
     "esbuild": "^0.28.2"
   }

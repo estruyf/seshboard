@@ -99,7 +99,7 @@ export const Trigger = z.object({
   /** Assign the issue to you when its work is picked up; issues that already have an assignee are skipped. */
   assignOnPickUp: z.boolean().default(false),
   paused: z.boolean().default(false),
-  /** Why Switchboard paused it ("gh is signed out"); null when you paused it, or it runs. */
+  /** Why Seshboard paused it ("gh is signed out"); null when you paused it, or it runs. */
   pausedReason: z.string().max(300).nullable().default(null),
   /** Checks that failed in a row; five pause it. */
   failures: z.number().int().min(0).default(0),
@@ -116,7 +116,7 @@ export const Trigger = z.object({
 export type Trigger = z.infer<typeof Trigger>;
 export type TriggerInput = z.input<typeof Trigger>;
 
-/** What `triggers.save` takes: a trigger without what Switchboard keeps about its checks. */
+/** What `triggers.save` takes: a trigger without what Seshboard keeps about its checks. */
 export const TriggerSave = Trigger.omit({
   createdAt: true,
   updatedAt: true,
@@ -157,7 +157,7 @@ export const TriggerEvent = z.object({
   runId: z.string().max(200).nullable().default(null),
   /** The queued item it became (`queued`). */
   itemId: z.string().max(100).nullable().default(null),
-  /** The state label Switchboard last put on the issue; null before it did, or with state labels off. */
+  /** The state label Seshboard last put on the issue; null before it did, or with state labels off. */
   label: z.string().max(50).nullable().default(null),
   /** Who has the issue now, when it was assigned to someone else while its session works. */
   reassignedTo: z.string().max(100).nullable().default(null),

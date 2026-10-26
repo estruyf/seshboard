@@ -2,7 +2,7 @@
  * The catch-up's logic, without React or the DOM, so it can be tested: when the banner shows, what it says, which actions
  * it offers in which order, and what a key press does. `CatchUpBanner` and `CatchUpStrip` draw it.
  */
-import type { CatchUp, CatchUpNeedKind } from '@switchboard/protocol/client';
+import type { CatchUp, CatchUpNeedKind } from '@seshboard/protocol/client';
 
 /** How the catch-up shows in the session: in full (the banner), folded into the strip, or not at all. */
 export type CatchUpShow = 'full' | 'strip' | null;

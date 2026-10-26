@@ -1,7 +1,7 @@
 import { fileManagerName } from '../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronDown, Code, Copy, ExternalLink, Folder, Globe, SquareTerminal } from 'lucide-react';
-import type { EditorInfo } from '@switchboard/protocol/client';
+import type { EditorInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useHosts } from '../state/hostsStore.ts';
 import type { MenuEntry } from './Menu.tsx';

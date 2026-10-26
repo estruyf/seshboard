@@ -43,8 +43,8 @@ describe('checkRemoteSessions', () => {
 
 describe('unreadableLine', () => {
   it('says what was left out and what to do', () => {
-    expect(unreadableLine('Studio', null)).toBe('Studio sent data this version of Switchboard can’t read. It may run an older or newer version. Update Switchboard on both computers.');
-    expect(unreadableLine('Studio', 1)).toBe('Studio sent 1 item in its session list this version of Switchboard can’t read, so it isn’t shown. It may run an older or newer version. Update Switchboard on both computers.');
+    expect(unreadableLine('Studio', null)).toBe('Studio sent data this version of Seshboard can’t read. It may run an older or newer version. Update Seshboard on both computers.');
+    expect(unreadableLine('Studio', 1)).toBe('Studio sent 1 item in its session list this version of Seshboard can’t read, so it isn’t shown. It may run an older or newer version. Update Seshboard on both computers.');
     expect(unreadableLine('', 2)).toMatch(/^The other computer sent 2 items in its session list .*, so they aren’t shown\./);
   });
 });

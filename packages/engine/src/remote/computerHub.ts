@@ -11,7 +11,7 @@ import {
   type ComputersStatus,
   type KeyPair,
   unreadableLine,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { checkEvent, checkResult, type CheckedData } from './computerData.ts';
 import { ComputerLink, dialWebSocket, LinkError, pairComputer, type Dial, type LinkFailure, type LinkState } from './computerLink.ts';
 import { ComputerStore, type PairedComputer } from './computerStore.ts';
@@ -82,7 +82,7 @@ export class ComputerHub {
   async add(text: string): Promise<void> {
     const hash = text.indexOf('#');
     const link = parseRemoteLink(hash >= 0 ? text.slice(hash + 1) : text);
-    if (!link) throw new RpcError('INVALID_LINK', 'That isn’t a link from Switchboard. On the other computer, click Pair a phone in Settings › Remote, then Copy link.');
+    if (!link) throw new RpcError('INVALID_LINK', 'That isn’t a link from Seshboard. On the other computer, click Pair a phone in Settings › Remote, then Copy link.');
     if (link.kind === 'connect') {
       const known = this.store.find(link.enginePublicKey);
       if (!known) throw new RpcError('NOT_PAIRED', 'This computer isn’t paired yet. Copy the link from Pair a phone on it instead.');
@@ -92,7 +92,7 @@ export class ComputerHub {
       return;
     }
     const device = await this.deviceKey();
-    if (!device) throw new RpcError('UNAVAILABLE', 'Switchboard can’t keep a key in this computer’s keychain, so it can’t pair with another computer.');
+    if (!device) throw new RpcError('UNAVAILABLE', 'Seshboard can’t keep a key in this computer’s keychain, so it can’t pair with another computer.');
     this.pairingAbort?.abort();
     const abort = new AbortController();
     this.pairingAbort = abort;
@@ -255,11 +255,11 @@ export function offlineMessage(failure: LinkFailure, name: string): string {
     case 'refused':
       return `Nothing answers at ${name}’s address. Check that Remote is on there. A quick tunnel gets a new address each time it starts.`;
     case 'http':
-      if (failure.status === 403) return `${name} refused the connection. Update Switchboard there.`;
-      if (failure.status === 429) return `Too many tries. Switchboard tries again shortly.`;
+      if (failure.status === 403) return `${name} refused the connection. Update Seshboard there.`;
+      if (failure.status === 429) return `Too many tries. Seshboard tries again shortly.`;
       return `${name}’s address answered with an error (HTTP ${failure.status}). Check its tunnel.`;
     case 'closed':
-      if (failure.code === CLOSE.version) return `${name} runs another version of Remote. Update Switchboard on both computers.`;
+      if (failure.code === CLOSE.version) return `${name} runs another version of Remote. Update Seshboard on both computers.`;
       return `${name} closed the connection.`;
     case 'dropped':
       return `Lost the connection to ${name}.`;
@@ -276,7 +276,7 @@ export function pairingMessage(error: unknown): string {
     const { failure } = error;
     if (failure.kind === 'closed' && failure.code === CLOSE.pairingClosed) return 'This link was used or has expired. On the other computer, click Pair a phone again and copy a new link.';
     if (failure.kind === 'closed' && failure.code === CLOSE.refused) return 'The other computer refused the link. Copy a new one.';
-    if (failure.kind === 'http' && failure.status === 403) return 'The other computer refused the connection. Update Switchboard there.';
+    if (failure.kind === 'http' && failure.status === 403) return 'The other computer refused the connection. Update Seshboard there.';
     return 'Can’t reach the other computer. Check that Remote is on there, and that its link is new.';
   }
   return error instanceof Error ? error.message : String(error);

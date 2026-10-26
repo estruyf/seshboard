@@ -5,7 +5,7 @@ paths:
 
 # UI rules
 
-The rules for the Switchboard UI (`apps/ui`). Claude Code loads this file when you work on a file there; other agents read it before they change the UI ([AGENTS.md](../../AGENTS.md#ui) points here). The detail for each area is in [docs/ui-patterns.md](../../docs/ui-patterns.md).
+The rules for the Seshboard UI (`apps/ui`). Claude Code loads this file when you work on a file there; other agents read it before they change the UI ([AGENTS.md](../../AGENTS.md#ui) points here). The detail for each area is in [docs/ui-patterns.md](../../docs/ui-patterns.md).
 
 **Copy.** Plain, short sentences. Say what something does ("Allow", "Start session"), not how. No em dashes.
 
@@ -97,4 +97,4 @@ With more than one Claude profile, the rail on a session row shows the profile's
 - [Project page and tables](../../docs/ui-patterns.md#project-page-and-tables): a project's page, its tabs and tables.
 - [Context menus and confirmations](../../docs/ui-patterns.md#context-menus-and-confirmations): right-click menus, Shift+F10, what asks before acting.
 
-The design mockups these rules come from are in the Switchboard UI suggestions canvas; when a new view needs a pattern that isn't here, add it to docs/ui-patterns.md (or, if every change must follow it, to this section) in the same change.
+The design mockups these rules come from are in the Seshboard UI suggestions canvas; when a new view needs a pattern that isn't here, add it to docs/ui-patterns.md (or, if every change must follow it, to this section) in the same change.

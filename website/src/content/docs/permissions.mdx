@@ -12,7 +12,7 @@ import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../components/Related.astro';
 
-When Claude wants to run a command or edit a file, has a question for you, or has a plan ready, it waits for you. Switchboard shows a card above the message box with everything you need to decide, and marks the session <Pill tone="needs-you">Needs you</Pill> everywhere until you answer.
+When Claude wants to run a command or edit a file, has a question for you, or has a plan ready, it waits for you. Seshboard shows a card above the message box with everything you need to decide, and marks the session <Pill tone="needs-you">Needs you</Pill> everywhere until you answer.
 
 <Screenshot name="permissions" alt="A session that needs you: Waiting for you in the sidebar and the header, while Claude waits for permission to install a package. It runs in Terminal, so the message box offers Fork and send." eager />
 
@@ -21,7 +21,7 @@ When Claude wants to run a command or edit a file, has a question for you, or ha
 A session that needs you shows up in several places at once:
 
 - The sidebar puts it in the **Needs you** group at the top, with a pink rail and a pulsing dot. Home lists it first too.
-- A notification and <Os mac="the Dock badge" windows="a dot on the taskbar button" /> tell you, also while Switchboard is in the background. In the background, <Os mac="the Dock icon bounces" windows="the taskbar button also flashes until you switch to Switchboard" />. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
+- A notification and <Os mac="the Dock badge" windows="a dot on the taskbar button" /> tell you, also while Seshboard is in the background. In the background, <Os mac="the Dock icon bounces" windows="the taskbar button also flashes until you switch to Seshboard" />. The notification says what Claude wants: "Claude wants to use Bash", "Claude has a question" or "Claude has a plan for you". Click it to open the session.
 - Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that needs you, or run *Go to next session that needs you* in the command palette. It goes to sessions that wait for you first, then finished ones you haven't read, the quickest to review first (see [Catch-up](/sessions/catch-up/#quickest-to-unblock)).
 - With the session open, *Go to the permission* or *Go to the question* in the palette scrolls to the card.
 
@@ -100,19 +100,19 @@ See [Model, effort and mode](/new-session/models-and-options/#permission-mode) f
 
 ## Sessions from the terminal
 
-With *Show sessions from other apps* on in [Settings → Sidebar](/settings/#sidebar), Claude Code sessions running in your terminal show up in the sidebar too. When one waits for a permission, it moves to **Needs you** and a notification says "Claude is waiting for you in Terminal". Answer it in the terminal where it runs: Switchboard doesn't drive that process.
+With *Show sessions from other apps* on in [Settings → Sidebar](/settings/#sidebar), Claude Code sessions running in your terminal show up in the sidebar too. When one waits for a permission, it moves to **Needs you** and a notification says "Claude is waiting for you in Terminal". Answer it in the terminal where it runs: Seshboard doesn't drive that process.
 
-If you send a message to a session that is open in another app, Switchboard starts a **fork** instead: a new session that continues from the conversation, leaving the original untouched.
+If you send a message to a session that is open in another app, Seshboard starts a **fork** instead: a new session that continues from the conversation, leaving the original untouched.
 
 ## Answer from VS Code
 
 With the [VS Code companion](/vscode-companion/) installed, the prompts of sessions in your VS Code workspace show up as notifications there too, so you don't have to switch apps:
 
-- A permission offers **Allow**, the **Always allow** rule when there is one, **Deny…** (with an optional note for Claude) and **Show in Switchboard**.
+- A permission offers **Allow**, the **Always allow** rule when there is one, **Deny…** (with an optional note for Claude) and **Show in Seshboard**.
 - A question offers **Answer…**, with a pick list per question and your own answer as the last choice, and **Skip**.
 - A plan offers **Read the plan**, which opens it in a preview, then **Approve and accept edits**, **Approve, ask before edits** or **Keep planning…**.
 
-Dismissing a notification leaves the prompt waiting in Switchboard. The command **Switchboard: Answer Prompts** shows the waiting ones again. When you already answered in Switchboard, VS Code says "That was already answered in Switchboard." The status bar says *Switchboard: 1 needs you* when a session in the workspace waits for you.
+Dismissing a notification leaves the prompt waiting in Seshboard. The command **Seshboard: Answer Prompts** shows the waiting ones again. When you already answered in Seshboard, VS Code says "That was already answered in Seshboard." The status bar says *Seshboard: 1 needs you* when a session in the workspace waits for you.
 
 <Aside>
 The VS Code setting `switchboard.prompts` turns these notifications off.

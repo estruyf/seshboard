@@ -1,6 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { TurnDetails } from '@switchboard/protocol/bridge';
+import type { TurnDetails } from '@seshboard/protocol/bridge';
 import { useSecondClock } from '../../lib/secondClock.ts';
 import { SHOW_DELAY } from '../ui/Tooltip.tsx';
 import { placeTooltip } from '../ui/tooltipPlacement.ts';

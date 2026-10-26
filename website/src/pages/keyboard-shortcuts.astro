@@ -24,18 +24,18 @@ const when = (texts: Array<string | undefined>) => {
 ---
 
 <StarlightPage
-  frontmatter={{ title: 'Keyboard shortcuts', description: 'Every keyboard shortcut in Switchboard, grouped by where it works.' }}
+  frontmatter={{ title: 'Keyboard shortcuts', description: 'Every keyboard shortcut in Seshboard, grouped by where it works.' }}
   headings={[{ depth: 2, slug: 'the-shortcuts-sheet', text: 'The shortcuts sheet' }, ...sections.map((s) => ({ depth: 2, slug: s.slug, text: s.title })), { depth: 2, slug: 'project-actions', text: 'Project actions' }]}
 >
   <p>
-    Switchboard is made to be used from the keyboard. Every main action has a shortcut, and buttons show theirs. This page is built from the same list the app uses, so it is
+    Seshboard is made to be used from the keyboard. Every main action has a shortcut, and buttons show theirs. This page is built from the same list the app uses, so it is
     always up to date.
   </p>
 
   <p>
     The keys below are shown for <Os mac="a Mac" windows="Windows" />; switch with <strong>Mac</strong> or <strong>Windows</strong> at the top of the page. On Windows, ⌘ is
     Ctrl, ⌥ is Alt and ⇧ is Shift, and the app writes keys as words (Ctrl+Shift+P). In the terminal panel on Windows, Ctrl keys belong to the shell (Ctrl+C,
-    Ctrl+R) and Ctrl+Shift keys to Switchboard.
+    Ctrl+R) and Ctrl+Shift keys to Seshboard.
   </p>
 
   <h2 id="the-shortcuts-sheet">The shortcuts sheet</h2>
@@ -77,7 +77,7 @@ const when = (texts: Array<string | undefined>) => {
 
   <h2 id="project-actions">Project actions</h2>
   <p>
-    A <a href={`${base}/projects/actions/`}>project action</a> can have a shortcut of its own. It can't use keys that Switchboard already uses with a modifier (⌘, ⌃ or ⌥),
+    A <a href={`${base}/projects/actions/`}>project action</a> can have a shortcut of its own. It can't use keys that Seshboard already uses with a modifier (⌘, ⌃ or ⌥),
     or the keys of the menu bar. The shortcuts sheet lists the actions of the project you are in.
   </p>
 </StarlightPage>

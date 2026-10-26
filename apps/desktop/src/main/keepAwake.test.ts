@@ -37,7 +37,7 @@ function setup(platform: string) {
 }
 
 describe('awakeCommand', () => {
-  it('runs caffeinate on a Mac, held to Switchboard’s process', () => {
+  it('runs caffeinate on a Mac, held to Seshboard’s process', () => {
     expect(awakeCommand('darwin', 4242)).toEqual({ file: '/usr/bin/caffeinate', args: ['-s', '-w', '4242'] });
   });
 

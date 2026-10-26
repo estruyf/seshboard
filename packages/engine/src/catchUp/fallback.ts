@@ -1,4 +1,4 @@
-import type { CatchUp, CatchUpNeedKind, PermissionRequest } from '@switchboard/protocol';
+import type { CatchUp, CatchUpNeedKind, PermissionRequest } from '@seshboard/protocol';
 import { declinedLine, failedLine, ranLine, retriedLater } from './commandText.ts';
 import type { Signals } from './signals.ts';
 import { isTestCommand } from './testCommands.ts';

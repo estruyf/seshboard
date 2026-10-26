@@ -20,7 +20,7 @@ describe('running a .cmd on Windows', () => {
 
   // A .cmd that hands its arguments to a program, as VS Code's code.cmd does: they must arrive as they were.
   it.skipIf(process.platform !== 'win32')('passes every argument through a .cmd unchanged, and runs nothing', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-cmd-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-cmd-'));
     dirs.push(dir);
     const folder = join(dir, 'with space (1)');
     mkdirSync(folder);

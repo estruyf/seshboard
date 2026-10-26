@@ -27,7 +27,7 @@ import {
   type SessionHostInfo,
   type SessionSummary,
   type StepActionResult,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { RunStore } from './runStore.ts';
 
 /** How a step's sub-session runs. */
@@ -66,7 +66,7 @@ export interface RunnerDeps {
   republishSessions(sessionIds: readonly string[]): void;
   /** Archives or unarchives sessions (a run's tree), in one change. */
   archiveSessions(sessionIds: readonly string[], archived: boolean): void;
-  /** Takes sessions out of Switchboard (a run's tree deleted); their transcripts stay. */
+  /** Takes sessions out of Seshboard (a run's tree deleted); their transcripts stay. */
   hideSessions(sessionIds: readonly string[]): void;
   /** A run was deleted: the windows drop it. */
   removed(runId: string): void;
@@ -90,11 +90,11 @@ export interface RunnerDeps {
   now?(): number;
 }
 
-/** Told to a step that was working when Switchboard quit, when the run goes on. */
-export const RESUME_STEP_PROMPT = 'Switchboard was closed while you were working on this. Go on where you stopped.';
+/** Told to a step that was working when Seshboard quit, when the run goes on. */
+export const RESUME_STEP_PROMPT = 'Seshboard was closed while you were working on this. Go on where you stopped.';
 /** What a step in plan mode hears when you approve its plan: the next step builds it. */
 export const PLAN_APPROVED_MESSAGE = 'The user approved this plan. Don’t start building it: the next step of the pipeline does that. Reply with one line that says the plan is ready, and stop.';
-const PAUSED_REASON = 'Paused: Switchboard was closed. The run goes on at the next start.';
+const PAUSED_REASON = 'Paused: Seshboard was closed. The run goes on at the next start.';
 /** What Claude hears instead of an answer to a question, in a run that goes on without you. */
 export const UNATTENDED_ANSWER = 'No one is watching this run, so nobody can answer. Make the most reasonable choice yourself, say in your reply what you assumed, and go on.';
 
@@ -701,7 +701,7 @@ export class PipelineRunner {
     if (task) parts.push(task.trim());
     if (plan) parts.push(`## Plan\n\n${plan.trim()}`);
     if (verdict?.verdict) parts.push(`## ${verdict.step}\n\nVerdict: ${verdict.verdict.kind === 'pass' ? 'pass' : 'changes needed'}${verdict.round > 1 ? ` (round ${verdict.round})` : ''}`);
-    parts.push(`Made with the Switchboard pipeline “${run.pipeline.name}”.`);
+    parts.push(`Made with the Seshboard pipeline “${run.pipeline.name}”.`);
     return { title: linkLabel(run.title), body: parts.join('\n\n').slice(0, 60_000) };
   }
 
@@ -753,7 +753,7 @@ export class PipelineRunner {
     this.limitTimer.unref?.();
   }
 
-  /** Switchboard quits: every run that goes on pauses, to go on at the next start. */
+  /** Seshboard quits: every run that goes on pauses, to go on at the next start. */
   pauseAll(): void {
     this.closed = true;
     clearTimeout(this.limitTimer);
@@ -825,7 +825,7 @@ export class PipelineRunner {
 
   /**
    * Deletes a run's tree: its runs (stopped first, if they go on) and, unless `keepSubSessions`, its sub-sessions. A
-   * parent session goes too. Sessions only leave Switchboard: their transcripts stay. Kept sub-sessions show on their own.
+   * parent session goes too. Sessions only leave Seshboard: their transcripts stay. Kept sub-sessions show on their own.
    */
   async delete(runId: string, keepSubSessions: boolean): Promise<void> {
     const tree = this.tree(runId);

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { ClaudeUpdateState } from '@switchboard/protocol/client';
+import type { ClaudeUpdateState } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 

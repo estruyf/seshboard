@@ -26,7 +26,7 @@ import {
   type RemoteRunState,
   type StepView,
   type StopNotice,
-} from '@switchboard/protocol/remote-client';
+} from '@seshboard/protocol/remote-client';
 import type { Client } from './Connected.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
@@ -477,7 +477,7 @@ export function RunPipelineSheet({ client, projectId, sessionId, onClose }: { cl
   return (
     <Sheet title="Run pipeline" subtitle="This session becomes the parent: each step runs as a sub-session under it." onClose={onClose} hook="run-pipeline">
       {pipelines === null && !error && <p className="py-2 text-ui text-muted">Loading pipelines…</p>}
-      {pipelines?.length === 0 && <p className="py-2 text-ui text-muted">No pipelines for this project. Add one in Switchboard on your computer, in Settings › Pipelines.</p>}
+      {pipelines?.length === 0 && <p className="py-2 text-ui text-muted">No pipelines for this project. Add one in Seshboard on your computer, in Settings › Pipelines.</p>}
       <div className="-mx-1 flex flex-col">
         {pipelines?.map((pipeline) => (
           <button key={pipeline.id} type="button" disabled={Boolean(starting)} onClick={() => void run(pipeline)} aria-busy={starting === pipeline.id || undefined} className="flex min-h-14 items-center gap-3 rounded-lg px-3 py-2 text-left enabled:hover:bg-border/45 enabled:active:bg-selected disabled:opacity-60" data-remote-run-pipeline={pipeline.id}>

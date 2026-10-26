@@ -1,4 +1,4 @@
-import type { AppInfo, UpdateState } from '@switchboard/protocol/bridge';
+import type { AppInfo, UpdateState } from '@seshboard/protocol/bridge';
 
 /** `v0.0.3`, or `dev · 1a2b3c4` so a development build is never mistaken for a release. */
 export function versionLabel(info: AppInfo): string {
@@ -34,16 +34,16 @@ export function updateToast(state: UpdateState | null): UpdateToast | null {
   const toast = (key: string, title: string, rest: Partial<UpdateToast> = {}): UpdateToast => ({ key, title, body: null, tone: 'accent', progress: null, action: null, notes: null, close: 'hide', ...rest });
   switch (state.status) {
     case 'available':
-      return toast(`available:${state.availableVersion}`, `Switchboard v${state.availableVersion} is available`, {
+      return toast(`available:${state.availableVersion}`, `Seshboard v${state.availableVersion} is available`, {
         body: 'Download it now and restart when you’re ready.',
         action: { label: 'Download', run: 'download' },
         notes: state.releaseNotes,
       });
     case 'downloading':
-      return toast(`downloading:${state.availableVersion}`, `Downloading Switchboard v${state.availableVersion}…`, { tone: 'busy', progress: state.downloadPercent ?? 0 });
+      return toast(`downloading:${state.availableVersion}`, `Downloading Seshboard v${state.availableVersion}…`, { tone: 'busy', progress: state.downloadPercent ?? 0 });
     case 'downloaded':
-      return toast(`downloaded:${state.downloadedVersion}`, `Switchboard v${state.downloadedVersion} is ready`, {
-        body: 'Restart Switchboard to install it.',
+      return toast(`downloaded:${state.downloadedVersion}`, `Seshboard v${state.downloadedVersion} is ready`, {
+        body: 'Restart Seshboard to install it.',
         action: { label: 'Restart to update', run: 'install' },
         notes: state.releaseNotes,
       });
@@ -55,7 +55,7 @@ export function updateToast(state: UpdateState | null): UpdateToast | null {
       break;
     }
   }
-  if (state.updatedTo) return toast(`updated:${state.updatedTo}`, `Updated to Switchboard v${state.updatedTo}`, { tone: 'ok', notes: state.releaseNotes, close: 'dismiss' });
+  if (state.updatedTo) return toast(`updated:${state.updatedTo}`, `Updated to Seshboard v${state.updatedTo}`, { tone: 'ok', notes: state.releaseNotes, close: 'dismiss' });
   return null;
 }
 
@@ -69,13 +69,13 @@ export function updateStatusText(state: UpdateState): string {
     case 'checking':
       return 'Checking for updates…';
     case 'up-to-date':
-      return 'Switchboard is up to date.';
+      return 'Seshboard is up to date.';
     case 'available':
       return `Version ${state.availableVersion} is available.`;
     case 'downloading':
       return `Downloading version ${state.availableVersion}… ${state.downloadPercent ?? 0}%`;
     case 'downloaded':
-      return `Version ${state.downloadedVersion} is ready. Restart Switchboard to install it.`;
+      return `Version ${state.downloadedVersion} is ready. Restart Seshboard to install it.`;
     case 'installing':
       return 'Restarting to install the update…';
     case 'error':

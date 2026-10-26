@@ -44,7 +44,7 @@ function transcript(compactions: number): { lines: object[]; prompts: string[] }
 }
 
 function configWith(lines: object[]): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-compacted-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-compacted-')));
   dirs.push(dir);
   mkdirSync(join(dir, 'projects', '-tmp-project'), { recursive: true });
   writeFileSync(join(dir, 'projects', '-tmp-project', `${SESSION}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');

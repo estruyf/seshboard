@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { TerminalInfo } from '@switchboard/protocol';
+import type { TerminalInfo } from '@seshboard/protocol';
 import { userShell } from '../system/shell.ts';
 import { withUpperCasePath } from '../system/shellEnv.ts';
 import { removeDir } from '../util/removeDir.ts';
@@ -15,7 +15,7 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((d) => removeDir(d)));
 });
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-term-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-term-')));
   dirs.push(dir);
   return dir;
 };
@@ -145,7 +145,7 @@ describe('TerminalManager', () => {
     const { manager } = setup(fake.spawn, env);
     await manager.open({ sessionId: null, cwd: tempDir(), kind: 'shell', cols: 80, rows: 24, fork: false });
     expect(fake.calls[0]!.file).toBe(windows ? userShell(env).file : '/bin/zsh');
-    expect(fake.calls[0]!.env).toMatchObject({ PATH: '/bin', CLAUDE_CODE_USE_BEDROCK: '1', TERM_PROGRAM: 'Switchboard' });
+    expect(fake.calls[0]!.env).toMatchObject({ PATH: '/bin', CLAUDE_CODE_USE_BEDROCK: '1', TERM_PROGRAM: 'Seshboard' });
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDECODE');
     expect(fake.calls[0]!.env).not.toHaveProperty('CLAUDE_CODE_ENTRYPOINT');
   });

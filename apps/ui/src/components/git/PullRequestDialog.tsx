@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ExternalLink, FileText, GitPullRequest, Info, TriangleAlert } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import type { PrDraft, PrError } from '@switchboard/protocol/client';
+import type { PrDraft, PrError } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openTerminal } from '../../state/terminalsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
@@ -43,7 +43,7 @@ export interface CreatedPr {
 }
 
 /**
- * Create a pull request without leaving Switchboard: a title, a description from a template or the commits, the base
+ * Create a pull request without leaving Seshboard: a title, a description from a template or the commits, the base
  * branch and Draft. Create pushes the branch and runs `gh pr create` in the engine, with no terminal or browser.
  * Everything typed is kept when it closes without creating, and comes back the next time for the same branch.
  */

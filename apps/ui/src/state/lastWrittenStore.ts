@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { expandHome, isAbsolutePath, joinPath, previewKind } from '@switchboard/protocol/client';
+import { expandHome, isAbsolutePath, joinPath, previewKind } from '@seshboard/protocol/client';
 
 const WRITES = new Set(['Write', 'Edit', 'MultiEdit']);
 

@@ -23,7 +23,7 @@ describe('Remember this', () => {
   });
 
   it('records the session it came from', () => {
-    expect(rememberMetadata('s-1')).toEqual({ originSessionId: 's-1', source: 'switchboard' });
-    expect(rememberMetadata(null)).toEqual({ source: 'switchboard' });
+    expect(rememberMetadata('s-1')).toEqual({ originSessionId: 's-1', source: 'seshboard' });
+    expect(rememberMetadata(null)).toEqual({ source: 'seshboard' });
   });
 });

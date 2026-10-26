@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
-import { BLANK_TYPE_LABELS, blankSource, freeBlankName, type BlankSpec, type BlankType, type PromptBlank } from '@switchboard/protocol/client';
+import { BLANK_TYPE_LABELS, blankSource, freeBlankName, type BlankSpec, type BlankType, type PromptBlank } from '@seshboard/protocol/client';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { Button } from '../ui/Button.tsx';
 import { BlankForm } from './BlankForm.tsx';

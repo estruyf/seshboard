@@ -1,4 +1,4 @@
-import { isAbsolutePath, joinPath } from '@switchboard/protocol/client';
+import { isAbsolutePath, joinPath } from '@seshboard/protocol/client';
 
 /**
  * The absolute path a link or image in a previewed file points at, or null when it isn't a local file (http(s),

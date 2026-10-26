@@ -1,4 +1,4 @@
-import { clockTime, limitKindName, type RemoteLimitStanding } from '@switchboard/protocol/remote-client';
+import { clockTime, limitKindName, type RemoteLimitStanding } from '@seshboard/protocol/remote-client';
 import { countdown } from './usage.ts';
 
 /**

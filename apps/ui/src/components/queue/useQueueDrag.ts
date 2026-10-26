@@ -2,7 +2,7 @@ import { useState, type DragEvent } from 'react';
 import { reorderQueue, useLater } from '../../state/laterStore.ts';
 import { dropIndex } from '../../state/queue.ts';
 
-const MIME = 'application/x-switchboard-queue-item';
+const MIME = 'application/x-seshboard-queue-item';
 
 /** What a list that isn't the sidebar's queue passes: its own order, how it moves an item, and its own drag type. */
 export interface QueueDragSource {

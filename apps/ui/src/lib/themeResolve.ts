@@ -1,5 +1,5 @@
-import { parseColor, toHex } from '@switchboard/protocol/color';
-import { THEME_MODES, THEME_SCHEMA_URL, THEME_TOKENS, type ThemeFile, type ThemeMode, type ThemeModeFile, type ThemeSyntax, type ThemeToken, type ThemeTokens } from '@switchboard/protocol/theme-format';
+import { parseColor, toHex } from '@seshboard/protocol/color';
+import { THEME_MODES, THEME_SCHEMA_URL, THEME_TOKENS, type ThemeFile, type ThemeMode, type ThemeModeFile, type ThemeSyntax, type ThemeToken, type ThemeTokens } from '@seshboard/protocol/theme-format';
 import demoTime from '../themes/demo-time.json';
 import { DERIVED_TOKENS, deriveTokens, generateTokens, withAlpha } from './themeGenerate.ts';
 

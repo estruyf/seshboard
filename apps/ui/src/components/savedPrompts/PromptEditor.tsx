@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Globe, User, Users } from 'lucide-react';
-import { blankProblems, escapeText, PROMPT_NAME_MAX, type PromptScope, type SavedPrompt } from '@switchboard/protocol/client';
+import { blankProblems, escapeText, PROMPT_NAME_MAX, type PromptScope, type SavedPrompt } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { addedProjects } from '../../state/projectList.ts';

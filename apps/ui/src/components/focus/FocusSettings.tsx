@@ -1,5 +1,5 @@
 import { Minus, Plus } from 'lucide-react';
-import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN, type FocusMode } from '@switchboard/protocol/bridge';
+import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN, type FocusMode } from '@seshboard/protocol/bridge';
 import type { ReactNode } from 'react';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -77,7 +77,7 @@ export function FocusSettings() {
                 className="shrink-0"
               />
             </Row>
-            <Row label="Count terminal and IDE sessions" detail="Also count live Claude Code sessions started outside Switchboard.">
+            <Row label="Count terminal and IDE sessions" detail="Also count live Claude Code sessions started outside Seshboard.">
               <Switch checked={prefs.focusCountExternal} onChange={(focusCountExternal) => update({ focusCountExternal })} label="Count terminal and IDE sessions" dataAttrs={{ 'data-focus-count-external': true }} />
             </Row>
             <Row label="Count sessions on other computers" detail="Also count sessions that are working, need you or are unread on computers you paired.">

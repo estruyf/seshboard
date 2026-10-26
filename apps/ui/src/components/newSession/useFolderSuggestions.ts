@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FolderEntry } from '@switchboard/protocol/client';
+import type { FolderEntry } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 /** How long typing has to pause before the engine lists a folder. */

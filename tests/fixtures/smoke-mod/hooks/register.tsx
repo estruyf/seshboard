@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-// Switchboard's smoke run starts a session with this folder in CLAUDE_CODE_PLUGIN_DIRS and checks each surface:
+// Seshboard's smoke run starts a session with this folder in CLAUDE_CODE_PLUGIN_DIRS and checks each surface:
 // the band above the message box, the pane, the status chip, a toast, and that a press reaches the mod.
 
 const PANE = 'smoke-pane'

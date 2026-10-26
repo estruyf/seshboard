@@ -1,4 +1,4 @@
-import { threadTitle, type AskEvent, type AskItem, type AskThreadList } from '@switchboard/protocol/remote-client';
+import { threadTitle, type AskEvent, type AskItem, type AskThreadList } from '@seshboard/protocol/remote-client';
 
 /*
  * Ask about this session, for one session, as the sheet or panel shows it: the threads the computer keeps plus what

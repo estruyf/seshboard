@@ -15,7 +15,7 @@ const OTHER = resolve('/work/other');
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const cachePath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-later-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-later-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
 };

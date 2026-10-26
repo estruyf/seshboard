@@ -1,5 +1,5 @@
 /**
- * The chaos harness (docs/chaos-testing.md): launches the built app driven (SWITCHBOARD_DRIVEN=1) in a sandbox world,
+ * The chaos harness (docs/chaos-testing.md): launches the built app driven (SESHBOARD_DRIVEN=1) in a sandbox world,
  * watches every failure signal, keeps a JSONL action log, and takes a screenshot with the last 50 actions on every
  * signal.
  *
@@ -92,11 +92,11 @@ export interface LaunchOptions {
   outDir: string;
   /** Reuse a world (for restarts); otherwise a new one is made. */
   world?: ChaosWorld;
-  /** The app profile (SWITCHBOARD_DRIVEN_PROFILE); kept across restarts of one run. */
+  /** The app profile (SESHBOARD_DRIVEN_PROFILE); kept across restarts of one run. */
   profileDir?: string;
   size?: { width: number; height: number };
   extraEnv?: Record<string, string>;
-  /** Extra arguments for the app (a switchboard:// link at launch). */
+  /** Extra arguments for the app (a seshboard:// link at launch). */
   extraArgs?: string[];
 }
 
@@ -155,12 +155,12 @@ export class Chaos {
       USER: 'you',
       LOGNAME: 'you',
       TERM: 'xterm-256color',
-      SWITCHBOARD_DRIVEN: '1',
-      SWITCHBOARD_GH: this.world.ghPath,
-      SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '2.1.287', stable: '2.1.287' }))}`,
-      SWITCHBOARD_DISABLE_AUTO_UPDATE: '1',
+      SESHBOARD_DRIVEN: '1',
+      SESHBOARD_GH: this.world.ghPath,
+      SESHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '2.1.287', stable: '2.1.287' }))}`,
+      SESHBOARD_DISABLE_AUTO_UPDATE: '1',
       // A fixed throwaway profile, so a restart in the same run finds the same choices.
-      SWITCHBOARD_DRIVEN_PROFILE: this.profileDir,
+      SESHBOARD_DRIVEN_PROFILE: this.profileDir,
       ELECTRON_ENABLE_LOGGING: '0',
       ...this.options.extraEnv,
     };
@@ -210,7 +210,7 @@ export class Chaos {
     }, this.options.size ?? { width: 1440, height: 900 });
     await this.stubNative();
     const userData = await this.app.evaluate(({ app }) => app.getPath('userData'));
-    if (userData !== this.profileDir) throw new Error(`the app profile is ${userData}, not ${this.profileDir}: this build ignores SWITCHBOARD_DRIVEN_PROFILE (rebuild it)`);
+    if (userData !== this.profileDir) throw new Error(`the app profile is ${userData}, not ${this.profileDir}: this build ignores SESHBOARD_DRIVEN_PROFILE (rebuild it)`);
     await this.waitReady();
     this.enginePid = this.findEnginePid();
     await this.safetyCheck();
@@ -536,8 +536,8 @@ export class Chaos {
     const raw = (await this.page.evaluate(() => document.body.innerText + '\n' + [...document.querySelectorAll('[data-tooltip],[title]')].map((e) => e.getAttribute('data-tooltip') ?? e.getAttribute('title')).join('\n')).catch(() => '')) as string;
     // The app's own code lives in this checkout (under the real home); its path is not user data.
     const text = raw.split(repoRoot).join('<repo>');
-    const leaks = [realHome, `${realHome.replace(/^\/Users/, '')}`, realUser.length >= 3 ? realUser : null, 'Library/Application Support/Switchboard'].filter((s): s is string => !!s && text.includes(s));
-    const fileLeak = this.grepProfile([realHome, 'Application Support/Switchboard']);
+    const leaks = [realHome, `${realHome.replace(/^\/Users/, '')}`, realUser.length >= 3 ? realUser : null, 'Library/Application Support/Seshboard'].filter((s): s is string => !!s && text.includes(s));
+    const fileLeak = this.grepProfile([realHome, 'Application Support/Seshboard']);
     if (leaks.length || fileLeak) {
       await this.page.screenshot({ path: join(this.options.outDir, `${this.tag}-SAFETY.png`) }).catch(() => {});
       await this.close();
@@ -590,8 +590,8 @@ export function normalise(text: string): string {
  */
 export function writesOutsideSandbox(root: string): string[] {
   const places = [
-    join(realHome, 'Library', 'Application Support', 'Switchboard'),
-    join(realHome, 'Library', 'Application Support', 'Switchboard Dev'),
+    join(realHome, 'Library', 'Application Support', 'Seshboard'),
+    join(realHome, 'Library', 'Application Support', 'Seshboard Dev'),
     join(realHome, '.claude', 'sessions'),
     join(realHome, '.claude', 'ide'),
     join(realHome, '.claude.json'),

@@ -39,7 +39,7 @@ export function TriggersTab({ root }: { root: string }) {
       <div className="flex items-start gap-4">
         <div className="grid min-w-0 flex-1 gap-0.5">
           <h2 className="text-title font-semibold">Triggers</h2>
-          <p className="text-ui text-muted">Start a session when something happens. Switchboard checks GitHub every 5 minutes through gh, on this computer only.</p>
+          <p className="text-ui text-muted">Start a session when something happens. Seshboard checks GitHub every 5 minutes through gh, on this computer only.</p>
         </div>
         <Button variant="primary" size="lg" icon={<Plus size={14} aria-hidden />} onClick={create} className="shrink-0" data-trigger-new>
           New trigger
@@ -63,7 +63,7 @@ export function TriggersTab({ root }: { root: string }) {
       )}
       <p className="flex items-start gap-2 text-ui text-muted" data-triggers-shield>
         <ShieldCheck size={14} className="mt-0.5 shrink-0" aria-hidden />
-        Triggered sessions never bypass permissions. Switchboard only writes state labels to GitHub, and only when they're on.
+        Triggered sessions never bypass permissions. Seshboard only writes state labels to GitHub, and only when they're on.
       </p>
     </div>
   );

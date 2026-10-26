@@ -12,7 +12,7 @@ const MOMENTS = [
   { key: 'finished', label: 'Finished', detail: 'Claude finished a turn.', dot: 'bg-unread' },
 ] as const;
 
-const HOME_SCREEN_STEPS = 'Tap Share, then Add to Home Screen. Open Switchboard from your Home Screen and turn notifications on there.';
+const HOME_SCREEN_STEPS = 'Tap Share, then Add to Home Screen. Open Seshboard from your Home Screen and turn notifications on there.';
 
 /**
  * The one-time offer at the top of the list, after pairing. On an iPhone outside the Home Screen it explains how to
@@ -118,7 +118,7 @@ export function shouldOffer(alreadyOffered: boolean): boolean {
 export function pushNote(support: PushSupport, connected: boolean): string | null {
   if (support === 'home-screen') return HOME_SCREEN_STEPS;
   if (support === 'denied') return "Notifications are blocked for this page. Allow them in the browser's settings, then come back here.";
-  if (support === 'unsupported') return "This browser can't show notifications from Switchboard Remote.";
+  if (support === 'unsupported') return "This browser can't show notifications from Seshboard Remote.";
   return connected ? null : 'Changing these needs the connection.';
 }
 
@@ -188,7 +188,7 @@ export function NotificationsSheet({ push, onClose }: { push: PushComputers; onC
       </div>
       {older.length > 0 && (
         <p className="mt-3 rounded-lg bg-caution/10 px-3 py-2 text-ui text-text" data-remote-push-outdated>
-          {older.join(', ')} can't send notifications next to your other computers yet. Update Switchboard there to get them.
+          {older.join(', ')} can't send notifications next to your other computers yet. Update Seshboard there to get them.
         </p>
       )}
       <p className="pt-3 text-meta text-faint">

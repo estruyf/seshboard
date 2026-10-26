@@ -351,7 +351,7 @@ describe('shortcut collisions', () => {
   });
 
   it('on Windows, where mod is Ctrl, only the same overlaps happen', () => {
-    vi.stubGlobal('window', { switchboard: { platform: 'win32' } });
+    vi.stubGlobal('window', { seshboard: { platform: 'win32' } });
     try {
       const intended = new Set(Object.keys(INTENDED_OVERLAPS).map((press) => press.replace(/^cmd\+/, 'ctrl+')));
       expect([...overlaps()].filter(([press]) => !intended.has(press)).map(([press, pairs]) => `${press}: ${[...pairs].join(', ')}`)).toEqual([]);
@@ -362,7 +362,7 @@ describe('shortcut collisions', () => {
 });
 
 describe('shortcuts on Windows', () => {
-  beforeEach(() => vi.stubGlobal('window', { switchboard: { platform: 'win32' } }));
+  beforeEach(() => vi.stubGlobal('window', { seshboard: { platform: 'win32' } }));
   afterEach(() => vi.unstubAllGlobals());
 
   it('reads mod, and ⌘ saved on a Mac, as Ctrl', () => {

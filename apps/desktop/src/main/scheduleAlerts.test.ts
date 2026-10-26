@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ScheduleRunEvent } from '@switchboard/protocol/client';
+import type { ScheduleRunEvent } from '@seshboard/protocol/client';
 import { scheduleAlerts } from './scheduleAlerts.ts';
 
 const run = (over: Partial<ScheduleRunEvent>): ScheduleRunEvent => ({
@@ -36,7 +36,7 @@ describe('scheduled runs as notifications', () => {
       run({ name: 'Check dependency updates', sessionId: 's3', missed: true }),
       run({ name: 'Monthly invoice check', result: 'missed', sessionId: null, missed: true }),
     ]);
-    expect(events).toEqual([{ kind: 'schedule-started', sessionId: 's1', title: '3 scheduled sessions started', body: 'They were missed while Switchboard was closed.' }]);
+    expect(events).toEqual([{ kind: 'schedule-started', sessionId: 's1', title: '3 scheduled sessions started', body: 'They were missed while Seshboard was closed.' }]);
     // One missed run says what it is.
     expect(scheduleAlerts([run({ missed: true })])[0]!.title).toBe('Scheduled: Review open pull requests started');
   });

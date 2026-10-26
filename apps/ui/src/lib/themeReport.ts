@@ -1,5 +1,5 @@
-import { contrastOf, parseColor, composite, toHex } from '@switchboard/protocol/color';
-import { THEME_MODES, THEME_TOKENS, type InlineSyntaxTheme, type ThemeFile, type ThemeMode, type ThemeSyntax, type ThemeToken } from '@switchboard/protocol/theme-format';
+import { contrastOf, parseColor, composite, toHex } from '@seshboard/protocol/color';
+import { THEME_MODES, THEME_TOKENS, type InlineSyntaxTheme, type ThemeFile, type ThemeMode, type ThemeSyntax, type ThemeToken } from '@seshboard/protocol/theme-format';
 import { resolveTheme, themeModes, type ResolvedTheme } from './themeResolve.ts';
 
 /** WCAG AA for normal text; high contrast themes aim for AAA. */

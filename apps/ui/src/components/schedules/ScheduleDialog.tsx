@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarDays, Repeat } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
-import { describe, formatRun, nameFromPrompt, nextRuns, ruleProblem, WEEK_ORDER, DAY_NAMES, type LaterDraft, type Schedule } from '@switchboard/protocol/client';
+import { describe, formatRun, nameFromPrompt, nextRuns, ruleProblem, WEEK_ORDER, DAY_NAMES, type LaterDraft, type Schedule } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
 import { MODE_LABEL } from '../../lib/modes.ts';
@@ -203,7 +203,7 @@ export function ScheduleDialog({ draft, schedule, onClose, onSaved }: { draft: L
         <Row label="If missed" labelId={`${id}-missed`}>
           <RadioGroup label="If missed" className="grid gap-1.5">
             <Radio checked={form.missed === 'run'} onSelect={() => update({ missed: 'run' })} className="text-ui" dataAttrs={{ 'data-schedule-missed': 'run' }}>
-              Run when Switchboard starts
+              Run when Seshboard starts
             </Radio>
             <Radio checked={form.missed === 'skip'} onSelect={() => update({ missed: 'skip' })} className="text-ui" dataAttrs={{ 'data-schedule-missed': 'skip' }}>
               Skip it

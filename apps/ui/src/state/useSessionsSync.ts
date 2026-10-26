@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { LiveSession, SessionsChanged, SessionsSnapshot } from '@switchboard/protocol/client';
+import type { LiveSession, SessionsChanged, SessionsSnapshot } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { usePreferences } from './preferencesStore.ts';

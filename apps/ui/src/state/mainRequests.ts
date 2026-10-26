@@ -1,4 +1,4 @@
-import type { MainWindowRequest } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest } from '@seshboard/protocol/bridge';
 import { otherModalOpen } from '../lib/modalGuards.ts';
 import { useOverlay } from './overlayStore.ts';
 import { openUsage } from './usageViewStore.ts';

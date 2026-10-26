@@ -1,4 +1,4 @@
-import { firstSentence, MEMORY_INDEX_LIMIT, slugify } from '@switchboard/protocol/client';
+import { firstSentence, MEMORY_INDEX_LIMIT, slugify } from '@seshboard/protocol/client';
 
 /** Who wrote the text you want remembered: you (your prompt) or Claude (its reply). */
 export type RememberFrom = 'user' | 'claude';
@@ -26,5 +26,5 @@ export function addsLineNote(indexLines: number): { text: string; over: boolean 
   return { text: `Adds 1 line to MEMORY.md (${after} of ${MEMORY_INDEX_LIMIT})`, over: after > MEMORY_INDEX_LIMIT };
 }
 
-/** The metadata a remembered memory gets: the session it came from, and that Switchboard wrote it. */
-export const rememberMetadata = (sessionId: string | null): Record<string, string> => ({ ...(sessionId ? { originSessionId: sessionId } : {}), source: 'switchboard' });
+/** The metadata a remembered memory gets: the session it came from, and that Seshboard wrote it. */
+export const rememberMetadata = (sessionId: string | null): Record<string, string> => ({ ...(sessionId ? { originSessionId: sessionId } : {}), source: 'seshboard' });

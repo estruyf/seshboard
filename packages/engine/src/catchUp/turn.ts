@@ -1,4 +1,4 @@
-import { withoutContext } from '@switchboard/protocol';
+import { withoutContext } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /** One tool call of a turn, as much of it as the catch-up needs. */

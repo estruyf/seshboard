@@ -38,9 +38,9 @@ function main() {
     console.log(`::error::${message}`);
     process.exit(1);
   };
-  const installers = readdirSync(dist).filter((name) => /^Switchboard-.+-setup\.exe$/.test(name)).map((name) => join(dist, name));
+  const installers = readdirSync(dist).filter((name) => /^Seshboard-.+-setup\.exe$/.test(name)).map((name) => join(dist, name));
   const apps = ['win-unpacked', 'win-arm64-unpacked'].map((folder) => join(dist, folder));
-  const files = [...installers, ...apps.map((app) => join(app, 'Switchboard.exe')).filter(existsSync)];
+  const files = [...installers, ...apps.map((app) => join(app, 'Seshboard.exe')).filter(existsSync)];
   if (installers.length !== 1 || files.length !== 3) fail(`Expected one installer and two apps, found: ${files.join(', ') || 'nothing'}`);
 
   // Every app must name the same publisher: it is what each installed copy checks updates against.

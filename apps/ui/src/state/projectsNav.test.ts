@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { baseOrder } from './projectList.ts';
 import {
   canReorder,
@@ -21,7 +21,7 @@ const project = (root: string, name: string): ProjectInfo =>
   ({ root, name, nameSource: 'folder', icon: null, iconSource: null, added: true, exists: true, order: null, defaults: {}, profileId: null, sessionCount: 0, lastActivity: null }) as unknown as ProjectInfo;
 
 const HOME = '/Users/me';
-const LIST = [project('/Users/me/dev/intranet', 'intranet'), project('/Users/me/dev/vscode-demo-time', 'vscode-demo-time'), project('/Users/me/dev/claude-code-manager', 'Switchboard'), project('/Users/me/dev/vscode-front-matter', 'vscode-front-matter'), project('/Users/me/work/ai', 'ai')];
+const LIST = [project('/Users/me/dev/intranet', 'intranet'), project('/Users/me/dev/vscode-demo-time', 'vscode-demo-time'), project('/Users/me/dev/claude-code-manager', 'Seshboard'), project('/Users/me/dev/vscode-front-matter', 'vscode-front-matter'), project('/Users/me/work/ai', 'ai')];
 const roots = (list: readonly { root: string }[]) => list.map((p) => p.root);
 
 describe('the search', () => {
@@ -31,8 +31,8 @@ describe('the search', () => {
 
   it('matches the name or the folder, ignoring case', () => {
     expect(filterProjects(LIST, 'VS', HOME).map((p) => p.name)).toEqual(['vscode-demo-time', 'vscode-front-matter']);
-    // Switchboard's folder is claude-code-manager.
-    expect(filterProjects(LIST, 'code-manager', HOME).map((p) => p.name)).toEqual(['Switchboard']);
+    // Seshboard's folder is claude-code-manager.
+    expect(filterProjects(LIST, 'code-manager', HOME).map((p) => p.name)).toEqual(['Seshboard']);
     expect(filterProjects(LIST, '~/work', HOME).map((p) => p.name)).toEqual(['ai']);
   });
 
@@ -113,7 +113,7 @@ describe('reordering', () => {
     expect(keyboardMove(['a', 'b', 'c'], 'a', -1)).toBeNull();
     expect(keyboardMove(['a', 'b', 'c'], 'c', 1)).toBeNull();
     expect(keyboardMove(['a', 'b', 'c'], 'x', 1)).toBeNull();
-    expect(moveAnnouncement('Switchboard', 2, 11)).toBe('Switchboard moved to position 3 of 11');
+    expect(moveAnnouncement('Seshboard', 2, 11)).toBe('Seshboard moved to position 3 of 11');
   });
 });
 

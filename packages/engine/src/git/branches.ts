@@ -1,4 +1,4 @@
-import type { BranchDeleteItem, BranchDeleteResult, BranchEntry, BranchList, LocalBranch, RemoteBranch, WorktreePullRequest } from '@switchboard/protocol';
+import type { BranchDeleteItem, BranchDeleteResult, BranchEntry, BranchList, LocalBranch, RemoteBranch, WorktreePullRequest } from '@seshboard/protocol';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 import { checkoutsOf, mapLimit, saveRecoveryRef } from './worktrees.ts';
 

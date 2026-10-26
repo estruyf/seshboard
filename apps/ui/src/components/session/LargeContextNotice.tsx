@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Layers } from 'lucide-react';
-import { cacheRewriteCost, isLargeContext, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheRewriteCost, isLargeContext, type SessionHostInfo, type TranscriptMessage } from '@seshboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useSecondClock } from '../../lib/secondClock.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';

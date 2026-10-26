@@ -1,4 +1,4 @@
-import type { Pipeline } from '@switchboard/protocol/client';
+import type { Pipeline } from '@seshboard/protocol/client';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { lastPipelineIn } from '../../state/lastPipeline.ts';

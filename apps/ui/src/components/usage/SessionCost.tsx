@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { REMOTE_FEATURE_COSTS, type Computer, type Contract, type RpcClient } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_COSTS, type Computer, type Contract, type RpcClient } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { callComputer } from '../computers/callComputer.ts';
@@ -58,7 +58,7 @@ export function SessionCost({ sessionId, profileId: given }: { sessionId: string
 /**
  * The same for a session on another computer, which answers from its own transcripts (`usage.sessionCost` there, with
  * `REMOTE_FEATURE_COSTS`): asked when the view opens, when a turn ends (`working` goes off) and every minute. Nothing
- * while that computer is offline or on an older Switchboard.
+ * while that computer is offline or on an older Seshboard.
  */
 export function RemoteSessionCost({ client, computer, sessionId, working }: { client: RpcClient<Contract>; computer: Computer; sessionId: string; working: boolean }) {
   const format = useCostFormat();

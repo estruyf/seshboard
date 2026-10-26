@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { defuseStubs, REMOTE_ATTACHMENT_BYTES, RpcError, type RemoteFile, type RemoteImage } from '@switchboard/protocol';
+import { defuseStubs, REMOTE_ATTACHMENT_BYTES, RpcError, type RemoteFile, type RemoteImage } from '@seshboard/protocol';
 
 /**
  * Files sent with a message from another device (docs/remote-access.md): kept in a folder of their own under `dir`,

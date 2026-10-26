@@ -1,4 +1,4 @@
-import type { RemoteStatus, RemoteTunnel } from '@switchboard/protocol/client';
+import type { RemoteStatus, RemoteTunnel } from '@seshboard/protocol/client';
 import { remoteAge, TUNNELS } from './remoteText.ts';
 
 /**
@@ -87,7 +87,7 @@ export function remoteStatusView(status: RemoteStatus, now = Date.now()): Status
       ...base,
       tone: 'error',
       title: `${capitalize(RUNNING_NAME[settings.tunnel])} isn't running`,
-      detail: message ? firstLine(message) : 'Switchboard tries again shortly.',
+      detail: message ? firstLine(message) : 'Seshboard tries again shortly.',
       details: more ? message : null,
       actions: [{ action: { kind: 'retry' }, label: 'Try again', primary: true }, ...(more ? [{ action: { kind: 'details' } as const, label: 'Show details' }] : [])],
     };

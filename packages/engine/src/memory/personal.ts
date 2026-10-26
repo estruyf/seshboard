@@ -1,7 +1,7 @@
 import { dirname } from 'node:path';
-import { detectEol, pathInside } from '@switchboard/protocol';
+import { detectEol, pathInside } from '@seshboard/protocol';
 
-/** The marked block Switchboard owns in a profile's CLAUDE.md; nothing outside it is ever changed. */
+/** The marked block Seshboard owns in a profile's CLAUDE.md; nothing outside it is ever changed. */
 export const BLOCK_START = '<!-- switchboard:memory start -->';
 export const BLOCK_END = '<!-- switchboard:memory end -->';
 

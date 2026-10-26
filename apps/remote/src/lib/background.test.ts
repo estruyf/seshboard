@@ -20,7 +20,7 @@ describe('inBackground', () => {
     expect(inBackground({ status: 'unread', background: [] })).toBe(false);
     expect(inBackground({ status: 'working', background: running })).toBe(false);
     expect(inBackground({ status: 'needs-you', background: running })).toBe(false);
-    // An older Switchboard sends no list, only the status.
+    // An older Seshboard sends no list, only the status.
     expect(inBackground({ status: 'background' })).toBe(true);
     expect(inBackground(null)).toBe(false);
   });

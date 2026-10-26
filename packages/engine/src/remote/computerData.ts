@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { remoteContract, RemotePrompt, RemoteRunState, RemoteSession, type ComputerMethod } from '@switchboard/protocol';
+import { remoteContract, RemotePrompt, RemoteRunState, RemoteSession, type ComputerMethod } from '@seshboard/protocol';
 
 /**
  * What another computer sends, checked against the remote contract before a window sees it. That computer may run
- * an older or newer Switchboard, or not be Switchboard at all: the windows trust what the engine passes on, and a
+ * an older or newer Seshboard, or not be Seshboard at all: the windows trust what the engine passes on, and a
  * list they can't read would blank them. A session list is checked entry by entry, so one entry this version can't
  * read is left out and the rest still shows; anything else passes whole or not at all.
  */

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { parseBriefs, replaceBriefs, writeBriefs, type CatchUp, type SessionSummary, type TranscriptMessage, type WorktreePullRequest } from '@switchboard/protocol';
+import { parseBriefs, replaceBriefs, writeBriefs, type CatchUp, type SessionSummary, type TranscriptMessage, type WorktreePullRequest } from '@seshboard/protocol';
 import { buildBrief, type BriefSource } from './brief.ts';
 import type { LinkStore, SessionPr } from './linkStore.ts';
 import { openedPullRequests } from './prDetect.ts';

@@ -1,9 +1,9 @@
-import type { GithubStarStatus } from '@switchboard/protocol';
+import type { GithubStarStatus } from '@seshboard/protocol';
 import { classifyGhFailure, firstUsefulLine, runGh, type GhCommand, type RunResult } from './pullRequest.ts';
 
-/** Switchboard's own repository, which the sidebar's Star on GitHub button stars. */
-export const SWITCHBOARD_REPO = 'estruyf/switchboard';
-const STAR_ENDPOINT = `/user/starred/${SWITCHBOARD_REPO}`;
+/** Seshboard's own repository, which the sidebar's Star on GitHub button stars. */
+export const SESHBOARD_REPO = 'estruyf/switchboard';
+const STAR_ENDPOINT = `/user/starred/${SESHBOARD_REPO}`;
 
 /** What `gh api /user/starred/…` answered: 204 (exit 0) when starred, 404 when not, anything else can't tell. */
 export function starStatusOf(result: RunResult): GithubStarStatus {
@@ -12,7 +12,7 @@ export function starStatusOf(result: RunResult): GithubStarStatus {
   return 'unavailable';
 }
 
-/** Whether the account gh is signed in with has starred Switchboard. `unavailable` without gh, signed out or offline. */
+/** Whether the account gh is signed in with has starred Seshboard. `unavailable` without gh, signed out or offline. */
 export async function githubStarStatus(gh: GhCommand, cwd: string, env: Record<string, string>): Promise<GithubStarStatus> {
   return starStatusOf(await runGh(gh, ['api', '--silent', STAR_ENDPOINT], { cwd, env, timeout: 15_000 }));
 }
@@ -27,8 +27,8 @@ export class StarFailure extends Error {
   }
 }
 
-/** Stars Switchboard for the account gh is signed in with (`PUT /user/starred/…`). Throws `StarFailure`. */
-export async function starSwitchboard(gh: GhCommand, cwd: string, env: Record<string, string>): Promise<void> {
+/** Stars Seshboard for the account gh is signed in with (`PUT /user/starred/…`). Throws `StarFailure`. */
+export async function starSeshboard(gh: GhCommand, cwd: string, env: Record<string, string>): Promise<void> {
   const result = await runGh(gh, ['api', '--silent', '--method', 'PUT', STAR_ENDPOINT], { cwd, env, timeout: 30_000 });
   if (result.code === 0) return;
   const failure = classifyGhFailure(result);

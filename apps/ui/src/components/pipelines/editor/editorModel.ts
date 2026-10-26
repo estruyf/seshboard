@@ -1,4 +1,4 @@
-import { mentionsIn, PARENT_MENTION, PIPELINE_LIMITS, pipelineIssues, type Pipeline, type PipelineClaudeStep, type PipelineIssue, type PipelinePushStep, type PipelineSave, type PipelineScope, type PipelineStep } from '@switchboard/protocol/client';
+import { mentionsIn, PARENT_MENTION, PIPELINE_LIMITS, pipelineIssues, type Pipeline, type PipelineClaudeStep, type PipelineIssue, type PipelinePushStep, type PipelineSave, type PipelineScope, type PipelineStep } from '@seshboard/protocol/client';
 
 // Settings › Pipelines' editor as a form, without React: adding, moving and removing steps, renaming one (which
 // follows its forks, verdicts and @mentions), and the form as the engine saves it. The rules are the protocol's.

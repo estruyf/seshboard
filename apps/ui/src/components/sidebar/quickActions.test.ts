@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { QUICK_UNDO, quickActionForKey, quickActionsFor, quickActionToast, quickRowOf, type QuickActionPrefs, type QuickActionRow } from './quickActions.ts';
 
@@ -116,7 +116,7 @@ describe('quickRowOf', () => {
   const data = (over: Partial<SessionRowData> = {}) => ({ id: 's1', summary: {}, live: null, remote: null, pinned: false, unread: false, error: null, ...over }) as unknown as SessionRowData;
   const run = (status: string, over: Record<string, unknown> = {}) => ({ run: { id: 'run-1', status, parentSessionId: 's1', ...over }, steps: [] }) as unknown as PipelineRunState;
 
-  it('a session here: flags, a read state, Stop only while Switchboard runs it', () => {
+  it('a session here: flags, a read state, Stop only while Seshboard runs it', () => {
     expect(quickRowOf(data(), false, { hosted: false, runs: [] })).toMatchObject({ flags: true, readable: true, tree: false, canStop: false });
     expect(quickRowOf(data(), false, { hosted: true, runs: [] }).canStop).toBe(true);
   });

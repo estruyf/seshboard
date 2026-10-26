@@ -28,5 +28,5 @@ export function useOverlayShortcuts(): void {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   // Help › Keyboard Shortcuts (⌘/) in the menu bar: it reaches the window in front.
-  useEffect(() => window.switchboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
+  useEffect(() => window.seshboard?.onToggleShortcuts(() => !otherModalOpen() && useOverlay.getState().toggleShortcuts()), []);
 }

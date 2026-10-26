@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatchUp } from '@switchboard/protocol';
+import type { CatchUp } from '@seshboard/protocol';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds } from './pushEvents.ts';
 
 const card = (signals: Partial<CatchUp['signals']> = {}, change: Partial<CatchUp> = {}): CatchUp => ({

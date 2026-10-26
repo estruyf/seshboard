@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ExportCandidate } from '@switchboard/protocol/client';
+import type { ExportCandidate } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';

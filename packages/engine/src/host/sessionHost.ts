@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
+import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -16,7 +16,7 @@ import type {
   SlashCommand,
   StreamDelta,
   ClaudeWorktreeRequest,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
@@ -103,10 +103,10 @@ export interface HostConfig {
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
-export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchboard can’t find it. Install it, then try again.';
+export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Seshboard can’t find it. Install it, then try again.';
 
 /**
- * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Switchboard and fails
+ * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Seshboard and fails
  * with "Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk": say what's really wrong.
  */
 export function failureMessage(message: string, claudePath: string | undefined): string {
