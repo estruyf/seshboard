@@ -26,8 +26,8 @@ cask "seshboard" do
   # An upgrade would otherwise replace the bundle under a copy that is still running.
   uninstall quit: "dev.switchboard.app"
 
-  # Seshboard's own files only, also under its name before the rename (Switchboard). Sessions live in ~/.claude, which belongs to Claude Code, so
-  # `brew uninstall --zap` never touches them.
+  # Seshboard's own files only, also under its name before the rename (Switchboard). Sessions live
+  # in ~/.claude, which belongs to Claude Code, so `brew uninstall --zap` never touches them.
   zap trash: [
     "~/Library/Application Support/Seshboard",
     "~/Library/Application Support/Switchboard",
