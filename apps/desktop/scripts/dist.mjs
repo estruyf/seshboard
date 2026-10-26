@@ -1,12 +1,13 @@
 // Packages Switchboard for the OS this runs on, with that platform's flags in one place; any other arguments
 // (--config, --publish, -c.publish.channel=beta) are passed on to electron-builder, on Windows through a config
-// file (windowsBuildConfig.mjs). Afterwards it checks that the app's archive holds only the app.
+// file (windowsBuildConfig.mjs). Afterwards it checks that the app's archive holds only the app, and that the Windows
+// and Linux builds kept Chromium's English locale.
 // Usage: node scripts/dist.mjs [electron-builder arguments]   (npm run dist runs electron-vite build first)
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { windowsBuildConfig } from './windowsBuildConfig.mjs';
 
 const appDir = join(import.meta.dirname, '..');
@@ -52,6 +53,20 @@ function checkArchives(require) {
   return null;
 }
 
+/**
+ * Fails the build when a Windows or Linux build has no en-US.pak: without a locale file Chromium falls back to none,
+ * app.getLocale() returns '' and Intl throws on it. electronLanguages keeps whole file names (electron-builder.yml).
+ */
+function checkLocales() {
+  if (process.platform === 'darwin') return null;
+  for (const archive of ARCHIVES[process.platform]) {
+    if (!existsSync(join(appDir, 'dist', archive))) continue;
+    const locales = join(appDir, 'dist', dirname(dirname(archive)), 'locales');
+    if (!existsSync(join(locales, 'en-US.pak'))) return `${locales} has no en-US.pak. Check electronLanguages in electron-builder.yml.`;
+  }
+  return null;
+}
+
 /** On Windows the arguments go through a config file that extends the one asked for; elsewhere they pass as they are. */
 function builderArgs(passed) {
   if (process.platform !== 'win32') return { args: passed, cleanup: () => {} };
@@ -74,7 +89,7 @@ const cli = builderRequire.resolve('./cli.js');
 const result = spawnSync(process.execPath, [cli, ...platformArgs, ...args], { stdio: 'inherit' });
 cleanup();
 if (result.status !== 0) process.exit(result.status ?? 1);
-const problem = checkArchives(builderRequire);
+const problem = checkArchives(builderRequire) ?? checkLocales();
 if (problem) {
   console.error(`✗ ${problem}`);
   process.exit(1);

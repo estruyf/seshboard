@@ -24,6 +24,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 ### Fixed
 
 - **No crash before a cache expires on Windows.** The reminder that a large session's cache expires in 5 minutes no longer stops the app with "A JavaScript error occurred in the main process" (Invalid language tag). Its cost shows in your system's format.
+- **Windows and Linux builds know your language.** They left out Chromium's English language files, so the app saw no language at all, which is what made the reminder before a cache expires crash on Windows.
 - **No more surprise forks after a restart.** A session that was running a background task, such as a watcher, kept its Claude Code process running after Switchboard quit, restarted or updated. Switchboard then saw the session as open elsewhere, and your next message started a fork of it. Quitting now stops those processes. If one is still running after a crash, sending stops it and continues the same session.
 - **Saved prompts in New session on another computer.** With another computer picked in Run on, type `/` or click a chip above the message box to use a saved prompt, as on this computer.
 - **New session starts on this computer.** The **+** button in the sidebar no longer opens New session on the other computer you picked last. It only goes back there when you typed a prompt for it that you haven't started yet.
