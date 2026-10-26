@@ -86,7 +86,7 @@ describe('what a repository brings', () => {
   });
 
   it('reads the files of a checkout, skipping ones that are not JSON', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-brings-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-brings-'));
     try {
       mkdirSync(join(dir, '.claude'));
       writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(make)'] } }));
@@ -105,7 +105,7 @@ describe('runClone', () => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
   const tempDir = () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-clone-')));
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-clone-')));
     dirs.push(dir);
     return dir;
   };

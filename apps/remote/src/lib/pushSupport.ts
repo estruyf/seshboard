@@ -1,4 +1,4 @@
-import { REMOTE_FEATURE_PUSH_KEY } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_PUSH_KEY } from '@seshboard/protocol/remote-client';
 
 /**
  * Whether this browser can get push notifications, and what to say when it can't. Pure: the browser's answers come

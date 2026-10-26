@@ -21,17 +21,17 @@ On your phone you can:
 - send a prompt, or add one to Up next while Claude works, and remove it again, steer Claude or stop it;
 - see what a finished session did, look at its changes and commit them;
 - stop Claude's turn, mark a session as read or archive it, with a swipe;
-- start a new session in one of the projects you added in Switchboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
+- start a new session in one of the projects you added in Seshboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
 - start a [pipeline](/sessions/pipelines/) and follow its steps;
 - get a notification when a session needs you or finishes.
 
 Everything else stays on your computer: the terminal, pushing and pull requests outside a pipeline's Push step, memory, settings, managing profiles and file attachments.
 
-Remote also lets Switchboard on another computer, such as your laptop, show this computer's sessions in its own sidebar. That uses the same tunnel and pairing as a phone: see [Other computers](/other-computers/).
+Remote also lets Seshboard on another computer, such as your laptop, show this computer's sessions in its own sidebar. That uses the same tunnel and pairing as a phone: see [Other computers](/other-computers/).
 
 ## How it works
 
-Switchboard on your computer listens on `127.0.0.1`, port 47615 unless you change it under **Advanced** → **Port** in Settings → Remote. Only your computer can reach that address. A **tunnel** gives it an `https://` address your phone can reach from anywhere. The page on your phone is the remote app at `switchboard.struyfconsulting.com/remote/`, and it connects to your computer through the tunnel.
+Seshboard on your computer listens on `127.0.0.1`, port 47615 unless you change it under **Advanced** → **Port** in Settings → Remote. Only your computer can reach that address. A **tunnel** gives it an `https://` address your phone can reach from anywhere. The page on your phone is the remote app at `seshboard.app/remote/`, and it connects to your computer through the tunnel. A phone you paired at the old address, `switchboard.struyfconsulting.com/remote/`, keeps working until Seshboard 1.3.0: pair it again at the new address before then.
 
 Only devices you pair can get in. Each one has its own key, every connection checks that key and your computer's, and everything is encrypted from your phone to your computer. The tunnel carries your messages, but it can't read or change them.
 
@@ -50,7 +50,7 @@ With Remote off and nothing paired, the page shows three steps instead: choose a
 
 ## Choose a tunnel
 
-Under **Connection** in Settings → Remote, click **Change…** to choose how your phone reaches this computer. Switchboard starts the tunnel when you turn Remote on and stops it when you turn Remote off or quit.
+Under **Connection** in Settings → Remote, click **Change…** to choose how your phone reaches this computer. Seshboard starts the tunnel when you turn Remote on and stops it when you turn Remote off or quit.
 
 | Tunnel | Needs | Address |
 |---|---|---|
@@ -76,11 +76,11 @@ ngrok's free plan can show a warning page in front of your address, which a phon
 </Aside>
 
 <OnlyOn os="mac">
-Install `cloudflared` or `ngrok` with Homebrew (`brew install cloudflared`, `brew install ngrok`). Switchboard finds them in Homebrew's folders and in `/usr/local/bin`. Tailscale's app from the App Store or tailscale.com works as it is.
+Install `cloudflared` or `ngrok` with Homebrew (`brew install cloudflared`, `brew install ngrok`). Seshboard finds them in Homebrew's folders and in `/usr/local/bin`. Tailscale's app from the App Store or tailscale.com works as it is.
 </OnlyOn>
 
 <OnlyOn os="windows">
-Install `cloudflared` or `ngrok` with winget (`winget install Cloudflare.cloudflared`, `winget install ngrok.ngrok`). Switchboard finds them where winget puts them, in Program Files and on your PATH. Tailscale's installer from tailscale.com works as it is.
+Install `cloudflared` or `ngrok` with winget (`winget install Cloudflare.cloudflared`, `winget install ngrok.ngrok`). Seshboard finds them where winget puts them, in Program Files and on your PATH. Tailscale's installer from tailscale.com works as it is.
 </OnlyOn>
 
 ## Pair a device
@@ -89,25 +89,25 @@ Install `cloudflared` or `ngrok` with winget (`winget install Cloudflare.cloudfl
 
 1. In **Settings → Remote**, choose a tunnel and click **Turn on Remote**. Wait until the card says **Running**.
 
-2. Click **Pair a device**. Switchboard shows a QR code. It works once, for two minutes.
+2. Click **Pair a device**. Seshboard shows a QR code. It works once, for two minutes.
 
 3. Scan it with your phone's camera. Your phone opens the remote app and asks for a name for the phone.
 
-4. Tap **Pair**. Your phone shows a 6-digit code, and Switchboard asks **Pair *your phone*?** with a code too.
+4. Tap **Pair**. Your phone shows a 6-digit code, and Seshboard asks **Pair *your phone*?** with a code too.
 
 5. Check that both codes are the same, then click **Allow**.
 
 </Steps>
 
-To use Remote in the browser of another computer instead, click **Copy link** under the QR code and open the link there. It pairs the same way and works once, for two minutes, like the code. To pair Switchboard on another computer, see [Other computers](/other-computers/#set-it-up).
+To use Remote in the browser of another computer instead, click **Copy link** under the QR code and open the link there. It pairs the same way and works once, for two minutes, like the code. To pair Seshboard on another computer, see [Other computers](/other-computers/#set-it-up).
 
 Your phone shows your sessions. Add it to your home screen to open it like an app. Next time it connects by itself.
 
 <Aside type="note" title="On an iPhone or iPad">
-Switchboard Remote on your Home Screen keeps its own pairing, apart from Safari's, and has no address bar. So pair it from there: after you scan the QR code, don't tap **Pair** in Safari. Tap **Copy link**, then Share and **Add to Home Screen**. Open Switchboard Remote from your Home Screen, tap **Paste** and pair. The link works once, for two minutes: if it runs out, click **Pair a device** again, scan the new code and paste its link.
+Seshboard Remote on your Home Screen keeps its own pairing, apart from Safari's, and has no address bar. So pair it from there: after you scan the QR code, don't tap **Pair** in Safari. Tap **Copy link**, then Share and **Add to Home Screen**. Open Seshboard Remote from your Home Screen, tap **Paste** and pair. The link works once, for two minutes: if it runs out, click **Pair a device** again, scan the new code and paste its link.
 </Aside>
 
-A link from your computer also works pasted in: in Switchboard Remote without a pairing, paste it under **Link from your computer** and tap **Open link**. This works for a link from **Reconnect a paired device** too.
+A link from your computer also works pasted in: in Seshboard Remote without a pairing, paste it under **Link from your computer** and tap **Open link**. This works for a link from **Reconnect a paired device** too.
 
 <Aside type="tip" title="When the address changes">
 A Cloudflare quick tunnel, or ngrok without a domain, gets a new address each time it starts. When no paired device has used the new one yet, the card says **Address changed**. Your devices don't have to pair again: click **Reconnect a paired device** and scan that code with one of them. It holds no secret and pairs nothing. The same button is under **Advanced**.
@@ -115,7 +115,7 @@ A Cloudflare quick tunnel, or ngrok without a domain, gets a new address each ti
 
 ## Change the port
 
-Switchboard listens on port 47615. If another app uses it, the card says so and offers the next free port. To pick one yourself, open **Advanced** in Settings → Remote and change **Port** to a number from 1024 to 65535. Remote restarts on the new port. With **My own address**, point your tunnel at the new port too.
+Seshboard listens on port 47615. If another app uses it, the card says so and offers the next free port. To pick one yourself, open **Advanced** in Settings → Remote and change **Port** to a number from 1024 to 65535. Remote restarts on the new port. With **My own address**, point your tunnel at the new port too.
 
 ## Paired devices, Rename and Revoke
 
@@ -127,7 +127,7 @@ Switchboard listens on port 47615. If another app uses it, the card says so and 
 
 While Remote is on, **<Os mac="Connected to this Mac" windows="Connected to this PC" />** at the bottom of the sidebar lists the phones, browsers and computers connected right now, with since when. It sits right above [**Computers**](/other-computers/#filter-by-computer): one is who reaches into this computer, the other is where you reach out. Click the header to fold it, and the gear to open Settings → Remote.
 
-- **Click a device** to see its details: since when it is connected, its last action, such as **Sent a prompt in Needs review sort** or **Answered Allow Bash in tideline**, when it was paired, and the address it came through. Click the session's name to open it. The last action is kept until Switchboard quits; before that, it says **No actions yet**.
+- **Click a device** to see its details: since when it is connected, its last action, such as **Sent a prompt in Needs review sort** or **Answered Allow Bash in tideline**, when it was paired, and the address it came through. Click the session's name to open it. The last action is kept until Seshboard quits; before that, it says **No actions yet**.
 - **Revoke** shows when you point at a device or move to it with <Kbd keys="tab" />. It asks first, then disconnects the device at once. It has to pair again to come back. <Kbd keys="escape" /> cancels.
 - **A new connection** shows a toast, such as **Sam's iPhone connected**, with **Revoke** in case it wasn't you. It shows once a day per device, and not right after you paired it.
 - **Nobody connected**: a quiet line, **Remote on · nobody connected**, says Remote is on. To hide it, turn off **Show in the sidebar when nobody is connected** in Settings → Remote.
@@ -154,7 +154,7 @@ What Claude asks shows next, as cards with a pink frame, the oldest first:
 
 Tap anywhere else on a card to open its session. If someone answered first, on your computer or another phone, the phone says **Already answered**.
 
-Below the cards are your sessions by group: **Working**, **Today**, **Yesterday** and **Earlier**. Sessions you haven't read have a bold title. With more than one Claude profile, a dot in the profile's colour comes before the project's name, and the session's left edge has that colour too, as in Switchboard's sidebar. **New session** is at the bottom of the screen.
+Below the cards are your sessions by group: **Working**, **Today**, **Yesterday** and **Earlier**. Sessions you haven't read have a bold title. With more than one Claude profile, a dot in the profile's colour comes before the project's name, and the session's left edge has that colour too, as in Seshboard's sidebar. **New session** is at the bottom of the screen.
 
 Pull the list down from the top to refresh it: it says **Pull to refresh**, then **Release to refresh**, and shows a spinner until the new list is in.
 
@@ -165,7 +165,7 @@ Pull the list down from the top to refresh it: it says **Pull to refresh**, then
 
 A short swipe shows the button: tap it, or tap the session to put it back. A long swipe, past most of the row, does it at once. Either way a message says what happened, with **Undo**. A session that needs you doesn't swipe, so you can't dismiss a prompt by accident: open it to answer.
 
-A long press on a session has the same **Mark as read** and **Archive**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Switchboard on your computer.
+A long press on a session has the same **Mark as read** and **Archive**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Seshboard on your computer.
 
 ## Switch sessions
 
@@ -190,13 +190,13 @@ The line under your computer's name has a green dot and **Connected** while your
 
 ## More than one computer
 
-Your phone can be paired with several computers, such as a laptop and a desktop. Each one runs Switchboard with Remote on, and you pair the phone with each of them.
+Your phone can be paired with several computers, such as a laptop and a desktop. Each one runs Seshboard with Remote on, and you pair the phone with each of them.
 
 1. In the computer's menu (tap its name at the top), tap **Pair another computer…**.
 2. On the other computer, open Settings → Remote, turn on **Allow access from my phone** and click **Pair a device**.
-3. Scan its QR code with your phone's camera, or click **Copy link** under the code and paste the link on your phone. On an iPhone with Switchboard Remote on the Home Screen, tap **Copy link** on the page that the camera opens, and paste it in the app.
+3. Scan its QR code with your phone's camera, or click **Copy link** under the code and paste the link on your phone. On an iPhone with Seshboard Remote on the Home Screen, tap **Copy link** on the page that the camera opens, and paste it in the app.
 
-The app stays connected to all of them, and shows the sessions of every computer in one list, as Switchboard shows another computer's sessions in its sidebar. Each session says which computer it runs on, such as **mystic**, before its project. So do the cards of what Claude asks, a session's header, Home in a wide window, and the search (<Kbd keys="mod+k" />). **Needs you**, **Working** and the other groups have the sessions of every computer, newest first.
+The app stays connected to all of them, and shows the sessions of every computer in one list, as Seshboard shows another computer's sessions in its sidebar. Each session says which computer it runs on, such as **mystic**, before its project. So do the cards of what Claude asks, a session's header, Home in a wide window, and the search (<Kbd keys="mod+k" />). **Needs you**, **Working** and the other groups have the sessions of every computer, newest first.
 
 The title at the top says **Sessions**. Under it, a chip for each computer has its status dot and, in pink, how many of its sessions need you. Tap a chip for that computer's menu: how it's connected, **Disconnect** or **Connect**, and **Forget this computer…**. **Pair another computer…** is in the **⋯** menu. In the drawer, and in a wide window, the chips are under **Sessions**.
 
@@ -216,23 +216,23 @@ While you type, the keyboard never covers the message box, and the question fold
 
 While Claude works, the end of the conversation shows three dots, how long the turn has taken and what Claude is doing, such as **Thinking** or **Running the tests**. A working session's dot pulses, in the list and in the header.
 
-When Claude's turn ended but a background command or agent it started still runs, the session isn't done yet: Claude carries on when that finishes. The header says **Running in the background**, the end of the conversation says what still runs in green, such as **1 background command running**, and the catch-up waits until it's done. A green pill above the message box, such as **1 background command**, lists each task with how long it has run. Tap **Stop** next to one to stop it; Claude is told it was stopped. Seeing and stopping the tasks needs this version of Switchboard on your computer.
+When Claude's turn ended but a background command or agent it started still runs, the session isn't done yet: Claude carries on when that finishes. The header says **Running in the background**, the end of the conversation says what still runs in green, such as **1 background command running**, and the catch-up waits until it's done. A green pill above the message box, such as **1 background command**, lists each task with how long it has run. Tap **Stop** next to one to stop it; Claude is told it was stopped. Seeing and stopping the tasks needs this version of Seshboard on your computer.
 
 Claude's answers show headings, lists, links, code and tables, also while Claude is still writing them. Code blocks have **Copy**, which stays at the top of the screen while you scroll through a long block. A run of tool calls is one line, such as **6 steps · edited 3 files, ran 2 commands**: tap it to see each step. Steps are named as in the app: a command by what it does, such as **Merge origin/dev**, not its raw text. The run Claude is working on stays open.
 
-A finished turn ends with when it ended, how long it took and its tokens, as on your computer: *8:19 AM · 31s · 18.4k tokens*. Your messages have **Copy**. A finished reply has **Copy** and **Read**, which opens the turn's replies in full, one after another, with how long they take to read. Tokens need this version of Switchboard on your computer; an older one shows the time and duration only.
+A finished turn ends with when it ended, how long it took and its tokens, as on your computer: *8:19 AM · 31s · 18.4k tokens*. Your messages have **Copy**. A finished reply has **Copy** and **Read**, which opens the turn's replies in full, one after another, with how long they take to read. Tokens need this version of Seshboard on your computer; an older one shows the time and duration only.
 
 When a session finished, and nothing it started still runs in the background, it starts with its catch-up, as on your computer: how it ended, how long it takes to review, what Claude did, whether the tests passed, and how much changed. The conversation is folded under it: tap **Show the conversation** to read it.
 
-In a session that runs in Switchboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
+In a session that runs in Seshboard, the chips under the message box show its model, effort and permission mode. Tap one to change it. The effort chip only shows for a model that takes an effort; **Default** is the model's own. From a phone you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**.
 
 While Claude works, **Stop** is next to the send button. A message you send waits under **Up next** above the message box, with **Send now** to stop Claude and send it at once, and **×** to remove it. It shows what you queued for the session on your computer too. When you stop Claude from your phone, Up next carries on: its first message goes as soon as the turn has stopped.
 
 To send a message another way while Claude works, tap the arrow next to the send button: **Queue** holds it in Up next until Claude finishes, **Steer** gives it to Claude now, and Claude reads it at its next step, and **Send now** stops Claude first. With a keyboard, <Kbd keys="alt+enter" /> steers and <Kbd keys="mod+shift+enter" /> sends now. A message you type and don't send stays in that session's message box, also when you open another session or reload the page, until you send it.
 
-When a usage limit stopped the session, a notice above the message box says which limit and when it resets, with **Resume now** and **Resume when it resets**. Messages held in Up next wait for the reset too. This needs this version of Switchboard on your computer.
+When a usage limit stopped the session, a notice above the message box says which limit and when it resets, with **Resume now** and **Resume when it resets**. Messages held in Up next wait for the reset too. This needs this version of Seshboard on your computer.
 
-To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Switchboard on your computer. Queue for later doesn't take attachments.
+To send images or files with a message, tap the paperclip button next to the message box: your phone offers its camera and its photos, and a computer offers its files. In a browser on a computer, you can also paste a screenshot or drop files on the message box. Each shows above the box, with a button to remove it. A message takes up to four images and four files, and about 2.7 MB in all. Your phone makes big photos smaller before it sends them. New session takes them too, and starts the session with them. Sending files, and images with a new session, needs this version of Seshboard on your computer. Queue for later doesn't take attachments.
 
 ## Pipelines
 
@@ -244,7 +244,7 @@ To send images or files with a message, tap the paperclip button next to the mes
 - **Push**: shows the commit message and the files first, with **Commit, push and open PR**, **Edit message** and **Stop here**.
 - **Archive**: on a run's parent, **Archive with its 3 steps** archives the parent and its sub-sessions together.
 
-A notification says when a run waits for you, stops or is done. Pipelines are set up in Switchboard on your computer, in Settings › Pipelines.
+A notification says when a run waits for you, stops or is done. Pipelines are set up in Seshboard on your computer, in Settings › Pipelines.
 
 ## Ask about this session
 
@@ -263,19 +263,19 @@ The file button in a session's header, and **Changes** on its catch-up, open wha
 
 Pick a project from the row of tiles (swipe for more), then type what Claude should do. With more than one computer, **Run on** above the tiles picks the computer it starts on (see [More than one computer](#more-than-one-computer)). On a phone, **All projects** lists every project, with a filter when you have many. Under the box, chips show the project's defaults: the model, the effort, the permission mode, and **This folder** or **New worktree**. Tap one to change it for this session only. On a phone, its choices open from the bottom of the screen.
 
-With **This folder**, the branch chip shows the branch checked out in the project's folder. Pick another local branch and Switchboard checks it out before the session starts. Git keeps your uncommitted changes, or refuses when they conflict; then the session doesn't start and the app says why. A branch checked out in another worktree isn't listed.
+With **This folder**, the branch chip shows the branch checked out in the project's folder. Pick another local branch and Seshboard checks it out before the session starts. Git keeps your uncommitted changes, or refuses when they conflict; then the session doesn't start and the app says why. A branch checked out in another worktree isn't listed.
 
 With [Auto model](/new-session/auto-model/) on in Settings › Conversation on your computer, the model list starts with **Auto**: Haiku reads your prompt and picks the model the session starts on, from the models you allowed. In the session, the model chip then says what it picked, such as **Auto · Sonnet**, until you pick another model. With Auto off, it isn't offered, and a project whose default is Auto starts on your default model.
 
 With more than one Claude profile, the first chip is the profile the session runs with: the project's own, else your default profile. Pick another for this session only. The other chips then show that profile's defaults, where the project sets none.
 
-While a session works in that project, **Queue for later** puts the prompt in Switchboard's queue instead. Start it from the queue on your computer.
+While a session works in that project, **Queue for later** puts the prompt in Seshboard's queue instead. Start it from the queue on your computer.
 
 On a phone, while you type, the tiles and the chips make room: only the project's name, the box and the buttons stay, with **Start session** right above the keyboard. Tap the keyboard button next to it to hide the keyboard and see them again.
 
 ## On a computer or a tablet
 
-In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Switchboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. **Home**, the first row under **Sessions**, closes the open session and shows Home on the right.
+In a wide window, such as the browser of another computer or an iPad, your sessions stay on the left, as in Seshboard. A phone held sideways keeps the phone's layout. Prompts are rows in **Needs you**, with what they ask ("Allow Bash", "a question"). **New session** and the **⋯** menu are at the bottom of the list. **Home**, the first row under **Sessions**, closes the open session and shows Home on the right.
 
 On a narrower screen, such as an iPad held upright, the sessions can fold away to leave the session the whole width: tap the button at the top left of a session, or press <Kbd keys="mod+b" />. Folded, that button opens them as a drawer, as on a phone. Its **Home** row shows Home on the right. The button next to the computer's name in the drawer, or <Kbd keys="mod+b" /> again, keeps them open on the left. Your choice is kept in this browser.
 
@@ -318,34 +318,34 @@ In a window at least 1280 pixels wide, **Changes** opens on the right instead of
 
 ### The browser tab
 
-The tab's title starts with the number of sessions that need you, such as **(2) Switchboard Remote**, and its icon gets a pink dot. In a session the title is the session's, so you can find the tab among others.
+The tab's title starts with the number of sessions that need you, such as **(2) Seshboard Remote**, and its icon gets a pink dot. In a session the title is the session's, so you can find the tab among others.
 
 The tab's icon is your computer's [app icon](/settings/#app-icon), with **Use it on your phone too** on there. It changes as soon as you pick another one.
 
 ## Notifications
 
-Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on** (in a wide window, a strip above the sessions does). Later, open **Notifications** in the **⋯** menu and turn **Needs you** and **Finished** on or off. Nothing comes while Switchboard Remote is open in front of you.
+Your phone can tell you when a session needs you or finishes, also when the page is closed. After you pair, a card offers **Turn on** (in a wide window, a strip above the sessions does). Later, open **Notifications** in the **⋯** menu and turn **Needs you** and **Finished** on or off. Nothing comes while Seshboard Remote is open in front of you.
 
 <Aside type="note" title="On an iPhone or iPad">
-Notifications only work when Switchboard Remote is on your Home Screen. In Safari, tap Share, then **Add to Home Screen**. Open it from there and turn notifications on. iPhones don't show buttons on notifications: tap one to open the session.
+Notifications only work when Seshboard Remote is on your Home Screen. In Safari, tap Share, then **Add to Home Screen**. Open it from there and turn notifications on. iPhones don't show buttons on notifications: tap one to open the session.
 </Aside>
 
 A notification goes from your computer to your browser's push service (Apple's, Google's, Mozilla's or Microsoft's), and from there to your phone. It is encrypted for your phone, so the push service can't read it. Your computer needs to reach those services over HTTPS: behind a strict proxy, notifications may not arrive.
 
-With more than one computer, every computer sends you notifications, and each one starts with the computer's name, such as *mystic · tideline · Allow Bash: npm publish*. None of them sends any while the app is open in front of you, since the sessions of every computer are on screen. Tap a notification to open its session on the right computer. A computer with a version of Switchboard from before this one can't send notifications next to other computers: **Notifications** names it, and updating Switchboard there fixes it.
+With more than one computer, every computer sends you notifications, and each one starts with the computer's name, such as *mystic · tideline · Allow Bash: npm publish*. None of them sends any while the app is open in front of you, since the sessions of every computer are on screen. Tap a notification to open its session on the right computer. A computer with a version of Seshboard from before this one can't send notifications next to other computers: **Notifications** names it, and updating Seshboard there fixes it.
 
-Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Switchboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
+Tap a notification to open its session. In Chrome, Edge and Firefox on a computer, a notification about a command or an edit also has **Deny** and **Allow**. They open Seshboard Remote, which answers once it's connected, and says **Already answered** if you, or someone else, answered first.
 
 ## Theme
 
-Switchboard Remote can use your computer's theme, so your phone looks like Switchboard there. It does this by default, with the theme you picked in [Settings → Theme](/themes/built-in/). When you pick another theme on your computer, or edit the one you use, your phone changes too. Light or dark follows your phone, not your computer.
+Seshboard Remote can use your computer's theme, so your phone looks like Seshboard there. It does this by default, with the theme you picked in [Settings → Theme](/themes/built-in/). When you pick another theme on your computer, or edit the one you use, your phone changes too. Light or dark follows your phone, not your computer.
 
 Open **Theme** in the **⋯** menu to choose:
 
 - Your computer, with the name of its theme, such as **GitHub**.
 - **Demo Time**, the built-in look, whatever your computer uses.
 
-With more than one computer, each one is in the list, and your phone uses the theme of one of them for all your sessions. The colours don't change when you open a session on another computer. At first it is the theme of the first computer in the list. Your phone keeps the theme, so it stays when that computer is offline. A computer with a version of Switchboard from before this one says **Update Switchboard there to use its theme**.
+With more than one computer, each one is in the list, and your phone uses the theme of one of them for all your sessions. The colours don't change when you open a session on another computer. At first it is the theme of the first computer in the list. Your phone keeps the theme, so it stays when that computer is offline. A computer with a version of Seshboard from before this one says **Update Seshboard there to use its theme**.
 
 ## When your phone can't connect
 
@@ -353,7 +353,7 @@ A short line under the header says your phone can't reach your computer and is r
 
 - **The tunnel address changed**: a Cloudflare quick tunnel got a new address. Click **Reconnect a paired device** in Settings → Remote and scan that code, or use a tunnel whose address stays the same.
 - **Nothing answers**: your computer is asleep or offline. Wake it, or check its network.
-- **The address answers, but Switchboard doesn't**: check that Switchboard is open, and that Settings → Remote shows the tunnel as running.
+- **The address answers, but Seshboard doesn't**: check that Seshboard is open, and that Settings → Remote shows the tunnel as running.
 
 You chose **Disconnect**? Then nothing connects until you tap **Connect** (see [Your computer's menu](#your-computers-menu)).
 
@@ -361,20 +361,20 @@ You chose **Disconnect**? Then nothing connects until you tap **Connect** (see [
 
 ## Updates
 
-The remote app comes from Switchboard's website, so it updates without the App Store. On an iPhone, the app on your Home Screen keeps running the version it started with until iOS closes it. So it checks for a new version when you open it, each time you come back to it, and every 30 minutes while it's open.
+The remote app comes from Seshboard's website, so it updates without the App Store. On an iPhone, the app on your Home Screen keeps running the version it started with until iOS closes it. So it checks for a new version when you open it, each time you come back to it, and every 30 minutes while it's open.
 
 When there is one, a blue bar says **A new version is ready.** **Reload** loads it and brings you back to the screen you were on. **Later** hides the bar for an hour. Meanwhile, pulling your sessions down says **Release to update** and loads the new version too.
 
 ## Good to know
 
-- Your computer has to be on and Switchboard running. Sleep stops Remote until the computer wakes up: turn on <Os mac="Keep this Mac awake" windows="Keep this PC awake" /> in [Settings › General](/settings/#sleep) to keep it from sleeping.
+- Your computer has to be on and Seshboard running. Sleep stops Remote until the computer wakes up: turn on <Os mac="Keep this Mac awake" windows="Keep this PC awake" /> in [Settings › General](/settings/#sleep) to keep it from sleeping.
 - The phone only lists the sessions your sidebar lists, outside Archived, and can only open those.
 - Messages you send from your phone show **From *your phone*** under them on the phone.
 - Scrolled up in a conversation, **Jump to latest** takes you back down. It says **New messages** when something arrived below.
 - The chip and the offline help use your computer's name, which you set in <Os mac="System Settings → General → About → Name" windows="Settings → System → About → Rename this PC" />.
 - Pairing is closed after five wrong attempts, until you click **Pair a device** again.
 - Your phone keeps its key in the browser, for this site only. Someone with your unlocked phone can use Remote until you revoke it.
-- When a computer sends sessions this version can't read, for example because it runs an older or newer Switchboard, the app leaves them out and a banner says so. Updating Switchboard on both fixes it.
+- When a computer sends sessions this version can't read, for example because it runs an older or newer Seshboard, the app leaves them out and a banner says so. Updating Seshboard on both fixes it.
 
 ## Related
 

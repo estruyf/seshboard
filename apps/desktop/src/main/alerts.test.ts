@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, type SoundPrefs } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, DEFAULT_SOUNDS, type SoundPrefs } from '@seshboard/protocol/bridge';
 import { alertFor, louder, soundEventOf, type AlertPrefs } from './alerts.ts';
 
 const KINDS = ['needs-you', 'finished', 'failed', 'action-done', 'resumed', 'checks-failed', 'checks-passed'] as const;

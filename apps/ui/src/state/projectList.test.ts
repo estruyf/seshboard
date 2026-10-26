@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { baseOrder, moveRoot, projectByName } from './projectList.ts';
 
 const project = (root: string, name: string, added: boolean, order: number | null = null): ProjectInfo => ({

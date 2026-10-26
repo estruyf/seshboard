@@ -11,7 +11,7 @@ import { Outro } from './scenes/Outro';
 import { Title } from './scenes/Title';
 import { T, XFADE } from './theme';
 
-// About fifty seconds: what Switchboard is, then the three things the user asked to lead with (several Claude
+// About fifty seconds: what Seshboard is, then the three things the user asked to lead with (several Claude
 // accounts, projects, the VS Code companion), then the rest at a glance.
 //
 // Every recorded beat is sized from its recording (public/clips.json): hold on the first frame while the caption

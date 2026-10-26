@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage } from '@seshboard/protocol/remote-client';
 import { formatTurnDuration, formatTurnTime, formatTurnTokens, readingOf, turnEnds, turnLine } from './turns.ts';
 
 const T = Date.parse('2026-10-16T14:30:00Z');

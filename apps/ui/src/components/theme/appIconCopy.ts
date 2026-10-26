@@ -10,7 +10,7 @@ export const appIconDetail = (platform = currentPlatform()) =>
 /** Where the chosen icon doesn't show: what the system takes from the app bundle or the shortcut. */
 export const appIconNote = (platform = currentPlatform()) =>
   platform === 'darwin'
-    ? 'macOS shows it while Switchboard runs. In Finder and Launchpad, the original icon stays.'
+    ? 'macOS shows it while Seshboard runs. In Finder and Launchpad, the original icon stays.'
     : platform === 'win32'
       ? 'Pinned shortcuts and the Start menu keep the original icon.'
       : 'The app menu keeps the original icon.';

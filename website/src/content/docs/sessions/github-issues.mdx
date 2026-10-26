@@ -12,7 +12,7 @@ import Related from '../../../components/Related.astro';
 
 A lot of work starts from an issue ("fix #32") or a pull request ("address the review on #151"). Type <Kbd shortcut="composer.github" /> in the message box to attach one, or start a new session from one with the worktree and the prompt already filled in. You don't copy the issue's text over by hand.
 
-Switchboard only reads from GitHub. It never comments, labels, closes or merges anything.
+Seshboard only reads from GitHub. It never comments, labels, closes or merges anything.
 
 <Screenshot name="github-list" alt="A session's message box with can you look at # typed. Above it the # list shows two groups: Issues, with #57 Checkout button stays disabled after a failed payment, opened 2d ago by mara-k with its bug and checkout labels, and #52; Pull requests, with #61 Keep the Pay button active after a declined card on the branch fix/pay-after-decline with 2 unresolved comments, and #59 from a fork. The header says open · acme/acme-store, and the footer lists the keys" eager />
 
@@ -65,17 +65,17 @@ Press <Kbd shortcut="composer.github-new-session" /> on an issue or pull request
 **From a pull request**, the prompt is **Work on #151:** and its title, and the Where menu asks where to work on it:
 
 - **New worktree from the pull request:** a worktree on the pull request's branch, at its latest commit. Pushing from it updates the pull request.
-- **Current checkout:** Switchboard runs `gh pr checkout` in the project folder before the session starts. This is only offered when the folder has no changes; otherwise it says how many files changed, to commit or stash first. If the checkout fails, New session says why and nothing starts.
+- **Current checkout:** Seshboard runs `gh pr checkout` in the project folder before the session starts. This is only offered when the folder has no changes; otherwise it says how many files changed, to commit or stash first. If the checkout fails, New session says why and nothing starts.
 
 **Nothing runs until you press Start.** The line under the message box says so: the issue goes to Claude as context to read, not as instructions.
 
 ### Pull requests from a fork
 
-When Switchboard can't push a pull request back, the Where menu says so: **#149 is from a fork. Claude can change it here, but Switchboard can't push it back. Create pull request is off for it.** That is a fork you can't push to, and any fork's pull request in a new worktree. In that session, **Push** and **Create pull request** are off, with **From a fork you can't push to.**
+When Seshboard can't push a pull request back, the Where menu says so: **#149 is from a fork. Claude can change it here, but Seshboard can't push it back. Create pull request is off for it.** That is a fork you can't push to, and any fork's pull request in a new worktree. In that session, **Push** and **Create pull request** are off, with **From a fork you can't push to.**
 
 ## From a link
 
-A `switchboard://new-session` link with `issue` or `pr` fills in New session the same way, with a banner on top: **Opened from a link with issue #32. Check the prompt, then start.** These links never start a session on their own, even with `autostart=1`. See [Links](/links/#from-an-issue-or-pull-request).
+A `seshboard://new-session` link with `issue` or `pr` fills in New session the same way, with a banner on top: **Opened from a link with issue #32. Check the prompt, then start.** These links never start a session on their own, even with `autostart=1`. See [Links](/links/#from-an-issue-or-pull-request).
 
 ## The GitHub CLI
 

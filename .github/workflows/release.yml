@@ -1,4 +1,4 @@
-# Builds Switchboard for a GitHub release, for macOS, Windows and Linux, and publishes them all at once.
+# Builds Seshboard for a GitHub release, for macOS, Windows and Linux, and publishes them all at once.
 #
 # Runs when a release is published on GitHub (for a tag like v0.2.0):
 # - mac: builds the app on an Apple Silicon runner, signs and notarises it, with the .zip and the update feed
@@ -95,17 +95,17 @@ jobs:
             exit 1
           fi
           # The app's version (About panel, .dmg name) is the release's.
-          npm pkg set version="$VERSION" -w @switchboard/desktop
+          npm pkg set version="$VERSION" -w @seshboard/desktop
           if [ "$FEED" == "beta" ]; then
             # electron-builder names a GitHub feed latest-mac.yml unless told the channel.
-            npm run dist -w @switchboard/desktop -- -c.publish.channel=beta
+            npm run dist -w @seshboard/desktop -- -c.publish.channel=beta
           else
             npm run dist
           fi
 
       - name: Check the signature and notarisation
         run: |
-          app=apps/desktop/dist/mac-arm64/Switchboard.app
+          app=apps/desktop/dist/mac-arm64/Seshboard.app
           codesign --verify --deep --strict --verbose=2 "$app"
           xcrun stapler validate "$app"
           spctl -a -vv "$app" 2>&1 | tee spctl.txt
@@ -125,7 +125,7 @@ jobs:
           fi
           if [ "$FEED" != "none" ]; then
             grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
-            ls Switchboard-*-mac.zip >/dev/null
+            ls Seshboard-*-mac.zip >/dev/null
           fi
 
       - name: Keep the build for the publish job
@@ -216,10 +216,10 @@ jobs:
             exit 1
           fi
           # The app's version (About, the installer's name) is the release's.
-          npm pkg set version="$VERSION" -w @switchboard/desktop
+          npm pkg set version="$VERSION" -w @seshboard/desktop
           if [ "$FEED" == "beta" ]; then
             # electron-builder names a GitHub feed latest.yml unless told the channel.
-            npm run dist -w @switchboard/desktop -- -c.publish.channel=beta
+            npm run dist -w @seshboard/desktop -- -c.publish.channel=beta
           else
             npm run dist
           fi
@@ -242,17 +242,17 @@ jobs:
           fi
           if [ "$FEED" != "none" ]; then
             grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
-            grep -q "^path: Switchboard-$VERSION-setup.exe\$" "$expected" || { echo "::error::$expected doesn't point at Switchboard-$VERSION-setup.exe."; cat "$expected"; exit 1; }
+            grep -q "^path: Seshboard-$VERSION-setup.exe\$" "$expected" || { echo "::error::$expected doesn't point at Seshboard-$VERSION-setup.exe."; cat "$expected"; exit 1; }
           fi
-          ls "Switchboard-$VERSION-setup.exe" >/dev/null
+          ls "Seshboard-$VERSION-setup.exe" >/dev/null
 
       - name: Keep the build for the publish job
         uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
-            apps/desktop/dist/Switchboard-*-setup.exe
-            apps/desktop/dist/Switchboard-*-setup.exe.blockmap
+            apps/desktop/dist/Seshboard-*-setup.exe
+            apps/desktop/dist/Seshboard-*-setup.exe.blockmap
             apps/desktop/dist/latest.yml
             apps/desktop/dist/beta.yml
           if-no-files-found: error
@@ -309,7 +309,7 @@ jobs:
       # The engine's tests make real git repositories and commits.
       - name: Git identity for the tests
         run: |
-          git config --global user.name "Switchboard CI"
+          git config --global user.name "Seshboard CI"
           git config --global user.email "ci@switchboard.invalid"
 
       - name: Typecheck and unit tests
@@ -318,10 +318,10 @@ jobs:
       - name: Build
         run: |
           # The app's version (About, the packages' names) is the release's.
-          npm pkg set version="$VERSION" -w @switchboard/desktop
+          npm pkg set version="$VERSION" -w @seshboard/desktop
           if [ "$FEED" == "beta" ]; then
             # electron-builder names a GitHub feed latest-linux.yml unless told the channel.
-            npm run dist -w @switchboard/desktop -- -c.publish.channel=beta
+            npm run dist -w @seshboard/desktop -- -c.publish.channel=beta
           else
             npm run dist
           fi
@@ -334,17 +334,17 @@ jobs:
           ls -la
           # Each named the way its distributions do (x86_64.AppImage, amd64.deb, x86_64.rpm; arm64, aarch64).
           for ext in AppImage deb rpm; do
-            [ "$(ls Switchboard-"$VERSION"-*."$ext" 2>/dev/null | wc -l)" == "1" ] || { echo "::error::Expected one Switchboard-$VERSION-*.$ext."; exit 1; }
+            [ "$(ls Seshboard-"$VERSION"-*."$ext" 2>/dev/null | wc -l)" == "1" ] || { echo "::error::Expected one Seshboard-$VERSION-*.$ext."; exit 1; }
           done
-          # The .deb is called switchboard in apt, and holds the app where its desktop entry starts it.
-          deb=$(ls Switchboard-"$VERSION"-*.deb)
+          # The .deb is still called switchboard in apt (its name from before the rename), and holds the app where its desktop entry starts it.
+          deb=$(ls Seshboard-"$VERSION"-*.deb)
           dpkg-deb -f "$deb" Package | grep -qx switchboard
-          dpkg-deb -c "$deb" | grep -q "/opt/Switchboard/switchboard$"
+          dpkg-deb -c "$deb" | grep -q "/opt/Seshboard/seshboard$"
           expected="$FEED-linux$SUFFIX.yml"
           if [ "$FEED" != "none" ]; then
             grep -q "^version: $VERSION\$" "$expected" || { echo "::error::$expected is not for $VERSION."; cat "$expected"; exit 1; }
             for ext in AppImage deb rpm; do
-              grep -q "url: Switchboard-$VERSION-.*\.$ext\$" "$expected" || { echo "::error::$expected doesn't list the .$ext."; cat "$expected"; exit 1; }
+              grep -q "url: Seshboard-$VERSION-.*\.$ext\$" "$expected" || { echo "::error::$expected doesn't list the .$ext."; cat "$expected"; exit 1; }
             done
           fi
 
@@ -394,7 +394,7 @@ jobs:
           cd apps/desktop/dist
           ls -la
           # Every platform's files first, then the feeds, so a feed never points at a file that isn't there yet.
-          files=(*.dmg *.zip *.zip.blockmap "Switchboard-$VERSION-setup.exe" "Switchboard-$VERSION-setup.exe.blockmap" *.AppImage *.deb *.rpm)
+          files=(*.dmg *.zip *.zip.blockmap "Seshboard-$VERSION-setup.exe" "Seshboard-$VERSION-setup.exe.blockmap" *.AppImage *.deb *.rpm)
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           if [ "$FEED" != "none" ]; then
             gh release upload "$TAG" "$FEED-mac.yml" "$FEED.yml" "$FEED-linux.yml" "$FEED-linux-arm64.yml" --clobber --repo "$GITHUB_REPOSITORY"
@@ -440,7 +440,7 @@ jobs:
             echo "::warning::CHANGELOG.md has no section for $VERSION; the release notes stay empty."
           fi
 
-      # What makes `brew install --cask estruyf/tap/switchboard` resolve. Only the Stable feed belongs in
+      # What makes `brew install --cask estruyf/tap/seshboard` resolve. Only the Stable feed belongs in
       # the tap: a cask carries one version, and a pre-release would reach everyone running
       # `brew upgrade --greedy` while releases/latest still points elsewhere. Last, so a tap failure
       # never leaves a release without its notes.

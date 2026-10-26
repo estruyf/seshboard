@@ -1,4 +1,4 @@
-import { isSameOrInside } from '@switchboard/protocol/client';
+import { isSameOrInside } from '@seshboard/protocol/client';
 import { openChanges } from './changesPanelStore.ts';
 import { useMemoryView } from './memoryStore.ts';
 import { useSessions } from './sessionsStore.ts';

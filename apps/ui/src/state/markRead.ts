@@ -1,4 +1,4 @@
-import type { MarkReadAfter } from '@switchboard/protocol/bridge';
+import type { MarkReadAfter } from '@seshboard/protocol/bridge';
 
 /** Activity that arrives while you look at a session is read almost at once: you watched it happen. */
 export const SEEN_WHILE_LOOKING_MS = 600;

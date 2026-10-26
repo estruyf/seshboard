@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { PROJECT_NAME_MAX } from '@switchboard/protocol/client';
+import { PROJECT_NAME_MAX } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -7,7 +7,7 @@ import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 
 /**
- * Gives a project a name of your own in Switchboard. The folder keeps its name on disk; an empty
+ * Gives a project a name of your own in Seshboard. The folder keeps its name on disk; an empty
  * name, or "Use folder name", goes back to it.
  */
 export function RenameProjectDialog({ root, onClose }: { root: string; onClose(): void }) {
@@ -50,7 +50,7 @@ export function RenameProjectDialog({ root, onClose }: { root: string; onClose()
     <Dialog
       width="sm"
       title="Rename project"
-      subtitle={<>Only Switchboard uses this name. The folder stays {folder}.</>}
+      subtitle={<>Only Seshboard uses this name. The folder stays {folder}.</>}
       onClose={onClose}
       onSubmit={save}
       initialFocus={inputRef}

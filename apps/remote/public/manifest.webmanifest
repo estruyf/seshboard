@@ -1,7 +1,7 @@
 {
-  "name": "Switchboard Remote",
-  "short_name": "Switchboard",
-  "description": "Follow and steer your Claude Code sessions in Switchboard from your phone.",
+  "name": "Seshboard Remote",
+  "short_name": "Seshboard",
+  "description": "Follow and steer your Claude Code sessions in Seshboard from your phone.",
   "start_url": "/remote/",
   "scope": "/remote/",
   "display": "standalone",

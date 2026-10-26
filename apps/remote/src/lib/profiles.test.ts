@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteProfileUsage, UsageLimit } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage, UsageLimit } from '@seshboard/protocol/remote-client';
 import { byClosest, cardRows, highestPercent, windowPercent } from './profiles.ts';
 
 const limit = (kind: string, percent: number): UsageLimit => ({ kind, group: kind === 'session' ? 'session' : 'weekly', percent, resetsAt: null, scope: null, severity: 'normal', isActive: true });

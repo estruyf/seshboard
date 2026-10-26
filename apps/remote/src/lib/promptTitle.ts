@@ -1,4 +1,4 @@
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage } from '@seshboard/protocol/remote-client';
 
 /**
  * What a session was asked, for the catch-up's "You asked": the prompt's title, and the whole prompt behind "Show the

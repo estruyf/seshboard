@@ -54,7 +54,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Settings → About: the Claude Code that Switchboard runs, whether a newer one is out, and updating it. */
+/** Settings → About: the Claude Code that Seshboard runs, whether a newer one is out, and updating it. */
 export function ClaudeCodeUpdates({ now }: { now: number }) {
   const { state, refused, check, update, dismiss, setEnabled, showInstall } = useClaudeUpdate();
   if (!state) return null;
@@ -72,7 +72,7 @@ export function ClaudeCodeUpdates({ now }: { now: number }) {
           <p role="status" className={`mt-0.5 text-ui ${failed ? 'text-error' : 'text-muted'}`} data-claude-update-text>
             {claudeUpdateStatusText(state)}
           </p>
-          {state.quiet && state.status === 'available' && <p className="mt-0.5 text-[11.5px] text-muted">Claude Code’s own auto-updater is turned off, so Switchboard doesn’t show a notice for it.</p>}
+          {state.quiet && state.status === 'available' && <p className="mt-0.5 text-[11.5px] text-muted">Claude Code’s own auto-updater is turned off, so Seshboard doesn’t show a notice for it.</p>}
           {state.status !== 'missing' && <p className="mt-0.5 text-[11.5px] text-muted">{lastChecked(state.checkedAt, now)}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
@@ -129,7 +129,7 @@ export function ClaudeCodeUpdates({ now }: { now: number }) {
 
       <Toggle
         label="Check for Claude Code updates automatically"
-        detail="Shortly after Switchboard opens, then every few hours. Nothing is installed until you choose Update."
+        detail="Shortly after Seshboard opens, then every few hours. Nothing is installed until you choose Update."
         checked={state.enabled}
         attr="data-claude-update-auto"
         onChange={setEnabled}

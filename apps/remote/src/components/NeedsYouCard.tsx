@@ -1,6 +1,6 @@
 import { useState, type MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { PermissionDecision, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { PermissionDecision, RemoteSession } from '@seshboard/protocol/remote-client';
 import type { ListedPrompt } from '../lib/everywhere.ts';
 import { age } from '../lib/groups.ts';
 import { DECLINED, promptKind, promptLine, promptSubject, promptTag } from '../lib/prompts.ts';

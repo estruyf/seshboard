@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONTEXT_WARNING, type SessionHostInfo } from '@switchboard/protocol/client';
+import { DEFAULT_CONTEXT_WARNING, type SessionHostInfo } from '@seshboard/protocol/client';
 import { CacheReminder, REMIND_BEFORE_MS, reminderDue, type CacheReminderNotice, type CacheReminderPrefs } from './cacheReminder.ts';
 
 const HOUR = 60 * 60_000;

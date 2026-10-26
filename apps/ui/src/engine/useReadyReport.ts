@@ -33,7 +33,7 @@ export function useReadyReport(): void {
     void Promise.all([client.call('system.info', {}), firstSnapshot(client), ping]).then(([info, sessions, pingMs]) => {
       if (cancelled || generation <= lastReportedGeneration) return;
       lastReportedGeneration = generation;
-      window.switchboard?.reportReady({
+      window.seshboard?.reportReady({
         connectedAt,
         engineVersion: info.engineVersion,
         claudeVersion: info.claude?.version ?? null,

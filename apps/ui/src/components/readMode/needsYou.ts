@@ -1,4 +1,4 @@
-import type { PermissionRequest } from '@switchboard/protocol/client';
+import type { PermissionRequest } from '@seshboard/protocol/client';
 
 /** The request the banner shows: the one that has waited longest (a stable choice while others come in), or null. */
 export function bannerRequest(requests: Iterable<PermissionRequest>): PermissionRequest | null {

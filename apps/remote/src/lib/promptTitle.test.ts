@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage } from '@seshboard/protocol/remote-client';
 import { lastReply, promptTitle, turnPrompt } from './promptTitle.ts';
 
 describe('the prompt title', () => {

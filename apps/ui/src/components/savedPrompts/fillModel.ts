@@ -11,7 +11,7 @@ import {
   type PromptBlank,
   type PromptScope,
   type SavedPrompt,
-} from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
 import { fuzzyScore } from '../../lib/fuzzy.ts';
 
 /**

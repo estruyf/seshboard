@@ -10,7 +10,7 @@ const pressOf = (id: Parameters<typeof keysFor>[0]) => {
 };
 
 describe('sessionKey', () => {
-  beforeEach(() => vi.stubGlobal('window', { switchboard: { platform: 'win32' } }));
+  beforeEach(() => vi.stubGlobal('window', { seshboard: { platform: 'win32' } }));
   afterEach(() => vi.unstubAllGlobals());
 
   it('knows the terminal and editor keys in both windows', () => {

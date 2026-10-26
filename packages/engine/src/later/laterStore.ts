@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { LaterDraft, QueueWaitFor, type LaterItem, type QueueStarted } from '@switchboard/protocol';
+import { LaterDraft, QueueWaitFor, type LaterItem, type QueueStarted } from '@seshboard/protocol';
 
 /** The choices stored next to a prompt, as JSON (everything in a draft except the folder and the prompt). */
 type Settings = Omit<LaterItem, 'id' | 'cwd' | 'prompt' | 'createdAt' | 'position' | 'waitFor'>;

@@ -1,7 +1,7 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Check, ChevronDown, ChevronRight, Ellipsis, FolderCog, FolderDown, FolderGit2, FolderOpen, FolderPlus, GitBranch, Image, Layers, Monitor, Pencil, RotateCcw, SlidersHorizontal, Smile, Type, X, Zap } from 'lucide-react';
-import { isAbsolutePath, type ProjectIconChoice } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ProjectIconChoice } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
@@ -37,7 +37,7 @@ export function useProjectActions() {
   return {
     setIcon,
     chooseImage: async (root: string) => {
-      const path = await window.switchboard?.pickImage(root);
+      const path = await window.seshboard?.pickImage(root);
       if (path) await setIcon(root, { kind: 'file', path });
     },
     add: async (path: string) => {
@@ -47,7 +47,7 @@ export function useProjectActions() {
     },
     /** The system folder dialog, then adds what was picked. Resolves to the folder, or null when cancelled. */
     chooseAndAdd: async () => {
-      const path = await window.switchboard?.pickFolder();
+      const path = await window.seshboard?.pickFolder();
       if (!path || !client) return null;
       await client.call('projects.add', { path });
       reload();
@@ -109,14 +109,14 @@ function EmojiPicker({ x, y, root, onClose }: { x: number; y: number; root: stri
 }
 
 /**
- * "Remove from Switchboard?" for a project, from the Projects view or a sidebar menu. Removing the
+ * "Remove from Seshboard?" for a project, from the Projects view or a sidebar menu. Removing the
  * project the sidebar is filtered to shows all projects again.
  */
 export function RemoveProjectDialog({ root, name, onClose }: { root: string; name: string; onClose(): void }) {
   const { remove } = useProjectActions();
   return (
     <ConfirmDialog
-      title={`Remove ${name} from Switchboard?`}
+      title={`Remove ${name} from Seshboard?`}
       confirmLabel="Remove"
       body={<>It disappears from the sidebar and the New session view. The folder, its files and its sessions are not touched, and you can add it again later.</>}
       onConfirm={async () => {
@@ -136,7 +136,7 @@ export function manage(root: string | null = null): void {
 
 /**
  * Menu entries to rename a project, change its icon or remove it, and the emoji picker, rename dialog and remove confirmation they open (`overlays`).
- * `remove: false` leaves out "Remove from Switchboard…", for menus about something else (a session); `identity: true`
+ * `remove: false` leaves out "Remove from Seshboard…", for menus about something else (a session); `identity: true`
  * keeps only what the project is (profile, icon, name, folder) and Remove, for the ⋯ on a project's page;
  * `nested: true` puts the profile and icon choices in submenus, for a menu where the project is one of several things.
  */
@@ -209,7 +209,7 @@ export function useProjectIconEntries() {
       ...(identity
         ? // A project's own page: everything about what it is, and removing it, but no links to its own tabs.
           project?.added && remove
-          ? (['separator', { label: 'Remove from Switchboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] satisfies MenuEntry[])
+          ? (['separator', { label: 'Remove from Seshboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] satisfies MenuEntry[])
           : []
         : project?.added
           ? ([
@@ -218,7 +218,7 @@ export function useProjectIconEntries() {
               { label: 'Worktrees…', icon: <FolderGit2 size={13} />, disabled: !project.exists, onSelect: () => openProject(root, 'worktrees'), data: { 'data-open-worktrees': true } },
               { label: 'Branches…', icon: <GitBranch size={13} />, disabled: !project.exists, onSelect: () => openProject(root, 'branches'), data: { 'data-open-branches': true } },
               { label: 'Project settings…', icon: <SlidersHorizontal size={13} />, onSelect: () => manage(root) },
-              ...(remove ? [{ label: 'Remove from Switchboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] : []),
+              ...(remove ? [{ label: 'Remove from Seshboard…', icon: <X size={13} />, danger: true, onSelect: () => setRemoving(root), data: { 'data-remove-project': true } }] : []),
             ] satisfies MenuEntry[])
           : isAbsolutePath(root)
             ? [{ label: 'Add to projects', icon: <FolderPlus size={13} />, disabled: !project?.exists, onSelect: () => void actions.add(root) } satisfies MenuEntry]

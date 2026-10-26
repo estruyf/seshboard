@@ -1,5 +1,5 @@
 import { GripVertical, Play } from 'lucide-react';
-import type { SidebarStyle } from '@switchboard/protocol/bridge';
+import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { memo, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { savedAgo } from '../../state/focus.ts';

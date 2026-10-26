@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, withoutContext, type LogLevel, type SessionsChanged, type SessionSummary } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, withoutContext, type LogLevel, type SessionsChanged, type SessionSummary } from '@seshboard/protocol';
 import { originFromEntrypoint, readHead, readLastActivity, type TranscriptHead } from '../claude/origin.ts';
 import type { ProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
@@ -15,7 +15,7 @@ interface Flags {
   archivedAt: number | null;
   restoredAt: number | null;
   viewedAt: number | null;
-  /** Taken out of Switchboard with its pipeline run (#179): left out of the list until it has new activity. */
+  /** Taken out of Seshboard with its pipeline run (#179): left out of the list until it has new activity. */
   hiddenAt: number | null;
 }
 
@@ -221,7 +221,7 @@ export class SessionIndex {
     this.publish(this.known(sessionIds), []);
   }
 
-  /** Takes sessions out of Switchboard (Delete… on a pipeline run, #179): their transcripts stay, in one change. */
+  /** Takes sessions out of Seshboard (Delete… on a pipeline run, #179): their transcripts stay, in one change. */
   hide(sessionIds: readonly string[]): void {
     const now = Date.now();
     for (const id of sessionIds) this.storeFlags(id, { ...(this.flags.get(id) ?? NO_FLAGS), hiddenAt: now });

@@ -1,4 +1,4 @@
-// The look: a patch bay. Switchboard is named after the operator's board, so the ground is a dark panel with a
+// The look: a patch bay. Seshboard is named after the operator's board, so the ground is a dark panel with a
 // faint grid of jack holes, the app's own yellow is the cable, and the four status colours the app uses (needs
 // you, working, running in the background, unread) are the lit jacks. All of them are the app's dark-theme values
 // (apps/ui/src/styles.css), so nothing on the ground disagrees with what is in the windows.

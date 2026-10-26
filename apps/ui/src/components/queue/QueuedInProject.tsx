@@ -1,5 +1,5 @@
 import { ListEnd, X } from 'lucide-react';
-import type { LaterItem } from '@switchboard/protocol/client';
+import type { LaterItem } from '@seshboard/protocol/client';
 import { savedAgo } from '../../state/focus.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { removeFromQueue, useLater } from '../../state/laterStore.ts';

@@ -1,4 +1,4 @@
-import type { BranchEntry } from '@switchboard/protocol/client';
+import type { BranchEntry } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 
 // The branch overview's decisions, without React or the stores: which group each branch is in, which copies of it

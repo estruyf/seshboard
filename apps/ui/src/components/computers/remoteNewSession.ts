@@ -1,4 +1,4 @@
-import { AUTO_MODEL, tierLabel, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@switchboard/protocol/client';
+import { AUTO_MODEL, tierLabel, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@seshboard/protocol/client';
 import { filterBranches } from '../worktree/branchMenu.ts';
 import { ELSEWHERE_NOTE } from '../newSession/startSession.ts';
 
@@ -52,7 +52,7 @@ export interface RemoteChoice {
   worktree: boolean;
 }
 
-/** That computer's profiles, also from a Switchboard that doesn't send them yet. */
+/** That computer's profiles, also from a Seshboard that doesn't send them yet. */
 export const remoteProfiles = (options: RemoteOptions | null): RemoteProfile[] => options?.profiles ?? [];
 
 /** The profile a new session in the project runs with unless you pick another: the project's, else the default. */

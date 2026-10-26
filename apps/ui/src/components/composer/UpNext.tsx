@@ -1,6 +1,6 @@
 import { GripVertical, Pencil, Play, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { withoutContext, type QueuedMessage, type SessionHostInfo } from '@switchboard/protocol/client';
+import { withoutContext, type QueuedMessage, type SessionHostInfo } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { moveTarget } from '../../state/queue.ts';
 import { useQueueDrag } from '../queue/useQueueDrag.ts';
@@ -19,7 +19,7 @@ export interface UpNextActions {
   resume(): void;
 }
 
-const DRAG_TYPE = 'application/x-switchboard-up-next';
+const DRAG_TYPE = 'application/x-seshboard-up-next';
 
 /**
  * The list's mask while rows wait out of view above or below it: that edge fades out, so a cut-off list reads as one

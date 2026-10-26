@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type ImageAttachment, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type ImageAttachment, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
 import { builtInPipelines, PipelineStore } from './pipelineStore.ts';
@@ -71,7 +71,7 @@ interface Started {
 
 /** A runner on a real SQLite file, with sessions the test drives instead of Claude Code. */
 function world(options: { hold?: () => StepHold | null; actions?: StepActionResult[]; pipelines?: Pipeline[] } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-pipelines-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-pipelines-'));
   dirs.push(dir);
   const { db } = openCacheDatabase(join(dir, 'cache.sqlite'));
   databases.push(db);
@@ -635,7 +635,7 @@ describe('PipelineRunner', () => {
     w.runner.pauseAll();
     // The process ends with the app: that turn's end is not the step's.
     await w.end(execute.id, 'clean');
-    expect(w.state(run.id).run).toMatchObject({ status: 'paused', reason: 'Paused: Switchboard was closed. The run goes on at the next start.', step: 0 });
+    expect(w.state(run.id).run).toMatchObject({ status: 'paused', reason: 'Paused: Seshboard was closed. The run goes on at the next start.', step: 0 });
 
     const next = new PipelineRunner({ ...(w.runner as unknown as { deps: ConstructorParameters<typeof PipelineRunner>[0] }).deps });
     await next.resumeAll();

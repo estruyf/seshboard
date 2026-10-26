@@ -5,7 +5,7 @@ import { startQueued, useLater } from './laterStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { projectOf, queueStates, queueToast, readyTransitions, type QueueEntry, type QueueSummary } from './queue.ts';
-import type { LaterItem, UsageLimitHit } from '@switchboard/protocol/client';
+import type { LaterItem, UsageLimitHit } from '@seshboard/protocol/client';
 import { limitOf } from '../lib/usageLimit.ts';
 import { useMinute } from '../components/focus/useMinute.ts';
 import { useLimits } from './limitsStore.ts';

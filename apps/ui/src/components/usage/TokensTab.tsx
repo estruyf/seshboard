@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageCircleQuestion, Monitor, NotebookText, Search, X, Zap } from 'lucide-react';
-import type { UsageBreakdown, UsagePeriod } from '@switchboard/protocol/client';
+import type { UsageBreakdown, UsagePeriod } from '@seshboard/protocol/client';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useUsageView } from '../../state/usageViewStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';

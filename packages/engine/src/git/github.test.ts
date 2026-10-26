@@ -108,8 +108,8 @@ describe('GithubService', () => {
   const service = (command: GhCommand = gh) => new GithubService({ gh: () => command, env: async () => ({ HOME: process.env.HOME ?? '', PATH: path, FAKE_GH_MODE: mode, FAKE_GH_LOG: log }), now: () => now });
 
   beforeEach(async () => {
-    repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-github-')));
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-github-bin-')));
+    repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-github-')));
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-github-bin-')));
     log = join(scratch, 'calls.log');
     now = 1_000_000;
     mode = 'ok';

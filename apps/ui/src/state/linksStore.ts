@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { DeepLink } from '@switchboard/protocol/bridge';
+import type { DeepLink } from '@seshboard/protocol/bridge';
 import { projectByName } from './projectList.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -36,7 +36,7 @@ function projectsLoaded(): Promise<void> {
   });
 }
 
-/** `switchboard://` links handed over by main (it has already validated them). */
+/** `seshboard://` links handed over by main (it has already validated them). */
 interface LinksState {
   /** A new-session link waiting for the New session view to take it. */
   newSession: NewSessionLink | null;
@@ -92,7 +92,7 @@ export const useLinks = create<LinksState>()((set, get) => ({
 export function useLinksSync(): void {
   useEffect(
     () =>
-      window.switchboard?.onDeepLink((message) => {
+      window.seshboard?.onDeepLink((message) => {
         if ('error' in message) useLinks.getState().fail(message.error);
         else void useLinks.getState().open(message.link);
       }),

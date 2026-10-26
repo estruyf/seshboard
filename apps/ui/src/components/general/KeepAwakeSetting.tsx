@@ -12,7 +12,7 @@ function useKeepAwakeStatus(on: boolean): boolean {
   const [active, setActive] = useState(false);
   useEffect(() => {
     let live = true;
-    const check = () => void window.switchboard?.keepAwakeStatus().then((value) => live && setActive(value), () => {});
+    const check = () => void window.seshboard?.keepAwakeStatus().then((value) => live && setActive(value), () => {});
     check();
     window.addEventListener('focus', check);
     return () => {
@@ -23,7 +23,7 @@ function useKeepAwakeStatus(on: boolean): boolean {
   return active;
 }
 
-/** Settings › General › Keep this Mac awake: no sleep while Switchboard is open, so schedules, triggers and remote access keep working. */
+/** Settings › General › Keep this Mac awake: no sleep while Seshboard is open, so schedules, triggers and remote access keep working. */
 export function KeepAwakeSetting() {
   const on = usePreferences((s) => s.prefs.keepAwake);
   const update = usePreferences((s) => s.update);

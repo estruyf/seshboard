@@ -1,5 +1,5 @@
 import { Check, MoreHorizontal, Pause, Play, Repeat } from 'lucide-react';
-import { describe, type Schedule } from '@switchboard/protocol/client';
+import { describe, type Schedule } from '@seshboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { lastRunLine, nextRunLine, scheduleLabel, type LastRunState } from '../../state/schedules.ts';

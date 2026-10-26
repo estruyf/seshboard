@@ -1,7 +1,7 @@
 export type QuitAnswer = 'quit' | 'cancel';
 
 export interface QuitGuardOptions {
-  /** Shows the "Quit Switchboard?" prompt. The answer comes back through `answer()`. */
+  /** Shows the "Quit Seshboard?" prompt. The answer comes back through `answer()`. */
   ask(): void;
   quit(): void;
 }

@@ -113,8 +113,8 @@ import {
   CalendarClock,
   BookOpen,
 } from 'lucide-react';
-import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
-import type { PromptScope } from '@switchboard/protocol/client';
+import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
@@ -165,7 +165,7 @@ export interface PaletteApi {
   memoryTransfer(kind: 'import-export' | 'paste' | 'copy'): void;
   addProject(): void;
   checkClaudeUpdate(): void;
-  /** Installs the `switchboard`, `seshboard` and `sesh` shell commands, and says how that went. */
+  /** Installs the `seshboard`, `sesh` and `switchboard` shell commands, and says how that went. */
   installShellCommand(): void;
   reloadSkills(): void;
   /** Running sessions read their plugins and MCP servers again. */
@@ -287,7 +287,7 @@ export interface PaletteCommand {
   group: CommandGroup;
   /** Other words it answers to. */
   keywords?: string;
-  /** Stored (`cmd+shift+p`): `keysFor(id)` from the registry for Switchboard's own, an action's own shortcut for actions. */
+  /** Stored (`cmd+shift+p`): `keysFor(id)` from the registry for Seshboard's own, an action's own shortcut for actions. */
   shortcut?: string;
   /** A quiet note on the right when there is no shortcut ("current project"), or one made from where you are. */
   hint?: string | ((ctx: PaletteContext) => string);
@@ -545,7 +545,7 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.projectCount > 0 && ctx.connected,
     next: () => ({ kind: 'projects', purpose: 'rename-project', worktree: false, chip: 'Rename project' }),
   },
-  { id: 'install-shell-command', title: 'Install the switchboard command', group: 'general', icon: SquareTerminal, keywords: 'shell terminal cli command line path code . seshboard sesh open folder', when: always, run: (api) => api.installShellCommand() },
+  { id: 'install-shell-command', title: 'Install the seshboard command', group: 'general', icon: SquareTerminal, keywords: 'shell terminal cli command line path code . seshboard sesh switchboard open folder', when: always, run: (api) => api.installShellCommand() },
   { id: 'claude-update', title: 'Check for Claude Code updates…', group: 'general', icon: ArrowDownCircle, keywords: 'upgrade version cli', when: always, run: (api) => api.checkClaudeUpdate() },
   { id: 'reload-skills', title: 'Reload skills', group: 'general', icon: RefreshCw, keywords: 'refresh slash commands plugins', when: (ctx) => ctx.connected, run: (api) => api.reloadSkills() },
   { id: 'reload-mcp', title: 'Reload MCP servers', group: 'general', icon: RefreshCw, keywords: 'refresh mcp servers plugins tools connectors', when: (ctx) => ctx.connected, run: (api) => api.reloadMcp() },

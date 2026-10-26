@@ -1,6 +1,6 @@
 import { CircleAlert, CircleCheck, Info, Stethoscope, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { TranscriptDiagnosis, TranscriptFileCheck, TranscriptFinding, TranscriptProfileCheck } from '@switchboard/protocol/client';
+import type { TranscriptDiagnosis, TranscriptFileCheck, TranscriptFinding, TranscriptProfileCheck } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -90,7 +90,7 @@ export function TranscriptDiagnosisDialog({ sessionId, title, onClose }: { sessi
 
   const copy = () => {
     if (!diagnosis) return;
-    const report = diagnosisReport(diagnosis, { title, version: window.switchboard?.appInfo.version ?? null });
+    const report = diagnosisReport(diagnosis, { title, version: window.seshboard?.appInfo.version ?? null });
     navigator.clipboard.writeText(report).then(
       () => setFlash('Details copied'),
       () => setError('Could not copy the details'),

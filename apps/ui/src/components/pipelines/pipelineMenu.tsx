@@ -1,4 +1,4 @@
-import type { Pipeline } from '@switchboard/protocol/client';
+import type { Pipeline } from '@seshboard/protocol/client';
 import { ListTree } from 'lucide-react';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { openPipelinesSettings, runPipeline } from '../../state/pipelinesStore.ts';

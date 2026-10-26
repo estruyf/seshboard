@@ -1,4 +1,4 @@
-import { MAX_PROMPT_LENGTH, type CheckBucket, type CheckLog, type ChecksFinished, type ChecksSummary, type PrCheck, type PrChecks } from '@switchboard/protocol';
+import { MAX_PROMPT_LENGTH, type CheckBucket, type CheckLog, type ChecksFinished, type ChecksSummary, type PrCheck, type PrChecks } from '@seshboard/protocol';
 import { classifyGhFailure, firstUsefulLine, runGh, type GhCommand, type RunResult } from './pullRequest.ts';
 
 /** The fields `gh pr checks --json` is asked for. */

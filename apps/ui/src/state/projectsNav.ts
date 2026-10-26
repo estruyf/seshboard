@@ -1,4 +1,4 @@
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { tildify } from '../lib/format.ts';
 import type { ProjectTab } from './projectPageStore.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -52,7 +52,7 @@ export function keyboardMove(order: readonly string[], root: string, delta: -1 |
   return { order: moveProject(order, from, to), to };
 }
 
-/** What a screen reader hears after a move: "Switchboard moved to position 3 of 11". `index` counts from 0. */
+/** What a screen reader hears after a move: "Seshboard moved to position 3 of 11". `index` counts from 0. */
 export const moveAnnouncement = (name: string, index: number, total: number) => `${name} moved to position ${index + 1} of ${total}`;
 
 /**

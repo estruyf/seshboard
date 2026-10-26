@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowUp, BookOpen, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@switchboard/protocol/client';
+import { type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -468,9 +468,9 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
 
 /**
  * The message box, in the local layout: the computer's chip where the profile chip is, the session's profile (it keeps
- * it, as a local one does), and model, effort and mode chips that change them there while it runs in Switchboard, as
+ * it, as a local one does), and model, effort and mode chips that change them there while it runs in Seshboard, as
  * in the remote app. A computer too old for `options.get` shows them as text. Stop while Claude works, and a `remote` border. Images and files go with the
- * message (`RemoteAttachments.tsx`): files only to a computer whose Switchboard takes them.
+ * message (`RemoteAttachments.tsx`): files only to a computer whose Seshboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
   const localProfiles = useProfiles((s) => s.profiles);
@@ -488,7 +488,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const name = computer.name;
   const attachments = useRemoteAttachments({ computer, rootRef: root, disabledReason: connected ? null : `${name} is not connected` });
   const options = useRemoteOptions(client, computer);
-  // Only a session that runs in Switchboard there has a mode, and only then can its model, effort and mode change.
+  // Only a session that runs in Seshboard there has a mode, and only then can its model, effort and mode change.
   const running = session.permissionMode != null;
   const fail = (e: Error) => toast(e.message, { body: `It didn’t change on ${name}.` });
   // A prompt is always needed, as on the phone: images and files go with it.
@@ -579,7 +579,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
           {running && options ? (
             <>
               <RemoteModelChip options={options} value={session.model} autoFace={remoteAutoFace(session.auto)} disabled={!connected} onPick={(model) => void callComputer(client, computer.id, 'session.setModel', { sessionId: session.id, model }).catch(fail)} />
-              {/* Only from a Switchboard that sends the effort, and for a model that takes one. */}
+              {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
               {session.effort !== undefined && options.efforts.length > 0 && remoteTakesEffort(options.models, session.model) && (
                 <RemoteEffortChip options={options} value={session.effort} disabled={!connected} onPick={(effort) => void callComputer(client, computer.id, 'session.setEffort', { sessionId: session.id, effort }).catch(fail)} />
               )}

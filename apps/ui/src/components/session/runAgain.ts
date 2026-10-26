@@ -1,4 +1,4 @@
-import type { AutoTier, ImageAttachment, PermissionMode, Effort } from '@switchboard/protocol/client';
+import type { AutoTier, ImageAttachment, PermissionMode, Effort } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../transcript/displayItems.ts';
 
 const ATTACHABLE = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;

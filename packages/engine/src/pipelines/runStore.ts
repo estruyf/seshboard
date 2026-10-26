@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { ImageAttachment, Pipeline, StepActionResult, StepVerdict, type PipelineRun, type PipelineRunState, type PipelineRunStatus, type PipelineRunStep, type PipelineStepStatus, type PipelineWait, type SessionOutcome } from '@switchboard/protocol';
+import { ImageAttachment, Pipeline, StepActionResult, StepVerdict, type PipelineRun, type PipelineRunState, type PipelineRunStatus, type PipelineRunStep, type PipelineStepStatus, type PipelineWait, type SessionOutcome } from '@seshboard/protocol';
 import { z } from 'zod';
 
 interface RunRow {

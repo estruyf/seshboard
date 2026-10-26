@@ -1,4 +1,4 @@
-import { limitKindName, type LimitResume, type LimitsState, type UsageLimitHit } from '@switchboard/protocol/client';
+import { limitKindName, type LimitResume, type LimitsState, type UsageLimitHit } from '@seshboard/protocol/client';
 import { resetLabel } from '../components/usageFormat.ts';
 
 // The words for a plan usage limit that stopped a session: its notice above the message box, the sidebar row, Up
@@ -8,8 +8,8 @@ import { resetLabel } from '../components/usageFormat.ts';
 export const limitName = limitKindName;
 
 // "15:16" or "Mon 15:16", and whether a limit still holds by the clock: shared with the queue's rules in the engine.
-export { clockTime, limitAhead } from '@switchboard/protocol/client';
-import { clockTime } from '@switchboard/protocol/client';
+export { clockTime, limitAhead } from '@seshboard/protocol/client';
+import { clockTime } from '@seshboard/protocol/client';
 
 /**
  * The notice's line: "5-hour limit reached. Resets at 15:16 · in 4h 42m". Without a reset time it only says it was

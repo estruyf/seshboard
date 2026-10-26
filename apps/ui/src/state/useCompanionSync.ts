@@ -42,7 +42,7 @@ export function useCompanionSync(): void {
             // New session on that folder, as a link would open it; the chips are already in its box.
             if (reveal) void useLinks.getState().open({ action: 'new-session', cwd: target.cwd, prompt: null, project: null, repo: null, autostart: false, question: false });
           }
-          if (reveal) window.switchboard?.focusWindow();
+          if (reveal) window.seshboard?.focusWindow();
         } catch (e) {
           error = e instanceof Error ? e.message : String(e);
         }
@@ -50,7 +50,7 @@ export function useCompanionSync(): void {
       }),
       client.on('companion.reveal', ({ sessionId }) => {
         useSessions.getState().select(sessionId);
-        window.switchboard?.focusWindow();
+        window.seshboard?.focusWindow();
       }),
     ];
     return () => offs.forEach((off) => off());

@@ -11,12 +11,12 @@ export type ScheduleRepeat = { kind: 'once'; date: string } | { kind: 'daily' } 
 /** A schedule's rule: the days, and the local time as `HH:MM` (24-hour). */
 export type ScheduleRule = ScheduleRepeat & { time: string };
 
-/** What a schedule does with runs that were due while Switchboard was closed or the computer slept. */
+/** What a schedule does with runs that were due while Seshboard was closed or the computer slept. */
 export type ScheduleMissed = 'run' | 'skip';
 
 /**
  * How a run ended. `started`: a new session. `queued`: it went to the queue at a limit. `skipped`: the last run was still
- * busy. `missed`: it was due while Switchboard was closed (Skip it). `failed`: it couldn't start (the folder is gone).
+ * busy. `missed`: it was due while Seshboard was closed (Skip it). `failed`: it couldn't start (the folder is gone).
  */
 export type ScheduleRunResult = 'started' | 'queued' | 'skipped' | 'missed' | 'failed';
 

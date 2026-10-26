@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { BranchList } from '@switchboard/protocol';
+import type { BranchList } from '@seshboard/protocol';
 import { deleteBranches, listBranchOverview, parseRefLines, parseTrack, splitRemoteRef } from './branches.ts';
 import { git } from './gitChanges.ts';
 
@@ -23,7 +23,7 @@ const remoteOnly = (list: BranchList, ref: string) => list.branches.find((b) => 
 const refExists = async (ref: string) => (await git(repo, ['rev-parse', '--verify', '--quiet', ref], { allowExitCodes: [1] })).trim() !== '';
 
 beforeEach(async () => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-branches-')));
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-branches-')));
   origin = join(dir, 'origin.git');
   await git(dir, ['init', '-q', '--bare', '-b', 'main', origin]);
   repo = join(dir, 'repo');

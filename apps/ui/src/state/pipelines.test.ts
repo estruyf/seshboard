@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, type PipelineRunState } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, type PipelineRunState } from '@seshboard/protocol/client';
 import { boxChoiceUse, finishedLine, keptRunAs, mentionChoices, pipelineMeta, runAsLabel, runAsOrder, runAsSteps, modelWord, runHeaderLine, stepLabel, stepSummary, stepView, stopAdvice, treeLines } from './pipelines.ts';
 
 const pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 0, updatedAt: 0 };

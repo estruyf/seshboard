@@ -1,4 +1,4 @@
-import type { LogLevel, TranscriptMessage, TranscriptUpdate } from '@switchboard/protocol';
+import type { LogLevel, TranscriptMessage, TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import { normaliseMessage, type RawSessionMessage } from '../claude/transcript.ts';
 import { coalesce } from '../util/coalesce.ts';

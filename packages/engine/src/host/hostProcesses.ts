@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import type { LiveSession } from '@switchboard/protocol';
+import type { LiveSession } from '@seshboard/protocol';
 import { isAlive } from '../claude/liveRegistry.ts';
 
 /** A Claude Code process one of the engine's hosts runs, as the live registry lists it. */

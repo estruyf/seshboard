@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { WorktreeEntry, WorktreeRemoveResult, WorktreeSize } from '@switchboard/protocol/client';
+import type { WorktreeEntry, WorktreeRemoveResult, WorktreeSize } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';

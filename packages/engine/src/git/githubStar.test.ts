@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { githubStarStatus, starStatusOf, starSwitchboard, StarFailure } from './githubStar.ts';
+import { githubStarStatus, starStatusOf, starSeshboard, StarFailure } from './githubStar.ts';
 import type { GhCommand } from './pullRequest.ts';
 
 describe('star status', () => {
@@ -39,7 +39,7 @@ if (mode === 'offline') { process.stderr.write('error connecting to api.github.c
 
   afterEach(() => rmSync(scratch, { recursive: true, force: true }));
 
-  it('asks GitHub whether Switchboard is starred', async () => {
+  it('asks GitHub whether Seshboard is starred', async () => {
     expect(await githubStarStatus(gh, scratch, env())).toBe('starred');
     expect(ghLog().argv).toEqual(['api', '--silent', '/user/starred/estruyf/switchboard']);
     expect(await githubStarStatus(gh, scratch, env('not-starred'))).toBe('not-starred');
@@ -47,12 +47,12 @@ if (mode === 'offline') { process.stderr.write('error connecting to api.github.c
   });
 
   it('stars it with a PUT', async () => {
-    await starSwitchboard(gh, scratch, env());
+    await starSeshboard(gh, scratch, env());
     expect(ghLog().argv).toEqual(['api', '--silent', '--method', 'PUT', '/user/starred/estruyf/switchboard']);
   });
 
   it('says why starring failed', async () => {
-    const code = (mode: string, command = gh) => starSwitchboard(command, scratch, env(mode)).then(() => null, (error: StarFailure) => error.code);
+    const code = (mode: string, command = gh) => starSeshboard(command, scratch, env(mode)).then(() => null, (error: StarFailure) => error.code);
     expect(await code('signed-out')).toBe('GH_AUTH');
     expect(await code('offline')).toBe('GH_FAILED');
     expect(await code('ok', { file: join(scratch, 'no-such-gh'), args: [] })).toBe('GH_MISSING');

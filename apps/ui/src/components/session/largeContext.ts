@@ -1,11 +1,11 @@
-import { cacheExpiresAt, isLargeContext, priceOf, type CacheTtl, type ContextWarningPrefs, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@switchboard/protocol/client';
+import { cacheExpiresAt, isLargeContext, priceOf, type CacheTtl, type ContextWarningPrefs, type ModelOption, type SessionHostInfo, type TranscriptMessage } from '@seshboard/protocol/client';
 import { findModelOption } from '../../lib/models.ts';
 import { HIGH_AT, levelOf, type Level } from '../../lib/levels.ts';
 
 /**
  * A session's context is "large" from the token count that Settings › Usage › Large from stands for (a share of a 200k
- * window, `largeContextTokens` in `@switchboard/protocol`): its ring turns orange there, and the
- * session says when its prompt cache lapses (`@switchboard/protocol` `contextCache.ts`).
+ * window, `largeContextTokens` in `@seshboard/protocol`): its ring turns orange there, and the
+ * session says when its prompt cache lapses (`@seshboard/protocol` `contextCache.ts`).
  */
 
 /** 46k, 1.2M. */

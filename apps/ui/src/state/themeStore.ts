@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { DEFAULT_THEME_ID, themeSlug, type ThemeEntry, type ThemeFileCheck, type ThemeState } from '@switchboard/protocol/theme-format';
+import { DEFAULT_THEME_ID, themeSlug, type ThemeEntry, type ThemeFileCheck, type ThemeState } from '@seshboard/protocol/theme-format';
 import { setSyntaxThemes } from '../lib/highlight.ts';
 import { applyTheme } from '../lib/themeApply.ts';
 import { DEMO_TIME, exportThemeFile, resolveTheme, type ResolvedTheme } from '../lib/themeResolve.ts';
@@ -44,7 +44,7 @@ function resolveActive(themes: readonly ThemeEntry[], id: string) {
   return { active: { entry, resolved }, syntaxKey };
 }
 
-const initial: ThemeState = window.switchboard?.themes ?? { themes: [DEMO_ENTRY], problems: {} };
+const initial: ThemeState = window.seshboard?.themes ?? { themes: [DEMO_ENTRY], problems: {} };
 
 export const useThemes = create<ThemesState>()((set, get) => ({
   ...initial,
@@ -63,11 +63,11 @@ export const useThemes = create<ThemesState>()((set, get) => ({
     toast(`Switched to ${entry.file.name}`, { dot: resolved[dark ? 'dark' : 'light'].tokens['accent-ink'], undo: () => usePreferences.getState().update({ themeId: previous }) });
   },
   chooseImport: async () => {
-    const path = await window.switchboard?.chooseThemeFile();
+    const path = await window.seshboard?.chooseThemeFile();
     if (path) await get().openImport(path);
   },
   openImport: async (path) => {
-    const bridge = window.switchboard;
+    const bridge = window.seshboard;
     if (!bridge) return;
     try {
       set({ importing: await bridge.checkThemeFile(path) });
@@ -79,7 +79,7 @@ export const useThemes = create<ThemesState>()((set, get) => ({
   exportTheme: async (id) => {
     const entry = themeById(get().themes, id);
     const file = exportThemeFile(entry.file, { full: entry.id === DEFAULT_THEME_ID });
-    return (await window.switchboard?.exportTheme(`${themeSlug(entry.file.name)}.json`, `${JSON.stringify(file, null, 2)}\n`)) ?? null;
+    return (await window.seshboard?.exportTheme(`${themeSlug(entry.file.name)}.json`, `${JSON.stringify(file, null, 2)}\n`)) ?? null;
   },
 }));
 
@@ -90,5 +90,5 @@ usePreferences.subscribe((state, previous) => {
 
 /** Follows themes added, removed or edited (in any window, or in the themes folder). */
 export function useThemesSync(): void {
-  useEffect(() => window.switchboard?.onThemesChanged((state) => useThemes.getState().replaceState(state)), []);
+  useEffect(() => window.seshboard?.onThemesChanged((state) => useThemes.getState().replaceState(state)), []);
 }

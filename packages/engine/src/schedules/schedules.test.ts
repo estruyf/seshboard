@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { LaterDraft, ScheduleRunEvent, ScheduleSave } from '@switchboard/protocol';
+import type { LaterDraft, ScheduleRunEvent, ScheduleSave } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
 import { Scheduler, type RunHold } from './scheduler.ts';
@@ -34,7 +34,7 @@ const openDb = (path: string) => {
   return db;
 };
 const cachePath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-schedules-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-schedules-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
 };
@@ -197,7 +197,7 @@ describe('scheduler', () => {
     w.scheduler.close();
   });
 
-  it('runs once on wake after missed runs, with Run when Switchboard starts', async () => {
+  it('runs once on wake after missed runs, with Run when Seshboard starts', async () => {
     const w = world({ at: local(10, 19, 7) });
     const saved = w.store.save(schedule());
     w.scheduler.start();
@@ -229,7 +229,7 @@ describe('scheduler', () => {
     w.scheduler.close();
   });
 
-  it('finds runs missed while Switchboard was closed when it starts', async () => {
+  it('finds runs missed while Seshboard was closed when it starts', async () => {
     const w = world({ at: local(10, 16, 18) });
     w.store.save(schedule({ rule: { kind: 'weekdays', time: '08:45' } }));
     // Closed over the weekend, opened on Monday at 10:00.
@@ -433,7 +433,7 @@ describe('one-time schedules', () => {
     w.scheduler.close();
   });
 
-  it('keeps one whose run was due while Switchboard was closed until that run is dealt with', async () => {
+  it('keeps one whose run was due while Seshboard was closed until that run is dealt with', async () => {
     const w = world({ at: local(10, 19, 7) });
     const saved = w.store.save(schedule({ rule: { kind: 'once', date: '2026-10-19', time: '08:00' } }));
     // Closed for ten days: the run is caught up at the start, not removed unseen.

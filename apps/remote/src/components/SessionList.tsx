@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { CalendarClock, ChevronRight, House, ListTree, MoreHorizontal, Plus, Search, X } from 'lucide-react';
-import { REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PIPELINES } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_MARK_UNREAD, REMOTE_FEATURE_PIPELINES } from '@seshboard/protocol/remote-client';
 import type { ConnectionState } from '../lib/connection.ts';
 import type { ListedPrompt, ListedRun, ListedSession, ListedSessions } from '../lib/everywhere.ts';
 import { childLine, keepOpenTrees, listTree, openTrees, runOfRow, treeLine, type ChildTone } from '../lib/runs.ts';

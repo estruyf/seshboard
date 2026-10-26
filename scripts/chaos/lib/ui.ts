@@ -195,7 +195,7 @@ export async function newSessionIn(c: Chaos, project: string): Promise<void> {
   await sleep(300);
 }
 
-/** Sends a `switchboard://` link to this instance, the way macOS delivers one (never through Launch Services). */
+/** Sends a `seshboard://` link to this instance, the way macOS delivers one (never through Launch Services). */
 export async function openLink(c: Chaos, url: string): Promise<void> {
   c.log('deep-link', url.length > 200 ? `${url.slice(0, 200)}…(${url.length})` : url);
   await c.app.evaluate(({ app }, url) => void app.emit('open-url', { preventDefault() {} }, url), url);

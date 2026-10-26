@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ListTree, Send } from 'lucide-react';
-import { PARENT_PLACEHOLDER, runProgress, type RemoteSessions } from '@switchboard/protocol/remote-client';
+import { PARENT_PLACEHOLDER, runProgress, type RemoteSessions } from '@seshboard/protocol/remote-client';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { useFinePointer } from '../lib/media.ts';
 import type { Client } from './Connected.tsx';

@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChecksFinished, PrCheck, PrChecks } from '@switchboard/protocol';
+import type { ChecksFinished, PrCheck, PrChecks } from '@seshboard/protocol';
 import {
   actionsJob,
   AFTER_PUSH_POLL_MS,
@@ -102,7 +102,7 @@ describe('with gh', () => {
   const env = () => ({ HOME: process.env.HOME ?? '', PATH: process.env.PATH ?? '' });
 
   beforeEach(() => {
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-checks-')));
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-checks-')));
     // A fake gh: `pr checks` prints a list and exits with 8 (some pending); `run view` prints a log, or fails for job 13.
     const script = join(scratch, 'gh.mjs');
     writeFileSync(

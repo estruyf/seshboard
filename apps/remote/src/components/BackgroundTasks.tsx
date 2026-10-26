@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { Bot, ChevronDown, Eye, LoaderCircle, Plug, Square, SquareTerminal, Workflow, type LucideIcon } from 'lucide-react';
-import type { BackgroundTask } from '@switchboard/protocol/remote-client';
+import type { BackgroundTask } from '@seshboard/protocol/remote-client';
 import { backgroundKind, backgroundSummary, KIND_LABEL, type BackgroundKind } from '../lib/background.ts';
 import { formatDuration } from '../lib/working.ts';
 import { Button } from './ui.tsx';

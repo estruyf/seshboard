@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { TranscriptDiagnosis, TranscriptFileCheck, TranscriptFinding, TranscriptProfileCheck } from '@switchboard/protocol';
+import type { TranscriptDiagnosis, TranscriptFileCheck, TranscriptFinding, TranscriptProfileCheck } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 
 export interface DiagnosisProfile {
@@ -115,14 +115,14 @@ export function transcriptFindings(profiles: readonly TranscriptProfileCheck[], 
     findings.push({ tone: 'error', text: `The file holds ${plural(inFiles, 'message')}, but Claude Code's reader returned none.` });
   }
   if (indexedPath !== null && files.length > 0 && !files.some((f) => f.path === indexedPath)) {
-    findings.push({ tone: 'warn', text: `Switchboard's session list points at a file that isn't there anymore: ${indexedPath}. Refreshing the session list fixes that.` });
+    findings.push({ tone: 'warn', text: `Seshboard's session list points at a file that isn't there anymore: ${indexedPath}. Refreshing the session list fixes that.` });
   }
   const bad = files.reduce((n, f) => n + f.badLines, 0);
   if (bad > 0) findings.push({ tone: 'warn', text: `${plural(bad, 'line')} in the transcript ${bad === 1 ? "isn't" : "aren't"} valid JSON and ${bad === 1 ? 'is' : 'are'} skipped.` });
   if (files.some((f) => !f.complete)) findings.push({ tone: 'info', text: "The transcript's last line is incomplete: Claude Code may still be writing it." });
   const compactions = Math.max(0, ...files.map((f) => f.compactions));
   if (compactions > 0 && read !== null && read > 0) {
-    findings.push({ tone: 'info', text: `The conversation was compacted ${compactions === 1 ? 'once' : `${compactions} times`}. Switchboard shows all of it, with a line where each compaction was; Claude only has the summary of what came before the last one.` });
+    findings.push({ tone: 'info', text: `The conversation was compacted ${compactions === 1 ? 'once' : `${compactions} times`}. Seshboard shows all of it, with a line where each compaction was; Claude only has the summary of what came before the last one.` });
   }
   if (!findings.some((f) => f.tone === 'error' || f.tone === 'warn') && read !== null) {
     findings.push({ tone: 'ok', text: read > 0 ? `The transcript reads fine: ${plural(read, 'message')}.` : 'The transcript reads fine, but has no messages yet.' });

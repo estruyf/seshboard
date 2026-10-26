@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PromptScope } from '@switchboard/protocol';
+import type { PromptScope } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { SharedFileWatcher } from '../actions/sharedFileWatcher.ts';
 import { ActionStore } from '../actions/actionStore.ts';
@@ -15,7 +15,7 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-prompts-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-prompts-')));
   dirs.push(dir);
   return dir;
 };
@@ -25,7 +25,7 @@ function setup() {
   cleanups.push(() => cache.close());
   const project = tempDir();
   const other = tempDir();
-  return { store: new SavedPromptStore(cache.db), actions: new ActionStore(cache.db), project, other, file: join(project, '.switchboard.json') };
+  return { store: new SavedPromptStore(cache.db), actions: new ActionStore(cache.db), project, other, file: join(project, '.seshboard.json') };
 }
 
 const global: PromptScope = { kind: 'global' };
@@ -104,7 +104,7 @@ describe('SavedPromptStore', () => {
     writeFileSync(file, JSON.stringify({ prompts: [{ name: 'Ok', text: 'Fine' }, { name: 'No text' }, { name: 'Ok', text: 'Same id' }] }));
     const { prompts, errors } = store.list(project);
     expect(prompts.map((p) => p.id)).toEqual(['ok']);
-    expect(errors).toEqual(['.switchboard.json prompt 2: it needs a "text" of up to 20,000 characters', '.switchboard.json prompt 3: another prompt has the id "ok"']);
+    expect(errors).toEqual(['.seshboard.json prompt 2: it needs a "text" of up to 20,000 characters', '.seshboard.json prompt 3: another prompt has the id "ok"']);
   });
 
   it('moves between every two places, and to another project', () => {
@@ -120,7 +120,7 @@ describe('SavedPromptStore', () => {
     store.move('fix-pr', global, shared(project));
     store.move('fix-pr', shared(project), global);
     expect(readJson(file)).toEqual({});
-    expect(readJson(join(other, '.switchboard.json'))).toEqual({});
+    expect(readJson(join(other, '.seshboard.json'))).toEqual({});
   });
 
   it('loses nothing when a move fails on the way', () => {
@@ -128,7 +128,7 @@ describe('SavedPromptStore', () => {
     store.save({ name: 'Fix PR', text: 'Fix {{pr:pr}}', scope: personal(project) });
     // The target can't be written: a file someone broke.
     writeFileSync(file, '{ "actions": [ ');
-    expect(() => store.move('fix-pr', personal(project), shared(project))).toThrow(/can't be read, so Switchboard won't overwrite it/);
+    expect(() => store.move('fix-pr', personal(project), shared(project))).toThrow(/can't be read, so Seshboard won't overwrite it/);
     expect(readFileSync(file, 'utf8')).toBe('{ "actions": [ ');
     expect(store.list(project).prompts.map((p) => p.scope.kind)).toEqual(['personal']);
   });
@@ -139,7 +139,7 @@ describe('SavedPromptStore', () => {
     // The project folder turns read-only: the shared file can't be rewritten any more.
     chmodSync(project, 0o555);
     cleanups.unshift(() => chmodSync(project, 0o755));
-    expect(() => store.move('fix-pr', shared(project), global)).toThrow(/Couldn't move “Fix PR” out of the project's \.switchboard\.json\. The project's \.switchboard\.json can't be written/);
+    expect(() => store.move('fix-pr', shared(project), global)).toThrow(/Couldn't move “Fix PR” out of the project's \.seshboard\.json\. The project's \.seshboard\.json can't be written/);
     chmodSync(project, 0o755);
     expect(store.list(project).prompts.map((p) => p.scope.kind)).toEqual(['shared']);
   });
@@ -189,7 +189,7 @@ describe('SharedFileWatcher', () => {
     writeFileSync(join(project, 'notes.txt'), 'x');
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(changes).toEqual([]);
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ prompts: [{ name: 'Pulled', text: 'From a pull' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ prompts: [{ name: 'Pulled', text: 'From a pull' }] }));
     await expect.poll(() => changes, { timeout: 3_000 }).toEqual([project]);
   });
 });

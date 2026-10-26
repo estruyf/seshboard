@@ -24,7 +24,7 @@ export function ComputersSettings() {
   const [removing, setRemoving] = useState<string | null>(null);
   const removeButtons = useRef(new Map<string, HTMLButtonElement | null>());
   if (!status || !client) return <p className="text-ui text-muted">Checking…</p>;
-  if (!status.available) return <Notice>Other computers aren't available in this build of Switchboard.</Notice>;
+  if (!status.available) return <Notice>Other computers aren't available in this build of Seshboard.</Notice>;
   const { pairing, computers } = status;
 
   const add = () => {

@@ -1,8 +1,8 @@
-import type { MainWindowRequest, SessionView } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest, SessionView } from '@seshboard/protocol/bridge';
 import { create } from 'zustand';
 
 /** The session this window shows on its own when it is a pop-out; null in the main window. */
-export const popoutSession: string | null = typeof window === 'undefined' ? null : (window.switchboard?.popout ?? null);
+export const popoutSession: string | null = typeof window === 'undefined' ? null : (window.seshboard?.popout ?? null);
 
 interface PopoutsState {
   /** Sessions shown in a window of their own, as main reports them (`onPopoutsChanged`). */
@@ -11,7 +11,7 @@ interface PopoutsState {
 }
 
 export const usePopouts = create<PopoutsState>()((set) => ({
-  ids: new Set(typeof window === 'undefined' ? [] : (window.switchboard?.popouts ?? [])),
+  ids: new Set(typeof window === 'undefined' ? [] : (window.seshboard?.popouts ?? [])),
   setIds: (ids) => set({ ids: new Set(ids) }),
 }));
 
@@ -30,7 +30,7 @@ export function shownElsewhere(id: string): boolean {
  */
 export function showInMain(request: MainWindowRequest): boolean {
   if (!popoutSession) return false;
-  window.switchboard?.showInMain(request);
+  window.seshboard?.showInMain(request);
   return true;
 }
 
@@ -47,5 +47,5 @@ export function provideSessionView(read: ((sessionId: string) => SessionView) | 
  * close it when main says it is out (`usePopoutsSync`).
  */
 export function popOut(id: string): void {
-  window.switchboard?.popOut(id, readView?.(id));
+  window.seshboard?.popOut(id, readView?.(id));
 }

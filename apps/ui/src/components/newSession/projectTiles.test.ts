@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession, SessionSummary } from '@switchboard/protocol/client';
+import type { LiveSession, SessionSummary } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { activityByProject, columnsFor, COLUMN_BREAKPOINTS, filterFolders, gridMove, latestBranches, orderProjects, pickUpRows, quickCount, quickTiles, recentFirst, tileStatus } from './projectTiles.ts';
 
@@ -119,7 +119,7 @@ describe('project tiles', () => {
   });
 
   it('filter by name or path', () => {
-    const names = new Map([['/u/me/switchboard', 'Switchboard'], ['/u/me/demo-time', 'Demo Time']]);
+    const names = new Map([['/u/me/switchboard', 'Seshboard'], ['/u/me/demo-time', 'Demo Time']]);
     const nameOf = (root: string) => names.get(root) ?? root;
     const all = [...names.keys()];
     expect(filterFolders(all, '', nameOf, '/u/me')).toEqual(all);

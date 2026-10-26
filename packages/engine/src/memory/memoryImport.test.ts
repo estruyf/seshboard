@@ -16,7 +16,7 @@ const MEMORIES = {
   memory_files: [
     { path: '/profile.md', content: md('Profile', 'Belgian dev on a Mac', 'Writes TypeScript.'), updated_at: '2026-10-01T10:00:00Z' },
     { path: '/topics/writing.md', content: md('Writing', 'Short sentences, no em dashes', 'Plain words.'), updated_at: '2026-10-01T10:00:00Z' },
-    { path: '/areas/switchboard.md', content: md('Switchboard', 'An Electron app for Claude Code', 'Sessions.'), updated_at: '2026-10-01T10:00:00Z' },
+    { path: '/areas/switchboard.md', content: md('Seshboard', 'An Electron app for Claude Code', 'Sessions.'), updated_at: '2026-10-01T10:00:00Z' },
     { path: '/areas/tideline.md', content: md('Tideline', 'A tide app', 'Tides.'), updated_at: '2026-10-01T10:00:00Z' },
     { path: `/projects/${PROJECT}/overview.md`, content: md('Overview', 'The website project', 'Astro.'), updated_at: '2026-10-01T10:00:00Z' },
     { path: `/projects/${PROJECT}/index.md`, content: md('Index', 'Website index', 'Pages.'), updated_at: '2026-10-01T10:00:00Z' },
@@ -38,7 +38,7 @@ const zip = (files: Record<string, string>) => zipSync(Object.fromEntries(Object
 const projects = () => [{ root, name: 'switchboard' }];
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-import-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-import-')));
   root = join(base, 'code', 'switchboard');
   personal = join(base, 'personal');
   mkdirSync(root, { recursive: true });
@@ -150,7 +150,7 @@ describe('importing', () => {
     const picks = first.entries.filter((e) => e.checked).map((e) => ({ id: e.id, target: e.target, type: e.type }));
     expect(service.applyImport(first.token, picks, [root])).toEqual({ created: picks.length, updated: 0 });
     const memoryDir = join(base, 'config', 'projects', encodeProjectPath(root), 'memory');
-    expect(readFileSync(join(memoryDir, 'MEMORY.md'), 'utf8')).toBe('- [Switchboard](switchboard.md) — An Electron app for Claude Code\n');
+    expect(readFileSync(join(memoryDir, 'MEMORY.md'), 'utf8')).toBe('- [Seshboard](switchboard.md) — An Electron app for Claude Code\n');
     expect(readFileSync(join(personal, 'MEMORY.md'), 'utf8')).toContain('- [Profile](~/personal/profile.md) — Belgian dev on a Mac\n');
 
     // The same export again: nothing new. A newer copy of one file: that one updates in place.

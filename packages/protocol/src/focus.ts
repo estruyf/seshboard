@@ -40,7 +40,7 @@ export interface FocusSession {
 }
 
 export interface FocusInput {
-  /** Sessions running in Switchboard. */
+  /** Sessions running in Seshboard. */
   hosts: ReadonlyMap<string, SessionHostInfo>;
   /** The live registry (`~/.claude/sessions`): Claude Code processes from every app. */
   live: ReadonlyMap<string, LiveSession>;
@@ -100,7 +100,7 @@ export function focusSessions(input: FocusInput): FocusSession[] {
   }
   if (input.countExternal) {
     for (const entry of input.live.values()) {
-      // Switchboard's own processes (and its helpers) register as SDK processes: they are counted through their hosts.
+      // Seshboard's own processes (and its helpers) register as SDK processes: they are counted through their hosts.
       if (seen.has(entry.sessionId) || entry.origin === 'sdk' || entry.origin === 'app') continue;
       seen.add(entry.sessionId);
       consider(entry.sessionId, entry.status, true, { title: entry.name, projectRoot: entry.projectRoot ?? entry.cwd, at: entry.updatedAt ?? entry.startedAt ?? 0 });

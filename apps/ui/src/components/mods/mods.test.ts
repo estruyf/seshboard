@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { modKey } from '@switchboard/protocol/client';
+import { modKey } from '@seshboard/protocol/client';
 import { bumpVersions, drawsOf, instanceKey, type SessionMods } from '../../state/modsStore.ts';
 import { modPaneTab, paneOfTab, readTab, rightPanel } from '../ask/askWidth.ts';
 import type { RenderItem } from '../transcript/displayItems.ts';
@@ -62,7 +62,7 @@ describe('status chips in the footer', () => {
 });
 
 describe('above the message box', () => {
-  it('puts Switchboard’s permission card first, then the bands in plugin order, then Up next', () => {
+  it('puts Seshboard’s permission card first, then the bands in plugin order, then Up next', () => {
     expect(promptStack(['req-1'], ['pr-status', 'agent-watch'], ['agent-watch', 'pr-status'], true)).toEqual([
       { kind: 'permission', id: 'req-1' },
       { kind: 'band', plugin: 'agent-watch' },

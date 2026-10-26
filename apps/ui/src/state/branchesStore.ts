@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import { isAbsolutePath, type BranchList } from '@switchboard/protocol/client';
+import { isAbsolutePath, type BranchList } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { branchRows, type BranchRow } from '../components/branches/branchGroups.ts';

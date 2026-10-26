@@ -83,7 +83,7 @@ describe('update state', () => {
   it('says why a build cannot update', () => {
     const release = { env: {}, packaged: true, devServer: false, hasFeed: true, mockFeed: false };
     expect(updatesDisabledReason(release)).toBeNull();
-    expect(updatesDisabledReason({ ...release, env: { SWITCHBOARD_DISABLE_AUTO_UPDATE: '1' } })).toMatch(/SWITCHBOARD_DISABLE_AUTO_UPDATE/);
+    expect(updatesDisabledReason({ ...release, env: { SESHBOARD_DISABLE_AUTO_UPDATE: '1' } })).toMatch(/SESHBOARD_DISABLE_AUTO_UPDATE/);
     expect(updatesDisabledReason({ ...release, packaged: false, devServer: true })).toBe('Updates are turned off in development builds.');
     expect(updatesDisabledReason({ ...release, packaged: false })).toMatch(/aren’t packaged/);
     expect(updatesDisabledReason({ ...release, hasFeed: false })).toMatch(/no update feed/);

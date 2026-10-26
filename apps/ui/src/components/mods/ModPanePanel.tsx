@@ -1,6 +1,6 @@
 import { Puzzle, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import type { ModPane } from '@switchboard/protocol/client';
+import type { ModPane } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { holdModToasts } from '../../state/useModsSync.ts';

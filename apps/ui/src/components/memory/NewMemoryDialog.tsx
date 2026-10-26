@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { slugify } from '@switchboard/protocol/client';
+import { slugify } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';

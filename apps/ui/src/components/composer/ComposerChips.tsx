@@ -1,7 +1,7 @@
 import { Cpu, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL } from '@switchboard/protocol/client';
+import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { ClaudeProfile, Effort, PermissionMode } from '@switchboard/protocol/client';
+import type { ClaudeProfile, Effort, PermissionMode } from '@seshboard/protocol/client';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';

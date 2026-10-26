@@ -1,4 +1,4 @@
-import type { RemoteTheme } from '@switchboard/protocol/remote-client';
+import type { RemoteTheme } from '@seshboard/protocol/remote-client';
 import { cleanModeChoice, cleanTheme, resolveMode, themeVars, type ModeChoice, type ThemeMode } from './theme.ts';
 import { cleanTextSize, type TextSize } from './textSize.ts';
 

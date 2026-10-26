@@ -41,14 +41,14 @@ Click **Set** next to **Shortcut** to give an action its own keys. For *Test* or
 
 Turn on **Run when a new worktree is created** for setup such as `npm install`. It runs before Claude starts in each new worktree. See [Run in every new worktree](/projects/actions/#run-in-every-new-worktree).
 
-Set **Saved for** to **Shared with the project**, and the action goes in the project's `.switchboard.json`. Commit the file, and everyone on the project gets it. A saved prompt set to **&lt;project&gt;, shared with the project** goes in the same file. See [Share actions with your team](/projects/actions/#share-actions-with-your-team).
+Set **Saved for** to **Shared with the project**, and the action goes in the project's `.seshboard.json`. Commit the file, and everyone on the project gets it. A saved prompt set to **&lt;project&gt;, shared with the project** goes in the same file. See [Share actions with your team](/projects/actions/#share-actions-with-your-team).
 
 ## Start sessions from outside the app
 
-A `switchboard://` link opens New session with the project and prompt filled in:
+A `seshboard://` link opens New session with the project and prompt filled in:
 
 ```text
-switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests
+seshboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests
 ```
 
 `repo` finds the checkout wherever each person cloned it, so one link works for a whole team. Put it in a README or a runbook, open it from a shell with <Os mac="open" windows="Start-Process" />, or from a launcher.

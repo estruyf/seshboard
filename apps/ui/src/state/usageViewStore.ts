@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { UsagePeriod } from '@switchboard/protocol/client';
+import type { UsagePeriod } from '@seshboard/protocol/client';
 import type { UsageViewGroup } from '../components/usage/usageMerge.ts';
 import { showInMain } from './popoutsStore.ts';
 import { useProfiles } from './profilesStore.ts';

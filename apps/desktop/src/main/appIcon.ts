@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { appIconKey, DEFAULT_APP_ICON, desktopIconFiles, type AppIconKey } from '@switchboard/protocol/bridge';
+import { appIconKey, DEFAULT_APP_ICON, desktopIconFiles, type AppIconKey } from '@seshboard/protocol/bridge';
 
 /** What `AppIcon` needs from Electron, so a test can stand in for it. */
 export interface AppIconHost {

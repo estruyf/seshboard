@@ -1,6 +1,6 @@
 import { Copy } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import type { MemoryImportPreview } from '@switchboard/protocol/client';
+import type { MemoryImportPreview } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';

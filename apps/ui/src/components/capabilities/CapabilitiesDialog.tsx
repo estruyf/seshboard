@@ -1,6 +1,6 @@
 import { RefreshCw, RotateCw } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import type { Capabilities, McpServerInfo } from '@switchboard/protocol/client';
+import type { Capabilities, McpServerInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ProfileBadge } from '../profiles/ProfileBadge.tsx';
 import { Button } from '../ui/Button.tsx';

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot } from '@switchboard/protocol';
+import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import { parseDefaults } from '../projects/projectRegistry.ts';
 

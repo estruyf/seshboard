@@ -14,7 +14,7 @@ import Related from '../../../components/Related.astro';
 
 A schedule starts a session from a prompt at set times. Use it for work that comes back: "review yesterday's open pull requests" every weekday at 08:00, "check for dependency updates" on Mondays, "write the standup summary from yesterday's commits". Every run is a new session.
 
-<Screenshot name="schedule-dialog" alt="The Schedule a session dialog: a name, Monday to Friday picked under Repeat, 08:00, Run when Switchboard starts, three next runs and what each run starts with" eager />
+<Screenshot name="schedule-dialog" alt="The Schedule a session dialog: a name, Monday to Friday picked under Repeat, 08:00, Run when Seshboard starts, three next runs and what each run starts with" eager />
 
 ## Schedule a prompt
 
@@ -42,7 +42,7 @@ After **Schedule…**, Start's ▾ menu has **Start when…**. It starts the pro
 | **Name** | Filled in from the prompt's first line. Each run's session is titled with it and the day, such as "Review open pull requests · Mon 19 Oct". |
 | **Repeat** | **Once**, **Every day**, **Monday to Friday**, **Every week** or **Every month**. **Once** shows a **Date** field, and a new schedule starts an hour from now, so "run this in an hour" is two clicks. **Every week** shows a toggle for each day (M T W T F S S), with today on. **Every month** shows a **Day** field, from 1 to 31. |
 | **At** | The time, shown the way your computer shows times. Next to it, the rule in words: "Once on Tue 20 Oct at 09:00", "Weekdays at 08:00", "Mondays and Thursdays at 09:30", "On the 1st at 10:00". |
-| **If missed** | **Run when Switchboard starts** (the default) or **Skip it**. See [Missed runs](#missed-runs). |
+| **If missed** | **Run when Seshboard starts** (the default) or **Skip it**. See [Missed runs](#missed-runs). |
 | **Next runs** | The next three runs, such as "Tue 20 Oct 08:00". They change as you edit the rule, so you can check it. |
 | **Runs with** | The project, the worktree or branch, the model, effort, mode and profile, from New session. To change them, use **Edit…** (see [Change a schedule](#change-pause-or-delete)). |
 
@@ -69,7 +69,7 @@ Each row shows:
 - on the right, the next run, such as "Next: Tomorrow 08:00", or **Paused**;
 - **Run now** and a **⋯** menu.
 
-A schedule set to **Once** leaves the lists after its run. [Upcoming](/sessions/upcoming/#history) shows its run under **History** for 7 days, then Switchboard removes it. The session it started keeps the repeat icon.
+A schedule set to **Once** leaves the lists after its run. [Upcoming](/sessions/upcoming/#history) shows its run under **History** for 7 days, then Seshboard removes it. The session it started keeps the repeat icon.
 
 A paused schedule keeps its place, dimmed.
 
@@ -77,22 +77,22 @@ In the sidebar, a session a schedule started has the repeat icon before its seco
 
 ## When a run starts
 
-At its time, Switchboard starts a new session from the prompt and its choices, the same way [Start](/new-session/queue/#start-an-item) starts a queued item. A notification says "Scheduled: Review open pull requests started", with the project. A click opens the session. When Claude finishes, the usual "Claude finished" notification follows.
+At its time, Seshboard starts a new session from the prompt and its choices, the same way [Start](/new-session/queue/#start-an-item) starts a queued item. A notification says "Scheduled: Review open pull requests started", with the project. A click opens the session. When Claude finishes, the usual "Claude finished" notification follows.
 
 A run never asks you anything, since nobody may be there:
 
 - **The last run is still busy.** When the session of the last run is still working, or waiting for you, this run is skipped. The row says "Skipped Tue 08:00: the last run was still working", and a notification says it was skipped.
 - **The focus limit.** At the [focus limit](/focus-limit/), the run goes to the [queue](/new-session/queue/) as an item that [starts by itself](/new-session/queue/#start-by-itself). It starts when a slot frees. A notification says "Scheduled: Review open pull requests is in the queue", with the reason.
 - **A usage limit.** When the run's [Claude profile](/settings/claude-profiles/) is at its usage limit, it goes to the queue the same way and starts when the limit resets.
-- **The folder is gone.** A schedule whose project folder isn't there doesn't run. It pauses, and the row says "Folder not found". Removing a project from Switchboard pauses its schedules too.
+- **The folder is gone.** A schedule whose project folder isn't there doesn't run. It pauses, and the row says "Folder not found". Removing a project from Seshboard pauses its schedules too.
 
 **Run now** starts a run straight away, with the same rules. It doesn't move the next run.
 
 ### Missed runs
 
-When Switchboard was closed, or the computer was asleep, at a schedule's time:
+When Seshboard was closed, or the computer was asleep, at a schedule's time:
 
-- With **Run when Switchboard starts**, it runs once when Switchboard starts or the computer wakes, however many runs were missed.
+- With **Run when Seshboard starts**, it runs once when Seshboard starts or the computer wakes, however many runs were missed.
 - With **Skip it**, it doesn't run. The row says "Missed Mon 08:45", and it runs again at its next time.
 
 When several schedules run at once this way, one notification says so: "3 scheduled sessions started".
@@ -121,14 +121,14 @@ The row's **⋯** menu (or a right-click on the row) has:
 ## When schedules run
 
 <OnlyOn os="mac">
-Schedules run while Switchboard is running. Closing its windows leaves it running, so schedules still run. Quitting Switchboard stops them until you open it again.
+Schedules run while Seshboard is running. Closing its windows leaves it running, so schedules still run. Quitting Seshboard stops them until you open it again.
 </OnlyOn>
 
 <OnlyOn os="windows">
-Schedules run while a Switchboard window is open. Closing the last window quits Switchboard, and schedules wait until you open it again. A run that was due meanwhile is a [missed run](#missed-runs).
+Schedules run while a Seshboard window is open. Closing the last window quits Seshboard, and schedules wait until you open it again. A run that was due meanwhile is a [missed run](#missed-runs).
 </OnlyOn>
 
-Switchboard doesn't start itself or wake the computer for a run.
+Seshboard doesn't start itself or wake the computer for a run.
 
 ## Export and import
 

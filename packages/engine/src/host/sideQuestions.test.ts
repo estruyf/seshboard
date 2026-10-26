@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ASK_THREADS_KEPT, threadTitle, type AskEvent } from '@switchboard/protocol';
+import { ASK_THREADS_KEPT, threadTitle, type AskEvent } from '@seshboard/protocol';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { migrations } from '../db/migrations.ts';
 import { breakdown } from '../usage/usageQuery.ts';
@@ -17,7 +17,7 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 const cachePath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-ask-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-ask-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
 };

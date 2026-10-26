@@ -10,7 +10,7 @@ import {
   type NoiseSession,
   type RemoteContract,
   type RemotePairContract,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 
 /**
  * A phone, for the tests: what the remote app does over its WebSocket, from Node. Not a test file itself, so the

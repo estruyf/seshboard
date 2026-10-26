@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { isAbsolutePath, type ListedAction } from '@switchboard/protocol/client';
+import { isAbsolutePath, type ListedAction } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 export { ACTION_ICON } from './actionIcon.ts';
@@ -30,7 +30,7 @@ export function useProjectActionList(projectRoot: string | null) {
 
   // An import (in any window) can add, change or remove actions.
   useEffect(() => client?.on('settings.imported', () => setVersion((v) => v + 1)), [client]);
-  // So can a save in another window, or a pull that changes the project's .switchboard.json.
+  // So can a save in another window, or a pull that changes the project's .seshboard.json.
   useEffect(() => client?.on('actions.changed', ({ root }) => (root === null || root === projectRoot) && setVersion((v) => v + 1)), [client, projectRoot]);
 
   return {

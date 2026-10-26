@@ -1,4 +1,4 @@
-import { promptLabel, queueStates, type LaterItem, type QueueAuto, type QueueEntry, type QueueSession, type SessionOutcome, type SessionHostInfo, type UsageLimitHit } from '@switchboard/protocol';
+import { promptLabel, queueStates, type LaterItem, type QueueAuto, type QueueEntry, type QueueSession, type SessionOutcome, type SessionHostInfo, type UsageLimitHit } from '@seshboard/protocol';
 import type { LaterStore } from './laterStore.ts';
 
 /** A queued item started by itself. */
@@ -21,7 +21,7 @@ export interface AutoSkipped {
 
 export interface AutoStartDeps {
   store: LaterStore;
-  /** Every session the engine knows, with whether it is busy and whether it runs outside Switchboard. */
+  /** Every session the engine knows, with whether it is busy and whether it runs outside Seshboard. */
   sessions(): QueueSession[];
   projectName(root: string): string;
   /** The usage limit the item's Claude profile is at, or null. */
@@ -71,7 +71,7 @@ export class QueueAutoStarter {
   private closed = false;
 
   constructor(private readonly deps: AutoStartDeps) {
-    // What items wait on now ended before this run, most likely while Switchboard quit: nothing starts after it.
+    // What items wait on now ended before this run, most likely while Seshboard quit: nothing starts after it.
     const started = new Map(deps.store.startedLinks().map((s) => [s.itemId, s.sessionId]));
     for (const item of deps.store.list()) {
       const id = item.waitFor.kind === 'session' ? item.waitFor.sessionId : item.waitFor.kind === 'item' ? started.get(item.waitFor.itemId) : undefined;

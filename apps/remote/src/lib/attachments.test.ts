@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_FEATURE_ATTACHMENTS, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_ATTACHMENTS, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from '@seshboard/protocol/remote-client';
 import { acceptsFor, fileName, fileSize, placeFor, type Attachment } from './attachments.ts';
 
 const image = (id: number): Attachment => ({ id, kind: 'image', image: { type: 'image', mediaType: 'image/jpeg', data: 'AAAA' } });
@@ -27,7 +27,7 @@ describe('placeFor', () => {
     expect(placeFor(png, full, { images: true, files: false })).toEqual({ skip: `A message takes up to ${REMOTE_MAX_IMAGES} images.` });
   });
   it('leaves out files an older computer or a full message cannot take', () => {
-    expect(placeFor(pdf, [], { images: true, files: false })).toEqual({ skip: 'Update Switchboard on your computer to send files.' });
+    expect(placeFor(pdf, [], { images: true, files: false })).toEqual({ skip: 'Update Seshboard on your computer to send files.' });
     const full = Array.from({ length: REMOTE_MAX_FILES }, (_, i) => file(i));
     expect(placeFor(pdf, full, all)).toEqual({ skip: `A message takes up to ${REMOTE_MAX_FILES} files.` });
   });

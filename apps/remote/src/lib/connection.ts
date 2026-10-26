@@ -19,7 +19,7 @@ import {
   type RpcClient,
   appIconKey,
   type AppIconKey,
-} from '@switchboard/protocol/remote-client';
+} from '@seshboard/protocol/remote-client';
 import { reconnectDelay, type Paired } from './link.ts';
 import { MAX_ATTEMPTS, OPEN_TIMEOUT_MS, offlineReason, type OfflineReason } from './offline.ts';
 
@@ -111,7 +111,7 @@ export class RefusedError extends Error {
         : code === CLOSE.pairingClosed
           ? 'This QR code was used or has expired. Click Pair a device on your computer again.'
           : code === CLOSE.version
-            ? 'Switchboard on your computer and this page are different versions. Update Switchboard.'
+            ? 'Seshboard on your computer and this page are different versions. Update Seshboard.'
             : 'Your computer refused the connection.',
     );
   }

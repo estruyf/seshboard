@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { cloneFolderProblem, CloneSettings, isLocalAbsolutePath, isSameOrInside, joinPath, parseGithubRepo, pathInside, RpcError, separatorOf, type ClonePlan, type CloneProgress, type GithubRepoRef } from '@switchboard/protocol';
+import { cloneFolderProblem, CloneSettings, isLocalAbsolutePath, isSameOrInside, joinPath, parseGithubRepo, pathInside, RpcError, separatorOf, type ClonePlan, type CloneProgress, type GithubRepoRef } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import { CloneCancelled, cloneCommand, ghSignedIn, readRepoBrings, runClone, targetState, type CloneRun } from '../git/clone.ts';
 import { git } from '../git/gitChanges.ts';

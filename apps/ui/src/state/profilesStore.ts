@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { ClaudeProfile, ProfileColor, ProfilesSnapshot } from '@switchboard/protocol/client';
+import type { ClaudeProfile, ProfileColor, ProfilesSnapshot } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { remoteProfileColor, type RemoteRowInfo } from './remoteRows.ts';
 

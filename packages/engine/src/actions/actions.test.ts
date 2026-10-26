@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProjectAction } from '@switchboard/protocol';
+import { ProjectAction } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { posixQuote, powershellQuote, windowsUnsafe } from '../system/shell.ts';
 import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
@@ -10,7 +10,7 @@ import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-actions-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-actions-')));
   dirs.push(dir);
   return dir;
 };
@@ -28,11 +28,11 @@ describe('ActionStore', () => {
     const { store, project, cache } = setup();
     store.save(null, action({ id: 'test', name: 'Global test' }));
     store.save(null, action({ id: 'lint' }));
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ name: 'Test', command: 'npm test' }, { name: 'Deploy', command: 'make deploy', confirm: true }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ name: 'Test', command: 'npm test' }, { name: 'Deploy', command: 'make deploy', confirm: true }] }));
     store.save(project, action({ id: 'deploy', name: 'My deploy', command: 'make deploy-staging' }));
     const { actions, sharedFile, errors } = store.list(project);
     const byId = Object.fromEntries(actions.map((a) => [a.id, a]));
-    expect(sharedFile).toBe(join(project, '.switchboard.json'));
+    expect(sharedFile).toBe(join(project, '.seshboard.json'));
     expect(errors).toEqual([]);
     expect(byId.test).toMatchObject({ name: 'Test', scope: 'shared', trusted: false });
     expect(byId.deploy).toMatchObject({ name: 'My deploy', scope: 'project', trusted: true });
@@ -42,21 +42,21 @@ describe('ActionStore', () => {
 
   it('reports bad shared entries without dropping the good ones', () => {
     const { store, project, cache } = setup();
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ name: 'Ok', command: 'true' }, { name: 'No command' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ name: 'Ok', command: 'true' }, { name: 'No command' }] }));
     const { actions, errors } = store.list(project);
     expect(actions.map((a) => a.id)).toEqual(['ok']);
     expect(errors).toHaveLength(1);
-    writeFileSync(join(project, '.switchboard.json'), '{ nope');
-    expect(store.list(project).errors[0]).toMatch(/\.switchboard\.json/);
+    writeFileSync(join(project, '.seshboard.json'), '{ nope');
+    expect(store.list(project).errors[0]).toMatch(/\.seshboard\.json/);
     cache.close();
   });
 
   it('trusts a shared command by its exact text', () => {
     const { store, project, cache } = setup();
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build' }] }));
     store.trust(project, 'npm run build');
     expect(store.list(project).actions[0]!.trusted).toBe(true);
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build && curl evil' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build && curl evil' }] }));
     expect(store.list(project).actions[0]!.trusted).toBe(false);
     cache.close();
   });
@@ -73,9 +73,9 @@ describe('ActionStore', () => {
     cache.close();
   });
 
-  it('saves, renames and deletes shared actions in .switchboard.json, keeping what it does not know', () => {
+  it('saves, renames and deletes shared actions in .seshboard.json, keeping what it does not know', () => {
     const { store, project, cache } = setup();
-    const file = join(project, '.switchboard.json');
+    const file = join(project, '.seshboard.json');
     writeFileSync(file, `{\n    "icon": "rocket",\n    "actions": [\n        { "name": "Test", "command": "npm test", "note": "keep" }\n    ]\n}\n`);
     store.saveShared(project, action({ id: 'dev', name: 'Dev', command: 'npm run dev', shortcut: 'cmd+shift+d', confirm: true }));
     const after = readFileSync(file, 'utf8');
@@ -101,11 +101,11 @@ describe('ActionStore', () => {
     cache.close();
   });
 
-  it('creates .switchboard.json for the first shared action, and refuses one that does not read', () => {
+  it('creates .seshboard.json for the first shared action, and refuses one that does not read', () => {
     const { store, project, cache } = setup();
     store.saveShared(project, action({ id: 'dev', name: 'Dev' }));
-    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8'))).toEqual({ actions: [{ id: 'dev', name: 'Dev', command: 'echo dev' }] });
-    writeFileSync(join(project, '.switchboard.json'), '{ broken');
+    expect(JSON.parse(readFileSync(join(project, '.seshboard.json'), 'utf8'))).toEqual({ actions: [{ id: 'dev', name: 'Dev', command: 'echo dev' }] });
+    writeFileSync(join(project, '.seshboard.json'), '{ broken');
     expect(() => store.saveShared(project, action({ id: 'dev' }))).toThrow(/can't be read/);
     cache.close();
   });

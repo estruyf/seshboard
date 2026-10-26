@@ -1,4 +1,4 @@
-import type { ProfileColor } from '@switchboard/protocol/client';
+import type { ProfileColor } from '@seshboard/protocol/client';
 import { useMultipleProfiles, useProfile } from '../../state/profilesStore.ts';
 
 /** Full class names, so Tailwind sees every one. */

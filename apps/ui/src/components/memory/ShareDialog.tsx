@@ -1,6 +1,6 @@
 import { FileText, Lock, ScrollText } from 'lucide-react';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { defaultHeading, type SharePreview, type ShareTarget } from '@switchboard/protocol/client';
+import { defaultHeading, type SharePreview, type ShareTarget } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import { showInChanges } from '../../state/showInChanges.ts';

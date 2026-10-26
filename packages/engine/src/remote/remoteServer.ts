@@ -30,7 +30,7 @@ import {
   REMOTE_FEATURE_PUSH_KEY,
   REMOTE_FEATURE_QUEUE_SEND_NOW,
   REMOTE_FEATURE_USAGE_TOKENS,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { computerName } from './computerName.ts';
 import type { DeviceKind, DeviceStore, RemoteDevice } from './devices.ts';
 import type { Pairing } from './pairing.ts';
@@ -189,7 +189,7 @@ export class RemoteServer {
   /** Only the socket lives here: the app's page comes from its own site. */
   private serve(_request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
-    response.end('Switchboard Remote: open the remote app on your phone.');
+    response.end('Seshboard Remote: open the remote app on your phone.');
   }
 
   private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -359,7 +359,7 @@ function toBytes(data: unknown): Uint8Array {
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
-/** What pairs, for its icon: Switchboard on another computer, a phone's browser, or a computer's browser. */
+/** What pairs, for its icon: Seshboard on another computer, a phone's browser, or a computer's browser. */
 export function deviceKind(origin: string, userAgent: string | undefined): DeviceKind {
   if (origin === REMOTE_DESKTOP_ORIGIN) return 'computer';
   return /Mobi|iPhone|iPad|iPod|Android/i.test(userAgent ?? '') ? 'phone' : 'browser';

@@ -1,10 +1,10 @@
 import { Bot, ChevronRight, ClipboardList } from 'lucide-react';
-import type { HookableComponent } from '@switchboard/protocol/client';
+import type { HookableComponent } from '@seshboard/protocol/client';
 import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs } from '@switchboard/protocol/client';
+import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs } from '@seshboard/protocol/client';
 import { LinkedSessions } from './LinkedSessions.tsx';
 import { GithubAttached } from './GithubAttached.tsx';
 import { ActionResults, LinkedRuns } from '../pipelines/RunPromptRows.tsx';

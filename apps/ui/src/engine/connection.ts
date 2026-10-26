@@ -4,8 +4,8 @@ import {
   messagePortTransport,
   type Contract,
   type RpcClient,
-  type SwitchboardBridge,
-} from '@switchboard/protocol/client';
+  type SeshboardBridge,
+} from '@seshboard/protocol/client';
 import { startLivenessMonitor, type LivenessMonitor } from './liveness.ts';
 
 export type EngineClient = RpcClient<Contract>;
@@ -30,7 +30,7 @@ export class EngineConnection {
   /** Connected, but the engine hasn't answered its last pings (it hangs). Cleared by the next answer or a reconnect. */
   private stalled = false;
 
-  constructor(private readonly bridge: SwitchboardBridge | undefined) {
+  constructor(private readonly bridge: SeshboardBridge | undefined) {
     if (!bridge) {
       this.state = { status: 'unavailable' };
       return;
@@ -102,7 +102,7 @@ export class EngineConnection {
   };
 }
 
-export const engineConnection = new EngineConnection(window.switchboard);
+export const engineConnection = new EngineConnection(window.seshboard);
 
 // Calls in flight when the engine restarts fail with DISCONNECTED; the window reconnects and
 // effects run again, so these are expected and must not surface as unhandled errors.

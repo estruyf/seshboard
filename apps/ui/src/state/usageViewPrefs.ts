@@ -1,4 +1,4 @@
-import type { UsagePeriod } from '@switchboard/protocol/client';
+import type { UsagePeriod } from '@seshboard/protocol/client';
 import type { MainView } from './sessionsStore.ts';
 
 export type UsageTab = 'limits' | 'tokens';

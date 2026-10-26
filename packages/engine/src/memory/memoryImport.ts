@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { unzipSync } from 'fflate';
-import { RpcError } from '@switchboard/protocol';
+import { RpcError } from '@seshboard/protocol';
 import { memoryFilesOf, projectOf, type ParsedExport } from './claudeExport.ts';
 
 /** Only these parts of an export are ever read; `conversations` (and everything else) is left in the zip. */
@@ -58,7 +58,7 @@ function readFolder(out: ParsedExport, dir: string): void {
 /**
  * Reads what an import needs from the paths picked: `memories-000.zip` (and `projects-000.zip`), an unzipped folder,
  * `memories/<uuid>.json` itself, or the manifest JSON. For a manifest, the memories and projects zips it names are
- * looked for next to it: its links need your claude.ai login, so Switchboard asks you to download them (EXPORT_DOWNLOAD).
+ * looked for next to it: its links need your claude.ai login, so Seshboard asks you to download them (EXPORT_DOWNLOAD).
  */
 export function readExport(paths: readonly string[]): ParsedExport {
   const out: ParsedExport = { files: [], projects: new Map() };
@@ -77,7 +77,7 @@ export function readExport(paths: readonly string[]): ParsedExport {
       try {
         readZip(out, path);
       } catch (error) {
-        throw new RpcError('BAD_EXPORT', `${basename(path)} isn't a zip Switchboard can read: ${(error as Error).message}`);
+        throw new RpcError('BAD_EXPORT', `${basename(path)} isn't a zip Seshboard can read: ${(error as Error).message}`);
       }
       continue;
     }

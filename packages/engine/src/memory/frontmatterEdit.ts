@@ -1,6 +1,6 @@
-import { detectEol, splitFrontmatter, yamlScalar } from '@switchboard/protocol';
+import { detectEol, splitFrontmatter, yamlScalar } from '@seshboard/protocol';
 
-/** The fields Switchboard edits; everything else in the frontmatter is kept as written. */
+/** The fields Seshboard edits; everything else in the frontmatter is kept as written. */
 export interface FrontmatterChange {
   name?: string;
   description?: string;

@@ -1,5 +1,5 @@
 /*
- * Switchboard's look for the website. The --sb-* values are copied from the app (apps/ui/src/styles.css,
+ * Seshboard's look for the website. The --sb-* values are copied from the app (apps/ui/src/styles.css,
  * Demo Time dark and light) and mapped onto Starlight's variables below. When the app's tokens change,
  * change them here too. Dark is the default; light uses the light tokens, with the darker accent ink
  * for text and links so they stay readable on white.

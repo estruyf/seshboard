@@ -31,7 +31,7 @@ export type RightTab = PanelTab | ModPaneTab;
 export const RIGHT_TABS: readonly PanelTab[] = ['changes', 'ask', 'agents', 'commands', 'preview', 'terminal'];
 
 export const modPaneTab = (paneId: string): ModPaneTab => `mod:${paneId}`;
-/** The pane id of a mod's tab, or null for one of Switchboard's panels. */
+/** The pane id of a mod's tab, or null for one of Seshboard's panels. */
 export const paneOfTab = (tab: RightTab | null): string | null => (tab?.startsWith('mod:') ? tab.slice(4) : null);
 
 /**

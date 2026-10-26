@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative } from 'node:path';
-import type { ProjectIcon } from '@switchboard/protocol';
+import type { ProjectIcon } from '@seshboard/protocol';
 
 /** Icons travel to the renderer as data URLs, so keep them small. */
 export const MAX_ICON_BYTES = 200_000;
@@ -83,11 +83,12 @@ function within(root: string, path: string): boolean {
 }
 
 /**
- * An icon declared by the package itself: package.json `icon` (VS Code extensions) or `iconPath` in t3.json / .switchboard.json.
+ * An icon declared by the package itself: package.json `icon` (VS Code extensions) or `iconPath` in t3.json / .seshboard.json (or .switchboard.json, its name before the rename).
  * It must be inside `root`, the project folder (a workspace package may point at the monorepo's shared icon).
  */
 function declaredIcon(dir: string, root: string): string | null {
   for (const [file, key] of [
+    ['.seshboard.json', 'iconPath'],
     ['.switchboard.json', 'iconPath'],
     ['t3.json', 'iconPath'],
     ['package.json', 'icon'],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionSummary } from '@switchboard/protocol/client';
-import { stubBrief } from '@switchboard/protocol/client';
+import type { SessionSummary } from '@seshboard/protocol/client';
+import { stubBrief } from '@seshboard/protocol/client';
 import { briefPr, linkableSessions, linkDetail } from './sessionLinks.ts';
 
 const session = (id: string, over: Partial<SessionSummary> = {}): SessionSummary => ({

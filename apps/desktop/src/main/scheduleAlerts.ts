@@ -1,9 +1,9 @@
-import type { ScheduleRunEvent } from '@switchboard/protocol/client';
+import type { ScheduleRunEvent } from '@seshboard/protocol/client';
 import type { AttentionEvent } from './attention.ts';
 
 /**
  * What scheduled runs (#173) tell you, as notifications. One for each run that started, went to the queue, was skipped
- * or couldn't start; several runs that were missed while Switchboard was closed and started together give one ("3
+ * or couldn't start; several runs that were missed while Seshboard was closed and started together give one ("3
  * scheduled sessions started"). A missed run that was skipped (Skip it) says nothing: its row shows it.
  */
 export function scheduleAlerts(runs: readonly ScheduleRunEvent[]): AttentionEvent[] {
@@ -16,7 +16,7 @@ export function scheduleAlerts(runs: readonly ScheduleRunEvent[]): AttentionEven
       // A click opens the first of them.
       sessionId: caughtUp[0]!.sessionId ?? '',
       title: `${caughtUp.length} scheduled sessions started`,
-      body: 'They were missed while Switchboard was closed.',
+      body: 'They were missed while Seshboard was closed.',
     });
   }
   for (const run of runs) {

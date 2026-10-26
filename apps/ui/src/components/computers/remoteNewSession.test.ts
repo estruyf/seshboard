@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteOptions, RemoteSession } from '@switchboard/protocol/client';
+import type { RemoteOptions, RemoteSession } from '@seshboard/protocol/client';
 import { remoteAutoFace, remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort } from './remoteNewSession.ts';
 
 const project = (id: string, name: string) => ({ id: id.padEnd(16, '0'), name });

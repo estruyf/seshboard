@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ImageAttachment } from '@switchboard/protocol/client';
+import type { ImageAttachment } from '@seshboard/protocol/client';
 import { attachmentLabel, firstLine, focusAfterRemoval, holdNote, lastQueued, mergeIntoBox, upNextTitle } from './upNext.ts';
 
 const image = (name: string): ImageAttachment => ({ type: 'image', mediaType: 'image/png', data: 'AAAA', name });

@@ -1,4 +1,4 @@
-import type { BackgroundTask } from '@switchboard/protocol/client';
+import type { BackgroundTask } from '@seshboard/protocol/client';
 import type { DisplayItem } from './displayItems.ts';
 import type { ToolItem } from './ToolDetails.tsx';
 import type { AgentTokens } from './turns.ts';

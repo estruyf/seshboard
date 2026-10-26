@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clockTime } from '@switchboard/protocol/remote-client';
+import { clockTime } from '@seshboard/protocol/remote-client';
 import { heldLine, limitHeadline, limitHolds, resumeLine } from './limit.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();

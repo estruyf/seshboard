@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import type { CompanionSessions, PermissionDecision, PermissionRequest } from '@switchboard/protocol/companion-client';
-import type { SwitchboardConnection } from './connection.ts';
+import type { CompanionSessions, PermissionDecision, PermissionRequest } from '@seshboard/protocol/companion-client';
+import type { SeshboardConnection } from './connection.ts';
 import { alwaysText, newPrompts, promptKind, promptMessage, promptPlan, promptQuestions, questionAnswers } from './prompts.ts';
 
 const DECLINED = 'The user declined this action.';
@@ -8,8 +8,8 @@ const DECLINED = 'The user declined this action.';
 const PLAN_SCHEME = 'switchboard-plan';
 
 /**
- * Switchboard's prompts for this workspace (permissions, questions, plans) as notifications you can answer here.
- * Dismissing one leaves the prompt waiting in Switchboard; *Switchboard: Answer Prompts* shows them again.
+ * Seshboard's prompts for this workspace (permissions, questions, plans) as notifications you can answer here.
+ * Dismissing one leaves the prompt waiting in Seshboard; *Seshboard: Answer Prompts* shows them again.
  */
 export class PromptNotifier implements vscode.Disposable {
   private readonly seen = new Set<string>();
@@ -19,7 +19,7 @@ export class PromptNotifier implements vscode.Disposable {
   private snapshot: CompanionSessions | null = null;
 
   constructor(
-    private readonly connection: SwitchboardConnection,
+    private readonly connection: SeshboardConnection,
     private readonly enabled: () => boolean,
   ) {
     this.provider = vscode.workspace.registerTextDocumentContentProvider(PLAN_SCHEME, { provideTextDocumentContent: (uri) => this.plans.get(uri.query) ?? '' });
@@ -64,22 +64,22 @@ export class PromptNotifier implements vscode.Disposable {
       else if (kind === 'plan') await this.plan(request);
       else await this.tool(request);
     } catch (error) {
-      void vscode.window.showErrorMessage(`Couldn't answer in Switchboard: ${(error as Error).message}`);
+      void vscode.window.showErrorMessage(`Couldn't answer in Seshboard: ${(error as Error).message}`);
     }
   }
 
-  /** Still waiting? Otherwise say so: it was answered in Switchboard (or the session stopped) in the meantime. */
+  /** Still waiting? Otherwise say so: it was answered in Seshboard (or the session stopped) in the meantime. */
   private stillWaiting(request: PermissionRequest): boolean {
     if (this.waiting(request)) return true;
-    void vscode.window.showInformationMessage('That was already answered in Switchboard.');
+    void vscode.window.showInformationMessage('That was already answered in Seshboard.');
     return false;
   }
 
   private async tool(request: PermissionRequest): Promise<void> {
     const always = request.alwaysLabel ? alwaysText(request.alwaysLabel) : null;
-    const choice = await vscode.window.showWarningMessage(this.message(request), 'Allow', ...(always ? [always] : []), 'Deny…', 'Show in Switchboard');
+    const choice = await vscode.window.showWarningMessage(this.message(request), 'Allow', ...(always ? [always] : []), 'Deny…', 'Show in Seshboard');
     if (!choice || !this.stillWaiting(request)) return;
-    if (choice === 'Show in Switchboard') return this.reveal(request);
+    if (choice === 'Show in Seshboard') return this.reveal(request);
     if (choice === 'Allow') return this.respond(request, { behavior: 'allow' });
     if (choice === always) return this.respond(request, { behavior: 'allow', always: true });
     const feedback = await this.feedback(request, 'Tell Claude what to do instead (optional)');
@@ -88,9 +88,9 @@ export class PromptNotifier implements vscode.Disposable {
   }
 
   private async question(request: PermissionRequest): Promise<void> {
-    const choice = await vscode.window.showWarningMessage(this.message(request), 'Answer…', 'Skip', 'Show in Switchboard');
+    const choice = await vscode.window.showWarningMessage(this.message(request), 'Answer…', 'Skip', 'Show in Seshboard');
     if (!choice || !this.stillWaiting(request)) return;
-    if (choice === 'Show in Switchboard') return this.reveal(request);
+    if (choice === 'Show in Seshboard') return this.reveal(request);
     if (choice === 'Skip') return this.respond(request, { behavior: 'deny', message: DECLINED });
     const answers = await this.askQuestions(request);
     if (!answers) return this.question(request);
@@ -124,9 +124,9 @@ export class PromptNotifier implements vscode.Disposable {
   }
 
   private async plan(request: PermissionRequest): Promise<void> {
-    const choice = await vscode.window.showWarningMessage(this.message(request), 'Read the plan', 'Show in Switchboard');
+    const choice = await vscode.window.showWarningMessage(this.message(request), 'Read the plan', 'Show in Seshboard');
     if (!choice || !this.stillWaiting(request)) return;
-    if (choice === 'Show in Switchboard') return this.reveal(request);
+    if (choice === 'Show in Seshboard') return this.reveal(request);
     this.plans.set(request.requestId, promptPlan(request));
     const uri = vscode.Uri.from({ scheme: PLAN_SCHEME, path: '/Plan.md', query: request.requestId });
     await vscode.commands.executeCommand('markdown.showPreview', uri).then(undefined, () => vscode.window.showTextDocument(uri, { preview: true }));
@@ -152,14 +152,14 @@ export class PromptNotifier implements vscode.Disposable {
 
   private async respond(request: PermissionRequest, decision: PermissionDecision, acceptEdits = false): Promise<void> {
     const client = this.connection.client;
-    if (!client) return void vscode.window.showErrorMessage("Switchboard isn't running anymore.");
+    if (!client) return void vscode.window.showErrorMessage("Seshboard isn't running anymore.");
     try {
       await client.call('prompt.respond', { requestId: request.requestId, decision, acceptEdits });
-      vscode.window.setStatusBarMessage(`$(check) ${decision.behavior === 'allow' ? 'Answered' : 'Denied'} in Switchboard`, 3_000);
+      vscode.window.setStatusBarMessage(`$(check) ${decision.behavior === 'allow' ? 'Answered' : 'Denied'} in Seshboard`, 3_000);
     } catch (error) {
       const code = (error as { code?: string }).code;
-      if (code === 'NOT_FOUND') return void vscode.window.showInformationMessage('That was already answered in Switchboard.');
-      if (code === 'METHOD_NOT_FOUND') return void vscode.window.showErrorMessage('Update Switchboard to answer it from VS Code.');
+      if (code === 'NOT_FOUND') return void vscode.window.showInformationMessage('That was already answered in Seshboard.');
+      if (code === 'METHOD_NOT_FOUND') return void vscode.window.showErrorMessage('Update Seshboard to answer it from VS Code.');
       throw error;
     }
   }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CatchUp } from '@switchboard/protocol/client';
+import type { CatchUp } from '@seshboard/protocol/client';
 import type { QuickInfo } from './sidebarRows.ts';
 
 /** Each session's review time and whether its tests fail, for the Quickest to unblock order. */

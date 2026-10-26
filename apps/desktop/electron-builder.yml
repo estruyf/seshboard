@@ -1,6 +1,6 @@
-# Packaging for the Switchboard desktop app: npm run dist
+# Packaging for the Seshboard desktop app: npm run dist
 appId: dev.switchboard.app
-productName: Switchboard
+productName: Seshboard
 copyright: Copyright © 2026 Elio Struyf
 directories:
   output: dist
@@ -8,7 +8,7 @@ directories:
 files:
   - out/**
   - package.json
-  # Switchboard runs the user's installed `claude`; the SDK's bundled copy (~220 MB) is not shipped.
+  # Seshboard runs the user's installed `claude`; the SDK's bundled copy (~220 MB) is not shipped.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
   # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime (the platform's own
   # `files` below leave out the other one's), without their debug symbols.
@@ -56,7 +56,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
 dmg:
-  title: Switchboard
+  title: Seshboard
 win:
   icon: build/icon.ico
   files:
@@ -91,9 +91,9 @@ linux:
     - from: resources/app-icons
       to: app-icons
       filter: ['*-256.png']
-  # Lowercase, as Linux commands are: /opt/Switchboard/switchboard.
-  executableName: switchboard
-  # Names the desktop entry switchboard.desktop, after desktopName in package.json, which Electron also gives the
+  # Lowercase, as Linux commands are: /opt/Seshboard/seshboard.
+  executableName: seshboard
+  # Names the desktop entry seshboard.desktop, after desktopName in package.json, which Electron also gives the
   # window as its app id (WM_CLASS), so the desktop links the window to the entry and its icon.
   syncDesktopName: true
   category: Development
@@ -109,29 +109,31 @@ linux:
     - rpm
   # No spaces, and the architecture in the name, as for the other platforms' files.
   artifactName: ${productName}-${version}-${arch}.${ext}
-# The package's name in apt and dnf (the productName otherwise). electron-builder's usual dependencies stay; git is
-# what Switchboard uses next to Claude Code.
+# The package's name in apt and dnf (the productName otherwise). It stays switchboard, the name from before the
+# rename, so the package manager updates installs from then instead of putting a second app next to them.
+# electron-builder's usual dependencies stay; git is what Seshboard uses next to Claude Code.
 deb:
   packageName: switchboard
   recommends: [git]
 rpm:
   packageName: switchboard
 # The installer installs for the current user, without asking for an administrator, in
-# %LOCALAPPDATA%\Programs\switchboard (scripts/dist.mjs gives it that name), and the in-app updater installs updates the same way (latest.yml).
+# %LOCALAPPDATA%\Programs\switchboard (scripts/dist.mjs gives it that name, from before the rename, so updates install in place), and the in-app updater installs updates the same way (latest.yml).
 nsis:
   oneClick: true
   perMachine: false
-  shortcutName: Switchboard
+  shortcutName: Seshboard
   # No spaces: GitHub turns them into dots in release assets, and latest.yml has to name the file as uploaded.
   artifactName: ${productName}-${version}-setup.${ext}
   include: build/installer.nsh
-# Names the helper apps "Switchboard Helper" instead of "Electron Helper" in macOS prompts (runs before signing).
+# Names the helper apps "Seshboard Helper" instead of "Electron Helper" in macOS prompts (runs before signing).
 afterPack: scripts/afterPack.mjs
-# switchboard:// links (docs/deep-links.md): declared in Info.plist so macOS opens them with the app. On Windows the
-# app registers them for the user when it starts (setAsDefaultProtocolClient), and the uninstaller removes them.
+# seshboard:// links (docs/deep-links.md), and switchboard:// from before the rename (the VS Code companion and saved
+# links use it): declared in Info.plist so macOS opens them with the app. On Windows the app registers them for the
+# user when it starts (setAsDefaultProtocolClient), and the uninstaller removes them.
 protocols:
-  - name: Switchboard link
-    schemes: [switchboard]
+  - name: Seshboard link
+    schemes: [seshboard, switchboard]
 # The update feed: packaged apps get app-update.yml pointing here, and the build writes latest-mac.yml, or latest.yml
 # on Windows (beta-mac.yml and beta.yml when built with -c.publish.channel=beta, as the release workflow
 # does for a -beta. version).

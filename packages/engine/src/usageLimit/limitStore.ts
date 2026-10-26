@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { UsageLimitHit, type LimitResume } from '@switchboard/protocol';
+import { UsageLimitHit, type LimitResume } from '@seshboard/protocol';
 
 /**
  * The limit each profile is at (`usage_limits`) and the sessions armed to resume when it resets (`limit_resumes`), so

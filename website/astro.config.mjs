@@ -12,8 +12,8 @@ import { sidebar } from './src/sidebar.mjs';
  * other as `/sessions/sidebar/`, and `withBase` puts the base in front at build time, so moving the site under a
  * path only needs `site` and `base` changed here.
  */
-const production = 'https://switchboard.struyfconsulting.com';
-/** Cloudflare Pages builds the preview of `dev` and of pull requests (switch-dev.struyfconsulting.com) and sets CF_PAGES. */
+const production = 'https://seshboard.app';
+/** Cloudflare Pages builds the preview of `dev` and of pull requests (beta.seshboard.app) and sets CF_PAGES. */
 const preview = Boolean(process.env.CF_PAGES);
 const site = preview ? (process.env.CF_PAGES_URL ?? production) : production;
 const base = '/';
@@ -33,9 +33,9 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: 'Switchboard',
+      title: 'Seshboard',
       description: 'A fast app for Mac, Windows and Linux for running and keeping track of your Claude Code sessions.',
-      logo: { src: './src/assets/logo.svg', alt: 'Switchboard' },
+      logo: { src: './src/assets/logo.svg', alt: 'Seshboard' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/estruyf/switchboard' }],
       customCss: ['./src/styles/switchboard.css'],

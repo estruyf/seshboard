@@ -1,7 +1,7 @@
 import { Check, Copy } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useEffect, useState } from 'react';
-import type { Contract, RemoteStatus, RpcClient } from '@switchboard/protocol/client';
+import type { Contract, RemoteStatus, RpcClient } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Notice } from '../ui/Notice.tsx';

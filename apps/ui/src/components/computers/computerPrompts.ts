@@ -1,4 +1,4 @@
-import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/client';
+import type { PermissionDecision, RemotePrompt } from '@seshboard/protocol/client';
 import { toolLine } from './computerSessions.ts';
 
 /** What another computer's prompt asks for: a tool to allow, a question to answer, or a plan to start. */

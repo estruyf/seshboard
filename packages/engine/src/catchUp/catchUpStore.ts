@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { CatchUp, type TokenCounts } from '@switchboard/protocol';
+import { CatchUp, type TokenCounts } from '@seshboard/protocol';
 
 /** The latest catch-up per session, in `catchup`, so it outlives a restart. A card that no longer reads is dropped. */
 export class CatchUpStore {

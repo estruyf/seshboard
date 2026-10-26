@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession } from '@switchboard/protocol/client';
+import type { LiveSession } from '@seshboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { buildListRows, buildSessionList } from './sidebarRows.ts';
 import { needsYouPill, nextNeedsYou, sidebarGroups, sidebarOrder, statusLine, stepSession, waitingDetail } from './sidebarOrder.ts';

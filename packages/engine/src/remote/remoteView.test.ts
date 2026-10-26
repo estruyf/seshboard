@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, checkRemoteSessions, RemoteSessions, type Pipeline, type PipelineRunState, type SessionSummary, type TranscriptMessage } from '@seshboard/protocol';
 import { projectIdOf, remoteMessage, remoteRuns, remoteSessions } from './remoteView.ts';
 
 const msg = (role: TranscriptMessage['role'], blocks: TranscriptMessage['blocks']): TranscriptMessage => ({ uuid: 'm1', role, timestamp: 1, parentToolUseId: null, model: null, blocks });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import type { ModSite } from '@switchboard/protocol/client';
+import type { ModSite } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import type { CellMetrics } from './modLayout.ts';
 

@@ -12,11 +12,11 @@ import {
   type RemoteRunState,
   type RemoteSessions,
   type TreeStatus,
-} from '@switchboard/protocol/remote-client';
+} from '@seshboard/protocol/remote-client';
 import type { ListedPrompt, ListedRun, ListedSession } from './everywhere.ts';
 
 /**
- * Pipelines (#179) on a phone, as Switchboard's sidebar has them: a step's sub-session sits under the session the run
+ * Pipelines (#179) on a phone, as Seshboard's sidebar has them: a step's sub-session sits under the session the run
  * started from (or under its run row), and a parent takes the most urgent state of its own, its children's and its
  * run's. The rules are the protocol's (`sidebarTree`, `pipelineView.ts`), so a run reads the same on the computer.
  * Pure, with tests.

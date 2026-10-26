@@ -1,7 +1,7 @@
 import { AlertTriangle, BookCopy, ClipboardCopy, ClipboardPaste, Copy, Download, FileText, FolderInput, FolderSearch, MoreHorizontal, Pencil, Plus, Search, Share2, SquareArrowOutUpRight, Trash2 } from 'lucide-react';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@switchboard/protocol/client';
+import { isSameOrInside, MEMORY_INDEX_LIMIT, type InstructionFile, type MemoryFile } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { basename, dirnameOf, shortAge, tildify } from '../../lib/format.ts';

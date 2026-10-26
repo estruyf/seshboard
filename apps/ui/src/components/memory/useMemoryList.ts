@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { MemoryList, PersonalMemory } from '@switchboard/protocol/client';
+import type { MemoryList, PersonalMemory } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 /**

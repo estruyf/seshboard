@@ -1,4 +1,4 @@
-import { byMostUsed } from '@switchboard/protocol/client';
+import { byMostUsed } from '@seshboard/protocol/client';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { useSavedPrompts } from './savedPromptsStore.ts';

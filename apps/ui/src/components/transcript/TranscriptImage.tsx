@@ -3,7 +3,7 @@ import { fileManagerName } from '../../lib/platform.ts';
 import { ChevronLeft, ChevronRight, Download, ImageOff, Maximize2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { ImageRef } from '@switchboard/protocol/client';
+import type { ImageRef } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -50,7 +50,7 @@ function useImage(sessionId: string, ref: ImageRef): { url: string | null; faile
 /** Asks where to save an image (a data URL) and writes it there; a toast says where it went. */
 async function saveImage(url: string, imageId: string) {
   const image = parseDataUrl(url);
-  const bridge = window.switchboard;
+  const bridge = window.seshboard;
   if (!image || !bridge) return;
   try {
     const path = await bridge.saveImage({ ...image, fileName: imageFileName(imageId, image.mediaType) });

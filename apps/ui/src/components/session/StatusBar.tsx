@@ -1,4 +1,4 @@
-import { AUTO_MODEL, type SessionHostInfo } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type SessionHostInfo } from '@seshboard/protocol/client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { autoChipModel } from '../../lib/autoModel.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';

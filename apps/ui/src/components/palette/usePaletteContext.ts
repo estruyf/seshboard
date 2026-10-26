@@ -1,4 +1,4 @@
-import { isAbsolutePath } from '@switchboard/protocol/client';
+import { isAbsolutePath } from '@seshboard/protocol/client';
 import { useEffect, useMemo, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';

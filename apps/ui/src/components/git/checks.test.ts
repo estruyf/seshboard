@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PrCheck, PrChecks } from '@switchboard/protocol/client';
+import type { PrCheck, PrChecks } from '@seshboard/protocol/client';
 import { checksLine, checkTime, duration, fixChecksDraft } from './checks.ts';
 
 const check = (name: string, bucket: PrCheck['bucket'], extra: Partial<PrCheck> = {}): PrCheck => ({ name, bucket, workflow: 'CI', description: '', link: '', startedAt: null, completedAt: null, ...extra });

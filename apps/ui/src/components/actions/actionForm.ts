@@ -1,8 +1,8 @@
-import type { ActionScope, ActionSuggestion, ListedAction, ProjectAction } from '@switchboard/protocol/client';
+import type { ActionScope, ActionSuggestion, ListedAction, ProjectAction } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { formatShortcut, normalizeShortcut, reservedShortcuts, sameShortcut } from '../../lib/shortcuts.ts';
 
-/** The form's state: an action plus where it is saved: yours (`project`, `global`) or the project's .switchboard.json (`shared`). */
+/** The form's state: an action plus where it is saved: yours (`project`, `global`) or the project's .seshboard.json (`shared`). */
 export type ActionDraft = ProjectAction & { scope: ActionScope };
 
 export const EMPTY_DRAFT: ActionDraft = {
@@ -58,7 +58,7 @@ export function applySavedAction(actions: ListedAction[], saved: ListedAction, p
 /** The list without one action, for a delete that shows before the list reloads. */
 export const withoutAction = (actions: ListedAction[], removed: { scope: ActionScope; id: string }) => actions.filter((a) => actionKey(a) !== actionKey(removed));
 
-/** Splits the list into your actions and the project's shared ones from .switchboard.json. */
+/** Splits the list into your actions and the project's shared ones from .seshboard.json. */
 export function groupActions(actions: ListedAction[]): {
   yours: ListedAction[];
   shared: ListedAction[];
@@ -107,7 +107,7 @@ export function validateDraft(draft: ActionDraft, actions: ListedAction[], editi
   if (draft.shortcut) {
     // The action being edited keeps its own shortcut (also when it moves to the other scope).
     const other = actions.find((a) => a.shortcut && sameShortcut(a.shortcut, draft.shortcut!) && !(editing && a.scope === editing.scope && a.id === editing.id));
-    if (reservedShortcuts().has(normalizeShortcut(draft.shortcut))) errors.shortcut = `${formatShortcut(draft.shortcut)} is used by Switchboard.`;
+    if (reservedShortcuts().has(normalizeShortcut(draft.shortcut))) errors.shortcut = `${formatShortcut(draft.shortcut)} is used by Seshboard.`;
     else if (other) errors.shortcut = `“${other.name}” already uses ${formatShortcut(draft.shortcut)}.`;
   }
   return errors;

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@switchboard/protocol';
+import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@seshboard/protocol';
 
 const MAX_DIFF_BYTES = 512 * 1024;
 /** How much of the untracked files' contents `listChanges` reads in total to count their lines. */

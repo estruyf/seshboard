@@ -1,4 +1,4 @@
-import { REMOTE_FEATURE_CLONE, type ClonePlan, type CloneProgress, type RepoBrings } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_CLONE, type ClonePlan, type CloneProgress, type RepoBrings } from '@seshboard/protocol/client';
 
 /**
  * Clone from GitHub's words and states, without React: what the plan, the progress and the trust question say. Shared
@@ -22,10 +22,10 @@ export function planLine(plan: ClonePlan, computer: string | null): { text: stri
   }
 }
 
-/** Another computer that can't clone: it runs a Switchboard from before Clone from GitHub. Null when it can. */
+/** Another computer that can't clone: it runs a Seshboard from before Clone from GitHub. Null when it can. */
 export function remoteCloneProblem(computer: { name: string; features: string[] } | null): string | null {
   if (!computer || computer.features.includes(REMOTE_FEATURE_CLONE)) return null;
-  return `Update Switchboard on ${computer.name} to clone there.`;
+  return `Update Seshboard on ${computer.name} to clone there.`;
 }
 
 /** What the progress line says while a clone runs. */

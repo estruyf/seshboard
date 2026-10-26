@@ -17,7 +17,7 @@ export const isTopModal = (root: HTMLElement | null) => root !== null && stack[s
  * Sent on `window` when a modal opens, with its root as `detail`. Menus and popovers open under it
  * close (`Popover`), so they don't stay behind it and take its Escape.
  */
-export const MODAL_OPENED_EVENT = 'switchboard:modal-opened';
+export const MODAL_OPENED_EVENT = 'seshboard:modal-opened';
 
 /**
  * One more place for an open modal to give focus back to, after the ones it has: a menu that closed

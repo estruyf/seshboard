@@ -1,4 +1,4 @@
-import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/protocol/bridge';
+import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/protocol/bridge';
 
 /**
  * The updater's state machine. Every change is a pure function from one state to the next,
@@ -116,7 +116,7 @@ export function updatesDisabledReason(build: {
   mockFeed: boolean;
   installer?: boolean;
 }): string | null {
-  if (build.env.SWITCHBOARD_DISABLE_AUTO_UPDATE) return 'Updates are turned off by SWITCHBOARD_DISABLE_AUTO_UPDATE.';
+  if (build.env.SESHBOARD_DISABLE_AUTO_UPDATE) return 'Updates are turned off by SESHBOARD_DISABLE_AUTO_UPDATE.';
   if (build.mockFeed) return null;
   if (build.devServer) return 'Updates are turned off in development builds.';
   if (!build.packaged) return 'Updates are turned off in builds that aren’t packaged.';

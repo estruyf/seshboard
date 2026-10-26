@@ -36,7 +36,7 @@ Right-click a pill, or an action in **N more**, or press <Kbd shortcut="context-
 
 </Steps>
 
-The editor, **Project actions**, lists your actions on the left under **Yours**, shared ones under **From .switchboard.json**, and suggestions under **Add from package.json**. Click one to edit it, or **New action** to start a blank one.
+The editor, **Project actions**, lists your actions on the left under **Yours**, shared ones under **From .seshboard.json**, and suggestions under **Add from package.json**. Click one to edit it, or **New action** to start a blank one.
 
 ### Fields
 
@@ -45,7 +45,7 @@ The editor, **Project actions**, lists your actions on the left under **Yours**,
 | **Name** and **icon** | How it looks on its pill and in the menu. Up to 40 characters. |
 | **Run a command** / **Ask Claude** | A command opens in a terminal tab of the session. It runs in <Os mac="your login shell, so your PATH, nvm and aliases work as in your own terminal" windows="PowerShell (PowerShell 7 when it is installed, else Windows PowerShell)" />. A prompt is sent to Claude in the session, and can be a `/` command. |
 | **Command** / **Prompt** | What it runs or sends. Insert a [variable](#variables) with the buttons under the field. |
-| **Saved for** | *This project* or *All projects* keep the action just for you. *Shared with the project* saves it in the project's `.switchboard.json`, for everyone on the project. See [Share actions with your team](#share-actions-with-your-team). |
+| **Saved for** | *This project* or *All projects* keep the action just for you. *Shared with the project* saves it in the project's `.seshboard.json`, for everyone on the project. See [Share actions with your team](#share-actions-with-your-team). |
 | **Runs in** | For a command: *Session folder* (its worktree, when it has one) or *Project root*. |
 | **Shortcut** | Optional. Click **Set**, then press the keys. See [Shortcuts](#shortcuts). |
 | **Ask before running** | Shows a confirmation with the command first. Useful for publish or deploy. |
@@ -56,7 +56,7 @@ The footer shows the pill as it will look above the message box. **Delete** remo
 
 ### Suggestions
 
-When you add an action, Switchboard suggests some to start from:
+When you add an action, Seshboard suggests some to start from:
 
 - your `package.json` scripts, run with npm, pnpm, yarn or bun, whichever the project uses, plus *Install*;
 - *Push* (`git push`) and *Create PR* (`gh pr create --web`).
@@ -101,13 +101,13 @@ An action's shortcut works while a session in the project is on screen.
 
 <OnlyOn os="mac">
 
-It must include <Kbd keys="cmd" />, <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard uses itself can't be taken: the editor says the keys are used by Switchboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="cmd" /> run actions, since <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
+It must include <Kbd keys="cmd" />, <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Seshboard uses itself can't be taken: the editor says the keys are used by Seshboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="cmd" /> run actions, since <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-It must include <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Switchboard uses itself can't be taken: the editor says the keys are used by Switchboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="ctrl+shift" /> run actions, since other <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
+It must include <Kbd keys="ctrl" /> or <Kbd keys="alt" />. Keys that Seshboard uses itself can't be taken: the editor says the keys are used by Seshboard, or which other action already uses them. In the terminal, only shortcuts with <Kbd keys="ctrl+shift" /> run actions, since other <Kbd keys="ctrl" /> and <Kbd keys="alt" /> keys belong to the shell.
 
 </OnlyOn>
 
@@ -121,20 +121,20 @@ It also works when you run the action again with **Restart**. Close the tab befo
 
 ## Run in every new worktree
 
-Turn on **Run when a new worktree is created** for setup that each new worktree needs, such as `npm install`. When a session starts in a new worktree, Switchboard waits until Claude Code has created it, then runs these actions there one by one, each in its own terminal tab. Claude's first message waits until they have finished.
+Turn on **Run when a new worktree is created** for setup that each new worktree needs, such as `npm install`. When a session starts in a new worktree, Seshboard waits until Claude Code has created it, then runs these actions there one by one, each in its own terminal tab. Claude's first message waits until they have finished.
 
 A shared action that you haven't approved yet is skipped. Run it once from the actions menu to approve it.
 
 ## Share actions with your team
 
-Shared actions are kept in a `.switchboard.json` file in the root of the repository. Commit it, and everyone who uses Switchboard on that repository gets its actions.
+Shared actions are kept in a `.seshboard.json` file in the root of the repository. Commit it, and everyone who uses Seshboard on that repository gets its actions.
 
 <Steps>
 
 1. Open an action in the editor, or start a new one.
 2. Set **Saved for** to **Shared with the project**.
-3. Click **Save**. Switchboard writes the action to `.switchboard.json`, and creates the file when the project doesn't have one yet.
-4. Commit `.switchboard.json`. The toast after the save has **Show the change**, which opens the file in Changes.
+3. Click **Save**. Seshboard writes the action to `.seshboard.json`, and creates the file when the project doesn't have one yet.
+4. Commit `.seshboard.json`. The toast after the save has **Show the change**, which opens the file in Changes.
 
 </Steps>
 
@@ -168,15 +168,15 @@ You can also write the file by hand:
 
 Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions.
 
-When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the action that changed. Settings left at their default are left out of the entry. **Edit file** in the editor opens `.switchboard.json`. Mistakes in the file are shown at the top of the editor and the Actions tab, and Switchboard won't write a file it can't read.
+When Seshboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the action that changed. Settings left at their default are left out of the entry. **Edit file** in the editor opens `.seshboard.json`. Mistakes in the file are shown at the top of the editor and the Actions tab, and Seshboard won't write a file it can't read.
 
 The file is watched: a pull that changes it updates the actions in the app.
 
-The same file holds the project's shared [saved prompts](/sessions/saved-prompts/#shared-prompts), under `prompts`. Switchboard writes those for you when you share a prompt, and keeps the rest of the file as it is.
+The same file holds the project's shared [saved prompts](/sessions/saved-prompts/#shared-prompts), under `prompts`. Seshboard writes those for you when you share a prompt, and keeps the rest of the file as it is.
 
 ### Approving shared actions
 
-A command from a repository could do anything. The first time you run a shared action, Switchboard shows the exact command and asks you to approve it with **Approve and run**. If someone changes the command later, you are asked again. An action you share yourself is approved for you when you save it.
+A command from a repository could do anything. The first time you run a shared action, Seshboard shows the exact command and asks you to approve it with **Approve and run**. If someone changes the command later, you are asked again. An action you share yourself is approved for you when you save it.
 
 Actions that came in with [Import settings…](/settings/backup/) are approved the same way, once.
 
@@ -186,7 +186,7 @@ Read the command before you approve it. Approving runs it right away.
 
 ## The Actions tab
 
-The **Actions** tab on a [project's page](/projects/projects-view/#open-a-projects-page) lists every action that applies to the project: its icon, name, command, where it is saved (*This project*, *Shared (.switchboard.json)* or *Every project*) and its shortcut. Click one to edit it. **Edit actions…** opens the editor on the first action and **New action…** starts a new one. You don't need a session open to manage actions here.
+The **Actions** tab on a [project's page](/projects/projects-view/#open-a-projects-page) lists every action that applies to the project: its icon, name, command, where it is saved (*This project*, *Shared (.seshboard.json)* or *Every project*) and its shortcut. Click one to edit it. **Edit actions…** opens the editor on the first action and **New action…** starts a new one. You don't need a session open to manage actions here.
 
 ## Settings
 

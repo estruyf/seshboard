@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { DatabaseSync } from 'node:sqlite';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { AUTO_TIERS, estimateVsOpus, isAutoTier, type AutoModelPrefs, type AutoTier, type LogLevel, type RouteResult, type TokenCounts } from '@switchboard/protocol';
+import { AUTO_TIERS, estimateVsOpus, isAutoTier, type AutoModelPrefs, type AutoTier, type LogLevel, type RouteResult, type TokenCounts } from '@seshboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { routingSystemPrompt, routingUserMessage } from './routingRules.ts';
 

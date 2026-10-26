@@ -1,6 +1,6 @@
 import { ShieldAlert } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { RepoBrings } from '@switchboard/protocol/client';
+import type { RepoBrings } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { trustGroups, trustText } from './cloneModel.ts';

@@ -60,7 +60,7 @@ The mode decides when Claude stops to ask before it acts. The menu, under the he
 | **Plan mode** | Plan | Claude reads and plans, and makes no changes. It shows you the plan to approve. |
 | **Auto mode** | Auto | Claude only asks when it matters. |
 
-Each mode has a dot in the chip: green for Ask first, blue for Accept edits, grey for Plan and yellow for Auto. A session started in another mode elsewhere (such as bypassing permissions) shows that mode in the menu too, but Switchboard never offers it.
+Each mode has a dot in the chip: green for Ask first, blue for Accept edits, grey for Plan and yellow for Auto. A session started in another mode elsewhere (such as bypassing permissions) shows that mode in the menu too, but Seshboard never offers it.
 
 Press <Kbd shortcut="mode.cycle" /> in the message box to switch mode. Like the Claude Code CLI, it cycles through Ask before edits, Accept edits and Plan mode. Pick Auto mode from the menu.
 
@@ -69,7 +69,7 @@ A new session starts in the project's own default mode, then its [Claude profile
 What the cards look like when Claude asks: [Permissions and questions](/permissions/).
 
 <Aside>
-Some starts never use a mode that skips prompts (Auto mode or bypassing permissions). A session started by a `switchboard://` link with `autostart=1` uses the project's own default mode, or Ask before edits. A quick question starts in the mode you last picked for one, or Ask before edits when that was such a mode. Pick it again each time you want it.
+Some starts never use a mode that skips prompts (Auto mode or bypassing permissions). A session started by a `seshboard://` link with `autostart=1` uses the project's own default mode, or Ask before edits. A quick question starts in the mode you last picked for one, or Ask before edits when that was such a mode. Pick it again each time you want it.
 </Aside>
 
 ## In a narrow window

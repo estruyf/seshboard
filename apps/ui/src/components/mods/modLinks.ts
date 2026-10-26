@@ -1,4 +1,4 @@
-import { MOD_LIMITS } from '@switchboard/protocol/client';
+import { MOD_LIMITS } from '@seshboard/protocol/client';
 
 /**
  * A mod's link target, or null when it may not be opened: only http and https, at most 2,048 characters, no control

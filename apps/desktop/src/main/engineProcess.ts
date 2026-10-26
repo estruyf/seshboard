@@ -27,7 +27,7 @@ export class EngineProcess {
   start(): void {
     const args = ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion];
     const child = utilityProcess.fork(this.options.entry, args, {
-      serviceName: 'Switchboard Engine',
+      serviceName: 'Seshboard Engine',
       stdio: 'inherit',
     });
     this.child = child;

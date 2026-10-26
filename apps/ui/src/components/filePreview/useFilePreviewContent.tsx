@@ -1,4 +1,4 @@
-import { previewKind, type PreviewKind } from '@switchboard/protocol/client';
+import { previewKind, type PreviewKind } from '@seshboard/protocol/client';
 import { Check, Code, Copy, Folder, RotateCw, WrapText } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -182,7 +182,7 @@ export function useFilePreviewContent(target: PreviewTarget): FilePreviewContent
             </>
           }
         >
-          This file is {formatBytes(file.size)}. Switchboard previews files up to {LIMIT_TEXT}.
+          This file is {formatBytes(file.size)}. Seshboard previews files up to {LIMIT_TEXT}.
         </Notice>
       </div>
     );

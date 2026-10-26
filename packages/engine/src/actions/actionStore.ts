@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@switchboard/protocol';
+import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@seshboard/protocol';
 import type { UserShell } from '../system/shell.ts';
 import { entriesOf, readSharedFile, removeEntry, SHARED_FILE, upsertEntry, writeSharedFile } from './sharedFile.ts';
 
@@ -181,14 +181,14 @@ export class ActionStore {
     if (!read.data && !read.error) return { actions: [], file: null, errors: [] };
     if (read.error) return { actions: [], file: read.file, errors: [read.error] };
     const entries = entriesOf(read.data, 'actions');
-    if (!entries) return { actions: [], file: read.file, errors: [`${SHARED_FILE}: expected { "actions": [...] }`] };
+    if (!entries) return { actions: [], file: read.file, errors: [`${basename(read.file)}: expected { "actions": [...] }`] };
     const errors: string[] = [];
     const actions: ProjectAction[] = [];
     for (const [i, entry] of entries.entries()) {
       const candidate = { ...entry, id: sharedId(entry, i) };
       const action = ProjectAction.safeParse(candidate);
       if (action.success) actions.push(action.data);
-      else errors.push(`${SHARED_FILE} action ${i + 1}: ${action.error.issues[0]?.message ?? 'invalid'}`);
+      else errors.push(`${basename(read.file)} action ${i + 1}: ${action.error.issues[0]?.message ?? 'invalid'}`);
     }
     return { actions, file: read.file, errors };
   }
@@ -234,8 +234,8 @@ export class ActionStore {
   }
 
   /**
-   * Saves an action in the project's .switchboard.json (in place, or at the end), for everyone on the project once it
-   * is committed. `previousId` renames the entry where it is. Keys and entries Switchboard doesn't know stay as they
+   * Saves an action in the project's .seshboard.json (in place, or at the end), for everyone on the project once it
+   * is committed. `previousId` renames the entry where it is. Keys and entries Seshboard doesn't know stay as they
    * were. You saved the command, so it is approved for you; others approve it once.
    */
   saveShared(projectRoot: string, action: ProjectAction, previousId?: string): void {
@@ -246,7 +246,7 @@ export class ActionStore {
     this.trust(projectRoot, action.command);
   }
 
-  /** Takes an action out of the project's .switchboard.json. */
+  /** Takes an action out of the project's .seshboard.json. */
   removeShared(projectRoot: string, id: string): void {
     if (!this.shared(projectRoot).actions.some((a) => a.id === id)) return;
     writeSharedFile(projectRoot, (data) => removeEntry(data, 'actions', id, sharedId));

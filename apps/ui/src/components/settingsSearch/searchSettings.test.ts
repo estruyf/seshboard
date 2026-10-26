@@ -3,7 +3,7 @@ import type { SettingsSection } from '../../state/sessionsStore.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './searchSettings.ts';
 
 const ENTRIES: SettingEntry[] = [
-  { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens.', target: '[data-startup-view]' },
+  { id: 'startup', page: 'general', label: 'On startup', detail: 'What Seshboard shows when it opens.', target: '[data-startup-view]' },
   { id: 'quit', page: 'general', label: 'Ask before quitting', detail: 'Shows a prompt first.', keywords: 'close exit', target: '[data-confirm-quit]' },
   { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode', target: '[data-appearance]' },
   { id: 'scope', page: 'sidebar', label: 'Show sessions from other apps', detail: 'Also list sessions from Terminal.', target: '[data-session-scope]' },

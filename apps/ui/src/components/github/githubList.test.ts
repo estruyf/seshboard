@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GithubListItem } from '@switchboard/protocol/client';
+import type { GithubListItem } from '@seshboard/protocol/client';
 import { branchLine, filterLocal, pastedGithubLink, rowsOf, withoutLink } from './githubList.ts';
 import { chipDetail, itemLabel, openedLine } from './githubText.ts';
 

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { ImageAttachment, QueuedMessage } from '@switchboard/protocol';
+import type { ImageAttachment, QueuedMessage } from '@seshboard/protocol';
 
 /** A message in Up next as the engine keeps it: with its images, which the window never gets. */
 export interface StoredUpNext {

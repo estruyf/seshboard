@@ -1,4 +1,4 @@
-import type { RemoteProfileUsage } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage } from '@seshboard/protocol/remote-client';
 import { visibleLimits } from './usage.ts';
 
 /**

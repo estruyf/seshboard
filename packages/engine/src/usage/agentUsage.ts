@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AgentUsage } from '@switchboard/protocol';
+import type { AgentUsage } from '@seshboard/protocol';
 import { parseUsageLine } from './transcriptUsage.ts';
 
 const TOOL_USE_ID = /"type":"tool_use","id":"([^"]+)"/g;

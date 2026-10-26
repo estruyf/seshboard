@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteSession } from '@seshboard/protocol/remote-client';
 import { age, groupSessions, homeHeadline, nextNeedsYou, projectStatus, recentProjects, shortHeadline, startOfDay, suggestedProject, toReview } from './groups.ts';
 
 const NOW = new Date(2026, 9, 15, 14, 0).getTime();

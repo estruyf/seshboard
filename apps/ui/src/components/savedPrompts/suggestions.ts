@@ -1,4 +1,4 @@
-import { blankSource, freeBlankName, type BlankType } from '@switchboard/protocol/client';
+import { blankSource, freeBlankName, type BlankType } from '@seshboard/protocol/client';
 
 /** Something in a sent message that could be a blank: where it is, what it is and the blank it would become. */
 export interface BlankSuggestion {

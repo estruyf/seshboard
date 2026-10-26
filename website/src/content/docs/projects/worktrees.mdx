@@ -12,7 +12,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Sessions you start in a [new worktree](/new-session/worktrees/) each get a full checkout under `.claude/worktrees/`, often with its own `node_modules`, and they pile up. The **Worktrees** tab of a project's page lists every worktree of the repository, not only the ones Switchboard made, says which ones can go, and removes the ones you pick.
+Sessions you start in a [new worktree](/new-session/worktrees/) each get a full checkout under `.claude/worktrees/`, often with its own `node_modules`, and they pile up. The **Worktrees** tab of a project's page lists every worktree of the repository, not only the ones Seshboard made, says which ones can go, and removes the ones you pick.
 
 <Screenshot name="project-worktrees" alt="The Worktrees tab of acme-store: a summary strip with the number of worktrees, size on disk, safe to remove and stale, then the main checkout, then a table grouped into Safe to remove and Keep, with checkboxes and a Remove selected button" eager />
 
@@ -80,7 +80,7 @@ Use <Kbd keys="arrowup|arrowdown" /> to move between rows, and <Kbd shortcut="co
 Two choices at the bottom:
 
 - **Also delete their branches**. It is on by default only when every branch is merged, and the label says how many aren't.
-- **Keep a recovery ref for each branch**. Before a branch is deleted, Switchboard saves where it pointed under `refs/switchboard/removed/<branch>-<date>`, so you can bring it back with git.
+- **Keep a recovery ref for each branch**. Before a branch is deleted, Seshboard saves where it pointed under `refs/switchboard/removed/<branch>-<date>`, so you can bring it back with git.
 
 When a branch that would be deleted has commits that aren't pushed anywhere, a warning says how many would be lost, with two ways out:
 
@@ -115,14 +115,14 @@ The main checkout only has the first group of items. When an item is greyed out,
 
 ## Safety
 
-Switchboard only ever removes a worktree with `git worktree remove`, or `git worktree prune` when its folder is already gone. It never deletes the folder itself. It won't remove:
+Seshboard only ever removes a worktree with `git worktree remove`, or `git worktree prune` when its folder is already gone. It never deletes the folder itself. It won't remove:
 
 - the main checkout;
 - a worktree with uncommitted changes (commit or revert them first);
 - a worktree locked with `git worktree lock` (use **Unlock worktree** in its menu first);
 - a worktree where a session is working, or where a Claude Code session is open in another app or a terminal.
 
-A session that is idle in Switchboard is stopped first; its conversation stays. Each worktree is checked again just before it is removed, and one that fails doesn't stop the rest. A branch is deleted last, only once its worktree is gone.
+A session that is idle in Seshboard is stopped first; its conversation stays. Each worktree is checked again just before it is removed, and one that fails doesn't stop the rest. A branch is deleted last, only once its worktree is gone.
 
 ## Settings
 

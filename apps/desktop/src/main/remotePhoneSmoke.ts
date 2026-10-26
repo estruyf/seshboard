@@ -5,7 +5,7 @@ import { until, waitInPage } from './pageDriver.ts';
 /**
  * The smoke steps of the remote app on a phone: the real app from apps/remote, served by Vite, in a hidden 390×844
  * window with a throwaway session of its own, paired with a made-up computer (scripts/remote-demo.ts, "Phone Mac").
- * The smoke script starts both and writes the computer's pairing links to `SWITCHBOARD_SMOKE_PHONE_LINK`. The window
+ * The smoke script starts both and writes the computer's pairing links to `SESHBOARD_SMOKE_PHONE_LINK`. The window
  * pairs once, for the first step that needs it, so each step also runs on its own with `--only`. Nothing here
  * touches real data: the computer is made up, and the window has no preload.
  */
@@ -23,7 +23,7 @@ function remotePhone(): Promise<BrowserWindow | string> {
 }
 
 async function openPhone(): Promise<BrowserWindow | string> {
-  const linkFile = process.env.SWITCHBOARD_SMOKE_PHONE_LINK;
+  const linkFile = process.env.SESHBOARD_SMOKE_PHONE_LINK;
   if (!linkFile) return 'ok: skipped, no remote app to drive (run through npm run smoke)';
   if (!(await until(() => existsSync(linkFile), 20_000))) return "the phone's computer wrote no pairing link";
   const win = new BrowserWindow({ width: 390, height: 844, show: false, webPreferences: { partition: `smoke-phone-${Date.now()}`, sandbox: true, contextIsolation: true, backgroundThrottling: false } });

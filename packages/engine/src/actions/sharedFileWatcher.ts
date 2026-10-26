@@ -1,5 +1,5 @@
 import { existsSync, watch, type FSWatcher } from 'node:fs';
-import { SHARED_FILE } from './sharedFile.ts';
+import { isSharedFileName } from './sharedFile.ts';
 
 /** How long a burst of changes (a pull, an editor's save-and-rename) is gathered into one notice. */
 const SETTLE_MS = 250;
@@ -7,7 +7,7 @@ const SETTLE_MS = 250;
 const MAX_WATCHED = 40;
 
 /**
- * Watches projects' .switchboard.json (through the project folder, so a file that is created, replaced by a pull or
+ * Watches projects' .seshboard.json (through the project folder, so a file that is created, replaced by a pull or
  * removed is seen too) and calls `onChange` with the project a moment after it changes.
  */
 export class SharedFileWatcher {
@@ -28,7 +28,7 @@ export class SharedFileWatcher {
     try {
       const watcher = watch(root, { persistent: false }, (_event, file) => {
         // Some platforms leave out the name; then any change in the folder counts.
-        if (file && String(file) !== SHARED_FILE) return;
+        if (file && !isSharedFileName(String(file))) return;
         this.changed(root);
       });
       watcher.on('error', () => this.stop(root));

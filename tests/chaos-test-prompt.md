@@ -1,6 +1,6 @@
-# Chaos test: find what breaks in Switchboard
+# Chaos test: find what breaks in Seshboard
 
-You are a chaos and monkey tester for Switchboard, the Electron app in this repository for managing Claude Code sessions. Your job is to break it, then log every way it misbehaves so it can be fixed. The goal is a very stable app, so anything that crashes, hangs, loses data, shows the wrong state or throws an error counts.
+You are a chaos and monkey tester for Seshboard, the Electron app in this repository for managing Claude Code sessions. Your job is to break it, then log every way it misbehaves so it can be fixed. The goal is a very stable app, so anything that crashes, hangs, loses data, shows the wrong state or throws an error counts.
 
 **You find and log. You do not fix.** Don't change app code, don't commit, don't push. The only files you write are the report, its artefacts, and additions to the harness in `scripts/chaos/` (new phases, checks, fakes or repro cases). Keep `npx tsc -p scripts/chaos` passing after every change to it.
 
@@ -16,11 +16,11 @@ You are a chaos and monkey tester for Switchboard, the Electron app in this repo
 
 The harness enforces these (`docs/chaos-testing.md`, Safety). If you drive the app any other way, or add to the harness, you enforce them yourself:
 
-- **Never run against real data.** The app runs with `SWITCHBOARD_DRIVEN=1`, `SWITCHBOARD_DRIVEN_PROFILE` inside the sandbox, `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR` and `TMPDIR` pointing into a fresh sandbox (`/private/tmp/sbc-*`) built from `createDemoWorld()`, and a whitelisted environment (no API keys, tokens or Claude Code session variables).
+- **Never run against real data.** The app runs with `SESHBOARD_DRIVEN=1`, `SESHBOARD_DRIVEN_PROFILE` inside the sandbox, `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR` and `TMPDIR` pointing into a fresh sandbox (`/private/tmp/sbc-*`) built from `createDemoWorld()`, and a whitelisted environment (no API keys, tokens or Claude Code session variables).
 - **Nothing may cost money or reach the outside:** `claude` is a fake that never reaches a model (never link the real one), `gh` is a fake that never reaches GitHub, editors and `open` only log, no pushes, no update downloads. Native dialogs, URLs, Finder and the Trash are stubbed in the main process.
-- Before the first action of every run and every 25 actions, the harness checks the window and the app profile for the real home folder, the real user name and `~/Library/Application Support/Switchboard`, and stops with exit code 3. If that happens, stop the hunt and say why.
-- **Never use `open switchboard://…`** or anything that goes through Launch Services: it reaches the installed app with the user's real data. Links go to the driven instance only (`openLink` in `lib/ui.ts`).
-- Never touch, kill or signal the installed Switchboard (it is probably running, and may be hosting your own session), the user's own `claude` processes, or this Claude Code session. Only kill processes that belong to the run (`childrenOf` the app, or a command line that names the sandbox).
+- Before the first action of every run and every 25 actions, the harness checks the window and the app profile for the real home folder, the real user name and `~/Library/Application Support/Seshboard`, and stops with exit code 3. If that happens, stop the hunt and say why.
+- **Never use `open seshboard://…`** or anything that goes through Launch Services: it reaches the installed app with the user's real data. Links go to the driven instance only (`openLink` in `lib/ui.ts`).
+- Never touch, kill or signal the installed Seshboard (it is probably running, and may be hosting your own session), the user's own `claude` processes, or this Claude Code session. Only kill processes that belong to the run (`childrenOf` the app, or a command line that names the sandbox).
 - Filesystem chaos happens only inside the sandbox: call `c.assertInSandbox(path)` before you change anything.
 - The test windows open on the user's screen. Tell the user, once, to leave them alone: closing one ends that run (that happened in the last hunt, and three windows closing in the same second looked like an app bug).
 - At the end, no sandbox or stray process is left: `ls -d /private/tmp/sbc-*` finds nothing.

@@ -1,7 +1,7 @@
-import type { PromptScope } from '@switchboard/protocol/client';
-import type { ColorScheme, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { PromptScope } from '@seshboard/protocol/client';
+import type { ColorScheme, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
-import type { ActionIcon, HostState } from '@switchboard/protocol/client';
+import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
 import type { Direction } from '../../state/tiling.ts';

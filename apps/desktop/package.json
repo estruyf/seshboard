@@ -1,6 +1,6 @@
 {
-  "name": "@switchboard/desktop",
-  "productName": "Switchboard",
+  "name": "@seshboard/desktop",
+  "productName": "Seshboard",
   "version": "1.1.0",
   "license": "MIT",
   "private": true,
@@ -29,14 +29,14 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@switchboard/engine": "*",
-    "@switchboard/protocol": "*",
+    "@seshboard/engine": "*",
+    "@seshboard/protocol": "*",
     "electron": "44.5.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0"
   },
   "description": "A fast desktop app for managing Claude Code sessions",
-  "homepage": "https://switchboard.struyfconsulting.com/",
-  "desktopName": "switchboard.desktop",
+  "homepage": "https://seshboard.app/",
+  "desktopName": "seshboard.desktop",
   "author": "Elio Struyf"
 }

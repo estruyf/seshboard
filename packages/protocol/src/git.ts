@@ -92,7 +92,7 @@ export const PrDraft = z.object({
 });
 export type PrDraft = z.infer<typeof PrDraft>;
 
-/** Whether gh's account has starred Switchboard; `unavailable` without gh, signed out or offline. */
+/** Whether gh's account has starred Seshboard; `unavailable` without gh, signed out or offline. */
 export const GithubStarStatus = z.enum(['starred', 'not-starred', 'unavailable']);
 export type GithubStarStatus = z.infer<typeof GithubStarStatus>;
 

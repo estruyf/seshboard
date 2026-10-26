@@ -6,14 +6,14 @@ import { fit, pts } from '../components/Framed';
 import { Beat, Clip, LIGHTS, shotFrame, Window } from '../components/Shot';
 import { T } from '../theme';
 
-// VS Code and Switchboard, recorded together on one clock (capture.mjs, `companion`), so frame N of one is the same
+// VS Code and Seshboard, recorded together on one clock (capture.mjs, `companion`), so frame N of one is the same
 // moment as frame N of the other. Side by side rather than overlapping: the cable that says "this went there" runs
 // through the gap between them and plugs into the windows' edges, never over anything the apps drew.
 
 /// VS Code: from the tab bar (just under the title bar) to the gap after line 19, the editor's lines being 24pt
 /// apart from 99; its right edge is the window's, where the companion's button sits in the editor title.
 const CODE = pts(352, 35, 928, 508);
-/// Switchboard: the action pills and the message box the chip lands in, edge to edge of the box, down to the
+/// Seshboard: the action pills and the message box the chip lands in, edge to edge of the box, down to the
 /// window's own bottom edge.
 const BOARD = pts(430, 604, 740, 196);
 
@@ -32,7 +32,7 @@ const at = (box: typeof codeBox, crop: typeof CODE, x: number, y: number) => ({
   y: box.top + ((y * 2 - crop.y) * box.height) / crop.h,
 });
 
-/// The recording frame of the click on the companion's button; the chip shows up in Switchboard on the same frame.
+/// The recording frame of the click on the companion's button; the chip shows up in Seshboard on the same frame.
 /// Read off `node scripts/activity.mjs companion` (the chip) and `companion-code 0.05` (the click's ripple) after
 /// every capture.
 export const CLICK = 113;
@@ -58,7 +58,7 @@ export const Companion: React.FC<{ total: number }> = ({ total }) => {
       <Window box={boardBox} rect={BOARD} lights={null} enter={6} from={1}>
         <Clip name="companion" beat={beat} />
       </Window>
-      {/* Out of the right edge of VS Code by its button, into the left edge of Switchboard by the message box. */}
+      {/* Out of the right edge of VS Code by its button, into the left edge of Seshboard by the message box. */}
       <Cable
         from={{ x: codeBox.left + codeBox.width + 2, y: button.y }}
         to={{ x: boardBox.left - 2, y: chip.y }}

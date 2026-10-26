@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptBlock, TranscriptMessage } from '@switchboard/protocol';
+import type { ImageRef, TranscriptBlock, TranscriptMessage } from '@seshboard/protocol';
 import { usageCounts } from '../usage/transcriptUsage.ts';
 import { imageSize } from './imageSize.ts';
 

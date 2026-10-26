@@ -1,4 +1,4 @@
-import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES, type RemoteImage } from '@switchboard/protocol/remote-client';
+import { REMOTE_IMAGE_BYTES, REMOTE_MAX_IMAGES, type RemoteImage } from '@seshboard/protocol/remote-client';
 
 /**
  * Images for a message: pasted, dropped or photographed. A photo is far bigger than the channel likes, so each is

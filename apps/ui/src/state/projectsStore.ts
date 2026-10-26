@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { ProjectInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { ProjectInfo, SessionSummary } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { withQuestions } from '../lib/questions.ts';
 import { useSessions } from './sessionsStore.ts';

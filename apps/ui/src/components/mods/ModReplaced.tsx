@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { HookableComponent } from '@switchboard/protocol/client';
+import type { HookableComponent } from '@seshboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useMods, useSessionMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';

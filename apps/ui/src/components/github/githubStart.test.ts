@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { currentCheckoutBlocked, forkCaution, prBranch, readOnlyFork, slugOf, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from './githubStart.ts';
 import { planGit } from '../git/gitPlan.ts';
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { WorktreeStatus } from '@seshboard/protocol/client';
 
 describe('the worktree name from an issue', () => {
   it('is the title in lowercase ASCII, words joined by -, cut at 40 characters on a word', () => {
@@ -58,12 +58,12 @@ describe('New session from an issue or pull request', () => {
 });
 
 describe('fork rules for push and Create pull request', () => {
-  it('turns them off where Switchboard can’t push a fork’s pull request back', () => {
+  it('turns them off where Seshboard can’t push a fork’s pull request back', () => {
     expect(readOnlyFork({ isCrossRepository: false, canPush: true }, 'worktree')).toBe(false);
     expect(readOnlyFork({ isCrossRepository: true, canPush: false }, 'current')).toBe(true);
     expect(readOnlyFork({ isCrossRepository: true, canPush: true }, 'current')).toBe(false);
     expect(readOnlyFork({ isCrossRepository: true, canPush: true }, 'worktree')).toBe(true);
-    expect(forkCaution(149)).toBe("#149 is from a fork. Claude can change it here, but Switchboard can't push it back. Create pull request is off for it.");
+    expect(forkCaution(149)).toBe("#149 is from a fork. Claude can change it here, but Seshboard can't push it back. Create pull request is off for it.");
   });
 
   it('blocks push and Create PR in the session, and never offers them on the button', () => {

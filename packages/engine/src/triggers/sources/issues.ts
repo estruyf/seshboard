@@ -1,4 +1,4 @@
-import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, STATE_LABEL_KEYS, type IssueItem, type StateLabelKey, type TriggerSource } from '@switchboard/protocol';
+import { issueQuery, STATE_LABEL_COLORS, STATE_LABEL_DESCRIPTIONS, STATE_LABEL_KEYS, type IssueItem, type StateLabelKey, type TriggerSource } from '@seshboard/protocol';
 import { json, readFailure, type GhRun, type SourceRead } from './gh.ts';
 
 /**

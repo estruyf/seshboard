@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateKeyPair } from '@switchboard/protocol';
+import { generateKeyPair } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { DEVICE_EXPIRY_MS, DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_CONFIRM_MS, PAIRING_MAX_FAILURES, PAIRING_OFFER_MS, type PairingState } from './pairing.ts';
@@ -79,7 +79,7 @@ describe('paired devices', () => {
   afterEach(() => cleanups.splice(0).forEach((c) => c()));
 
   const store = () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-devices-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-devices-'));
     const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
     cleanups.push(() => (cache.close(), rmSync(dir, { recursive: true, force: true })));
     const clock = { now: 1_000 };

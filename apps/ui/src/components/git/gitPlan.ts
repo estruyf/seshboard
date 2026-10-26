@@ -1,4 +1,4 @@
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { WorktreeStatus } from '@seshboard/protocol/client';
 
 /** What the session header's git button can do. Commit asks Claude; the others run git in a terminal tab. */
 export type GitStep = 'fetch' | 'pull' | 'commit' | 'push' | 'pr';
@@ -14,12 +14,12 @@ export interface GitPlan {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Why push and Create PR are off in a session from a fork's pull request Switchboard can't push to. */
+/** Why push and Create PR are off in a session from a fork's pull request Seshboard can't push to. */
 export const FORK_READ_ONLY = "From a fork you can't push to.";
 
 /**
  * Works out which git steps make sense for a checkout. `busy`: Claude is working in this session. `readOnly`: the
- * session works on a fork's pull request Switchboard can't push back, so push and Create PR are off.
+ * session works on a fork's pull request Seshboard can't push back, so push and Create PR are off.
  */
 export function planGit(status: WorktreeStatus, busy: boolean, readOnly = false): GitPlan {
   const behind = status.behindUpstream ?? 0;

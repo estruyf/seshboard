@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { parseGithubRepo, type ClonePlan, type Computer, type Contract, type RepoBrings, type RpcClient } from '@switchboard/protocol/client';
+import { parseGithubRepo, type ClonePlan, type Computer, type Contract, type RepoBrings, type RpcClient } from '@seshboard/protocol/client';
 import { callComputer, onComputerEvent } from '../computers/callComputer.ts';
 import { remoteCloneProblem, type CloneStage } from './cloneModel.ts';
 

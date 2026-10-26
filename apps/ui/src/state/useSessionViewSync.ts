@@ -10,7 +10,7 @@ import { sameView, type SessionViewState } from './sessionViewState.ts';
  */
 export function useSessionViewHandoff(): void {
   useEffect(() => {
-    const bridge = window.switchboard;
+    const bridge = window.seshboard;
     if (!bridge) return;
     provideSessionView((sessionId) => ({ ...readSessionView(sessionId) }));
     const off = bridge.onViewReturned((sessionId, view) => receiveSessionView(sessionId, view));
@@ -28,7 +28,7 @@ export function useSessionViewHandoff(): void {
  */
 export function usePopoutViewReport(sessionId: string): void {
   useEffect(() => {
-    const bridge = window.switchboard;
+    const bridge = window.seshboard;
     if (!bridge || popoutSession !== sessionId) return;
     let sent: SessionViewState | null = null;
     let queued = false;

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ContextUsage, TranscriptMessage } from '@switchboard/protocol/client';
+import type { ContextUsage, TranscriptMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { Meter } from '../ui/Meter.tsx';
@@ -157,7 +157,7 @@ export function ContextMeter({
           : `About ${compactTokens(estimate ?? 0)} tokens at the end of the last turn`}
       </p>
       {!running && (
-        <p className="mt-2 text-muted">Send a message to pick this session up in Switchboard. Then you can see what fills the context and compact it.</p>
+        <p className="mt-2 text-muted">Send a message to pick this session up in Seshboard. Then you can see what fills the context and compact it.</p>
       )}
       {running && error && <p className="mt-2 text-error">{error}</p>}
       {running && !breakdown && !error && <p className="mt-2 text-muted">Loading…</p>}

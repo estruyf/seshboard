@@ -1,4 +1,4 @@
-import type { RemoteProject, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteProject, RemoteSession } from '@seshboard/protocol/remote-client';
 
 /**
  * The ⌘K palette's matching and ranking. Pure, with tests: a fuzzy match on the title, the project and the branch,

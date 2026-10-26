@@ -1,13 +1,13 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { joinPath, type WorktreeBranchBase } from '@switchboard/protocol';
+import { joinPath, type WorktreeBranchBase } from '@seshboard/protocol';
 import { git, GitError } from './gitChanges.ts';
 import { firstUsefulLine } from './pullRequest.ts';
 
 /** git (or a check before it) refused to make the worktree: what to say, in one line. */
 export class WorktreeFromError extends Error {}
 
-/** Where a worktree named `name` goes: the place Claude Code's `--worktree` uses, so Switchboard treats it like one. */
+/** Where a worktree named `name` goes: the place Claude Code's `--worktree` uses, so Seshboard treats it like one. */
 export const worktreePath = (root: string, name: string) => joinPath(root, `.claude/worktrees/${name}`);
 
 /** The folder a branch is checked out in (the main checkout or another worktree), or null. */

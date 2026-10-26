@@ -46,7 +46,7 @@ export const PipelineClaudeStep = z.object({
 });
 export type PipelineClaudeStep = z.infer<typeof PipelineClaudeStep>;
 
-/** Switchboard's own last step: commit, push and Create pull request, no model. It waits for you unless `autoPush`. */
+/** Seshboard's own last step: commit, push and Create pull request, no model. It waits for you unless `autoPush`. */
 export const PipelinePushStep = z.object({
   kind: z.literal('push'),
   name: StepName,
@@ -87,7 +87,7 @@ export type PipelineSave = z.infer<typeof PipelineSave>;
 
 /**
  * How a run stands. `running`: a step works (or waits for a slot or a reset, `hold`). `waiting`: it stopped for you,
- * with `reason`. `paused`: Switchboard quit while it ran; it goes on at the next start. `stopped` and `done` are the end.
+ * with `reason`. `paused`: Seshboard quit while it ran; it goes on at the next start. `stopped` and `done` are the end.
  */
 export const PipelineRunStatus = z.enum(['running', 'waiting', 'stopped', 'paused', 'done']);
 export type PipelineRunStatus = z.infer<typeof PipelineRunStatus>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import { pipelineAlerts, stepSessions } from './pipelineAlerts.ts';
 
 describe('pipeline notifications', () => {

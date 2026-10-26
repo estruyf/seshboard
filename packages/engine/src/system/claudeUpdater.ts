@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, win32 } from 'node:path';
-import { RpcError, type ClaudeInstall, type ClaudeUpdateState, type LogLevel } from '@switchboard/protocol';
+import { RpcError, type ClaudeInstall, type ClaudeUpdateState, type LogLevel } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import { autoUpdaterDisabled, claudeChannel, CLAUDE_DIST_TAGS_URL, detectInstall, versionFromDistTags, type ClaudeInstallInfo } from './claudeInstall.ts';
 import * as reduce from './claudeUpdateState.ts';
@@ -27,7 +27,7 @@ export interface ClaudeUpdaterOptions {
   store: AppStateStore;
   /** Finds `claude` again and reads its version (the engine keeps the result for new sessions). */
   findClaude: () => Promise<ClaudeInstall | null>;
-  /** The path is Switchboard's own setting, not a search: Switchboard never updates it. */
+  /** The path is Seshboard's own setting, not a search: Seshboard never updates it. */
   override: boolean;
   /** The built-in profile's config folder, whose settings.json holds `autoUpdatesChannel`. */
   claudeConfigDir: string;
@@ -37,7 +37,7 @@ export interface ClaudeUpdaterOptions {
   ready: Promise<unknown>;
   onChange: (state: ClaudeUpdateState) => void;
   log: (level: LogLevel, message: string) => void;
-  /** The dist-tags URL. Defaults to $SWITCHBOARD_CLAUDE_REGISTRY, then the npm registry (the smoke test passes a data: URL). */
+  /** The dist-tags URL. Defaults to $SESHBOARD_CLAUDE_REGISTRY, then the npm registry (the smoke test passes a data: URL). */
   registryUrl?: string;
   /** False refuses to run an update command (the smoke test). */
   allowUpdate?: boolean;
@@ -154,12 +154,12 @@ export class ClaudeUpdater {
 
   /**
    * Runs the update command, then finds `claude` again. Throws right away when it can't start (busy, or not an
-   * install Switchboard updates); the returned promise resolves when the update has finished or failed.
+   * install Seshboard updates); the returned promise resolves when the update has finished or failed.
    */
   update(): Promise<void> {
     if (reduce.isBusy(this.current)) throw new RpcError('BUSY', 'Claude Code is already being checked or updated');
     const run = this.info?.run;
-    if (!this.current.canUpdate || !run) throw new RpcError('UNSUPPORTED', this.current.manualReason ?? 'Switchboard can’t update this Claude Code');
+    if (!this.current.canUpdate || !run) throw new RpcError('UNSUPPORTED', this.current.manualReason ?? 'Seshboard can’t update this Claude Code');
     if (this.options.allowUpdate === false) throw new RpcError('UNSUPPORTED', 'Updating Claude Code is turned off in this run');
     this.set(reduce.updating(this.current));
     this.options.log('info', `Updating Claude Code: ${this.current.command}`);
@@ -235,7 +235,7 @@ export class ClaudeUpdater {
   }
 
   private async fetchLatest(): Promise<string> {
-    const url = this.options.registryUrl ?? process.env.SWITCHBOARD_CLAUDE_REGISTRY ?? CLAUDE_DIST_TAGS_URL;
+    const url = this.options.registryUrl ?? process.env.SESHBOARD_CLAUDE_REGISTRY ?? CLAUDE_DIST_TAGS_URL;
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { accept: 'application/json' } });
     if (!response.ok) throw new Error(`the registry answered ${response.status}`);
     const latest = versionFromDistTags(await response.json(), this.current.channel);

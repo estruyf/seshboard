@@ -1,5 +1,5 @@
 import { nativeTheme } from 'electron';
-import { DEFAULT_PREFERENCES, mergePreferences, sanitizePreferences, type ColorScheme, type Preferences } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, mergePreferences, sanitizePreferences, type ColorScheme, type Preferences } from '@seshboard/protocol/bridge';
 import { readJsonFile, writeFileAtomic } from './jsonFile.ts';
 
 /**
@@ -9,7 +9,7 @@ import { readJsonFile, writeFileAtomic } from './jsonFile.ts';
 export class PreferencesStore {
   #prefs: Preferences;
 
-  /** `forcedScheme` (SWITCHBOARD_COLOR_SCHEME) overrides the saved one for this run only. */
+  /** `forcedScheme` (SESHBOARD_COLOR_SCHEME) overrides the saved one for this run only. */
   constructor(
     private readonly file: string,
     private readonly forcedScheme?: ColorScheme,

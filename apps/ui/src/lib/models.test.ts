@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelOption } from '@switchboard/protocol/client';
+import type { ModelOption } from '@seshboard/protocol/client';
 import { findModelOption } from './models.ts';
 
 const row = (value: string, resolvedModel?: string): ModelOption => ({ value, resolvedModel, displayName: value, description: '', supportsEffort: true });

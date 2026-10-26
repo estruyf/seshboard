@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Pipeline, PipelineScope } from '@switchboard/protocol/client';
+import type { Pipeline, PipelineScope } from '@seshboard/protocol/client';
 import { basename } from '../../../lib/format.ts';
 import { duplicateOf } from '../../../state/pipelines.ts';
 import { deletePipeline, savePipeline, usePipelines } from '../../../state/pipelinesStore.ts';
@@ -105,7 +105,7 @@ export function PipelinesSettings() {
           </Button>
           <Toggle
             label="Built-in pipelines"
-            detail="Show the pipelines that come with Switchboard."
+            detail="Show the pipelines that come with Seshboard."
             checked={pipelines.some((p) => p.builtIn)}
             attr="data-pipeline-builtins"
             onChange={(show) => void clientNow().call('pipelines.showBuiltIns', { show })}

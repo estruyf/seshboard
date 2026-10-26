@@ -1,5 +1,5 @@
 import { Check, Info, RotateCcw } from 'lucide-react';
-import { APP_ICONS, DEFAULT_APP_ICON, settingsTileFile, type AppIconKey } from '@switchboard/protocol/bridge';
+import { APP_ICONS, DEFAULT_APP_ICON, settingsTileFile, type AppIconKey } from '@seshboard/protocol/bridge';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useRemote } from '../../state/remoteStore.ts';
 import { Button } from '../ui/Button.tsx';

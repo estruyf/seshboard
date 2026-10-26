@@ -1,4 +1,4 @@
-import { isSameOrInside, type LiveSession } from '@switchboard/protocol/client';
+import { isSameOrInside, type LiveSession } from '@seshboard/protocol/client';
 
 /** Above this many branches the menu gets a filter field. */
 export const FILTER_FROM = 8;

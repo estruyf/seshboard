@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { LogLevel, UsageSnapshot } from '@switchboard/protocol';
+import type { LogLevel, UsageSnapshot } from '@seshboard/protocol';
 import type { SdkRuntime } from './hostManager.ts';
 
 /** The usage report attached to the assistant message that answers `/usage` (SDKUsageReport). */

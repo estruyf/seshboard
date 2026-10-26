@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { toBase64Url } from '@switchboard/protocol';
+import { toBase64Url } from '@seshboard/protocol';
 
 /**
- * What a paired device is, for its icon in Settings › Remote: a phone's browser, a computer's browser, or Switchboard
+ * What a paired device is, for its icon in Settings › Remote: a phone's browser, a computer's browser, or Seshboard
  * on another computer (`REMOTE_DESKTOP_ORIGIN`). Told from the socket's origin and user agent when it paired: a label,
  * never what lets it in.
  */

@@ -1,6 +1,6 @@
 import { Check, ChevronRight, FolderOpen, GitBranch, PencilLine, type LucideIcon } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { rowStatus } from '../../state/sidebarRows.ts';
 import { shortAge } from '../../lib/format.ts';

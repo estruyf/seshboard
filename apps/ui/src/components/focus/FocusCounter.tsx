@@ -66,7 +66,7 @@ export function FocusCounter({ compact = false }: { compact?: boolean }) {
                   <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${FOCUS_DOT[session.state]}`} />
                   <span className="grid min-w-0 flex-1">
                     {/* Where it runs only in the tooltip: the state is what the line is for. */}
-                    <span className="truncate text-ui text-text" data-tooltip={session.remote ? `${session.title}\nOn ${session.remote.computerName}` : session.external ? `${session.title}\nStarted outside Switchboard` : session.title}>
+                    <span className="truncate text-ui text-text" data-tooltip={session.remote ? `${session.title}\nOn ${session.remote.computerName}` : session.external ? `${session.title}\nStarted outside Seshboard` : session.title}>
                       {session.title}
                     </span>
                     <span className="truncate text-meta text-muted">

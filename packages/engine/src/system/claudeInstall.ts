@@ -1,5 +1,5 @@
 import { posix, win32 } from 'node:path';
-import type { ClaudeChannel, ClaudeInstallMethod } from '@switchboard/protocol';
+import type { ClaudeChannel, ClaudeInstallMethod } from '@seshboard/protocol';
 
 /** How to update one install: the command to show, and the program and arguments to run it with. */
 export interface ClaudeInstallInfo {
@@ -33,7 +33,7 @@ export function detectInstall(path: string, realPath: string, options: { home: s
   if (windows && same(realPath) === same(join(home, '.local', 'bin', 'claude.exe'))) return { method: 'native', cask: null, command: 'claude update', run: { file: path, args: ['update'] } };
   if (windows) {
     // WinGet installs under its own Packages folder (in AppData for one user, in Program Files with `--scope machine`),
-    // and only WinGet should update what it installed. It may ask for permission, so Switchboard shows the command.
+    // and only WinGet should update what it installed. It may ask for permission, so Seshboard shows the command.
     if (/\\WinGet\\Packages\\/i.test(realPath)) return { method: 'winget', cask: null, command: 'winget upgrade Anthropic.ClaudeCode', run: null };
     // npm's package, below a prefix (`<prefix>\node_modules\…` on Windows). Its npm.cmd lives with Node and is found on
     // PATH, so the prefix is named: another npm first on PATH would otherwise update its own prefix, not this install.
@@ -77,7 +77,7 @@ export function claudeChannel(settings: Record<string, unknown> | null, cask: st
 const TRUTHY = (value: unknown) => typeof value === 'string' ? value !== '' && value !== '0' && value.toLowerCase() !== 'false' : value === true || value === 1;
 
 /**
- * Claude Code's own auto-updater is turned off, by the environment or Claude's settings. Switchboard then still
+ * Claude Code's own auto-updater is turned off, by the environment or Claude's settings. Seshboard then still
  * shows that an update exists, but doesn't put up a notice.
  */
 export function autoUpdaterDisabled(env: Record<string, string | undefined>, settings: Record<string, unknown> | null): boolean {

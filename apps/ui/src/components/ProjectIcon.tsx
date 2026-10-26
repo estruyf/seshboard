@@ -1,6 +1,6 @@
 import { MessageCircleQuestion, Monitor } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { ProjectIcon as Icon, ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectIcon as Icon, ProjectInfo } from '@seshboard/protocol/client';
 import { basename } from '../lib/format.ts';
 import { accentFromPixels, letterColor } from '../lib/projectColor.ts';
 import { isQuestionsFolder } from '../lib/questions.ts';

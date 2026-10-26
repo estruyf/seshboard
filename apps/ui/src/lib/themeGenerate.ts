@@ -1,5 +1,5 @@
-import { contrast, fromOklch, parseColor, toHex, toOklch, type Oklch, type Rgba } from '@switchboard/protocol/color';
-import type { ThemeMode, ThemeToken, ThemeTokens } from '@switchboard/protocol/theme-format';
+import { contrast, fromOklch, parseColor, toHex, toOklch, type Oklch, type Rgba } from '@seshboard/protocol/color';
+import type { ThemeMode, ThemeToken, ThemeTokens } from '@seshboard/protocol/theme-format';
 import demoTime from '../themes/demo-time.json';
 
 /**

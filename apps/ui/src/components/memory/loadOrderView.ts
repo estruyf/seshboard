@@ -1,4 +1,4 @@
-import { MEMORY_INDEX_LIMIT, type LoadEntry } from '@switchboard/protocol/client';
+import { MEMORY_INDEX_LIMIT, type LoadEntry } from '@seshboard/protocol/client';
 import type { Level } from '../../lib/levels.ts';
 
 /** MEMORY.md's lines as a level: fine under 180, caution up to 200, past what loads above 200. */

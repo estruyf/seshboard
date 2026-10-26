@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 
 /**
  * Claude Code's own clean-up: at startup it deletes transcripts that have been quiet for `cleanupPeriodDays` (30 when
- * the key is missing), in each config folder's `settings.json`. Switchboard shows it per profile and can change that
+ * the key is missing), in each config folder's `settings.json`. Seshboard shows it per profile and can change that
  * one key, leaving the rest of the file as it was.
  */
 export const CLEANUP_KEY = 'cleanupPeriodDays';

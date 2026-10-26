@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { VSCODE_EXTENSION_URLS } from '@switchboard/protocol/bridge';
+import { VSCODE_EXTENSION_URLS } from '@seshboard/protocol/bridge';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
 interface CompanionStatus {
@@ -51,8 +51,8 @@ export function CompanionSettings() {
         ? 'No editor connected. Install the extension, then open a folder in VS Code.'
         : state === 'off'
           ? status?.error
-            ? `Switchboard can't listen for VS Code: ${status.error}`
-            : "Switchboard isn't listening for VS Code."
+            ? `Seshboard can't listen for VS Code: ${status.error}`
+            : "Seshboard isn't listening for VS Code."
           : 'Checking…';
 
   return (

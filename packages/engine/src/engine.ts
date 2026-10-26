@@ -76,14 +76,14 @@ import {
   PipelineRunState,
   projectPrBase,
   type PipelineNotice,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
-import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
+import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
@@ -208,7 +208,8 @@ export interface EngineOptions {
    * when left out (tests). `appVersion` is the app's, for the extension; `socketParent` is where the socket's folder
    * is made (the temporary folder by default).
    */
-  companion?: { appVersion: string; socketParent?: string };
+  /** `legacyDataDir`: the data folder from before the rename, where older VS Code companions look (until 1.3.0). */
+  companion?: { appVersion: string; socketParent?: string; legacyDataDir?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
    * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds, and the Beta update channel; `setRemotePreview` changes it). `identity` asks main for Remote's key, which it keeps in the system's
@@ -269,7 +270,7 @@ export interface DemoUsage {
    */
   limitFile?: string;
   /**
-   * A file the screenshot tour writes to show a demo session as working in Switchboard rather than in the terminal,
+   * A file the screenshot tour writes to show a demo session as working in Seshboard rather than in the terminal,
    * so a queued item can start after it, only for the queue's picture: `{ sessionId, cwd }` sets it, anything else (or
    * no file) clears it. With `stubQueueStarts` only, which keeps the item from starting Claude Code.
    */
@@ -352,7 +353,7 @@ export interface Engine {
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
-   * The smoke run's mods step (`SWITCHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
+   * The smoke run's mods step (`SESHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
    * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
    * whether its Claude Code draws mods to the file the step reads.
    */
@@ -399,7 +400,7 @@ export function createEngine(options: EngineOptions): Engine {
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
-  /** Set once memory search exists: every memory change (Switchboard's or a watcher's) re-indexes the files that changed. */
+  /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
@@ -565,7 +566,7 @@ export function createEngine(options: EngineOptions): Engine {
   const github = new GithubService({ gh: defaultGh, env: () => shell.ready.then(({ env }) => env) });
   /** Attached issues and pull requests, written out for Claude right before it reads the message. */
   const githubContext = new GithubExpander(github);
-  /** The issue or pull request each session started from, and the forks' pull requests Switchboard can't push to. */
+  /** The issue or pull request each session started from, and the forks' pull requests Seshboard can't push to. */
   const githubOrigins = new GithubOriginStore(cache.db);
   // A fixed delay, not a debounce: busy sessions change every second and must not keep pushing it back.
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -618,7 +619,7 @@ export function createEngine(options: EngineOptions): Engine {
   const watching = options.watchSessions !== false;
   syncRegistries(watching);
   if (watching) sessions.start();
-  // Signing in happens in a terminal (`/login`), outside Switchboard: follow each profile's login file.
+  // Signing in happens in a terminal (`/login`), outside Seshboard: follow each profile's login file.
   const accounts = new AccountWatcher(
     () => profiles.accountFiles(),
     () => {
@@ -1102,7 +1103,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   const actions = new ActionStore(cache.db);
   const savedPrompts = new SavedPromptStore(cache.db);
-  /** A pull (or anyone) changing a project's .switchboard.json updates its shared actions and prompts in every window. */
+  /** A pull (or anyone) changing a project's .seshboard.json updates its shared actions and prompts in every window. */
   const sharedFileWatcher = new SharedFileWatcher((root) => {
     broadcast('actions.changed', { root });
     broadcast('savedPrompts.changed', { root });
@@ -1137,7 +1138,7 @@ export function createEngine(options: EngineOptions): Engine {
     for (const entry of liveList()) {
       if (out.has(entry.sessionId) || ephemeral.has(entry.sessionId)) continue;
       const busy = entry.status === 'running' || entry.status === 'needs-you';
-      // Switchboard's own processes register as SDK ones; without a host here, one is another app's.
+      // Seshboard's own processes register as SDK ones; without a host here, one is another app's.
       const elsewhere = entry.origin === 'cli' ? 'terminal' : 'app';
       out.set(entry.sessionId, { id: entry.sessionId, title: title(entry.sessionId, entry.name), projectRoot: sessions.get(entry.sessionId)?.projectRoot ?? entry.projectRoot ?? entry.cwd ?? '', busy, elsewhere });
     }
@@ -1415,7 +1416,7 @@ export function createEngine(options: EngineOptions): Engine {
       triggersBroadcast();
     });
   }
-  /** Pauses the triggers of a project removed from Switchboard, with the reason the card shows. */
+  /** Pauses the triggers of a project removed from Seshboard, with the reason the card shows. */
   const pauseTriggersIn = (root: string, reason: string) => {
     let changed = false;
     for (const trigger of triggers.inProject(root)) {
@@ -1473,7 +1474,7 @@ export function createEngine(options: EngineOptions): Engine {
     scheduler.rearm();
     return { schedule };
   };
-  /** Pauses the schedules of a folder (a project removed from Switchboard), with the reason the row shows. */
+  /** Pauses the schedules of a folder (a project removed from Seshboard), with the reason the row shows. */
   const pauseSchedulesIn = (root: string, reason: string) => {
     let changed = false;
     for (const schedule of schedules.list()) {
@@ -1510,7 +1511,7 @@ export function createEngine(options: EngineOptions): Engine {
       scheduler.rearm();
     });
   }
-  // Runs due while Switchboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
+  // Runs due while Seshboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
   if (options.schedules !== false) scheduler.start(options.stubQueueStarts ? 0 : 5_000);
 
   // --- Pipelines (#179) ---------------------------------------------------------------------------------------------
@@ -1711,7 +1712,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
     });
   }
-  // Runs that were going when Switchboard quit go on once it has settled.
+  // Runs that were going when Seshboard quit go on once it has settled.
   const resumeRuns = options.schedules !== false ? setTimeout(() => void runner?.resumeAll(), options.stubQueueStarts ? 0 : 5_000) : undefined;
   resumeRuns?.unref?.();
   /** Projects' memory and instructions: every profile's memory folder, the project's own profile first. */
@@ -1821,14 +1822,14 @@ export function createEngine(options: EngineOptions): Engine {
     }
   };
 
-  /** Where every known session is (transcripts, Switchboard's processes and the live registry), for the worktree overview. */
+  /** Where every known session is (transcripts, Seshboard's processes and the live registry), for the worktree overview. */
   const sessionPlaces = (): SessionPlace[] => {
     const places = new Map<string, SessionPlace>(sessions.snapshot().sessions.map((s) => [s.id, { id: s.id, cwd: s.cwd, updatedAt: s.updatedAt }]));
     for (const l of liveList()) if (!places.has(l.sessionId) && l.origin !== 'sdk') places.set(l.sessionId, { id: l.sessionId, cwd: l.cwd, updatedAt: l.updatedAt ?? l.startedAt ?? 0 });
     for (const h of hosts.list().hosts) if (!places.has(h.sessionId)) places.set(h.sessionId, { id: h.sessionId, cwd: h.cwd, updatedAt: h.promptedAt ?? h.startedAt });
     return [...places.values()];
   };
-  /** What could be working in a worktree: Switchboard's sessions, and every process in the live registry. */
+  /** What could be working in a worktree: Seshboard's sessions, and every process in the live registry. */
   const sessionActivity = (): SessionActivity[] => {
     scanLive();
     const here = hosts.list().hosts.filter((h) => h.state !== 'closed' && h.state !== 'error');
@@ -1892,7 +1893,7 @@ export function createEngine(options: EngineOptions): Engine {
     const action = actions.list(projectRoot).actions.find((a) => a.id === id);
     if (!action) throw new RpcError('NOT_FOUND', 'No such action');
     if (!action.trusted) {
-      const from = action.scope === 'shared' ? `${projectRoot}/.switchboard.json` : 'a settings file';
+      const from = action.scope === 'shared' ? `${projectRoot}/.seshboard.json` : 'a settings file';
       throw new RpcError('UNTRUSTED', `"${action.name}" comes from ${from} and has not been approved yet`);
     }
     return action;
@@ -2056,6 +2057,7 @@ export function createEngine(options: EngineOptions): Engine {
   if (options.companion) {
     companion = new CompanionHub({
       infoDir: join(options.dataDir, COMPANION_DIR),
+      ...(options.companion.legacyDataDir ? { legacyInfoDir: join(options.companion.legacyDataDir, COMPANION_DIR) } : {}),
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
@@ -2064,7 +2066,7 @@ export function createEngine(options: EngineOptions): Engine {
       respond: async (requestId, decision, acceptEdits) => {
         const sessionId = hosts.list().permissions.find((p) => p.requestId === requestId)?.sessionId;
         hosts.respond(requestId, decision);
-        // Only once the plan is really approved, as its card in Switchboard does.
+        // Only once the plan is really approved, as its card in Seshboard does.
         if (acceptEdits && sessionId && decision.behavior === 'allow') await hosts.setPermissionMode(sessionId, 'acceptEdits').catch(() => {});
       },
       log,
@@ -2242,7 +2244,7 @@ export function createEngine(options: EngineOptions): Engine {
   let retention: RetentionPolicy = DEFAULT_RETENTION;
   /** Session files only ever go to the Trash: without a way to put them there, nothing is deleted. */
   const sessionTrash = () => {
-    if (!options.trash) throw new RpcError('NO_TRASH', "Switchboard can't move sessions to the Trash here, so it won't delete them.");
+    if (!options.trash) throw new RpcError('NO_TRASH', "Seshboard can't move sessions to the Trash here, so it won't delete them.");
     return options.trash;
   };
   /** Every indexed session with what the archive and keep rules need, now. */
@@ -3161,7 +3163,7 @@ export function createEngine(options: EngineOptions): Engine {
       const status = await worktreeStatus(cwd).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
-      // A fork's pull request Switchboard can't push to: nothing goes back from here (the header has push off too).
+      // A fork's pull request Seshboard can't push to: nothing goes back from here (the header has push off too).
       if (action === 'push' && (githubOrigins.get(sessionId)?.readOnly || githubOrigins.readOnlyAt(status.path, status.branch))) throw new RpcError('READ_ONLY', FORK_READ_ONLY);
       const sync = syncCommand(status, action, (await terminals.shell()).quote);
       if ('code' in sync) throw new RpcError(sync.code, sync.message);
@@ -3280,12 +3282,12 @@ export function createEngine(options: EngineOptions): Engine {
     'github.starStatus': async () => ({ status: await githubStarStatus(defaultGh(), homedir(), (await shell.ready).env) }),
     'github.star': async () => {
       try {
-        await starSwitchboard(defaultGh(), homedir(), (await shell.ready).env);
+        await starSeshboard(defaultGh(), homedir(), (await shell.ready).env);
       } catch (error) {
         if (error instanceof StarFailure) throw new RpcError(error.code, error.message);
         throw error;
       }
-      log('info', 'github: starred Switchboard');
+      log('info', 'github: starred Seshboard');
       return {};
     },
     'worktree.status': async ({ cwd }) => {
@@ -3428,7 +3430,7 @@ export function createEngine(options: EngineOptions): Engine {
     'terminal.open': async (params) => {
       if (params.kind === 'claude' && params.sessionId && !params.fork) {
         if (hosts.has(params.sessionId)) {
-          throw new RpcError('SESSION_RUNNING_HERE', 'This session is running in Switchboard. Stop it there first, or open a fork in the terminal.');
+          throw new RpcError('SESSION_RUNNING_HERE', 'This session is running in Seshboard. Stop it there first, or open a fork in the terminal.');
         }
         if (liveList().some((l) => l.sessionId === params.sessionId)) {
           throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first, or open a fork.');
@@ -3800,7 +3802,7 @@ export function createEngine(options: EngineOptions): Engine {
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
-      const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
+      const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
       if (!spec) return;
       const write = (result: Record<string, unknown>) => writeFileSync(spec.out, JSON.stringify(result));
       try {
