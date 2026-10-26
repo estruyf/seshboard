@@ -237,6 +237,10 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘⌫ | Delete the session (in the sidebar, to the Trash) |
 | ⌥-click | Open beside the current session (in the sidebar; Dragging the session onto a pane opens it there) |
 | Middle-click | Archive a finished session (in the sidebar) |
+| E | Archive the session, or unarchive it (in the sidebar, on the focused or hovered session; A working session asks first) |
+| U | Mark the session read or unread (in the sidebar, on the focused or hovered session) |
+| P | Pin or unpin the session (in the sidebar, on the focused or hovered session) |
+| ⌘Z | Undo the last quick action (in the sidebar) |
 | ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
 | ⌘↩ | Start a queued item now (on a queued item, in the sidebar or Home) |

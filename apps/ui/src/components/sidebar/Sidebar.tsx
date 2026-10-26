@@ -3,7 +3,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/rea
 import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@switchboard/protocol/bridge';
 import type { CatchUp } from '@switchboard/protocol/client';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
@@ -12,7 +12,7 @@ import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { useHosts } from '../../state/hostsStore.ts';
+import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { SidebarNav } from './SidebarNav.tsx';
@@ -66,6 +66,9 @@ import { usePipelineTree } from '../../state/pipelineTreeStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
 import { askDeleteTree } from '../pipelines/RunTreeDialogs.tsx';
 import { PipelineStepRow, PipelineTile, TreeChevron } from './pipelineTreeRow.tsx';
+import { quickActionForKey, quickActionsFor, quickRowOf, type QuickActionMethod } from './quickActions.ts';
+import { undoLastQuickAction } from './quickUndo.ts';
+import { RowActions, rowActionsWidth } from './RowActions.tsx';
 
 const SESSION_ROW_HEIGHT: Record<SidebarStyle, number> = { large: 52, standard: 48, compact: 34 };
 /** A pipeline's sub-session under its parent: a smaller row. */
@@ -264,6 +267,7 @@ export const SessionRow = memo(function SessionRow({
   onTogglePick,
   onMenu,
   onMiddleClick,
+  onQuickAction,
 }: {
   data: SessionRowData;
   selected: boolean;
@@ -296,6 +300,8 @@ export const SessionRow = memo(function SessionRow({
   onTogglePick(id: string): void;
   onMenu(at: { x: number; y: number }, data: SessionRowData): void;
   onMiddleClick(data: SessionRowData): void;
+  /** Quick actions on hover (Settings › Sidebar): without it, the row has no buttons. */
+  onQuickAction?(method: QuickActionMethod, data: SessionRowData): void;
 }) {
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   const style = usePreferences((s) => s.prefs.sidebarStyle);
@@ -311,6 +317,16 @@ export const SessionRow = memo(function SessionRow({
   const runs = usePipelines((s) => s.runs);
   const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
   const runShown = run && (runRow || expanded !== undefined || runIsActive(run)) ? run : null;
+  // Quick actions on hover (Settings › Sidebar): small buttons take the age's place while the pointer is on the row, or
+  // once Tab moves into them, and the lines make room for them only then, so titles don't jump. None while picking.
+  const quickOn = usePreferences((s) => s.prefs.quickActions);
+  const quickShow = usePreferences((s) => s.prefs.quickActionsShow);
+  const hosted = useHosts((s) => isActiveHost(s.hosts.get(data.id)));
+  const actions = useMemo(
+    () => (onQuickAction && !picking && !remote?.offline ? quickActionsFor(quickRowOf(data, archived, { hosted, runs: runs.values() }), { quickActions: quickOn, quickActionsShow: quickShow }) : []),
+    [onQuickAction, picking, remote, data, archived, hosted, runs, quickOn, quickShow],
+  );
+  const hideForActions = actions.length ? 'group-hover/row:hidden group-has-[:focus-visible]/row:hidden' : '';
   /** A schedule started it (#173): the repeat icon before its second line. */
   const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
   /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
@@ -326,7 +342,7 @@ export const SessionRow = memo(function SessionRow({
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
-  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
+  const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone} ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
@@ -433,11 +449,26 @@ export const SessionRow = memo(function SessionRow({
       ? 'bg-selected'
       : beside
         ? 'bg-border/45 ring-1 ring-inset ring-border'
-        : 'hover:bg-border/45';
+        : // With quick actions the row's wrapper keeps the hover while the pointer is on a button over it.
+          onQuickAction
+          ? 'group-hover/row:bg-border/45'
+          : 'hover:bg-border/45';
+  const room = actions.length ? 'group-hover/row:pr-(--row-actions-room) group-has-[:focus-visible]/row:pr-(--row-actions-room)' : '';
+  // The buttons sit 6px from the row's right edge, with 4px between them and the lines.
+  const roomStyle = actions.length ? ({ '--row-actions-room': `${rowActionsWidth(actions.length) + 10}px` } as CSSProperties) : undefined;
+  const withActions = (row: ReactNode) =>
+    onQuickAction ? (
+      <div className="group/row relative" role="none" data-row-wrap>
+        {row}
+        {actions.length > 0 && <RowActions id={data.id} title={data.title} actions={actions} tabbable={tabbable} onAction={(action) => onQuickAction(action.method, data)} />}
+      </div>
+    ) : (
+      row
+    );
 
   if (style === 'compact') {
-    return (
-      <button {...common} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim}`}>
+    return withActions(
+      <button {...common} style={roomStyle} className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-meta ${surface} ${dim} ${room}`}>
         {rail}
         {icon(16)}
         <span className={`min-w-0 flex-1 truncate text-body ${titleTone}`}>{data.title}</span>
@@ -446,9 +477,9 @@ export const SessionRow = memo(function SessionRow({
         {pen}
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
-        {status ? <StatusIcon status={status} /> : age}
+        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} /></span> : age}
         {chevron}
-      </button>
+      </button>,
     );
   }
 
@@ -510,16 +541,17 @@ export const SessionRow = memo(function SessionRow({
     </span>
   );
 
-  return (
+  return withActions(
     <button
       {...common}
-      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 pl-3 text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface} ${dim}`}
+      style={roomStyle}
+      className={`relative flex w-full items-center gap-2.5 rounded-lg pr-2.5 pl-3 text-left ${style === 'large' ? 'h-12' : 'h-11'} ${surface} ${dim} ${room}`}
     >
       {rail}
       {/* The project's icon tells rows from different projects apart inside a status group. */}
       {icon(style === 'large' ? 24 : 18)}
       {lines}
-    </button>
+    </button>,
   );
 });
 
@@ -919,6 +951,22 @@ export function Sidebar() {
       requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`[data-queue-item="${CSS.escape(next)}"]`)?.focus({ preventScroll: true }));
       return;
     }
+    // E, U and P: the focused row's quick action (or the one under the pointer's), as its button would do it, with Undo.
+    const quickKey = matches(event.nativeEvent, 'sidebar.quick-archive') ? 'archive' : matches(event.nativeEvent, 'sidebar.quick-read') ? 'read' : matches(event.nativeEvent, 'sidebar.quick-pin') ? 'pin' : null;
+    if (quickKey) {
+      if (multi || target.closest('input, textarea, [contenteditable="true"]')) return;
+      const id =
+        target.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ??
+        target.closest<HTMLElement>('[data-row-actions]')?.dataset.rowActions ??
+        scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
+      const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
+      if (listed?.kind !== 'session') return;
+      const action = quickActionForKey(quickKey, quickRowOf(listed.data, listed.archived, { hosted: isActiveHost(hosts.get(listed.data.id)), runs: runs.values() }));
+      if (!action) return;
+      event.preventDefault();
+      menus.quickAction(action.method, listed.data);
+      return;
+    }
     if (matches(event.nativeEvent, 'sidebar.clear-selection') && picked.size > 0) {
       event.preventDefault();
       event.stopPropagation();
@@ -1034,6 +1082,21 @@ export function Sidebar() {
   // Only open sessions the main list shows: a process idling elsewhere sits under Archived and
   // would make the count disagree with what's visible.
   const middleClick = (data: SessionRowData) => menus.middleClick(data);
+  const quickAction = (method: QuickActionMethod, data: SessionRowData) => menus.quickAction(method, data);
+
+  // ⌘Z undoes the last quick action: in the sidebar, or with focus nowhere (the row a button archived has left the
+  // list, taking focus with it). Never in a text field, where ⌘Z is the field's own.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || !matches(event, 'sidebar.undo')) return;
+      const at = document.activeElement;
+      if (at && at !== document.body && !at.closest('[data-sidebar-open]')) return;
+      if (at?.closest('input, textarea, [contenteditable="true"]')) return;
+      if (undoLastQuickAction()) event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const running = useMemo(() => pipelinesRunning(runs.values()), [runs]);
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
   const waitingNotice = useWaitingAnnouncement(all, loaded);
@@ -1225,6 +1288,7 @@ export function Sidebar() {
                       onTogglePick={togglePicked}
                       onMenu={sessionMenu}
                       onMiddleClick={middleClick}
+                      onQuickAction={quickAction}
                     />
                   ) : (
                     // Like a section header: the label sits at the foot of the row, just above its sessions.

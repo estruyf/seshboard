@@ -174,6 +174,8 @@ export type WhileWorking = "queue" | "steer";
 export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
+/** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
+export type QuickActionsShow = "archive" | "all";
 
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
@@ -387,6 +389,10 @@ export interface Preferences {
   githubHintSeen: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
+  /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
+  quickActions: boolean;
+  /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
+  quickActionsShow: QuickActionsShow;
   githubStar: GithubStar;
   /** Settings › Notifications: system notifications, separate from the sounds. */
   notifications: NotificationPrefs;
@@ -442,6 +448,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   hiddenMods: [],
   githubHintSeen: [],
   sidebarSort: "recent",
+  quickActions: true,
+  quickActionsShow: "all",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
   sounds: DEFAULT_SOUNDS,
@@ -635,6 +643,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
+  if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
+  if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
+    out.quickActionsShow = raw.quickActionsShow;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.

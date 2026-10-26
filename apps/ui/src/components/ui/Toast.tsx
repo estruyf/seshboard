@@ -1,7 +1,8 @@
-import { GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, Users } from 'lucide-react';
+import { Archive, GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, Users } from 'lucide-react';
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
+import { Kbd } from './Kbd.tsx';
 import { ToastFrame, useToastCountdown } from './ToastFrame.tsx';
 
 /** One toast: it counts down while visible, pauses while the pointer is on it or the window is in the background. */
@@ -17,6 +18,7 @@ function ToastCard({ toast }: { toast: Toast }) {
       {toast.icon === 'browser' && <Globe size={14} className="shrink-0 text-ok" aria-hidden />}
       {toast.icon === 'computer' && <Monitor size={14} className="shrink-0 text-ok" aria-hidden />}
       {toast.icon === 'shared' && <Users size={14} className="shrink-0 text-link" aria-hidden />}
+      {toast.icon === 'archive' && <Archive size={14} className="shrink-0 text-muted" aria-hidden />}
       {toast.dot && <span className="size-2 shrink-0 rounded-full" style={{ background: toast.dot }} aria-hidden />}
       {toast.tone === 'ok' && <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />}
       {toast.tone === 'error' && <span className="size-2 shrink-0 rounded-full bg-error" aria-hidden />}
@@ -91,6 +93,7 @@ function ToastCard({ toast }: { toast: Toast }) {
           Undo
         </button>
       )}
+      {toast.undo && toast.undoShortcut && <Kbd shortcut={toast.undoShortcut} tone="plain" className="-ml-1 pr-1" aria-hidden />}
       <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label="Dismiss" onClick={dismiss} className="shrink-0" />
     </div>
   );

@@ -9222,6 +9222,12 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
   const toTop = "document.querySelector('[data-session-list]').scrollTop = 0";
   const inMainList = `(() => { const row = document.querySelector('[data-session-id="${id}"]'); if (!row) return false; const header = document.querySelector('[data-archived-toggle]'); return !header || row.getBoundingClientRect().top < header.getBoundingClientRect().top; })()`;
   if (!(await menu('Archive'))) return 'no Archive item';
+  // A working session asks first: Archive while it works? for one in another app (the demo's), Stop and archive for one
+  // the smoke started here.
+  if (working) {
+    if (!(await waitInPage(win, "!!document.querySelector('[data-stop-archive-confirm] [data-confirm]')", 3_000))) return 'archiving a working session did not ask first';
+    await js("document.querySelector('[data-stop-archive-confirm] [data-confirm]').click()");
+  }
   await js(toTop);
   if (!(await waitInPage(win, `!${inMainList}`, 3_000))) return `archiving did nothing${working ? ' (a working session)' : ''}`;
   // Open the Archived section (scroll down until its header renders) and move it back.
@@ -9282,6 +9288,98 @@ async function runRenameStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Quick actions on hover: hovering a finished session shows its buttons, Archive moves it under Archived with a toast,
+ * and Undo brings it back. Archive on a working session asks first (Cancel keeps it). U on the focused row marks it
+ * unread, and ⌘Z takes that back. Flags live in the throwaway profile.
+ */
+async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const list = "document.querySelector('[data-session-list]')";
+  const row = (id: string) => `document.querySelector('[data-session-id="${id}"]')`;
+  const toolbar = (id: string) => `document.querySelector('[data-row-actions="${id}"]')`;
+  const inMainList = (id: string) =>
+    `(() => { const r = ${row(id)}; if (!r) return false; const h = document.querySelector('[data-archived-toggle]'); return !h || r.getBoundingClientRect().top < h.getBoundingClientRect().top; })()`;
+  /** Moves the real pointer onto a row, so its buttons show by hover alone. */
+  const hover = async (id: string) => {
+    const box = (await js(`(() => { const r = ${row(id)}?.getBoundingClientRect(); return r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null; })()`)) as { x: number; y: number } | null;
+    if (!box) return false;
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: box.x, y: box.y });
+    return waitInPage(win, `${toolbar(id)} && getComputedStyle(${toolbar(id)}).opacity === '1'`, 2_000);
+  };
+  const actions = (id: string) => js(`[...(${toolbar(id)}?.querySelectorAll('[data-row-action]') ?? [])].map((b) => b.dataset.rowAction).join(',')`) as Promise<string>;
+  await js(`${list}.scrollTop = 0`);
+
+  // 1. A finished session in the main list: its buttons, Archive, and a toast with Undo.
+  const id = (await js(`(() => {
+    const header = document.querySelector('[data-archived-toggle]');
+    const top = header ? header.getBoundingClientRect().top : Infinity;
+    return [...document.querySelectorAll('[data-session-id]')].find((r) => r.getBoundingClientRect().top < top && r.dataset.indexed === 'true' && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)} && !/Claude is working|Waiting for you/.test(r.getAttribute('aria-label') ?? ''))?.dataset.sessionId ?? null;
+  })()`)) as string | null;
+  if (!id) return 'ok: skipped, no finished session in the main list';
+  // The pointer away from the list first: a step before may have left it on a row.
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 });
+  if (!(await js(`!!${toolbar(id)}`))) return `a finished session has no buttons: ${await js(`${row(id)}?.outerHTML.slice(0, 300)`)}`;
+  if (await js(`getComputedStyle(${toolbar(id)}).opacity !== '0'`)) return 'the buttons show without hover';
+  if (!(await hover(id))) return 'hovering a finished session showed no buttons';
+  await shot(win, 'sidebar-quick-actions.png');
+  const shown = await actions(id);
+  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Archive`;
+  const label = (await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').dataset.tooltip`)) as string;
+  if (!/^Archive \(E\)$/.test(label)) return `the Archive tooltip says “${label}”`;
+  await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').click()`);
+  await js(`${list}.scrollTop = 0`);
+  if (!(await waitInPage(win, `!${inMainList(id)}`, 3_000))) return 'Archive did not move the session out of the main list';
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-quick-action-toast]')].some((t) => t.innerText.startsWith('Archived') && t.querySelector('[data-toast-undo]'))", 2_000))) return 'no “Archived …” toast with Undo';
+
+  // 2. Undo puts it back.
+  await js("[...document.querySelectorAll('[data-quick-action-toast]')].at(-1).querySelector('[data-toast-undo]').click()");
+  if (!(await waitInPage(win, `(${list}.scrollTop = 0, ${inMainList(id)})`, 3_000))) return 'Undo did not bring the session back';
+
+  // 3. A working session: Archive asks first, and Cancel keeps it where it is. The demo lists none (its working sessions
+  // are on the second profile), so there one is made to look busy: an entry in the made-up home's live registry, kept
+  // alive by this process, and taken away after.
+  const working$ = `[...document.querySelectorAll('[data-session-id]')].find((r) => /Claude is working|Waiting for you/.test(r.getAttribute('aria-label') ?? '') && r.closest('[data-row-wrap]'))?.dataset.sessionId ?? null`;
+  let busy = (await js(working$)) as string | null;
+  let registryEntry: string | null = null;
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  if (!busy && process.env.SWITCHBOARD_SMOKE_DEMO && configDir) {
+    const other = (await js(`[...document.querySelectorAll('[data-session-id]')].find((r) => r.dataset.indexed === 'true' && r.dataset.sessionId !== ${JSON.stringify(id)} && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)})?.dataset.sessionId ?? null`)) as string | null;
+    if (other) {
+      registryEntry = join(configDir, 'sessions', `${process.pid}.json`);
+      mkdirSync(join(configDir, 'sessions'), { recursive: true });
+      writeFileSync(registryEntry, JSON.stringify({ pid: process.pid, sessionId: other, cwd: homedir(), startedAt: Date.now(), kind: 'interactive', entrypoint: 'cli', status: 'busy', statusUpdatedAt: Date.now(), updatedAt: Date.now() }));
+      if (await waitInPage(win, `(${list}.scrollTop = 0, /Claude is working/.test(${row(other)}?.getAttribute('aria-label') ?? ''))`, 5_000)) busy = other;
+      else rmSync(registryEntry, { force: true });
+    }
+  }
+  const unbusy = () => registryEntry && rmSync(registryEntry, { force: true });
+  let working = 'no working session to try';
+  if (busy) try {
+    if (!(await hover(busy))) return 'hovering a working session showed no buttons';
+    if (!(await actions(busy)).includes('archive')) return `a working session shows ${await actions(busy)}`;
+    await js(`${toolbar(busy)}.querySelector('[data-row-action="archive"]').click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[data-stop-archive-confirm]')", 2_000))) return 'Archive on a working session did not ask first';
+    await shot(win, 'sidebar-quick-actions-confirm.png');
+    await js("[...document.querySelectorAll('[data-stop-archive-confirm] button')].find((b) => b.innerText === 'Cancel').click()");
+    if (!(await waitInPage(win, "!document.querySelector('[data-stop-archive-confirm]')", 2_000))) return 'Cancel did not close the question';
+    if (!(await waitInPage(win, `(${list}.scrollTop = 0, ${inMainList(busy)})`, 1_000))) return 'Cancel archived the working session anyway';
+    working = 'a working session asked first';
+  } finally {
+    unbusy();
+  }
+
+  // 4. U on the focused row marks it unread; ⌘Z takes it back.
+  const unread = (target: string) => `/New activity since you last looked/.test(${row(target)}?.getAttribute('aria-label') ?? '')`;
+  if (await js(unread(id))) return 'ok: the read session was unread already';
+  const key = (key: string, mod = false) => js(`${row(id)}.focus(); ${row(id)}.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, ${MOD_KEY_PROPERTY}: ${mod} }))`);
+  await key('u');
+  if (!(await waitInPage(win, unread(id), 2_000))) return 'U on the focused row did not mark it unread';
+  await key('z', true);
+  if (!(await waitInPage(win, `!${unread(id)}`, 2_000))) return '⌘Z did not undo Mark as unread';
+  return `ok: hover showed Mark read, Pin and Archive; Archive and Undo; ${working}; U and ⌘Z`;
+}
+
+/**
  * ⌘-click picks a second session, right-click → "Archive 2 sessions" moves both under "Archived" and closes the one that
  * was open, and the selection bar there brings them back. Flags live in the throwaway profile.
  */
@@ -9313,7 +9411,7 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-selection-count]')?.dataset.selectionCount === '2'", 2_000))) return 'picking a second session with ⌘-click showed no selection bar for 2';
   // While picking, every row shows a round checkbox in place of its project icon, and picked rows sit on a tinted block.
   if (!(await js("[...document.querySelectorAll('[data-session-id]')].every((r) => r.querySelector('[data-pick-box]'))"))) return 'picking did not show a checkbox on every row';
-  if (!(await js(`${row(a)}?.querySelector('[data-pick-box]')?.dataset.pickBox === 'true' && !!${row(a)}?.parentElement?.querySelector('[data-pick-block]')`))) return 'the picked row has no ticked checkbox or tinted block';
+  if (!(await js(`${row(a)}?.querySelector('[data-pick-box]')?.dataset.pickBox === 'true' && !!${row(a)}?.closest('[data-list-row]')?.querySelector('[data-pick-block]')`))) return 'the picked row has no ticked checkbox or tinted block';
   await shot(win, 'multi-select.png');
   await js(`(() => { const r = ${row(a)}.getBoundingClientRect(); ${row(a)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); })()`);
   const item = "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.innerText.startsWith('Archive 2 sessions'))";
@@ -9688,6 +9786,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('archive', () => runArchiveStep(win));
   await step('rename', () => runRenameStep(win));
   await step('multi-select and archive', () => runArchiveManyStep(win));
+  await step('quick actions on hover: Archive with Undo, a working session asks first, U and ⌘Z', () => runQuickActionsStep(win));
   await step('drop target', () => runDropStep(win));
   await step('prompt history', () => runHistoryStep(win));
   await step('send now only while Claude works', () => runSendNowStep(win));

@@ -1237,6 +1237,21 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:sidebar.quick-archive",
+      "name": "Archive the session, or unarchive it",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.quick-pin",
+      "name": "Pin or unpin the session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.quick-read",
+      "name": "Mark the session read or unread",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "shortcut:sidebar.rename",
       "name": "sidebar.rename",
       "page": "sessions/sidebar"
@@ -1265,6 +1280,11 @@
       "id": "shortcut:sidebar.toggle",
       "name": "sidebar.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:sidebar.undo",
+      "name": "Undo the last quick action",
+      "page": "sessions/sidebar"
     },
     {
       "id": "shortcut:terminal.clear",
@@ -2675,6 +2695,16 @@
       "id": "feature:middle-click-archive",
       "name": "Middle-click to archive",
       "page": "sessions/archived"
+    },
+    {
+      "id": "feature:sidebar-quick-actions",
+      "name": "Quick actions on hover: Mark as read, Pin and Archive on a session row, with Undo",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-quick-actions-setting",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Archive only or Read · Pin · Archive)",
+      "page": "sessions/sidebar"
     },
     {
       "id": "feature:model-chip",

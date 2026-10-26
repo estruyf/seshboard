@@ -73,6 +73,12 @@ describe('the settings index', () => {
     }
   });
 
+  it('finds quick actions on hover by the words people use for it', () => {
+    for (const query of ['hover', 'archive', 'quick actions', 'mark as read']) {
+      expect(searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.id)).toContain('quick-actions');
+    }
+  });
+
   it('finds the app icon by the words people use for it', () => {
     for (const platform of ['darwin', 'win32']) {
       for (const query of ['icon', 'app icon', 'dock', 'taskbar', 'logo']) {

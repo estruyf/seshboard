@@ -1,7 +1,7 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
@@ -269,6 +269,32 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
           />
+          <Toggle
+            label="Quick actions on hover"
+            detail="Mark read, Pin and Archive appear on a row under the pointer."
+            checked={prefs.quickActions}
+            attr="data-quick-actions-setting"
+            onChange={(quickActions) => update({ quickActions })}
+          />
+          {prefs.quickActions && (
+            <div className="-mt-2 flex items-center justify-between gap-4 pl-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Show</span>
+                <span className="block text-meta text-muted">Working sessions show Stop too.</span>
+              </span>
+              <SegmentedControl<QuickActionsShow>
+                mode="radio"
+                label="Quick actions to show"
+                value={prefs.quickActionsShow}
+                onChange={(quickActionsShow) => update({ quickActionsShow })}
+                segments={[
+                  { value: 'archive', label: 'Archive only', data: { 'data-quick-actions-show': 'archive' } },
+                  { value: 'all', label: 'Read · Pin · Archive', data: { 'data-quick-actions-show': 'all' } },
+                ]}
+                className="shrink-0"
+              />
+            </div>
+          )}
         </Section>
       );
     case 'sessions':

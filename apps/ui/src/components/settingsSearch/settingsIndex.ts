@@ -75,6 +75,24 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'external vs code all sessions',
       target: '[data-session-scope]',
     },
+    {
+      id: 'quick-actions',
+      page: 'sidebar',
+      label: 'Quick actions on hover',
+      detail: 'Mark read, Pin and Archive appear on a row under the pointer.',
+      keywords: 'hover archive quick actions mark as read unread pin unpin stop buttons row one click',
+      target: '[data-quick-actions-setting]',
+    },
+    {
+      id: 'quick-actions-show',
+      page: 'sidebar',
+      label: 'Show',
+      detail: 'Quick actions on hover: Archive only, or Read · Pin · Archive.',
+      keywords: 'hover archive quick actions mark as read pin buttons archive only',
+      target: '[data-quick-actions-show]',
+      // Only while Quick actions on hover is on.
+      fallback: '[data-quick-actions-setting]',
+    },
 
     // Sessions
     {

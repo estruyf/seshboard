@@ -6,6 +6,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Added
 
+- **Quick actions on hover.** Hover a session in the sidebar to mark it read, pin it or archive it in one click. E, U and P do the same from the keyboard, with Undo. Archiving a session that is still working asks first. Settings › Sidebar › **Quick actions on hover** turns the buttons off, or down to Archive only.
 - **Open a folder from the terminal.** Type `switchboard .` (or `seshboard .`, or just `sesh .`) in a terminal to open New session in that folder, like `code .` for VS Code. Install the commands in Settings › General › Terminal, or press ⌘K and choose **Install the switchboard command**. On a Mac they go in /usr/local/bin, which may ask for your password; on Windows Switchboard adds them to your PATH; on Linux they go in ~/.local/bin. A name another program already uses, such as the tmux tool sesh, is left alone.
 - **Light or dark in the remote app.** Open **Theme** in the remote app's **⋯** menu and set Appearance to Match System, Light or Dark. **Sync now** there asks your computers for their theme again.
 - **Keep catch-ups folded.** Turn on Settings › Conversation › Catch-up › **Show catch-ups folded** and a finished session shows the one-line strip instead of the full briefing. Press Space to open it. A turn that stopped with an error still opens in full. In the command palette (⌘K), **Catch-ups: show folded** and **Catch-ups: show in full** switch it.
