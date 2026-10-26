@@ -11,12 +11,10 @@ import { gridMove, type TileTone } from './projectTiles.ts';
 export const PROJECT_GRID = 'grid grid-cols-1 gap-1.5 @min-[520px]:grid-cols-2 @min-[780px]:grid-cols-3';
 
 /**
- * New session's column: the view's 45rem middle track (the `max-w-3xl` focused-view column, less its padding), with a
- * track on each side that only the project list (`PROJECT_LIST_WIDTH`) spans, so a wide window has room for three columns.
+ * New session's column: one width for the heading, the project list, the message box and the usage line, up to 56rem.
+ * Wide enough for three columns of projects (from 780px), and still a comfortable line length in the message box.
  */
-export const NEW_SESSION_COLUMN = 'grid w-full grid-cols-[minmax(0,1fr)_minmax(0,45rem)_minmax(0,1fr)] gap-y-5 px-6 *:col-start-2';
-/** The project list in `NEW_SESSION_COLUMN`: as wide as the view allows, up to 64rem, centred. */
-export const PROJECT_LIST_WIDTH = 'col-[1/-1]! w-full max-w-5xl justify-self-center';
+export const NEW_SESSION_COLUMN = 'mx-auto grid w-full max-w-4xl grid-cols-[minmax(0,1fr)] gap-5 px-6';
 
 const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn animate-pulse', working: 'bg-accent-ink', idle: 'bg-faint/60' };
 const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
@@ -64,8 +62,11 @@ export function ProjectRow({ icon, name, tone, label, branch, shortcut, selected
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-meta">
           <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[tone]}`} />
-          <span className={`shrink-0 ${TONE_TEXT[tone]}`}>{label}</span>
-          {branch && <span className="min-w-0 truncate text-faint">· {branch}</span>}
+          {/* One span, so the dot before the branch is spaced like the one in the label ("Idle · 8m · dev"). */}
+          <span className="min-w-0 truncate">
+            <span className={TONE_TEXT[tone]}>{label}</span>
+            {branch && <span className="text-faint"> · {branch}</span>}
+          </span>
         </span>
       </span>
       {keys && <Kbd keys={keys} tone="plain" aria-hidden />}

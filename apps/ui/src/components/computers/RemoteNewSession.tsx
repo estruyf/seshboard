@@ -19,7 +19,7 @@ import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { RunOnSwitch } from '../newSession/RunOnSwitch.tsx';
-import { moveInGrid, NEW_SESSION_COLUMN, PROJECT_GRID, PROJECT_LIST_WIDTH, ProjectListFooter, ProjectRow } from '../newSession/ProjectRow.tsx';
+import { moveInGrid, NEW_SESSION_COLUMN, PROJECT_GRID, ProjectListFooter, ProjectRow } from '../newSession/ProjectRow.tsx';
 import { COLUMN_BREAKPOINTS, quickCount, quickTiles } from '../newSession/projectTiles.ts';
 import { useColumns } from '../ui/useColumns.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
@@ -274,7 +274,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               closeLabel={cloned ? 'Done' : 'Pick a project instead'}
             />
           ) : (
-          <div ref={listArea} className={`@container grid gap-2 ${PROJECT_LIST_WIDTH}`}>
+          <div ref={listArea} className="@container grid gap-2">
             <SectionHeader
               className="h-6"
               action={

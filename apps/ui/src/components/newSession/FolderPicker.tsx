@@ -10,7 +10,7 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { COLUMN_BREAKPOINTS, filterFolders, quickCount, quickTiles, type TileTone } from './projectTiles.ts';
-import { moveInGrid, PROJECT_GRID, PROJECT_LIST_WIDTH, ProjectListFooter, ProjectRow } from './ProjectRow.tsx';
+import { moveInGrid, PROJECT_GRID, ProjectListFooter, ProjectRow } from './ProjectRow.tsx';
 import { useColumns } from '../ui/useColumns.ts';
 import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 import { useFolderSuggestions } from './useFolderSuggestions.ts';
@@ -458,7 +458,7 @@ export function FolderPicker({
 
   return (
     // A container: the list shows one to three columns as the picker (not the window) narrows.
-    <div ref={rootRef} className={`@container relative grid gap-2 ${PROJECT_LIST_WIDTH}`} data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div ref={rootRef} className="@container relative grid gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <SectionHeader
         className="h-6"
         action={
