@@ -4,6 +4,7 @@ import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIss
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
+import { NEW_SESSION_COLUMN } from './ProjectRow.tsx';
 import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
@@ -60,7 +61,6 @@ import { useMinute } from '../focus/useMinute.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Switch } from '../ui/Toggle.tsx';
@@ -79,10 +79,7 @@ import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
-import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
-
-const keysOf = (id: 'new-session.pick') => shortcutById(id).keys[0]!;
 
 /**
  * Starts a new Claude Code session. The prompt is the main thing; around it sit the project, the
@@ -1234,13 +1231,12 @@ function LocalNewSession() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto my-auto grid w-full max-w-3xl grid-cols-[minmax(0,1fr)] gap-5 px-6 pt-2 pb-12" data-new-session-view>
+        <div className={`my-auto ${NEW_SESSION_COLUMN} pt-2 pb-12`} data-new-session-view>
           <div className="text-center">
             {/* The one hero heading in the app, a little larger than text-title. */}
             <h1 className="text-hero leading-tight font-semibold">Where do we start?</h1>
-            <p className="mt-1 text-ui text-muted">
-              <Kbd keys={comboPresses(keysOf('new-session.pick'))[0]!} /> to <Kbd keys={comboPresses(keysOf('new-session.pick')).at(-1)!} /> picks a project, or start typing its name
-            </p>
+            {/* The keys that pick a project are under the list, as many as it shows. */}
+            <p className="mt-1 text-ui text-muted">Pick a project, or start typing its name</p>
             {/* With a paired computer: where Claude runs. */}
             <div className="mt-3">
               <RunOnSwitch />

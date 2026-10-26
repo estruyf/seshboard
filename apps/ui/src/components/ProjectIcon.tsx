@@ -5,6 +5,7 @@ import { basename } from '../lib/format.ts';
 import { accentFromPixels, letterColor } from '../lib/projectColor.ts';
 import { isQuestionsFolder } from '../lib/questions.ts';
 import { useProjects } from '../state/projectsStore.ts';
+import { projectInitials } from './projectInitials.ts';
 
 /** Sampled icon colours by icon (null: no clear colour), so each icon is drawn and read once. */
 const iconColors = new Map<string, Promise<string | null>>();
@@ -65,25 +66,26 @@ export function useProjectColor(project: ProjectInfo | undefined, root: string |
 }
 
 /**
- * A project's icon: its image, its emoji, or its first letter on a coloured tile. Quick questions have their own, in
- * neutral colours. `remote` marks a project on another computer (named by `name`, its `root` is only a key): a 13px
- * badge with a monitor at the bottom right, on every session or project from there.
+ * A project's icon: its image, its emoji, or its first letter on a coloured tile (`letters={2}`: two, for a project on
+ * another computer, which has no icon here). Quick questions have their own, in neutral colours. `remote` marks a
+ * project on another computer (named by `name`, its `root` is only a key): a 13px badge with a monitor at the bottom
+ * right, where it shows next to this computer's sessions and projects.
  */
-export function ProjectIcon({ project, root, size = 14, name: given, remote = false }: { project: ProjectInfo | undefined; root: string; size?: number; name?: string; remote?: boolean }) {
+export function ProjectIcon({ project, root, size = 14, name: given, remote = false, letters = 1 }: { project: ProjectInfo | undefined; root: string; size?: number; name?: string; remote?: boolean; letters?: 1 | 2 }) {
   if (remote) {
     return (
       <span className="relative flex shrink-0" data-remote-badge>
-        <ProjectTile project={undefined} root={root} size={size} name={given} />
+        <ProjectTile project={undefined} root={root} size={size} name={given} letters={letters} />
         <span className="absolute -right-1 -bottom-1 flex size-[13px] items-center justify-center rounded-[4px] bg-sidebar text-remote ring-1 ring-sidebar" aria-hidden>
           <Monitor size={9} strokeWidth={2.5} />
         </span>
       </span>
     );
   }
-  return <ProjectTile project={project} root={root} size={size} name={given} />;
+  return <ProjectTile project={project} root={root} size={size} name={given} letters={letters} />;
 }
 
-function ProjectTile({ project, root, size, name: given }: { project: ProjectInfo | undefined; root: string; size: number; name?: string }) {
+function ProjectTile({ project, root, size, name: given, letters }: { project: ProjectInfo | undefined; root: string; size: number; name?: string; letters: 1 | 2 }) {
   const question = useProjects((s) => given === undefined && isQuestionsFolder(root, s.questionsDir));
   const name = given ?? project?.name ?? basename(root);
   // Corners scale with the icon, so large ones read as tiles rather than squares.
@@ -105,13 +107,15 @@ function ProjectTile({ project, root, size, name: given }: { project: ProjectInf
       </span>
     );
   }
+  const text = projectInitials(name, letters);
   return (
     <span
-      style={{ ...box, background: letterColor(name), fontSize: size * 0.62 }}
-      className="flex shrink-0 items-center justify-center font-semibold text-white uppercase"
+      style={{ ...box, background: letterColor(name), fontSize: size * (text.length > 1 ? 0.44 : 0.62) }}
+      className="flex shrink-0 items-center justify-center font-semibold text-white"
       aria-hidden
+      data-project-initials={text}
     >
-      {name.replace(/^[^a-z0-9]+/i, '').charAt(0) || '·'}
+      {text}
     </span>
   );
 }

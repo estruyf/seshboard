@@ -982,6 +982,11 @@
       "page": "new-session/models-and-options"
     },
     {
+      "id": "shortcut:new-session.find",
+      "name": "new-session.find",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:new-session.pick",
       "name": "new-session.pick",
       "page": "new-session/form"
@@ -2997,8 +3002,8 @@
       "page": "projects/sessions"
     },
     {
-      "id": "feature:project-tiles",
-      "name": "Project tiles with status",
+      "id": "feature:project-list",
+      "name": "Project list: rows with the whole name and status, in one to three columns as the space allows, long names cut in the middle, All N projects…",
       "page": "new-session/form"
     },
     {

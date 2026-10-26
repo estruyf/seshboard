@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveSession, SessionSummary } from '@switchboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
-import { activityByProject, filterFolders, latestBranches, orderProjects, pickUpRows, quickTiles, recentFirst, tileStatus } from './projectTiles.ts';
+import { activityByProject, columnsFor, COLUMN_BREAKPOINTS, filterFolders, gridMove, latestBranches, orderProjects, pickUpRows, quickCount, quickTiles, recentFirst, tileStatus } from './projectTiles.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
 const HOUR = 3_600_000;
@@ -72,10 +72,50 @@ describe('project tiles', () => {
 
   it('keep a picked folder visible among the quick tiles', () => {
     const recent = ['/a', '/b', '/c', '/d', '/e'];
-    expect(quickTiles(recent, '/b')).toEqual(['/a', '/b', '/c', '/d']);
-    expect(quickTiles(recent, '/e')).toEqual(['/a', '/b', '/c', '/e']);
-    expect(quickTiles(recent, '/elsewhere')).toEqual(['/a', '/b', '/c', '/elsewhere']);
-    expect(quickTiles(recent, null)).toEqual(['/a', '/b', '/c', '/d']);
+    expect(quickTiles(recent, '/b', 4)).toEqual(['/a', '/b', '/c', '/d']);
+    expect(quickTiles(recent, '/e', 4)).toEqual(['/a', '/b', '/c', '/e']);
+    expect(quickTiles(recent, '/elsewhere', 4)).toEqual(['/a', '/b', '/c', '/elsewhere']);
+    expect(quickTiles(recent, null, 4)).toEqual(['/a', '/b', '/c', '/d']);
+  });
+
+  it('show six, eight or nine projects for one, two or three columns', () => {
+    expect([1, 2, 3].map(quickCount)).toEqual([6, 8, 9]);
+    // Never more than ⌘9 reaches.
+    expect(quickCount(4)).toBe(9);
+    expect(columnsFor(519, COLUMN_BREAKPOINTS)).toBe(1);
+    expect(columnsFor(520, COLUMN_BREAKPOINTS)).toBe(2);
+    expect(columnsFor(779, COLUMN_BREAKPOINTS)).toBe(2);
+    expect(columnsFor(780, COLUMN_BREAKPOINTS)).toBe(3);
+    expect(columnsFor(2000, COLUMN_BREAKPOINTS)).toBe(3);
+  });
+
+  it('keep a picked project past the top in the last place, for each column count', () => {
+    const eighteen = Array.from({ length: 18 }, (_, i) => `/p${i + 1}`);
+    for (const columns of [1, 2, 3]) {
+      const count = quickCount(columns);
+      const tiles = quickTiles(eighteen, '/p15', count);
+      expect(tiles).toHaveLength(count);
+      expect(tiles.at(-1)).toBe('/p15');
+      expect(tiles.slice(0, -1)).toEqual(eighteen.slice(0, count - 1));
+      // One inside the top stays where it is.
+      expect(quickTiles(eighteen, '/p2', count)).toEqual(eighteen.slice(0, count));
+    }
+  });
+
+  it('move through the grid left to right, then down', () => {
+    // Three columns, eight rows: 0 1 2 / 3 4 5 / 6 7.
+    expect(gridMove('ArrowRight', 2, 8, 3)).toBe(3);
+    expect(gridMove('ArrowLeft', 3, 8, 3)).toBe(2);
+    expect(gridMove('ArrowDown', 1, 8, 3)).toBe(4);
+    expect(gridMove('ArrowUp', 4, 8, 3)).toBe(1);
+    expect(gridMove('ArrowDown', 5, 8, 3)).toBe(null);
+    expect(gridMove('ArrowUp', 1, 8, 3)).toBe(null);
+    expect(gridMove('ArrowLeft', 0, 8, 3)).toBe(null);
+    expect(gridMove('Home', 5, 8, 3)).toBe(0);
+    expect(gridMove('End', 0, 8, 3)).toBe(7);
+    expect(gridMove('Enter', 0, 8, 3)).toBe(null);
+    // One column: up and down are the next row.
+    expect(gridMove('ArrowDown', 0, 6, 1)).toBe(1);
   });
 
   it('filter by name or path', () => {

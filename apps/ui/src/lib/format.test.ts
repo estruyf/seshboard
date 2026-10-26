@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { basename, dirnameOf, pathTail, shortAge, tildify } from './format.ts';
+import { basename, dirnameOf, middleEllipsis, pathTail, shortAge, tildify } from './format.ts';
 
 describe('format', () => {
   const now = Date.UTC(2026, 9, 5, 12, 0, 0);
@@ -33,5 +33,18 @@ describe('dirnameOf and pathTail', () => {
     expect(pathTail('/Users/me/memory/a.md', 2)).toBe('memory/a.md');
     expect(pathTail('C:\\Users\\me\\memory\\a.md', 2)).toBe('memory\\a.md');
     expect(pathTail('C:\\Users\\me\\memory\\a.md', 3)).toBe('me\\memory\\a.md');
+  });
+
+  it('cuts long names in the middle', () => {
+    // Short enough: as it is.
+    expect(middleEllipsis('switchboard', 28)).toBe('switchboard');
+    expect(middleEllipsis('switchboard', 11)).toBe('switchboard');
+    // Too long: the start and the end stay, the end a character shorter when they can't be equal.
+    expect(middleEllipsis('pointfire-document-summarization', 28)).toBe('pointfire-docu…summarization');
+    // An odd length keeps as much on both sides.
+    expect(middleEllipsis('pointfire-document-summarization', 27)).toBe('pointfire-doc…summarization');
+    // No dash: cut by characters all the same.
+    expect(middleEllipsis('abcdefghijklmnop', 7)).toBe('abc…nop');
+    expect(middleEllipsis('abcdefghijklmnop', 1)).toBe('…');
   });
 });

@@ -3830,8 +3830,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // in a new worktree, which shows no branch.
   const tideline = `[data-remote-new-session] [data-remote-project][data-tooltip="tideline"]`;
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})`, 3_000))) return `New session on the other computer has no tideline tile (${await js("[...document.querySelectorAll('[data-remote-new-session] [data-remote-project]')].map((t) => t.dataset.tooltip).join(', ')")})`;
+  // The same rows as here: two letters for an icon (harbor-api is HA), and no monitor badge, as the Run on switch says where.
+  const harbor = `[data-remote-new-session] [data-project-row][data-tooltip="harbor-api"] [data-project-initials]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(harbor)})?.dataset.projectInitials === 'HA'`, 3_000))) return `harbor-api on the other computer has no two letters (${await js(`document.querySelector(${JSON.stringify(harbor)})?.dataset.projectInitials`)})`;
+  if (await js("Boolean(document.querySelector('[data-remote-new-session] [data-project-list] [data-remote-badge]'))")) return 'the projects on the other computer still have the monitor badge';
   await click(tideline);
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})?.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'New session on the other computer did not pick tideline';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'New session on the other computer did not pick tideline';
   // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
   const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
   if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
@@ -5710,6 +5714,146 @@ function openFolderFilter(win: BrowserWindow): Promise<unknown> {
 }
 
 /**
+ * New session's project list follows the picker's width (Round 50): wide, three columns and nine rows with every name
+ * whole; with the sidebar open and the window narrower, two columns and eight, and a long name cut in the middle;
+ * narrower still, one column and six. The window's minimum width is lowered for these sizes, as a side panel would
+ * narrow the view instead. ⌘F opens Find, ⌘2 picks the second row, and ⌘7
+ * does nothing with six. Ten empty folders in a new temporary folder are added as projects through Find… (a typed path
+ * and ↩) so there are more than nine; they are removed again, and the window gets its size back.
+ */
+async function runProjectListStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const field = '[data-folder-list] input';
+  const list = '[data-new-session-view] [data-folder-select][data-project-list]';
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-smoke-list-')));
+  const names = ['intranet', 'vscode-demo-time', 'pf-app-customizer', 'doctor', 'playwright-msteams-reporter', 'vscode-front-matter', 'pointfire-document-summarization', 'tideline-web', 'engage-time', 'voice-snippets'];
+  const dirs = names.map((name) => join(parent, name));
+  for (const dir of dirs) mkdirSync(dir);
+  const [width, height] = win.getContentSize() as [number, number];
+  const [minWidth, minHeight] = win.getMinimumSize() as [number, number];
+  const added: string[] = [];
+  let before = '';
+  /** The list as it shows: its columns, its rows' folders and their names (whole or cut), and how many rows sit on the first line. */
+  const shape = async () =>
+    (await js(`(() => {
+      const list = ${one(list)};
+      if (!list) return null;
+      const rows = [...list.querySelectorAll('[data-project-row]')];
+      const top = rows[0]?.getBoundingClientRect().top;
+      return {
+        columns: Number(list.dataset.projectColumns),
+        rows: rows.length,
+        firstLine: rows.filter((r) => Math.abs(r.getBoundingClientRect().top - top) < 2).length,
+        cut: rows.filter((r) => r.querySelector('[data-project-name]').textContent !== r.getAttribute('aria-label').replace(/, [^,]*$/, '')).map((r) => r.querySelector('[data-project-name]').textContent),
+        folders: rows.map((r) => r.dataset.folderOption),
+      };
+    })()`)) as { columns: number; rows: number; firstLine: number; cut: string[]; folders: string[] } | null;
+  /**
+   * Sizes the window so the picker is `pickerWidth` wide. A small window narrows the sidebar or folds it into the rail
+   * (over 150ms), which widens the view again: measure, adjust by the difference, and repeat until it holds.
+   */
+  const pickerWidth = () => js(`Math.round(${one('[data-project-header]')}?.getBoundingClientRect().width ?? 0)`) as Promise<number>;
+  const sizeFor = async (target: number) => {
+    for (let i = 0; i < 6; i++) {
+      const now = await pickerWidth();
+      if (Math.abs(now - target) <= 1) return;
+      const [current] = win.getContentSize() as [number, number];
+      win.setContentSize(current + target - now, height);
+      await waitInPage(win, `window.innerWidth === ${current + target - now}`, 1_000);
+      await settle(win);
+    }
+  };
+  try {
+    pressKey(win, 'N', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `${one('[data-new-session-view] [data-find-project]')} && ${one(list)}`, 3_000))) return 'New session has no Find… or no project list';
+    // The remembered folder arrives a moment after the view opens.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    before = (await js(`${one(list)}.dataset.value`)) as string;
+    // ⌘F opens the full list with the cursor in its field; the first folder is added that way, the rest through Find….
+    for (const [index, dir] of dirs.entries()) {
+      if (index === 0) pressKey(win, 'F', [MOD_MODIFIER]);
+      else await js(`${one('[data-new-session-view] [data-find-project]')}.click()`);
+      if (!(await waitInPage(win, `document.activeElement === ${one(field)}`, 3_000))) return index === 0 ? '⌘F did not open the filter field' : 'Find… did not open the filter field';
+      await setFieldValue(win, field, dir);
+      const suggestion = one(`[data-path-suggestion=${JSON.stringify(dir)}]`);
+      if (!(await waitInPage(win, `${suggestion}?.dataset.active === 'true'`, 3_000))) return `typing ${dir} did not offer the folder`;
+      pressKey(win, 'Return');
+      if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(dir)}`, 5_000))) return `↩ did not add and pick ${dir}`;
+      added.push(dir);
+    }
+
+    // Wide: three columns, nine rows, three on the first line, every name whole.
+    if (!(await js("Boolean(document.querySelector('[data-sidebar-open]'))"))) {
+      pressKey(win, 'B', [MOD_MODIFIER]);
+      if (!(await waitInPage(win, one('[data-sidebar-open]'), 3_000))) return 'the sidebar did not open';
+    }
+    // The window's minimum width would clamp the narrow sizes below (how far depends on the sidebar's width).
+    win.setMinimumSize(400, minHeight);
+    await sizeFor(1000);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '3' && ${one(list)}.querySelectorAll('[data-project-row]').length === 9`, 3_000))) return `a wide window did not show three columns and nine rows (${JSON.stringify(await shape())})`;
+    let now = (await shape())!;
+    if (now.firstLine !== 3) return `three columns put ${now.firstLine} rows on the first line`;
+    if (now.cut.length) return `names cut in a wide window: ${now.cut.join(', ')}`;
+    if (!(await js(`${one('[data-new-session-view] [data-all-projects]')}?.innerText.startsWith('All ')`))) return 'no All N projects… under the list';
+    // ⌘2 picks the second row: left to right, so the middle of the first line.
+    const second = now.folders[1]!;
+    pressKey(win, '2', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(second)}`, 3_000))) return `⌘2 did not pick the second row (${String(await js(`${one(list)}?.dataset.value`))})`;
+    await shot(win, 'new-session-project-list.png');
+
+    // Two columns, eight rows.
+    await sizeFor(650);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '2' && ${one(list)}.querySelectorAll('[data-project-row]').length === 8`, 3_000))) return `a narrower window did not show two columns and eight rows (${JSON.stringify(await shape())})`;
+    now = (await shape())!;
+    if (now.firstLine !== 2) return `two columns put ${now.firstLine} rows on the first line`;
+    // Narrow columns: the long name is cut in the middle, and its tooltip and label have it whole.
+    await sizeFor(530);
+    const long = dirs.find((dir) => basename(dir) === 'pointfire-document-summarization')!;
+    const longRow = one(`[data-new-session-view] [data-folder-option=${JSON.stringify(long)}]`);
+    if (!(await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000))) return `a long name in a narrow column was not cut (${String(await js(`${longRow}?.querySelector('[data-project-name]').textContent`))})`;
+    const cutName = (await js(`${longRow}.querySelector('[data-project-name]').textContent`)) as string;
+    if (!/^pointfire-.+….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
+    if (!(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
+
+    // One column, six rows: as a side panel would make it.
+    await sizeFor(440);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 6`, 3_000))) return `a narrow view did not show one column and six rows (${JSON.stringify(await shape())})`;
+    now = (await shape())!;
+    // A name cut in the middle keeps its start and its end; the tooltip has it whole, with its folder.
+    for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end, not in the middle: ${cut}`;
+    // ⌘7 picks nothing with six rows.
+    const picked = (await js(`${one(list)}.dataset.value`)) as string;
+    pressKey(win, '7', [MOD_MODIFIER]);
+    await settle(win);
+    if ((await js(`${one(list)}.dataset.value`)) !== picked) return '⌘7 picked a project that is not on screen';
+    // Add project… keeps only its icon, with its label as the tooltip.
+    const addButton = `[...document.querySelectorAll('[data-new-session-view] [data-add-folder]')].map((b) => (b.getAttribute('aria-label') ?? '-') + ':' + b.innerText.trim())`;
+    if (!(await waitInPage(win, `${addButton}.join() === 'Add project…:'`, 2_000))) return `Add project… kept its label in one column (${String(await js(`${addButton}.join(' | ')`))}, ${String(await js(`${one(list)}?.dataset.projectColumns`))} columns)`;
+    return `ok: three columns and nine rows wide (⌘2 picked ${basename(second)}), two and eight (${cutName} in narrow ones), one and six, ⌘7 did nothing`;
+  } finally {
+    win.setMinimumSize(minWidth, minHeight);
+    win.setContentSize(width, height);
+    // Wide again before Projects opens, where a narrow view folds its list into an overlay.
+    await waitInPage(win, `window.innerWidth === ${width}`, 3_000);
+    // Off the throwaway profile's projects again.
+    for (const dir of added) {
+      const removed = await removeProjectInProjects(win, dir);
+      if (removed) console.log(`[smoke] could not remove the project ${dir}: ${removed}`);
+    }
+    // New session back on its folder (the ones added are about to go), or on none.
+    if (before) openDeepLink(`switchboard://new-session?cwd=${encodeURIComponent(before)}`);
+    else pressKey(win, 'N', [MOD_MODIFIER]);
+    await waitInPage(win, one('[data-new-session-view]'), 3_000);
+    try {
+      rmSync(parent, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      console.log(`[smoke] could not remove ${parent}: ${(error as Error).message}`);
+    }
+  }
+}
+
+/**
  * Adding a project in New session is one step. Add project… in the header opens the Add project dialog over New
  * session, and closing it without adding changes nothing. In a new temporary folder (with one folder inside): a typed path lists folders, the faint rest of the name and Tab complete it, Tab again goes inside, a
  * missing folder says so, and ↩ adds the folder as a project and picks it. A dragged file is refused. Only the
@@ -5744,8 +5888,8 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   await js("window.dispatchEvent(new DragEvent('dragend'))");
   if (!(await waitInPage(win, `!${one('[data-folder-drop]')}`, 2_000))) return 'the drop overlay stayed after the drag ended';
 
-  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
-  if (!(await waitInPage(win, `${one(field)} && document.activeElement === ${one(field)}`, 3_000))) return 'Filter did not open the filter field';
+  await js(`${one('[data-new-session-view] [data-find-project]')}.click()`);
+  if (!(await waitInPage(win, `${one(field)} && document.activeElement === ${one(field)}`, 3_000))) return 'Find… did not open the filter field';
   // The start of the folder's name: the rest shows faint, Tab takes it, Tab again goes inside.
   const partial = dir.slice(0, -3);
   await setFieldValue(win, field, partial);
@@ -5779,7 +5923,7 @@ async function runAddFolderStep(win: BrowserWindow): Promise<string> {
   } catch (error) {
     console.log(`[smoke] could not remove ${dir}: ${(error as Error).message}`);
   }
-  return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Filter opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
+  return 'ok: Add project… opened the Add project dialog and Esc left New session as it was, a refused file drop, Find… opened the field, ghost text and Tab, Tab into a folder, a missing folder, ↩ added and picked it; removed again';
 }
 
 /**
@@ -5852,8 +5996,8 @@ async function runCloneStep(win: BrowserWindow): Promise<string> {
 
   // New session: Clone from GitHub… next to Add project…, and a URL pasted in the folder field offers the clone.
   pressKey(win, 'N', ['meta']);
-  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-filter-projects]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
-  await js(`${one('[data-new-session-view] [data-filter-projects]')}.click()`);
+  if (!(await waitInPage(win, `${one('[data-new-session-view] [data-clone-from-github]')} && ${one('[data-new-session-view] [data-find-project]')}`, 3_000))) return fail('New session has no Clone from GitHub…');
+  await js(`${one('[data-new-session-view] [data-find-project]')}.click()`);
   if (!(await waitInPage(win, one('[data-folder-list] input'), 3_000))) return fail('Filter did not open the folder field');
   await setFieldValue(win, '[data-folder-list] input', 'https://github.com/acme/smoke-clone');
   if (!(await waitInPage(win, `${one('[data-clone-option="acme/smoke-clone"]')}?.dataset.active === 'true'`, 3_000))) return fail('a GitHub URL in the folder field did not offer Clone acme/smoke-clone');
@@ -9847,6 +9991,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
+  // After projects: it adds ten projects (removed again), which the Projects view's first step must not see.
+  await step('new session project list: three columns and nine rows, two and eight, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });

@@ -337,6 +337,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | Shortcut | What it does |
 |---|---|
 | ⌘1 to ⌘9 | Pick a recent project |
+| ⌘F | Find a project (Opens the full list with its filter) |
 | ⌘↩ | Start the session |
 | ⌘⇧↩ | Add the prompt to the queue (Starts when you say so) |
 

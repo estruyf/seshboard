@@ -17,6 +17,7 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Changed
 
+- **A project list you can read.** New session lists projects in rows that show the whole name, in one to three columns depending on the space. A name too long for its row is cut in the middle, and its tooltip has it whole. **All N projects…** under the list opens them all, and **Find…** (⌘F) does the same with the filter ready. Projects on another computer get two letters instead of one, without the monitor badge.
 - **On a phone, sessions and New session match the new look:** round buttons, a cleaner catch-up, one composer, and an Options sheet instead of seven chips.
 - **The remote app on a phone:** a menu button on every screen, a drawer with Settings and your computer at the bottom, a full-width Home, and a Settings page.
 - **New session from the remote app's drawer.** In a session, open the drawer and tap **New session** under Home: no need to go back to Home first. Back from New session goes to your sessions.

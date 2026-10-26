@@ -279,6 +279,7 @@ describe('the shortcut registry', () => {
       'catchup.archive': [{ ...SESSION, catchUp: 'full' }, SESSION],
       'catchup.expand': [{ ...SESSION, catchUp: 'strip' }, SESSION],
       'new-session.pick': [at({ view: 'new-session' }), SESSION],
+      'new-session.find': [at({ view: 'new-session' }), { ...at({ view: 'new-session' }), focus: 'terminal' }],
       'new-session.start': [at({ view: 'new-session' }), SESSION],
       'new-session.queue': [at({ view: 'new-session' }), SESSION],
       'settings.close': [at({ view: 'settings' }), SESSION],

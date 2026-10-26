@@ -1160,6 +1160,14 @@ export const SHORTCUTS = [
     reserve: false,
   },
   {
+    id: "new-session.find",
+    keys: ["mod+f"],
+    action: "Find a project",
+    section: "new-session",
+    context: "Opens the full list with its filter",
+    when: (ctx) => ctx.view === "new-session" && ctx.focus !== "terminal",
+  },
+  {
     id: "new-session.start",
     keys: ["mod+enter"],
     action: "Start the session",

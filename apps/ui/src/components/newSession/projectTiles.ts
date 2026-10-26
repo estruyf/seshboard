@@ -51,12 +51,34 @@ export function orderProjects(roots: readonly string[], order: ProjectOrder, las
   return order === 'yours' ? [...roots] : recentFirst(roots, lastActivity);
 }
 
+/** The widths (px) from which New session's project list shows two, then three columns; the CSS has the same (`PROJECT_GRID`). */
+export const COLUMN_BREAKPOINTS = [520, 780] as const;
+
+/** How many columns a list of this width shows: one, plus one for each breakpoint it reaches. */
+export function columnsFor(width: number, breakpoints: readonly number[]): number {
+  return 1 + breakpoints.filter((min) => width >= min).length;
+}
+
+/** How many projects the list shows before "All N projects…": three full rows of three, four of two, six of one. Never more than ⌘9 reaches. */
+export function quickCount(columns: number): number {
+  return columns >= 3 ? 9 : columns === 2 ? 8 : 6;
+}
+
+/**
+ * Where an arrow key goes in a grid of `count` rows laid out left to right, then down: left and right along a row,
+ * up and down to the row above or below. Home and End go to the first and last. Null for any other key, or past an edge.
+ */
+export function gridMove(key: string, index: number, count: number, columns: number): number | null {
+  const next = key === 'ArrowLeft' ? index - 1 : key === 'ArrowRight' ? index + 1 : key === 'ArrowUp' ? index - columns : key === 'ArrowDown' ? index + columns : key === 'Home' ? 0 : key === 'End' ? count - 1 : null;
+  return next === null || next < 0 || next >= count ? null : next;
+}
+
 /**
  * The quick tiles: the first `count` projects. A picked folder that isn't among them takes the
  * last place, so the choice stays visible after picking it from the full list (or a folder that isn't
  * a project at all).
  */
-export function quickTiles(ordered: readonly string[], value: string | null, count = 4): string[] {
+export function quickTiles(ordered: readonly string[], value: string | null, count: number): string[] {
   const top = ordered.slice(0, count);
   if (!value || top.includes(value)) return top;
   return [...top.slice(0, count - 1), value];

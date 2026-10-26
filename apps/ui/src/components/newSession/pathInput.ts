@@ -74,10 +74,10 @@ export function knownFolderRows(projects: Map<string, ProjectInfo>, filter: stri
 export const addOrSelect = (path: string, projects: Map<string, ProjectInfo>): 'select' | 'add' => (projects.get(path)?.added ? 'select' : 'add');
 
 /**
- * The fifth place after the quick tiles. With more projects than tiles, "+N more" opens the full list. With four or fewer
- * there is none: Add project… in the header is enough. With no projects at all, one wide "Add project…" tile.
+ * What follows the short project list. With more projects than it shows, "All N projects…" opens the full list. With
+ * fewer there is nothing: Add project… in the header is enough. With no projects at all, one wide "Add project…" row.
  */
-export function fifthTile(projectCount: number, quickCount: number, hidden: number): { kind: 'more'; count: number } | { kind: 'choose' } | null {
+export function listEnd(projectCount: number, quickCount: number, hidden: number): { kind: 'more'; count: number } | { kind: 'choose' } | null {
   if (hidden > 0) return { kind: 'more', count: hidden };
   return projectCount === 0 && quickCount === 0 ? { kind: 'choose' } : null;
 }
