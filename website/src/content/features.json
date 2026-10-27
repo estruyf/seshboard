@@ -697,6 +697,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "palette:retry",
+      "name": "Try again",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:stop-action",
       "name": "Stop action",
       "page": "terminal-changes-git/terminal"

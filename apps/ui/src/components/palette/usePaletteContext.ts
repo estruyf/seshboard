@@ -158,6 +158,7 @@ export function usePaletteContext(): PaletteContext {
       catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, folded: prefs.catchUpFolded, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
+      unsent: host?.state === 'error' ? (host.unsent ?? 0) : 0,
     };
   }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded]);
 

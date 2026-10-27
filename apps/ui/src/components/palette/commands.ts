@@ -124,7 +124,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
+export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next' | 'retry';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'schedule' | 'catch-up' | 'add-project';
 
@@ -820,6 +820,15 @@ export const COMMANDS: PaletteCommand[] = [
   },
   { id: 'close-session', title: 'Close session', group: 'session', icon: X, keywords: 'home', when: (ctx) => session(ctx) !== null, run: (api) => api.closeSession() },
   { id: 'delete-session', title: 'Delete session…', group: 'session', icon: Trash2, keywords: 'trash remove', when: (ctx) => indexed(ctx) && ctx.connected, run: (api) => api.deleteSession() },
+  {
+    id: 'retry',
+    title: 'Try again',
+    group: 'session',
+    icon: RefreshCw,
+    keywords: 'retry restart refresh failed error start again send again',
+    when: (ctx) => (session(ctx)?.unsent ?? 0) > 0 && ctx.connected,
+    run: (api) => api.sessionRequest('retry'),
+  },
   { id: 'stop', title: 'Stop Claude', group: 'session', shortcut: keysFor('claude.stop'), icon: StopCircle, keywords: 'interrupt cancel', when: (ctx) => !!session(ctx)?.running && !!session(ctx)?.host && ctx.connected, run: (api) => api.stop() },
   {
     id: 'go-to-waiting',

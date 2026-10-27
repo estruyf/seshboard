@@ -360,6 +360,19 @@ export class HostManager {
   }
 
   /**
+   * After Claude Code failed before it started (a binary that won't launch, a login that ran out): starts the session
+   * again and sends what the failed process never got, under the same uuids, so the transcript shows each message once.
+   */
+  async retry(sessionId: string): Promise<void> {
+    const unsent = this.hosts.get(sessionId)?.unsent ?? [];
+    if (unsent.length === 0) throw new RpcError('NOT_RUNNING', 'Nothing to send again. Send a message to start the session.');
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Fork it to continue here.');
+    if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
+    for (const message of unsent) host.send(message.text, message.attachments, undefined, message.uuid);
+    this.deps.onContinued?.(sessionId);
+  }
+
+  /**
    * Forks a session with its own model, effort and mode, and the first message: a pipeline step that starts as a fork
    * of an earlier one (#179). Waits for the fork to start; its id.
    */

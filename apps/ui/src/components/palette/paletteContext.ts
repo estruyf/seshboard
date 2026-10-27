@@ -35,6 +35,8 @@ export interface PaletteSession {
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */
   hasReply: boolean;
+  /** Claude Code failed before it got this many of your messages: Try again sends them. */
+  unsent: number;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */

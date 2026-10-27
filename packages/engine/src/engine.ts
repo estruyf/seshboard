@@ -2723,6 +2723,10 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.close(sessionId);
       return {};
     },
+    'session.retry': async ({ sessionId }) => {
+      await hosts.retry(sessionId);
+      return {};
+    },
     'session.continueInEditor': async ({ sessionId, editorId }) => {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');

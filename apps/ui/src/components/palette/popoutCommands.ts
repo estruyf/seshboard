@@ -149,6 +149,7 @@ const PLANS: Record<string, Plan> = {
   'close-session': 'here',
   'delete-session': 'here',
   stop: 'here',
+  retry: 'here',
   'go-to-waiting': 'here',
 
   // Git, project actions and the session's terminal.

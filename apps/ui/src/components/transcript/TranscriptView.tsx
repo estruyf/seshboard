@@ -27,6 +27,7 @@ import { useUpNext } from '../../state/upNextStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
 import { SignInNotice } from '../session/SignInNotice.tsx';
+import { RunFailedNotice } from '../session/RunFailedNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -1185,6 +1186,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
     else if (request.kind === 'prompt-previous') stepPrompt(-1);
     else if (request.kind === 'prompt-next') stepPrompt(1);
+    else if (request.kind === 'retry') void retry();
   });
 
   /**
@@ -1221,6 +1223,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The profile is at a usage limit: Up next waits for it rather than sending into it.
   const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
   /** Sending from Up next brings a session that isn't running back, which the focus limit has a say in. */
+  // Try again, after Claude Code failed before it got your message: it starts again and sends it.
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retry = async () => {
+    if (!client || retrying) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      if ((await passFocusGate({ target: sessionId })) !== 'start') return;
+      await client.call('session.retry', { sessionId });
+      follow(true);
+    } catch (e) {
+      setRetryError(`Could not try again: ${(e as Error).message}`);
+    } finally {
+      setRetrying(false);
+    }
+  };
   const resumeAllowed = async () => Boolean(activeHost) || (await passFocusGate({ target: sessionId })) === 'start';
   const takeBack = async (id: string): Promise<boolean> => {
     if (!client) return false;
@@ -1893,6 +1912,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }}
                 />
               )}
+              {host?.state === 'error' && (
+                <RunFailedNotice host={host} retrying={retrying} retryError={retryError} onRetry={!restart && (host.unsent ?? 0) > 0 ? () => void retry() : null} />
+              )}
               {profileId && <SignInNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} />}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
               {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
@@ -1959,21 +1981,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       <SessionControls host={activeHost} />
                     ) : !restart && (!registryLive || leftover) ? (
                       // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
-                      <SavedSessionControls
-                        sessionId={sessionId}
-                        profileId={profileId}
-                        note={
-                          host?.state === 'error' && (
-                            <span className="min-w-0 shrink truncate px-1.5 text-meta text-error" data-tooltip={host.error ?? undefined} data-session-elsewhere>
-                              Last run failed: {host.error}
-                            </span>
-                          )
-                        }
-                      />
+                      // Why the last run failed is in the notice above the message box, where it has room.
+                      <SavedSessionControls sessionId={sessionId} profileId={profileId} />
                     ) : (
-                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
+                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
                         {host?.state === 'error' ? (
-                          <span className="text-error select-text">Last run failed: {host.error}</span>
+                          'Last run failed. Send a message to start it again.'
                         ) : registryLive ? (
                           `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
                         ) : (

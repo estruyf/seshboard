@@ -253,6 +253,8 @@ function setup(
     warmFails?: { message: string; afterMs?: number };
     /** Claude Code can't be started at all. */
     startFails?: string;
+    /** Claude Code starts, then dies before it reads a message (a binary that won't launch). */
+    launchFails?: string;
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
@@ -278,6 +280,12 @@ function setup(
   const sdk: SdkRuntime = {
     query: ({ prompt, options }) => {
       if (opts.startFails) throw new Error(opts.startFails);
+      if (opts.launchFails) {
+        const dead = new FakeQuery(new Channel<SDKUserMessage>(), options);
+        const message = opts.launchFails;
+        setTimeout(() => dead.out.fail(new Error(message)), 10);
+        return dead as never;
+      }
       const q = new FakeQuery(prompt, options);
       queries.push(q);
       opts.onQuery?.(q);
@@ -1054,6 +1062,27 @@ describe('HostManager', () => {
     expect(t.queries).toHaveLength(1);
     expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan', model: 'opus' });
     expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    t.manager.closeAll();
+  });
+
+  it('sends a message again after Claude Code failed before it got it', async () => {
+    const opts: Parameters<typeof setup>[0] = { cwds: { old: '/w' }, launchFails: 'Claude Code native binary at /opt/homebrew/bin/claude exists but failed to launch.' };
+    const t = setup(opts);
+    const { messageUuid } = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    await until(() => lastState(t.infos, 'old') === 'error');
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    // It fails again: the message is still there to send.
+    await expect(t.manager.retry('old')).resolves.toBeUndefined();
+    await until(() => lastState(t.infos, 'old') === 'error' && t.infos.filter((i) => i.sessionId === 'old').length > 2);
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    delete opts.launchFails;
+    await t.manager.retry('old');
+    await until(() => lastState(t.infos, 'old') === 'idle');
+    expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    // The same uuid each time, so the transcript shows the message once.
+    expect(new Set(t.messages.filter((m) => m.messages[0]?.type === 'user').map((m) => m.messages[0]!.uuid))).toEqual(new Set([messageUuid]));
+    // Once Claude Code has it, there is nothing left to send again.
+    await expect(t.manager.retry('old')).rejects.toMatchObject({ code: 'NOT_RUNNING' });
     t.manager.closeAll();
   });
 

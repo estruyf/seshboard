@@ -472,6 +472,11 @@ export const contract = {
     'session.context': { params: z.object({ sessionId: SessionId }), result: ContextUsage },
     /** Stops the Claude Code process behind a session (the transcript stays; sending resumes it). */
     'session.close': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /**
+     * After Claude Code failed to start: starts it again and sends the messages it never got (`SessionHostInfo.unsent`).
+     * Fails with START_FAILED when it fails again before it starts.
+     */
+    'session.retry': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     'session.respond': { params: z.object({ requestId: z.string(), decision: PermissionDecision }), result: z.object({}) },
     /** Slash commands, skills and plugin commands available to a session (or folder, for a new one). */
     'session.commands': {

@@ -20,6 +20,7 @@ const SESSION: PaletteSession = {
   catchUp: null,
   prompts: 0,
   hasReply: false,
+  unsent: 0,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */
@@ -266,6 +267,11 @@ describe('when(): a session is open', () => {
     expect(ids(inSession())).not.toContain('fork');
     const talked = ids(inSession({ prompts: 2, hasReply: true }));
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
+  });
+
+  it('offers Try again only when Claude Code failed before it got a message', () => {
+    expect(ids(inSession())).not.toContain('retry');
+    expect(ids(inSession({ unsent: 1 }))).toContain('retry');
   });
 
   it('previews the last written file only when the open session wrote a Markdown or HTML one', () => {

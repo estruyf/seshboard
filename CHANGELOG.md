@@ -15,6 +15,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Sign in again without leaving the app.** When Claude Code's login expires, the session says it is signed out instead of showing a bare error. Click **Sign in** to sign in from the session's terminal panel; once you are signed in, the session continues where it left off. Signed in somewhere else? Click **Continue**.
 - **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
 - **Reload MCP servers.** Added an MCP server to your Claude Code settings or a project's `.mcp.json` while sessions were open? Press ⌘K and choose **Reload MCP servers**: running sessions pick it up for their next message without restarting, and the refresh button in a session's Tools does the same for that session.
+- **Try again when Claude Code can't start.** When Claude Code fails before it gets your message, a notice above the message box says why, in full, and **Try again** starts it again and sends your message. It is in the command palette (⌘K) too. Other failures show in the same notice instead of being cut off next to the model chip.
 - **Mark as read after a few seconds.** A finished session you open is marked read once it has been in front of you for 3 seconds, also when it opens with a catch-up, which stays open until you fold it. Settings › Sessions › Mark as read after sets the seconds, or turn it off to mark sessions read yourself.
 
 ### Changed

@@ -96,6 +96,11 @@ export const SessionHostInfo = z.object({
   cacheAt: z.number().nullable().optional(),
   cacheTtl: z.enum(['5m', '1h']).nullable().optional(),
   error: z.string().nullable(),
+  /**
+   * After a failure (`state: 'error'`): how many messages you sent that Claude Code never got, because it failed before
+   * it started. `session.retry` sends them again. Missing: none.
+   */
+  unsent: z.number().int().optional(),
   startedAt: z.number(),
   /** When you last sent a message (null before the first). The Working list orders by it, so sessions don't trade places as they write. */
   promptedAt: z.number().nullable(),
