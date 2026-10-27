@@ -4,6 +4,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+**Updating from Switchboard? Switchboard is now Seshboard.** After the update, pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again): a shortcut to Switchboard no longer opens it.
+
 ### Added
 
 - **Quick actions on hover.** Hover a session in the sidebar to mark it read, pin it or archive it in one click. E, U and P do the same from the keyboard, with Undo. Archiving a session that is still working asks first. Settings › Sidebar › **Quick actions on hover** turns the buttons off, or down to Archive only.
