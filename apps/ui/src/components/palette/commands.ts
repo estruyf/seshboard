@@ -3,7 +3,6 @@ import {
   Activity,
   AppWindow,
   Archive,
-  ArchiveRestore,
   ArrowDown,
   ArrowDownCircle,
   ArrowLeft,
@@ -49,7 +48,6 @@ import {
   GitPullRequest,
   Hash,
   House,
-  Info,
   Keyboard,
   ListChecks,
   ListEnd,
@@ -57,7 +55,6 @@ import {
   NotebookText,
   PencilLine,
   Maximize2,
-  MessageSquare,
   MessageCircleQuestion,
   MessagesSquare,
   Monitor,
@@ -87,7 +84,6 @@ import {
   Share2,
   ShieldCheck,
   Shrink,
-  SlidersHorizontal,
   Square,
   SquareCode,
   SquarePen,
@@ -102,7 +98,6 @@ import {
   Undo2,
   UnfoldVertical,
   Upload,
-  Users,
   Volume2,
   VolumeX,
   Wrench,
@@ -118,6 +113,7 @@ import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import { SETTINGS_SECTIONS } from '../settingsSections.ts';
 import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
@@ -328,27 +324,6 @@ const SIDEBAR_STYLES: Array<{ value: SidebarStyle; label: string }> = [
   { value: 'standard', label: 'Standard' },
   { value: 'large', label: 'Large icons' },
 ];
-/** Settings' pages, in the order of its own sidebar. */
-const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
-  { id: 'sessions', label: 'Sessions', icon: Archive },
-  { id: 'projects', label: 'Projects', icon: FolderGit2 },
-  { id: 'conversation', label: 'Conversation', icon: MessageSquare },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'profiles', label: 'Claude profiles', icon: Users },
-  { id: 'usage', label: 'Usage', icon: Gauge },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'prompts', label: 'Prompts', icon: Bookmark },
-  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
-  { id: 'vscode', label: 'VS Code', icon: SquareCode },
-  { id: 'backup', label: 'Backup', icon: ArchiveRestore },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { id: 'about', label: 'About', icon: Info },
-];
-
 /** The project New session from an issue or pull request works on: New session's folder there, else the one on screen. */
 const githubProject = (ctx: PaletteContext): string | null => (ctx.connected ? (ctx.newSession?.root ?? ctx.currentProject?.root ?? null) : null);
 
@@ -922,7 +897,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'save-defaults', title: 'Save as project default', group: 'new-session', icon: Save, keywords: 'model effort mode', when: (ctx) => !!ctx.newSession?.canSaveDefaults, run: (api) => api.newSessionRequest('save-defaults') },
   { id: 'catch-up', title: 'Update from remote', group: 'new-session', icon: CloudDownload, keywords: 'git pull fetch sync latest', when: (ctx) => !!ctx.newSession?.canCatchUp, run: (api) => api.newSessionRequest('catch-up') },
 
-  // Settings is open: its pages
+  // Settings is open: its pages, in the order of its menu
   ...SETTINGS_SECTIONS.map(
     ({ id, label, icon }): PaletteCommand => ({
       id: `settings-${id}`,

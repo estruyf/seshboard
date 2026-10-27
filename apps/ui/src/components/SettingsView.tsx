@@ -1,5 +1,5 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
@@ -38,6 +38,8 @@ import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts'
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
+import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
 function RowPreview({ style }: { style: SidebarStyle }) {
@@ -177,31 +179,6 @@ const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> 
   ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] })),
   { value: 'remember', label: 'Remember last' },
 ];
-
-const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
-  { id: 'sessions', label: 'Sessions', icon: Archive },
-  { id: 'projects', label: 'Projects', icon: FolderGit2 },
-  { id: 'conversation', label: 'Conversation', icon: MessageSquare },
-  { id: 'mods', label: 'Mods', icon: Puzzle },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'profiles', label: 'Claude profiles', icon: Users },
-  { id: 'usage', label: 'Usage', icon: Gauge },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'prompts', label: 'Prompts', icon: Bookmark },
-  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
-  { id: 'vscode', label: 'VS Code', icon: SquareCode },
-  { id: 'remote', label: 'Remote', icon: Smartphone },
-  { id: 'backup', label: 'Backup', icon: ArchiveRestore },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { id: 'about', label: 'About', icon: Info },
-];
-
-/** A Settings page's name, as its sidebar lists it. */
-export const settingsSectionLabel = (section: SettingsSection) => SECTIONS.find((s) => s.id === section)?.label ?? 'Settings';
 
 const close = () => useSessions.getState().closeSettings();
 
@@ -594,44 +571,73 @@ export function SettingsNav({ search }: { search: SearchState }) {
   const searching = search.query.trim() !== '';
   // With the sidebar closed, the traffic lights sit above this list (macOS; elsewhere they're in the title bar).
   const sidebarClosed = useSidebar((s) => s.state === 'closed') && currentPlatform() === 'darwin';
+  const row = ({ id, label, icon: Icon }: SettingsPage) => {
+    // While searching, no page is the one on screen: each says how many results it has.
+    const current = !searching && section === id;
+    const count = search.counts.get(id) ?? 0;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => {
+          search.setQuery('');
+          openSettings(id);
+        }}
+        aria-current={current ? 'page' : undefined}
+        data-settings-section={id}
+        className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${current ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${searching && count === 0 ? 'opacity-50' : ''}`}
+      >
+        <Icon size={15} aria-hidden className={`shrink-0 ${current ? 'text-accent-ink' : ''}`} />
+        <span className="truncate">{label}</span>
+        {searching && count > 0 && (
+          <span className="ml-auto text-meta text-faint tabular-nums" data-settings-section-count>
+            {count}
+            <span className="sr-only"> found</span>
+          </span>
+        )}
+      </button>
+    );
+  };
+  const groups = navGroups(SETTINGS_SECTIONS);
+  const bottom = groups.find((g) => g.group === 'bottom');
   return (
-    <nav aria-label="Settings sections" className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
+    <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
       <h2 id="settings-title" className="px-2.5 pt-2 pb-3 text-title font-semibold">
         Settings
       </h2>
       {search.field}
-      {SECTIONS.map(({ id, label, icon: Icon }) => {
-        // While searching, no page is the one on screen: each says how many results it has.
-        const current = !searching && section === id;
-        const count = search.counts.get(id) ?? 0;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => {
-              search.setQuery('');
-              openSettings(id);
-            }}
-            aria-current={current ? 'page' : undefined}
-            data-settings-section={id}
-            className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${current ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${searching && count === 0 ? 'opacity-50' : ''}`}
-          >
-            <Icon size={15} aria-hidden className={`shrink-0 ${current ? 'text-accent-ink' : ''}`} />
-            <span className="truncate">{label}</span>
-            {searching && count > 0 && (
-              <span className="ml-auto text-meta text-faint tabular-nums" data-settings-section-count>
-                {count}
-                <span className="sr-only"> found</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
-      <div className="mt-auto">
+      {groups
+        .filter((g) => g.group !== 'bottom')
+        .map(({ group, pages }, index) => (
+          <div key={group} role="group" aria-labelledby={`settings-group-${group}`} className={`flex shrink-0 flex-col gap-0.5 ${index > 0 ? 'mt-3' : ''}`} data-settings-group={group}>
+            <SectionHeader headingId={`settings-group-${group}`} level={3} className="h-6 shrink-0 px-2.5 pt-1">
+              {SETTINGS_GROUP_LABEL[group]}
+            </SectionHeader>
+            {pages.map(row)}
+          </div>
+        ))}
+      {/* The rarely used pages, under a line at the bottom; in a short window they follow Connect and the list scrolls. */}
+      <div className="mt-auto flex shrink-0 flex-col pt-3">
+        {bottom && (
+          <div role="group" aria-label={SETTINGS_GROUP_LABEL.bottom} className="flex flex-col gap-0.5 border-t border-border pt-2" data-settings-group="bottom">
+            {bottom.pages.map(row)}
+          </div>
+        )}
         <SettingsVersion />
       </div>
     </nav>
   );
+}
+
+/** ↑ ↓ Home and End move between the pages in the menu, in its order; the headers are skipped, as they aren't buttons. */
+function moveBetweenPages(event: ReactKeyboardEvent<HTMLElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-settings-section]')) return;
+  const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-settings-section]')];
+  const at = rows.indexOf(event.target);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.min(Math.max(at + (event.key === 'ArrowDown' ? 1 : -1), 0), rows.length - 1);
+  event.preventDefault();
+  rows[next]?.focus();
 }
 
 /**
@@ -667,7 +673,7 @@ export function SettingsView() {
   const listId = useId();
   const entries = useMemo(settingsIndex, []);
   const found = useMemo(() => searchSettings(query, entries, settingsSectionLabel, currentPlatform()), [query, entries]);
-  const groups = useMemo(() => groupByPage(found), [found]);
+  const groups = useMemo(() => groupByPage(found, settingsPageOrder), [found]);
   /** The results in the order they show, for ↑ ↓. */
   const ordered = useMemo(() => groups.flatMap((group) => group.matches), [groups]);
   const counts = useMemo(() => new Map(groups.map((group) => [group.page, group.matches.length])), [groups]);
@@ -749,7 +755,7 @@ export function SettingsView() {
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (
               <div className="mx-auto min-w-0 max-w-2xl px-8">
-                <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
+                <SettingsSearchResults query={query} groups={groups} pages={SETTINGS_SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
               <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>

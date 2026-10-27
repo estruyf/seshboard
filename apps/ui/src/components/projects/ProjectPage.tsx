@@ -31,7 +31,7 @@ import { useMemoryList } from '../memory/useMemoryList.ts';
 import { guardMemoryEdits } from '../../state/memoryStore.ts';
 import { goInHistory, useNavHistory } from '../../state/navHistoryStore.ts';
 import { settingsOrigin } from '../../state/navHistory.ts';
-import { settingsSectionLabel } from '../SettingsView.tsx';
+import { settingsSectionLabel } from '../settingsSections.ts';
 import { menuPoint } from './menuPoint.ts';
 import { ProjectActionsTab, ProjectSettingsTab, ProjectOverview, ProjectSessions, useProjectSessionRows } from './ProjectTabs.tsx';
 
