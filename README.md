@@ -18,6 +18,8 @@ Seshboard puts all your Claude Code sessions in one window: the ones you start i
 
 It uses the Claude Code you already have installed, with your login, settings, commands and skills. Nothing extra to sign in to. Use more than one Claude account, like a personal plan and a work one? Add each as a profile and see all their sessions in the same list.
 
+**Why Seshboard?** *Sesh* is short for sessions: the sessions your agents run. *Board* is the one app where you manage them all.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/session-dark.png">
   <img src="docs/screenshots/session-light.png" alt="Seshboard with a finished session open: the session list on the left, its rails coloured by Claude profile (personal in yellow, work in blue), the conversation in the middle and its git changes on the right">
