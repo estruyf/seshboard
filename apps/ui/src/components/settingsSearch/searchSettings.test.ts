@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import { settingsPageOrder } from '../settingsSections.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './searchSettings.ts';
 
 const ENTRIES: SettingEntry[] = [
@@ -56,9 +57,16 @@ describe('searchSettings', () => {
     expect(match!.label).toEqual([[0, 6]]);
   });
 
-  it('groups by page, the best page first', () => {
-    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'));
-    expect(groups.map((g) => g.page)).toEqual(['general', 'sidebar', 'theme']);
-    expect(groups[0]!.matches.map((m) => m.entry.id)).toEqual(['startup', 'quit']);
+  it('groups by page, in the order of the menu, best first within a page', () => {
+    // "s" scores best on General, but the menu lists Theme first here.
+    const order: SettingsSection[] = ['theme', 'sidebar', 'general'];
+    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'), (page) => order.indexOf(page));
+    expect(groups.map((g) => g.page)).toEqual(['theme', 'sidebar', 'general']);
+    expect(groups.at(-1)!.matches.map((m) => m.entry.id)).toEqual(['startup', 'quit']);
+  });
+
+  it('groups by page in the order of Settings’ own menu', () => {
+    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'), settingsPageOrder);
+    expect(groups.map((g) => g.page)).toEqual(['general', 'theme', 'sidebar']);
   });
 });

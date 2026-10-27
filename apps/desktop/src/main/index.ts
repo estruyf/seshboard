@@ -2529,6 +2529,84 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings' menu groups its pages under App, Claude, Your work and Connect, with Backup, Diagnostics and About under
+ * a line at the bottom. ↓ skips the headers, Pipelines opens its page, search keeps the groups with its results in the
+ * menu's order, and a short window scrolls the menu without the bottom block overlapping Connect. Read-only.
+ */
+async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const nav = '[data-settings] [data-settings-nav]';
+  await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+  if (!(await waitInPage(win, `document.querySelector('${nav} [data-settings-group="bottom"]')`, 3_000))) return 'no grouped menu in Settings';
+
+  const layout = (await js(`(() => {
+    const groups = [...document.querySelectorAll('${nav} [data-settings-group]')];
+    return groups.map((g) => ({
+      group: g.dataset.settingsGroup,
+      role: g.getAttribute('role'),
+      label: g.getAttribute('aria-labelledby') ? document.getElementById(g.getAttribute('aria-labelledby'))?.textContent.trim() : g.getAttribute('aria-label'),
+      pages: [...g.querySelectorAll('[data-settings-section]')].map((b) => b.dataset.settingsSection),
+      border: getComputedStyle(g).borderTopWidth,
+    }));
+  })()`)) as Array<{ group: string; role: string | null; label: string | undefined; pages: string[]; border: string }>;
+  const order = layout.map((g) => `${g.group}:${g.label}`).join(', ');
+  if (order !== 'app:App, claude:Claude, work:Your work, connect:Connect, bottom:More') return `the groups were ${order}`;
+  if (layout.some((g) => g.role !== 'group')) return 'a group is not a role="group"';
+  const bottom = layout.at(-1)!;
+  if (bottom.pages.join(',') !== 'backup,diagnostics,about') return `the bottom block holds ${bottom.pages.join(', ')}`;
+  if (bottom.border !== '1px') return `the bottom block's top border is ${bottom.border}`;
+  const pageCount = layout.reduce((n, g) => n + g.pages.length, 0);
+  if (pageCount !== 19) return `the menu lists ${pageCount} pages, not 19`;
+
+  // ↓ from the last page of App lands on Conversation: the Claude header is skipped.
+  await js(`document.querySelector('${nav} [data-settings-section="focus"]').focus()`);
+  key('Down');
+  if (!(await waitInPage(win, "document.activeElement?.dataset.settingsSection === 'conversation'", 2_000))) return '↓ from Focus did not move to Conversation';
+  key('Up');
+  if (!(await waitInPage(win, "document.activeElement?.dataset.settingsSection === 'focus'", 2_000))) return '↑ from Conversation did not move back to Focus';
+
+  await js(`document.querySelector('${nav} [data-settings-section="pipelines"]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-page="pipelines"]') && document.querySelector('${nav} [aria-current="page"]')?.dataset.settingsSection === 'pipelines'`, 3_000))) return 'Pipelines did not open its page';
+  await shot(win, 'settings-groups.png');
+
+  // Search: the headers stay, and the results follow the menu's order.
+  await setFieldValue(win, '[data-settings-search]', 'archive');
+  if (!(await waitInPage(win, "document.querySelectorAll('[data-settings-results-page]').length > 1", 2_000))) return '"archive" found results on fewer than 2 pages';
+  const searching = (await js(`(() => {
+    const menu = [...document.querySelectorAll('${nav} [data-settings-section]')].map((b) => b.dataset.settingsSection);
+    const results = [...document.querySelectorAll('[data-settings-results-page]')].map((r) => r.dataset.settingsResultsPage);
+    return { groups: document.querySelectorAll('${nav} [data-settings-group]').length, results, places: results.map((p) => menu.indexOf(p)) };
+  })()`)) as { groups: number; results: string[]; places: number[] };
+  await shot(win, 'settings-groups-search.png');
+  if (searching.groups !== 5) return `while searching the menu showed ${searching.groups} groups`;
+  if (searching.places.some((place, i) => place < 0 || (i > 0 && place < searching.places[i - 1]!))) return `the results for "archive" were not in the menu's order: ${searching.results.join(', ')}`;
+  await setFieldValue(win, '[data-settings-search]', '');
+  if (!(await waitInPage(win, "document.querySelector('[data-settings-page]')", 2_000))) return 'emptying the search did not bring the page back';
+
+  // A short window: the menu scrolls as one list, and the bottom block comes after Connect without overlapping it.
+  const [width, height] = win.getSize();
+  win.setSize(width!, 560);
+  try {
+    const short = `(() => {
+      const nav = document.querySelector('${nav}');
+      const connect = nav.querySelector('[data-settings-group="connect"]').getBoundingClientRect();
+      const bottom = nav.querySelector('[data-settings-group="bottom"]').getBoundingClientRect();
+      return nav.scrollHeight > nav.clientHeight && bottom.top >= connect.bottom;
+    })()`;
+    if (!(await waitInPage(win, short, 3_000))) return 'in a short window the menu did not scroll, or the bottom block overlapped Connect';
+  } finally {
+    win.setSize(width!, height!);
+  }
+  await js("document.querySelector('[data-close-settings]')?.click()");
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 2_000))) return 'Settings did not close';
+  return `ok: ${order}; ${pageCount} pages, ↓ skips headers, Pipelines opens, "archive" keeps the groups with results in menu order (${searching.results.join(', ')}), a short window scrolls`;
+}
+
+/**
  * Settings › General › Global permission mode: Ask before edits (the default) doesn't keep a mode picked in New
  * session, Remember last brings it back, and a fixed mode is what New session's mode chip starts on, where the
  * project and its profile set none (else theirs wins). Runs before any step types in New session, since an unsent
@@ -9988,6 +10066,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('⌘Q asks first, Cancel keeps the app open, a second ⌘Q quits', () => runQuitStep(win));
   await step('settings: theme, sidebar style, session scope, tool activity, open at login, keep awake, startup and quit prompt apply at once and are saved', () => runSettingsStep(win));
   await step('settings search: ⌘F, results per page, Enter and Escape, and every setting opens at its row', () => runSettingsSearchStep(win), { timeoutMs: 90_000 });
+  await step('settings groups: four headers and the bottom block, ↓ skips headers, Pipelines opens, search keeps the groups in order, a short window scrolls', () => runSettingsGroupsStep(win));
   await step('focus limit', () => runFocusStep(win));
   await step('settings › sessions: archive days, deleting asks first, overview picks a month (nothing deleted)', () => runSessionsSettingsStep(win));
   await step('terminal panel opened a shell', () => runTerminalStep(win));

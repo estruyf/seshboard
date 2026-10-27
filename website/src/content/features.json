@@ -637,6 +637,16 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-remote",
+      "name": "Settings: Remote",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-mods",
+      "name": "Settings: Mods",
+      "page": "settings"
+    },
+    {
       "id": "palette:share-memory",
       "name": "Share memory with the team…",
       "page": "memory/share-with-the-team"
