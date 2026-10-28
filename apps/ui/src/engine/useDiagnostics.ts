@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LogEntry, SystemInfo } from '@switchboard/protocol/client';
+import type { LogEntry, SystemInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from './useEngine.ts';
 import { measurePing } from './useReadyReport.ts';
 

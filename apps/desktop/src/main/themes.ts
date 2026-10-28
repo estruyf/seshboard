@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
-import { DEFAULT_THEME_ID, parseColor, parseJsonc, parseThemeFile, THEME_SCHEMA_URL, themeSlug, toHex, uniqueThemeName, type ThemeEntry, type ThemeFile, type ThemeFileCheck, type ThemeState } from '@switchboard/protocol/theme';
+import { DEFAULT_THEME_ID, parseColor, parseJsonc, parseThemeFile, THEME_SCHEMA_URL, themeSlug, toHex, uniqueThemeName, type ThemeEntry, type ThemeFile, type ThemeFileCheck, type ThemeState } from '@seshboard/protocol/theme';
+import { guarded } from './guarded.ts';
 import { writeFileAtomic } from './jsonFile.ts';
 
 /** A theme file is a few KB; anything this big isn't one. */
@@ -18,7 +19,7 @@ export function readThemeFile(path: string): ThemeFileCheck & { raw?: unknown } 
     if (statSync(path).size > MAX_THEME_BYTES) return { ok: false, error: 'This file is too big to be a theme.', fileName };
     text = readFileSync(path, 'utf8');
   } catch {
-    return { ok: false, error: "Switchboard couldn't read this file.", fileName };
+    return { ok: false, error: "Seshboard couldn't read this file.", fileName };
   }
   let raw: unknown;
   try {
@@ -138,10 +139,13 @@ export class ThemeStore {
         clearTimeout(this.#timers.get(name));
         this.#timers.set(
           name,
-          setTimeout(() => {
-            this.#timers.delete(name);
-            this.#reload(name);
-          }, RELOAD_DEBOUNCE_MS),
+          setTimeout(
+            guarded('theme reload', () => {
+              this.#timers.delete(name);
+              this.#reload(name);
+            }),
+            RELOAD_DEBOUNCE_MS,
+          ),
         );
       });
       this.#watcher.on('error', () => this.close());

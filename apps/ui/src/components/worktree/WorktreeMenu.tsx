@@ -1,6 +1,6 @@
 import { ChevronDown, GitBranch, GitMerge, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
@@ -116,7 +116,7 @@ export function WorktreeMenu({ sessionId, cwd, branch, openRequest = 0 }: { sess
             ) : (
               <>
                 <p>
-                  Deletes the folder <span className="font-mono">{status.path}</span> and stops this session in Switchboard. The conversation stays in your history.
+                  Deletes the folder <span className="font-mono">{status.path}</span> and stops this session in Seshboard. The conversation stays in your history.
                 </p>
                 <Checkbox checked={deleteBranch} onChange={setDeleteBranch} className="mt-3 text-text" dataAttrs={{ 'data-delete-branch': true }}>
                   Also delete the branch <span className="font-mono">{status.branch}</span>

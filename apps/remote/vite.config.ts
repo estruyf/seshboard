@@ -8,7 +8,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { APP_ICON_KEYS, appIconManifest, DEFAULT_APP_ICON, remoteManifestUrl, type WebManifest } from '../../packages/protocol/src/appIcons.ts';
 
 /*
- * The remote app (docs/remote-access.md): built into the website, which serves it at /remote/ from Switchboard's own
+ * The remote app (docs/remote-access.md): built into the website, which serves it at /remote/ from Seshboard's own
  * site. One fixed HTTPS address, so a phone pairs once whatever tunnel the computer uses.
  */
 const here = import.meta.dirname;

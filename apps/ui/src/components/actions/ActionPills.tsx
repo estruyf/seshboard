@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Pencil, Play, Plus, Settings2, Trash2 } from 'lucide-react';
 import { useState, type KeyboardEvent, type MouseEvent } from 'react';
-import type { ListedAction } from '@switchboard/protocol/client';
+import type { ListedAction } from '@seshboard/protocol/client';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { actionContextItems, splitActionPills, type ActionCommand } from './actionPills.ts';

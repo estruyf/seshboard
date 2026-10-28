@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Clock, Gauge, Play } from 'lucide-react';
-import { REMOTE_FEATURE_LIMITS, type Computer, type Contract, type RemoteLimitStanding, type RpcClient } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_LIMITS, type Computer, type Contract, type RemoteLimitStanding, type RpcClient } from '@seshboard/protocol/client';
 import { heldLine, limitHeadline, resumeLine } from '../../lib/usageLimit.ts';
 import { useMinute } from '../focus/useMinute.ts';
 import { Button } from '../ui/Button.tsx';
@@ -11,7 +11,7 @@ import { callComputer } from './callComputer.ts';
  * Above the message box of a session on another computer whose Claude profile is at a plan usage limit, as the notice
  * of a local session (`UsageLimitNotice`): which limit, when it resets and a countdown, with Resume now and Resume when
  * it resets for a session the limit stopped, which that computer carries out (`limits.resume`, `limits.arm`). Nothing
- * shows while Claude works there, or for a computer that doesn't send limits (an older Switchboard).
+ * shows while Claude works there, or for a computer that doesn't send limits (an older Seshboard).
  */
 export function RemoteLimitNotice({ client, computer, sessionId, limit, held, busy }: {
   client: RpcClient<Contract>;

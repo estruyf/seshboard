@@ -25,8 +25,8 @@ import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
-import { newSessionDraftTooltip, PenBadge } from '../drafts/PenBadge.tsx';
-import { openDraft, useNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
+import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
+import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
 import { STATUS_LABEL } from './rowLabel.ts';
 import { useSessionMenu } from './useSessionMenu.tsx';
 import { RailStarButton } from './StarOnGithub.tsx';
@@ -263,6 +263,7 @@ export function SidebarRail() {
   const unsent = useUnsent();
   const draftPreviews = useMemo(() => new Map(unsent.flatMap((e) => (e.item.kind === 'session' ? [[e.item.sessionId, e.item.preview] as const] : []))), [unsent]);
   const newDraft = useNewSessionDraft();
+  const remoteNewDraft = useRemoteNewSessionDraft();
 
   const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
@@ -371,14 +372,18 @@ export function SidebarRail() {
             size="lg"
             iconOnly
             icon={<Plus size={17} strokeWidth={2.4} aria-hidden />}
-            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : 'New session'}
+            aria-label={newDraft ? newSessionDraftTooltip(newDraft.name) : remoteNewDraft ? remoteNewSessionDraftTooltip(remoteNewDraft.name) : 'New session'}
             shortcut="session.new"
             data-tooltip-placement="right"
             data-new-session
             onClick={() => (newDraft ? openDraft(newDraft.item) : useSessions.getState().openNewSession({ runOn: 'last' }))}
             className={`w-9! rounded-lg! ${view === 'new' ? 'ring-2 ring-accent/40 ring-offset-1 ring-offset-sidebar' : ''}`}
           />
-          {newDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />}
+          {newDraft ? (
+            <PenBadge className="absolute -top-1.5 -right-1.5" data-new-session-draft={newDraft.item.root ?? ''} />
+          ) : (
+            remoteNewDraft && <PenBadge className="absolute -top-1.5 -right-1.5" data-remote-new-session-draft={remoteNewDraft.computerId} />
+          )}
         </span>
         <Button
           variant="quiet"

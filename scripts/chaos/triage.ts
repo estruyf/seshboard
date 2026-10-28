@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { defaultOutDir, normalise, type Signal } from './lib/harness.ts';
 
 /** What the sandbox always produces, not a finding. */
-const EXPECTED = /Not logged in|NOT_RUNNING|not running in Switchboard|SESSION_BUSY_ELSEWHERE|open in another Claude Code window|^Switched to|^Copied|^Exported|^Added to|Prompt copied/;
+const EXPECTED = /Not logged in|NOT_RUNNING|not running in Seshboard|SESSION_BUSY_ELSEWHERE|open in another Claude Code window|^Switched to|^Copied|^Exported|^Added to|Prompt copied/;
 
 export interface SignalGroup {
   kind: string;

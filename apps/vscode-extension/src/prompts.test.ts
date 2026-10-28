@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PermissionRequest } from '@switchboard/protocol/companion-client';
+import type { PermissionRequest } from '@seshboard/protocol/companion-client';
 import { alwaysText, newPrompts, promptKind, promptMessage, promptPlan, promptQuestions, questionAnswers } from './prompts.ts';
 
 const request = (over: Partial<PermissionRequest> = {}): PermissionRequest => ({

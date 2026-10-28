@@ -4,7 +4,7 @@ import type { RemoteContract } from './remote.ts';
 /** Other computers' constants, without zod, for the app's windows too (see `computers.ts`). */
 
 /**
- * The `Origin` this Switchboard sends when it connects to another computer's Remote. A browser page can't send it,
+ * The `Origin` this Seshboard sends when it connects to another computer's Remote. A browser page can't send it,
  * so it never widens what a website can reach; it is no lock either (any program can send any `Origin`): the
  * handshake with the paired device key is.
  */

@@ -1,4 +1,4 @@
-import { modKey } from '@switchboard/protocol/client';
+import { modKey } from '@seshboard/protocol/client';
 
 /**
  * Whether a mod's UI shows: Show mods (the main switch) and the mod's own switch in Settings › Mods. The mod's switch

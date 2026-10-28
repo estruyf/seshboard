@@ -19,8 +19,8 @@ export interface PageGroup {
 
 /** The pages built in src/pages, which aren't in the content collection. */
 const GENERATED: Record<string, Omit<PageCard, 'href' | 'isNew'>> = {
-  'keyboard-shortcuts': { slug: 'keyboard-shortcuts', title: 'Keyboard shortcuts', description: 'Every keyboard shortcut in Switchboard, grouped by where it works.' },
-  changelog: { slug: 'changelog', title: 'Changelog', description: 'What changed in each Switchboard release.' },
+  'keyboard-shortcuts': { slug: 'keyboard-shortcuts', title: 'Keyboard shortcuts', description: 'Every keyboard shortcut in Seshboard, grouped by where it works.' },
+  changelog: { slug: 'changelog', title: 'Changelog', description: 'What changed in each Seshboard release.' },
 };
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');

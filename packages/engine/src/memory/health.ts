@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { HealthFinding } from '@switchboard/protocol';
+import type { HealthFinding } from '@seshboard/protocol';
 import { similar } from './claudeExport.ts';
 import { parseIndexLine } from './textEdit.ts';
 

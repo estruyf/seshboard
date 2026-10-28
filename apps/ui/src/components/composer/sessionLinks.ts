@@ -1,4 +1,4 @@
-import type { Brief, SessionSummary, WorktreePullRequest } from '@switchboard/protocol/client';
+import type { Brief, SessionSummary, WorktreePullRequest } from '@seshboard/protocol/client';
 import { slashScore } from '../savedPrompts/fillModel.ts';
 
 /** Sessions the `@` list shows at most, of them from other projects, and for a bare `@`. */

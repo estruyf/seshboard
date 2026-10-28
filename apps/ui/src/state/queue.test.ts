@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LaterItem, LiveSession, QueueWaitFor } from '@switchboard/protocol/client';
+import type { LaterItem, LiveSession, QueueWaitFor } from '@seshboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { busyInProject, dropIndex, moveTarget, projectOf, queueInList, queueStates, queueToast, readyTransitions, sameDraft, sameWait, startsAfter, type QueueEntry } from './queue.ts';
 

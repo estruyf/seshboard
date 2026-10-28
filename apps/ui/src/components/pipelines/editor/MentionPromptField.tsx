@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { PARENT_MENTION } from '@switchboard/protocol/client';
+import { PARENT_MENTION } from '@seshboard/protocol/client';
 import { filterChoices, insertMention, mentionQuery, promptParts } from './editorModel.ts';
 
 /**

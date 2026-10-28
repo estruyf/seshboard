@@ -2,11 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { posix } from 'node:path';
-import { engineAddress } from '@switchboard/protocol';
+import { engineAddress } from '@seshboard/protocol';
 
 /**
  * The tunnel that makes Remote reachable from a phone anywhere: one of the tools people already have, started by
- * Switchboard and pointed at Remote's port on `127.0.0.1`. Each gives an `https://` address, read from what the tool
+ * Seshboard and pointed at Remote's port on `127.0.0.1`. Each gives an `https://` address, read from what the tool
  * prints. See docs/remote-access.md.
  */
 
@@ -25,14 +25,14 @@ export function tunnelArgs(tool: TunnelTool, port: number, options: { ngrokDomai
     case 'ngrok':
       return ['http', target, '--log', 'stdout', '--log-format', 'json', ...(options.ngrokDomain ? ['--url', `https://${options.ngrokDomain}`] : [])];
     case 'tailscale':
-      // In the foreground, so the address goes away when Switchboard stops it.
+      // In the foreground, so the address goes away when Seshboard stops it.
       return ['serve', '--https=443', target];
   }
 }
 
 /**
  * The environment a tool runs in. On macOS, Tailscale.app's binary is the app and the CLI in one, and only acts as the
- * CLI with `TERM` or `TAILSCALE_BE_CLI` set: started from the Dock, Switchboard has no `TERM`, so `tailscale serve`
+ * CLI with `TERM` or `TAILSCALE_BE_CLI` set: started from the Dock, Seshboard has no `TERM`, so `tailscale serve`
  * would try to open the app and fail with "Tailscale.CLIError error 3".
  */
 export function tunnelEnv(tool: TunnelTool, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

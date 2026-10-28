@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
+import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
+import { globalModeLabel, MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { AUTO_OFF_NOTE, modelLabel } from '../../lib/autoModel.ts';
 import { EFFORT_LABEL, EFFORTS } from '../newSession/route.ts';
 import { Select } from '../ui/Select.tsx';
+import { Button } from '../ui/Button.tsx';
+import { useSessions } from '../../state/sessionsStore.ts';
+import { jumpToSetting } from '../settingsSearch/SettingsSearch.tsx';
+import { settingsIndex } from '../settingsSearch/settingsIndex.ts';
 
 const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60 disabled:opacity-50';
 /** The value an unset field shows; unset fields use the profile's defaults, else the choices last made in the New session view. */
 const UNSET = '';
+/** A project's permission mode that skips its profile's and follows the global one (`globalPermissionMode`). */
+const GLOBAL = 'global';
+
+/** Opens Settings on a setting from its search entry, `target` narrowing where it lands (one profile among several). */
+function openSetting(id: string, target?: string): void {
+  const entry = settingsIndex().find((e) => e.id === id);
+  if (!entry) return;
+  useSessions.getState().openSettings(entry.page);
+  jumpToSetting(target ? { ...entry, target } : entry);
+}
 
 /** Shows a summary of the defaults a project or profile sets, e.g. "Opus · high effort · worktree"; `fallback` when it sets none. */
 export function describeDefaults(d: Omit<ProjectDefaults, 'branch' | 'defaultBranch'> & { branch?: string | null; defaultBranch?: string | null }, fallback = 'Global defaults'): string {
@@ -48,6 +62,7 @@ export function ProjectDefaultsEditor({
   defaults,
   isGitRepo,
   profile,
+  profileRef,
   onSave,
 }: {
   root: string | null;
@@ -55,12 +70,15 @@ export function ProjectDefaultsEditor({
   isGitRepo: boolean;
   /** The defaults of the project's profile, which its unset fields fall back to. */
   profile?: ProfileDefaults | null;
+  /** The project's profile, which the permission mode's hint names and links to. */
+  profileRef?: { id: string; name: string } | null;
   onSave(defaults: ProjectDefaults): void;
 }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const models = useHosts((s) => s.models);
   const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
+  const globalMode = globalModeLabel(usePreferences((s) => s.prefs.newSessionMode));
   const [branches, setBranches] = useState<{ current: string | null; branches: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
@@ -98,6 +116,21 @@ export function ProjectDefaultsEditor({
   // A default branch is a name, here or on a remote: `origin/dev` is offered as `dev`.
   const namedBranches = [...new Set([...(defaults.defaultBranch ? [defaults.defaultBranch] : []), ...branches.branches, ...(branches.remoteBranches ?? []).map((b) => b.slice(b.indexOf('/') + 1))])];
 
+  const modeValue = defaults.permissionMode ?? (root && defaults.globalPermissionMode ? GLOBAL : UNSET);
+  // Where an inherited permission mode is set, with a way there.
+  const openGlobal = () => openSetting('new-session-mode');
+  const modeHint =
+    modeValue === GLOBAL || (modeValue === UNSET && !root)
+      ? { kind: 'global', text: 'The global permission mode, set in Settings › General.', where: 'Open Settings › General', open: openGlobal }
+      : modeValue === UNSET && profileRef
+        ? {
+            kind: 'profile',
+            text: profile?.permissionMode ? `Set in the ${profileRef.name} profile's defaults.` : `The ${profileRef.name} profile sets none, so the global mode applies.`,
+            where: 'Open Settings › Claude profiles',
+            open: () => openSetting('profile-defaults', `[data-profile-defaults="${CSS.escape(profileRef.id)}"] [data-profile-defaults-toggle]`),
+          }
+        : null;
+
   return (
     <div className="grid gap-2.5" data-project-defaults={root ?? undefined}>
       <Row label="Model">
@@ -133,12 +166,26 @@ export function ProjectDefaultsEditor({
         <Select
           label="Permission mode"
           className={field}
-          value={defaults.permissionMode ?? UNSET}
-          onChange={(value) => set({ permissionMode: nullable<PermissionMode>(value) })}
-          options={[{ value: UNSET, label: inherit('default', profile?.permissionMode, profile?.permissionMode ? MODE_LABEL[profile.permissionMode] : undefined) }, ...MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] }))]}
+          value={modeValue}
+          onChange={(value) => set(root ? { permissionMode: value === GLOBAL ? null : nullable<PermissionMode>(value), globalPermissionMode: value === GLOBAL || undefined } : { permissionMode: nullable<PermissionMode>(value) })}
+          options={[
+            // A project inherits its profile's mode, or skips it for the global one; a profile inherits the global one.
+            ...(root ? [{ value: UNSET, label: `Profile default (${profile?.permissionMode ? MODE_LABEL[profile.permissionMode] : globalMode})` }] : []),
+            { value: root ? GLOBAL : UNSET, label: `Global default (${globalMode})` },
+            ...MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] })),
+          ]}
+          menuWidth={240}
           dataAttrs={{ 'data-default-mode': true }}
         />
       </Row>
+      {modeHint && (
+        <p className="ml-[122px] flex flex-wrap items-center gap-x-2 text-meta text-muted @max-[560px]:ml-0" data-default-mode-hint={modeHint.kind}>
+          {modeHint.text}
+          <Button variant="quiet" size="sm" onClick={modeHint.open} data-tooltip={modeHint.where} data-default-mode-open={modeHint.kind}>
+            Change
+          </Button>
+        </p>
+      )}
       <Row label="Workspace">
         <Select
           label="Workspace"

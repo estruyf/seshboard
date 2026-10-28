@@ -1,4 +1,4 @@
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { basename, tildify } from '../lib/format.ts';
 import { fuzzyScore } from '../lib/fuzzy.ts';
 

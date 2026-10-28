@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronLeft, KeyboardOff, ListTree, Search } from 'lucide-react';
-import { keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@switchboard/protocol/remote-client';
+import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
-import { autoOn, changedFrom, defaultChoice, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
+import { autoOn, changedFrom, defaultChoice, EFFORT_LABEL, MODE_SHORT, modelLabel, profilesOf, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
+import { optionsSummary, startState, type SummaryPart } from '../lib/newOptions.ts';
 import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
@@ -15,7 +16,7 @@ import type { Client } from './Connected.tsx';
 import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
-import { Button, Kbd } from './ui.tsx';
+import { Button, Kbd, RoundButton } from './ui.tsx';
 
 /** A computer New session can start on: its name, its connection, what it takes and its sessions. */
 export interface RunOnComputer {
@@ -41,18 +42,22 @@ const LIST_FROM = 3;
 const DRAFT: DraftKey = { kind: 'new' };
 
 /**
- * New session in one of your projects, the ones you added in Switchboard. The tiles (one row that scrolls sideways)
+ * New session in one of your projects, the ones you added in Seshboard. The tiles (one row that scrolls sideways)
  * say what's going on in each, most recent first; the project you last started in (or the one with the newest session)
  * is picked for you, so most of the time you only type. On a phone, All projects opens them as a list in a sheet, with
  * the filter there, so the keyboard doesn't come up over the tiles. Under the prompt, the project's profile (with more than one)
  * and its defaults for model, effort, mode and worktree as chips, to change for this session only. In the project's folder,
- * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Switchboard's queue instead,
+ * the branch checked out there, or another to check out first (`REMOTE_FEATURE_BRANCHES`). Queue for later puts it in Seshboard's queue instead,
  * while the project has a session working. While the keyboard is up on a phone, only the prompt and the buttons stay: the
  * view takes what the keyboard leaves (as the session's message box does, `lib/viewport.ts`), so Start session sits
  * right above it, and Hide keyboard brings the tiles and the chips back.
  *
  * With more than one computer, Run on picks the one it starts on, as on the computer: its projects become the tiles,
  * and what you typed stays. A computer that isn't connected stays in the switch, disabled, saying why.
+ *
+ * On a phone it is simpler: a round × to close, the project as one row (Change opens the list), the box, one Options
+ * row that sums up the choices (what differs from the project's defaults in the accent colour, `lib/newOptions.ts`)
+ * with a sheet of rows behind it, and Start session as the floating pill Home has, dim until there is text.
  */
 export function NewSession({ computers, computer, onComputer, banner, onBack, lead = null, onStarted, initialProject = null }: { /** Every paired computer. */ computers: readonly RunOnComputer[]; /** The id of the one it starts on: New session remembers its last project per computer. */ computer: string; /** Run on picked another computer. */ onComputer: (id: string) => void; banner: ReactNode; onBack: (() => void) | null; /** In Back's place on a wide screen whose sidebar folded away: the drawer button. */ lead?: ReactNode; onStarted: (computer: string, sessionId: string) => void; /** Picked from the palette (New session in <project>). */ initialProject?: string | null }) {
   const target = computers.find((c) => c.id === computer) ?? computers[0]!;
@@ -222,7 +227,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setError(null);
     try {
       await client!.call('later.add', { projectId: projectId!, prompt: prompt.trim(), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
-      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}${runOn ? ` on ${computerName}` : ''}. Start it from the queue in Switchboard.` });
+      toast('Queued for later', { detail: `In ${picked?.name ?? 'the project'}${runOn ? ` on ${computerName}` : ''}. Start it from the queue in Seshboard.` });
       clearDraft(DRAFT);
       setPrompt('');
     } catch (e) {
@@ -241,20 +246,55 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
 
   // Queue for later only while the project is busy: otherwise starting now is what you want.
   const projectBusy = Boolean(projectId && sessions.some((s) => s.projectId === projectId && s.status === 'working'));
+  const phone = !wide;
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const startable = startState({ connected: Boolean(client), project: Boolean(projectId), text: prompt, busy, reading: attachments.reading });
+  const branchShown = checkout ?? branches?.current ?? null;
+  const summary =
+    options && picked
+      ? optionsSummary({
+          choice,
+          defaults,
+          baseProfile,
+          profile: profilesOf(options).length > 1 ? (profilesOf(options).find((p) => p.id === choice.profileId)?.name ?? null) : null,
+          model: choice.model === AUTO_MODEL ? 'Auto' : modelLabel(options.models, choice.model),
+          effort: takesEffort(options.models, choice.model) && (choice.effort || choice.effort !== defaults.effort) ? (choice.effort ? EFFORT_LABEL[choice.effort] : 'Default effort') : null,
+          mode: MODE_SHORT[choice.permissionMode],
+          branch: choice.worktree ? null : branchShown,
+          branchPicked: branch !== null,
+          pipeline: pipeline?.name ?? null,
+        })
+      : null;
+  const changedAny = Object.keys(changes).length > 0 || branch !== null || runAs !== null;
+  const resetOptions = () => {
+    setChanges({});
+    setBranch(null);
+    setRunAs(null);
+  };
+  const startLabel = pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : 'Start session';
 
   return (
-    <div className="flex h-full flex-col bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-new-session>
-      <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack || lead ? 'px-2' : 'px-5'}`}>
-        {!onBack && lead}
-        {onBack && (
-          <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
-            <ChevronLeft className="size-5" aria-hidden />
-          </Button>
-        )}
-        <h1 className="text-title font-semibold">New session</h1>
-      </header>
+    <div className="relative flex h-full flex-col bg-bg" style={frame ? { position: 'fixed', left: 0, right: 0, top: frame.top, height: frame.height, zIndex: 20 } : undefined} data-remote-new-session>
+      {phone && onBack ? (
+        <header className="safe-top flex items-center gap-1 px-2 pb-2">
+          <RoundButton onClick={onBack} aria-label="Close" data-remote-new-close>
+            <X aria-hidden />
+          </RoundButton>
+          <h1 className="pl-1 text-title font-semibold">New session</h1>
+        </header>
+      ) : (
+        <header className={`safe-top flex items-center gap-2 border-b border-border pb-2 pointer-fine:pb-2.5 ${onBack || lead ? 'px-2' : 'px-5'}`}>
+          {!onBack && lead}
+          {onBack && (
+            <Button variant="quiet" onClick={onBack} aria-label="Back" className="px-2!">
+              <ChevronLeft className="size-5" aria-hidden />
+            </Button>
+          )}
+          <h1 className="text-title font-semibold">New session</h1>
+        </header>
+      )}
       {banner}
-      <main className="min-h-0 flex-1 overflow-y-auto py-4 sm:py-8">
+      <main className={`min-h-0 flex-1 overflow-y-auto py-4 sm:py-8 ${phone ? 'pt-2 pb-28' : ''}`}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           {runOn && (
             <section aria-labelledby="run-on" className={`flex flex-col gap-2 ${typing ? 'hidden' : ''}`} data-remote-run-on={computer}>
@@ -287,8 +327,17 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               </div>
             </section>
           )}
+          {phone && !typing && (
+            <section aria-label="Project" className="flex flex-col px-4">
+              {projects === null && !error && <p className="text-ui text-muted">Loading projects…</p>}
+              {projects?.length === 0 && <p className="rounded-lg bg-sidebar p-3 text-ui text-muted">Add a project in Seshboard on your computer first. New sessions start in the projects you added there.</p>}
+              {projects && projects.length > 0 && (
+                <ProjectRow project={picked} status={picked ? projectStatus(picked.id, sessions, now) : null} branch={branchShown} onChange={() => setListOpen(true)} />
+              )}
+            </section>
+          )}
           {/* Hidden, not unmounted, while you type: the row keeps its scroll for when the keyboard goes. */}
-          <section aria-labelledby="pick-project" className={`flex flex-col gap-2 ${typing ? 'hidden' : ''}`}>
+          <section aria-labelledby="pick-project" className={`flex flex-col gap-2 ${typing || phone ? 'hidden' : ''}`}>
             <div className="flex items-center gap-3 px-4 sm:px-6">
               <h2 id="pick-project" className="flex-1 text-meta font-semibold tracking-wide text-faint uppercase">
                 Project
@@ -323,7 +372,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               )}
             </div>
             {projects === null && !error && <p className="px-4 text-ui text-muted sm:px-6">Loading projects…</p>}
-            {projects?.length === 0 && <p className="mx-4 rounded-lg bg-sidebar p-3 text-ui text-muted sm:mx-6">Add a project in Switchboard on your computer first. New sessions start in the projects you added there.</p>}
+            {projects?.length === 0 && <p className="mx-4 rounded-lg bg-sidebar p-3 text-ui text-muted sm:mx-6">Add a project in Seshboard on your computer first. New sessions start in the projects you added there.</p>}
             <div ref={row} role="radiogroup" aria-labelledby="pick-project" className="scroll-row flex snap-x scroll-px-4 gap-2 px-4 pt-1 pb-2 sm:scroll-px-6 sm:px-6">
               {shown.map((project) => {
                 const isPicked = projectId === project.id;
@@ -371,7 +420,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
             }}
             {...attachments.dropProps}
           >
-            <div className={`rounded-xl border bg-card p-2 pl-3 transition-[border-color,box-shadow] focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${attachments.dragging ? 'border-accent-ink ring-4 ring-accent/20' : projectId ? 'border-edge' : 'border-border'}`}>
+            <div className={`border bg-card p-2 pl-3 transition-[border-color,box-shadow] ${phone ? 'rounded-[18px] p-3 pb-2.5' : 'rounded-xl'} focus-within:border-accent-ink focus-within:ring-4 focus-within:ring-accent/20 ${attachments.dragging ? 'border-accent-ink ring-4 ring-accent/20' : projectId ? 'border-edge' : 'border-border'}`}>
               <AttachmentTray state={attachments} className="pt-1 pr-1 pb-2" />
               <textarea
                 ref={box}
@@ -393,10 +442,33 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                 className="min-h-24 w-full resize-none bg-transparent py-1 text-body text-text outline-none [field-sizing:content] placeholder:text-faint"
               />
               <div className="flex items-center">
-                <AttachButton state={attachments} disabled={!client} />
+                <AttachButton state={attachments} disabled={!client} look={phone ? 'clip' : 'quiet'} />
               </div>
             </div>
-            {options && picked && !typing && (
+            {phone && options && picked && summary && !typing && (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOptionsOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-label={`Options: ${summary.label}`}
+                  className="flex min-h-14 items-center gap-3 rounded-[18px] border border-border bg-card px-3.5 py-2 text-left active:bg-selected"
+                  data-remote-new-options
+                >
+                  <SlidersHorizontal aria-hidden className="size-4 shrink-0 text-muted" />
+                  <span className="min-w-0 flex-1">
+                    <Summary parts={summary.first} className="text-ui text-text" />
+                    <Summary parts={summary.second} className="text-meta text-muted" />
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-ui text-muted">
+                    Options
+                    <ChevronDown aria-hidden className="size-4 text-faint" />
+                  </span>
+                </button>
+                {pipeline ? <RunAsSteps pipeline={pipeline} boxModel={choice.model} /> : <p className="px-1 text-meta text-faint">From {picked.name}'s defaults. Changes here are for this session only.</p>}
+              </div>
+            )}
+            {!phone && options && picked && !typing && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
                   {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} />}
@@ -425,7 +497,52 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           )}
         </div>
       </main>
-      <footer className={`border-t border-border px-4 pt-2 sm:px-6 ${typing ? 'pb-2' : 'safe-bottom'}`}>
+      {phone && (
+        <div className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-2 px-4 ${typing ? 'pb-3' : 'pb-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))]'}`}>
+          {typing && (
+            <RoundButton onMouseDown={keepFocus} onClick={() => box.current?.blur()} aria-label="Hide keyboard" title="Hide keyboard" className="pointer-events-auto" data-remote-hide-keyboard>
+              <KeyboardOff aria-hidden />
+            </RoundButton>
+          )}
+          {projectBusy && !pipeline && (
+            <button type="button" onClick={() => void queue()} onMouseDown={keepFocus} disabled={!startable.ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="pointer-events-auto inline-flex min-h-12 items-center rounded-full border border-edge bg-card px-5 text-body text-text shadow-[var(--sb-overlay-shadow)] disabled:opacity-60" data-remote-queue>
+              Queue for later
+            </button>
+          )}
+          {/* Focusable while it can't start, saying why ("Type a message first"). */}
+          <button
+            type="submit"
+            form="new-session"
+            onMouseDown={keepFocus}
+            aria-disabled={!startable.ready || undefined}
+            aria-busy={busy || undefined}
+            aria-label={startable.reason ? `${startLabel}. ${startable.reason}` : startLabel}
+            title={startable.reason ?? undefined}
+            className={`pointer-events-auto inline-flex min-h-12 items-center rounded-full px-7 text-body font-semibold shadow-[var(--sb-overlay-shadow)] transition-[background-color,color,opacity] ${startable.ready ? 'bg-accent text-on-accent active:brightness-90' : 'bg-accent/45 text-on-accent/60'}`}
+            data-remote-start={pipeline ? 'pipeline' : 'session'}
+            data-remote-start-state={startable.ready ? 'ready' : 'empty'}
+          >
+            {startLabel}
+          </button>
+        </div>
+      )}
+      {phone && optionsOpen && options && picked && (
+        <Sheet title="Options" onClose={() => setOptionsOpen(false)} done hook="options">
+          <div className="-mx-4 flex flex-col divide-y divide-border border-y border-border">
+            {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look="row" />}
+            <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look="row" />
+            <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look="row" />
+            {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} look="row" />}
+            <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} look="row" />
+            {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} look="row" />}
+            {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} look="row" />}
+          </div>
+          <button type="button" onClick={resetOptions} disabled={!changedAny} className="mt-3 min-h-11 text-left text-ui text-accent-ink disabled:text-faint" data-remote-options-reset>
+            Reset to {picked.name}'s defaults
+          </button>
+        </Sheet>
+      )}
+      <footer className={`border-t border-border px-4 pt-2 sm:px-6 ${typing ? 'pb-2' : 'safe-bottom'} ${phone ? 'hidden' : ''}`}>
         <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
           {typing && (
             <Button variant="quiet" onMouseDown={keepFocus} onClick={() => box.current?.blur()} aria-label="Hide keyboard" title="Hide keyboard" className="px-3!" data-remote-hide-keyboard>
@@ -462,6 +579,56 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   );
 }
 
+/** A line of the Options summary: the parts that differ from the project's defaults in the accent colour. */
+function Summary({ parts, className }: { parts: SummaryPart[]; className: string }) {
+  return (
+    <span className={`block truncate ${className}`}>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && ' · '}
+          <span className={part.changed ? 'text-accent-ink' : undefined} data-remote-summary-changed={part.changed || undefined}>
+            {part.text}
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+/** The project New session starts in, on a phone: its initial, its name, how it is and the branch, and Change. */
+function ProjectRow({ project, status, branch, onChange }: { project: RemoteProject | null; status: { tone: TileTone; label: string } | null; branch: string | null; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      aria-haspopup="dialog"
+      aria-label={project ? `Project: ${project.name}, ${status?.label ?? ''}${branch ? `, on ${branch}` : ''}. Change` : 'Pick a project'}
+      className="flex min-h-16 items-center gap-3 rounded-[18px] border border-border bg-card px-3.5 py-2 text-left active:bg-selected"
+      data-remote-new-project={project?.id ?? ''}
+    >
+      <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar text-ui font-semibold text-muted uppercase">
+        {project?.name.charAt(0) ?? '?'}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-body font-semibold">{project?.name ?? 'Pick a project'}</span>
+        {status && (
+          <span className={`flex min-w-0 items-center gap-1.5 text-meta ${TONE_TEXT[status.tone]}`}>
+            <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
+            <span className="truncate">
+              {status.label}
+              {branch && <span className="text-muted"> · on {branch}</span>}
+            </span>
+          </span>
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-1 text-ui text-muted">
+        Change
+        <ChevronDown aria-hidden className="size-4 text-faint" />
+      </span>
+    </button>
+  );
+}
+
 /** The value for one session in Run as's list. */
 const ONE_SESSION = '';
 
@@ -469,13 +636,15 @@ const ONE_SESSION = '';
  * Run as (#179), as on the computer: one session, or a pipeline with the prompt as its task. The pipeline last run in
  * this project from this device comes first. Picked, Start becomes Run pipeline and the steps show under the chips.
  */
-function RunAsChip({ pipelines, value, onPick }: { pipelines: readonly RemotePipeline[]; value: string | null; onPick: (pipelineId: string | null) => void }) {
+function RunAsChip({ pipelines, value, onPick, look }: { pipelines: readonly RemotePipeline[]; value: string | null; onPick: (pipelineId: string | null) => void; look?: 'chip' | 'row' }) {
   const picked = pipelines.find((p) => p.id === value);
   return (
     <ChoiceChip
       label="Run as"
       face={picked?.name ?? 'One session'}
-      icon={<ListTree className={`size-3.5 ${picked ? 'text-pipeline' : 'text-muted'}`} aria-hidden />}
+      icon={look === 'row' ? undefined : <ListTree className={`size-3.5 ${picked ? 'text-pipeline' : 'text-muted'}`} aria-hidden />}
+      look={look}
+      rowIcon={<ListTree aria-hidden />}
       selected={value ?? ONE_SESSION}
       hook="run-as"
       options={[{ value: ONE_SESSION, label: 'One session', description: 'default', separatorAfter: true }, ...pipelines.map((p) => ({ value: p.id, label: p.name, description: pipelineMeta(p) }))]}
@@ -514,34 +683,32 @@ function RunAsSteps({ pipeline, boxModel }: { pipeline: RemotePipeline; boxModel
 
 /**
  * Every project as a list, most recent first, with what's going on in each: the phone's way to reach one that's far
- * along the row. A tap picks it and closes the sheet; with many projects a filter sits on top (Enter takes the first).
+ * along the row. A tap picks it and closes the sheet; the search on top filters it (Enter takes the first).
  */
 function ProjectSheet({ projects, sessions, now, picked, onPick, onClose }: { projects: readonly RemoteProject[]; sessions: readonly RemoteSession[]; now: number; picked: string | null; onPick: (id: string) => void; onClose: () => void }) {
   const [filter, setFilter] = useState('');
   const needle = filter.trim().toLowerCase();
   const shown = projects.filter((p) => !needle || p.name.toLowerCase().includes(needle));
-  const withFilter = projects.length >= FILTER_FROM;
   return (
-    <Sheet title="Pick a project" onClose={onClose} tall={withFilter} hook="projects">
-      {withFilter && (
-        <label className="field sticky top-0 z-10 mb-2 flex items-center gap-2 px-3">
-          <Search className="size-4 text-faint" aria-hidden />
-          <input
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && shown[0]) {
-                event.preventDefault();
-                onPick(shown[0].id);
-              }
-            }}
-            placeholder="Filter"
-            aria-label="Filter projects"
-            enterKeyHint="go"
-            className="min-h-11 w-full bg-transparent text-body outline-none placeholder:text-faint"
-          />
-        </label>
-      )}
+    <Sheet title="Pick a project" onClose={onClose} tall={projects.length >= FILTER_FROM} hook="projects">
+      {/* Always there: the sheet is a phone's only way to another project. */}
+      <label className="field sticky top-0 z-10 mb-2 flex items-center gap-2 px-3">
+        <Search className="size-4 text-faint" aria-hidden />
+        <input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && shown[0]) {
+              event.preventDefault();
+              onPick(shown[0].id);
+            }
+          }}
+          placeholder="Search projects"
+          aria-label="Search projects"
+          enterKeyHint="go"
+          className="min-h-11 w-full bg-transparent text-body outline-none placeholder:text-faint"
+        />
+      </label>
       <div role="radiogroup" aria-label="Projects" className="-mx-1 flex flex-col">
         {shown.map((project) => {
           const isPicked = picked === project.id;

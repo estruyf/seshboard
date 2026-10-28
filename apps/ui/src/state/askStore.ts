@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { AskEvent } from '@switchboard/protocol/client';
+import type { AskEvent } from '@seshboard/protocol/client';
 import type { EngineClient as Client } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { agentsToggleStep } from './agentsPanel.ts';

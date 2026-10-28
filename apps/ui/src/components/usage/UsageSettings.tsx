@@ -1,10 +1,11 @@
 import { Gauge } from 'lucide-react';
-import { CONTEXT_WARNING_PERCENTS, CURRENCIES, RATES_DATE, type ContextWarningPrefs, type CurrencyCode } from '@switchboard/protocol/client';
+import { CONTEXT_WARNING_PERCENTS, CURRENCIES, largeContextTokens, RATES_DATE, type ContextWarningPrefs, type CurrencyCode } from '@seshboard/protocol/client';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Toggle } from '../ui/Toggle.tsx';
+import { compactTokens } from '../session/largeContext.ts';
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({ value: c.code as CurrencyCode, label: `${c.code} · ${c.name}` }));
 
@@ -61,9 +62,9 @@ export function UsageSettings() {
   );
 }
 
-const PERCENT_OPTIONS = CONTEXT_WARNING_PERCENTS.map((p) => ({ value: String(p), label: `${p}%` }));
+const PERCENT_OPTIONS = CONTEXT_WARNING_PERCENTS.map((p) => ({ value: String(p), label: `${p}% (${compactTokens(largeContextTokens({ percent: p }))})` }));
 
-/** Settings › Usage › Large context: when a session's context counts as large, and what Switchboard says about it. */
+/** Settings › Usage › Large context: when a session's context counts as large, and what Seshboard says about it. */
 export function LargeContextSettings() {
   const warning = usePreferences((s) => s.prefs.contextWarning);
   const updatePrefs = usePreferences((s) => s.update);
@@ -82,7 +83,7 @@ export function LargeContextSettings() {
         <div className="flex items-center justify-between gap-4" data-setting-row>
           <span>
             <span className="block text-ui">Large from</span>
-            <span className="block text-meta text-muted">How full the context window is. The context ring turns orange here too.</span>
+            <span className="block text-meta text-muted">Tokens in the context, as a share of a 200k window. A larger window counts the same, since that is what a message costs. The context ring turns orange here too.</span>
           </span>
           <Select<string>
             label="A context is large from"

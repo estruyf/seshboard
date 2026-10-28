@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cleanReleaseNotes } from './releaseNotes.ts';
-import { available, changeChannel, channelOf, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, nextCommand, updatesDisabledReason, upToDate } from './updateState.ts';
+import { acceptsPreviewRemote, available, changeChannel, channelOf, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, nextCommand, updatesDisabledReason, upToDate } from './updateState.ts';
 
 const start = (channel: 'stable' | 'beta' = 'stable') => initialUpdateState({ currentVersion: '0.0.3', channel, disabledReason: null });
 
@@ -9,6 +9,14 @@ describe('update state', () => {
     expect(channelOf('1.2.3')).toBe('stable');
     expect(channelOf('1.2.3-beta.1')).toBe('beta');
     expect(channelOf('1.2.3-nightly.20261006.1')).toBe('stable');
+  });
+
+  it('lets in the preview\'s remote app on beta builds and the Beta channel, not on a release on Stable', () => {
+    expect(acceptsPreviewRemote({ packaged: false, version: '1.2.3', channel: 'stable' })).toBe(true);
+    expect(acceptsPreviewRemote({ packaged: true, version: '1.2.3-beta.1', channel: 'stable' })).toBe(true);
+    // A beta that became a release keeps the phones set up on the preview while the channel stays Beta.
+    expect(acceptsPreviewRemote({ packaged: true, version: '1.2.3', channel: 'beta' })).toBe(true);
+    expect(acceptsPreviewRemote({ packaged: true, version: '1.2.3', channel: 'stable' })).toBe(false);
   });
 
   it('goes from checking to available, downloading, downloaded and installing', () => {
@@ -75,7 +83,7 @@ describe('update state', () => {
   it('says why a build cannot update', () => {
     const release = { env: {}, packaged: true, devServer: false, hasFeed: true, mockFeed: false };
     expect(updatesDisabledReason(release)).toBeNull();
-    expect(updatesDisabledReason({ ...release, env: { SWITCHBOARD_DISABLE_AUTO_UPDATE: '1' } })).toMatch(/SWITCHBOARD_DISABLE_AUTO_UPDATE/);
+    expect(updatesDisabledReason({ ...release, env: { SESHBOARD_DISABLE_AUTO_UPDATE: '1' } })).toMatch(/SESHBOARD_DISABLE_AUTO_UPDATE/);
     expect(updatesDisabledReason({ ...release, packaged: false, devServer: true })).toBe('Updates are turned off in development builds.');
     expect(updatesDisabledReason({ ...release, packaged: false })).toMatch(/aren’t packaged/);
     expect(updatesDisabledReason({ ...release, hasFeed: false })).toMatch(/no update feed/);

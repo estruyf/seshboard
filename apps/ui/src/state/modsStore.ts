@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { HookableComponent, ModInstance, ModPaneRoster, ModsSnapshot, ModsSurfaceState, ModStatus } from '@switchboard/protocol/client';
+import type { HookableComponent, ModInstance, ModPaneRoster, ModsSnapshot, ModsSurfaceState, ModStatus } from '@seshboard/protocol/client';
 
 /**
  * What every running session's Claude Code mods show (`mods.*` events): whether they are attached, their statuses and

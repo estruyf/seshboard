@@ -1,4 +1,4 @@
-import type { ImageAttachment, QueuedMessage, SessionHostInfo } from '@switchboard/protocol/client';
+import type { ImageAttachment, QueuedMessage, SessionHostInfo } from '@seshboard/protocol/client';
 
 /** The first line that has something on it, cut to `max` characters. A long message shows in full in its tooltip. */
 export function firstLine(text: string, max = 160): string {

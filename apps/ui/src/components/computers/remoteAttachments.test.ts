@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_ATTACHMENT_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from '@switchboard/protocol/client';
+import { REMOTE_ATTACHMENT_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES } from '@seshboard/protocol/client';
 import { base64Length, fileSize, fitWithin, jpegName, placeFor, remoteDropVerdict, remoteFileName, type RemoteAttachment } from './remoteAttachments.ts';
 
 const image = (id: number, data = 'aGVsbG8='): RemoteAttachment => ({ id, kind: 'image', image: { type: 'image', mediaType: 'image/jpeg', data, name: 'shot.jpg' } });
@@ -21,7 +21,7 @@ describe('remote attachments', () => {
   });
 
   it('says to update a computer that takes no files', () => {
-    expect(placeFor(pdf, [], { images: true, files: false }, 'mystic')).toEqual({ skip: 'Update Switchboard on mystic to send files.' });
+    expect(placeFor(pdf, [], { images: true, files: false }, 'mystic')).toEqual({ skip: 'Update Seshboard on mystic to send files.' });
   });
 
   it('leaves out files past the count or the size of one message', () => {
@@ -36,7 +36,7 @@ describe('remote attachments', () => {
     const state = { items: [], accepts: ALL, disabledReason: null, computer: 'mystic' };
     expect(remoteDropVerdict({ files: false, types: [] }, state)).toBeNull();
     expect(remoteDropVerdict({ files: true, types: ['image/png', 'application/pdf'] }, state)).toEqual({ kind: 'ok', attach: 1, mention: 1, full: false });
-    expect(remoteDropVerdict({ files: true, types: ['application/pdf'] }, { ...state, accepts: { images: true, files: false } })).toEqual({ kind: 'disabled', reason: 'Update Switchboard on mystic to send files.' });
+    expect(remoteDropVerdict({ files: true, types: ['application/pdf'] }, { ...state, accepts: { images: true, files: false } })).toEqual({ kind: 'disabled', reason: 'Update Seshboard on mystic to send files.' });
     expect(remoteDropVerdict({ files: true, types: ['image/png'] }, { ...state, disabledReason: 'mystic is not connected' })).toEqual({ kind: 'disabled', reason: 'mystic is not connected' });
   });
 

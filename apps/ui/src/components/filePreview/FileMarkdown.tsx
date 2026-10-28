@@ -19,7 +19,7 @@ const ALERTS =
   '[&_blockquote[data-alert=caution]]:border-error [&_blockquote[data-alert=caution]]:bg-error/8 [&_blockquote[data-alert=caution]_[data-alert-title]]:text-error';
 
 /** The prose of a previewed file: the conversation's styles, plus what a README has (images, details, tables, alerts). */
-const FILE_PROSE = `${PROSE} ${ALERTS} [&_img]:inline-block [&_img]:max-w-full [&_details]:my-1.5 [&_summary]:cursor-pointer [&_hr]:my-4 [&_hr]:border-edge [&_pre]:my-2`;
+const FILE_PROSE = `select-text ${PROSE} ${ALERTS} [&_img]:inline-block [&_img]:max-w-full [&_details]:my-1.5 [&_summary]:cursor-pointer [&_hr]:my-4 [&_hr]:border-edge [&_pre]:my-2`;
 
 /** Images already read, by path, so Reload and scrolling back don't fetch them again; a small LRU. */
 const images = new Map<string, Promise<string>>();

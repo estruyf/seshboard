@@ -1,4 +1,4 @@
-import { queueStates as sharedQueueStates, type LaterDraft, type LaterItem, type QueueInputs as SharedQueueInputs, type QueueSession, type QueueSummary, type QueueWaitFor } from '@switchboard/protocol/client';
+import { queueStates as sharedQueueStates, type LaterDraft, type LaterItem, type QueueInputs as SharedQueueInputs, type QueueSession, type QueueSummary, type QueueWaitFor } from '@seshboard/protocol/client';
 import type { SessionRowData } from './sessionsStore.ts';
 import { rowStatus } from './sidebarRows.ts';
 
@@ -16,8 +16,8 @@ export {
   type QueueSession,
   type QueueStateKind,
   type QueueSummary,
-} from '@switchboard/protocol/client';
-import { projectOf, promptLabel, type QueueEntry } from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
+import { projectOf, promptLabel, type QueueEntry } from '@seshboard/protocol/client';
 
 export interface QueueInputs extends Omit<SharedQueueInputs, 'sessions'> {
   /** The sessions the sidebar lists, with their live state. */
@@ -31,8 +31,8 @@ export const isBusy = (row: SessionRowData) => {
 };
 
 /**
- * A row as the queue sees it. A session Claude Code runs outside Switchboard (the terminal, another app) is
- * `elsewhere`: Switchboard sees it go idle, but not how its turn ended.
+ * A row as the queue sees it. A session Claude Code runs outside Seshboard (the terminal, another app) is
+ * `elsewhere`: Seshboard sees it go idle, but not how its turn ended.
  */
 export function queueSession(row: SessionRowData): QueueSession {
   const origin = row.remote ? null : row.live?.origin;

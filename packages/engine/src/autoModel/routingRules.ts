@@ -1,4 +1,4 @@
-import type { AutoLean, AutoTier } from '@switchboard/protocol';
+import type { AutoLean, AutoTier } from '@seshboard/protocol';
 
 /**
  * The rules Haiku follows to pick a model for a new session, in one place. Bump the version when they change,

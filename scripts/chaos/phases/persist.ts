@@ -24,7 +24,7 @@ async function choices(c: Chaos) {
       profileCount: document.querySelectorAll('[data-profile-badge]').length,
       sidebar: document.querySelector('[data-sidebar-state]')?.getAttribute('data-sidebar-state') ?? null,
       dark: document.documentElement.classList.contains('dark') || matchMedia('(prefers-color-scheme: dark)').matches,
-      profiles: (window as unknown as { switchboard: { preferences: unknown } }).switchboard.preferences,
+      profiles: (window as unknown as { seshboard: { preferences: unknown } }).seshboard.preferences,
     };
   });
 }

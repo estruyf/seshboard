@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@switchboard/protocol';
+import { MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@seshboard/protocol';
 
 /** What `readPreview` returns (the result of `files.read`). */
 export interface FilePreview {

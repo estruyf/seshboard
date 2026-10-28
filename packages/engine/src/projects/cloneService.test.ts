@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CloneProgress } from '@switchboard/protocol';
+import type { CloneProgress } from '@seshboard/protocol';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { git } from '../git/gitChanges.ts';
 import { CloneService } from './cloneService.ts';
@@ -42,7 +42,7 @@ if (args[0] === 'repo' && args[1] === 'clone') {
 `;
 
 async function setup(options: { signedIn?: boolean; hang?: boolean; source?: boolean } = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-clones-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-clones-')));
   dirs.push(root);
   // The "GitHub" side: a repository with project settings, as a bare repository at <source>/acme/payments.git.
   const work = join(root, 'work');

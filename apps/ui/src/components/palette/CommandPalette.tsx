@@ -1,7 +1,7 @@
 import { FolderDown, GitBranchPlus, PencilLine, Search, SquarePen } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@switchboard/protocol/bridge';
-import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
+import { FOCUS_LIMIT_MAX, FOCUS_LIMIT_MIN } from '@seshboard/protocol/bridge';
+import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
 import { useClone } from '../../state/cloneStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -12,7 +12,7 @@ import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
-import { describe as describeRule } from '@switchboard/protocol/client';
+import { describe as describeRule } from '@seshboard/protocol/client';
 import { nextRunLine } from '../../state/schedules.ts';
 import { deleteSchedule, runScheduleNow, setSchedulePaused, useSchedules } from '../../state/schedulesStore.ts';
 import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused, useTriggers } from '../../state/triggersStore.ts';
@@ -400,7 +400,7 @@ export function CommandPalette() {
   }, [state.steps.length, state.mode, step?.kind]);
 
   const chooseFolder = async (worktree: boolean) => {
-    const picked = await window.switchboard?.pickFolder();
+    const picked = await window.seshboard?.pickFolder();
     if (picked) setState((s) => pushStep(s, { kind: 'prompt', root: picked, worktree, chip: s.steps[0]?.chip ?? 'New session', from: fromOf(s) }));
   };
 

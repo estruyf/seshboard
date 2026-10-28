@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import type { GithubItemType, GithubListItem } from '@switchboard/protocol/client';
+import type { GithubItemType, GithubListItem } from '@seshboard/protocol/client';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';
 
 /**
  * New session from an issue or pull request: ⌥↩ in the `#` list, the palette's "New session from issue…" and "New
- * session from pull request…", and `switchboard://new-session?issue=…` or `pr=…`. New session takes the request and
+ * session from pull request…", and `seshboard://new-session?issue=…` or `pr=…`. New session takes the request and
  * fills in the worktree, the chip and the prompt. Nothing starts until you press Start.
  */
 export interface GithubStartRequest {
@@ -16,7 +16,7 @@ export interface GithubStartRequest {
   ref: string;
   /** What the `#` list already showed, so New session fills in before gh answers. */
   item: GithubListItem | null;
-  /** Opened from a `switchboard://` link: its own prompt, and whether it asked to start on its own (refused). */
+  /** Opened from a `seshboard://` link: its own prompt, and whether it asked to start on its own (refused). */
   link: { prompt: string | null; autostart: boolean } | null;
   seq: number;
 }

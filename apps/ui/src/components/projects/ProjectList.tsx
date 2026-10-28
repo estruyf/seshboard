@@ -1,6 +1,6 @@
 import { AlertTriangle, GripVertical, Plus, Search, Settings, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { contextMenuPoint, isContextMenuKey } from '../../lib/contextMenu.ts';
 import { shortAge, tildify } from '../../lib/format.ts';
 import { keysFor, spokenKeys } from '../../lib/shortcuts.ts';
@@ -22,7 +22,7 @@ import { Button } from '../ui/Button.tsx';
 import { CountBadge } from '../ui/Pill.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 
-const MIME = 'application/x-switchboard-project';
+const MIME = 'application/x-seshboard-project';
 /** How close to the list's top or bottom edge a drag scrolls it, and how far per event. */
 const EDGE_PX = 36;
 const SCROLL_STEP = 12;

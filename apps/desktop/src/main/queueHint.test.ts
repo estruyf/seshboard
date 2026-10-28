@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LaterItem } from '@switchboard/protocol/client';
+import type { LaterItem } from '@seshboard/protocol/client';
 import { queueHint } from './queueHint.ts';
 
 const item = (id: string, overrides: Partial<LaterItem> = {}): LaterItem => ({

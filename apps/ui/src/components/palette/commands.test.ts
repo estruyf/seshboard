@@ -20,6 +20,7 @@ const SESSION: PaletteSession = {
   catchUp: null,
   prompts: 0,
   hasReply: false,
+  unsent: 0,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */
@@ -37,6 +38,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     focusLimit: null,
     notifications: true,
     sounds: false,
+    catchUpFolded: false,
     queue: { count: 0, readyCount: 0, firstReady: null },
     schedules: 0,
     triggers: 0,
@@ -82,7 +84,7 @@ const groupIds = (ctx: PaletteContext, group: string) => visibleCommands(ctx).fi
 describe('when(): always', () => {
   it('shows the commands that need nothing open, and never the ones for a session', () => {
     const shown = ids(context());
-    for (const id of ['new-session', 'new-session-worktree', 'go-to-session', 'search', 'settings', 'manage-projects', 'add-project', 'rename-project', 'claude-update', 'reload-skills', 'export-settings', 'import-settings', 'diagnostics', 'shortcuts', 'focus-on', 'focus-set']) {
+    for (const id of ['new-session', 'new-session-worktree', 'go-to-session', 'search', 'settings', 'manage-projects', 'add-project', 'rename-project', 'claude-update', 'reload-skills', 'reload-mcp', 'export-settings', 'import-settings', 'diagnostics', 'shortcuts', 'focus-on', 'focus-set']) {
       expect(shown, id).toContain(id);
     }
     expect(groupIds(context(), 'session')).toEqual([]);
@@ -102,6 +104,14 @@ describe('when(): always', () => {
     expect(ids(context())).not.toContain('focus-off');
     expect(ids(context({ focusLimit: 3 }))).toEqual(expect.arrayContaining(['focus-off', 'focus-set']));
     expect(ids(context({ focusLimit: 3 }))).not.toContain('focus-on');
+  });
+
+  it('shows catch-ups folded or in full, and neither while summaries are off', () => {
+    expect(ids(context())).toContain('catch-up-folded-on');
+    expect(ids(context())).not.toContain('catch-up-folded-off');
+    expect(ids(context({ catchUpFolded: true }))).toContain('catch-up-folded-off');
+    expect(ids(context({ catchUpFolded: null }))).not.toContain('catch-up-folded-on');
+    expect(ids(context({ catchUpFolded: null }))).not.toContain('catch-up-folded-off');
   });
 
   it('turns notifications and sounds on or off', () => {
@@ -196,6 +206,7 @@ describe('when(): always', () => {
 
   it('leaves out what needs the engine while it is away', () => {
     expect(ids(context({ connected: false }))).not.toContain('reload-skills');
+    expect(ids(context({ connected: false }))).not.toContain('reload-mcp');
   });
 });
 
@@ -256,6 +267,11 @@ describe('when(): a session is open', () => {
     expect(ids(inSession())).not.toContain('fork');
     const talked = ids(inSession({ prompts: 2, hasReply: true }));
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
+  });
+
+  it('offers Try again only when Claude Code failed before it got a message', () => {
+    expect(ids(inSession())).not.toContain('retry');
+    expect(ids(inSession({ unsent: 1 }))).toContain('retry');
   });
 
   it('previews the last written file only when the open session wrote a Markdown or HTML one', () => {

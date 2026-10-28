@@ -1,4 +1,4 @@
-import type { MainWindowRequest } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest } from '@seshboard/protocol/bridge';
 import type { PaletteContext } from './paletteContext.ts';
 
 /**
@@ -52,6 +52,7 @@ const PLANS: Record<string, Plan> = {
   'clean-up-worktrees': 'hide',
   'import-theme': 'hide',
   'claude-update': 'hide',
+  'install-shell-command': 'hide',
   'export-settings': 'hide',
   'import-settings': 'hide',
   'memory-import-export': 'hide',
@@ -92,6 +93,7 @@ const PLANS: Record<string, Plan> = {
   // Preferences apply to every window.
   'export-theme': 'here',
   'reload-skills': 'here',
+  'reload-mcp': 'here',
   shortcuts: 'here',
   'focus-on': 'here',
   'focus-off': 'here',
@@ -100,6 +102,8 @@ const PLANS: Record<string, Plan> = {
   'notifications-on': 'here',
   'sounds-on': 'here',
   'sounds-off': 'here',
+  'catch-up-folded-on': 'here',
+  'catch-up-folded-off': 'here',
   'use-saved-prompt': 'here',
   'new-saved-prompt': 'here',
 
@@ -145,6 +149,7 @@ const PLANS: Record<string, Plan> = {
   'close-session': 'here',
   'delete-session': 'here',
   stop: 'here',
+  retry: 'here',
   'go-to-waiting': 'here',
 
   // Git, project actions and the session's terminal.

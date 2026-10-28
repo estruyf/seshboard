@@ -1,4 +1,4 @@
-import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta, TranscriptMessage } from '@switchboard/protocol/client';
+import type { Computer, RemoteMessage, RemoteSession, RemoteSessions, RemoteTranscriptUpdate, StreamDelta, TranscriptMessage } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { buildDisplayItems, type DisplayItem } from '../transcript/displayItems.ts';
 import { buildTurns, type Turn } from '../transcript/turns.ts';

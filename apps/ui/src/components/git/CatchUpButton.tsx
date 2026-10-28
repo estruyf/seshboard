@@ -1,6 +1,6 @@
 import { Check, ChevronDown, CloudDownload, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { Notice } from '../ui/Notice.tsx';

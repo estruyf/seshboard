@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { FolderEntry, ProjectInfo } from '@switchboard/protocol/client';
-import { addOrSelect, completePath, fifthTile, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
+import type { FolderEntry, ProjectInfo } from '@seshboard/protocol/client';
+import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 
 const project = (root: string, name: string, added: boolean, sessionCount = 1, lastActivity = 1, exists = true): ProjectInfo => ({
   root,
@@ -111,17 +111,17 @@ describe('knownFolderRows', () => {
   });
 });
 
-describe('fifthTile', () => {
-  it('is +N more with more projects than tiles', () => {
-    expect(fifthTile(7, 4, 3)).toEqual({ kind: 'more', count: 3 });
+describe('listEnd', () => {
+  it('is All N projects… with more projects than the list shows', () => {
+    expect(listEnd(7, 4, 3)).toEqual({ kind: 'more', count: 3 });
   });
-  it('is gone with four or fewer projects', () => {
-    expect(fifthTile(4, 4, 0)).toBeNull();
-    expect(fifthTile(1, 1, 0)).toBeNull();
-    // A picked folder that isn't a project still fills a tile.
-    expect(fifthTile(0, 1, 0)).toBeNull();
+  it('is nothing when every project shows', () => {
+    expect(listEnd(4, 4, 0)).toBeNull();
+    expect(listEnd(1, 1, 0)).toBeNull();
+    // A picked folder that isn't a project still fills a row.
+    expect(listEnd(0, 1, 0)).toBeNull();
   });
-  it('is one wide Add project… tile without any project', () => {
-    expect(fifthTile(0, 0, 0)).toEqual({ kind: 'choose' });
+  it('is one wide Add project… row without any project', () => {
+    expect(listEnd(0, 0, 0)).toEqual({ kind: 'choose' });
   });
 });

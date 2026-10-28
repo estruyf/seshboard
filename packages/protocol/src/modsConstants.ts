@@ -1,6 +1,6 @@
 /**
  * Claude Code mods: plugins that draw UI (bands, panes, statuses, toasts, replaced parts of the session). Claude Code
- * loads and runs them; Switchboard relays requests and draws the tree it gets back. Plain values, no zod, so the
+ * loads and runs them; Seshboard relays requests and draws the tree it gets back. Plain values, no zod, so the
  * renderer can import them (see docs/mods.md).
  */
 

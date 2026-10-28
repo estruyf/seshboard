@@ -17,7 +17,7 @@ import {
   type TriggerSource,
   type TriggerStart,
   type WorktreeBase,
-} from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
 
 // Event triggers (#180) in the window: the editor's form and its rules, and the words the Triggers tab and Upcoming
 // show. Without React or the stores, so they are tested on their own.
@@ -111,13 +111,13 @@ export function newTriggerForm(projectRoot: string, defaults: ProjectDefaults | 
   return {
     id: null,
     projectRoot,
-    name: defaultTriggerName({ kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true }),
+    name: defaultTriggerName({ kind: 'issues', label: 'seshboard', assignee: '@me', collaboratorsOnly: true }),
     nameTouched: false,
     kind: 'issues',
     branch: '',
     workflows: [],
     which: 'both',
-    label: 'switchboard',
+    label: 'seshboard',
     assignee: '@me',
     collaboratorsOnly: true,
     // Off, so What happens on GitHub? starts folded: the trigger changes nothing on the issue until you say so.
@@ -154,7 +154,7 @@ export function triggerForm(trigger: Trigger): TriggerForm {
     branch: source.kind === 'ci' ? (source.branch ?? '') : '',
     workflows: source.kind === 'ci' ? source.workflows : [],
     which: issues?.label && issues.assignee ? 'both' : issues?.assignee ? 'assignee' : 'label',
-    label: issues?.label ?? 'switchboard',
+    label: issues?.label ?? 'seshboard',
     assignee: issues?.assignee ?? '@me',
     collaboratorsOnly: issues?.collaboratorsOnly ?? true,
     stateLabels: trigger.stateLabels,

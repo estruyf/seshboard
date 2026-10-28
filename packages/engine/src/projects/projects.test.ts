@@ -12,7 +12,7 @@ import { folderKey, ProjectRegistry } from './projectRegistry.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-projects-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-projects-')));
   dirs.push(dir);
   return dir;
 };
@@ -40,9 +40,9 @@ describe('detectIconPath', () => {
     const outside = tempDir();
     file(join(outside, 'secret.png'), 'png');
     const root = tempDir();
-    writeFileSync(join(root, '.switchboard.json'), JSON.stringify({ iconPath: join('..', relative(dirname(root), outside), 'secret.png') }));
+    writeFileSync(join(root, '.seshboard.json'), JSON.stringify({ iconPath: join('..', relative(dirname(root), outside), 'secret.png') }));
     expect(detectIconPath(root)).toBeNull();
-    writeFileSync(join(root, '.switchboard.json'), JSON.stringify({ iconPath: join(outside, 'secret.png') }));
+    writeFileSync(join(root, '.seshboard.json'), JSON.stringify({ iconPath: join(outside, 'secret.png') }));
     expect(detectIconPath(root)).toBeNull();
     // Nor through a link inside the project that points out of it (where this process may make links).
     if (canSymlink()) {
@@ -201,7 +201,11 @@ describe('project list', () => {
     // A value an older or newer build wrote that no longer validates falls back to unset.
     cache.db.prepare('UPDATE project_settings SET defaults_json = ? WHERE root = ?').run(JSON.stringify({ model: 'sonnet', effort: 'turbo' }), root);
     expect(project().defaults).toEqual({ ...unset, model: 'sonnet' });
+    // Global default for the permission mode is kept; without it the field stays out.
+    registry.setDefaults(root, { ...unset, globalPermissionMode: true });
+    expect(project().defaults).toEqual({ ...unset, globalPermissionMode: true });
     registry.setDefaults(root, unset);
+    expect(project().defaults).not.toHaveProperty('globalPermissionMode');
     expect(project().defaults).toEqual(unset);
     cache.close();
   });
@@ -219,7 +223,7 @@ describe('migration to hand-added projects', () => {
   const session = (db: DatabaseSync, id: string, root: string, at: number) =>
     db.prepare('INSERT INTO sessions (id, project_root, updated_at, summary_json) VALUES (?, ?, ?, ?)').run(id, root, at, '{}');
 
-  it('keeps the folders upgrading users worked with in Switchboard, and the ones they added', () => {
+  it('keeps the folders upgrading users worked with in Seshboard, and the ones they added', () => {
     const path = join(tempDir(), 'cache.sqlite');
     atV7(path, (db) => {
       session(db, 'own', '/work/app', 100);

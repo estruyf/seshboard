@@ -47,10 +47,10 @@ export const mix: Phase = async (c, { actions }) => {
     }],
     [2, async () => {
       const url = r.pick([
-        `switchboard://new-session?prompt=mixed&cwd=${encodeURIComponent(acme)}`,
-        `switchboard://session/${c.world.sessions.hero}`,
-        `switchboard://new-session?question=1&prompt=q`,
-        'switchboard://nonsense',
+        `seshboard://new-session?prompt=mixed&cwd=${encodeURIComponent(acme)}`,
+        `seshboard://session/${c.world.sessions.hero}`,
+        `seshboard://new-session?question=1&prompt=q`,
+        'seshboard://nonsense',
       ]);
       c.log('deep-link', url);
       await c.app.evaluate(({ app }, url) => void app.emit('open-url', { preventDefault() {} }, url), url);

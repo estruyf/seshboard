@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ThemeState } from '@switchboard/protocol/theme-format';
+import type { ThemeState } from '@seshboard/protocol/theme-format';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { isTrashableThemeFile } from './trashGuard.ts';
 import { readThemeFile, ThemeStore } from './themes.ts';
@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function setup(onChange?: (state: ThemeState) => void) {
-  const root = mkdtempSync(join(tmpdir(), 'switchboard-themes-'));
+  const root = mkdtempSync(join(tmpdir(), 'seshboard-themes-'));
   dirs.push(root);
   const dir = join(root, 'themes');
   const store = new ThemeStore(dir, BUILT_IN_THEMES, onChange);

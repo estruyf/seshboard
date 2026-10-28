@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Trash2 } from 'lucide-react';
-import { BLANK_NAME_MAX, BLANK_TYPE_LABELS, BLANK_TYPES, type BlankSpec, type BlankType } from '@switchboard/protocol/client';
+import { BLANK_NAME_MAX, BLANK_TYPE_LABELS, BLANK_TYPES, type BlankSpec, type BlankType } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Select } from '../ui/Select.tsx';

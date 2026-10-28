@@ -1,6 +1,6 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
-import { resolveSound } from '@switchboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
+import { resolveSound } from '@seshboard/protocol/bridge';
+import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
@@ -20,7 +20,7 @@ export interface NotifierOptions {
   engine: EngineProcess;
   /** The main window: its taskbar button flashes, and carries the badge on Windows. */
   window: () => BrowserWindow | undefined;
-  /** A Switchboard window (the main one or a pop-out) is in front and not minimized. */
+  /** A Seshboard window (the main one or a pop-out) is in front and not minimized. */
   focused: () => boolean;
   /** The session the user is looking at in the window in front (reported by its renderer). */
   focusedSession: () => string | null;
@@ -163,7 +163,7 @@ export class Notifier {
   }
 
   /**
-   * The sessions running in a Claude Code process right now (in Switchboard or anywhere else), and their folders,
+   * The sessions running in a Claude Code process right now (in Seshboard or anywhere else), and their folders,
    * from the engine. Throws before the engine is connected: an empty list would say nothing runs.
    */
   async runningSessions(): Promise<{ ids: Set<string>; folders: string[] }> {
@@ -186,7 +186,7 @@ export class Notifier {
    * sounds are on. It is never for the session on screen, so it always shows.
    */
   test(): void {
-    this.handle([{ kind: 'needs-you', sessionId: '', title: 'Claude needs you', body: 'A test notification from Switchboard.' }], { test: true });
+    this.handle([{ kind: 'needs-you', sessionId: '', title: 'Claude needs you', body: 'A test notification from Seshboard.' }], { test: true });
   }
 
   private handle(events: AttentionEvent[], { test = false } = {}): void {

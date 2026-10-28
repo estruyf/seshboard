@@ -1,6 +1,6 @@
-import { Folder, FolderDown, FolderGit2, FolderPlus, ListFilter, MessageCircleQuestion, Search } from 'lucide-react';
+import { Folder, FolderDown, FolderGit2, FolderPlus, MessageCircleQuestion, Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { parseGithubRepo, repoLabel } from '@switchboard/protocol/client';
+import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
 import { basename, tildify } from '../../lib/format.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -9,20 +9,14 @@ import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
-import { filterFolders, quickTiles, type TileTone } from './projectTiles.ts';
-import { addOrSelect, completePath, fifthTile, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
+import { COLUMN_BREAKPOINTS, filterFolders, quickCount, quickTiles, type TileTone } from './projectTiles.ts';
+import { moveInGrid, PROJECT_GRID, ProjectListFooter, ProjectRow } from './ProjectRow.tsx';
+import { useColumns } from '../ui/useColumns.ts';
+import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 import { useFolderSuggestions } from './useFolderSuggestions.ts';
 import { matches } from '../../lib/shortcuts.ts';
 import { QUESTION_LABEL } from '../../lib/questions.ts';
 
-const COLUMNS = 5;
-/** Tiles shown before "+N more": the fifth place is that tile. */
-const QUICK = 4;
-
-const TONE_DOT: Record<TileTone, string> = { 'needs-you': 'bg-warn animate-pulse', working: 'bg-accent-ink', idle: 'bg-faint/60' };
-const TONE_TEXT: Record<TileTone, string> = { 'needs-you': 'text-warn', working: 'text-accent-ink', idle: 'text-muted' };
-/** One row per tile: icon, name over status, shortcut. In a narrow column the shortcut goes, then the icon moves above the name. */
-const TILE = 'flex min-w-0 items-center gap-2 rounded-lg border p-2.5 text-left transition-[background-color,border-color,box-shadow,translate] @max-[600px]:flex-col @max-[600px]:items-start @max-[600px]:gap-1.5';
 /** A row in the open list's other modes: a typed path's folders, or folders with Claude sessions. */
 const ROW = 'flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left';
 
@@ -30,12 +24,13 @@ const ROW = 'flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 
 type DropState = { ok: boolean } | null;
 
 /**
- * Where a new session starts: your first four projects (most recent, or in your order) as tiles, and with more projects,
- * a fifth tile that opens all of them with a filter field. Adding a folder is one step: Add project… opens the Add
+ * Where a new session starts: your projects (most recent, or in your order) as a list of rows in one to three columns,
+ * as the picker's width allows (6, 8 or 9 of them), and with more projects, "All N projects…" under them, which opens
+ * all of them with a filter field (so does Find…, ⌘F). Adding a folder is one step: Add project… opens the Add
  * project dialog (the one onboarding uses), ↩ on a typed path (`~/…`, `/…`, `C:\…`) or on a folder Claude Code already has sessions for adds it, and so
- * does dropping a folder on the area. A folder that is already a project is selected instead. ⌘1 to ⌘9 pick the tiles
- * in view. The open list is a combobox: focus stays in the field and `aria-activedescendant` says which option the
- * arrows are on. Under the tiles, Quick question starts without a project (in the scratch folder the engine keeps).
+ * does dropping a folder on the area. A folder that is already a project is selected instead. ⌘1 to ⌘9 pick the rows
+ * in view, and the arrow keys move through them as the grid shows them. The open list is a combobox: focus stays in the field and `aria-activedescendant` says which option the
+ * arrows are on. Under the list, Quick question starts without a project (in the scratch folder the engine keeps).
  * With Clone from GitHub on, Clone from GitHub… opens its form, and a GitHub URL typed or pasted in the field offers
  * Clone owner/name (↩ clones it at once).
  */
@@ -68,7 +63,7 @@ export function FolderPicker({
   onAddProject(): void;
   /** Opens the system folder dialog; the folder chosen there is added and selected. */
   onChooseOther(): void;
-  /** ⌘1 to ⌘9 pick a tile (off while something covers the view, like Settings). */
+  /** ⌘1 to ⌘9 pick a row, ⌘F finds a project (off while something covers the view, like Settings). */
   shortcuts: boolean;
   /** Changing it opens the full list (a link that didn't say which project, or the project in the message box). */
   openRequest?: number;
@@ -86,16 +81,20 @@ export function FolderPicker({
   const [drop, setDrop] = useState<DropState>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  // The CSS lays out the columns; this says how many there are, for how many rows show and for the arrow keys.
+  const columns = useColumns(rootRef, COLUMN_BREAKPOINTS);
   const id = useId();
   const optionId = (index: number) => `${id}-option-${index}`;
   const nameOf = (folder: string) => projects.get(folder)?.name ?? basename(folder);
-  /** The picked project's colour: its tile's border and shadow. */
+  /** The picked project's colour: its row's border and shadow. */
   const valueColor = useProjectColor(value ? projects.get(value) : undefined, value);
 
-  const quick = useMemo(() => quickTiles(folders, value, QUICK), [folders, value]);
+  const quick = useMemo(() => quickTiles(folders, value, quickCount(columns)), [folders, value, columns]);
   const all = useMemo(() => (value && !folders.includes(value) ? [value, ...folders] : folders), [folders, value]);
   const options = useMemo(() => filterFolders(all, filter, (folder) => projects.get(folder)?.name ?? basename(folder), home), [all, filter, home, projects]);
-  const fifth = fifthTile(folders.length, quick.length, folders.filter((folder) => !quick.includes(folder)).length);
+  const end = listEnd(folders.length, quick.length, folders.filter((folder) => !quick.includes(folder)).length);
 
   // Clone mode: the field holds a GitHub URL, and the one row clones it.
   const cloneRepo = open && onClone ? parseGithubRepo(filter, { shorthand: false }) : null;
@@ -151,8 +150,8 @@ export function FolderPicker({
   const close = (refocus: boolean) => {
     setOpen(false);
     setFilter('');
-    // Back on the tiles, so typing filters again.
-    if (refocus) requestAnimationFrame(() => groupRef.current?.querySelector<HTMLElement>('button')?.focus());
+    // Back on the list, so typing filters again.
+    if (refocus) requestAnimationFrame(() => groupRef.current?.querySelector<HTMLElement>('[tabindex="0"], [data-add-project-tile]')?.focus());
   };
   const askQuestion = () => {
     close(false);
@@ -188,7 +187,7 @@ export function FolderPicker({
     } else if (options[index]) choose(options[index]!);
   };
 
-  // ⌘1 to ⌘9 pick the tiles in view, wherever focus is (the prompt usually has it).
+  // ⌘1 to ⌘9 pick the rows in view, wherever focus is (the prompt usually has it). ⌘F opens the full list, or goes back to its field.
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const chooseRef = useRef(choose);
@@ -196,6 +195,14 @@ export function FolderPicker({
   useEffect(() => {
     if (!shortcuts) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
+      if (matches(event, 'new-session.find')) {
+        if (event.defaultPrevented || document.querySelector('[role=dialog], [role=alertdialog], [role=menu]')) return;
+        if (event.target instanceof HTMLElement && event.target.closest('[data-terminal-panel]')) return;
+        event.preventDefault();
+        setOpen(true);
+        fieldRef.current?.focus();
+        return;
+      }
       if (!matches(event, 'new-session.pick')) return;
       if (document.querySelector('[role=dialog], [role=alertdialog], [role=menu]')) return;
       const folder = shownRef.current[Number(event.key) - 1];
@@ -207,8 +214,9 @@ export function FolderPicker({
     return () => window.removeEventListener('keydown', onKey);
   }, [shortcuts]);
 
-  // Typing a letter on a tile opens the full list filtered by it: "start typing its name".
-  const typeToSearch = (e: KeyboardEvent) => {
+  // Typing a letter on a row opens the full list filtered by it: "start typing its name". The arrows move between rows.
+  const onListKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (moveInGrid(e, columns)) return;
     if (open || e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1 || e.key === ' ') return;
     e.preventDefault();
     setFilter(e.key);
@@ -221,8 +229,8 @@ export function FolderPicker({
     const move = (delta: number) => (e.preventDefault(), setActive((i) => Math.min(count - 1, Math.max(0, i + delta))));
     const rows = mode !== 'tiles';
     if (e.key === 'Escape') (e.preventDefault(), e.stopPropagation(), close(true));
-    else if (e.key === 'ArrowDown') move(rows ? 1 : COLUMNS);
-    else if (e.key === 'ArrowUp') move(rows ? -1 : -COLUMNS);
+    else if (e.key === 'ArrowDown') move(rows ? 1 : columns);
+    else if (e.key === 'ArrowUp') move(rows ? -1 : -columns);
     // Left and right move the caret while there is text to edit.
     else if (e.key === 'ArrowRight' && !filter && !rows) move(1);
     else if (e.key === 'ArrowLeft' && !filter && !rows) move(-1);
@@ -266,43 +274,39 @@ export function FolderPicker({
     const items = [...e.dataTransfer.items].filter((item) => item.kind === 'file');
     const files = [...e.dataTransfer.files];
     if (files.length !== 1 || !items[0]?.webkitGetAsEntry()?.isDirectory) return;
-    const path = window.switchboard?.getPathForFile(files[0]!);
+    const path = window.seshboard?.getPathForFile(files[0]!);
     if (path) add(path);
   };
 
+  // In the short list the rows are a listbox of their own (focus moves between them); in the open one, the field's options.
+  const focusable = quick.includes(value ?? '') ? value : quick[0];
   const tile = (folder: string, index: number) => {
     const status = statusOf(folder);
-    const branch = branches.get(folder);
+    const name = nameOf(folder);
     const selected = folder === value;
     const highlighted = open && index === active;
     return (
-      <button
+      <ProjectRow
         key={folder}
         id={open ? optionId(index) : undefined}
-        type="button"
-        role={open ? 'option' : undefined}
-        tabIndex={open ? -1 : undefined}
-        aria-selected={open ? selected : undefined}
-        aria-pressed={open ? undefined : selected}
+        role="option"
+        tabIndex={open ? -1 : folder === focusable ? 0 : -1}
+        aria-selected={selected}
+        icon={<ProjectIcon project={projects.get(folder)} root={folder} size={30} />}
+        name={name}
+        tone={status.tone}
+        label={status.label}
+        branch={branches.get(folder)}
+        shortcut={index < 9 ? index + 1 : undefined}
+        selected={selected}
+        highlighted={highlighted}
+        color={valueColor}
         data-folder-option={folder}
         data-active={open ? highlighted : undefined}
-        data-tooltip={`${tildify(folder, home)}${branch ? ` · ${branch}` : ''}`}
+        data-tooltip={`${name}\n${tildify(folder, home)}`}
         onMouseMove={open ? () => setActive(index) : undefined}
         onClick={() => (open ? pick(index) : choose(folder))}
-        // The picked tile wears its project's colour, lifted a pixel, the same colour as the message box's frame.
-        style={selected && valueColor ? { borderColor: valueColor, boxShadow: `0 6px 14px -6px color-mix(in srgb, ${valueColor} 55%, transparent)` } : undefined}
-        className={`${TILE} ${selected ? '-translate-y-px bg-selected' : highlighted ? 'border-border bg-border/45' : 'border-border bg-card hover:bg-border/45'}`}
-      >
-        <ProjectIcon project={projects.get(folder)} root={folder} size={24} />
-        <span className="grid min-w-0 flex-1 content-start gap-0.5 @max-[600px]:w-full">
-          <span className="truncate text-ui font-semibold text-text">{nameOf(folder)}</span>
-          <span className={`flex min-w-0 items-center gap-1.5 text-meta ${TONE_TEXT[status.tone]}`}>
-            <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
-            <span className="truncate">{status.label}</span>
-          </span>
-        </span>
-        {index < 9 && <Kbd keys={`⌘${index + 1}`} tone="plain" className="@max-[680px]:hidden" />}
-      </button>
+      />
     );
   };
 
@@ -334,28 +338,27 @@ export function FolderPicker({
     );
   };
 
-  const dashed = `${TILE} border-dashed border-border text-muted hover:bg-border/45 hover:text-text`;
-  /** The dashed tile's two lines, like a project's name and status. */
-  const dashedText = (label: string, hint: string) => (
-    <span className="grid min-w-0 flex-1 content-center gap-0.5 @max-[600px]:w-full">
-      <span className="truncate text-ui font-semibold">{label}</span>
-      <span className="truncate text-meta text-faint">{hint}</span>
-    </span>
-  );
-
-  const addButton = (size: 'sm' | 'lg') => (
-    <Button size={size} icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
-      Add project…
-    </Button>
-  );
+  // In one column the header keeps only the icons of Add project… and Clone from GitHub…, with their labels as tooltips.
+  const narrow = columns === 1;
+  const addButton = (size: 'sm' | 'lg') =>
+    narrow ? (
+      <Button size={size} iconOnly aria-label="Add project…" icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0" />
+    ) : (
+      <Button size={size} icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
+        Add project…
+      </Button>
+    );
   const cloneButton = (size: 'sm' | 'lg') =>
-    onClone && (
+    onClone &&
+    (narrow ? (
+      <Button size={size} iconOnly aria-label="Clone from GitHub…" icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0" />
+    ) : (
       <Button size={size} icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0">
         Clone from GitHub…
       </Button>
-    );
+    ));
 
-  // Not a project, so not a tile: one line under them, in neutral colours (a question has no project colour).
+  // Not a project, so not a row of the list: one line under it, in neutral colours (a question has no project colour).
   const questionRow = question && (
     <button
       type="button"
@@ -448,22 +451,22 @@ export function FolderPicker({
         )}
       </div>
     ) : (
-      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Your projects" className="grid max-h-80 grid-cols-5 gap-2 overflow-y-auto p-px">
+      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Your projects" className={`${PROJECT_GRID} max-h-80 overflow-y-auto p-px`} data-project-list data-project-columns={columns}>
         {options.map(tile)}
       </div>
     );
 
   return (
-    // A container: the tiles drop their shortcut, then stack, as the column narrows.
-    <div className="@container relative grid gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    // A container: the list shows one to three columns as the picker (not the window) narrows.
+    <div ref={rootRef} className="@container relative grid gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <SectionHeader
         className="h-6"
         action={
           !open && (
             <div className="ml-auto flex items-center gap-2 font-normal tracking-normal normal-case">
-              {/* Opens the filter field; typing on a tile does the same. */}
-              <Button size="sm" icon={<ListFilter size={13} aria-hidden />} data-filter-projects onClick={() => setOpen(true)}>
-                Filter
+              {/* Opens the full list with its filter field; typing on a row does the same. */}
+              <Button size="sm" icon={<Search size={13} aria-hidden />} shortcut="new-session.find" data-find-project onClick={() => setOpen(true)}>
+                Find…
               </Button>
               {cloneButton('sm')}
               {addButton('sm')}
@@ -479,8 +482,9 @@ export function FolderPicker({
             <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-2.5 focus-within:border-accent-ink/60">
               {pathMode ? <Folder size={14} className="shrink-0 text-faint" aria-hidden /> : <Search size={14} className="shrink-0 text-faint" aria-hidden />}
               <span className="relative flex min-w-0 flex-1">
-                {/* The toggle tile is gone while the list is open, so the field carries its smoke hooks (value, expanded). */}
+                {/* The short list is gone while the full one is open, so the field carries its smoke hooks (value, expanded). */}
                 <input
+                  ref={fieldRef}
                   autoFocus
                   role="combobox"
                   aria-expanded
@@ -519,33 +523,40 @@ export function FolderPicker({
           </Button>
         </div>
       ) : (
-        // The group carries the picker's smoke hook (the picked folder) while the list is closed.
-        <div
-          ref={groupRef}
-          role="group"
-          aria-label={projectOrder === 'yours' ? 'Your projects' : 'Recent projects'}
-          data-folder-select
-          data-value={value ?? ''}
-          // Without a fifth tile, the tiles share the row: four columns, so their names have room.
-          className={`grid gap-2 ${fifth?.kind === 'more' ? 'grid-cols-5' : 'grid-cols-4'}`}
-          onKeyDown={typeToSearch}
-        >
-          {quick.map(tile)}
-          {fifth?.kind === 'more' && (
-            <button type="button" data-more-projects aria-expanded={false} onClick={() => setOpen(true)} className={dashed}>
-              {dashedText(`+${fifth.count} more`, 'all projects')}
-            </button>
-          )}
-          {fifth?.kind === 'choose' && (
-            // No projects yet: the whole row is the way in. Typing here opens the field too, for a path.
-            <button type="button" data-add-project-tile onClick={addProject} className={`${dashed} col-span-full`}>
-              <span className="flex size-6 shrink-0 items-center justify-center">
-                <FolderPlus size={16} aria-hidden />
-              </span>
-              {dashedText('Add project…', 'or type a path')}
-            </button>
-          )}
-        </div>
+        // The list carries the picker's smoke hook (the picked folder) while the full list is closed.
+        <>
+          <div
+            ref={groupRef}
+            role={end?.kind === 'choose' ? undefined : 'listbox'}
+            aria-label={end?.kind === 'choose' ? undefined : projectOrder === 'yours' ? 'Your projects' : 'Recent projects'}
+            data-folder-select
+            data-value={value ?? ''}
+            data-project-list
+            data-project-columns={columns}
+            className={PROJECT_GRID}
+            onKeyDown={onListKey}
+          >
+            {quick.map(tile)}
+            {end?.kind === 'choose' && (
+              // No projects yet: the whole row is the way in. Typing here opens the field too, for a path.
+              <button
+                type="button"
+                data-add-project-tile
+                onClick={addProject}
+                className="col-span-full flex min-w-0 items-center gap-2.5 rounded-lg border border-dashed border-border px-2.5 py-2 text-left text-muted hover:bg-border/45 hover:text-text"
+              >
+                <span className="flex size-[30px] shrink-0 items-center justify-center">
+                  <FolderPlus size={16} aria-hidden />
+                </span>
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate text-ui font-semibold">Add project…</span>
+                  <span className="truncate text-meta text-faint">or type a path</span>
+                </span>
+              </button>
+            )}
+          </div>
+          <ProjectListFooter total={folders.length} shown={quick.length} onAll={end?.kind === 'more' ? () => setOpen(true) : undefined} />
+        </>
       )}
       {questionRow}
       {drop && (

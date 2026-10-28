@@ -2,7 +2,7 @@ import { trashName } from '../../lib/platform.ts';
 import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
 import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
-import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@switchboard/protocol/client';
+import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { claim, release } from '../../lib/inFlight.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';

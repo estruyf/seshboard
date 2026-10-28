@@ -1,7 +1,7 @@
-import type { CompanionStatus, RemoteProfileUsage, RemotePrompt, RemoteRun, RemoteRunState, RemoteSession, RemoteSessions } from '@switchboard/protocol/remote-client';
+import type { CompanionStatus, RemoteProfileUsage, RemotePrompt, RemoteRun, RemoteRunState, RemoteSession, RemoteSessions } from '@seshboard/protocol/remote-client';
 
 /**
- * Every paired computer's sessions as one list, as Switchboard's sidebar shows another computer's sessions among its
+ * Every paired computer's sessions as one list, as Seshboard's sidebar shows another computer's sessions among its
  * own. Pure, with tests. A session or a prompt keeps its own ids for its computer (`sessionId`, `original`); its `id`
  * (a prompt's `requestId` and `sessionId`) is its key in the list, the computer's id and its own, since two computers
  * can have the same ids. A session's `parentId` stays its computer's own: the tree is made per computer (`lib/runs.ts`).

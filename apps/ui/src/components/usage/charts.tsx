@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import type { PlanSeries, UsageBucket, UsagePeriod } from '@switchboard/protocol/client';
+import type { PlanSeries, UsageBucket, UsagePeriod } from '@seshboard/protocol/client';
 import { bucketLabel, formatTokens, niceMax, seriesColor, seriesName, spreadLabels, stackOf, sumTokens, TOKEN_COLOR, TOKEN_LABEL, TOKEN_TYPES, type TokenType } from './usageModel.ts';
 
 /** The width of an element, following resizes. */

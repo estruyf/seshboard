@@ -11,7 +11,7 @@ const BOX: Record<NoticeTone, string> = {
   info: 'border-link/40 bg-link/8 text-text',
   // A limit reached (the focus limit in New session): the readable yellow frame, not a warning.
   accent: 'border-accent-ink/45 bg-accent/6 text-text',
-  // Something outside Switchboard stops a feature (notifications turned off in the system's settings).
+  // Something outside Seshboard stops a feature (notifications turned off in the system's settings).
   caution: 'border-caution/40 bg-caution/8 text-text',
   warn: 'border-warn/40 bg-warn/10 text-text',
   error: 'border-error/40 bg-error/10 text-error',
@@ -23,7 +23,7 @@ interface NoticeProps extends Omit<HTMLAttributes<HTMLDivElement>, 'role'> {
   /**
    * `neutral` (the default) for a quiet note or an empty state; `info` for something worth reading you
    * didn't ask about; `accent` for a limit you reached (the focus limit); `caution` for something turned off
-   * outside Switchboard that stops a feature; `warn` for something that needs you.
+   * outside Seshboard that stops a feature; `warn` for something that needs you.
    */
   tone?: NoticeTone;
   /** Before the message, in the tone's colour (a class on the icon itself wins). */

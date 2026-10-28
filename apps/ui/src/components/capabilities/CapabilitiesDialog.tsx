@@ -1,6 +1,6 @@
 import { RefreshCw, RotateCw } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import type { Capabilities, McpServerInfo } from '@switchboard/protocol/client';
+import type { Capabilities, McpServerInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ProfileBadge } from '../profiles/ProfileBadge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -44,19 +44,31 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
   const [tab, setTab] = useState<Tab>('mcp');
   const [filter, setFilter] = useState('');
   const [version, setVersion] = useState(0);
+  // The refresh button has a running session read its MCP servers and plugins again; a toggle only asks again.
+  const [reloading, setReloading] = useState(false);
   const ids = useId();
 
   useEffect(() => {
     if (!client) return;
     let cancelled = false;
-    client.call('session.capabilities', { sessionId, cwd, refresh: version > 0 }).then(
-      (result) => !cancelled && (setCaps(result), setError(null)),
-      (e: Error) => !cancelled && setError(`Couldn't ask Claude Code what's available: ${e.message}`),
-    );
+    client
+      .call('session.capabilities', { sessionId, cwd, refresh: version > 0, reload: reloading })
+      .then(
+        (result) => !cancelled && (setCaps(result), setError(null)),
+        (e: Error) => !cancelled && setError(`Couldn't ask Claude Code what's available: ${e.message}`),
+      )
+      .finally(() => !cancelled && setReloading(false));
     return () => {
       cancelled = true;
     };
+    // `reloading` is only read with the `version` it was set with.
   }, [client, sessionId, cwd, version]);
+
+  const reload = () => {
+    if (reloading) return;
+    setReloading(true);
+    setVersion((v) => v + 1);
+  };
 
   const mcp = async (server: string, action: 'enable' | 'disable' | 'reconnect') => {
     if (!client) return;
@@ -115,7 +127,17 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
         <>
           {/* Plugins, MCP servers and skills differ per Claude profile. */}
           <ProfileBadge profileId={profileId} className="mr-1 text-meta" />
-          <Button variant="quiet" size="sm" iconOnly icon={<RefreshCw size={12} />} data-tooltip="Ask Claude Code again" aria-label="Refresh" onClick={() => setVersion((v) => v + 1)} />
+          <Button
+            variant="quiet"
+            size="sm"
+            iconOnly
+            icon={<RefreshCw size={12} className={reloading ? 'animate-spin' : ''} />}
+            data-tooltip={caps?.live ? 'Reload MCP servers and plugins' : 'Ask Claude Code again'}
+            aria-label="Refresh"
+            aria-busy={reloading}
+            onClick={reload}
+            data-capabilities-refresh
+          />
         </>
       }
       data-capabilities

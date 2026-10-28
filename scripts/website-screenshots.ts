@@ -3,7 +3,7 @@
  *
  * It builds the made-up home folder the README screenshots use (apps/desktop/scripts/screenshot-demo.ts),
  * adds a remote, branches, worktrees and shared project actions to it, starts the built app on a throwaway
- * profile with HOME pointed at that folder (SWITCHBOARD_DRIVEN), and drives it with Playwright through the
+ * profile with HOME pointed at that folder (SESHBOARD_DRIVEN), and drives it with Playwright through the
  * app's `data-*` hooks. Every screen is taken in dark and light, at 1440×900 points and 2× scale, and saved
  * as website/src/assets/screenshots/<name>-<dark|light>.png, so a rerun replaces the files in place.
  *
@@ -56,7 +56,7 @@ function commitFile(cwd: string, path: string, content: string, message: string,
 }
 
 /**
- * The tour's gh (SWITCHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
+ * The tour's gh (SESHBOARD_GH): signed in, unless the file `.fake-gh-signed-out` is in the demo home, and nothing
  * else works, so pull request lists stay empty and nothing ever reaches GitHub. While `.fake-gh-checks` is there (the
  * checks it holds), feat/dark-mode has pull request #42 with those checks. The # list's issues and pull requests of
  * acme/acme-store come from the smoke test's fake (tests/fixtures/fake-gh.cjs), which refuses anything else.
@@ -69,7 +69,7 @@ function fakeGh(home: string): string {
   const pr = JSON.stringify([{ number: 42, state: 'OPEN', headRefName: 'feat/dark-mode', url: 'https://github.com/acme/acme-store/pull/42', isDraft: false }]);
   // Triggers' calls (the editor's account, branch, workflows and collaborators) come from a made-up repository.
   const triggers = join(home, '.fake-gh-triggers.json');
-  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['switchboard'], issues: [], runs: [] }));
+  writeFileSync(triggers, JSON.stringify({ repo: 'acme/acme-store', login: 'mara-k', defaultBranch: 'main', collaborators: 6, workflows: ['CI', 'Lint', 'E2E'], labels: ['seshboard'], issues: [], runs: [] }));
   writeFileSync(
     path,
     [
@@ -111,7 +111,7 @@ async function openPullRequestDialog(t: Tour): Promise<void> {
 
 /**
  * acme-store gets an `origin` (a bare repository in the demo home), branches in every group of the Branches
- * tab, three worktrees under .claude/worktrees, and a .switchboard.json with shared actions.
+ * tab, three worktrees under .claude/worktrees, and a .seshboard.json with shared actions.
  */
 function extendWorld(world: DemoWorld): void {
   const acme = join(world.home, 'Developer', 'acme-store');
@@ -165,7 +165,7 @@ function extendWorld(world: DemoWorld): void {
   const old = new Date(Date.now() - 30 * DAY);
   for (const dir of [join(worktrees, 'brave-humming-otter')]) utimesSync(dir, old, old);
   // Keep Claude Code's worktree folder (and the pull request template below) out of the demo project's own changes.
-  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.switchboard.json\n.github/\n');
+  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.seshboard.json\n.github/\n');
   // What Create pull request fills the description in with.
   mkdirSync(join(acme, '.github'), { recursive: true });
   writeFileSync(join(acme, '.github', 'pull_request_template.md'), '## What changed\n\n\n## How to test\n\n- [ ] npm test\n- [ ] Switch the theme in Settings and reload\n\n## Screenshots\n\n<!-- drag images here -->\n');
@@ -178,7 +178,7 @@ function extendWorld(world: DemoWorld): void {
 
   // Actions the team shares, as a repository would commit them.
   writeFileSync(
-    join(acme, '.switchboard.json'),
+    join(acme, '.seshboard.json'),
     `${JSON.stringify(
       {
         actions: [
@@ -246,7 +246,7 @@ function writeMemories(dir: string, heroSession: string): void {
   ];
   for (const [file, content] of files) {
     writeFileSync(join(dir, file), content);
-    // Switchboard dates a memory by its file, as Claude Code does: match the frontmatter.
+    // Seshboard dates a memory by its file, as Claude Code does: match the frontmatter.
     const modified = new Date(/modified: (\S+)/.exec(content)![1]!);
     utimesSync(join(dir, file), modified, modified);
   }
@@ -263,7 +263,7 @@ function writeMemories(dir: string, heroSession: string): void {
   );
 }
 
-/** Personal memory, in the throwaway profile's own folder (where Switchboard keeps it until you choose another). */
+/** Personal memory, in the throwaway profile's own folder (where Seshboard keeps it until you choose another). */
 function writePersonalMemory(dir: string): void {
   mkdirSync(dir, { recursive: true });
   const now = Date.now();
@@ -412,9 +412,9 @@ class Tour {
     await this.page.evaluate((homes) => {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       // The throwaway app profile lives in a temporary folder; show where a real install keeps its data.
-      const appData = /(\/private)?\/var\/folders\/\S*?\/T\/switchboard-smoke-[A-Za-z0-9]+/g;
+      const appData = /(\/private)?\/var\/folders\/\S*?\/T\/seshboard-smoke-[A-Za-z0-9]+/g;
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        let text = (node.nodeValue ?? '').replace(appData, '~/Library/Application Support/Switchboard');
+        let text = (node.nodeValue ?? '').replace(appData, '~/Library/Application Support/Seshboard');
         for (const home of homes) text = text.split(home).join('~');
         if (text !== node.nodeValue) node.nodeValue = text;
       }
@@ -478,10 +478,10 @@ async function withComputer(t: Tour, take: (computerId: string) => Promise<void>
       server.close(() => resolve(port));
     });
   });
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-computer-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-shots-computer-'));
   const linkFile = join(dir, 'link.txt');
   const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
-    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'mystic', SWITCHBOARD_DEMO_LINK_FILE: linkFile, PORT: String(port) },
+    env: { ...process.env, SESHBOARD_DEMO_DIR: dir, SESHBOARD_DEMO_NAME: 'mystic', SESHBOARD_DEMO_LINK_FILE: linkFile, PORT: String(port) },
     stdio: 'ignore',
   });
   try {
@@ -543,13 +543,13 @@ const PHONE = { width: 390, height: 844 };
  * drawer in both colour schemes.
  */
 async function phoneShots(): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-shots-phone-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-shots-phone-'));
   const [vitePort, hubPort] = [await freePort(), await freePort()];
   const appUrl = `http://localhost:${vitePort}/remote/`;
   const vite = spawn(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(vitePort)], { cwd: join(root, 'apps', 'remote'), stdio: 'ignore' });
   const linkFile = join(dir, 'link.txt');
   const hub = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'remote-demo.ts')], {
-    env: { ...process.env, SWITCHBOARD_DEMO_DIR: dir, SWITCHBOARD_DEMO_NAME: 'Studio Mac', SWITCHBOARD_DEMO_LINK_FILE: linkFile, SWITCHBOARD_REMOTE_APP_URL: appUrl, PORT: String(hubPort) },
+    env: { ...process.env, SESHBOARD_DEMO_DIR: dir, SESHBOARD_DEMO_NAME: 'Studio Mac', SESHBOARD_DEMO_LINK_FILE: linkFile, SESHBOARD_REMOTE_APP_URL: appUrl, PORT: String(hubPort) },
     stdio: 'ignore',
   });
   // Google Chrome when it is there, else Playwright's own Chromium.
@@ -562,7 +562,7 @@ async function phoneShots(): Promise<void> {
     page.setDefaultTimeout(15_000);
     await page.goto(readFileSync(linkFile, 'utf8').trim());
     await page.getByRole('button', { name: 'Pair' }).click();
-    await page.waitForSelector('[data-remote-computer-title="large"][data-remote-connection="connected"]');
+    await page.waitForSelector('[data-remote-computer-title][data-remote-connection="connected"]');
     await page.waitForSelector('[data-remote-usage-card]');
     // The offer to turn on notifications isn't what these pictures are about.
     const notNow = page.getByRole('button', { name: 'Not now' });
@@ -580,7 +580,7 @@ async function phoneShots(): Promise<void> {
       await page.evaluate(() => document.querySelector('[data-remote-list]')?.scrollTo(0, 0));
       await shot('remote-phone-first-screen', scheme);
 
-      await page.click('[data-remote-computer-title="large"]');
+      await page.click('[data-remote-computer-title]');
       await page.waitForSelector('[role=menu]');
       await shot('remote-phone-computer-menu', scheme);
       await page.keyboard.press('Escape');
@@ -787,7 +787,7 @@ const screens: Screen[] = [
       try {
         const id = await t.openSession(HERO);
         await t.page.evaluate(
-          ({ path, sessionId }) => window.dispatchEvent(new CustomEvent('switchboard:preview-file', { detail: { path, sessionId } })),
+          ({ path, sessionId }) => window.dispatchEvent(new CustomEvent('seshboard:preview-file', { detail: { path, sessionId } })),
           { path: file, sessionId: id },
         );
         // Moved to the dialog in an earlier run of this profile, it would open there: dock it first.
@@ -1208,7 +1208,7 @@ const screens: Screen[] = [
       git(work, ['clone', '-q', '--bare', work, bare]);
       const folder = join(t.world.home, 'Developer');
       await t.app.evaluate((_electron, dir) => {
-        process.env.SWITCHBOARD_PICK_FOLDER = dir;
+        process.env.SESHBOARD_PICK_FOLDER = dir;
       }, folder);
       await t.click('[data-open-settings]');
       await t.click('[data-settings-section="projects"]');
@@ -1249,7 +1249,7 @@ const screens: Screen[] = [
   {
     name: 'queue',
     async take(t) {
-      // The payments-api item starts by itself after the session working there, shown as one Switchboard runs (its
+      // The payments-api item starts by itself after the session working there, shown as one Seshboard runs (its
       // terminal stand-in would keep Start by itself off). The engine's stub never starts it.
       const working = await t.sessionId(WORKING);
       writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: working, cwd: join(t.world.home, 'Developer', 'payments-api') }));
@@ -1484,7 +1484,7 @@ const screens: Screen[] = [
   {
     name: 'triggers-tab',
     async take(t) {
-      // Three demo triggers with their events, from the file the engine watches; the hero session works in Switchboard,
+      // Three demo triggers with their events, from the file the engine watches; the hero session works in Seshboard,
       // so the issues trigger's slot is busy and its next issue waits. Taken out again after the picture.
       const hero = await t.sessionId(HERO);
       writeFileSync(demoQueueHostFile(t.world), JSON.stringify({ sessionId: hero, cwd: join(t.world.home, 'Developer', 'acme-store') }));
@@ -1507,7 +1507,7 @@ const screens: Screen[] = [
   {
     name: 'trigger-editor',
     async take(t) {
-      // New trigger on acme-store's Triggers tab: issues with the switchboard label assigned to gh's account, state labels on.
+      // New trigger on acme-store's Triggers tab: issues with the seshboard label assigned to gh's account, state labels on.
       await openProjectPage(t, 'acme-store');
       await t.click('[data-project-tab="triggers"]');
       await t.click('[data-triggers-tab] [data-trigger-new]', 'the Triggers tab has no New trigger');
@@ -1750,7 +1750,7 @@ const screens: Screen[] = [
       await t.click('[data-remote-save-connection]');
       await t.click('[data-remote-turn-on]');
       await t.need('[data-remote-status]', 'Turn on showed no status card');
-      // Switchboard itself may have Remote's port on this Mac: the card's own fix moves to a free one.
+      // Seshboard itself may have Remote's port on this Mac: the card's own fix moves to a free one.
       await t.settle();
       if (await t.page.locator('[data-remote-action="use-port"]').count()) await t.click('[data-remote-action="use-port"]');
       await t.until(`document.querySelector('[data-remote-status]')?.dataset.remoteStatusTitle === 'Running'`, 'Remote did not say Running');
@@ -1804,7 +1804,7 @@ const screens: Screen[] = [
       const port = (JSON.parse((settings.prepare("SELECT value FROM app_state WHERE key = 'remote.settings'").get() as { value: string }).value) as { port: number }).port;
       settings.close();
       const phones = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(root, 'scripts', 'demo-phones.ts')], {
-        env: { ...process.env, SWITCHBOARD_DEMO_LINK: link, PORT: String(port), SWITCHBOARD_DEMO_SECRETS: devices.map((d) => d.secret.toString('base64')).join(',') },
+        env: { ...process.env, SESHBOARD_DEMO_LINK: link, PORT: String(port), SESHBOARD_DEMO_SECRETS: devices.map((d) => d.secret.toString('base64')).join(',') },
         stdio: ['ignore', 'pipe', 'inherit'],
       });
       try {
@@ -2010,7 +2010,7 @@ async function openUsageView(t: Tour, tab: 'limits' | 'tokens', period: string):
 
 /**
  * Plan numbers for the demo logins, which have none (no credentials): the engine reports these instead of asking
- * Claude Code (SWITCHBOARD_DEMO_USAGE), with a week of % history so the chart has something to draw.
+ * Claude Code (SESHBOARD_DEMO_USAGE), with a week of % history so the chart has something to draw.
  */
 function demoUsage(world: DemoWorld): string {
   const home = world.home;
@@ -2087,7 +2087,7 @@ function demoUsage(world: DemoWorld): string {
 /** Where the tour writes the made-up usage limit for its picture; the demo engine watches it (see `DemoUsage.limitFile`). */
 const demoLimitFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-limit.json');
 
-/** Where the tour names the demo session shown as working in Switchboard for the queue's picture (see `DemoUsage.queueHostFile`). */
+/** Where the tour names the demo session shown as working in Seshboard for the queue's picture (see `DemoUsage.queueHostFile`). */
 const demoQueueHostFile = (world: DemoWorld) => join(world.home, '.switchboard-demo-queue-host.json');
 
 /** Where the tour puts the demo schedules for their picture (see `DemoUsage.schedulesFile`). */
@@ -2102,7 +2102,7 @@ const demoPipelinesFile = (world: DemoWorld) => join(world.home, '.switchboard-d
 /**
  * A demo run of the built-in "Plan, execute, validate, push" on acme-store while `take` runs: its worktree, the
  * sessions of its steps (`writePipelineDemo`), the run from the file the engine watches, and Validate · round 2 working
- * in Switchboard. All of it is taken away again after, so no other picture shows it.
+ * in Seshboard. All of it is taken away again after, so no other picture shows it.
  */
 async function withPipelineRun(t: Tour, take: (demo: PipelineDemo) => Promise<void>): Promise<void> {
   const acme = join(t.world.home, 'Developer', 'acme-store');
@@ -2213,7 +2213,7 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     maxAtOnce: 3,
     maxWaiting: 10,
     intervalMinutes: 5,
-    stateLabels: { on: false, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+    stateLabels: { on: false, working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', failed: 'seshboard: failed' },
     assignOnPickUp: false,
     paused: false,
     pausedReason: null,
@@ -2249,7 +2249,7 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     kind: 'issue',
     title,
     url: `https://github.com/acme/acme-store/issues/${number}`,
-    fields: { number: String(number), title, author: 'jules-d', labels: 'switchboard', assignees: 'mara-k' },
+    fields: { number: String(number), title, author: 'jules-d', labels: 'seshboard', assignees: 'mara-k' },
     status: 'started',
     reason: null,
     sessionId: null,
@@ -2264,9 +2264,9 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     ci('test', 'test', 4512, '9f3c2e1a7d', minutes(12), world.history[WORKING]?.id ?? null),
     ci('lint', 'lint', 4509, '1a7b0d4c2e', minutes(52), world.history[NEEDS_YOU]?.id ?? null),
     ci('e2e', 'e2e', 4497, '5c0e9b3f1a', minutes(26 * 60), world.history[CATCH_UP]?.id ?? null),
-    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'switchboard: pr open' }),
-    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'switchboard: working' }),
-    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'switchboard', assignees: 'mara-k' } }),
+    issue('212', 212, 'Pinned sessions lose their order after restart', minutes(40), { sessionId: hero, startedAt: minutes(40), label: 'seshboard: pr open' }),
+    issue('214', 214, 'Archive keeps the scroll position', minutes(9), { status: 'waiting', label: 'seshboard: working' }),
+    issue('215', 215, 'Add a Polish translation', minutes(6), { status: 'skipped', reason: "opened by someone outside the repository's collaborators", fields: { number: '215', title: 'Add a Polish translation', author: 'someone', labels: 'seshboard', assignees: 'mara-k' } }),
   ];
   const session = (event: (typeof events)[number], triggerName: string, ref: string) =>
     event.sessionId ? [{ sessionId: event.sessionId, triggerId: event.triggerId, eventId: event.id, triggerName, kind: event.kind, ref, url: event.url, at: event.startedAt ?? event.createdAt }] : [];
@@ -2274,10 +2274,10 @@ function demoTriggers(world: DemoWorld, now: number, hero: string) {
     triggers: [
       trigger('ci', 'CI fails on main', { source: { kind: 'ci', branch: 'main', workflows: [] }, lastCheckedAt: minutes(2) }),
       trigger('issues', 'Issues for you', {
-        source: { kind: 'issues', label: 'switchboard', assignee: '@me', collaboratorsOnly: true },
+        source: { kind: 'issues', label: 'seshboard', assignee: '@me', collaboratorsOnly: true },
         draft: { profileId: null, model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: 'worktree', baseRef: 'fresh' },
         maxAtOnce: 1,
-        stateLabels: { on: true, working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' },
+        stateLabels: { on: true, working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', failed: 'seshboard: failed' },
         lastCheckedAt: minutes(1),
       }),
       trigger('release', 'CI fails on release', { source: { kind: 'ci', branch: 'release', workflows: ['CI'] }, paused: true, pausedReason: 'gh is signed out', failures: 5, lastError: 'gh is signed out', lastCheckedAt: minutes(3 * 60) }),
@@ -2352,7 +2352,7 @@ function demoSchedules(world: DemoWorld, now: number) {
 
 /**
  * What Auto model picked for some of the demo sessions, and a few more routing calls, so a session shows its pick
- * and Usage has an Auto routing row and "by Auto" counts. The engine stores them (SWITCHBOARD_DEMO_USAGE).
+ * and Usage has an Auto routing row and "by Auto" counts. The engine stores them (SESHBOARD_DEMO_USAGE).
  */
 function demoAutoPicks(world: DemoWorld, now: number) {
   const personal = join(world.home, '.claude');
@@ -2383,7 +2383,7 @@ function demoAutoPicks(world: DemoWorld, now: number) {
 
 /**
  * Catch-up cards for some of the finished demo sessions, as if their turns had just ended (the engine stores them,
- * SWITCHBOARD_DEMO_USAGE): one ready to commit, one with a file outside what was asked, one with failing tests.
+ * SESHBOARD_DEMO_USAGE): one ready to commit, one with a file outside what was asked, one with failing tests.
  */
 function demoCatchUps(world: DemoWorld, now: number) {
   const of = (title: string) => world.history[title]!.id;
@@ -2526,16 +2526,16 @@ const claudeVersion = claude ? (/\d+\.\d+\.\d+/.exec(execFileSync(claude, ['--ve
 // Claude Code mods: two made-up mods (scripts/demo-mods) in a throwaway profile of their own. The app starts a session
 // with them as it opens, with agent-watch's `/agent-watch`, which the mod answers without the model.
 // They live in the demo home, so Settings › Mods shows them as ~/.claude/plugins/<name>.
-const modsDir = mkdtempSync(join(tmpdir(), 'switchboard-shots-mods-'));
+const modsDir = mkdtempSync(join(tmpdir(), 'seshboard-shots-mods-'));
 const demoMods = ['agent-watch', 'pr-status'].map((name) => {
   const folder = join(world.home, '.claude', 'plugins', name);
   cpSync(join(root, 'scripts', 'demo-mods', name), folder, { recursive: true });
   return folder;
 });
 mkdirSync(join(world.home, '.claude-mods'));
-mkdirSync(join(modsDir, 'switchboard'));
+mkdirSync(join(modsDir, 'seshboard'));
 const modsStarted = join(modsDir, 'started.json');
-const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'switchboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
+const modsSpec = { pluginDir: demoMods.join(':'), configDir: join(world.home, '.claude-mods'), cwd: join(modsDir, 'seshboard'), out: modsStarted, prompt: '/agent-watch', profileName: 'Mods' };
 
 const electronPath = createRequire(join(appDir, 'package.json'))('electron') as unknown as string;
 const { ELECTRON_RUN_AS_NODE: _, ...env } = process.env;
@@ -2546,12 +2546,12 @@ const app = await _electron.launch({
     ...env,
     HOME: world.home,
     CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
-    SWITCHBOARD_DRIVEN: '1',
-    SWITCHBOARD_SMOKE_MODS: JSON.stringify(modsSpec),
-    SWITCHBOARD_GH: fakeGh(world.home),
-    SWITCHBOARD_DEMO_USAGE: demoUsage(world),
+    SESHBOARD_DRIVEN: '1',
+    SESHBOARD_SMOKE_MODS: JSON.stringify(modsSpec),
+    SESHBOARD_GH: fakeGh(world.home),
+    SESHBOARD_DEMO_USAGE: demoUsage(world),
     // No "Claude Code vX is available" in the pictures: the registry offers nothing newer.
-    SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,
+    SESHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: claudeVersion, stable: claudeVersion }))}`,
     USER: 'you',
     LOGNAME: 'you',
     ELECTRON_ENABLE_LOGGING: '0',

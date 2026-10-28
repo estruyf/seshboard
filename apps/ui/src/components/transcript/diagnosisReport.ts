@@ -1,4 +1,4 @@
-import type { TranscriptDiagnosis } from '@switchboard/protocol/client';
+import type { TranscriptDiagnosis } from '@seshboard/protocol/client';
 
 /** 1.5 MB, 820 KB, 12 B. */
 export function formatBytes(bytes: number): string {
@@ -14,7 +14,7 @@ const TONE_LABEL = { error: 'Error', warn: 'Warning', info: 'Note', ok: 'OK' } a
  * report. Paths stay in (they are what the report is about); message text never is.
  */
 export function diagnosisReport(diagnosis: TranscriptDiagnosis, extra: { title?: string | null; version?: string | null } = {}): string {
-  const lines = [`Switchboard transcript check${extra.version ? ` (Switchboard ${extra.version})` : ''}`, `Session: ${diagnosis.sessionId}${extra.title ? ` (${extra.title})` : ''}`, `Checked: ${new Date(diagnosis.checkedAt).toISOString()}`];
+  const lines = [`Seshboard transcript check${extra.version ? ` (Seshboard ${extra.version})` : ''}`, `Session: ${diagnosis.sessionId}${extra.title ? ` (${extra.title})` : ''}`, `Checked: ${new Date(diagnosis.checkedAt).toISOString()}`];
   if (diagnosis.indexedPath) lines.push(`Session list file: ${diagnosis.indexedPath}`);
   lines.push('', 'Findings:');
   for (const finding of diagnosis.findings) lines.push(`- ${TONE_LABEL[finding.tone]}: ${finding.text}`);

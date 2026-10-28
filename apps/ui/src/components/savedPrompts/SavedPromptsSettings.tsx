@@ -1,6 +1,6 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Folder, Globe, MoreHorizontal, Plus, User, Users, type LucideIcon } from 'lucide-react';
-import type { PromptScope, SavedPrompt } from '@switchboard/protocol/client';
+import type { PromptScope, SavedPrompt } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { usePaletteBus } from '../../state/paletteBus.ts';
 import { addedProjects } from '../../state/projectList.ts';

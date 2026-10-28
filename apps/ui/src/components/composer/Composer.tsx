@@ -1,6 +1,6 @@
 import { ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@switchboard/protocol/client';
+import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { attachmentsAfterSend, textAfterSend } from './afterSend.ts';
@@ -73,7 +73,7 @@ export interface ComposerProps {
   restored?: boolean;
   /** Earlier messages, newest first, that ↑ at the start of the box brings back. */
   history?: readonly string[];
-  /** Replaces the text whenever `seq` changes (a prompt from a `switchboard://` link, or clearing it), and the images when it has `attachments` and the context chips when it has `context` (a prompt moved over from the palette, or a queued item). */
+  /** Replaces the text whenever `seq` changes (a prompt from a `seshboard://` link, or clearing it), and the images when it has `attachments` and the context chips when it has `context` (a prompt moved over from the palette, or a queued item). */
   preset?: { text: string; attachments?: ImageAttachment[]; context?: ContextItem[]; seq: number };
   cwd: string | null;
   commands: SlashCommand[];
@@ -263,7 +263,7 @@ export function Composer(props: ComposerProps) {
       { label: 'Cut', icon: <Scissors size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('cut')) },
       { label: 'Copy', icon: <Copy size={13} />, disabled: !selected, onSelect: run(() => document.execCommand('copy')) },
       // Through the main process, so an image on the clipboard arrives as a paste event like Cmd/Ctrl+V does.
-      { label: 'Paste', icon: <ClipboardPaste size={13} />, onSelect: run(() => void window.switchboard?.pasteClipboard()), data: { 'data-composer-menu-paste': true } },
+      { label: 'Paste', icon: <ClipboardPaste size={13} />, onSelect: run(() => void window.seshboard?.pasteClipboard()), data: { 'data-composer-menu-paste': true } },
       'separator',
       { label: 'Select all', icon: <TextSelect size={13} />, onSelect: run(() => ref.current?.select()) },
     ];

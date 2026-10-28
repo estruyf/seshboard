@@ -86,9 +86,9 @@ export function createChaosWorld(): ChaosWorld {
   git(acme, ['worktree', 'add', '-q', '-b', 'worktree-brave-humming-otter', join(worktrees, 'brave-humming-otter'), 'main']);
   git(acme, ['worktree', 'add', '-q', '-b', 'worktree-tidy-silver-heron', join(worktrees, 'tidy-silver-heron'), 'main']);
   writeFileSync(join(worktrees, 'tidy-silver-heron', 'src', 'checkout.ts'), 'export const checkout = () => "todo";\n');
-  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.switchboard.json\n');
+  writeFileSync(join(acme, '.git', 'info', 'exclude'), '.claude/worktrees/\n.seshboard.json\n');
   writeFileSync(
-    join(acme, '.switchboard.json'),
+    join(acme, '.seshboard.json'),
     `${JSON.stringify(
       {
         actions: [

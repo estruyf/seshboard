@@ -1,6 +1,6 @@
 ---
-title: Switchboard on Windows
-description: Everything that works differently when you run Switchboard on a Windows PC, with links to the pages that cover it.
+title: Seshboard on Windows
+description: Everything that works differently when you run Seshboard on a Windows PC, with links to the pages that cover it.
 sidebar:
   label: On Windows
 ---
@@ -10,9 +10,9 @@ import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 import { Aside } from '@astrojs/starlight/components';
 
-Switchboard runs on Windows 10 and 11, on x64 and Arm64 PCs, with the same features as on a Mac. This page lists what you notice that is different on Windows, in one place, and links the page that covers each part.
+Seshboard runs on Windows 10 and 11, on x64 and Arm64 PCs, with the same features as on a Mac. This page lists what you notice that is different on Windows, in one place, and links the page that covers each part.
 
-<Screenshot name="main-window" alt="Switchboard on a Mac with a finished session open: the sidebar with Needs you and Working groups, the conversation and the Changes panel with a diff. On Windows the window has the Windows title bar, and the rest looks the same." eager />
+<Screenshot name="main-window" alt="Seshboard on a Mac with a finished session open: the sidebar with Needs you and Working groups, the conversation and the Changes panel with a diff. On Windows the window has the Windows title bar, and the rest looks the same." eager />
 
 ## Where to find it
 
@@ -20,10 +20,10 @@ This site shows keys, folder names and steps for the system you pick with the sw
 
 ## Install and update
 
-- **Install:** download `Switchboard-<version>-setup.exe` from the [latest release](https://github.com/estruyf/switchboard/releases/latest). One installer covers x64 and Arm64. It installs for you only, without admin rights, in `%LOCALAPPDATA%\Programs\switchboard`. See [Install Switchboard](/getting-started/install/).
+- **Install:** download `Seshboard-<version>-setup.exe` from the [latest release](https://github.com/estruyf/switchboard/releases/latest). One installer covers x64 and Arm64. It installs for you only, without admin rights, in `%LOCALAPPDATA%\Programs\switchboard`. See [Install Seshboard](/getting-started/install/).
 - **Blocked installer:** an installer that isn't signed makes SmartScreen say "Windows protected your PC". Choose **More info**, then **Run anyway**. See [Troubleshooting](/troubleshooting/).
-- **Updates:** Switchboard updates itself as on a Mac. **Restart to update** runs the installer, which shows its progress for a few seconds and opens Switchboard again. **Check for Updates…** is in the **Help** menu. See [Updates](/settings/updates/).
-- **Uninstall:** Windows **Settings › Apps**. Your data stays. See [Install Switchboard](/getting-started/install/#uninstall).
+- **Updates:** Seshboard updates itself as on a Mac. **Restart to update** runs the installer, which shows its progress for a few seconds and opens Seshboard again. **Check for Updates…** is in the **Help** menu. See [Updates](/settings/updates/).
+- **Uninstall:** Windows **Settings › Apps**. Your data stays. See [Install Seshboard](/getting-started/install/#uninstall).
 - **Arm64:** the installer installs the Arm64 build on an Arm PC. It is built with every release, but hasn't been tried on Arm hardware yet.
 
 ## Keys
@@ -36,53 +36,53 @@ This site shows keys, folder names and steps for the system you pick with the sw
 ## The terminal
 
 - The [terminal panel](/terminal-changes-git/terminal/) runs PowerShell: PowerShell 7 when it is installed, otherwise Windows PowerShell. Actions and git steps run there too.
-- Ctrl keys belong to the shell, as in Windows Terminal; Switchboard's own shortcuts take Ctrl+Shift there (<Kbd keys="mod+shift+p" /> opens the command palette).
+- Ctrl keys belong to the shell, as in Windows Terminal; Seshboard's own shortcuts take Ctrl+Shift there (<Kbd keys="mod+shift+p" /> opens the command palette).
 - Select text and press <Kbd keys="ctrl+c" /> to copy it; with nothing selected it stops the program. <Kbd keys="ctrl+v" /> pastes.
 
 See [Keys in the terminal](/terminal-changes-git/terminal/#keys-in-the-terminal).
 
 ## PowerShell and chained commands
 
-Windows PowerShell 5.1 has no `&&`. The steps Switchboard runs itself, such as **Create PR**, work in both versions. In your own [action](/projects/actions/) commands, write `a; if ($?) { b }`, or install PowerShell 7. On Windows an action also refuses to run when a value it fills in, such as a branch name, holds a character that a `.cmd` program would read as a command. See [Troubleshooting](/troubleshooting/#windows-commands-in-the-terminal-or-in-actions).
+Windows PowerShell 5.1 has no `&&`. The steps Seshboard runs itself, such as **Create PR**, work in both versions. In your own [action](/projects/actions/) commands, write `a; if ($?) { b }`, or install PowerShell 7. On Windows an action also refuses to run when a value it fills in, such as a branch name, holds a character that a `.cmd` program would read as a command. See [Troubleshooting](/troubleshooting/#windows-commands-in-the-terminal-or-in-actions).
 
 ## The window and the menu
 
-- The window has the usual Windows title bar, light or dark with Switchboard's appearance.
-- The menu bar is hidden: press Alt to show **File** (**Settings…**, **Exit**), **Edit**, **View**, **Window** and **Help** (**Keyboard Shortcuts**, **Check for Updates…**, **About Switchboard**). Most of it is also in the [command palette](/command-palette/).
+- The window has the usual Windows title bar, light or dark with Seshboard's appearance.
+- The menu bar is hidden: press Alt to show **File** (**Settings…**, **Exit**), **Edit**, **View**, **Window** and **Help** (**Keyboard Shortcuts**, **Check for Updates…**, **About Seshboard**). Most of it is also in the [command palette](/command-palette/).
 
 ## File Explorer and the Recycle Bin
 
 - **Reveal in File Explorer** and **Open in → File Explorer** take the place of Finder. See [Working in a session](/sessions/conversation/).
-- What Switchboard deletes goes to the Recycle Bin: sessions you delete, new files you revert in [Changes](/terminal-changes-git/changes/), and themes you remove. Get them back from the Recycle Bin.
+- What Seshboard deletes goes to the Recycle Bin: sessions you delete, new files you revert in [Changes](/terminal-changes-git/changes/), and themes you remove. Get them back from the Recycle Bin.
 
 ## The taskbar instead of the Dock
 
-Windows has no badge count. While sessions need you, a pink dot sits on Switchboard's taskbar button, and the button flashes when a session starts waiting while you are in another app. Notifications are Windows notifications. Since closing the window quits Switchboard, minimise it to keep getting them. See [Session states](/sessions/states/#notifications-and-the-badge).
+Windows has no badge count. While sessions need you, a pink dot sits on Seshboard's taskbar button, and the button flashes when a session starts waiting while you are in another app. Notifications are Windows notifications. Since closing the window quits Seshboard, minimise it to keep getting them. See [Session states](/sessions/states/#notifications-and-the-badge).
 
 ## Open in editors and Windows Terminal
 
-**Open in** lists the editors whose command Switchboard finds (VS Code, VS Code Insiders, Cursor, Windsurf, Zed, Sublime Text, WebStorm and IntelliJ IDEA), **Windows Terminal** when it is installed, and **File Explorer**. Terminal, iTerm, Ghostty, Warp and Xcode are Mac only. The terminal panel uses Windows Terminal's font when it finds it. See [Working in a session](/sessions/conversation/).
+**Open in** lists the editors whose command Seshboard finds (VS Code, VS Code Insiders, Cursor, Windsurf, Zed, Sublime Text, WebStorm and IntelliJ IDEA), **Windows Terminal** when it is installed, and **File Explorer**. Terminal, iTerm, Ghostty, Warp and Xcode are Mac only. The terminal panel uses Windows Terminal's font when it finds it. See [Working in a session](/sessions/conversation/).
 
 ## Claude Code
 
-- Install Claude Code with its native installer, npm or WinGet, and [Git for Windows](https://gitforwindows.org). Switchboard looks for `claude.exe` on your `PATH` and where each installer puts it.
-- Switchboard reads the environment Windows gives it when it starts. After you install Claude Code or change your `PATH`, quit and reopen Switchboard. See [Claude Code isn't found](/troubleshooting/#claude-code-isnt-found).
+- Install Claude Code with its native installer, npm or WinGet, and [Git for Windows](https://gitforwindows.org). Seshboard looks for `claude.exe` on your `PATH` and where each installer puts it.
+- Seshboard reads the environment Windows gives it when it starts. After you install Claude Code or change your `PATH`, quit and reopen Seshboard. See [Claude Code isn't found](/troubleshooting/#claude-code-isnt-found).
 - **Updates:** `claude update` for the native installer, `npm install -g` with the folder npm installed it in, and for WinGet the command `winget upgrade Anthropic.ClaudeCode` to run yourself. An npm update can't replace `claude.exe` while sessions run: stop them first. See [Updates](/settings/updates/#update-claude-code).
 - **Claude profiles:** Settings shows the sign-in command in a Mac terminal's form. In PowerShell, set `$env:CLAUDE_CONFIG_DIR` first. See [Sign in on Windows](/settings/claude-profiles/#sign-in-on-windows).
 
 ## The VS Code companion
 
-The [VS Code companion](/vscode-companion/) works the same, over a named pipe instead of a socket. It finds Switchboard through `%APPDATA%\Switchboard`, and starts or shows it through a `switchboard://` link.
+The [VS Code companion](/vscode-companion/) works the same, over a named pipe instead of a socket. It finds Seshboard through `%APPDATA%\Seshboard`, and starts or shows it through a `seshboard://` link.
 
-## switchboard:// links
+## seshboard:// links
 
-[Links](/links/) work on Windows too. Switchboard registers `switchboard://` for you when it starts, and the uninstaller removes it. A folder in a link is a drive path, such as `C:\Users\me\dev\payments` (URL-encoded). Open a link from PowerShell with `Start-Process`.
+[Links](/links/) work on Windows too. Seshboard registers `seshboard://` for you when it starts, and the uninstaller removes it. A folder in a link is a drive path, such as `C:\Users\me\dev\payments` (URL-encoded). Open a link from PowerShell with `Start-Process`.
 
 ## Where your data lives
 
 | What | Where |
 |---|---|
-| Switchboard's preferences, themes, backups and cache | `%APPDATA%\Switchboard` |
+| Seshboard's preferences, themes, backups and cache | `%APPDATA%\Seshboard` |
 | Your sessions (Claude Code's folder) | `%USERPROFILE%\.claude` |
 | The app | `%LOCALAPPDATA%\Programs\switchboard` |
 
@@ -94,7 +94,7 @@ A settings file from **Settings → Backup** imports on either system. Project f
 
 ## Long paths
 
-Switchboard runs git with long paths on, so files whose full path is over 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). See [Windows: long paths](/troubleshooting/#windows-long-paths).
+Seshboard runs git with long paths on, so files whose full path is over 260 characters, common in deep worktree folders, still show in [Changes](/terminal-changes-git/changes/). See [Windows: long paths](/troubleshooting/#windows-long-paths).
 
 ## Settings
 

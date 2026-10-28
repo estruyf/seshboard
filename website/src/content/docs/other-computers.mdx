@@ -1,6 +1,6 @@
 ---
 title: Other computers
-description: Follow and steer the sessions of a paired computer from Switchboard on this one, in the same sidebar, and start new sessions there.
+description: Follow and steer the sessions of a paired computer from Seshboard on this one, in the same sidebar, and start new sessions there.
 sidebar:
   badge: New
 ---
@@ -13,7 +13,7 @@ import { Steps } from '@astrojs/starlight/components';
 
 Your sessions run on your desktop, and you sit at your laptop. Pair the two, and the desktop's sessions show in your laptop's sidebar, next to its own. Claude keeps running on the computer that has the session; you follow and steer it from the other one.
 
-Switchboard on another computer pairs with this one as a phone does, through [Remote](/remote-access/).
+Seshboard on another computer pairs with this one as a phone does, through [Remote](/remote-access/).
 
 ## Set it up
 
@@ -40,15 +40,15 @@ The other computer's sessions sit in your sidebar, in the same groups as yours: 
 
 When that computer has more than one Claude profile, the row's left line has the profile's colour, as your own sessions do. A profile with the same name here, such as Personal or Work, gets this computer's colour, so one account looks the same everywhere. Otherwise it keeps the colour the other computer gave it.
 
-Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. It opens in a pane like your own sessions, so you can put it next to one of yours or next to another computer's: see [Split view](/sessions/split-view/). Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message, and **Stop** a turn. While Claude works there, sending works as on [your own sessions](/sessions/conversation/): <Kbd keys="enter" /> queues or steers, as set under **While Claude is working** in [Settings, Conversation](/settings/#conversation), <Kbd shortcut="composer.send-other" /> does the other one, and <Kbd shortcut="composer.send-now" /> stops Claude and sends at once. The send button's ▾ menu has all three. A message in Up next has **Send now** too. Steer and Send now need this version of Switchboard on the other computer. When the turn ended but a background command or agent still runs there, the end of the conversation says so in green, and a green pill above the message box lists each task with a **Stop** for it, as on your own sessions. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
+Click a row to open the session in the normal view. A violet line runs along the top, and the header says **on mystic**. It opens in a pane like your own sessions, so you can put it next to one of yours or next to another computer's: see [Split view](/sessions/split-view/). Read the conversation as it happens, answer what Claude asks with the same keys as on your own sessions, send a message, and **Stop** a turn. While Claude works there, sending works as on [your own sessions](/sessions/conversation/): <Kbd keys="enter" /> queues or steers, as set under **While Claude is working** in [Settings, Conversation](/settings/#conversation), <Kbd shortcut="composer.send-other" /> does the other one, and <Kbd shortcut="composer.send-now" /> stops Claude and sends at once. The send button's ▾ menu has all three. A message in Up next has **Send now** too. Steer and Send now need this version of Seshboard on the other computer. When the turn ended but a background command or agent still runs there, the end of the conversation says so in green, and a green pill above the message box lists each task with a **Stop** for it, as on your own sessions. Runs of tool calls fold into one line, such as *Read 4 files · Edited ContentOverview.tsx +42 −6*. Click it to see each step.
 
 A message you start typing there stays in that session's message box when you open something else, also after a restart, until you send it.
 
-When a usage limit stopped the session, the notice above the message box has **Resume now** and **Resume when it resets**, and lists the messages held in Up next; take one back with its **×**. This needs this version of Switchboard on the other computer.
+When a usage limit stopped the session, the notice above the message box has **Resume now** and **Resume when it resets**, and lists the messages held in Up next; take one back with its **×**. This needs this version of Seshboard on the other computer.
 
-While the session runs in Switchboard there, the chips under the message box show its model, effort and permission mode. Click one to change it on that computer. The effort chip only shows for a model that takes an effort, and you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**. With more than one Claude profile there, the profile the session runs with shows next to the computer's name. A running session keeps its profile.
+While the session runs in Seshboard there, the chips under the message box show its model, effort and permission mode. Click one to change it on that computer. The effort chip only shows for a model that takes an effort, and you can pick **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**. With more than one Claude profile there, the profile the session runs with shows next to the computer's name. A running session keeps its profile.
 
-Under the message box, *Cost ≈$12.40* says what the session would cost at API prices, as that computer counts it from its own transcripts. It needs this version of Switchboard on both computers. See [Estimated cost](/usage/#estimated-cost).
+Under the message box, *Cost ≈$12.40* says what the session would cost at API prices, as that computer counts it from its own transcripts. It needs this version of Seshboard on both computers. See [Estimated cost](/usage/#estimated-cost).
 
 What only works on that computer stays in its place, but is off: **Changes**, the terminal, opening the folder in your editor, pull requests and file links. Point at one to see why, for example *Terminal is on mystic. Not available from here.* Nothing in another computer's conversation runs on yours: only web links open.
 
@@ -59,8 +59,8 @@ Right-click a remote session for **Open**, **Open beside**, **Pin**, **Archive**
 To send images or files with a message, click the paperclip button under the message box, or paste or drop them on it. Images show as thumbnails and files as chips with their size, each with a button to remove it. A message still needs some text.
 
 - A message takes up to four images and four files, and about 2.7 MB in all. Big images are made smaller first, as on a phone.
-- Files are saved on the other computer, in Switchboard's data folder, and the message mentions each one by its path there, so Claude reads it itself. Switchboard removes them after 30 days.
-- An older Switchboard on the other computer only takes images in a session, and nothing in New session. Point at the paperclip to see what it takes. Update Switchboard there to send files too.
+- Files are saved on the other computer, in Seshboard's data folder, and the message mentions each one by its path there, so Claude reads it itself. Seshboard removes them after 30 days.
+- An older Seshboard on the other computer only takes images in a session, and nothing in New session. Point at the paperclip to see what it takes. Update Seshboard there to send files too.
 - Folders can't be sent. Drop the files in a folder instead.
 
 ## Filter by computer
@@ -73,11 +73,11 @@ The **Computers** strip at the bottom of the sidebar has a chip for <Os mac="Thi
 
 ## Start a session there
 
-<Screenshot name="computers-new-session" alt="New session with Run on set to mystic: three project tiles from mystic with a monitor badge, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
+<Screenshot name="computers-new-session" alt="New session with Run on set to mystic: project rows from mystic with two-letter icons, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
 
-In New session, **Run on** picks the computer. Its projects become the tiles, and **Start on mystic** starts the session there. New session keeps one unsent prompt for each computer, also after a restart. See [Run on another computer](/new-session/form/#run-on-another-computer). **New session on mystic…** in the command palette opens it with that computer picked.
+In New session, **Run on** picks the computer. Its projects fill the project list, and **Start on mystic** starts the session there. New session keeps one unsent prompt for each computer, also after a restart. See [Run on another computer](/new-session/form/#run-on-another-computer). **New session on mystic…** in the command palette opens it with that computer picked.
 
-With [Clone from GitHub](/projects/clone-from-github/#on-another-computer) on here, **Clone from GitHub…** clones a repository on that computer, into its own **Clone into** folder, adds it as a project there and starts the session in it. Clone from GitHub has to be on in Settings › Projects on that computer too, and it needs this version of Switchboard there.
+With [Clone from GitHub](/projects/clone-from-github/#on-another-computer) on here, **Clone from GitHub…** clones a repository on that computer, into its own **Clone into** folder, adds it as a project there and starts the session in it. Clone from GitHub has to be on in Settings › Projects on that computer too, and it needs this version of Seshboard there.
 
 ## Its tokens in Usage
 
@@ -91,7 +91,7 @@ Its sessions stay in the sidebar, dimmed, with when it was last seen: *mystic is
 
 ## When a computer can't be read
 
-When a computer sends sessions this version can't read, for example because it runs an older or newer Switchboard, they are left out instead of leaving the window empty. The computer's page and its chip in the sidebar say what happened. Updating Switchboard on both computers fixes it.
+When a computer sends sessions this version can't read, for example because it runs an older or newer Seshboard, they are left out instead of leaving the window empty. The computer's page and its chip in the sidebar say what happened. Updating Seshboard on both computers fixes it.
 
 ## Reconnect or remove
 

@@ -1,4 +1,4 @@
-import type { CatchUp } from '@switchboard/protocol/remote-client';
+import type { CatchUp } from '@seshboard/protocol/remote-client';
 
 /**
  * The catch-up card's wording, the same as the desktop's (apps/ui `catchUpModel.ts`), so a finished session reads
@@ -39,4 +39,20 @@ export const showsCatchUp = (card: CatchUp | null, working: boolean, waiting: bo
 export function commitTitle(card: CatchUp | null): string {
   const line = (card?.ask ?? '').split('\n')[0]!.trim().replace(/[.\s]+$/, '');
   return line.length > 72 ? `${line.slice(0, 71).trimEnd()}…` : line;
+}
+
+/** A commit hash in a line: 7 to 40 hex characters, with a digit and a letter (so not a number or a word). */
+const HASH = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b/g;
+
+/** A line of What it did in parts, the commit hashes apart, so they show in mono ("Committed it as 5ea17e39"). */
+export function withHashes(line: string): Array<{ text: string; hash: boolean }> {
+  const parts: Array<{ text: string; hash: boolean }> = [];
+  let at = 0;
+  for (const match of line.matchAll(HASH)) {
+    if (match.index > at) parts.push({ text: line.slice(at, match.index), hash: false });
+    parts.push({ text: match[0], hash: true });
+    at = match.index + match[0].length;
+  }
+  if (at < line.length) parts.push({ text: line.slice(at), hash: false });
+  return parts;
 }

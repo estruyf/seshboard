@@ -45,6 +45,7 @@ import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
 import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
 import { useLimitsSync } from './state/limitsStore.ts';
+import { useSignInSync } from './state/signInStore.ts';
 import { useAskSync } from './state/askStore.ts';
 import { useSidebarSectionsSync } from './state/sidebarSectionsStore.ts';
 import { useQueueToasts } from './state/useQueue.ts';
@@ -115,7 +116,7 @@ const PANE_KEYS: ReadonlyArray<readonly [ShortcutId, (sessions: ReturnType<typeo
 function useShortcuts() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // ⌘B, ⌃⇥ and ⌘⇧U became Switchboard's after project actions could take them: an action saved on
+      // ⌘B, ⌃⇥ and ⌘⇧U became Seshboard's after project actions could take them: an action saved on
       // one of them keeps it. These run once the key has been through every listener, and only if none
       // took it (the actions' listener may come before or after this one). They have no default to stop.
       const later = (run: () => void) => setTimeout(() => !event.defaultPrevented && run(), 0);
@@ -181,17 +182,17 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.switchboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
+    window.seshboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
   }, [view, selectedId]);
-  useEffect(() => window.switchboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
+  useEffect(() => window.seshboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
   // A pop-out has no Settings, Usage, project pages or New session: they open here, with the window in front.
-  useEffect(() => window.switchboard?.onMainRequest(runMainRequest), []);
-  // Switchboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
-  useEffect(() => window.switchboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
+  useEffect(() => window.seshboard?.onMainRequest(runMainRequest), []);
+  // Seshboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
+  useEffect(() => window.seshboard?.onOpenSettings((section) => useSessions.getState().openSettings(section ?? undefined)), []);
   // An app-wide shortcut pressed in a pop-out: main brought this window to the front, and the keys run here.
   useEffect(
     () =>
-      window.switchboard?.onKeysForwarded((keys) => {
+      window.seshboard?.onKeysForwarded((keys) => {
         document.body.dispatchEvent(new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true }));
       }),
     [],
@@ -224,6 +225,7 @@ export function App() {
   useUpNextSync();
   useModsSync();
   useLimitsSync();
+  useSignInSync();
   useSavedPromptsSync();
   useAskSync();
   useQueueToasts();

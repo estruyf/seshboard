@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { accessSync, chmodSync, constants, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
-import type { LogLevel, TerminalInfo, TerminalKind } from '@switchboard/protocol';
+import type { LogLevel, TerminalInfo, TerminalKind } from '@seshboard/protocol';
 import { userShell, type UserShell } from '../system/shell.ts';
 
 /** The slice of node-pty's IPty the manager uses (injectable for tests). */
@@ -146,7 +146,7 @@ export class TerminalManager {
   }): Promise<TerminalInfo> {
     if (!existsSync(params.cwd)) throw new Error(`Folder not found: ${params.cwd}`);
     const baseEnv = await this.options.env();
-    const env: Record<string, string> = { ...baseEnv, ...params.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Switchboard' };
+    const env: Record<string, string> = { ...baseEnv, ...params.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Seshboard' };
     for (const key of STRIP_ENV) delete env[key];
 
     let file: string;
@@ -324,7 +324,7 @@ export class TerminalManager {
     return terminal.replay.join('').slice(Math.max(0, terminal.runFrom - dropped));
   }
 
-  /** Adds a dim line of Switchboard's own under a terminal's output, such as where that output went. */
+  /** Adds a dim line of Seshboard's own under a terminal's output, such as where that output went. */
   note(id: string, text: string): void {
     const terminal = this.terminals.get(id);
     if (!terminal) return;

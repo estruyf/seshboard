@@ -1,4 +1,4 @@
-import type { RemotePrompt, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt, RemoteSession } from '@seshboard/protocol/remote-client';
 
 /** The chips over the list: everything, what needs you, what works. */
 export type ListFilter = 'all' | 'needs-you' | 'working';

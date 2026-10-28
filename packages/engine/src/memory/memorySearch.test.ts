@@ -13,7 +13,7 @@ const memory = (dir: string, name: string, description: string, body: string, ex
   writeFileSync(join(dir, `${name}.md`), `---\nname: ${name}\ndescription: ${description}\nmetadata:\n  type: ${name.startsWith('u') ? 'user' : 'project'}\n${extra}---\n\n${body}\n`);
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-memory-search-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-memory-search-')));
   cache = openCacheDatabase(join(base, 'cache.sqlite'));
   search = new MemorySearch(cache.db);
   const app = join(base, 'app');

@@ -1,4 +1,4 @@
-import { joinPath, pathInside } from '@switchboard/protocol';
+import { joinPath, pathInside } from '@seshboard/protocol';
 
 /** `.claude/worktrees/<name>` at the start of a path inside a folder: a worktree Claude Code made there. */
 const CLAUDE_WORKTREE = /^\.claude[\\/]worktrees[\\/][^\\/]+/;

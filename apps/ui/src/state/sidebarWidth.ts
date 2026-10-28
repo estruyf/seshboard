@@ -1,4 +1,4 @@
-import type { SidebarCollapsed } from '@switchboard/protocol/bridge';
+import type { SidebarCollapsed } from '@seshboard/protocol/bridge';
 
 /** Sidebar width limits: wide enough for titles at the minimum, and the session view keeps its room at the maximum. */
 export const SIDEBAR_DEFAULT_WIDTH = 320;

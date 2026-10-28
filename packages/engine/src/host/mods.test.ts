@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { RpcError, type ModPaneRoster, type ModsSurfaceState, type ModStatus, type ModToast } from '@switchboard/protocol';
+import { RpcError, type ModPaneRoster, type ModsSurfaceState, type ModStatus, type ModToast } from '@seshboard/protocol';
 import { modsBridge, type ModsBridge, type UiHost } from './modsBridge.ts';
 import { isModFolder, listMods, pluginDirs } from './modsCatalog.ts';
 import { ModsSurface, readModCapabilities, type ModsEvents } from './modsSurface.ts';

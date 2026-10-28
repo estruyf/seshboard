@@ -1,6 +1,48 @@
 # Changelog
 
-All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
+All notable changes to Seshboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
+
+## [1.2.0] - 2026-10-28
+
+**Updating from Switchboard? Switchboard is now Seshboard.** After the update, pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again): a shortcut to Switchboard no longer opens it.
+
+### Added
+
+- **Quick actions on hover.** Hover a session in the sidebar to mark it read, pin it or archive it in one click. E, U and P do the same from the keyboard, with Undo. Archiving a session that is still working asks first. Settings › Sidebar › **Quick actions on hover** turns the buttons off, or down to Archive only.
+- **Open a folder from the terminal.** Type `seshboard .` (or just `sesh .`) in a terminal to open New session in that folder, like `code .` for VS Code. `switchboard .` works too. Install the commands in Settings › General › Terminal, or press ⌘K and choose **Install the seshboard command**. On a Mac they go in /usr/local/bin, which may ask for your password; on Windows Seshboard adds them to your PATH; on Linux they go in ~/.local/bin. A name another program already uses, such as the tmux tool sesh, is left alone.
+- **Light or dark in the remote app.** Open **Theme** in the remote app's **⋯** menu and set Appearance to Match System, Light or Dark. **Sync now** there asks your computers for their theme again.
+- **Keep catch-ups folded.** Turn on Settings › Conversation › Catch-up › **Show catch-ups folded** and a finished session shows the one-line strip instead of the full briefing. Press Space to open it. A turn that stopped with an error still opens in full. In the command palette (⌘K), **Catch-ups: show folded** and **Catch-ups: show in full** switch it.
+- **Sign in again without leaving the app.** When Claude Code's login expires, the session says it is signed out instead of showing a bare error. Click **Sign in** to sign in from the session's terminal panel; once you are signed in, the session continues where it left off. Signed in somewhere else? Click **Continue**.
+- **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
+- **Reload MCP servers.** Added an MCP server to your Claude Code settings or a project's `.mcp.json` while sessions were open? Press ⌘K and choose **Reload MCP servers**: running sessions pick it up for their next message without restarting, and the refresh button in a session's Tools does the same for that session.
+- **Try again when Claude Code can't start.** When Claude Code fails before it gets your message, a notice above the message box says why, in full, and **Try again** starts it again and sends your message. It is in the command palette (⌘K) too. Other failures show in the same notice instead of being cut off next to the model chip.
+- **Mark as read after a few seconds.** A finished session you open is marked read once it has been in front of you for 3 seconds, also when it opens with a catch-up, which stays open until you fold it. Settings › Sessions › Mark as read after sets the seconds, or turn it off to mark sessions read yourself.
+
+### Changed
+
+- **Switchboard is now Seshboard.** The app has a new name, and a new home at [seshboard.app](https://seshboard.app/). *Sesh* is short for sessions, the sessions your agents run, and *board* is the one app where you manage them all. Your sessions, settings and projects come along. After the update, do two things once, and a notice in the app reminds you: pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again), since a shortcut to Switchboard no longer opens it. Homebrew moves `estruyf/tap/switchboard` to `estruyf/tap/seshboard`, `seshboard://` links work next to `switchboard://` ones, and a project's shared `.switchboard.json` keeps working (new projects get `.seshboard.json`). New triggers use the `seshboard` label and `seshboard: working` and the like; triggers you already have keep their labels.
+- **A new address.** The website, the docs and the remote app moved from switchboard.struyfconsulting.com to seshboard.app, and the beta's from switch-dev.struyfconsulting.com to beta.seshboard.app. New pairing links open the remote app at seshboard.app. A phone paired at the old address keeps working until Seshboard 1.3.0; pair it again at the new one before then.
+- **A project list you can read.** New session lists projects in rows that show the whole name, in one to three columns depending on the space. A name too long for its row is cut in the middle, and its tooltip has it whole. **All N projects…** under the list opens them all, and **Find…** (⌘F) does the same with the filter ready. Projects on another computer get two letters instead of one, without the monitor badge.
+- **Settings groups its pages.** Settings groups its pages under App, Claude, Your work and Connect, with Backup, Diagnostics and About at the bottom. Search keeps the groups, and its results follow the same order. In the command palette (⌘K), Settings now lists Remote and Mods too.
+- **On a phone, sessions and New session match the new look:** round buttons, a cleaner catch-up, one composer, and an Options sheet instead of seven chips.
+- **The remote app on a phone:** a menu button on every screen, a drawer with Settings and your computer at the bottom, a full-width Home, and a Settings page.
+- **New session from the remote app's drawer.** In a session, open the drawer and tap **New session** under Home: no need to go back to Home first. Back from New session goes to your sessions.
+- **A clearer order for permission modes.** Settings › General › Global permission mode is what new sessions start in, unless the Claude profile or the project sets a mode, and each session can still change it. A project's Permissions now offers Profile default and Global default (which skips the profile's mode), each with a Change link to where it is set. If Settings had Use project default, it is now Ask before edits, and projects and profiles still come first. A mode set in Settings no longer overrides a project's or profile's own.
+
+### Fixed
+
+- **Long links stay inside toasts.** An error with a long URL or path, such as a failed update, now wraps inside the toast instead of running past its edge.
+- **No crash before a cache expires on Windows.** The reminder that a large session's cache expires in 5 minutes no longer stops the app with "A JavaScript error occurred in the main process" (Invalid language tag). Its cost shows in your system's format.
+- **Windows and Linux builds know your language.** They left out Chromium's English language files, so the app saw no language at all, which is what made the reminder before a cache expires crash on Windows.
+- **No more surprise forks after a restart.** A session that was running a background task, such as a watcher, kept its Claude Code process running after Seshboard quit, restarted or updated. Seshboard then saw the session as open elsewhere, and your next message started a fork of it. Quitting now stops those processes. If one is still running after a crash, sending stops it and continues the same session.
+- **Saved prompts in New session on another computer.** With another computer picked in Run on, type `/` or click a chip above the message box to use a saved prompt, as on this computer.
+- **New session starts on this computer.** The **+** button in the sidebar no longer opens New session on the other computer you picked last. It only goes back there when you typed a prompt for it that you haven't started yet.
+- **A pen for a prompt typed for another computer.** The **+** button in the sidebar now shows its pen when you typed a prompt in New session on another computer and haven't started it yet, as it does for this computer.
+- **The remote app follows your computer's theme again.** A phone also paired with a computer that no longer connects stayed in Demo Time and missed theme changes. It now uses the first computer that sends its theme.
+- **The preview remote app keeps working on the Beta channel.** With the update channel in Settings › About set to Beta, a phone that uses the beta remote app stays connected after you install a stable release. On Stable, only the regular remote app connects.
+- **Large context notice in sessions with a 1M window.** The notice, the reminder before the cache expires and the quit prompt now count tokens: Large from in Settings › Usage is a share of a 200k window (60% is 120k), whatever the session's window. Before, a session on a 1M window only counted as large from 600k.
+- **Compacting shows after switching sessions** ([#198](https://github.com/estruyf/switchboard/issues/198)). A session that is compacting now says so when you switch to another session and back, also in pop-outs and split view, instead of only Working.
+- **Large context cost follows the model you pick.** The cost in the Large context notice is now the price of the model your next message goes to, also after you pick another one in the model chip.
 
 ## [1.1.0] - 2026-10-22
 

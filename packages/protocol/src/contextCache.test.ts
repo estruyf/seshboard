@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cacheExpiresAt, cacheRewriteCost, cacheTtlOf } from './contextCache.ts';
+import { cacheExpiresAt, cacheRewriteCost, cacheTtlOf, isLargeContext, largeContextTokens } from './contextCache.ts';
 
 describe('cacheTtlOf', () => {
   it('reads which cache a response wrote to', () => {
@@ -24,5 +24,29 @@ describe('cacheRewriteCost', () => {
   it('knows when the cache lapses', () => {
     expect(cacheExpiresAt(1_000, '5m')).toBe(301_000);
     expect(cacheExpiresAt(0, '1h')).toBe(3_600_000);
+  });
+});
+
+describe('largeContextTokens', () => {
+  it('reads the percentage as a share of a 200k window', () => {
+    expect(largeContextTokens({ percent: 60 })).toBe(120_000);
+    expect(largeContextTokens({ percent: 40 })).toBe(80_000);
+    expect(largeContextTokens({ percent: 95 })).toBe(190_000);
+  });
+});
+
+describe('isLargeContext', () => {
+  const on = { enabled: true, percent: 60 };
+
+  it('counts tokens, whatever the size of the window', () => {
+    expect(isLargeContext(384_000, on)).toBe(true);
+    expect(isLargeContext(120_000, on)).toBe(true);
+    expect(isLargeContext(100_000, on)).toBe(false);
+  });
+
+  it('is false when the warning is off or the size is unknown', () => {
+    expect(isLargeContext(384_000, { ...on, enabled: false })).toBe(false);
+    expect(isLargeContext(null, on)).toBe(false);
+    expect(isLargeContext(undefined, on)).toBe(false);
   });
 });

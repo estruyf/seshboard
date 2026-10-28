@@ -1,4 +1,4 @@
-import { SHARE_WEIGHTS, sharesOf, weightOf } from '@switchboard/protocol';
+import { SHARE_WEIGHTS, sharesOf, weightOf } from '@seshboard/protocol';
 
 // The weights and the split live in the protocol, so the Usage view weighs other computers' tokens the same way.
 export { SHARE_WEIGHTS, sharesOf, weightOf };

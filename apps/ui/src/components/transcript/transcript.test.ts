@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TranscriptMessage } from '@switchboard/protocol/client';
+import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { agentReport, buildDisplayItems, groupActivity, type DisplayItem } from './displayItems.ts';
 import { activitySummary, gerund, stepLabel, toolSummary } from './toolSummary.ts';
 import { agentForTask, agentModel, agentRuns, shownAgent, splitAgents, taskForAgent } from './agentRuns.ts';

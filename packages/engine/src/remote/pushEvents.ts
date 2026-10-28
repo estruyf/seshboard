@@ -1,4 +1,4 @@
-import type { CatchUp, HostState, PermissionRequest } from '@switchboard/protocol';
+import type { CatchUp, HostState, PermissionRequest } from '@seshboard/protocol';
 
 /**
  * When a paired phone gets a push, and what it says. Pure, so it is tested without a push service: a session starts

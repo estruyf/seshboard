@@ -1,7 +1,7 @@
-import type { PromptScope } from '@switchboard/protocol/client';
-import type { ColorScheme, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { PromptScope } from '@seshboard/protocol/client';
+import type { ColorScheme, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
-import type { ActionIcon, HostState } from '@switchboard/protocol/client';
+import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
 import type { Direction } from '../../state/tiling.ts';
@@ -35,6 +35,8 @@ export interface PaletteSession {
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */
   hasReply: boolean;
+  /** Claude Code failed before it got this many of your messages: Try again sends them. */
+  unsent: number;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */
@@ -94,6 +96,8 @@ export interface PaletteContext {
   /** Settings › Notifications: notifications and sounds on or off. */
   notifications: boolean;
   sounds: boolean;
+  /** Settings › Conversation › Catch-up: "Show catch-ups folded"; null while catch-up summaries are off. */
+  catchUpFolded: boolean | null;
   /** The queue: how many items, how many are ready, and the first ready one ("Start next in queue"). */
   queue: { count: number; readyCount: number; firstReady: { id: string; prompt: string } | null };
   /** How many scheduled sessions there are (#173). */

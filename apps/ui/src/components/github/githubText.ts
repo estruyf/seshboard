@@ -1,4 +1,4 @@
-import type { ContextItem, GithubIssueDetail, GithubItemType, GithubListItem, GithubPrDetail, GithubReason } from '@switchboard/protocol/client';
+import type { ContextItem, GithubIssueDetail, GithubItemType, GithubListItem, GithubPrDetail, GithubReason } from '@seshboard/protocol/client';
 import { agoText } from '../../lib/format.ts';
 
 /** What to say when GitHub gave nothing to list: null when nothing went wrong. */
@@ -46,7 +46,7 @@ export function chipDetail(detail: GithubIssueDetail | GithubPrDetail | null): s
   return [...labels, detail.comments ? commentsText(detail.comments) : null].filter(Boolean).join(' · ') || null;
 }
 
-/** A pull request from a fork that you can't push to: Switchboard never pushes it or creates a pull request from it. */
+/** A pull request from a fork that you can't push to: Seshboard never pushes it or creates a pull request from it. */
 export const isReadOnlyFork = (pr: Pick<GithubPrDetail, 'isCrossRepository' | 'canPush'>) => pr.isCrossRepository && !pr.canPush;
 
 /** A row's name for screen readers: "Issue 32, Start a session from a GitHub issue or pull request, open, enhancement". */

@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { Monitor } from 'lucide-react';
-import type { CompanionStatus, RemoteSessionProfile } from '@switchboard/protocol/remote-client';
+import type { CompanionStatus, RemoteSessionProfile } from '@seshboard/protocol/remote-client';
 import { keys } from '../lib/platform.ts';
 
 /**
@@ -31,6 +31,28 @@ export function Button({ variant = 'secondary', size = 'lg', className = '', ...
       {...props}
       className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-ui transition-colors disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
     />
+  );
+}
+
+/**
+ * The round icon buttons of a phone's headers (the menu, search, `⋯`, Back, the drawer's ×): a 42px circle with a
+ * border, in a 44px target; the desktop's 32px with a mouse. Children go in the circle, and `badge` over its corner.
+ */
+export function RoundButton({ className = '', children, badge, size = 'md', ...props }: ComponentProps<'button'> & { badge?: ReactNode; /** `sm`: a 36px circle, inside a box (the message box's +). */ size?: 'md' | 'sm' }) {
+  return (
+    <button type="button" {...props} className={`group relative inline-flex size-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50 pointer-fine:size-9 ${className}`}>
+      <span className={`flex items-center justify-center rounded-full border border-border bg-card text-text transition-colors group-enabled:group-hover:bg-border/60 group-enabled:group-active:bg-selected pointer-fine:size-8 [&>svg]:size-[18px] pointer-fine:[&>svg]:size-4 ${size === 'sm' ? 'size-9' : 'size-[42px]'}`}>{children}</span>
+      {badge}
+    </button>
+  );
+}
+
+/** The menu icon: three lines, the middle one shorter (lucide has none quite like it). */
+export function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+      <path d="M4 7h16M4 12h10M4 17h16" />
+    </svg>
   );
 }
 
@@ -92,7 +114,7 @@ export const STATUS_RAIL: Record<CompanionStatus, string> = {
 };
 
 /**
- * With more than one Claude profile, a row's rail is its profile's colour instead (as in Switchboard's sidebar), so
+ * With more than one Claude profile, a row's rail is its profile's colour instead (as in Seshboard's sidebar), so
  * you see whose account a session uses at a glance; the status still shows in the dot, the age and the group.
  */
 export const PROFILE_RAIL: Record<RemoteSessionProfile['color'], string> = {
@@ -121,7 +143,7 @@ export function StatusDot({ status }: { status: CompanionStatus }) {
 }
 
 /**
- * The computer a session runs on, with more than one paired: a monitor and its name, as Switchboard marks a session on
+ * The computer a session runs on, with more than one paired: a monitor and its name, as Seshboard marks a session on
  * another computer. Neutral rather than the computer's violet: here every session is on another computer.
  */
 export function ComputerTag({ name, size = 'row', className = '' }: { name: string; size?: 'row' | 'header'; className?: string }) {

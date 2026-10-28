@@ -1,4 +1,4 @@
-import { isSameOrInside, listedInMainList, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@switchboard/protocol';
+import { isSameOrInside, listedInMainList, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@seshboard/protocol';
 
 /** What the engine knows about sessions: transcripts, running processes, and the ones this app runs. */
 export interface SessionSources {
@@ -44,7 +44,7 @@ interface Listing {
 }
 
 /**
- * Whether Switchboard's sidebar shows the session in its main list rather than under Archived: the sidebar's own rule
+ * Whether Seshboard's sidebar shows the session in its main list rather than under Archived: the sidebar's own rule
  * (`listedInMainList`, which its `isActive` uses too), with the archive days from Settings › Sessions.
  */
 export function listedInSidebar(s: Listing, now: number, archiveAfterDays: number): boolean {
@@ -66,16 +66,16 @@ export function listedInSidebar(s: Listing, now: number, archiveAfterDays: numbe
 
 export interface ListingOptions {
   now?: number;
-  /** The session open in Switchboard: listed even when archived or out of scope, as the sidebar keeps it. */
+  /** The session open in Seshboard: listed even when archived or out of scope, as the sidebar keeps it. */
   keep?: string | null;
-  /** The sidebar's choice: only sessions from Switchboard (the default), or every session. */
+  /** The sidebar's choice: only sessions from Seshboard (the default), or every session. */
   scope?: 'switchboard' | 'all';
   /** Settings › Sessions: finished sessions are archived after this many days. */
   archiveAfterDays: number;
 }
 
 /**
- * The sessions Switchboard's sidebar lists outside Archived, under its scope: indexed ones, and running ones that
+ * The sessions Seshboard's sidebar lists outside Archived, under its scope: indexed ones, and running ones that
  * haven't written a transcript yet.
  */
 export function companionSessions(sources: SessionSources, { now = Date.now(), keep = null, scope = 'all', archiveAfterDays }: ListingOptions): CompanionSession[] {

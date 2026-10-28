@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { ACTION_TAIL_LINES, type ListedAction, type StepActionResult } from '@switchboard/protocol';
+import { ACTION_TAIL_LINES, type ListedAction, type StepActionResult } from '@seshboard/protocol';
 
 /** How long one action may run before a step stops waiting for it. */
 export const ACTION_TIMEOUT_MS = 15 * 60_000;
@@ -48,7 +48,7 @@ export async function runActionsFirst(names: readonly string[], deps: ActionsFir
       continue;
     }
     if (!action.trusted) {
-      results.push({ name: action.name, exitCode: null, tail: `${action.name} comes from .switchboard.json and hasn't been approved yet.`, ms: 0 });
+      results.push({ name: action.name, exitCode: null, tail: `${action.name} comes from .seshboard.json and hasn't been approved yet.`, ms: 0 });
       continue;
     }
     const started = now();

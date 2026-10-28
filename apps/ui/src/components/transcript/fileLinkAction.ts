@@ -1,13 +1,13 @@
-import type { FileLinkClick } from '@switchboard/protocol/bridge';
+import type { FileLinkClick } from '@seshboard/protocol/bridge';
 
-/** What happens to a file: previewed in Switchboard, shown in the file manager (selected there), or opened in the editor (at its line). */
+/** What happens to a file: previewed in Seshboard, shown in the file manager (selected there), or opened in the editor (at its line). */
 export type FileLinkAction = 'preview' | 'show' | 'editor';
 
 /** What the click rules need to know about the file and the machine. */
 export interface FileLinkContext {
   /** Whether there is a file manager to show the file in. Default true. */
   fileManagerAvailable?: boolean;
-  /** Whether Switchboard can preview the file (`previewKind(path) !== null`). Default false. */
+  /** Whether Seshboard can preview the file (`previewKind(path) !== null`). Default false. */
   previewable?: boolean;
 }
 
@@ -21,7 +21,7 @@ export interface FileLinkNames {
 
 /**
  * What a click does. The setting picks it and Shift flips it:
- * - Open in Switchboard: a previewable file previews and Shift-click opens the editor; any other file shows in the
+ * - Open in Seshboard: a previewable file previews and Shift-click opens the editor; any other file shows in the
  *   file manager (the old default) and Shift-click opens the editor.
  * - Show in the file manager: Shift-click opens the editor. Open in editor: Shift-click shows the file.
  * Where there is no file manager, whatever would show the file opens the editor instead; a preview stays a preview.
@@ -54,7 +54,7 @@ export function fileLinkTarget(path: string, line: number | undefined, action: F
 export function fileLinkTooltip({ setting, path, line, endLine, names, otherKeys, fileManagerAvailable = true, previewable = false }: { setting: FileLinkClick; path: string; line?: number; endLine?: number; names: FileLinkNames; otherKeys: string } & FileLinkContext): string {
   const action = clickAction(setting, false, { fileManagerAvailable, previewable });
   const target = fileLinkTarget(path, line, action, endLine);
-  if (action === 'preview') return `Preview ${target} in Switchboard. ${otherKeys} opens it in ${editorName(names)}`;
+  if (action === 'preview') return `Preview ${target} in Seshboard. ${otherKeys} opens it in ${editorName(names)}`;
   if (action === 'show') return `Show ${target} in ${names.fileManager}. ${otherKeys} opens it in ${editorName(names)}`;
   return fileManagerAvailable ? `Open ${target} in ${editorName(names)}. ${otherKeys} shows it in ${names.fileManager}` : `Open ${target} in ${editorName(names)}`;
 }
@@ -72,13 +72,13 @@ export interface FileLinkMenuItem {
 }
 
 /**
- * The context menu of a file link: open it in Switchboard (previewable files only), show it in the file manager,
+ * The context menu of a file link: open it in Seshboard (previewable files only), show it in the file manager,
  * open it in the default editor, copy the path. Always every way that applies, whatever the setting says, so the
  * other action is one right-click away.
  */
 export function fileLinkMenu(names: FileLinkNames, { fileManagerAvailable = true, previewable = false }: FileLinkContext = {}): FileLinkMenuItem[] {
   return [
-    ...(previewable ? [{ id: 'preview' as const, label: 'Open in Switchboard' }] : []),
+    ...(previewable ? [{ id: 'preview' as const, label: 'Open in Seshboard' }] : []),
     ...(fileManagerAvailable ? [{ id: 'show' as const, label: `Show in ${names.fileManager}` }] : []),
     { id: 'editor', label: `Open in ${editorName(names)}` },
     { id: 'copy', label: 'Copy path' },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { HealthFinding } from '@switchboard/protocol/client';
+import type { HealthFinding } from '@seshboard/protocol/client';
 import { findingTone, flaggedPaths, healthSummary, mergedBody, tidyPrompt, toLookAt } from './healthView.ts';
 
 const f = (kind: HealthFinding['kind'], memoryPaths: string[], detail: string = kind): HealthFinding => ({ kind, memoryPaths, detail });

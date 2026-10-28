@@ -1,6 +1,6 @@
-import { parseColor } from '@switchboard/protocol/color';
-import { overlayShadow } from '@switchboard/protocol/theme-shadow';
-import { THEME_TOKENS, type ThemeMode, type ThemeToken, type ThemeTokens } from '@switchboard/protocol/theme-format';
+import { parseColor } from '@seshboard/protocol/color';
+import { overlayShadow } from '@seshboard/protocol/theme-shadow';
+import { THEME_TOKENS, type ThemeMode, type ThemeToken, type ThemeTokens } from '@seshboard/protocol/theme-format';
 import type { ResolvedTheme } from './themeResolve.ts';
 
 export { overlayShadow };

@@ -45,3 +45,15 @@ export function tildify(path: string, home: string | null): string {
   const rest = path.slice(home.length);
   return same && (rest === '' || rest.startsWith(windows ? '\\' : '/')) ? `~${rest}` : path;
 }
+
+/**
+ * A name cut in the middle to `maxChars` (the "…" counts): "pointfire-docu…summarization". The end stays, because
+ * project names often share their start (vscode-, pointfire-). Names that fit are returned as they are.
+ */
+export function middleEllipsis(name: string, maxChars: number): string {
+  if (name.length <= maxChars) return name;
+  if (maxChars <= 1) return '…';
+  const keep = maxChars - 1;
+  const head = Math.ceil(keep / 2);
+  return `${name.slice(0, head)}…${name.slice(name.length - (keep - head))}`;
+}

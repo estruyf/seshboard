@@ -1,4 +1,4 @@
-import { COLOR_PATTERN, overlayShadow, type RemoteTheme } from '@switchboard/protocol/remote-client';
+import { COLOR_PATTERN, overlayShadow, type RemoteTheme } from '@seshboard/protocol/remote-client';
 
 /**
  * A computer's theme on the phone (docs/remote-access.md, Theme). The computer sends every token of both modes,
@@ -91,11 +91,22 @@ export function swatchOf(theme: RemoteTheme | null, mode: ThemeMode): readonly s
 }
 
 /**
- * Whose theme the phone shows: the computer picked in Theme, else the first one paired (the only one, for most
- * people). A computer that was forgotten falls back the same way; `own` is the phone's own look.
+ * Whose theme the phone shows: the computer picked in Theme, else the first one that sent a theme (the only one, for
+ * most people). Not simply the first one paired: a pairing that never connects again (a computer reset, an old
+ * address) would keep the phone in Demo Time and deaf to the theme of the computer in use. A computer that was
+ * forgotten falls back the same way; `own` is the phone's own look.
  */
-export function themeComputer(choice: string | null, computers: readonly string[]): string | null {
+export function themeComputer(choice: string | null, computers: readonly { id: string; theme: RemoteTheme | null }[]): string | null {
   if (choice === OWN_THEME) return null;
-  if (choice && computers.includes(choice)) return choice;
-  return computers[0] ?? null;
+  if (choice && computers.some((c) => c.id === choice)) return choice;
+  return (computers.find((c) => c.theme) ?? computers[0])?.id ?? null;
 }
+
+/** Appearance in Theme: light or dark as the phone is set, or always one of them. */
+export type ModeChoice = 'system' | ThemeMode;
+
+/** Reads a kept Appearance; anything else is Match System. */
+export const cleanModeChoice = (value: unknown): ModeChoice => (value === 'light' || value === 'dark' ? value : 'system');
+
+/** The mode the page shows: the one picked in Appearance, else the phone's. */
+export const resolveMode = (choice: ModeChoice, systemDark: boolean): ThemeMode => (choice === 'system' ? (systemDark ? 'dark' : 'light') : choice);

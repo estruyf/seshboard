@@ -1,4 +1,4 @@
-import type { ClaudeInstallMethod, ClaudeUpdateState } from '@switchboard/protocol/client';
+import type { ClaudeInstallMethod, ClaudeUpdateState } from '@seshboard/protocol/client';
 
 /** `2.1.10` is newer than `2.1.9`: compared numerically. */
 export function newer(a: string, b: string): boolean {
@@ -57,7 +57,7 @@ export function claudeUpdateToast(state: ClaudeUpdateState | null): ClaudeUpdate
 export function claudeUpdateStatusText(state: ClaudeUpdateState): string {
   switch (state.status) {
     case 'missing':
-      return 'Claude Code isn’t installed, or Switchboard can’t find it.';
+      return 'Claude Code isn’t installed, or Seshboard can’t find it.';
     case 'off':
       return 'Automatic checks are off.';
     case 'idle':

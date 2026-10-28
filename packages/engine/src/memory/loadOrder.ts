@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { countLines, MEMORY_INDEX_LIMIT, rulePaths, splitFrontmatter, type LoadEntry } from '@switchboard/protocol';
+import { countLines, MEMORY_INDEX_LIMIT, rulePaths, splitFrontmatter, type LoadEntry } from '@seshboard/protocol';
 
 /** Claude Code loads the first 200 lines of MEMORY.md, or the first 25 KB, whichever comes first. */
 export const MEMORY_INDEX_BYTES = 25 * 1024;
@@ -47,7 +47,7 @@ export function importsOf(text: string, file: string, home = homedir()): string[
     }
     if (fenced) continue;
     const plain = line.replace(/`[^`]*`/g, ' ');
-    // `\ ` is a space inside the path (Claude Code's escape), as Switchboard writes the personal folder's import.
+    // `\ ` is a space inside the path (Claude Code's escape), as Seshboard writes the personal folder's import.
     for (const match of plain.matchAll(/(?:^|\s)@((?:\\ |[^\s])+)/g)) {
       const raw = match[1]!.replace(/[),.;:]+$/, '').replace(/\\ /g, ' ');
       if (!/[/.]/.test(raw)) continue;

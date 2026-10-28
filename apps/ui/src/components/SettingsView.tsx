@@ -1,8 +1,8 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
-import { Activity, Archive, ArchiveRestore, Bell, Bookmark, Brain, FolderGit2, Gauge, Info, ListTree, MessageSquare, Palette, PanelLeft, Puzzle, SlidersHorizontal, Smartphone, SquareCode, Target, type LucideIcon, Users, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@switchboard/protocol/bridge';
-import { MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
+import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -23,6 +23,7 @@ import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
+import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
 import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
@@ -37,6 +38,8 @@ import { clickKeysFor, formatKeys, keysFor, matches } from '../lib/shortcuts.ts'
 import { groupByPage, searchSettings, type SettingEntry } from './settingsSearch/searchSettings.ts';
 import { jumpToSetting, resultId, SettingsSearchField, SettingsSearchResults } from './settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from './settingsSearch/settingsIndex.ts';
+import { navGroups, SETTINGS_GROUP_LABEL, SETTINGS_SECTIONS, settingsPageOrder, settingsSectionLabel, type SettingsPage } from './settingsSections.ts';
+import { SectionHeader } from './ui/SectionHeader.tsx';
 
 /** A session row in miniature, drawn with the live theme tokens. */
 function RowPreview({ style }: { style: SidebarStyle }) {
@@ -171,38 +174,11 @@ const STARTUP: Array<{ value: StartupView; label: string; detail: string }> = [
   { value: 'new', label: 'New session', detail: 'Starts ready for a new prompt.' },
 ];
 
-/** The permission mode new sessions start in: the one picked last, or one of the modes the menus offer. */
-/** Permission mode for new sessions: the project's default, the one picked last, or always one mode (over the project's default). */
+/** The global permission mode: one of the modes the menus offer, or the one picked last. */
 const NEW_SESSION_MODE_OPTIONS: Array<{ value: NewSessionMode; label: string }> = [
-  { value: 'project', label: 'Use project default' },
-  { value: 'remember', label: 'Remember last' },
   ...MODE_CHOICES.map((mode) => ({ value: mode as NewSessionMode, label: MODE_LABEL[mode] })),
+  { value: 'remember', label: 'Remember last' },
 ];
-
-const SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
-  { id: 'sessions', label: 'Sessions', icon: Archive },
-  { id: 'projects', label: 'Projects', icon: FolderGit2 },
-  { id: 'conversation', label: 'Conversation', icon: MessageSquare },
-  { id: 'mods', label: 'Mods', icon: Puzzle },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'profiles', label: 'Claude profiles', icon: Users },
-  { id: 'usage', label: 'Usage', icon: Gauge },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'prompts', label: 'Prompts', icon: Bookmark },
-  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
-  { id: 'vscode', label: 'VS Code', icon: SquareCode },
-  { id: 'remote', label: 'Remote', icon: Smartphone },
-  { id: 'backup', label: 'Backup', icon: ArchiveRestore },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { id: 'about', label: 'About', icon: Info },
-];
-
-/** A Settings page's name, as its sidebar lists it. */
-export const settingsSectionLabel = (section: SettingsSection) => SECTIONS.find((s) => s.id === section)?.label ?? 'Settings';
 
 const close = () => useSessions.getState().closeSettings();
 
@@ -265,11 +241,37 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard."
+            detail="Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
           />
+          <Toggle
+            label="Quick actions on hover"
+            detail="Mark read, Pin and Archive appear on a row under the pointer."
+            checked={prefs.quickActions}
+            attr="data-quick-actions-setting"
+            onChange={(quickActions) => update({ quickActions })}
+          />
+          {prefs.quickActions && (
+            <div className="-mt-2 flex items-center justify-between gap-4 pl-4" data-setting-row>
+              <span>
+                <span className="block text-ui">Show</span>
+                <span className="block text-meta text-muted">Working sessions show Stop too.</span>
+              </span>
+              <SegmentedControl<QuickActionsShow>
+                mode="radio"
+                label="Quick actions to show"
+                value={prefs.quickActionsShow}
+                onChange={(quickActionsShow) => update({ quickActionsShow })}
+                segments={[
+                  { value: 'archive', label: 'Archive only', data: { 'data-quick-actions-show': 'archive' } },
+                  { value: 'all', label: 'Read · Pin · Archive', data: { 'data-quick-actions-show': 'all' } },
+                ]}
+                className="shrink-0"
+              />
+            </div>
+          )}
         </Section>
       );
     case 'sessions':
@@ -311,7 +313,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               <span>
                 <span className="block text-ui">Clicking a file link</span>
                 <span className="block text-meta text-muted">
-                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
+                  What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Seshboard, other files in {fileManagerName()}. {formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.
                 </span>
               </span>
               <Select<FileLinkClick>
@@ -319,7 +321,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.fileLinkClick}
                 onChange={(fileLinkClick) => update({ fileLinkClick })}
                 options={[
-                  { value: 'switchboard', label: 'Open in Switchboard' },
+                  { value: 'switchboard', label: 'Open in Seshboard' },
                   { value: 'file-manager', label: `Show in ${fileManagerName()}` },
                   { value: 'editor', label: 'Open in editor' },
                 ]}
@@ -379,7 +381,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'notifications':
       return (
-        <Section title="Notifications and sounds" description="How Switchboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
+        <Section title="Notifications and sounds" description="How Seshboard gets your attention while you work in another session or app. Nothing for the session you are looking at.">
           <NotificationsSettings />
         </Section>
       );
@@ -424,7 +426,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Memory"
-          description="What Claude Code remembers about you and your projects. Personal memory sits in a folder you choose (iCloud, Dropbox, git) and loads in every project; nothing is locked into Switchboard."
+          description="What Claude Code remembers about you and your projects. Personal memory sits in a folder you choose (iCloud, Dropbox, git) and loads in every project; nothing is locked into Seshboard."
         >
           <MemorySettings />
         </Section>
@@ -432,7 +434,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'general':
       return (
         <>
-          <Section title="On startup" description="Whether Switchboard opens at login, and what it shows when it opens.">
+          <Section title="On startup" description="Whether Seshboard opens at login, and what it shows when it opens.">
             <OpenAtLoginSetting />
             <RadioGroup label="On startup" className="grid gap-2.5">
               {STARTUP.map(({ value, label, detail }) => (
@@ -446,14 +448,17 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <Section title="Sleep">
             <KeepAwakeSetting />
           </Section>
+          <Section title="Terminal">
+            <ShellCommandSetting />
+          </Section>
           <Section title="New sessions">
             <div className="flex items-center justify-between gap-4" data-setting-row>
               <span>
-                <span className="block text-ui">Permission mode</span>
-                <span className="block text-meta text-muted">What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.</span>
+                <span className="block text-ui">Global permission mode</span>
+                <span className="block text-meta text-muted">{GLOBAL_MODE_DETAIL}</span>
               </span>
               <Select<NewSessionMode>
-                label="Permission mode for new sessions"
+                label="Global permission mode"
                 value={prefs.newSessionMode}
                 onChange={(newSessionMode) => update({ newSessionMode })}
                 options={NEW_SESSION_MODE_OPTIONS}
@@ -503,7 +508,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               />
             </div>
           </Section>
-          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Switchboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
+          <Section title="Clone from GitHub" description="Paste a GitHub URL in New session, and Seshboard clones it, adds it as a project and starts the session there. Each computer has its own setting and folder.">
             <CloneSettings />
           </Section>
         </>
@@ -512,7 +517,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="VS Code"
-          description="The Switchboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
+          description="The Seshboard extension for VS Code (also Cursor and Windsurf) sends what you're looking at in the editor to a session, as chips above the message box. Nothing goes to Claude until you send."
         >
           <CompanionSettings />
         </Section>
@@ -531,13 +536,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       );
     case 'mods':
       return (
-        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Switchboard only draws what they return.">
+        <Section title="Mods" description="Plugins that add UI to your sessions. Claude Code loads them from your enabled plugins. Seshboard only draws what they return.">
           <ModsSettings />
         </Section>
       );
     case 'diagnostics':
       return (
-        <Section title="Diagnostics" description="The engine behind Switchboard, the Claude Code it runs, and its recent log.">
+        <Section title="Diagnostics" description="The engine behind Seshboard, the Claude Code it runs, and its recent log.">
           <EngineDiagnostics />
         </Section>
       );
@@ -566,44 +571,73 @@ export function SettingsNav({ search }: { search: SearchState }) {
   const searching = search.query.trim() !== '';
   // With the sidebar closed, the traffic lights sit above this list (macOS; elsewhere they're in the title bar).
   const sidebarClosed = useSidebar((s) => s.state === 'closed') && currentPlatform() === 'darwin';
+  const row = ({ id, label, icon: Icon }: SettingsPage) => {
+    // While searching, no page is the one on screen: each says how many results it has.
+    const current = !searching && section === id;
+    const count = search.counts.get(id) ?? 0;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => {
+          search.setQuery('');
+          openSettings(id);
+        }}
+        aria-current={current ? 'page' : undefined}
+        data-settings-section={id}
+        className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${current ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${searching && count === 0 ? 'opacity-50' : ''}`}
+      >
+        <Icon size={15} aria-hidden className={`shrink-0 ${current ? 'text-accent-ink' : ''}`} />
+        <span className="truncate">{label}</span>
+        {searching && count > 0 && (
+          <span className="ml-auto text-meta text-faint tabular-nums" data-settings-section-count>
+            {count}
+            <span className="sr-only"> found</span>
+          </span>
+        )}
+      </button>
+    );
+  };
+  const groups = navGroups(SETTINGS_SECTIONS);
+  const bottom = groups.find((g) => g.group === 'bottom');
   return (
-    <nav aria-label="Settings sections" className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
+    <nav aria-label="Settings sections" onKeyDown={moveBetweenPages} className={`flex w-52 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 ${sidebarClosed ? 'pt-12' : 'pt-3'}`} data-settings-nav>
       <h2 id="settings-title" className="px-2.5 pt-2 pb-3 text-title font-semibold">
         Settings
       </h2>
       {search.field}
-      {SECTIONS.map(({ id, label, icon: Icon }) => {
-        // While searching, no page is the one on screen: each says how many results it has.
-        const current = !searching && section === id;
-        const count = search.counts.get(id) ?? 0;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => {
-              search.setQuery('');
-              openSettings(id);
-            }}
-            aria-current={current ? 'page' : undefined}
-            data-settings-section={id}
-            className={`flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left text-ui ${current ? 'bg-selected font-semibold text-text' : 'text-muted hover:bg-border/45 hover:text-text'} ${searching && count === 0 ? 'opacity-50' : ''}`}
-          >
-            <Icon size={15} aria-hidden className={`shrink-0 ${current ? 'text-accent-ink' : ''}`} />
-            <span className="truncate">{label}</span>
-            {searching && count > 0 && (
-              <span className="ml-auto text-meta text-faint tabular-nums" data-settings-section-count>
-                {count}
-                <span className="sr-only"> found</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
-      <div className="mt-auto">
+      {groups
+        .filter((g) => g.group !== 'bottom')
+        .map(({ group, pages }, index) => (
+          <div key={group} role="group" aria-labelledby={`settings-group-${group}`} className={`flex shrink-0 flex-col gap-0.5 ${index > 0 ? 'mt-3' : ''}`} data-settings-group={group}>
+            <SectionHeader headingId={`settings-group-${group}`} level={3} className="h-6 shrink-0 px-2.5 pt-1">
+              {SETTINGS_GROUP_LABEL[group]}
+            </SectionHeader>
+            {pages.map(row)}
+          </div>
+        ))}
+      {/* The rarely used pages, under a line at the bottom; in a short window they follow Connect and the list scrolls. */}
+      <div className="mt-auto flex shrink-0 flex-col pt-3">
+        {bottom && (
+          <div role="group" aria-label={SETTINGS_GROUP_LABEL.bottom} className="flex flex-col gap-0.5 border-t border-border pt-2" data-settings-group="bottom">
+            {bottom.pages.map(row)}
+          </div>
+        )}
         <SettingsVersion />
       </div>
     </nav>
   );
+}
+
+/** ↑ ↓ Home and End move between the pages in the menu, in its order; the headers are skipped, as they aren't buttons. */
+function moveBetweenPages(event: ReactKeyboardEvent<HTMLElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-settings-section]')) return;
+  const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-settings-section]')];
+  const at = rows.indexOf(event.target);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.min(Math.max(at + (event.key === 'ArrowDown' ? 1 : -1), 0), rows.length - 1);
+  event.preventDefault();
+  rows[next]?.focus();
 }
 
 /**
@@ -639,7 +673,7 @@ export function SettingsView() {
   const listId = useId();
   const entries = useMemo(settingsIndex, []);
   const found = useMemo(() => searchSettings(query, entries, settingsSectionLabel, currentPlatform()), [query, entries]);
-  const groups = useMemo(() => groupByPage(found), [found]);
+  const groups = useMemo(() => groupByPage(found, settingsPageOrder), [found]);
   /** The results in the order they show, for ↑ ↓. */
   const ordered = useMemo(() => groups.flatMap((group) => group.matches), [groups]);
   const counts = useMemo(() => new Map(groups.map((group) => [group.page, group.matches.length])), [groups]);
@@ -721,7 +755,7 @@ export function SettingsView() {
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             {searching ? (
               <div className="mx-auto min-w-0 max-w-2xl px-8">
-                <SettingsSearchResults query={query} groups={groups} pages={SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
+                <SettingsSearchResults query={query} groups={groups} pages={SETTINGS_SECTIONS} listId={listId} activeIndex={active} onHover={setActive} onChoose={choose} />
               </div>
             ) : (
               <div className={`mx-auto min-w-0 px-8 ${section === 'sessions' ? 'max-w-5xl' : section === 'pipelines' ? 'max-w-6xl' : section === 'diagnostics' ? 'max-w-3xl' : 'max-w-2xl'}`} data-settings-page={section}>

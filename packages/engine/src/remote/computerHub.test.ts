@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateKeyPair, remoteLinkFragment, RpcError, type ComputerEvent, type ComputersStatus, type RemoteContract, type Handlers } from '@switchboard/protocol';
+import { generateKeyPair, remoteLinkFragment, RpcError, type ComputerEvent, type ComputersStatus, type RemoteContract, type Handlers } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { ComputerHub, offlineMessage, pairingMessage } from './computerHub.ts';
 import { LinkError, retryDelay } from './computerLink.ts';
@@ -10,7 +10,7 @@ import { DeviceStore } from './devices.ts';
 import { Pairing, type PairingState } from './pairing.ts';
 import { CLOSE, RemoteServer } from './remoteServer.ts';
 import { APP_ORIGIN } from './testPhone.ts';
-import { REMOTE_DESKTOP_ORIGIN } from '@switchboard/protocol';
+import { REMOTE_DESKTOP_ORIGIN } from '@seshboard/protocol';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 function tempDb() {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-computers-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-computers-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   cleanups.push(() => {
     cache.close();
@@ -40,7 +40,7 @@ async function otherComputer(name = 'Studio Mac') {
     pairing,
     appVersion: '9.9.9',
     computerName: () => name,
-    origins: [APP_ORIGIN, REMOTE_DESKTOP_ORIGIN],
+    origins: () => [APP_ORIGIN, REMOTE_DESKTOP_ORIGIN],
     log: () => {},
     handlers: (device) =>
       ({
@@ -129,7 +129,7 @@ describe('Other computers', () => {
     b.server.each((rpc) => rpc.emit('sessions.changed', { sessions: [{ id: 's1', title: { evil: true } }], prompts: [prompt] } as never));
     await a.until(() => a.events.length > 0);
     expect(a.events[0]!.payload).toEqual({ sessions: [], prompts: [prompt] });
-    expect(a.hub.status().computers[0]!.problem).toMatch(/^Studio Mac sent 1 item in its session list this version of Switchboard can’t read/);
+    expect(a.hub.status().computers[0]!.problem).toMatch(/^Studio Mac sent 1 item in its session list this version of Seshboard can’t read/);
 
     // What isn't a list at all doesn't reach the windows.
     b.server.each((rpc) => rpc.emit('sessions.changed', 'garbage' as never));
@@ -213,8 +213,8 @@ describe('Other computers', () => {
 
 describe('Other computers’ wording', () => {
   it('says what to do', () => {
-    expect(offlineMessage({ kind: 'http', status: 403 }, 'Studio Mac')).toBe('Studio Mac refused the connection. Update Switchboard there.');
-    expect(offlineMessage({ kind: 'closed', code: CLOSE.version }, 'Studio Mac')).toMatch(/Update Switchboard on both computers/);
+    expect(offlineMessage({ kind: 'http', status: 403 }, 'Studio Mac')).toBe('Studio Mac refused the connection. Update Seshboard there.');
+    expect(offlineMessage({ kind: 'closed', code: CLOSE.version }, 'Studio Mac')).toMatch(/Update Seshboard on both computers/);
     expect(pairingMessage(new LinkError({ kind: 'closed', code: CLOSE.pairingClosed }))).toMatch(/^This link was used or has expired/);
     expect(pairingMessage(new RpcError('TIMEOUT', 'x'))).toBe('Nobody clicked Allow on the other computer in time.');
   });

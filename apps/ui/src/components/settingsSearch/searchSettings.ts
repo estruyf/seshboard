@@ -81,13 +81,13 @@ export function searchSettings(query: string, entries: readonly SettingEntry[], 
   return found.sort((a, b) => b.score - a.score || a.order - b.order).map(({ order: _, ...match }) => match);
 }
 
-/** The matches grouped by page, the page with the best match first; within a page, best first. */
-export function groupByPage(matches: readonly SettingMatch[]): Array<{ page: SettingsSection; matches: SettingMatch[] }> {
+/** The matches grouped by page, the pages in the order of Settings' menu (`pageOrder`); within a page, best first. */
+export function groupByPage(matches: readonly SettingMatch[], pageOrder: (page: SettingsSection) => number): Array<{ page: SettingsSection; matches: SettingMatch[] }> {
   const groups = new Map<SettingsSection, SettingMatch[]>();
   for (const match of matches) {
     const group = groups.get(match.entry.page);
     if (group) group.push(match);
     else groups.set(match.entry.page, [match]);
   }
-  return [...groups].map(([page, list]) => ({ page, matches: list }));
+  return [...groups].sort(([a], [b]) => pageOrder(a) - pageOrder(b)).map(([page, list]) => ({ page, matches: list }));
 }

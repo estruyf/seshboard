@@ -1,4 +1,4 @@
-import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/protocol/bridge';
+import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/protocol/bridge';
 
 /**
  * The updater's state machine. Every change is a pure function from one state to the next,
@@ -9,6 +9,15 @@ import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/pro
 /** `1.2.3-beta.1` is on the beta channel; anything else is stable. */
 export function channelOf(version: string): UpdateChannel {
   return /-beta\./.test(version) ? 'beta' : 'stable';
+}
+
+/**
+ * Whether Remote also lets in the preview's remote app (`REMOTE_PREVIEW_APP_URL`, built from `dev`): a development
+ * build, a beta build, or a release on the Beta channel, so a phone set up on the preview keeps working when the beta
+ * becomes a release. A release on the Stable channel only lets in the website's.
+ */
+export function acceptsPreviewRemote(options: { packaged: boolean; version: string; channel: UpdateChannel }): boolean {
+  return !options.packaged || channelOf(options.version) === 'beta' || options.channel === 'beta';
 }
 
 export function initialUpdateState(options: { currentVersion: string; channel: UpdateChannel; disabledReason: string | null; updatedTo?: string | null }): UpdateState {
@@ -107,7 +116,7 @@ export function updatesDisabledReason(build: {
   mockFeed: boolean;
   installer?: boolean;
 }): string | null {
-  if (build.env.SWITCHBOARD_DISABLE_AUTO_UPDATE) return 'Updates are turned off by SWITCHBOARD_DISABLE_AUTO_UPDATE.';
+  if (build.env.SESHBOARD_DISABLE_AUTO_UPDATE) return 'Updates are turned off by SESHBOARD_DISABLE_AUTO_UPDATE.';
   if (build.mockFeed) return null;
   if (build.devServer) return 'Updates are turned off in development builds.';
   if (!build.packaged) return 'Updates are turned off in builds that aren’t packaged.';

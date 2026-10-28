@@ -1,5 +1,5 @@
 /*
-  Shared look of Switchboard's social images: a 1200×630 card in the app's dark theme
+  Shared look of Seshboard's social images: a 1200×630 card in the app's dark theme
   (the values of apps/ui/src/styles.css), copy on the left and a mockup on the right.
   Each post links this file and adds the styles of its own mockup.
 */
@@ -59,7 +59,7 @@ h1 .hl { color: var(--accent); }
 .stage { position: absolute; right: 44px; top: 46px; width: 600px; height: 540px; }
 .cable { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 
-/* Switchboard's message box, with context chips. */
+/* Seshboard's message box, with context chips. */
 .sb {
   position: absolute; width: 430px;
   background: var(--card); border-radius: 14px; padding: 14px 14px 12px;
@@ -100,7 +100,7 @@ h1 .hl { color: var(--accent); }
 .section { font-size: 11px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
 .section .count { min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 10px; display: grid; place-items: center; background: rgba(255,255,255,0.08); }
 
-/* A phone running Switchboard Remote (its list: connection, filters, a Needs you card, session rows). Position it with left/top in the page. */
+/* A phone running Seshboard Remote (its list: connection, filters, a Needs you card, session rows). Position it with left/top in the page. */
 .phone {
   position: absolute; left: 0; top: 0; width: 262px; height: 540px; padding: 9px;
   background: #0b0d12; border-radius: 42px;

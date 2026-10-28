@@ -41,7 +41,7 @@ The worktree goes in `.claude/worktrees/<name>` inside the project, on a new bra
 
 ### From another branch
 
-Claude Code only starts a worktree from the remote's default branch or your local HEAD. For any other branch, Switchboard makes the worktree itself, in the same folder and with the same branch name, and then starts Claude in it:
+Claude Code only starts a worktree from the remote's default branch or your local HEAD. For any other branch, Seshboard makes the worktree itself, in the same folder and with the same branch name, and then starts Claude in it:
 
 - A remote branch, such as `origin/dev`, is fetched first, so the worktree starts from its latest commits. Offline, it starts from what you fetched last.
 - The new branch doesn't track the branch it started from, so a push from the worktree never lands on `dev` itself.
@@ -63,7 +63,7 @@ A fresh worktree has no installed dependencies or local files. A [project action
 A session in a worktree shows `worktree · <branch>` in its header. Click it, or run *Finish worktree…* in the command palette, to see where the worktree stands (commits ahead of the base branch, behind, uncommitted files, pushed or not) and to finish it:
 
 - **Merge into &lt;base&gt;…** merges its commits into the base branch in the main checkout, in a terminal tab so you see the result. The worktree stays; remove it afterwards. This needs a clean worktree with commits of its own, and a main checkout that is on the base branch without uncommitted changes.
-- **Remove worktree…** deletes the worktree's folder and stops the session in Switchboard. The conversation stays in your history. **Also delete the branch** is ticked by default; Switchboard warns you when the branch has commits that aren't merged or pushed.
+- **Remove worktree…** deletes the worktree's folder and stops the session in Seshboard. The conversation stays in your history. **Also delete the branch** is ticked by default; Seshboard warns you when the branch has commits that aren't merged or pushed.
 
 When an action isn't possible, the menu says why, such as "Commit or revert the uncommitted changes first". Commit, push and pull requests are on the session's [git button](/terminal-changes-git/git/).
 
@@ -72,7 +72,7 @@ When an action isn't possible, the menu says why, such as "Commit or revert the 
 Worktrees pile up: each one is a full checkout, often with its own `node_modules`. A project's [Worktrees tab](/projects/worktrees/) lists every worktree with its sessions, changes, size on disk and pull request, suggests which ones can go, and removes several at once.
 
 <Aside>
-Switchboard only removes a worktree with git's own commands, never by deleting the folder itself, and never one with uncommitted changes.
+Seshboard only removes a worktree with git's own commands, never by deleting the folder itself, and never one with uncommitted changes.
 </Aside>
 
 ## Settings

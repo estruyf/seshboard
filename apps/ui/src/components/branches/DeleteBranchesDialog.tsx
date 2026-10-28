@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { BranchDeleteResult } from '@switchboard/protocol/client';
+import type { BranchDeleteResult } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';

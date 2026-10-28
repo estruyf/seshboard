@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { AutoPick, type Effort, type PermissionMode } from '@switchboard/protocol';
+import { AutoPick, type Effort, type PermissionMode } from '@seshboard/protocol';
 
 /** What a session last ran with, so a resume (after Stop, the idle timeout or an app restart) carries on the same way. */
 export interface SessionSettings {

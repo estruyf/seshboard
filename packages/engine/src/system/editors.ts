@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
-import type { ContinueEditor, EditorInfo } from '@switchboard/protocol';
+import type { ContinueEditor, EditorInfo } from '@seshboard/protocol';
 import { needsCmd, viaCmd } from './windowsCommand.ts';
 
 interface EditorSpec extends EditorInfo {

@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
+import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -16,7 +16,7 @@ import type {
   SlashCommand,
   StreamDelta,
   ClaudeWorktreeRequest,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
@@ -27,6 +27,7 @@ import { modsBridge } from './modsBridge.ts';
 import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
+import { isSignInError } from '../signIn/signInError.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -59,6 +60,8 @@ export interface HostEvents {
   limitHit?(sessionId: string, stop: LimitStop): void;
   /** A turn finished without an error: whatever limit the profile was at no longer holds. */
   turnOk?(sessionId: string): void;
+  /** Claude Code's login stopped working (signed out, expired) and failed the turn, with Claude Code's message. */
+  signedOut?(sessionId: string, message: string | null): void;
   /** The profile is at a usage limit: what is queued waits until it is cleared. */
   limited?(): boolean;
   /** What this session's mods tell the windows; without it, mods never attach. */
@@ -100,10 +103,10 @@ export interface HostConfig {
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
-export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchboard can’t find it. Install it, then try again.';
+export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Seshboard can’t find it. Install it, then try again.';
 
 /**
- * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Switchboard and fails
+ * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Seshboard and fails
  * with "Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk": say what's really wrong.
  */
 export function failureMessage(message: string, claudePath: string | undefined): string {
@@ -228,6 +231,11 @@ export class SessionHost {
   private readonly input = new InputQueue<SDKUserMessage>();
   /** Messages held back until Claude's turn ends, in the order they go. Their images stay here. */
   private readonly pending: StoredUpNext[] = [];
+  /**
+   * Messages you sent before Claude Code started (its first init message), as typed. Claude Code never got them if it
+   * fails before it starts; `session.retry` sends them again in a new process. Null once it has started.
+   */
+  private early: { uuid: UUID; text: string; attachments: readonly ImageAttachment[] }[] | null = [];
   private query: Promise<Query | undefined> = Promise.resolve(undefined);
   private closing = false;
   private initResolve!: (sessionId: string) => void;
@@ -326,13 +334,18 @@ export class SessionHost {
    * While Claude works, Claude reads it at its next step (a steer); `sendNow` stops the turn first instead.
    * Sending yourself means you are back in charge of the queue, so a hold on it ends.
    */
-  send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>): string {
+  send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>, uuid?: UUID): string {
     if (!this.active) throw new Error('This session is not running');
     if (this.queueHold) {
       this.queueHold = null;
       this.publishQueue();
     }
-    return this.push(text, attachments, after);
+    return this.push(text, attachments, after, uuid);
+  }
+
+  /** After Claude Code failed before it started: the messages it never got, oldest first (`session.retry`). */
+  get unsent(): readonly { uuid: UUID; text: string; attachments: readonly ImageAttachment[] }[] {
+    return this.info.state === 'error' ? (this.early ?? []) : [];
   }
 
   /**
@@ -363,8 +376,9 @@ export class SessionHost {
     this.drain();
   }
 
-  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
-    const uuid = randomUUID();
+  /** `uuid`: a message sent again keeps the one it had, so the transcript shows it once. */
+  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>, uuid: UUID = randomUUID()): string {
+    this.early?.push({ uuid, text: typed, attachments });
     const text = this.events.expand ? this.expandSafely(typed) : typed;
     const content = [
       ...attachments.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mediaType, data: a.data } })),
@@ -407,6 +421,8 @@ export class SessionHost {
   private lastRateLimit: RateLimitUpdate | null = null;
   /** The text of an error Claude Code reported as an assistant message this turn (a usage limit comes as one). */
   private assistantError: string | null = null;
+  /** The SDK's error code on this turn's failed assistant message (`authentication_failed`, `rate_limit`…). */
+  private assistantErrorCode: string | null = null;
 
   /**
    * Holds a message until Claude's turn ends, then sends it, one message per turn. The transcript doesn't show
@@ -607,11 +623,16 @@ export class SessionHost {
     }
   }
 
+  /** A compact is over (its boundary, the turn's result or the session going idle). */
+  private endCompacting(): void {
+    if (this.info.compacting) this.update({ compacting: false });
+  }
+
   private update(patch: Partial<SessionHostInfo>): void {
     const ended = patch.state === 'closed' || patch.state === 'error';
     if (ended && this.closedAt === undefined) this.closedAt = Date.now();
     // Background tasks die with the process.
-    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [] } : {}) };
+    this.info = { ...this.info, ...patch, ...(ended ? { backgroundTasks: [], compacting: false } : {}) };
     try {
       this.events.info(this.info);
     } catch (error) {
@@ -624,7 +645,7 @@ export class SessionHost {
     const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
-    this.update({ state: 'error', error: message, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
+    this.update({ state: 'error', error: message, ...(this.early?.length ? { unsent: this.early.length } : {}), ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
   private async loop(query: Query): Promise<void> {
@@ -668,7 +689,10 @@ export class SessionHost {
         if (message.parent_tool_use_id !== null) return;
         // Claude answering after Send now's message went means its turn has started (Claude Code doesn't always say `running` in between).
         if (this.nowPhase === 'sent') this.nowStarted();
-        if (message.error) this.assistantError = textOf(message) ?? this.assistantError;
+        if (message.error) {
+          this.assistantError = textOf(message) ?? this.assistantError;
+          this.assistantErrorCode = message.error;
+        }
         this.noteCache(message.message as unknown as { usage?: Record<string, unknown> | null } | undefined);
         this.events.messages(this.sessionId, [toRaw(message)]);
         this.pushStream('clear', '');
@@ -684,14 +708,18 @@ export class SessionHost {
         const stop = outcome.ok
           ? null
           : limitStop({ error: outcome.error ?? this.assistantError, rejected: this.rejected, last: this.lastRateLimit, prefixes: this.config.limitPrefixes ?? [] });
+        const signedOut = !outcome.ok && !stop && isSignInError(this.assistantErrorCode, this.assistantError ?? outcome.error);
+        const signInMessage = this.assistantError ?? outcome.error;
         this.rejected = null;
         this.assistantError = null;
+        this.assistantErrorCode = null;
         // A failed turn leaves the queue for you to decide, unless you stopped it yourself (held already, or let go on
         // purpose) or sent a message now. A usage limit holds it instead, until the limit is cleared.
         if (!outcome.ok && !stop && !this.nowPhase && !this.queueHold && !this.stopRequested) this.holdQueue('error');
         if (stop) this.events.limitHit?.(this.sessionId, stop);
+        else if (signedOut) this.events.signedOut?.(this.sessionId, signInMessage);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
-        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache() });
+        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}) });
         void this.refreshContext();
         this.events.usageHint?.();
         const stopped = this.stopRequested;
@@ -746,6 +774,7 @@ export class SessionHost {
       // Every turn's init lists them: one without `ui_surface_v1` means the mods are gone.
       if (Array.isArray(capabilities)) this.mods.setCapabilities(capabilities.filter((c): c is string => typeof c === 'string'));
       this.initResolve(init.session_id);
+      this.early = null;
       if (first) {
         void this.loadCatalogs();
         void this.refreshContext();
@@ -754,8 +783,20 @@ export class SessionHost {
     }
     if (message.subtype === 'status') {
       // Claude Code reports mode changes it makes itself here (leaving plan mode, auto mode falling back).
-      const mode = (message as { permissionMode?: PermissionMode }).permissionMode;
-      if (mode && mode !== this.info.permissionMode) this.update({ permissionMode: mode });
+      const { permissionMode: mode, status, compact_result: compactResult, compact_error: compactError } = message as { permissionMode?: PermissionMode; status?: unknown; compact_result?: string; compact_error?: string };
+      // 'compacting' while Claude Code summarises the conversation; null or 'requesting' once it moves on. Kept on the
+      // host so a view opened mid-compact (switching back to the session, a pop-out) still says so.
+      const compacting = status === 'compacting';
+      if (compactResult === 'failed') this.events.log('warn', `Session ${this.sessionId}: compacting failed${compactError ? `: ${compactError}` : ''}`);
+      const patch: Partial<SessionHostInfo> = {
+        ...(mode && mode !== this.info.permissionMode ? { permissionMode: mode } : {}),
+        ...(compacting !== (this.info.compacting === true) ? { compacting } : {}),
+      };
+      if (Object.keys(patch).length > 0) this.update(patch);
+      return;
+    }
+    if (message.subtype === 'compact_boundary') {
+      this.endCompacting();
       return;
     }
     if (message.subtype === 'background_tasks_changed') {
@@ -781,10 +822,11 @@ export class SessionHost {
     if (message.subtype === 'session_state_changed') {
       const state = STATE_FROM_SDK[(message as { state: string }).state];
       if (!state || this.closing) return;
-      this.update({ state });
+      this.update({ state, ...(state === 'idle' && this.info.compacting ? { compacting: false } : {}) });
       if (state === 'running' && this.nowPhase === 'sent') this.nowStarted();
       if (state === 'idle') {
         this.pushStream('clear', '');
+        if (this.pluginsReloadOwed) void this.reloadPlugins();
         this.drain();
       }
     }
@@ -854,6 +896,36 @@ export class SessionHost {
       if (commands && this.setCommands(commands)) this.events.info(this.info);
     } catch (error) {
       this.events.log('debug', `Reloading skills failed: ${(error as Error).message}`);
+    }
+  }
+
+  /** A reload asked for during a turn, done when the turn ends. */
+  private pluginsReloadOwed = false;
+
+  /**
+   * Has Claude Code read its plugins and MCP servers again, as /reload-plugins does in the terminal, so an
+   * MCP server added to the settings or `.mcp.json` after the session started is there for its next turn.
+   * A running turn is left alone: the session reloads when it ends.
+   */
+  async reloadPlugins(): Promise<void> {
+    if (this.busy) {
+      this.pluginsReloadOwed = true;
+      return;
+    }
+    this.pluginsReloadOwed = false;
+    // A session that is still starting reads the settings as it starts.
+    if (this.info.state !== 'idle') return;
+    try {
+      const query = await this.query;
+      if (!query) return;
+      // Connecting a new server can take a while; a Claude Code that doesn't know the request may never answer.
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000).unref?.());
+      const result = await Promise.race([query.reloadPlugins(), timeout]);
+      if (!result) return;
+      this.plugins = pluginsFromInit(result.plugins) ?? this.plugins;
+      if (this.setCommands(result.commands)) this.events.info(this.info);
+    } catch (error) {
+      this.events.log('debug', `Reloading plugins failed: ${(error as Error).message}`);
     }
   }
 

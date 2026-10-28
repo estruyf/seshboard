@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  inheritedPermissionMode,
   isAbsolutePath,
   listedInMainList,
   type PipelineRunState,
@@ -23,7 +24,7 @@ import {
   type RemoteUsageBreakdown,
   type UsageBreakdown,
   type WorktreeBase,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
 /**
@@ -239,7 +240,7 @@ export function capDiff(diff: { diff: string; truncated: boolean }, lines: numbe
   return { diff: all.slice(0, lines).join('\n'), truncated: true };
 }
 
-/** What a new session from a phone starts with: what the phone chose, else the project's default, then its profile's. */
+/** What a new session from a phone starts with: what the phone chose, else the project's default, then its profile's, then the global mode. */
 export interface SessionChoice {
   profileId: string;
   model: string | null;
@@ -251,24 +252,27 @@ export interface SessionChoice {
   checkoutBranch: string | null;
 }
 
-export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }): SessionChoice {
+export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }, globalMode: PermissionMode = 'default'): SessionChoice {
   const workspace = project.workspace ?? profile.defaults.workspace;
   return {
     profileId: profile.id,
     model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model),
     effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort),
-    permissionMode: options.permissionMode ?? project.permissionMode ?? profile.defaults.permissionMode ?? 'default',
+    permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
     checkoutBranch: options.checkoutBranch ?? null,
   };
 }
 
-/** A project's or a profile's defaults as a phone gets them. */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>) => ({
+/**
+ * A project's or a profile's defaults as a phone gets them. The phone takes the project's mode, else the profile's, so
+ * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's.
+ */
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { globalPermissionMode?: boolean }, globalMode: PermissionMode | null) => ({
   model: defaults.model,
   effort: defaults.effort,
-  permissionMode: defaults.permissionMode,
+  permissionMode: defaults.permissionMode ?? globalMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { CatchUp } from '@switchboard/protocol/remote-client';
-import { catchUpChips, commitTitle, reviewLabel, showsCatchUp, stateLabel } from './catchUp.ts';
+import type { CatchUp } from '@seshboard/protocol/remote-client';
+import { catchUpChips, commitTitle, reviewLabel, showsCatchUp, stateLabel, withHashes } from './catchUp.ts';
 
 const card = (change: Partial<CatchUp> = {}, signals: Partial<CatchUp['signals']> = {}): CatchUp => ({
   sessionId: 's',
@@ -47,5 +47,19 @@ describe('catch-up wording', () => {
     expect(commitTitle(card())).toBe('Add rate limits to the webhooks');
     expect(commitTitle(card({ ask: `${'x'.repeat(80)}\nmore` })).length).toBe(72);
     expect(commitTitle(null)).toBe('');
+  });
+});
+
+describe('commit hashes in What it did', () => {
+  it('sets them apart', () => {
+    expect(withHashes('Committed the redesign as 5ea17e39 and pushed it.')).toEqual([
+      { text: 'Committed the redesign as ', hash: false },
+      { text: '5ea17e39', hash: true },
+      { text: ' and pushed it.', hash: false },
+    ]);
+  });
+
+  it('leaves numbers and words alone', () => {
+    expect(withHashes('Ran 1234567 tests on a decade-old facade')).toEqual([{ text: 'Ran 1234567 tests on a decade-old facade', hash: false }]);
   });
 });

@@ -1,4 +1,4 @@
-import { branchOfBase, isBranchBase, type WorktreeBase } from '@switchboard/protocol/client';
+import { branchOfBase, isBranchBase, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What the branch dropdown under the composer needs to know to name itself. */
 export interface BranchRoute {

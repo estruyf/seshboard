@@ -1,5 +1,5 @@
 import { Info } from 'lucide-react';
-import { AUTO_TIERS, tierLabel, type AutoLean, type AutoModelPrefs } from '@switchboard/protocol/client';
+import { AUTO_TIERS, tierLabel, type AutoLean, type AutoModelPrefs } from '@seshboard/protocol/client';
 import { toggleTier } from '../../lib/autoModel.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Checkbox } from '../ui/Checkbox.tsx';

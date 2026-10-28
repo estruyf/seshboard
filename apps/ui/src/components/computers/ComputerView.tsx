@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Plus, RefreshCw } from 'lucide-react';
-import type { Computer } from '@switchboard/protocol/client';
+import type { Computer } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';

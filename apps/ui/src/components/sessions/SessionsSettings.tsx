@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Archive, ArchiveRestore, Ellipsis, FolderSearch, Info, PanelLeft, Pin, PinOff, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import { ARCHIVE_AFTER_DAYS, DELETE_AFTER_DAYS } from '@switchboard/protocol/bridge';
+import { ARCHIVE_AFTER_DAYS, DELETE_AFTER_DAYS, MARK_READ_SECONDS } from '@seshboard/protocol/bridge';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { shortAge } from '../../lib/format.ts';
@@ -175,8 +175,39 @@ export function SessionsSettings({ scrollRef }: { scrollRef: RefObject<HTMLDivEl
       ? `after ${readable[0]!.days ?? CLAUDE_CLEANUP_DEFAULT} days`
       : readable.map((p) => `${profileName(p.profileId)} after ${p.days ?? CLAUDE_CLEANUP_DEFAULT} days`).join(', ');
 
+  const reading = prefs.markReadAfter;
+  const setReading = (enabled: boolean, seconds: number) => update({ markReadAfter: { enabled, seconds } });
+
   return (
     <>
+      <section className="grid grid-cols-[minmax(0,1fr)] gap-3 pt-6" aria-label="Unread sessions" data-mark-read-settings>
+        <Heading title="Unread sessions">A finished session stays unread, in blue, until you have looked at it.</Heading>
+        <div className="rounded-xl border border-border bg-card px-4 py-3.5">
+          <SettingRow
+            label="Mark as read after"
+            detail={
+              reading.enabled
+                ? 'A session you open unread is marked read once it has been in front of you this long.'
+                : 'Off. A session you open unread stays so until you mark it read.'
+            }
+          >
+            <Stepper
+              value={reading.seconds}
+              min={MARK_READ_SECONDS.min}
+              max={MARK_READ_SECONDS.max}
+              onChange={(seconds) => setReading(reading.enabled, seconds)}
+              label="Seconds before an opened session is marked read"
+              less="Fewer seconds"
+              more="More seconds"
+              disabled={!reading.enabled}
+              hook="mark-read-seconds"
+            />
+            <span className={`w-14 text-ui ${reading.enabled ? 'text-muted' : 'text-faint'}`}>seconds</span>
+            <Switch checked={reading.enabled} onChange={(on) => setReading(on, reading.seconds)} label="Mark as read after viewing" dataAttrs={{ 'data-mark-read-after': true, 'data-on': reading.enabled }} />
+          </SettingRow>
+        </div>
+      </section>
+
       <section className="grid grid-cols-[minmax(0,1fr)] gap-3 py-6" aria-label="Keep the list short" data-sessions-settings>
         <Heading title="Keep the list short">
           Archived sessions leave the sidebar but stay on disk. Deleting one moves its transcript to the {trashName()}, so <code className="font-mono text-meta">claude --resume</code> no longer lists it.

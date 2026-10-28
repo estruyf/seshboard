@@ -16,7 +16,7 @@ const write = (path: string, text: string) => {
 const order = () => loadOrder({ configDir, root, memoryDir, home: base }).map((e) => [e.path.slice(base.length + 1).split(sep).join('/'), e.kind, e.when]);
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-load-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-load-')));
   configDir = join(base, 'config');
   root = join(base, 'project');
   memoryDir = join(configDir, 'projects', 'x', 'memory');

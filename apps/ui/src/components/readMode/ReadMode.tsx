@@ -1,6 +1,6 @@
 import { Copy, MessageCircleQuestion, TextQuote } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { LiveSession } from '@switchboard/protocol/client';
+import type { LiveSession } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openAsk } from '../../state/askStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -127,10 +127,10 @@ export function ReadMode({ sessionId, title, live, cwd, reply }: { sessionId: st
 
   // The window's buttons sit at the top left, over the bar. The rail moves them; put them back when it shows.
   useEffect(() => {
-    window.switchboard?.setWindowButtons?.('default');
+    window.seshboard?.setWindowButtons?.('default');
     return () => {
       const { state, width, viewport } = useSidebar.getState();
-      window.switchboard?.setWindowButtons?.(fitSidebar(state, width, viewport).state === 'minimal' ? 'rail' : 'default');
+      window.seshboard?.setWindowButtons?.(fitSidebar(state, width, viewport).state === 'minimal' ? 'rail' : 'default');
     };
   }, []);
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import { settingsPageOrder } from '../settingsSections.ts';
 import { groupByPage, searchSettings, type SettingEntry } from './searchSettings.ts';
 
 const ENTRIES: SettingEntry[] = [
-  { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens.', target: '[data-startup-view]' },
+  { id: 'startup', page: 'general', label: 'On startup', detail: 'What Seshboard shows when it opens.', target: '[data-startup-view]' },
   { id: 'quit', page: 'general', label: 'Ask before quitting', detail: 'Shows a prompt first.', keywords: 'close exit', target: '[data-confirm-quit]' },
   { id: 'appearance', page: 'theme', label: 'Appearance', detail: 'Match System, Light or Dark.', keywords: 'dark mode light mode', target: '[data-appearance]' },
   { id: 'scope', page: 'sidebar', label: 'Show sessions from other apps', detail: 'Also list sessions from Terminal.', target: '[data-session-scope]' },
@@ -56,9 +57,16 @@ describe('searchSettings', () => {
     expect(match!.label).toEqual([[0, 6]]);
   });
 
-  it('groups by page, the best page first', () => {
-    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'));
-    expect(groups.map((g) => g.page)).toEqual(['general', 'sidebar', 'theme']);
-    expect(groups[0]!.matches.map((m) => m.entry.id)).toEqual(['startup', 'quit']);
+  it('groups by page, in the order of the menu, best first within a page', () => {
+    // "s" scores best on General, but the menu lists Theme first here.
+    const order: SettingsSection[] = ['theme', 'sidebar', 'general'];
+    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'), (page) => order.indexOf(page));
+    expect(groups.map((g) => g.page)).toEqual(['theme', 'sidebar', 'general']);
+    expect(groups.at(-1)!.matches.map((m) => m.entry.id)).toEqual(['startup', 'quit']);
+  });
+
+  it('groups by page in the order of Settings’ own menu', () => {
+    const groups = groupByPage(searchSettings('s', ENTRIES, pageLabel, 'darwin'), settingsPageOrder);
+    expect(groups.map((g) => g.page)).toEqual(['general', 'theme', 'sidebar']);
   });
 });

@@ -1,6 +1,6 @@
 import { Bot, Eye, LoaderCircle, Plug, Square, SquareTerminal, Workflow, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { BackgroundTask } from '@switchboard/protocol/client';
+import type { BackgroundTask } from '@seshboard/protocol/client';
 import { Button } from '../ui/Button.tsx';
 import { formatDuration, useTicker } from './ActivityGroup.tsx';
 import type { AgentRun } from './agentRuns.ts';

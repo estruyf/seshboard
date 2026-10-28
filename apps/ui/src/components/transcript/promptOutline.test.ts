@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TranscriptMessage } from '@switchboard/protocol/client';
+import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { buildDisplayItems, groupActivity } from './displayItems.ts';
 import {
   currentPrompt,

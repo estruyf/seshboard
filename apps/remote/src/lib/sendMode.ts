@@ -1,4 +1,4 @@
-import type { SendMode } from '@switchboard/protocol/remote-client';
+import type { SendMode } from '@seshboard/protocol/remote-client';
 import { modKey, type KeyEventLike } from './keys.ts';
 
 /**

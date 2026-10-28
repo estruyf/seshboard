@@ -47,7 +47,7 @@ export function useDraftsSync(): void {
       clearTimeout(timer);
       const { drafts, firstPrompts, loaded } = useDrafts.getState();
       // Until the saved ones are read, writing would wipe them.
-      if (!loaded || window.switchboard?.popout) return;
+      if (!loaded || window.seshboard?.popout) return;
       const value = serializeDrafts(drafts, firstPrompts);
       const json = JSON.stringify(value);
       if (json === saved) return;
@@ -105,7 +105,7 @@ export function useDraftsSync(): void {
  */
 function useDraftsRelay(): void {
   useEffect(() => {
-    const bridge = window.switchboard;
+    const bridge = window.seshboard;
     if (!bridge) return;
     const popout = bridge.popout !== null;
     let others = popout || bridge.popouts.length > 0;

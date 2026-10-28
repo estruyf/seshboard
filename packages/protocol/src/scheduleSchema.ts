@@ -50,10 +50,10 @@ export const Schedule = z.object({
   /** The prompt and New session's choices, kept like a queued item's (images included). */
   draft: LaterDraft,
   rule: ScheduleRuleSchema,
-  /** What to do with runs that were due while Switchboard was closed: run once at the next start, or skip them. */
+  /** What to do with runs that were due while Seshboard was closed: run once at the next start, or skip them. */
   missed: ScheduleMissedSchema.default('run'),
   paused: z.boolean().default(false),
-  /** Why it was paused by Switchboard rather than by you ("Folder not found"); null when you paused it. */
+  /** Why it was paused by Seshboard rather than by you ("Folder not found"); null when you paused it. */
   pausedReason: z.string().max(200).nullable().default(null),
   lastRun: ScheduleLastRun.nullable().default(null),
   /** Its last runs, newest first (at most `SCHEDULE_HISTORY`). */
@@ -87,7 +87,7 @@ export const ScheduleRunEvent = z.object({
   title: z.string().nullable(),
   projectName: z.string(),
   reason: z.string().nullable(),
-  /** It was due while Switchboard was closed or the computer slept. */
+  /** It was due while Seshboard was closed or the computer slept. */
   missed: z.boolean(),
 });
 export type ScheduleRunEvent = z.infer<typeof ScheduleRunEvent>;

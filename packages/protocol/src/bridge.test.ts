@@ -44,12 +44,12 @@ describe('sidebarCollapsed preference', () => {
 describe('fileLinkClick preference', () => {
   const REV = FILE_LINK_CLICK_REVISION;
 
-  it('opens files in Switchboard by default, on the current revision', () => {
+  it('opens files in Seshboard by default, on the current revision', () => {
     expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('switchboard');
     expect(DEFAULT_PREFERENCES.fileLinkClickRevision).toBe(REV);
   });
 
-  it('keeps the editor and Switchboard, whatever the revision, and drops anything else', () => {
+  it('keeps the editor and Seshboard, whatever the revision, and drops anything else', () => {
     expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
     expect(sanitizePreferences({ fileLinkClick: 'editor', fileLinkClickRevision: 1 })).toEqual({ fileLinkClick: 'editor' });
     expect(sanitizePreferences({ fileLinkClick: 'switchboard' })).toEqual({ fileLinkClick: 'switchboard' });
@@ -107,19 +107,34 @@ describe('keepAwake preference', () => {
 });
 
 describe('newSessionMode preference', () => {
-  it("starts new sessions in the project's default by default", () => {
-    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('project');
+  it('starts new sessions in Ask before edits by default', () => {
+    expect(DEFAULT_PREFERENCES.newSessionMode).toBe('default');
   });
 
   it('keeps the offered modes, and drops bypass and anything else', () => {
-    for (const mode of ['project', 'remember', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
+    for (const mode of ['remember', 'default', 'acceptEdits', 'plan', 'auto']) expect(sanitizePreferences({ newSessionMode: mode })).toEqual({ newSessionMode: mode });
     expect(sanitizePreferences({ newSessionMode: 'bypassPermissions' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: 'dontAsk' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: null })).toEqual({});
   });
 
-  it("drops the old 'last', so it becomes the project's default", () => {
+  it("drops the old 'project' and 'last', so they become Ask before edits", () => {
+    expect(sanitizePreferences({ newSessionMode: 'project' })).toEqual({});
     expect(sanitizePreferences({ newSessionMode: 'last' })).toEqual({});
+  });
+});
+
+describe('mark as read preference', () => {
+  it('marks an opened session read after 3 seconds by default', () => {
+    expect(DEFAULT_PREFERENCES.markReadAfter).toEqual({ enabled: true, seconds: 3 });
+  });
+
+  it('takes it only as a whole: a switch and seconds between 1 and 60', () => {
+    expect(sanitizePreferences({ markReadAfter: { enabled: false, seconds: 10 } })).toEqual({ markReadAfter: { enabled: false, seconds: 10 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true, seconds: 0 } })).toEqual({ markReadAfter: { enabled: true, seconds: 1 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true, seconds: 600 } })).toEqual({ markReadAfter: { enabled: true, seconds: 60 } });
+    expect(sanitizePreferences({ markReadAfter: { enabled: true } })).toEqual({});
+    expect(sanitizePreferences({ markReadAfter: 5 })).toEqual({});
   });
 });
 

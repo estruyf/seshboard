@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { DEFAULT_PREFERENCES, mergePreferences, sanitizePreferences, type Preferences, type PreferencesPatch } from '@switchboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, mergePreferences, sanitizePreferences, type Preferences, type PreferencesPatch } from '@seshboard/protocol/bridge';
 
 interface PreferencesState {
   prefs: Preferences;
@@ -11,15 +11,15 @@ interface PreferencesState {
 
 export const usePreferences = create<PreferencesState>()((set) => ({
   // The preload reads them synchronously, so the first render already has them.
-  prefs: { ...DEFAULT_PREFERENCES, ...window.switchboard?.preferences },
+  prefs: { ...DEFAULT_PREFERENCES, ...window.seshboard?.preferences },
   update: (patch) => {
     set((s) => ({ prefs: { ...s.prefs, ...sanitizePreferences(mergePreferences(s.prefs, patch)) } }));
-    window.switchboard?.setPreferences(patch);
+    window.seshboard?.setPreferences(patch);
   },
   replace: (prefs) => set({ prefs }),
 }));
 
 /** Follows changes made elsewhere (the menu bar, another window). */
 export function usePreferencesSync(): void {
-  useEffect(() => window.switchboard?.onPreferencesChanged((prefs) => usePreferences.getState().replace(prefs)), []);
+  useEffect(() => window.seshboard?.onPreferencesChanged((prefs) => usePreferences.getState().replace(prefs)), []);
 }

@@ -3,7 +3,9 @@ import { MoreHorizontal } from 'lucide-react';
 import { Button } from './ui.tsx';
 
 export type MenuItem =
-  | { kind?: 'item'; label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hint?: string | undefined }
+  | { kind?: 'item'; label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hint?: string | undefined; icon?: ReactNode; hook?: string }
+  /** A row with its choices inline (Theme: Auto, Dark, Light): picking one keeps the menu open. */
+  | { kind: 'segmented'; label: string; icon?: ReactNode; options: readonly { value: string; label: string }[]; value: string; onChange: (value: string) => void; hook?: string }
   | { kind: 'note'; label: ReactNode }
   /** What the menu is about, on top: the computer's name and its state. */
   | { kind: 'header'; title: string; detail: ReactNode }
@@ -140,6 +142,9 @@ export function ContextMenu({ label, items, point, owner, onClose }: { label: st
   );
 }
 
+/** What the arrow keys move through. */
+const ITEMS = '[role=menuitem]:not([aria-disabled=true]),[role=menuitemradio]';
+
 /** The list both menus show. `owner` is what opened it: a tap on it isn't a tap outside. */
 function MenuList({
   ref,
@@ -165,7 +170,7 @@ function MenuList({
   latestClose.current = onClose;
 
   useEffect(() => {
-    list.current?.querySelector<HTMLElement>('[role=menuitem]:not([aria-disabled=true])')?.focus();
+    list.current?.querySelector<HTMLElement>(ITEMS)?.focus();
     const outside = (event: PointerEvent) => {
       if (!list.current?.contains(event.target as Node) && !owner.current?.contains(event.target as Node)) latestClose.current(false);
     };
@@ -184,7 +189,7 @@ function MenuList({
       role="menu"
       aria-label={label}
       onKeyDown={(event) => {
-        const items = [...(list.current?.querySelectorAll<HTMLElement>('[role=menuitem]:not([aria-disabled=true])') ?? [])];
+        const items = [...(list.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])];
         const at = items.indexOf(document.activeElement as HTMLElement);
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -207,6 +212,27 @@ function MenuList({
             <span className="truncate text-ui font-semibold text-text">{item.title}</span>
             <span className="text-meta text-muted">{item.detail}</span>
           </div>
+        ) : item.kind === 'segmented' ? (
+          <div key={index} className="flex min-h-11 items-center gap-3 px-3 pointer-fine:min-h-8" data-remote-menu-item={item.hook}>
+            {item.icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted [&>svg]:size-4">{item.icon}</span>}
+            <span className="flex-1 text-ui text-text">{item.label}</span>
+            <div role="group" aria-label={item.label} className="flex shrink-0 rounded-lg border border-edge bg-sidebar p-0.5">
+              {item.options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={option.value === item.value}
+                  onClick={() => option.value !== item.value && item.onChange(option.value)}
+                  onPointerMove={(event) => event.pointerType === 'mouse' && event.currentTarget !== document.activeElement && event.currentTarget.focus({ preventScroll: true })}
+                  className={`min-h-9 rounded-md px-2.5 text-meta pointer-fine:min-h-6 ${option.value === item.value ? 'bg-card font-semibold text-text shadow-sm' : 'text-muted'}`}
+                  data-remote-menu-option={option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : item.kind === 'note' ? (
           <div key={index} className="px-3 py-1.5 text-meta text-faint">
             {item.label}
@@ -224,7 +250,9 @@ function MenuList({
             }}
             onPointerMove={(event) => event.pointerType === 'mouse' && !item.disabled && event.currentTarget !== document.activeElement && event.currentTarget.focus({ preventScroll: true })}
             className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-left text-ui outline-none pointer-fine:min-h-8 focus:bg-accent/15 aria-disabled:opacity-50 ${item.danger ? 'text-error' : 'text-text'}`}
+            data-remote-menu-item={item.hook}
           >
+            {item.icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted [&>svg]:size-4">{item.icon}</span>}
             <span className="flex-1">{item.label}</span>
             {item.hint && <span className="text-meta text-faint">{item.hint}</span>}
           </button>

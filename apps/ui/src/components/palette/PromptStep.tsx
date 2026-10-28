@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, GitBranch, GitBranchPlus, SquarePen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type ImageAttachment, type LaterDraft, type PermissionMode, type ProjectInspection } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';

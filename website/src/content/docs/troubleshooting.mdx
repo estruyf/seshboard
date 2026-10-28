@@ -12,7 +12,7 @@ import Screenshot from '../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 import Related from '../../components/Related.astro';
 
-When something doesn't work, Switchboard can tell you a lot about what it sees: the engine behind it, the Claude Code it found, and its recent log. This page covers the usual problems, where your data lives, and common questions.
+When something doesn't work, Seshboard can tell you a lot about what it sees: the engine behind it, the Claude Code it found, and its recent log. This page covers the usual problems, where your data lives, and common questions.
 
 <Screenshot name="settings-diagnostics" alt="Settings on Diagnostics: the Engine card with its status and round trip, the Claude Code card with the binary, config folder and shell environment, the Runtime card, a Rendering sample and the Engine log" eager />
 
@@ -22,12 +22,12 @@ When something doesn't work, Switchboard can tell you a lot about what it sees: 
 - *Check transcript…* in the command palette, or under **⋯** in a session's header, for one session.
 - **Settings → About** for the version you run, and the commit it was built from. Add both to a bug report.
 
-## Check what Switchboard sees
+## Check what Seshboard sees
 
 [Settings → Diagnostics](/settings/#diagnostics) shows:
 
 - **Engine**: whether it is connected, how often it reconnected, and how fast it answers (**Ping again** measures again).
-- **Claude Code**: the `claude` it found, with its version and path; the config folder it reads; and whether your shell environment was loaded (on Windows, the PowerShell that Switchboard uses).
+- **Claude Code**: the `claude` it found, with its version and path; the config folder it reads; and whether your shell environment was loaded (on Windows, the PowerShell that Seshboard uses).
 - **Runtime**: the Electron, Node and SQLite versions, and the cache database (a button shows it in <Os mac="Finder" windows="File Explorer" />).
 - **Engine log**: the engine's recent messages. Warnings and errors stand out in colour.
 
@@ -36,7 +36,7 @@ When something doesn't work, Switchboard can tell you a lot about what it sees: 
 <Steps>
 
 1. Open the session and run *Check transcript…* (in the command palette or the session's **⋯** menu).
-2. Read the conclusions at the top. Switchboard looks at the session's transcript files in every profile's folder and reads them the way Claude Code does.
+2. Read the conclusions at the top. Seshboard looks at the session's transcript files in every profile's folder and reads them the way Claude Code does.
 3. Click **Copy details** (<Kbd keys="mod+enter" />) to copy the whole report for a bug report. **Check again** runs it again.
 
 </Steps>
@@ -48,7 +48,7 @@ When something doesn't work, Switchboard can tell you a lot about what it sees: 
 Releases are signed and notarised by Apple, so macOS opens them. A build you made yourself without a Developer ID certificate is unsigned: on another Mac, macOS blocks the first launch. Right-click the app and choose **Open**, or run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Switchboard.app
+xattr -dr com.apple.quarantine /Applications/Seshboard.app
 ```
 
 See [Building, signing and notarisation](https://github.com/estruyf/switchboard/blob/main/docs/building-and-signing.md) on GitHub.
@@ -67,7 +67,7 @@ If your organisation blocks apps that aren't from the Microsoft Store or aren't 
 
 ## The AppImage doesn't start on Linux
 
-If it says "AppImages require FUSE to run", install FUSE 2: `sudo apt install libfuse2` (`libfuse2t64` on Ubuntu 24.04). If it stops with a sandbox error on Ubuntu 24.04 or later, install the `.deb` instead: it adds the AppArmor profile Ubuntu asks for. See [Switchboard on Linux](/getting-started/linux/#if-the-appimage-doesnt-start).
+If it says "AppImages require FUSE to run", install FUSE 2: `sudo apt install libfuse2` (`libfuse2t64` on Ubuntu 24.04). If it stops with a sandbox error on Ubuntu 24.04 or later, install the `.deb` instead: it adds the AppArmor profile Ubuntu asks for. See [Seshboard on Linux](/getting-started/linux/#if-the-appimage-doesnt-start).
 
 ## Claude Code isn't found
 
@@ -77,85 +77,97 @@ If **Binary** in Settings → Diagnostics says *Not found on your PATH*:
 
 1. Install [Claude Code](https://github.com/anthropics/claude-code) and sign in.
 2. Check that `claude` runs in <Os mac="Terminal" windows="a new PowerShell window" />.
-3. Quit and reopen Switchboard.
+3. Quit and reopen Seshboard.
 
 </Steps>
 
 <OnlyOn os="mac">
 
-Switchboard finds `claude` through your login shell's environment. **Shell environment** in Diagnostics says whether it loaded it, or fell back to the app's own environment. If it fell back, check that your shell starts without errors.
+Seshboard finds `claude` through your login shell's environment. **Shell environment** in Diagnostics says whether it loaded it, or fell back to the app's own environment. If it fell back, check that your shell starts without errors.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-On Windows, Switchboard uses the environment it gets from Windows when it starts, so it only sees a `PATH` change (such as a new Claude Code install) after you quit and reopen it. It looks for `claude.exe` on your `PATH`, then where each installer puts it:
+On Windows, Seshboard uses the environment it gets from Windows when it starts, so it only sees a `PATH` change (such as a new Claude Code install) after you quit and reopen it. It looks for `claude.exe` on your `PATH`, then where each installer puts it:
 
 - the native installer: `%USERPROFILE%\.local\bin\claude.exe`;
 - npm: the `claude.exe` in the `@anthropic-ai\claude-code` package, next to npm's `claude.cmd`;
 - WinGet: `%LOCALAPPDATA%\Microsoft\WinGet\Links\claude.exe`, or WinGet's `Packages` folder for an install for every user.
 
-If `claude` works in PowerShell but Switchboard doesn't find it, check that the folder it is in is in your user or system `PATH`, not only added in your PowerShell profile.
+If `claude` works in PowerShell but Seshboard doesn't find it, check that the folder it is in is in your user or system `PATH`, not only added in your PowerShell profile.
 
 </OnlyOn>
 
+## Claude Code can't start
+
+When Claude Code fails before it gets your message, a notice above the message box says why, in full. Fix what it says, such as a setting or a missing tool, then click **Try again** (or run *Try again* in the command palette): Claude Code starts again and your message is sent. See [When Claude Code fails](/sessions/conversation/#when-claude-code-fails).
+
+## A session says Claude Code is signed out
+
+Claude Code's login expired or was removed. Click **Sign in** in the notice: Claude Code's sign-in runs in the session's terminal panel, and once you are signed in, the session continues where it left off. Signed in somewhere else, such as your own terminal? Click **Continue**. See [Signed out](/sessions/conversation/#signed-out).
+
 ## Sessions from other apps don't show
 
-By default the sidebar only lists the sessions you started or continued in Switchboard. Turn on **Show sessions from other apps** in [Settings → Sidebar](/settings/#sidebar) to also see sessions from Terminal, Claude desktop and your editor.
+By default the sidebar only lists the sessions you started or continued in Seshboard. Turn on **Show sessions from other apps** in [Settings → Sidebar](/settings/#sidebar) to also see sessions from Terminal, Claude desktop and your editor.
 
 Sessions that run with another Claude Code config folder (`CLAUDE_CONFIG_DIR=…`) only show once you add that folder as a [Claude profile](/settings/claude-profiles/).
 
 ## New skills or commands don't show
 
-Run *Reload skills* in the command palette. Switchboard reads your skill and command folders again, and running sessions pick up the change the next time they list them.
+Run *Reload skills* in the command palette. Seshboard reads your skill and command folders again, and running sessions pick up the change the next time they list them.
+
+## A new MCP server doesn't show
+
+Sessions read their MCP servers when they start. After you add a server to your Claude Code settings or a project's `.mcp.json`, run *Reload MCP servers* in the command palette: running sessions pick it up for their next message, without a restart. For one session, click the refresh button at the top of its Tools. See [Agents and tools](/sessions/conversation/#agents-and-tools).
 
 ## Windows: commands in the terminal or in actions
 
-- **Chained commands.** Switchboard runs the [terminal](/terminal-changes-git/terminal/) and [actions](/projects/actions/) in PowerShell 7 (`pwsh`) when it's installed, and otherwise in Windows PowerShell 5.1. Windows PowerShell 5.1 has no `&&`: write `a; if ($?) { b }` in your own actions, or install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows). The steps Switchboard runs itself, such as pushing and opening a pull request, already work in both.
-- **Scripts.** Switchboard starts PowerShell with the execution policy set to Bypass for that window only, so `npm`, `npx` and `pnpm` run there. A policy your organisation sets through Group Policy still wins.
+- **Chained commands.** Seshboard runs the [terminal](/terminal-changes-git/terminal/) and [actions](/projects/actions/) in PowerShell 7 (`pwsh`) when it's installed, and otherwise in Windows PowerShell 5.1. Windows PowerShell 5.1 has no `&&`: write `a; if ($?) { b }` in your own actions, or install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows). The steps Seshboard runs itself, such as pushing and opening a pull request, already work in both.
+- **Scripts.** Seshboard starts PowerShell with the execution policy set to Bypass for that window only, so `npm`, `npx` and `pnpm` run there. A policy your organisation sets through Group Policy still wins.
 - **An action won't run because of a character.** On Windows an action refuses to run when a value it fills in (a branch name, say) holds `&`, `|`, `<`, `>`, `^`, `%`, `!`, `"` or a line break, and says which one: programs such as `.cmd` and `.bat` files would read it as a command. Rename the branch, or leave that value out of the action.
 - **Very long commands.** A command of more than roughly 12,000 characters is too long for Windows and doesn't start.
 
 ## Windows: long paths
 
-Git for Windows leaves out files whose full path is longer than 260 characters unless it is told otherwise. Switchboard runs git with `core.longpaths` on, so those files show in [Changes](/terminal-changes-git/changes/) and worktrees work. Other tools you run in the terminal may still need [long paths turned on in Windows](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation), and `git config --global core.longpaths true` for your own git commands.
+Git for Windows leaves out files whose full path is longer than 260 characters unless it is told otherwise. Seshboard runs git with `core.longpaths` on, so those files show in [Changes](/terminal-changes-git/changes/) and worktrees work. Other tools you run in the terminal may still need [long paths turned on in Windows](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation), and `git config --global core.longpaths true` for your own git commands.
 
 ## The engine restarted
 
-The engine runs separately from the window. If it stops, Switchboard starts it again and the window reconnects on its own; buttons that need it say *Connecting to the engine…* in the meantime. Your sessions are kept. Settings → Diagnostics counts how often it reconnected.
+The engine runs separately from the window. If it stops, Seshboard starts it again and the window reconnects on its own; buttons that need it say *Connecting to the engine…* in the meantime. Your sessions are kept. Settings → Diagnostics counts how often it reconnected.
 
 ## Remote: the phone can't connect
 
-- **The card in Settings → Remote doesn't say Running.** It says why, with the fix as a button: install the tunnel's tool or use Cloudflare instead, use the next free port, or try again (Switchboard also tries again by itself when the tunnel stops).
+- **The card in Settings → Remote doesn't say Running.** It says why, with the fix as a button: install the tunnel's tool or use Cloudflare instead, use the next free port, or try again (Seshboard also tries again by itself when the tunnel stops).
 - **Remote can't keep its key in the keychain on Linux.** Remote keeps its key in your desktop's keychain through the Secret Service: GNOME Keyring, KDE Wallet or KeePassXC. Check that one runs and is unlocked, then click **Try again**. On a window manager without one (Hyprland, Sway, i3), install `gnome-keyring` and start it with your session.
 - **Tailscale fails to start.** `tailscale serve` needs HTTPS certificates turned on for your tailnet, in Tailscale's admin console under DNS. The message in Settings → Remote says where.
 - **ngrok connects on the computer but not on the phone.** ngrok's free plan can put a warning page in front of the address. Use Cloudflare or Tailscale.
 - **The phone says it can't reach your computer** after a Cloudflare quick tunnel restarted: the address changed. The card says **Address changed**: click **Reconnect a paired device** and scan it.
-- **The phone says to pair again.** The phone was revoked, wasn't used for 30 days, or Switchboard's key changed (for example after moving to another computer). Pair it again.
+- **The phone says to pair again.** The phone was revoked, wasn't used for 30 days, or Seshboard's key changed (for example after moving to another computer). Pair it again.
 
 ## Your data
 
-- **Sessions** stay where Claude Code keeps them: <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />, and the folder of each other [Claude profile](/settings/claude-profiles/) you add. Switchboard reads them and runs your own `claude` to do the work, so a session is the same in the terminal and in the app.
-- **Switchboard's own data** is in <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" /> (`~/.config/Switchboard` on Linux): preferences, [imported themes](/themes/custom/), the `backups` folder of [settings backups](/settings/backup/), and a database (`cache.sqlite`) with your projects, project actions, pinned and archived sessions, and an index it builds from `~/.claude` for the sidebar and search.
+- **Sessions** stay where Claude Code keeps them: <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />, and the folder of each other [Claude profile](/settings/claude-profiles/) you add. Seshboard reads them and runs your own `claude` to do the work, so a session is the same in the terminal and in the app.
+- **Seshboard's own data** is in <Os mac="~/Library/Application Support/Seshboard" windows="%APPDATA%\Seshboard" /> (`~/.config/Seshboard` on Linux): preferences, [imported themes](/themes/custom/), the `backups` folder of [settings backups](/settings/backup/), and a database (`cache.sqlite`) with your projects, project actions, pinned and archived sessions, and an index it builds from `~/.claude` for the sidebar and search.
 - **Deleting a session** moves its files to the <Os mac="Trash" windows="Recycle Bin" />, so you can get it back from there. Reverting a new file in [Changes](/terminal-changes-git/changes/) and removing a theme go to the <Os mac="Trash" windows="Recycle Bin" /> too.
 
 ## FAQ
 
-### Does Switchboard send my data anywhere?
+### Does Seshboard send my data anywhere?
 
-No. It asks GitHub whether there is a new Switchboard release (turn that off in [Settings → About](/settings/#about)), and the npm registry which Claude Code version is the newest (turn that off there too). Your prompts and sessions only go where Claude Code sends them. The [VS Code companion](/vscode-companion/) talks to Switchboard over a socket (a named pipe on Windows) on your computer only. [Remote](/remote-access/) only runs when you turn it on: then the tunnel you chose carries what your paired phone sees, encrypted from the phone to your computer so the tunnel can't read it.
+No. It asks GitHub whether there is a new Seshboard release (turn that off in [Settings → About](/settings/#about)), and the npm registry which Claude Code version is the newest (turn that off there too). Your prompts and sessions only go where Claude Code sends them. The [VS Code companion](/vscode-companion/) talks to Seshboard over a socket (a named pipe on Windows) on your computer only. [Remote](/remote-access/) only runs when you turn it on: then the tunnel you chose carries what your paired phone sees, encrypted from the phone to your computer so the tunnel can't read it.
 
 ### Does it need its own login?
 
-No. Switchboard uses the Claude Code you already have, with your login, settings, commands and skills. It never handles your Claude login: you sign in with Claude Code itself. For more than one account, see [Claude profiles](/settings/claude-profiles/).
+No. Seshboard uses the Claude Code you already have, with your login, settings, commands and skills. It never handles your Claude login: you sign in with Claude Code itself. For more than one account, see [Claude profiles](/settings/claude-profiles/).
 
 ### Does it run on an Intel Mac?
 
-No. On a Mac, Switchboard is built for Apple Silicon, and needs macOS 13 (Ventura) or later.
+No. On a Mac, Seshboard is built for Apple Silicon, and needs macOS 13 (Ventura) or later.
 
 ### Is there a Windows or Linux version?
 
-There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Install Switchboard](/getting-started/install/) and [Switchboard on Windows](/getting-started/windows/). The Arm64 build hasn't been tried on Arm hardware yet. There is no Linux version.
+There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Install Seshboard](/getting-started/install/) and [Seshboard on Windows](/getting-started/windows/). The Arm64 build hasn't been tried on Arm hardware yet. There is a Linux version too: see [Seshboard on Linux](/getting-started/linux/).
 
 ### How do I uninstall it?
 
@@ -163,9 +175,9 @@ There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Ins
 
 <Steps>
 
-1. Quit Switchboard.
-2. Move Switchboard from Applications to the Trash. With Homebrew, run `brew uninstall --cask estruyf/tap/switchboard` instead.
-3. To remove its data too, move `~/Library/Application Support/Switchboard` to the Trash, or run `brew uninstall --zap --cask estruyf/tap/switchboard`.
+1. Quit Seshboard.
+2. Move Seshboard from Applications to the Trash. With Homebrew, run `brew uninstall --cask estruyf/tap/seshboard` instead.
+3. To remove its data too, move `~/Library/Application Support/Seshboard` to the Trash, or run `brew uninstall --zap --cask estruyf/tap/seshboard`.
 
 </Steps>
 
@@ -175,9 +187,9 @@ There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Ins
 
 <Steps>
 
-1. Quit Switchboard.
-2. Open Windows **Settings › Apps**, find Switchboard and choose **Uninstall**. This also removes the `switchboard://` link handler.
-3. To remove its data too, delete `%APPDATA%\Switchboard`.
+1. Quit Seshboard.
+2. Open Windows **Settings › Apps**, find Seshboard and choose **Uninstall**. This also removes the `seshboard://` link handler.
+3. To remove its data too, delete `%APPDATA%\Seshboard`.
 
 </Steps>
 

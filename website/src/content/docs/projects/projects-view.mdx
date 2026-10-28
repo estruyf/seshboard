@@ -11,7 +11,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Projects are the folders you work in with Switchboard. Add a folder once, and it is ready to pick in New session, to filter the sidebar by, and to open on a page of its own with its sessions, worktrees, branches and memory. The **Projects** view is one view for all of it: the list of projects on the left, and the open project's page on the right. Add, order, rename and remove projects in the list, and work with one on its page.
+Projects are the folders you work in with Seshboard. Add a folder once, and it is ready to pick in New session, to filter the sidebar by, and to open on a page of its own with its sessions, worktrees, branches and memory. The **Projects** view is one view for all of it: the list of projects on the left, and the open project's page on the right. Add, order, rename and remove projects in the list, and work with one on its page.
 
 <Screenshot name="projects-view" alt="The Projects view: the list of projects on the left, each with its icon, name, profile and worktree hint, and the open project's page on the right with its tabs" eager />
 
@@ -34,7 +34,7 @@ To add a project straight away, run *Add project…* in the palette, click the *
 
 </Steps>
 
-When you close the dialog, Switchboard opens the last project you added on its **Settings** tab, so you can set its [defaults](/projects/settings/) right away.
+When you close the dialog, Seshboard opens the last project you added on its **Settings** tab, so you can set its [defaults](/projects/settings/) right away.
 
 ## The list
 
@@ -42,7 +42,7 @@ Each row shows the project's icon and name, and under it the [Claude profile](/s
 
 - **Click a row** to open the project on the right, on the tab you left it on.
 - **The gear** on a row, shown when you point at it, opens the project's [Settings tab](/projects/settings/).
-- **Right-click a row**, or press <Kbd shortcut="context-menu" first />, for the [project menu](#the-project-menu), with **Rename project…** and **Remove from Switchboard…**.
+- **Right-click a row**, or press <Kbd shortcut="context-menu" first />, for the [project menu](#the-project-menu), with **Rename project…** and **Remove from Seshboard…**.
 - **Find a project** at the top (<Kbd shortcut="projects.find" />) narrows the list by name.
 - <Kbd keys="arrowup|arrowdown" />, <Kbd keys="home" /> and <Kbd keys="end" /> move through the list and open the project they land on.
 
@@ -58,11 +58,11 @@ Drag a row up or down. With a project open, <Kbd shortcut="projects.move" /> mov
 
 ### Rename a project
 
-Choose **Rename project…** in the project's menu (right-click its row, or the **⋯** on its page), or change **Name** on its [Settings tab](/projects/settings/). Only Switchboard uses the new name: the folder on disk keeps its own. Leave the field empty, or click **Use folder name**, to go back to the folder's name.
+Choose **Rename project…** in the project's menu (right-click its row, or the **⋯** on its page), or change **Name** on its [Settings tab](/projects/settings/). Only Seshboard uses the new name: the folder on disk keeps its own. Leave the field empty, or click **Use folder name**, to go back to the folder's name.
 
 ### Change the icon
 
-Switchboard picks up a project's icon from the repository when it can: a logo or favicon in the usual places, the `icon` in `package.json`, or an `iconPath` you set in `.switchboard.json`:
+Seshboard picks up a project's icon from the repository when it can: a logo or favicon in the usual places, the `icon` in `package.json`, or an `iconPath` you set in `.seshboard.json`:
 
 ```json
 { "iconPath": "assets/logo.svg" }
@@ -82,13 +82,13 @@ Right-click a row in the list for the project's menu. It has the icon choices, *
 - **Claude profile**, to link the project to a profile (only with more than one profile).
 - **Open project**, **Worktrees…** and **Branches…**, to open the project's page on that tab.
 - **Project settings…**, to open its Settings tab.
-- **Remove from Switchboard…**
+- **Remove from Seshboard…**
 
-The same menu opens from a project in the sidebar's project filter. The **⋯** on a project's page has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Switchboard…**.
+The same menu opens from a project in the sidebar's project filter. The **⋯** on a project's page has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Seshboard…**.
 
 ### Remove a project
 
-Choose **Remove from Switchboard…** in the project's menu, or under **Remove** on its Settings tab, and confirm with **Remove**. The project disappears from the sidebar and New session. Nothing on disk changes: the folder, its files and its sessions stay, its sessions are still found by [search](/sessions/search/), and you can add it again later.
+Choose **Remove from Seshboard…** in the project's menu, or under **Remove** on its Settings tab, and confirm with **Remove**. The project disappears from the sidebar and New session. Nothing on disk changes: the folder, its files and its sessions stay, its sessions are still found by [search](/sessions/search/), and you can add it again later.
 
 ## Open a project's page
 
@@ -109,7 +109,7 @@ On the right:
 
 - **‹** and **›** go to the previous and next project.
 - **New session** starts a session in this project. While the page is open, <Kbd shortcut="session.new" /> starts in this project too.
-- **⋯** has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Switchboard…**.
+- **⋯** has the icon choices, **Rename project…**, **Open folder in editor** and **Remove from Seshboard…**.
 
 ### The tabs
 

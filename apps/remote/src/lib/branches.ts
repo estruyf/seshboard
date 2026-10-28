@@ -1,4 +1,4 @@
-import type { RemoteBranches } from '@switchboard/protocol/remote-client';
+import type { RemoteBranches } from '@seshboard/protocol/remote-client';
 
 /**
  * The branches New session offers for a project's folder: the one checked out there first, then the most recent.

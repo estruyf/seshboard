@@ -1,4 +1,4 @@
-import { isAbsolutePath, pathInside, type CatchUp, type CatchUpTests, type GitChanges } from '@switchboard/protocol';
+import { isAbsolutePath, pathInside, type CatchUp, type CatchUpTests, type GitChanges } from '@seshboard/protocol';
 import { isTestCommand, parseTestCounts } from './testCommands.ts';
 import { EDIT_TOOLS, oneLine, type ToolCall, type Turn } from './turn.ts';
 

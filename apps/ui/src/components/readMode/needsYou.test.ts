@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PermissionRequest } from '@switchboard/protocol/client';
+import type { PermissionRequest } from '@seshboard/protocol/client';
 import { bannerRequest } from './needsYou.ts';
 
 const request = (requestId: string, createdAt: number) => ({ requestId, createdAt }) as PermissionRequest;

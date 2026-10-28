@@ -1,4 +1,4 @@
-import type { RemoteContract, RpcClient } from '@switchboard/protocol/remote-client';
+import type { RemoteContract, RpcClient } from '@seshboard/protocol/remote-client';
 import { STANDALONE } from './platform.ts';
 import { base64url, DEFAULT_PREFS, isIosAgent, keyBytes, parsePrefs, pushKeyFor, pushLabel, pushSupport, sameBytes, type PushPrefs, type PushSupport } from './pushSupport.ts';
 import { loadPushKey, savePushKey, type PushKey } from './storage.ts';
@@ -106,7 +106,7 @@ async function subscription(key: Uint8Array<ArrayBuffer>): Promise<{ subscriptio
   return { subscription: await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }), changed: true };
 }
 
-/** A computer that can't push next to others: Switchboard there is older than one subscription for all. */
+/** A computer that can't push next to others: Seshboard there is older than one subscription for all. */
 export const outdated = (computers: PushComputers): string[] => computers.targets.filter((t) => pushKeyFor(t.features, computers.paired) === 'none').map((t) => t.name);
 
 /** Gives one computer the subscription. `changed`: the subscription is new, so the other computers need it too. */

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
-import { writeStub } from '@switchboard/protocol';
+import { writeStub } from '@seshboard/protocol';
 import { MARK_END, MARK_START, SearchIndex, searchableText, toFtsQuery } from './searchIndex.ts';
 
 const user = (uuid: string, text: string): RawSessionMessage => ({ type: 'user', uuid, message: { role: 'user', content: text }, parent_tool_use_id: null });
@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 function setup(transcripts: Record<string, RawSessionMessage[]>, versions: Record<string, string>) {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-search-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-search-'));
   dirs.push(dir);
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   caches.push(cache);
@@ -84,7 +84,7 @@ describe('SearchIndex', () => {
       {
         // Another app's long session that mentions the word far more often.
         other: Array.from({ length: 10 }, (_, i) => user(`o${i}`, 'session session session notes')),
-        mine: [user('m1', 'a session I started in Switchboard')],
+        mine: [user('m1', 'a session I started in Seshboard')],
       },
       { other: '1', mine: '1' },
     );

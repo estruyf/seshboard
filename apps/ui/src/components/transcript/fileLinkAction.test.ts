@@ -5,12 +5,12 @@ const windows: FileLinkNames = { fileManager: 'File Explorer', editor: 'VS Code'
 const mac: FileLinkNames = { fileManager: 'Finder', editor: 'Cursor' };
 
 describe('what a click on a file link does', () => {
-  it('previews a previewable file with the Switchboard setting, and Shift opens the editor', () => {
+  it('previews a previewable file with the Seshboard setting, and Shift opens the editor', () => {
     expect(clickAction('switchboard', false, { previewable: true })).toBe('preview');
     expect(clickAction('switchboard', true, { previewable: true })).toBe('editor');
   });
 
-  it('shows any other file in the file manager with the Switchboard setting, and Shift opens the editor', () => {
+  it('shows any other file in the file manager with the Seshboard setting, and Shift opens the editor', () => {
     expect(clickAction('switchboard', false)).toBe('show');
     expect(clickAction('switchboard', false, { previewable: false })).toBe('show');
     expect(clickAction('switchboard', true)).toBe('editor');
@@ -63,11 +63,11 @@ describe('the tooltip of a file link', () => {
     expect(fileLinkTooltip({ setting: 'editor', path: 'C:\\a\\b.ts', line: 12, names: windows, otherKeys: shift })).toBe('Open C:\\a\\b.ts:12 in VS Code. Shift+click shows it in File Explorer');
   });
 
-  it('previews a previewable file with the Switchboard setting', () => {
-    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/README.md', names: mac, otherKeys: '⇧-click', previewable: true })).toBe('Preview /a/README.md in Switchboard. ⇧-click opens it in Cursor');
+  it('previews a previewable file with the Seshboard setting', () => {
+    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/README.md', names: mac, otherKeys: '⇧-click', previewable: true })).toBe('Preview /a/README.md in Seshboard. ⇧-click opens it in Cursor');
   });
 
-  it('shows any other file in the file manager with the Switchboard setting', () => {
+  it('shows any other file in the file manager with the Seshboard setting', () => {
     expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/b.ts', line: 3, names: mac, otherKeys: '⇧-click' })).toBe('Show /a/b.ts in Finder. ⇧-click opens it in Cursor');
   });
 
@@ -77,12 +77,12 @@ describe('the tooltip of a file link', () => {
 
   it('says your editor until the editors are known', () => {
     expect(fileLinkTooltip({ setting: 'file-manager', path: '/a/b.ts', names: { fileManager: 'Finder', editor: null }, otherKeys: shift })).toBe('Show /a/b.ts in Finder. Shift+click opens it in your editor');
-    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/b.md', names: { fileManager: 'Finder', editor: null }, otherKeys: shift, previewable: true })).toBe('Preview /a/b.md in Switchboard. Shift+click opens it in your editor');
+    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/b.md', names: { fileManager: 'Finder', editor: null }, otherKeys: shift, previewable: true })).toBe('Preview /a/b.md in Seshboard. Shift+click opens it in your editor');
   });
 
   it('offers only the editor without a file manager, except for a preview', () => {
     expect(fileLinkTooltip({ setting: 'file-manager', path: '/a/b.ts', line: 3, names: windows, otherKeys: shift, fileManagerAvailable: false })).toBe('Open /a/b.ts:3 in VS Code');
-    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/b.md', names: windows, otherKeys: shift, fileManagerAvailable: false, previewable: true })).toBe('Preview /a/b.md in Switchboard. Shift+click opens it in VS Code');
+    expect(fileLinkTooltip({ setting: 'switchboard', path: '/a/b.md', names: windows, otherKeys: shift, fileManagerAvailable: false, previewable: true })).toBe('Preview /a/b.md in Seshboard. Shift+click opens it in VS Code');
   });
 });
 
@@ -101,9 +101,9 @@ describe('the context menu of a file link', () => {
     expect(fileLinkMenu(windows).map((item) => item.id)).toEqual(['show', 'editor', 'copy']);
   });
 
-  it('starts with Open in Switchboard for a previewable file', () => {
+  it('starts with Open in Seshboard for a previewable file', () => {
     expect(fileLinkMenu(mac, { previewable: true }).map((item) => item.id)).toEqual(['preview', 'show', 'editor', 'copy']);
-    expect(fileLinkMenu(mac, { previewable: true })[0]!.label).toBe('Open in Switchboard');
+    expect(fileLinkMenu(mac, { previewable: true })[0]!.label).toBe('Open in Seshboard');
   });
 
   it('leaves out the file manager where there is none', () => {

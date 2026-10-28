@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { formatNext, nextRuns, type Schedule, type ScheduleRunEvent, type ScheduleSave, type ScheduleSession } from '@switchboard/protocol/client';
+import { formatNext, nextRuns, type Schedule, type ScheduleRunEvent, type ScheduleSave, type ScheduleSession } from '@seshboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useProjects } from './projectsStore.ts';

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { CatchUpNeedKind, type LogLevel, type PermissionRequest, type TokenCounts } from '@switchboard/protocol';
+import { CatchUpNeedKind, type LogLevel, type PermissionRequest, type TokenCounts } from '@seshboard/protocol';
 import type { SdkRuntime } from '../host/hostManager.ts';
 import { needKind, needOf, type Summary } from './fallback.ts';
 import type { Signals } from './signals.ts';

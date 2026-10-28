@@ -1,4 +1,4 @@
-import type { PipelineStep } from '@switchboard/protocol/client';
+import type { PipelineStep } from '@seshboard/protocol/client';
 import { treeLines } from '../../../state/pipelines.ts';
 import { SectionHeader } from '../../ui/SectionHeader.tsx';
 

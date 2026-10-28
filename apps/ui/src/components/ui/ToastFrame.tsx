@@ -72,7 +72,8 @@ export function ToastFrame({ lead, title, body, actions, onDismiss, dismissLabel
         <span className="min-w-0 flex-1 truncate font-semibold">{title}</span>
         <Button variant="quiet" size="sm" iconOnly icon={<X size={13} aria-hidden />} aria-label={dismissLabel} onClick={onDismiss} className="shrink-0" data-toast-close />
       </div>
-      {body && <div className="pr-2 text-ui text-muted">{body}</div>}
+      {/* Errors can carry a long URL or path with no spaces: let it wrap anywhere rather than run out of the card. */}
+      {body && <div className="pr-2 text-ui text-muted [overflow-wrap:anywhere]">{body}</div>}
       {actions && <div className="mt-1 flex items-center gap-2">{actions}</div>}
       {children}
     </div>

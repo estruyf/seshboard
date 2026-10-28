@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BookOpen, Check, ChevronRight, CircleDot, Copy, GitPullRequest, Link2 } from 'lucide-react';
-import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@switchboard/protocol/remote-client';
+import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@seshboard/protocol/remote-client';
 import { runLabel, stepText, type ToolUse, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, type resultsByCall } from '../lib/transcript.ts';
 import { Markdown } from './Markdown.tsx';

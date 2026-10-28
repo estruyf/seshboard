@@ -2,7 +2,7 @@ import { fileManagerName } from '../../lib/platform.ts';
 import { modKey } from '../../lib/shortcuts.ts';
 import { FileText, FolderOpen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { joinPath, type ContextItem } from '@switchboard/protocol/client';
+import { joinPath, type ContextItem } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComposerTargets, type ComposerTarget } from '../../state/composerTargets.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -62,9 +62,9 @@ function AddContextDialog({ target, onClose }: { target: ComposerTarget & { cwd:
     useDrafts.getState().requestFocus(target.key);
   };
   // What is picked in the list goes along with what is chosen in the native dialog.
-  const canBrowse = typeof window.switchboard?.pickContextFiles === 'function';
+  const canBrowse = typeof window.seshboard?.pickContextFiles === 'function';
   const browse = async () => {
-    const chosen = (await window.switchboard?.pickContextFiles(target.cwd)) ?? [];
+    const chosen = (await window.seshboard?.pickContextFiles(target.cwd)) ?? [];
     if (chosen.length) add(picked, chosen.map(({ path, directory }) => ({ kind: 'file', path, directory })));
   };
 

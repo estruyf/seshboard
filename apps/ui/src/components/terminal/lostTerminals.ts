@@ -1,8 +1,8 @@
-import type { TerminalInfo } from '@switchboard/protocol/client';
+import type { TerminalInfo } from '@seshboard/protocol/client';
 import { APP_TERMINAL } from './appTerminal.ts';
 
 /** Said in the panel that lost its terminals to an engine restart. */
-export const ENGINE_RESTARTED_MESSAGE = "Switchboard's engine restarted, so its terminals were closed.";
+export const ENGINE_RESTARTED_MESSAGE = "Seshboard's engine restarted, so its terminals were closed.";
 
 /**
  * The panels that had terminals before a reconnect and lost some of them in the engine's first list after it:

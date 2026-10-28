@@ -1,6 +1,6 @@
 import { AlertTriangle, Clock, ListTree, MoreHorizontal, Pause, RefreshCw, Tag, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { BUILT_IN_PIPELINES, type Trigger, type TriggerEvent } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, type Trigger, type TriggerEvent } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';

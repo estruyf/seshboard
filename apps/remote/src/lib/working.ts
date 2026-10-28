@@ -1,4 +1,4 @@
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage } from '@seshboard/protocol/remote-client';
 import type { Streaming } from './transcript.ts';
 
 /**

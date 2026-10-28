@@ -14,7 +14,7 @@ describe('offlineReason', () => {
     expect(offlineReason({ online: true, address: NAMED, failure: { kind: 'refused', elapsedMs: 8_000 } })).toBe('asleep');
   });
 
-  it('takes a quick refusal of a quick tunnel for a changed address, and of another tunnel for Switchboard being off', () => {
+  it('takes a quick refusal of a quick tunnel for a changed address, and of another tunnel for Seshboard being off', () => {
     expect(offlineReason({ online: true, address: QUICK, failure: { kind: 'refused', elapsedMs: 300 } })).toBe('address');
     expect(offlineReason({ online: true, address: NAMED, failure: { kind: 'refused', elapsedMs: 300 } })).toBe('tunnel');
   });

@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 
 const here = import.meta.dirname;
 // Workspace packages ship TypeScript source, so they must be bundled rather than required at runtime.
-const workspacePackages = ['@switchboard/engine', '@switchboard/protocol'];
+const workspacePackages = ['@seshboard/engine', '@seshboard/protocol'];
 
 /** The commit being built, for Settings → About and the About panel. Empty when git isn't there. */
 function shortCommit(): string {
@@ -32,7 +32,7 @@ const csp = [
 ].join('; ');
 
 const cspPlugin: Plugin = {
-  name: 'switchboard-csp',
+  name: 'seshboard-csp',
   apply: 'build',
   transformIndexHtml: () => [
     { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp }, injectTo: 'head-prepend' },
@@ -41,7 +41,7 @@ const cspPlugin: Plugin = {
 
 export default defineConfig({
   main: {
-    define: { __SWITCHBOARD_COMMIT__: JSON.stringify(shortCommit()) },
+    define: { __SESHBOARD_COMMIT__: JSON.stringify(shortCommit()) },
     build: {
       externalizeDeps: { exclude: workspacePackages },
       rollupOptions: {

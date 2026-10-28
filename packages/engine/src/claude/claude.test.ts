@@ -10,7 +10,7 @@ import { clipJson, LIMITS, normaliseMessage } from './transcript.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-claude-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-claude-')));
   dirs.push(dir);
   return dir;
 };

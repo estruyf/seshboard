@@ -8,7 +8,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-When a session finishes a turn, Switchboard puts a short briefing over the conversation: what you asked, what Claude did, what it skipped, and the one thing it needs from you next. It comes with the signals you would otherwise look up yourself: did the tests pass, how much changed, and did Claude stay inside what you asked for. You decide what to do next in a few seconds, without reading the whole conversation.
+When a session finishes a turn, Seshboard puts a short briefing over the conversation: what you asked, what Claude did, what it skipped, and the one thing it needs from you next. It comes with the signals you would otherwise look up yourself: did the tests pass, how much changed, and did Claude stay inside what you asked for. You decide what to do next in a few seconds, without reading the whole conversation.
 
 <Screenshot name="catch-up-banner" alt="The catch-up banner above the conversation: Finished, the ask, about 3 minutes to review, Commit and Details; under it Commit the changes in green, why, and the chips 14 tests passed, +120 −40 · 6 files and Followed the plan" eager />
 
@@ -18,11 +18,11 @@ A session gets a catch-up when Claude finishes a turn, or stops with an error. Y
 
 A session that waits for a permission, a question or a plan to approve has none either: the card above the message box asks, as always. Its **Why?** button tells you why Claude asks. See [Permissions](/permissions/#why-is-claude-asking).
 
-The banner shows when there is something to decide: the session finished and you haven't read it, or it stopped with an error. Once you've read a session, the catch-up folds into one line at the top, so it is one key away and never in the way.
+The banner shows when there is something to decide: the session finished and you haven't read it, or it stopped with an error. A session you read before you opened it shows the catch-up folded into one line at the top, so it is one key away and never in the way. To start every catch-up folded, turn on [Show catch-ups folded](#settings).
 
 <Screenshot name="catch-up-strip" alt="The folded catch-up: Finished, Commit the changes, about 3 minutes to review, a Commit button and Show catch-up with Space" width={760} />
 
-Opening a session with a catch-up doesn't mark it as read by itself. **Mark as read** does, in the banner or when you right-click the session in the sidebar, and so does anything that ends what it needs. To come back to a session later, right-click it and choose **Mark as unread**: it stays unread, also while you have it open. A catch-up made while you were looking at the session (you watched it finish) is no news, so that session is read as usual.
+A session you open unread is marked read once it has been in front of you for 3 seconds, also when it opens with a catch-up. The banner stays open until you fold it. Set the seconds, or turn it off, with **Mark as read after** in [Settings › Sessions](/settings/sessions/#mark-as-read-after). **Mark as read** marks it read right away, in the banner or when you right-click the session in the sidebar, and so does anything that ends what it needs. To come back to a session later, right-click it and choose **Mark as unread**: it stays unread, also while you have it open. A catch-up made while you were looking at the session (you watched it finish) is no news, so that session is read almost at once.
 
 ## What the banner says
 
@@ -73,7 +73,7 @@ Each button shows its key. The keys work while the catch-up is on screen and you
 
 ## Quickest to unblock
 
-The sidebar can sort sessions by what takes least to unblock. Choose **Quickest to unblock** at the top of the sidebar, next to **Recent**. Switchboard remembers your choice.
+The sidebar can sort sessions by what takes least to unblock. Choose **Quickest to unblock** at the top of the sidebar, next to **Recent**. Seshboard remembers your choice.
 
 <Screenshot name="sidebar-quickest" alt="The sidebar sorted by Quickest to unblock: Needs review · quickest first, then Read, with review times and a warning on a session that changed a file outside the plan, then Still working" width={360} />
 
@@ -87,9 +87,12 @@ The Queue and Pinned only show in **Recent**. In both orders, a session with a c
 
 ## Settings
 
-In [Settings](/settings/), under **Conversation**, **Catch-up**, **Write catch-up summaries with Haiku** turns the catch-up on and off. It is on by default.
+In [Settings](/settings/#conversation), under **Conversation**, **Catch-up**:
 
-Off, no banner shows and Haiku is never called. You can still ask for one: run **Catch up on this session** from the [command palette](/command-palette/), and its lines come from the tool calls ("Edited 6 files", "Ran the tests").
+- **Write catch-up summaries with Haiku** turns the catch-up on and off. It is on by default.
+- **Show catch-ups folded** (off by default): a finished session shows the one-line strip instead of the full briefing, also when you haven't read it. Press <Kbd shortcut="catchup.expand" /> to open it. A turn that stopped with an error still opens in full. In the [command palette](/command-palette/), *Catch-ups: show folded* and *Catch-ups: show in full* switch it.
+
+With summaries off, no banner shows and Haiku is never called. You can still ask for one: run **Catch up on this session** from the [command palette](/command-palette/), and its lines come from the tool calls ("Edited 6 files", "Ran the tests").
 
 ### What Haiku sees
 

@@ -1,5 +1,5 @@
 import { ChevronRight, ListTree } from 'lucide-react';
-import type { SidebarStyle } from '@switchboard/protocol/bridge';
+import type { SidebarStyle } from '@seshboard/protocol/bridge';
 import { memo, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { childTone, stepMeta, stepOfSession, type ChildTone } from '../../state/pipelineTree.ts';

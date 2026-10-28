@@ -1,4 +1,4 @@
-import { describe, formatDay, formatNext, formatPast, nextRuns, ruleProblem, speakDay, speakNext, type Schedule, type ScheduleRepeat, type ScheduleRule } from '@switchboard/protocol/client';
+import { describe, formatDay, formatNext, formatPast, nextRuns, ruleProblem, speakDay, speakNext, type Schedule, type ScheduleRepeat, type ScheduleRule } from '@seshboard/protocol/client';
 
 // Scheduled sessions (#173) as the windows show them, without React or the stores: a row's lines, its label for screen
 // readers, and the dialog's rule and checks. The rules themselves are the protocol's (`schedules.ts`).
@@ -31,7 +31,7 @@ export function lastRunLine(schedule: Schedule, now: number): ScheduleLine | nul
   }
 }
 
-/** The next run, or "Paused" (with Switchboard's reason when it paused it). */
+/** The next run, or "Paused" (with Seshboard's reason when it paused it). */
 export function nextRunLine(schedule: Schedule, now: number): ScheduleLine | null {
   if (schedule.paused) return { text: schedule.pausedReason && schedule.pausedReason !== 'Folder not found' ? `Paused · ${schedule.pausedReason}` : 'Paused', tone: 'caution' };
   const [next] = nextRuns(schedule.rule, now, 1);

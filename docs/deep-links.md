@@ -1,6 +1,6 @@
-# Links: open Switchboard from a URL
+# Links: open Seshboard from a URL
 
-Switchboard registers the `switchboard://` URL scheme. A link opens the app on **New session** with the folder and prompt already filled in, or jumps to an existing session. You can put these links in runbooks, alerts, READMEs, issue templates or Raycast and Alfred scripts, or run `open "switchboard://…"` from a shell. They work like Claude Code's own [`claude-cli://` deep links](https://code.claude.com/docs/en/deep-links).
+Seshboard registers the `seshboard://` URL scheme. A link opens the app on **New session** with the folder and prompt already filled in, or jumps to an existing session. You can put these links in runbooks, alerts, READMEs, issue templates or Raycast and Alfred scripts, or run `open "seshboard://…"` from a shell. They work like Claude Code's own [`claude-cli://` deep links](https://code.claude.com/docs/en/deep-links).
 
 [← Back to the README](../README.md)
 
@@ -9,19 +9,19 @@ Switchboard registers the `switchboard://` URL scheme. A link opens the app on *
 ## Start a new session
 
 ```text
-switchboard://new-session?prompt=Investigate%20the%20failed%20deploy&cwd=/Users/me/dev/payments
-switchboard://new-session?project=payments&prompt=What%20changed%20this%20week%3F
-switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests&autostart=1
+seshboard://new-session?prompt=Investigate%20the%20failed%20deploy&cwd=/Users/me/dev/payments
+seshboard://new-session?project=payments&prompt=What%20changed%20this%20week%3F
+seshboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests&autostart=1
 ```
 
 | Parameter | What it does |
 |---|---|
 | `prompt` (or `q`) | Text for the message box, URL-encoded. Use `%0A` for a new line. At most 5,000 characters. |
 | `cwd` | The absolute path of the folder to start in, such as `/Users/me/dev/payments` (on Windows `C:\Users\me\dev\payments`, URL-encoded). |
-| `project` | One of your projects, by the name it has in Switchboard (or its folder's name), ignoring case: `project=payments`. If two projects share the name, the first in your list wins. A name that isn't one of your projects is refused, and nothing changes. |
-| `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout with a git remote on that repository, first among your projects, then among the other folders you've used Claude Code in (most recent first). If there's none, the folder field stays empty and New session says so. |
+| `project` | One of your projects, by the name it has in Seshboard (or its folder's name), ignoring case: `project=payments`. If two projects share the name, the first in your list wins. A name that isn't one of your projects is refused, and nothing changes. |
+| `repo` | A GitHub repository as `owner/name`. Seshboard looks for a checkout with a git remote on that repository, first among your projects, then among the other folders you've used Claude Code in (most recent first). If there's none, the folder field stays empty and New session says so. |
 | `autostart` | `1` (or `true`) starts the session right away, as if you'd pressed Enter. Leave it out (or use `0`) to fill in New session and wait for you. |
-| `question` | `1` (or `true`) makes it a quick question: no project, in Switchboard's scratch folder. `cwd`, `project` and `repo` are then ignored. |
+| `question` | `1` (or `true`) makes it a quick question: no project, in Seshboard's scratch folder. `cwd`, `project` and `repo` are then ignored. |
 | `issue` | An issue of the project: its number (`32` or `#32`, URL-encoded as `%2332`) or its link on GitHub. New session opens filled in from it, as described in [From an issue or pull request](#from-an-issue-or-pull-request). Needs `cwd`, `project` or `repo`. |
 | `pr` | A pull request of the project, the same way: `pr=151`, or its link. A link can have `issue` or `pr`, not both. |
 
@@ -31,7 +31,7 @@ All parameters are optional. When a link gives more than one of `cwd`, `project`
 
 With `autostart=1`, the session starts as soon as its folder is found, with the project's usual model, effort and worktree choice. The permission mode is the one saved as the project's default. Without a saved default, it is the default mode (Ask before edits), never the mode you picked last. Auto mode, Don't ask and Bypass permissions never apply to a session started from a link: it uses the default mode instead. So Claude still asks before it edits files or runs commands, unless the project's default is Accept edits or Plan mode. A session started from a link doesn't add its folder to your projects.
 
-It only starts when the link has a prompt and names its folder (`cwd`, `project`, or a `repo` that Switchboard finds). Otherwise it waits like any other link: without a folder you pick one first, then press Enter. If the folder doesn't exist, nothing starts and the prompt stays filled in.
+It only starts when the link has a prompt and names its folder (`cwd`, `project`, or a `repo` that Seshboard finds). Otherwise it waits like any other link: without a folder you pick one first, then press Enter. If the folder doesn't exist, nothing starts and the prompt stays filled in.
 
 Only use `autostart` in links you write for yourself or your team. Clicking an `autostart` link someone else made starts Claude with their prompt in your project.
 
@@ -42,11 +42,11 @@ Model, effort, permission mode and the worktree choice come from the project's d
 ### From an issue or pull request
 
 ```text
-switchboard://new-session?project=switchboard&issue=32
-switchboard://new-session?repo=estruyf/switchboard&pr=151
+seshboard://new-session?project=switchboard&issue=32
+seshboard://new-session?repo=estruyf/switchboard&pr=151
 ```
 
-A link with `issue` or `pr` opens New session the way **New session from issue…** does in Switchboard: a new worktree named after the issue (`issue-32-<title>`), the issue as a chip above the message box, and "Fix #32: <title>" in the box (for a pull request, "Work on #151: <title>", and a choice between a new worktree from the pull request and your current checkout). A `prompt` in the link takes the place of that first line. A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**
+A link with `issue` or `pr` opens New session the way **New session from issue…** does in Seshboard: a new worktree named after the issue (`issue-32-<title>`), the issue as a chip above the message box, and "Fix #32: <title>" in the box (for a pull request, "Work on #151: <title>", and a choice between a new worktree from the pull request and your current checkout). A `prompt` in the link takes the place of that first line. A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**
 
 **These links never start a session on their own.** An issue's text is written by anyone who can open an issue, so you always read the prompt first. With `autostart=1` as well, `autostart` is ignored and the banner adds **Links with an issue or pull request never start on their own.**
 
@@ -55,7 +55,7 @@ The issue or pull request has to be in the project's repository on GitHub: a lin
 ## Open a session
 
 ```text
-switchboard://session/0b9a7c1e-1234-4abc-9def-001122334455
+seshboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 ```
 
 Shows that session, as if you'd picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**.
@@ -63,18 +63,18 @@ Shows that session, as if you'd picked it in the sidebar. To get a session's ID,
 ## Bring the window up
 
 ```text
-switchboard://show
+seshboard://show
 ```
 
-Starts Switchboard, or brings its window to the front, without changing what it shows. The VS Code companion uses it on Windows, where it can't open the app by its bundle id as it does on macOS.
+Starts Seshboard, or brings its window to the front, without changing what it shows. The VS Code companion uses it on Windows, where it can't open the app by its bundle id as it does on macOS.
 
 ## When the app isn't running
 
-Opening a link starts Switchboard if it isn't running. The link waits until the window has loaded and is connected to its engine, then opens. If the app is already open, its window comes to the front.
+Opening a link starts Seshboard if it isn't running. The link waits until the window has loaded and is connected to its engine, then opens. If the app is already open, its window comes to the front.
 
-## Links Switchboard refuses
+## Links Seshboard refuses
 
-Links can come from any web page, chat message or script, so Switchboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window explaining why, and nothing else happens. That covers:
+Links can come from any web page, chat message or script, so Seshboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window explaining why, and nothing else happens. That covers:
 
 - an action other than `new-session` or `session`;
 - a prompt longer than 5,000 characters, or one with control characters (other than tabs and new lines) or invisible characters such as right-to-left overrides and zero-width spaces, which can hide text;
@@ -85,14 +85,14 @@ Links can come from any web page, chat message or script, so Switchboard checks 
 - an `issue` or `pr` that isn't a number, `#123` or a link to an issue or pull request on github.com; both in one link; one in a quick question (`question=1`), or without `cwd`, `project` or `repo`;
 - a session ID that isn't a session ID, or a session that isn't on this Mac.
 
-Switchboard ignores parameters it doesn't know, so a link made for a newer version still opens.
+Seshboard ignores parameters it doesn't know, so a link made for a newer version still opens.
 
 ## Examples
 
 ### From a shell
 
 ```bash
-open "switchboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
+open "seshboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
 ```
 
 That works as long as the folder's path has no spaces or other characters that need encoding.
@@ -102,7 +102,7 @@ To encode any text as a prompt, let `jq` do the escaping (it comes with macOS 15
 ```bash
 prompt='Summarise the last 10 commits
 and list anything that looks risky.'
-open "switchboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(jq -rn --arg v "$prompt" '$v|@uri')"
+open "seshboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(jq -rn --arg v "$prompt" '$v|@uri')"
 ```
 
 In a URL, `+` also means a space. Write a literal plus sign as `%2B`; `jq`'s `@uri` does that for you.
@@ -110,7 +110,7 @@ In a URL, `+` also means a space. Write a literal plus sign as `%2B`; `jq`'s `@u
 ### In a README or runbook
 
 ```markdown
-[Ask Claude to triage a failed deploy](switchboard://new-session?repo=acme/payments&prompt=The%20last%20deploy%20failed.%20Read%20the%20CI%20logs%20and%20suggest%20a%20fix.)
+[Ask Claude to triage a failed deploy](seshboard://new-session?repo=acme/payments&prompt=The%20last%20deploy%20failed.%20Read%20the%20CI%20logs%20and%20suggest%20a%20fix.)
 ```
 
 Using `repo` instead of `cwd` makes the link work for everyone on the team, wherever they cloned the repository. Some sites (GitHub among them) don't make custom-scheme links clickable; put the link in a code block there so people can copy it.
@@ -122,12 +122,12 @@ Save this as `ask-claude.sh` in your Raycast script commands folder. It asks for
 ```bash
 #!/bin/bash
 # @raycast.schemaVersion 1
-# @raycast.title Ask Claude in Switchboard
+# @raycast.title Ask Claude in Seshboard
 # @raycast.mode silent
 # @raycast.argument1 { "type": "text", "placeholder": "Project" }
 # @raycast.argument2 { "type": "text", "placeholder": "What should Claude work on?" }
 uri() { jq -rn --arg v "$1" '$v|@uri'; }
-open "switchboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
+open "seshboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
 ```
 
 ### Alfred workflow
@@ -137,7 +137,7 @@ Add a **Keyword** input with an argument, connect it to a **Run Script** action 
 ```bash
 read -r project prompt <<< "$1"
 uri() { jq -rn --arg v "$1" '$v|@uri'; }
-open "switchboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt")"
+open "seshboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt")"
 ```
 
 ### From an alert
@@ -145,13 +145,13 @@ open "switchboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt"
 Most alerting tools can add a link to a notification. Point it at the service's repository and describe the alert in the prompt, for example:
 
 ```text
-switchboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20above%202s%20on%20checkout.%20Look%20at%20recent%20changes%20to%20the%20checkout%20path.
+seshboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20above%202s%20on%20checkout.%20Look%20at%20recent%20changes%20to%20the%20checkout%20path.
 ```
 
 ## Troubleshooting
 
-- **An `autostart` link didn't start.** It needs a prompt and a folder: check that the link has `project`, `cwd` or a `repo` Switchboard can find.
-- **Nothing happens when I open a link.** macOS sends `switchboard://` links to the copy of Switchboard it knows about. Move Switchboard to Applications and open it once; it registers itself as the handler for the scheme.
+- **An `autostart` link didn't start.** It needs a prompt and a folder: check that the link has `project`, `cwd` or a `repo` Seshboard can find.
+- **Nothing happens when I open a link.** macOS sends `seshboard://` links to the copy of Seshboard it knows about. Move Seshboard to Applications and open it once; it registers itself as the handler for the scheme.
 - **The folder is empty.** The link may not name a folder at all: add `project`, `cwd` or `repo`. For a `repo` link, none of your projects or recently used folders has a git remote on that repository. Add the checkout as a project (or open a session in it once), or use `cwd`.
 - **The prompt looks wrong.** Check the encoding: spaces as `%20` (or `+`), new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.
 
@@ -159,4 +159,4 @@ switchboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20a
 
 The link is parsed and validated in the main process (`apps/desktop/src/main/deepLink.ts`), then handed to the window over the preload bridge (`onDeepLink`). Main keeps links that arrive before the window is ready, including the one that launched the app, and passes them on once the renderer reports that it's connected to the engine. The renderer resolves `repo` with the engine's `projects.findByRepo` request.
 
-Only the packaged app registers the scheme: `protocols` in `electron-builder.yml` puts it in `Info.plist`, and on launch the app makes itself the default handler. Development and smoke builds leave the system's link handlers alone; the smoke test's *links* step feeds URLs to the handler directly. To try a link by hand, build the app with `npm run dist`, open it once from `apps/desktop/dist/mac-arm64/`, and then run `open "switchboard://…"`.
+Only the packaged app registers the scheme: `protocols` in `electron-builder.yml` puts it in `Info.plist`, and on launch the app makes itself the default handler. Development and smoke builds leave the system's link handlers alone; the smoke test's *links* step feeds URLs to the handler directly. To try a link by hand, build the app with `npm run dist`, open it once from `apps/desktop/dist/mac-arm64/`, and then run `open "seshboard://…"`.

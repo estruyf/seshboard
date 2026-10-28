@@ -1,4 +1,4 @@
-import { parseRunBriefs } from '@switchboard/protocol/client';
+import { parseRunBriefs } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../transcript/displayItems.ts';
 import { matches } from '../../lib/shortcuts.ts';
 

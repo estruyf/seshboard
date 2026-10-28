@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LimitsState, UsageLimitHit } from '@switchboard/protocol/client';
+import type { LimitsState, UsageLimitHit } from '@seshboard/protocol/client';
 import { clockTime, heldLine, limitHeadline, limitName, limitStanding, resumeLine, rowLimitLabel } from './usageLimit.ts';
 
 const NOW = new Date(2026, 9, 15, 10, 34).getTime();

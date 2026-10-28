@@ -25,7 +25,7 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
@@ -52,6 +52,8 @@ export interface HostManagerDeps {
   claudePath: () => Promise<string | undefined>;
   /** True when a Claude Code process outside this app has the session open. */
   isOpenElsewhere: (sessionId: string) => boolean;
+  /** Stops the process an earlier run of the engine left holding the session, when that is what has it open. True when it did. */
+  stopLeftover?: (sessionId: string) => boolean;
   /** Re-reads the live registry now (instead of waiting for the next poll). */
   refreshLive?: () => void;
   /** The folder a session ran in (resumes must start there, or tools act in the wrong place). */
@@ -66,9 +68,9 @@ export interface HostManagerDeps {
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
   onPermissionResolved: (requestId: string, sessionId: string) => void;
-  /** A session this app created (for the "Switchboard" origin badge). */
+  /** A session this app created (for the "Seshboard" origin badge). */
   onCreated: (sessionId: string) => void;
-  /** You sent a message to an existing session from this app (it now counts as a Switchboard session). */
+  /** You sent a message to an existing session from this app (it now counts as a Seshboard session). */
   onContinued?: (sessionId: string) => void;
   log: (level: LogLevel, message: string) => void;
   /** Close processes idle for longer than this (default 30 min). The transcript stays; sending resumes. */
@@ -105,6 +107,8 @@ export interface HostManagerDeps {
    * and while one is set the profile's queues wait. Call `limitChanged` when one is set or cleared from elsewhere.
    */
   limits?: { of(profileId: string): UsageLimitHit | null; hit(profileId: string, sessionId: string, stop: LimitStop): void; ok(profileId: string, sessionId: string): void };
+  /** Profiles whose login stopped working: a failed turn reports it, a turn that gets through clears it. */
+  signIns?: { hit(profileId: string, sessionId: string, message: string | null): void; ok(profileId: string): void };
   /**
    * Where sessions' mods report to (the `mods.*` events). `ask` goes to the windows; their answer comes back through
    * `answerModPrompt`. Without it, sessions never attach mods.
@@ -187,7 +191,7 @@ export interface CreateParams {
   pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
-const NOT_RUNNING_MESSAGE = 'This session is not running in Switchboard';
+const NOT_RUNNING_MESSAGE = 'This session is not running in Seshboard';
 
 const DEFAULT_MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
@@ -309,6 +313,9 @@ export class HostManager {
     if (!fork && this.deps.isOpenElsewhere(sessionId) && this.recentlyClosed(sessionId)) {
       await this.waitForExit(sessionId);
     }
+    // A process the engine left running when it last ended (killed or crashed) still holds the session, and nothing can
+    // talk to it: stop it and resume here, as if the engine had closed it then.
+    if (!fork && this.deps.isOpenElsewhere(sessionId) && this.deps.stopLeftover?.(sessionId)) await this.waitForExit(sessionId);
     if (!fork && this.deps.isOpenElsewhere(sessionId)) throw new RpcError('SESSION_BUSY_ELSEWHERE', busyMessage);
     const cwd = this.deps.sessionCwd(sessionId);
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
@@ -350,6 +357,19 @@ export class HostManager {
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
     return { sessionId, messageUuid, queued };
+  }
+
+  /**
+   * After Claude Code failed before it started (a binary that won't launch, a login that ran out): starts the session
+   * again and sends what the failed process never got, under the same uuids, so the transcript shows each message once.
+   */
+  async retry(sessionId: string): Promise<void> {
+    const unsent = this.hosts.get(sessionId)?.unsent ?? [];
+    if (unsent.length === 0) throw new RpcError('NOT_RUNNING', 'Nothing to send again. Send a message to start the session.');
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Fork it to continue here.');
+    if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
+    for (const message of unsent) host.send(message.text, message.attachments, undefined, message.uuid);
+    this.deps.onContinued?.(sessionId);
   }
 
   /**
@@ -662,6 +682,15 @@ export class HostManager {
     this.capabilityCache.clear();
   }
 
+  /**
+   * Has every session running here read its plugins and MCP servers again (a session in a turn does so when the
+   * turn ends), and forgets the cached lists, so an MCP server added after the sessions started shows up.
+   */
+  async reloadPlugins(profileIds: readonly string[]): Promise<void> {
+    this.reloadSkills(profileIds);
+    await Promise.all([...this.hosts.values()].filter((host) => host.active).map((host) => host.reloadPlugins()));
+  }
+
   private fetchCommands(key: CommandKey): Promise<SlashCommand[]> {
     const id = keyOf(key);
     const cached = this.deps.commandCache?.get(key);
@@ -701,11 +730,15 @@ export class HostManager {
   /**
    * What a session can use. A session running here answers live (and its MCP servers can be
    * toggled); otherwise a helper process for the folder answers, cached for a minute.
+   * `reload` has a running session read its plugins and MCP servers again first.
    */
-  async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string): Promise<Capabilities> {
+  async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string, reload = false): Promise<Capabilities> {
     const host = sessionId ? this.hosts.get(sessionId) : undefined;
     const plugins = (profile: string) => () => this.deps.installedPlugins?.(profile) ?? [];
-    if (host?.active) return host.capabilities(plugins(host.info.profileId));
+    if (host?.active) {
+      if (reload) await host.reloadPlugins();
+      return host.capabilities(plugins(host.info.profileId));
+    }
     const key = keyOf({ profileId, cwd });
     const cached = this.capabilityCache.get(key);
     if (cached && !refresh && Date.now() - cached.at < 60_000) return cached.value;
@@ -718,7 +751,7 @@ export class HostManager {
 
   async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
     const host = this.hosts.get(sessionId);
-    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Switchboard to change its MCP servers.');
+    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Seshboard to change its MCP servers.');
     try {
       await host.mcp(server, action);
     } catch (error) {
@@ -1054,7 +1087,11 @@ export class HostManager {
           this.deps.onTurnEnd?.(sessionId, outcome);
         },
         limitHit: (sessionId, stop) => this.deps.limits?.hit(config.profileId, sessionId, stop),
-        turnOk: (sessionId) => this.deps.limits?.ok(config.profileId, sessionId),
+        turnOk: (sessionId) => {
+          this.deps.limits?.ok(config.profileId, sessionId);
+          this.deps.signIns?.ok(config.profileId);
+        },
+        signedOut: (sessionId, message) => this.deps.signIns?.hit(config.profileId, sessionId, message),
         limited: () => !!this.deps.limits?.of(config.profileId),
         ...(this.deps.links ? { expand: (id: string, text: string) => this.deps.links!.expand(id, text) } : {}),
         mods: this.deps.mods ? { ...this.deps.mods, ask: (ask) => this.askWindow(ask), diagnostics: this.deps.log } : undefined,

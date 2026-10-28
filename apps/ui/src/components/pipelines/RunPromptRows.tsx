@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { Check, ChevronRight, Link2, X } from 'lucide-react';
-import type { RunBriefBlock } from '@switchboard/protocol/client';
+import type { RunBriefBlock } from '@seshboard/protocol/client';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { actionDetail } from './runView.ts';

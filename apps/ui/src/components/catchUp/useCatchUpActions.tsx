@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { CatchUp, GitChanges } from '@switchboard/protocol/client';
+import type { CatchUp, GitChanges } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';

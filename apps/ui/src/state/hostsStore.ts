@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { HOST_TO_LIVE } from '@switchboard/protocol/client';
+import { HOST_TO_LIVE } from '@seshboard/protocol/client';
 import type {
   EditorInfo,
   LiveSession,
@@ -7,7 +7,7 @@ import type {
   PermissionRequest,
   SessionHostInfo,
   StreamDelta,
-} from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
 import type { Wait } from '../components/transcript/turns.ts';
 
 export interface StreamingBlock {
@@ -102,7 +102,7 @@ export const useHosts = create<HostsState>()((set) => ({
 }));
 
 // How a host's state reads as a status dot, and whether it is still going: shared with the engine's focus count.
-export { HOST_TO_LIVE, isActiveHost } from '@switchboard/protocol/client';
+export { HOST_TO_LIVE, isActiveHost } from '@seshboard/protocol/client';
 
 /** Shapes a running host like a registry entry, so the sidebar and dots treat both the same. */
 export function hostAsLive(host: SessionHostInfo): LiveSession | null {

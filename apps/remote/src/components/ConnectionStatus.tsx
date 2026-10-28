@@ -1,5 +1,5 @@
-import { ChevronDown, CircleHelp, PlugZap, RotateCw, TriangleAlert, Unplug } from 'lucide-react';
-import { otherLine, stateLine } from '../lib/computer.ts';
+import { ChevronDown, CircleHelp, Laptop, PlugZap, RotateCw, TriangleAlert, Unplug } from 'lucide-react';
+import { computerRowLine, otherLine, stateLine, type StateTone } from '../lib/computer.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { offlineHelp, offlineLine, type OfflineReason } from '../lib/offline.ts';
 import { AnchoredMenu, type MenuItem } from './Menu.tsx';
@@ -8,7 +8,7 @@ import { useNow } from './SessionList.tsx';
 import { Button } from './ui.tsx';
 
 /** The Remote access page of the docs, on the site the app comes from. */
-const DOCS = 'https://switchboard.struyfconsulting.com/remote-access/';
+const DOCS = 'https://seshboard.app/remote-access/';
 
 type Look = { dot: string; text: string; label: string; word: string };
 
@@ -21,7 +21,16 @@ function look(state: ConnectionState, computer: string): Look {
   return { dot: 'bg-caution pulse-dot', text: 'text-caution', label: 'Reconnecting…', word: 'Reconnecting…' };
 }
 
-/** What opens the computer's menu: the chip, or the first screen's title. */
+/** Another paired computer, in the computer's menu: a tap switches to it. */
+export interface OtherComputer {
+  id: string;
+  name: string;
+  state: ConnectionState;
+  needsYou: number;
+  onSwitch: () => void;
+}
+
+/** What opens the computer's menu: the chip, Home's title, or the drawer's computer row. */
 export interface ComputerProps {
   state: ConnectionState;
   computer: string;
@@ -31,29 +40,71 @@ export interface ComputerProps {
    */
   strip?: boolean;
   needsYou?: number;
+  /** The other paired computers, to switch to (not in the strip: each has its own chip there). */
+  others?: readonly OtherComputer[];
   onDisconnect: () => void;
   onConnect: () => void;
-  onAdd: () => void;
   onForget: () => void;
 }
 
 /**
- * The computer's menu: its name and state, Disconnect (or Connect), Pair another computer…, and Forget this
- * computer… under a line. A chip in the strip leaves out pairing: the `⋯` menu pairs another.
+ * The computer's menu: its name and state, the other computers to switch to, Disconnect (or Connect), and Forget
+ * this computer… under a line. Pairing another is in Settings.
  */
-function computerItems({ state, computer, strip = false, onDisconnect, onConnect, onAdd, onForget }: ComputerProps, now: number): MenuItem[] {
-  const connection: MenuItem[] = state.kind === 'unpaired' ? [] : [state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect } : { label: 'Disconnect', onSelect: onDisconnect }];
+function computerItems({ state, computer, others = [], onDisconnect, onConnect, onForget }: ComputerProps, now: number): MenuItem[] {
+  const connection: MenuItem[] = state.kind === 'unpaired' ? [] : [state.kind === 'disconnected' ? { label: 'Connect', onSelect: onConnect, hook: 'connect' } : { label: 'Disconnect', onSelect: onDisconnect, hook: 'disconnect' }];
+  const switches: MenuItem[] = others.map((other) => ({ label: `Switch to ${other.name || 'your computer'}`, hint: otherLine(other.state, other.needsYou) || undefined, onSelect: other.onSwitch, hook: 'switch' }));
   return [
     { kind: 'header', title: computer || 'Your computer', detail: stateLine(state, now) },
+    ...(switches.length ? [...switches, { kind: 'separator' } as const] : []),
     ...connection,
-    ...(strip ? [] : [{ kind: 'separator' } as const, { label: 'Pair another computer…', onSelect: onAdd }]),
     { kind: 'separator' },
-    { label: 'Forget this computer…', danger: true, onSelect: onForget },
+    { label: 'Forget this computer…', danger: true, onSelect: onForget, hook: 'forget' },
   ];
 }
 
+/** The dot of a computer's state (`computerRowLine`). */
+export const TONE_DOT: Record<StateTone, string> = { ok: 'bg-ok', caution: 'bg-caution pulse-dot', error: 'bg-error', faint: 'bg-faint' };
+
 /**
- * The computer chip in the drawer's and the sidebar's header ("● Elio's iMac ▾"): the computer's name with a green
+ * The drawer's computer row, pinned to its bottom: a laptop in a tile, the name, how it is ("● Connected · encrypted")
+ * and ▾. A tap opens the computer's menu above it.
+ */
+export function ComputerRow(props: ComputerProps) {
+  const { state, computer } = props;
+  const now = useNow();
+  const name = computer || 'Your computer';
+  const line = computerRowLine(state);
+  return (
+    <AnchoredMenu label={name} items={computerItems(props, now)} align="left" side="above" className="flex">
+      {(trigger) => (
+        <button
+          type="button"
+          {...trigger}
+          aria-label={`${name}: ${line.text}`}
+          data-remote-connection={state.kind}
+          data-remote-drawer-computer
+          className="mx-2 flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-left hover:bg-border/45 active:bg-selected"
+        >
+          <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
+            <Laptop className="size-4 text-muted" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body font-semibold">{name}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+              <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[line.tone]}`} />
+              <span className="truncate">{line.text}</span>
+            </span>
+          </span>
+          <ChevronDown aria-hidden className="size-4 shrink-0 text-faint" />
+        </button>
+      )}
+    </AnchoredMenu>
+  );
+}
+
+/**
+ * The computer chip in the wide sidebar's header and the strip of every computer ("● Elio's iMac ▾"): the computer's name with a green
  * dot while connected, amber while it retries, red once it gave up, grey after Disconnect. It opens the computer's
  * menu. In the strip of every computer, it says the name whatever the state, and in `warn` how many sessions there
  * need you.
@@ -90,14 +141,10 @@ export function ComputerChip(props: ComputerProps) {
   );
 }
 
-/**
- * The first screen's title, which opens the computer's menu as the chip does. `large`: the computer's name in
- * `text-hero` with a chevron, at the top of the list. `compact`: "● mystic ▾" in the bar, once the list scrolled.
- */
-export function ComputerTitle({ size, ...props }: ComputerProps & { size: 'large' | 'compact' }) {
+/** Home's title on a phone, which opens the computer's menu as the chip does: the computer's name with ▾. */
+export function ComputerTitle(props: ComputerProps) {
   const { state, computer } = props;
   const now = useNow();
-  const { dot } = look(state, computer);
   const name = computer || 'Your computer';
   return (
     <AnchoredMenu label={name} items={computerItems(props, now)} align="left" className="flex min-w-0">
@@ -107,19 +154,18 @@ export function ComputerTitle({ size, ...props }: ComputerProps & { size: 'large
           {...trigger}
           aria-label={`${name}: ${stateLine(state, now)}`}
           data-remote-connection={state.kind}
-          data-remote-computer-title={size}
-          className={`flex min-h-11 min-w-0 items-center gap-1.5 rounded-lg hover:bg-border/45 ${size === 'large' ? '-ml-2 px-2 text-hero font-semibold' : 'px-2 text-title font-semibold'}`}
+          data-remote-computer-title
+          className="flex min-h-11 min-w-0 items-center gap-1 rounded-lg px-2 text-title font-semibold hover:bg-border/45"
         >
-          {size === 'compact' && <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />}
           <span className="truncate">{name}</span>
-          <ChevronDown aria-hidden className={`shrink-0 text-faint ${size === 'large' ? 'size-5' : 'size-4'}`} />
+          <ChevronDown aria-hidden className="size-4 shrink-0 text-faint" />
         </button>
       )}
     </AnchoredMenu>
   );
 }
 
-/** The line under the first screen's title: "● Connected · 2 need you". */
+/** The line under Home's title: "● Connected · 2 need you". */
 export function ConnectionLine({ state, detail }: { state: ConnectionState; detail: string }) {
   const { dot, text, word } = look(state, '');
   return (
@@ -137,7 +183,7 @@ export const reasonOf = (state: ConnectionState): OfflineReason => (state.kind =
 /**
  * Under the header while the connection is down: one short line ("Can't reach Elio's iMac · Reconnecting…") that opens
  * the Help sheet with the why, and Try again once it stopped trying. One line, so a computer that is away doesn't take
- * the sidebar. The `caution` tone: something outside Switchboard stops it.
+ * the sidebar. The `caution` tone: something outside Seshboard stops it.
  */
 export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }: { state: ConnectionState; computer: string; onHelp: () => void; onRetry: () => void; onConnect: () => void }) {
   if (state.kind === 'connected' || state.kind === 'unpaired') return null;
@@ -182,7 +228,7 @@ export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }
 
 /**
  * Under the header while a computer sent a session list this app can't read (`checkRemoteSessions`): it may run an
- * older or newer Switchboard. The list shows what could be read.
+ * older or newer Seshboard. The list shows what could be read.
  */
 export function UnreadableBanner({ problem }: { problem: string | null }) {
   if (!problem) return null;

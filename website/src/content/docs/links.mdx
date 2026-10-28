@@ -1,6 +1,6 @@
 ---
 title: Links
-description: Open Switchboard from a switchboard:// link, to start a session with a prompt or jump to an existing one.
+description: Open Seshboard from a seshboard:// link, to start a session with a prompt or jump to an existing one.
 ---
 
 import Kbd from '../../components/Kbd.astro';
@@ -10,7 +10,7 @@ import Screenshot from '../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../components/Related.astro';
 
-A `switchboard://` link opens Switchboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
+A `seshboard://` link opens Seshboard on New session with the project and prompt filled in, or jumps to a session. Put links in runbooks, alerts, READMEs, issue templates, or Raycast and Alfred scripts, or open them from a shell.
 
 <Screenshot name="new-session" alt="New session with a project picked and a prompt in the message box, the way a link leaves it for you to read before you start" eager />
 
@@ -19,7 +19,7 @@ A `switchboard://` link opens Switchboard on New session with the project and pr
 - Click it wherever links work: a browser, a chat message, a Markdown preview.
 - From a shell, with <Os mac="open" windows="Start-Process" />: see [From a shell](#from-a-shell).
 
-If Switchboard isn't running, the link starts it and waits until the window is ready. If it is running, its window comes to the front.
+If Seshboard isn't running, the link starts it and waits until the window is ready. If it is running, its window comes to the front.
 
 <Aside title="You read the prompt first">
 By default a link only fills in New session. You read the prompt, check the folder and start the session yourself. A link starts a session on its own only when it says `autostart=1`. While a prompt from a link is in the message box, a line under it says **Prompt from an external link**, with **Clear** to empty the box.
@@ -28,18 +28,18 @@ By default a link only fills in New session. You read the prompt, check the fold
 ## Start a new session
 
 ```text
-switchboard://new-session?prompt=Investigate%20the%20failed%20deploy&cwd=/Users/me/dev/payments
-switchboard://new-session?project=payments&prompt=What%20changed%20this%20week%3F
-switchboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests&autostart=1
-switchboard://new-session?question=1&prompt=How%20do%20I%20undo%20a%20git%20rebase%3F
+seshboard://new-session?prompt=Investigate%20the%20failed%20deploy&cwd=/Users/me/dev/payments
+seshboard://new-session?project=payments&prompt=What%20changed%20this%20week%3F
+seshboard://new-session?repo=acme/payments&prompt=Review%20the%20open%20pull%20requests&autostart=1
+seshboard://new-session?question=1&prompt=How%20do%20I%20undo%20a%20git%20rebase%3F
 ```
 
 | Parameter | What it does |
 |---|---|
 | `prompt` (or `q`) | Text for the message box, URL-encoded. Use `%0A` for a new line. At most 5,000 characters. |
-| `project` | One of your [projects](/projects/projects-view/), by its name in Switchboard (or its folder's name), ignoring case. A name that isn't one of your projects is refused. |
+| `project` | One of your [projects](/projects/projects-view/), by its name in Seshboard (or its folder's name), ignoring case. A name that isn't one of your projects is refused. |
 | `cwd` | The absolute path of the folder to start in: <Os mac="/Users/me/dev/payments" windows="C:\Users\me\dev\payments (or C:/Users/me/dev/payments)" />, URL-encoded. |
-| `repo` | A GitHub repository as `owner/name`. Switchboard looks for a checkout of it among your projects, then among the other folders you've used Claude Code in. |
+| `repo` | A GitHub repository as `owner/name`. Seshboard looks for a checkout of it among your projects, then among the other folders you've used Claude Code in. |
 | `autostart` | `1` (or `true`) starts the session right away. Leave it out (or use `0`) to fill in New session and wait for you. |
 | `question` | `1` (or `true`) makes it a [quick question](/new-session/quick-questions/): no project. `cwd`, `project` and `repo` are then ignored. |
 | `issue` | An issue of the project: its number (`32`, or `%2332` for `#32`) or its link on GitHub. New session opens [filled in from it](/sessions/github-issues/#start-a-session-from-one). Needs `project`, `repo` or `cwd`. |
@@ -66,8 +66,8 @@ Only use `autostart` in links you write for yourself or your team. Clicking an `
 ### From an issue or pull request
 
 ```text
-switchboard://new-session?project=switchboard&issue=32
-switchboard://new-session?repo=estruyf/switchboard&pr=151
+seshboard://new-session?project=seshboard&issue=32
+seshboard://new-session?repo=estruyf/switchboard&pr=151
 ```
 
 New session opens as **New session from issue…** does: a new worktree named after the issue, its chip above the message box, and "Fix #32: …" in the box (or the link's `prompt`). A banner on top says **Opened from a link with issue #32. Check the prompt, then start.**
@@ -77,10 +77,33 @@ These links **never start a session on their own**: anyone can write an issue's 
 ## Open a session
 
 ```text
-switchboard://session/0b9a7c1e-1234-4abc-9def-001122334455
+seshboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 ```
 
 This shows that session, as if you picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**, or run *Copy session id* in the command palette (<Kbd shortcut="palette.commands" />).
+
+## Open a folder from a terminal
+
+Type `seshboard .` in a terminal to open New session in that folder, like `code .` for VS Code. `sesh .` is the short form, and `switchboard .` works too. Give another folder instead of `.` to open that one; without a folder, it opens the one you are in.
+
+```bash
+cd ~/dev/payments
+seshboard .
+```
+
+New session opens with the folder filled in, as a link with `cwd` does. You write the prompt and start the session yourself.
+
+Install the commands once:
+
+- In [Settings › General](/settings/#terminal), under **Terminal**, click **Install** next to **Shell command**.
+- Or press <Kbd shortcut="palette.commands" /> and choose *Install the seshboard command*.
+
+Where they go:
+
+- <Os mac="On a Mac, in /usr/local/bin. If your user can't write there, macOS asks for your password." windows="On Windows, in a folder in Seshboard's app data, which Seshboard adds to your PATH. Terminals you open after that find the commands." />
+- On Linux, in `~/.local/bin`, which has to be on your PATH.
+
+A name another program already uses, such as the tmux tool `sesh`, is left alone: Settings says which one, and the other commands still work. Settings also says when the commands were installed for another copy of Seshboard, with **Update**. **Remove** takes them out again. The commands only install from the installed app, not from a development build.
 
 ## Examples
 
@@ -89,7 +112,7 @@ This shows that session, as if you picked it in the sidebar. To get a session's 
 <OnlyOn os="mac">
 
 ```bash
-open "switchboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
+open "seshboard://new-session?cwd=$PWD&prompt=Why%20are%20the%20tests%20failing%3F"
 ```
 
 That works while the folder's path has no spaces or other characters that need encoding. To encode any text, let `jq` do it (it comes with macOS 15 and later):
@@ -97,7 +120,7 @@ That works while the folder's path has no spaces or other characters that need e
 ```bash
 prompt='Summarise the last 10 commits
 and list anything that looks risky.'
-open "switchboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(jq -rn --arg v "$prompt" '$v|@uri')"
+open "seshboard://new-session?cwd=$(jq -rn --arg v "$PWD" '$v|@uri')&prompt=$(jq -rn --arg v "$prompt" '$v|@uri')"
 ```
 
 In a URL, `+` means a space. Write a plus sign as `%2B`; `jq`'s `@uri` does that for you.
@@ -111,7 +134,7 @@ In PowerShell, `Start-Process` opens a link, and `[uri]::EscapeDataString` encod
 ```powershell
 $prompt = "Summarise the last 10 commits`nand list anything that looks risky."
 $cwd = [uri]::EscapeDataString($PWD.Path)
-Start-Process "switchboard://new-session?cwd=$cwd&prompt=$([uri]::EscapeDataString($prompt))"
+Start-Process "seshboard://new-session?cwd=$cwd&prompt=$([uri]::EscapeDataString($prompt))"
 ```
 
 </OnlyOn>
@@ -119,7 +142,7 @@ Start-Process "switchboard://new-session?cwd=$cwd&prompt=$([uri]::EscapeDataStri
 ### In a README or runbook
 
 ```markdown
-[Ask Claude to triage a failed deploy](switchboard://new-session?repo=acme/payments&prompt=The%20last%20deploy%20failed.%20Read%20the%20CI%20logs%20and%20suggest%20a%20fix.)
+[Ask Claude to triage a failed deploy](seshboard://new-session?repo=acme/payments&prompt=The%20last%20deploy%20failed.%20Read%20the%20CI%20logs%20and%20suggest%20a%20fix.)
 ```
 
 Some sites, GitHub among them, don't make custom links clickable. Put the link in a code block there so people can copy it.
@@ -131,12 +154,12 @@ Save this as `ask-claude.sh` in your Raycast script commands folder. It asks for
 ```bash
 #!/bin/bash
 # @raycast.schemaVersion 1
-# @raycast.title Ask Claude in Switchboard
+# @raycast.title Ask Claude in Seshboard
 # @raycast.mode silent
 # @raycast.argument1 { "type": "text", "placeholder": "Project" }
 # @raycast.argument2 { "type": "text", "placeholder": "What should Claude work on?" }
 uri() { jq -rn --arg v "$1" '$v|@uri'; }
-open "switchboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
+open "seshboard://new-session?project=$(uri "$1")&prompt=$(uri "$2")&autostart=1"
 ```
 
 ### Alfred (Mac)
@@ -146,7 +169,7 @@ Add a **Keyword** input with an argument, connect it to a **Run Script** action 
 ```bash
 read -r project prompt <<< "$1"
 uri() { jq -rn --arg v "$1" '$v|@uri'; }
-open "switchboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt")"
+open "seshboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt")"
 ```
 
 ### From an alert
@@ -154,12 +177,12 @@ open "switchboard://new-session?project=$(uri "$project")&prompt=$(uri "$prompt"
 Most alerting tools can add a link to a notification. Point it at the service's repository and describe the alert in the prompt:
 
 ```text
-switchboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20above%202s%20on%20checkout.%20Look%20at%20recent%20changes%20to%20the%20checkout%20path.
+seshboard://new-session?repo=acme/payments&prompt=Alert%3A%20p95%20latency%20above%202s%20on%20checkout.%20Look%20at%20recent%20changes%20to%20the%20checkout%20path.
 ```
 
-## Links Switchboard refuses
+## Links Seshboard refuses
 
-Links can come from any web page or chat message, so Switchboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window saying why, and nothing else happens. That covers:
+Links can come from any web page or chat message, so Seshboard checks each one before it changes anything. A link it refuses shows a short message at the bottom of the window saying why, and nothing else happens. That covers:
 
 - an action other than `new-session` or `session`;
 - a prompt longer than 5,000 characters, or with control characters or invisible characters (such as zero-width spaces) that can hide text;
@@ -170,18 +193,18 @@ Links can come from any web page or chat message, so Switchboard checks each one
 - an `issue` or `pr` that isn't a number, `#123` or its link on GitHub; both in one link; or one without `project`, `repo` or `cwd`;
 - a session ID that isn't one, or a session that isn't on this computer.
 
-Parameters Switchboard doesn't know are ignored, so a link made for a newer version still opens.
+Parameters Seshboard doesn't know are ignored, so a link made for a newer version still opens.
 
 ## When a link doesn't work
 
-- **Nothing happens.** <Os mac="macOS sends switchboard:// links to the copy of Switchboard it knows. Move Switchboard to Applications and open it once." windows="Switchboard registers switchboard:// links for you when it starts. Open it once from the Start menu after installing it. A build you run with npm run dev doesn't register them." />
-- **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Switchboard can find.
+- **Nothing happens.** <Os mac="macOS sends seshboard:// links to the copy of Seshboard it knows. Move Seshboard to Applications and open it once." windows="Seshboard registers seshboard:// links for you when it starts. Open it once from the Start menu after installing it. A build you run with npm run dev doesn't register them." />
+- **An `autostart` link didn't start.** It needs a prompt and a folder: `project`, `cwd`, or a `repo` Seshboard can find.
 - **The folder is empty.** The link names no folder, or no project or recent folder has a git remote on that `repo`. Add the checkout as a project, use `cwd`, or choose **Clone owner/name** to clone it (with [Clone from GitHub](/projects/clone-from-github/) on).
 - **The prompt looks wrong.** Check the encoding: spaces as `%20`, new lines as `%0A`, `&` as `%26`, `#` as `%23`, `+` as `%2B`.
 
 ## Settings
 
-Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/).
+Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/). The `seshboard` command is installed from [Settings › General › Terminal](/settings/#terminal).
 
 ## Related
 

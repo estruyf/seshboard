@@ -2,7 +2,9 @@ import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
 import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
+import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail } from '../theme/appIconCopy.ts';
+import { GLOBAL_MODE_DETAIL } from '../../lib/modes.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -17,14 +19,15 @@ export function settingsIndex(): SettingEntry[] {
   return [
     // General
     { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
-    { id: 'startup', page: 'general', label: 'On startup', detail: 'What Switchboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
+    { id: 'startup', page: 'general', label: 'On startup', detail: 'What Seshboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     { id: 'keep-awake', page: 'general', label: keepAwakeLabel(), detail: keepAwakeDetail(), keywords: 'caffeinate sleep awake power insomnia prevent idle lid battery vm virtual machine schedules triggers remote', target: '[data-keep-awake]' },
+    { id: 'shell-command', page: 'general', label: 'Shell command', detail: shellCommandDetail(), keywords: 'terminal cli command line path code . switchboard seshboard sesh open folder install bin', target: '[data-shell-command]' },
     {
       id: 'new-session-mode',
       page: 'general',
-      label: 'Permission mode',
-      detail: 'What New session starts in: the project’s or profile’s default (else Ask first), the mode you picked last, or always one mode, even where a project sets its own. A link never starts in Auto mode.',
-      keywords: 'new session default ask first accept edits plan auto mode permissions project default remember last override',
+      label: 'Global permission mode',
+      detail: GLOBAL_MODE_DETAIL,
+      keywords: 'new session default ask first before edits accept edits plan auto mode permissions profile project remember last',
       target: '[data-new-session-mode]',
     },
     {
@@ -68,12 +71,38 @@ export function settingsIndex(): SettingEntry[] {
       id: 'session-scope',
       page: 'sidebar',
       label: 'Show sessions from other apps',
-      detail: 'Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard.',
+      detail: 'Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard.',
       keywords: 'external vs code all sessions',
       target: '[data-session-scope]',
     },
+    {
+      id: 'quick-actions',
+      page: 'sidebar',
+      label: 'Quick actions on hover',
+      detail: 'Mark read, Pin and Archive appear on a row under the pointer.',
+      keywords: 'hover archive quick actions mark as read unread pin unpin stop buttons row one click',
+      target: '[data-quick-actions-setting]',
+    },
+    {
+      id: 'quick-actions-show',
+      page: 'sidebar',
+      label: 'Show',
+      detail: 'Quick actions on hover: Archive only, or Read · Pin · Archive.',
+      keywords: 'hover archive quick actions mark as read pin buttons archive only',
+      target: '[data-quick-actions-show]',
+      // Only while Quick actions on hover is on.
+      fallback: '[data-quick-actions-setting]',
+    },
 
     // Sessions
+    {
+      id: 'mark-read-after',
+      page: 'sessions',
+      label: 'Mark as read after',
+      detail: 'A session you open unread is marked read once it has been in front of you for the seconds you set.',
+      keywords: 'unread read seen viewed delay seconds outlook',
+      target: '[data-mark-read-after]',
+    },
     {
       id: 'auto-archive',
       page: 'sessions',
@@ -125,7 +154,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'show-mods',
       page: 'mods',
       label: 'Show mods',
-      detail: "Bands, panes, statuses, toasts and replaced views from your plugins. Off, sessions use only Switchboard's own views.",
+      detail: "Bands, panes, statuses, toasts and replaced views from your plugins. Off, sessions use only Seshboard's own views.",
       keywords: 'mods plugins panes status line statusline bands toasts ui surfaces extensions',
       target: '[data-show-mods]',
     },
@@ -176,8 +205,8 @@ export function settingsIndex(): SettingEntry[] {
       id: 'file-link-click',
       page: 'conversation',
       label: 'Clicking a file link',
-      detail: `What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Switchboard, other files in ${fileManagerName()}. ${formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.`,
-      keywords: `file link path click open show reveal preview markdown html switchboard editor ${fileManagerName()} finder explorer shift context menu`,
+      detail: `What a click does on a file in Claude’s replies. Markdown, HTML and code files open in Seshboard, other files in ${fileManagerName()}. ${formatKeys(clickKeysFor('transcript.file-link-other'))} opens the editor, and right-click lists every way.`,
+      keywords: `file link path click open show reveal preview markdown html seshboard switchboard editor ${fileManagerName()} finder explorer shift context menu`,
       target: '[data-file-link-click]',
     },
     {
@@ -242,7 +271,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'focus-external',
       page: 'focus',
       label: 'Count terminal and IDE sessions',
-      detail: 'Also count live Claude Code sessions started outside Switchboard.',
+      detail: 'Also count live Claude Code sessions started outside Seshboard.',
       keywords: 'focus limit external vs code',
       target: '[data-focus-count-external]',
       fallback: '[data-focus-limit-switch]',
@@ -279,7 +308,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'profile-sign-in',
       page: 'profiles',
       label: 'Sign in',
-      detail: 'Opens Claude Code with a profile that isn’t signed in yet, in Switchboard’s terminal.',
+      detail: 'Opens Claude Code with a profile that isn’t signed in yet, in Seshboard’s terminal.',
       keywords: 'account login /login terminal claude_config_dir',
       target: '[data-profile-sign-in]',
       fallback: '[data-profiles]',
@@ -377,7 +406,7 @@ export function settingsIndex(): SettingEntry[] {
       id: 'pipelines',
       page: 'pipelines',
       label: 'Pipelines',
-      detail: 'Steps Switchboard runs for one task, each as a sub-session under the session you run it from.',
+      detail: 'Steps Seshboard runs for one task, each as a sub-session under the session you run it from.',
       keywords: 'pipeline workflow plan execute validate push steps sub-session chain automate',
       target: '[data-pipelines-settings]',
     },
@@ -419,11 +448,11 @@ export function settingsIndex(): SettingEntry[] {
       id: 'companion',
       page: 'vscode',
       label: 'VS Code',
-      detail: 'The Switchboard extension sends what you’re looking at in the editor to a session, as chips above the message box.',
+      detail: 'The Seshboard extension sends what you’re looking at in the editor to a session, as chips above the message box.',
       keywords: 'cursor windsurf extension editor companion ide',
       target: '[data-companion-settings]',
     },
-    { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Switchboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
+    { id: 'companion-install', page: 'vscode', label: 'Visual Studio Marketplace', detail: 'Install the Seshboard extension.', keywords: 'install download extension open vsx cursor windsurf', target: '[data-companion-link="marketplace"]' },
 
     // Remote
     {
@@ -472,16 +501,16 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'diagnostics-log', page: 'diagnostics', label: 'Engine log', detail: 'What the engine did recently.', keywords: 'logs errors debug', target: '[data-diagnostics-card="Engine log"]' },
 
     // About
-    { id: 'version', page: 'about', label: 'Switchboard', detail: 'The version you run, its release notes and the changelog.', keywords: 'version release notes changelog', target: '[data-app-version]' },
-    { id: 'check-updates', page: 'about', label: 'Check for Updates', detail: 'See if there is a newer Switchboard.', keywords: 'update upgrade new version', target: '[data-check-updates]' },
-    { id: 'auto-update', page: 'about', label: 'Check for updates automatically', detail: 'Shortly after Switchboard opens, then every few hours. Nothing downloads until you choose to.', keywords: 'update', target: '[data-auto-update]' },
+    { id: 'version', page: 'about', label: 'Seshboard', detail: 'The version you run, its release notes and the changelog.', keywords: 'version release notes changelog', target: '[data-app-version]' },
+    { id: 'check-updates', page: 'about', label: 'Check for Updates', detail: 'See if there is a newer Seshboard.', keywords: 'update upgrade new version', target: '[data-check-updates]' },
+    { id: 'auto-update', page: 'about', label: 'Check for updates automatically', detail: 'Shortly after Seshboard opens, then every few hours. Nothing downloads until you choose to.', keywords: 'update', target: '[data-auto-update]' },
     { id: 'update-channel', page: 'about', label: 'Channel', detail: 'Stable: published releases. Beta: beta versions to test what comes next, and the published releases.', keywords: 'update beta stable nightly pre-release testing', target: '[data-update-channel]' },
     { id: 'claude-updates', page: 'about', label: 'Claude Code', detail: 'The Claude Code you have, and updating it.', keywords: 'cli version update install', target: '[data-claude-updates]', fallback: '[data-about]' },
     {
       id: 'claude-auto-update',
       page: 'about',
       label: 'Check for Claude Code updates automatically',
-      detail: 'Shortly after Switchboard opens, then every few hours. Nothing is installed until you choose Update.',
+      detail: 'Shortly after Seshboard opens, then every few hours. Nothing is installed until you choose Update.',
       keywords: 'cli update',
       target: '[data-claude-update-auto]',
       fallback: '[data-about]',

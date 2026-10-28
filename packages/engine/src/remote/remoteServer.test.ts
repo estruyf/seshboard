@@ -3,7 +3,7 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket, type RemoteContract, type RemotePairContract } from '@switchboard/protocol';
+import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket, type RemoteContract, type RemotePairContract } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_MAX_FAILURES, type PairingState } from './pairing.ts';
@@ -21,7 +21,7 @@ const noRun = (): never => {
 };
 
 async function setup(options: { backoff?: Backoff } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-remote-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const identity = generateKeyPair();
   const devices = new DeviceStore(cache.db);
@@ -37,7 +37,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     pairing,
     appVersion: '1.2.3',
     computerName: () => "Elio's iMac",
-    origins: [APP_ORIGIN],
+    origins: () => [APP_ORIGIN],
     ...options,
     log: () => {},
     handlers: (device) => ({
@@ -266,7 +266,7 @@ describe('request paths', () => {
 });
 
 describe('a paired device\'s kind', () => {
-  it('tells Switchboard on another computer, a phone and a computer\'s browser apart', () => {
+  it('tells Seshboard on another computer, a phone and a computer\'s browser apart', () => {
     expect(deviceKind('switchboard-desktop://switchboard', undefined)).toBe('computer');
     expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148')).toBe('phone');
     expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36')).toBe('phone');

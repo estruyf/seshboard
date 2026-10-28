@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { memoryMeta, splitFrontmatter, type MemoryHit } from '@switchboard/protocol';
+import { memoryMeta, splitFrontmatter, type MemoryHit } from '@seshboard/protocol';
 import { MARK_END, MARK_START, toFtsQuery } from '../sessions/searchIndex.ts';
 
 /** A memory folder to index: a project's (with the profile it belongs to) or the personal one (`root` null). */
@@ -92,7 +92,7 @@ export class MemorySearch {
       if (prune) {
         const dirs = folders.map((f) => f.dir + sep);
         for (const path of indexed.keys()) {
-          // A file that is gone, or in a folder no longer indexed (a project removed from Switchboard).
+          // A file that is gone, or in a folder no longer indexed (a project removed from Seshboard).
           if (seen.has(path) && dirs.some((d) => path.startsWith(d))) continue;
           this.statements.clear.run(path);
           this.statements.forget.run(path);

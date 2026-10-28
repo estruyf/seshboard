@@ -38,6 +38,7 @@ import {
 } from './sessions.ts';
 import { TerminalInfo, TerminalKind } from './terminal.ts';
 import { LimitsState } from './usageLimit.ts';
+import { SignInState } from './signIn.ts';
 import { PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from './usage.ts';
 import { ActionRunResult, ActionSuggestion, ListedAction, ProjectAction } from './actions.ts';
 import { ChangesBase, CheckLog, ChecksFinished, GithubStarStatus, GitChanges, GitSyncAction, PrChecks, PrDraft, PrProgress, WorktreeStatus } from './git.ts';
@@ -254,10 +255,10 @@ export const contract = {
      */
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(ProjectInfo) }) },
     'projects.add': { params: z.object({ path: AbsolutePath }), result: z.object({}) },
-    /** Removes a project from Switchboard's list. Nothing on disk changes; its sessions stay. */
+    /** Removes a project from Seshboard's list. Nothing on disk changes; its sessions stay. */
     'projects.remove': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
     'projects.setIcon': { params: z.object({ root: AbsolutePath, icon: ProjectIconChoice }), result: z.object({}) },
-    /** Names a project in Switchboard; null (or the folder's own name) goes back to the folder's name. The folder isn't touched. */
+    /** Names a project in Seshboard; null (or the folder's own name) goes back to the folder's name. The folder isn't touched. */
     'projects.rename': { params: z.object({ root: AbsolutePath, name: z.string().max(PROJECT_NAME_MAX).nullable() }), result: z.object({}) },
     /** Links a project to a Claude profile; null uses the default profile. */
     'projects.setProfile': { params: z.object({ root: AbsolutePath, profileId: ProfileId.nullable() }), result: z.object({}) },
@@ -295,7 +296,7 @@ export const contract = {
       result: z.object({ id: z.string() }),
     },
     'profiles.update': { params: z.object({ id: ProfileId, name: ProfileName.optional(), color: ProfileColor.optional() }), result: z.object({}) },
-    /** Removes a profile from Switchboard (its folder, login and sessions stay). Its projects fall back to the default. */
+    /** Removes a profile from Seshboard (its folder, login and sessions stay). Its projects fall back to the default. */
     'profiles.remove': { params: z.object({ id: ProfileId }), result: z.object({}) },
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
     /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
@@ -372,7 +373,7 @@ export const contract = {
         checkoutPullRequest: z.object({ number: z.number().int().positive(), repo: GithubOrigin.shape.repo }).optional(),
         /**
          * The issue or pull request New session was filled in from, kept with the session (`github.origin`). In a
-         * session from a fork's pull request Switchboard can't push to (`readOnly`), push and Create pull request are off.
+         * session from a fork's pull request Seshboard can't push to (`readOnly`), push and Create pull request are off.
          */
         github: GithubOrigin.optional(),
       }),
@@ -471,6 +472,11 @@ export const contract = {
     'session.context': { params: z.object({ sessionId: SessionId }), result: ContextUsage },
     /** Stops the Claude Code process behind a session (the transcript stays; sending resumes it). */
     'session.close': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
+    /**
+     * After Claude Code failed to start: starts it again and sends the messages it never got (`SessionHostInfo.unsent`).
+     * Fails with START_FAILED when it fails again before it starts.
+     */
+    'session.retry': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     'session.respond': { params: z.object({ requestId: z.string(), decision: PermissionDecision }), result: z.object({}) },
     /** Slash commands, skills and plugin commands available to a session (or folder, for a new one). */
     'session.commands': {
@@ -479,7 +485,8 @@ export const contract = {
     },
     /** MCP servers, agents, skills and commands, and plugins for a session (live when it runs here) or a folder. */
     'session.capabilities': {
-      params: z.object({ sessionId: SessionId.optional(), cwd: AbsolutePath, refresh: z.boolean().default(false), profileId: ProfileId.optional() }),
+      /** `refresh` skips the folder's cached answer; `reload` also has a running session read its plugins and MCP servers again. */
+      params: z.object({ sessionId: SessionId.optional(), cwd: AbsolutePath, refresh: z.boolean().default(false), reload: z.boolean().default(false), profileId: ProfileId.optional() }),
       result: Capabilities,
     },
     /**
@@ -487,6 +494,12 @@ export const contract = {
      * Running sessions re-read their skill folders when they next list them; windows get `commands.changed`.
      */
     'skills.reload': { params: z.object({}), result: z.object({}) },
+    /**
+     * Has every session running here read its plugins and MCP servers again (as /reload-plugins does), so a server
+     * added after it started is there for its next turn; a session in a turn reloads when the turn ends.
+     * Also drops the cached lists, as `skills.reload` does.
+     */
+    'mcp.reload': { params: z.object({}), result: z.object({}) },
     /** Turns an MCP server on or off, or reconnects it, in a session running in this app. */
     'session.mcp': {
       params: z.object({ sessionId: SessionId, server: z.string().max(200), action: z.enum(['enable', 'disable', 'reconnect']) }),
@@ -547,6 +560,15 @@ export const contract = {
     'limits.resume': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Resume when it resets: arms (or disarms) a session to continue by itself shortly after its profile's limit resets. */
     'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
+    /** Profiles whose login stopped working (signed out, expired), and the sessions it stopped; `signIn.changed` follows each change. */
+    'signIn.state': { params: z.object({}), result: SignInState },
+    /**
+     * Sign in: runs `claude auth login` with the session's profile in a terminal tab of the session. When it succeeds, the
+     * sessions the login stopped start again and continue where they left off.
+     */
+    'signIn.start': { params: z.object({ sessionId: SessionId }), result: TerminalInfo },
+    /** Signed in some other way: the sessions the profile's login stopped start again and continue where they left off. */
+    'signIn.continue': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
 
     // --- Folders, files and editors -----------------------------------------------------------
     /**
@@ -606,20 +628,20 @@ export const contract = {
     'editors.setDefault': { params: z.object({ editorId: z.string() }), result: z.object({}) },
 
     // --- Project actions -----------------------------------------------------------------------
-    /** Merged actions for a project: yours for it, then shared (.switchboard.json), then global. */
+    /** Merged actions for a project: yours for it, then shared (.seshboard.json), then global. */
     'actions.list': {
       params: z.object({ projectRoot: AbsolutePath }),
       result: z.object({ actions: z.array(ListedAction), sharedFile: z.string().nullable(), errors: z.array(z.string()) }),
     },
     /**
      * Saves one of your actions; `projectRoot: null` makes it global. `shared` saves it in the project's
-     * .switchboard.json instead, for everyone on the project (and approves its command for you). `previousId` renames.
+     * .seshboard.json instead, for everyone on the project (and approves its command for you). `previousId` renames.
      */
     'actions.save': {
       params: z.object({ projectRoot: AbsolutePath.nullable(), action: ProjectAction, previousId: z.string().optional(), shared: z.boolean().optional() }),
       result: z.object({}),
     },
-    /** Deletes one of your actions, or with `shared` takes it out of the project's .switchboard.json. */
+    /** Deletes one of your actions, or with `shared` takes it out of the project's .seshboard.json. */
     'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
     /** Approves a shared action's exact command (an edited command needs approval again), or an imported action of yours. */
     'actions.trust': { params: z.object({ projectRoot: AbsolutePath, id: z.string() }), result: z.object({}) },
@@ -633,7 +655,7 @@ export const contract = {
 
     // --- Saved prompts ---------------------------------------------------------------------------
     /**
-     * Your prompts for every project, plus the project's own (just for you, and shared in its .switchboard.json)
+     * Your prompts for every project, plus the project's own (just for you, and shared in its .seshboard.json)
      * when `root` is given, most recently used first. `errors` says what in the shared file couldn't be read.
      */
     'savedPrompts.list': {
@@ -685,7 +707,7 @@ export const contract = {
      * `indexing` reports background progress while transcripts are still being indexed.
      */
     'search.query': {
-      // `switchboard` searches only the sessions started or continued in Switchboard, as the sidebar lists them.
+      // `switchboard` searches only the sessions started or continued in Seshboard, as the sidebar lists them.
       // Memories (`memories`) match their name, description and text; `memoryTypes` and `memoryScope` (a project root,
       // `personal` or `all`) narrow them, and `only` leaves out conversations or memory.
       params: z.object({
@@ -822,9 +844,9 @@ export const contract = {
       result: z.object({ logs: z.array(CheckLog) }),
     },
 
-    /** Whether the account gh is signed in with has starred Switchboard (the sidebar's Star on GitHub button). */
+    /** Whether the account gh is signed in with has starred Seshboard (the sidebar's Star on GitHub button). */
     'github.starStatus': { params: z.object({}), result: z.object({ status: GithubStarStatus }) },
-    /** Stars Switchboard for the account gh is signed in with. GH_MISSING, GH_AUTH or GH_FAILED when it can't. */
+    /** Stars Seshboard for the account gh is signed in with. GH_MISSING, GH_AUTH or GH_FAILED when it can't. */
     'github.star': { params: z.object({}), result: z.object({}) },
 
     /** Where a session's checkout stands: ahead/behind its base and its upstream, uncommitted, pushed. */
@@ -855,7 +877,7 @@ export const contract = {
      * Removes worktrees of the repository at `root`, one after the other, each with `git worktree remove` (never a plain
      * delete) or, when its folder is gone, `git worktree prune`. Refuses (per item) the main checkout, a locked worktree,
      * uncommitted changes and a session working there or open in another Claude Code process; a session idle in
-     * Switchboard is stopped first. Optionally deletes the branch, after saving a recovery ref.
+     * Seshboard is stopped first. Optionally deletes the branch, after saving a recovery ref.
      */
     'worktrees.remove': { params: z.object({ root: AbsolutePath, items: z.array(WorktreeRemoveItem).min(1).max(200) }), result: z.object({ results: z.array(WorktreeRemoveResult) }) },
     /** Unlocks a locked worktree of the repository at `root` (`git worktree unlock`), so it can be removed. */
@@ -1077,7 +1099,7 @@ export const contract = {
      */
     'runs.archive': { params: z.object({ runId: z.string().min(1).max(100), archived: z.boolean() }), result: z.object({ runs: z.array(PipelineRunState) }) },
     /**
-     * Deletes a run's tree from Switchboard: its runs (stopped first), the parent session, and the sub-sessions unless
+     * Deletes a run's tree from Seshboard: its runs (stopped first), the parent session, and the sub-sessions unless
      * `keepSubSessions` (they then show on their own). Transcripts stay on disk.
      */
     'runs.delete': { params: z.object({ runId: z.string().min(1).max(100), keepSubSessions: z.boolean().default(false) }), result: z.object({}) },
@@ -1379,7 +1401,7 @@ export const contract = {
     'claudeUpdate.check': { params: z.object({}), result: z.object({}) },
     /**
      * Runs the update command for the install method, streaming its output through `claudeUpdate.changed`, then finds
-     * `claude` again so new sessions use the new version. Refused (UNSUPPORTED) when Switchboard can't run it, BUSY while running.
+     * `claude` again so new sessions use the new version. Refused (UNSUPPORTED) when Seshboard can't run it, BUSY while running.
      */
     'claudeUpdate.update': { params: z.object({}), result: z.object({}) },
     /** Hides the notice until a newer version than the one on offer, and clears "Updated to". */
@@ -1486,6 +1508,8 @@ export const contract = {
     'limits.changed': LimitsState,
     /** A session armed with Resume when it resets was sent its message after the reset (for the notification). */
     'limits.resumed': z.object({ sessionId: z.string() }),
+    /** A profile's login stopped working, or works again, or Sign in started or ended. */
+    'signIn.changed': SignInState,
     /** Skills were reloaded: ask for slash command lists again. */
     'commands.changed': z.object({}),
     /** Actions changed (saved, deleted, or the shared file changed, as after a pull): `root` null for global ones. */

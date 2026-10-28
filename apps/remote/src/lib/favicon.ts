@@ -1,4 +1,4 @@
-import type { AppIconKey } from '@switchboard/protocol/remote-client';
+import type { AppIconKey } from '@seshboard/protocol/remote-client';
 import { APP_ICON_STORAGE, iconLinks } from './appIcon.ts';
 
 /**

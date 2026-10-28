@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { eventFields } from '@switchboard/protocol/client';
+import { eventFields } from '@seshboard/protocol/client';
 import { fieldQuery, insertField, promptSegments } from '../../state/triggerPrompt.ts';
 
 /**

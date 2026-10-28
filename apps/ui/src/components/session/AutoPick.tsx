@@ -1,6 +1,6 @@
 import { Info } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { tierLabel, type AutoPick, type AutoTier } from '@switchboard/protocol/client';
+import { tierLabel, type AutoPick, type AutoTier } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { estimateLine, failedLine, otherTiers, shortReason } from '../../lib/autoModel.ts';
 import { shouldSuggest, strongerTier, suggestSignals } from '../../lib/autoSuggest.ts';

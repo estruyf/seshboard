@@ -2,7 +2,7 @@ import { Fragment, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowUp, CircleAlert, CircleCheck, CircleMinus, CircleX, Eye, ListTree, Repeat } from 'lucide-react';
-import type { PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineRunState } from '@seshboard/protocol/client';
 import { anotherRound, usePipelines, useRunOfParent, useRunOfStep } from '../../state/pipelinesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -190,7 +190,7 @@ const ROW_ICON = {
 const ROW_BORDER = { ok: 'border-border', caution: 'border-caution/50', error: 'border-error/50', muted: 'border-border' } as const;
 
 /**
- * Switchboard's own rows in a run's parent, after the conversation (#179): "You started <pipeline> · 14:02", then a
+ * Seshboard's own rows in a run's parent, after the conversation (#179): "You started <pipeline> · 14:02", then a
  * dashed row per finished step with Open. They are for you: Claude never gets them.
  */
 export function ParentRunRows({ sessionId }: { sessionId: string }) {

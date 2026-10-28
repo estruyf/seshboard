@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ShareTarget } from '@switchboard/protocol';
+import type { ShareTarget } from '@seshboard/protocol';
 import { git } from '../git/gitChanges.ts';
 import { canSymlink } from '../util/canSymlink.ts';
 import { autoMemoryDirectory, encodeProjectPath, memoryDirFor } from './folders.ts';
@@ -34,7 +34,7 @@ const share = (memoryPath: string, target: ShareTarget, options: { heading?: str
 const preview = (memoryPath: string, target: ShareTarget, heading = 'Sidebar Order', placement: 'add' | 'replace' = 'add') => service.sharePreview({ root, memoryPath, target, heading, placement });
 
 beforeEach(async () => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-memory-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-memory-')));
   root = join(base, 'project');
   configDir = join(base, 'config');
   mkdirSync(root, { recursive: true });

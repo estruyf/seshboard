@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, clockTime, parseRunBriefs, type PipelineRunState } from '@switchboard/protocol/client';
+import { BUILT_IN_PIPELINES, clockTime, parseRunBriefs, type PipelineRunState } from '@seshboard/protocol/client';
 import { actionDetail, parentRows, pushLine, roundDivider, runButtons, stepDetail, stepMeta, stepPills, stopNotice, verdictView, waitsOnStep, withRunStub, holdLine } from './runView.ts';
 
 const pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 0, updatedAt: 0 };
@@ -55,7 +55,7 @@ describe('the run buttons and stops', () => {
       index: 1,
       anotherRound: null,
     });
-    expect(stopNotice(state({ status: 'paused', reason: 'Paused: Switchboard was closed. The run goes on at the next start.' }))).toMatchObject({ title: 'Paused: Switchboard was closed', advice: 'The run goes on at the next start.', kind: 'paused' });
+    expect(stopNotice(state({ status: 'paused', reason: 'Paused: Seshboard was closed. The run goes on at the next start.' }))).toMatchObject({ title: 'Paused: Seshboard was closed', advice: 'The run goes on at the next start.', kind: 'paused' });
     expect(stopNotice(state({ status: 'waiting', waitingFor: 'push', reason: 'Push waits for you.', step: 3 }))).toBeNull();
     expect(stopNotice(state())).toBeNull();
   });

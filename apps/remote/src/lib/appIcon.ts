@@ -1,4 +1,4 @@
-import { appIconKey, remoteIconUrl, remoteManifestUrl, type AppIconKey } from '@switchboard/protocol/remote-client';
+import { appIconKey, remoteIconUrl, remoteManifestUrl, type AppIconKey } from '@seshboard/protocol/remote-client';
 
 /** The colourway the app showed last, so a reload starts with it before the computer answers. Not secret: localStorage. */
 export const APP_ICON_STORAGE = 'switchboard.appIcon';

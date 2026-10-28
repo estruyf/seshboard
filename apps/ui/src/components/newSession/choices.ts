@@ -1,4 +1,4 @@
-import { isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
+import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -36,17 +36,22 @@ export function readLastMode(value: unknown): PermissionMode {
 }
 
 /**
- * The permission mode a new session starts in, from Settings › General › Permission mode: the project's or profile's
- * own default, else Ask first (`project`); the one picked last (`remember`); or always the one Settings sets, over
- * the project's default.
+ * The global permission mode (Settings › General): the one set there, or with Remember last the one picked last.
+ * `last` is null where the mode picked last doesn't count (a link, a trigger): Ask first then.
  */
-export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults | null | undefined, last: PermissionMode): PermissionMode {
-  if (setting === 'project') return defaults?.permissionMode ?? INITIAL_CHOICES.permissionMode;
-  if (setting === 'remember') return last;
-  return setting;
+export function globalMode(setting: NewSessionMode, last: PermissionMode | null): PermissionMode {
+  return setting === 'remember' ? (last ?? INITIAL_CHOICES.permissionMode) : setting;
 }
 
-/** What New session and the palette's prompt start with: the project's and profile's defaults, and the mode Settings says. */
+/**
+ * The permission mode a new session starts in: the project's or profile's (`defaults`, see `layeredDefaults`), else
+ * the global one. The session can still change it.
+ */
+export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults | null | undefined, last: PermissionMode): PermissionMode {
+  return defaults?.permissionMode ?? globalMode(setting, last);
+}
+
+/** What New session and the palette's prompt start with: the project's and profile's defaults, and the global permission mode. */
 export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode): Choices {
   return { ...startingChoices(INITIAL_CHOICES, defaults), permissionMode: startingMode(setting, defaults, last) };
 }
@@ -60,7 +65,7 @@ export function layeredDefaults(project: ProjectDefaults | null | undefined, pro
   return {
     model: project?.model ?? profile.model,
     effort: project?.effort ?? profile.effort,
-    permissionMode: project?.permissionMode ?? profile.permissionMode,
+    permissionMode: inheritedPermissionMode(project, profile),
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,
     branch: project?.branch ?? null,
@@ -96,11 +101,11 @@ export function linkPermissionMode(mode: PermissionMode | null | undefined): Per
 
 /**
  * The choices for a session an `autostart` link starts: as `startingChoices`, but the permission
- * mode comes only from the project's or profile's default (never from the mode you last picked), and is
+ * mode comes from the project's or profile's default, else the global one (never the mode you last picked), and is
  * never one that skips permission prompts.
  */
-export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefaults | null | undefined): Choices {
-  return { ...startingChoices(globals, project), permissionMode: linkPermissionMode(project?.permissionMode) };
+export function linkStartingChoices(globals: GlobalChoices, project: ProjectDefaults | null | undefined, setting: NewSessionMode): Choices {
+  return { ...startingChoices(globals, project), permissionMode: linkPermissionMode(project?.permissionMode ?? globalMode(setting, null)) };
 }
 
 /** The choices as a project's defaults ("Save as project default"), keeping the project's default branch, which New session doesn't choose. */

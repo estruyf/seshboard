@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { CloneSettings } from '@switchboard/protocol/client';
+import type { CloneSettings } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useProjects } from './projectsStore.ts';
 import { useSessions } from './sessionsStore.ts';

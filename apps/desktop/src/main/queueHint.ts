@@ -1,4 +1,4 @@
-import type { LaterItem, QueueStarted, SessionOutcome } from '@switchboard/protocol/client';
+import type { LaterItem, QueueStarted, SessionOutcome } from '@seshboard/protocol/client';
 
 const projectOf = (path: string) => path.replace(/\/\.claude\/worktrees\/[^/]+.*$/, '').replace(/\/+$/, '');
 

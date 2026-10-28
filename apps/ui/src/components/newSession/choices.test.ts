@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@switchboard/protocol/client';
+import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
+import { globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
@@ -31,23 +31,28 @@ describe('new session choices', () => {
     const globals = { ...INITIAL_CHOICES, model: 'haiku', effort: 'low' as const };
     expect(startingChoices(globals, layered)).toEqual({ ...globals, model: 'sonnet', permissionMode: 'plan', workspace: 'worktree', branch: 'develop' });
     // A link takes the profile's mode, unless it never asks.
-    expect(linkStartingChoices(globals, layeredDefaults(null, profile)).permissionMode).toBe('plan');
-    expect(linkStartingChoices(globals, layeredDefaults(null, { ...profile, permissionMode: 'bypassPermissions' })).permissionMode).toBe('default');
-    // Use project default takes the profile's mode; a mode Settings sets is used over it.
-    expect(newSessionChoices(layeredDefaults(null, profile), 'project', 'default').permissionMode).toBe('plan');
-    expect(newSessionChoices(layeredDefaults(null, profile), 'acceptEdits', 'default').permissionMode).toBe('acceptEdits');
+    expect(linkStartingChoices(globals, layeredDefaults(null, profile), 'default').permissionMode).toBe('plan');
+    expect(linkStartingChoices(globals, layeredDefaults(null, { ...profile, permissionMode: 'bypassPermissions' }), 'default').permissionMode).toBe('default');
+    // The profile's mode wins over the global one.
+    expect(newSessionChoices(layeredDefaults(null, profile), 'acceptEdits', 'default').permissionMode).toBe('plan');
+    // A project that asks for the global mode skips the profile's.
+    expect(layeredDefaults({ ...unset, globalPermissionMode: true }, profile)?.permissionMode).toBeNull();
+    expect(newSessionChoices(layeredDefaults({ ...unset, globalPermissionMode: true }, profile), 'acceptEdits', 'default').permissionMode).toBe('acceptEdits');
   });
 
   it('start a session from a link without the mode you last picked', () => {
     const globals = { ...INITIAL_CHOICES, model: 'sonnet', permissionMode: 'bypassPermissions' as const };
     // No project default: the last-used mode never carries over to a link.
-    expect(linkStartingChoices(globals, null)).toEqual({ ...globals, permissionMode: 'default', branch: '' });
-    expect(linkStartingChoices({ ...globals, permissionMode: 'acceptEdits' }, unset).permissionMode).toBe('default');
+    expect(linkStartingChoices(globals, null, 'remember')).toEqual({ ...globals, permissionMode: 'default', branch: '' });
+    expect(linkStartingChoices({ ...globals, permissionMode: 'acceptEdits' }, unset, 'default').permissionMode).toBe('default');
+    // The global mode applies where the project sets none, unless it never asks.
+    expect(linkStartingChoices(globals, unset, 'plan').permissionMode).toBe('plan');
+    expect(linkStartingChoices(globals, unset, 'auto').permissionMode).toBe('default');
     // The project's own default applies, unless it never asks.
-    expect(linkStartingChoices(globals, { ...unset, permissionMode: 'acceptEdits' }).permissionMode).toBe('acceptEdits');
-    expect(linkStartingChoices(globals, { ...unset, permissionMode: 'plan' }).permissionMode).toBe('plan');
+    expect(linkStartingChoices(globals, { ...unset, permissionMode: 'acceptEdits' }, 'plan').permissionMode).toBe('acceptEdits');
+    expect(linkStartingChoices(globals, { ...unset, permissionMode: 'plan' }, 'default').permissionMode).toBe('plan');
     for (const mode of ['bypassPermissions', 'auto', 'dontAsk'] as const) {
-      expect(linkStartingChoices(globals, { ...unset, permissionMode: mode }).permissionMode).toBe('default');
+      expect(linkStartingChoices(globals, { ...unset, permissionMode: mode }, 'default').permissionMode).toBe('default');
       expect(linkPermissionMode(mode)).toBe('default');
     }
     expect(linkPermissionMode(null)).toBe('default');
@@ -90,24 +95,20 @@ const project = (root: string, extra: Partial<ProjectInfo>): ProjectInfo => ({
 describe('the permission mode for new sessions', () => {
   const project = (permissionMode: ProjectDefaults['permissionMode']): ProjectDefaults => ({ model: null, effort: null, permissionMode, workspace: null, baseRef: null, branch: null, defaultBranch: null });
 
-  it("uses the project's default, else Ask first", () => {
-    expect(startingMode('project', project('acceptEdits'), 'plan')).toBe('acceptEdits');
-    expect(startingMode('project', project(null), 'plan')).toBe('default');
-    expect(startingMode('project', null, 'plan')).toBe('default');
+  it("uses the project's or profile's mode, else the global one", () => {
+    expect(startingMode('auto', project('acceptEdits'), 'plan')).toBe('acceptEdits');
+    expect(startingMode('auto', project(null), 'plan')).toBe('auto');
+    expect(startingMode('default', null, 'plan')).toBe('default');
   });
 
-  it('remembers the mode picked last, over the project default', () => {
+  it('remembers the mode picked last as the global mode, under the project default', () => {
     expect(startingMode('remember', null, 'plan')).toBe('plan');
-    expect(startingMode('remember', project('acceptEdits'), 'plan')).toBe('plan');
-  });
-
-  it('starts in a mode Settings sets, over the project default', () => {
-    expect(startingMode('auto', project('acceptEdits'), 'plan')).toBe('auto');
-    expect(startingMode('default', project('plan'), 'plan')).toBe('default');
+    expect(startingMode('remember', project('acceptEdits'), 'plan')).toBe('acceptEdits');
+    expect(globalMode('remember', null)).toBe('default');
   });
 
   it('keeps the other choices from the project defaults', () => {
-    expect(newSessionChoices({ ...project('plan'), model: 'opus', workspace: 'worktree' }, 'acceptEdits', 'default')).toEqual({ ...INITIAL_CHOICES, model: 'opus', workspace: 'worktree', permissionMode: 'acceptEdits', branch: '' });
+    expect(newSessionChoices({ ...project(null), model: 'opus', workspace: 'worktree' }, 'acceptEdits', 'default')).toEqual({ ...INITIAL_CHOICES, model: 'opus', workspace: 'worktree', permissionMode: 'acceptEdits', branch: '' });
   });
 
   it('reads the last mode leniently, never one that skips every check', () => {
@@ -117,7 +118,7 @@ describe('the permission mode for new sessions', () => {
   });
 
   it('never reaches a session a link starts', () => {
-    expect(linkStartingChoices(INITIAL_CHOICES, null).permissionMode).toBe('default');
+    expect(linkStartingChoices(INITIAL_CHOICES, null, 'remember').permissionMode).toBe('default');
   });
 });
 

@@ -236,7 +236,7 @@ export const waitsForPush = (state: RunView) => state.run.status === 'waiting' &
 export interface StopNotice {
   title: string;
   advice: string | null;
-  /** `stop`: something went wrong or needs a look; `paused`: Switchboard was closed; `confirm`: a step waits to start. */
+  /** `stop`: something went wrong or needs a look; `paused`: Seshboard was closed; `confirm`: a step waits to start. */
   kind: 'stop' | 'paused' | 'confirm';
   /** The step it stopped at. */
   index: number;
@@ -248,7 +248,7 @@ export interface StopNotice {
 export function stopNotice(state: RunView): StopNotice | null {
   const { run } = state;
   const index = run.sentBackTo ?? run.step;
-  if (run.status === 'paused') return { title: 'Paused: Switchboard was closed', advice: stopAdvice(state), kind: 'paused', index, anotherRound: null };
+  if (run.status === 'paused') return { title: 'Paused: Seshboard was closed', advice: stopAdvice(state), kind: 'paused', index, anotherRound: null };
   if (run.status !== 'waiting' || run.waitingFor === 'push' || !run.reason) return null;
   const title = run.reason.replace(/\.\s*$/, '');
   const advice = stopAdvice(state);
@@ -266,7 +266,7 @@ export function pushLine(preview: Pick<PushPreview, 'files' | 'branch' | 'base'>
 
 // --- The parent's conversation and a sub-session's ---------------------------------------------------------------------
 
-/** A row of the parent's conversation that Switchboard adds, not a message: the run's start, and each finished step. */
+/** A row of the parent's conversation that Seshboard adds, not a message: the run's start, and each finished step. */
 export type ParentRow =
   | { kind: 'start'; key: string; pipeline: string; at: string }
   | { kind: 'step'; key: string; head: string; rest: string; tone: 'ok' | 'caution' | 'error' | 'muted'; sessionId: string | null };

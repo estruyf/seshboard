@@ -1,4 +1,4 @@
-import { contrast, fromOklch, luminance, parseColor, toHex, toOklch } from '@switchboard/protocol/color';
+import { contrast, fromOklch, luminance, parseColor, toHex, toOklch } from '@seshboard/protocol/color';
 
 /**
  * Mods write Ink colours. Named ones become theme tokens, so a mod looks native in every theme without knowing about

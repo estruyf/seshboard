@@ -37,7 +37,7 @@ function page(src, width, height, scheme) {
 app.dock?.hide();
 app.whenReady().then(async () => {
   // Data URLs this big don't load: each page and its image go through a temporary folder.
-  const work = mkdtempSync(join(tmpdir(), 'switchboard-frame-'));
+  const work = mkdtempSync(join(tmpdir(), 'seshboard-frame-'));
   const files = readdirSync(inDir).filter((name) => name.endsWith('.png') && name !== 'failed.png');
   // One offscreen window for every image: opening a fresh one each time fails to load from the second on.
   const win = new BrowserWindow({ show: false, useContentSize: true, frame: false, webPreferences: { offscreen: true } });

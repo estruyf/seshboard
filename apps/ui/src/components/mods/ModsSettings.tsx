@@ -1,6 +1,6 @@
 import { Puzzle, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { BUILTIN_PROFILE_ID, type ModInfo } from '@switchboard/protocol/client';
+import { BUILTIN_PROFILE_ID, type ModInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useHome } from '../../state/homeStore.ts';
@@ -54,7 +54,7 @@ export function ModsSettings() {
     <div className="grid gap-3" data-mods-settings>
       <Toggle
         label="Show mods"
-        detail="Bands, panes, statuses, toasts and replaced views from your plugins. Off, sessions use only Switchboard's own views."
+        detail="Bands, panes, statuses, toasts and replaced views from your plugins. Off, sessions use only Seshboard's own views."
         checked={prefs.showMods}
         attr="data-show-mods"
         onChange={(showMods) => update({ showMods })}

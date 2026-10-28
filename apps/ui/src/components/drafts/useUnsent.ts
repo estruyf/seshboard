@@ -1,9 +1,13 @@
-import { useMemo } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import { useEffect, useMemo } from 'react';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { isQuestionsFolder, QUESTION_LABEL } from '../../lib/questions.ts';
 import { draftList, draftListSignature, type DraftItem } from '../../state/drafts.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
+import { useComputers } from '../../state/computersStore.ts';
+import { hasRemoteNewDraft, REMOTE_DRAFTS_STORAGE_KEY, useRemoteDraftsChanged } from '../../state/remoteDrafts.ts';
+import { THIS_COMPUTER } from '../../state/remoteRows.ts';
+import { useRunOn } from '../../state/runOnStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
@@ -75,4 +79,25 @@ export function useNewSessionDraft(): { item: Extract<DraftItem, { kind: 'new' }
     if (!item) return null;
     return { item, name: item.root ? (projects.get(item.root)?.name ?? basename(item.root)) : null };
   }, [items, projects]);
+}
+
+/**
+ * An unsent New session prompt for another computer, for the pen on the + button (null without one). Only the
+ * computer Run on last picked counts: that is where the + opens (`newSessionTarget`).
+ */
+export function useRemoteNewSessionDraft(): { computerId: string; name: string } | null {
+  const last = useRunOn((s) => s.last);
+  const version = useRemoteDraftsChanged((s) => s.version);
+  const computers = useComputers((s) => s.status?.computers);
+  useEffect(() => {
+    // Another window typed or sent it: localStorage is shared, the store isn't.
+    const onStorage = (event: StorageEvent) => event.key === REMOTE_DRAFTS_STORAGE_KEY && useRemoteDraftsChanged.getState().bump();
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  return useMemo(() => {
+    if (last === THIS_COMPUTER) return null;
+    const computer = computers?.find((c) => c.id === last);
+    return computer && hasRemoteNewDraft(last) ? { computerId: last, name: computer.name } : null;
+  }, [last, version, computers]);
 }

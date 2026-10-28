@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import type { ImageAttachment, Pipeline, PipelineRunState, PipelineSave, PushPreview, RunChoices } from '@switchboard/protocol/client';
+import type { ImageAttachment, Pipeline, PipelineRunState, PipelineSave, PushPreview, RunChoices } from '@seshboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -160,7 +160,7 @@ export async function archiveRunTree(runId: string, archived: boolean): Promise<
   for (const state of runs) usePipelines.getState().putRun(state);
 }
 
-/** Deletes a run's tree from Switchboard (stopped first); its sub-sessions stay on their own with `keepSubSessions`. */
+/** Deletes a run's tree from Seshboard (stopped first); its sub-sessions stay on their own with `keepSubSessions`. */
 export async function deleteRunTree(runId: string, keepSubSessions: boolean): Promise<void> {
   await clientNow().call('runs.delete', { runId, keepSubSessions });
   usePipelines.getState().dropRun(runId);

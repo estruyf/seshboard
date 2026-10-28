@@ -58,7 +58,7 @@ describe('app icon colourways', () => {
 
 describe('appIconManifest', () => {
   const base: WebManifest = {
-    name: 'Switchboard Remote',
+    name: 'Seshboard Remote',
     start_url: '/remote/',
     scope: '/remote/',
     icons: [

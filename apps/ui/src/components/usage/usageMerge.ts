@@ -1,4 +1,4 @@
-import { REMOTE_FEATURE_USAGE_TOKENS, sharesOf, weightOf, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageBucket, type UsageGroup, type UsageRow, type WindowCost } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_USAGE_TOKENS, sharesOf, weightOf, type Computer, type RemoteUsageBreakdown, type TokenCounts, type UsageBreakdown, type UsageBucket, type UsageGroup, type UsageRow, type WindowCost } from '@seshboard/protocol/client';
 
 /**
  * The Usage view counts the tokens of the same account on other computers (docs/remote-access.md, "Other
@@ -26,7 +26,7 @@ export type MergedRow = UsageRow & {
 
 export type MergedBreakdown = Omit<UsageBreakdown, 'rows'> & {
   rows: MergedRow[];
-  /** Counted computers that sent no cost (an older Switchboard): their tokens are in the totals, not in the cost. */
+  /** Counted computers that sent no cost (an older Seshboard): their tokens are in the totals, not in the cost. */
   uncosted?: ComputerRef[];
 };
 
@@ -40,7 +40,7 @@ export interface Uncounted {
 }
 
 /**
- * The paired computers to ask for an account's tokens: connected ones whose Switchboard answers `usage.tokens`, or
+ * The paired computers to ask for an account's tokens: connected ones whose Seshboard answers `usage.tokens`, or
  * another request that came with `feature` (`REMOTE_FEATURE_COSTS` for the plan windows' costs).
  */
 export function computersToAsk(computers: readonly Computer[], feature: string = REMOTE_FEATURE_USAGE_TOKENS): { ask: ComputerRef[]; uncounted: Uncounted[] } {
@@ -50,7 +50,7 @@ export function computersToAsk(computers: readonly Computer[], feature: string =
     const computer = { id, name };
     if (state === 'connecting') uncounted.push({ computer, reason: `Connecting to ${name}.` });
     else if (state !== 'connected') uncounted.push({ computer, reason: `${name} is offline.` });
-    else if (!features.includes(feature)) uncounted.push({ computer, reason: `${name} needs a newer Switchboard.` });
+    else if (!features.includes(feature)) uncounted.push({ computer, reason: `${name} needs a newer Seshboard.` });
     else ask.push(computer);
   }
   return { ask, uncounted };

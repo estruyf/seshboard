@@ -1,4 +1,4 @@
-import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
 
 export interface AttentionEvent {
   kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-stopped' | 'pipeline-done';
@@ -17,10 +17,10 @@ export interface AttentionEvent {
 const basename = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
 
 /**
- * Decides when Switchboard should get your attention. Pure, so it is tested
+ * Decides when Seshboard should get your attention. Pure, so it is tested
  * without Electron; main turns events into notifications and the badge (the Dock, or the taskbar on Windows).
  *
- * - Sessions running in Switchboard: needs approval, turn finished, failed.
+ * - Sessions running in Seshboard: needs approval, turn finished, failed.
  * - Terminal (CLI) sessions waiting for you, when the sidebar lists sessions from
  *   other apps. Claude desktop and IDE sessions are skipped: they notify on their own.
  * - Project actions that finish.
@@ -128,7 +128,7 @@ export class Attention {
     return events;
   }
 
-  /** Sessions waiting on you: open prompts in Switchboard plus terminal sessions waiting. */
+  /** Sessions waiting on you: open prompts in Seshboard plus terminal sessions waiting. */
   badge(): number {
     const sessions = new Set<string>([...this.pending.values()].map((p) => p.sessionId));
     for (const id of this.cliWaiting) sessions.add(id);

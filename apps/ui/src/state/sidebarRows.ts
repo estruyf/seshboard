@@ -1,4 +1,4 @@
-import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@switchboard/protocol/bridge';
+import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@seshboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
@@ -56,14 +56,14 @@ export function rowListing(row: SessionRowData): ListingState {
     restoredAt: row.restoredAt,
     unread: row.unread,
     updatedAt: row.updatedAt,
-    // Open in Switchboard counts; a process idling elsewhere doesn't (Claude desktop reopens many old sessions at
+    // Open in Seshboard counts; a process idling elsewhere doesn't (Claude desktop reopens many old sessions at
     // launch, and they shouldn't all come back).
     openInApp: row.live?.origin === 'app',
   };
 }
 
 /**
- * Main list or "Archived"? Anything that wants attention (working, waiting, failed, unread, open in Switchboard) or
+ * Main list or "Archived"? Anything that wants attention (working, waiting, failed, unread, open in Seshboard) or
  * is pinned stays up. Archiving by hand hides a session until it has new activity; otherwise sessions are archived
  * after `archiveAfterDays` (Settings › Sessions). Unarchiving by hand keeps a session up until it has new activity;
  * then the days count from there.

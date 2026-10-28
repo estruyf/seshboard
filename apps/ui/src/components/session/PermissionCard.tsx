@@ -1,6 +1,6 @@
 import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { PermissionDecision, PermissionRequest } from '@switchboard/protocol/client';
+import type { PermissionDecision, PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { Markdown } from '../transcript/Markdown.tsx';

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ImageAttachment } from '@switchboard/protocol/client';
+import type { ImageAttachment } from '@seshboard/protocol/client';
 import { DRAFT_SETTLE_MS, draftList, newDraftKey, parseDrafts, parseFirstPrompts, serializeDrafts, type SessionsSeen } from './drafts.ts';
 import { useDrafts } from './draftsStore.ts';
 

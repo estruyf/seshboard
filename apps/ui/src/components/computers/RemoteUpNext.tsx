@@ -1,5 +1,5 @@
 import { X, Zap } from 'lucide-react';
-import { REMOTE_FEATURE_QUEUE_SEND_NOW, withoutContext, type Computer, type Contract, type QueuedMessage, type RpcClient } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_QUEUE_SEND_NOW, withoutContext, type Computer, type Contract, type QueuedMessage, type RpcClient } from '@seshboard/protocol/client';
 import { toast } from '../../state/toastStore.ts';
 import { attachmentLabel, firstLine, holdNote, upNextTitle } from '../composer/upNext.ts';
 import { Button } from '../ui/Button.tsx';

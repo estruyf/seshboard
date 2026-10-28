@@ -1,4 +1,4 @@
-import { NO_SOUND, type Preferences, type SoundEvent } from '@switchboard/protocol/bridge';
+import { NO_SOUND, type Preferences, type SoundEvent } from '@seshboard/protocol/bridge';
 import type { AttentionEvent } from './attention.ts';
 
 /** Settings › Notifications. */

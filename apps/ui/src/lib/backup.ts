@@ -1,4 +1,4 @@
-import { BACKUP_SECTIONS, type BackupSection, type ImportChange } from '@switchboard/protocol/client';
+import { BACKUP_SECTIONS, type BackupSection, type ImportChange } from '@seshboard/protocol/client';
 
 /** How the export and import dialogs name each kind of data. */
 export const SECTION_INFO: Record<BackupSection, { label: string; detail: string }> = {

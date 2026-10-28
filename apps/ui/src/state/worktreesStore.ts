@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import { isAbsolutePath, type WorktreeEntry, type WorktreeList, type WorktreeSize } from '@switchboard/protocol/client';
+import { isAbsolutePath, type WorktreeEntry, type WorktreeList, type WorktreeSize } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { NO_SESSIONS, worktreeRows, type WorktreeRow, type WorktreeSessions } from '../components/worktrees/worktreeGroups.ts';

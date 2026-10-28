@@ -1,4 +1,4 @@
-import type { SessionHostInfo } from '@switchboard/protocol/client';
+import type { SessionHostInfo } from '@seshboard/protocol/client';
 import type { NewSessionStart } from '../newSession/startSession.ts';
 
 /**

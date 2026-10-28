@@ -1,4 +1,4 @@
-import type { ModelOption } from '@switchboard/protocol/client';
+import type { ModelOption } from '@seshboard/protocol/client';
 
 /**
  * The model row a session's model belongs to. Claude Code reports the full id (`claude-opus-5-5`) while

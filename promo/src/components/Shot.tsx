@@ -6,7 +6,7 @@ import { fit, Framed, Rect } from './Framed';
 
 /// Where the window's own traffic lights sit, in points. They aren't in a capture (macOS draws them over the page),
 /// so a crop that includes the window's top-left corner draws them back where the app leaves room for them, as the
-/// README's framed screenshots do. Switchboard puts them at (16, 18); VS Code centres them in its 35pt title bar.
+/// README's framed screenshots do. Seshboard puts them at (16, 18); VS Code centres them in its 35pt title bar.
 export const LIGHTS = { switchboard: { x: 16, y: 18 }, code: { x: 13, y: 12 } } as const;
 
 const Lights: React.FC<{ at: { x: number; y: number } }> = ({ at }) => (

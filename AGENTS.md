@@ -1,20 +1,20 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Switchboard, a macOS desktop app (that runs on Windows and Linux too, see [docs/windows-support.md](docs/windows-support.md) and [Building: Linux](docs/building-and-signing.md#linux)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
+Guidance for AI coding agents (Claude Code, Codex, Copilot and others) working on Seshboard, a macOS desktop app (that runs on Windows and Linux too, see [docs/windows-support.md](docs/windows-support.md) and [Building: Linux](docs/building-and-signing.md#linux)) for managing Claude Code sessions. People should start with [README.md](README.md); the design and roadmap are in [PLAN.md](PLAN.md).
 
 ## Architecture
 
-Switchboard is an Electron app in four npm workspaces, plus its VS Code companion extension, its website and the remote app for phones:
+Seshboard is an Electron app in four npm workspaces, plus its VS Code companion extension, its website and the remote app for phones:
 
 | Path | What it is | Rules |
 |---|---|---|
 | `packages/protocol` | zod contract and typed RPC over MessagePorts | The single source of truth for every request and event. Entry points: `.` (with zod, for the engine), `./client` (types and RPC client only, no zod, for the renderer), `./bridge` (IPC channels and preferences, plain TypeScript, for main and preload), `./companion-client` (the VS Code extension's client and socket transport, no zod). |
 | `packages/engine` | Plain Node; runs in an Electron `utilityProcess` | **No Electron imports.** Owns the SQLite cache, the session index and search, Claude Code processes (through the Agent SDK), git, terminals, project actions and usage. |
-| `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.switchboard`. |
-| `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.switchboard`. |
+| `apps/desktop` | Electron main process, preload, and the engine entry | Main does what needs Electron: windows, menus, dialogs, notifications, the Trash, preferences. The preload is sandboxed and exposes `window.seshboard`. |
+| `apps/ui` | React 19 renderer, Tailwind 4, zustand | Talks to the engine only through the RPC client, and to main only through `window.seshboard`. |
 | `website` | The website and docs (Astro + Starlight), published to GitHub Pages by `website.yml` | Pages are MDX in `website/src/content/docs/`. Colours come from the app's `--sb-*` tokens (`website/src/styles/switchboard.css`); keys use `<Kbd shortcut="…">` from the shortcuts registry, which renders them for macOS and Windows (the reader picks in the header), and `<Os>`/`<OnlyOn>` hold words and passages that differ by platform. Every feature is listed in `website/src/content/features.json`, which a test checks against the palette commands, shortcuts, Settings sections and project tabs. |
-| `apps/remote` | The remote app (React, Tailwind), built into the website at `/remote/` | A paired phone's view of the sessions, over an end-to-end encrypted channel through a tunnel ([docs/remote-access.md](docs/remote-access.md)). Talks to the engine only through `@switchboard/protocol/remote-client` (no zod) and the remote contract, never the app's. Transcripts are rendered as text, never HTML. Pure logic (links, transcript merging, the layout's breakpoints, the thresholds of swipes, the drawer and pull to refresh) lives in `src/lib` with tests next to it. Overlays the back gesture closes (sheets, the sessions drawer) go through `useOverlayHistory`. |
-| `apps/vscode-extension` | The VS Code companion, bundled with esbuild into `dist/extension.cjs` | Talks to the engine only over its Unix socket (`packages/engine/src/companion/`), through `@switchboard/protocol/companion-client` (no zod). Pure logic (payloads, exclusions, discovery, which session) lives in modules without `vscode` imports, with tests next to them. Released on its own (`release-vscode.yml`, tags `vscode-vX.Y.Z`); see [docs/vscode-companion.md](docs/vscode-companion.md). |
+| `apps/remote` | The remote app (React, Tailwind), built into the website at `/remote/` | A paired phone's view of the sessions, over an end-to-end encrypted channel through a tunnel ([docs/remote-access.md](docs/remote-access.md)). Talks to the engine only through `@seshboard/protocol/remote-client` (no zod) and the remote contract, never the app's. Transcripts are rendered as text, never HTML. Pure logic (links, transcript merging, the layout's breakpoints, the thresholds of swipes, the drawer and pull to refresh) lives in `src/lib` with tests next to it. Overlays the back gesture closes (sheets, the sessions drawer) go through `useOverlayHistory`. |
+| `apps/vscode-extension` | The VS Code companion, bundled with esbuild into `dist/extension.cjs` | Talks to the engine only over its Unix socket (`packages/engine/src/companion/`), through `@seshboard/protocol/companion-client` (no zod). Pure logic (payloads, exclusions, discovery, which session) lives in modules without `vscode` imports, with tests next to them. Released on its own (`release-vscode.yml`, tags `vscode-vX.Y.Z`); see [docs/vscode-companion.md](docs/vscode-companion.md). |
 
 The path of a feature is usually: add the request or event to `packages/protocol/src/contract.ts`, handle it in `packages/engine/src/engine.ts` (logic in a module next to it), and call it from the UI with `client.call(...)` / `client.on(...)`.
 
@@ -44,12 +44,12 @@ npm run smoke        # build, launch the real app with a throwaway profile, driv
 npm run smoke:demo   # the same in a made-up home folder (what CI and agents run); add -- --only "pop-out" for some steps
 npm run screenshots  # retake the README screenshots in a made-up demo home folder
 npm run dev:vscode   # rebuild the VS Code companion on every change (F5 in VS Code runs it in a dev host)
-npm run dev:remote   # the remote app at http://localhost:5199/remote/ (start the app with SWITCHBOARD_REMOTE_APP_URL set to it)
+npm run dev:remote   # the remote app at http://localhost:5199/remote/ (start the app with SESHBOARD_REMOTE_APP_URL set to it)
 npm run website:dev  # the website and docs with hot reload
 npm run website:build          # build the website; fails on a broken internal link
 npm run website:screenshots    # retake the website's screenshots in a made-up demo home folder
 npm run chaos -- --phase repro # chaos testing in a sandbox (macOS; docs/chaos-testing.md)
-npm run dist         # package the app for this OS: Switchboard.app and a .dmg, the Windows installer, or the Linux AppImage, .deb and .rpm
+npm run dist         # package the app for this OS: Seshboard.app and a .dmg, the Windows installer, or the Linux AppImage, .deb and .rpm
 ```
 
 Before you report a feature as done, `npm run check` and the smoke steps for what you changed must pass. The full `npm run smoke:demo` runs on the pull request (`.github/workflows/check.yml`, on macOS, Windows and Linux) and before a release, not while you build (see Working on a feature).
@@ -58,7 +58,7 @@ Before you report a feature as done, `npm run check` and the smoke steps for wha
 
 Most of the time in a feature goes into rerunning slow checks and re-reading the same code. Keep each run small:
 
-- **Check only what you touched while you build.** After a change, run the tests next to it (`npx vitest run <files>`) and `npm run typecheck` (or one workspace's: `npm run typecheck -w @switchboard/ui`). Run the smoke steps for your area with `npm run smoke:demo -- --only "<part of the step label>"` (the labels are the `step(...)` lines in `runSmokeStep`; repeat `--only` for more, and steps inside "projects" run with it). Run `npm run check` once, at the end of the feature. Don't run the full `npm run smoke:demo`: the pull request runs it on every platform and shows what the feature broke elsewhere. When you change shared code (the palette, the composer, the stores, `main/index.ts`), also run the steps of the features that use it. A feature that lands on `dev` without a pull request gets one full `npm run smoke:demo` before it is pushed.
+- **Check only what you touched while you build.** After a change, run the tests next to it (`npx vitest run <files>`) and `npm run typecheck` (or one workspace's: `npm run typecheck -w @seshboard/ui`). Run the smoke steps for your area with `npm run smoke:demo -- --only "<part of the step label>"` (the labels are the `step(...)` lines in `runSmokeStep`; repeat `--only` for more, and steps inside "projects" run with it). Run `npm run check` once, at the end of the feature. Don't run the full `npm run smoke:demo`: the pull request runs it on every platform and shows what the feature broke elsewhere. When you change shared code (the palette, the composer, the stores, `main/index.ts`), also run the steps of the features that use it. A feature that lands on `dev` without a pull request gets one full `npm run smoke:demo` before it is pushed.
 - **Agents run the demo smoke** (`smoke:demo`, what CI runs): a made-up home folder with the same projects and sessions on every run, so a step always works on the same session and a failure can be reproduced. It is also faster, and the agent's own session is not in it. The plain `npm run smoke` runs against your real `~/.claude`, so its results depend on your recent sessions; started from Claude Code, some of its steps fail by design (the agent's session and folder are off limits, see Smoke test). Leave it to a person in a terminal with no Claude session in this repository.
 - **A step that fails every time is not flaky.** Check whether a recent change altered what the step expects (`git log -p` on the component) before rerunning: a rerun of a step that is out of date costs a full run and tells you nothing.
 - **One agent per feature.** An agent that already read this file and the code it needs keeps that: continue it (SendMessage) for the next step instead of starting a fresh one, which reads everything again.
@@ -101,8 +101,8 @@ The UI rules (theme tokens, light and dark, narrow panes, form controls, dialogs
 Opt-in and only in a throwaway git repository:
 
 ```bash
-SWITCHBOARD_LIVE_CWD=/path/to/throwaway-repo npx vitest run claude.live
-SWITCHBOARD_SMOKE_LIVE_CWD=/path/to/throwaway-repo npm run smoke
+SESHBOARD_LIVE_CWD=/path/to/throwaway-repo npx vitest run claude.live
+SESHBOARD_SMOKE_LIVE_CWD=/path/to/throwaway-repo npm run smoke
 ```
 
 **Never point these at a real project.** The live smoke step refuses to submit unless the folder field shows the sandbox; keep that guard.

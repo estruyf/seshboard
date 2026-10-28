@@ -1,8 +1,8 @@
 import { Star, X } from 'lucide-react';
 import { useEffect, type KeyboardEvent, type MouseEvent } from 'react';
 import { create } from 'zustand';
-import { REPO_URL } from '@switchboard/protocol/bridge';
-import type { GithubStarStatus } from '@switchboard/protocol/client';
+import { REPO_URL } from '@seshboard/protocol/bridge';
+import type { GithubStarStatus } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
@@ -23,7 +23,7 @@ let asked = false;
 const done = () => usePreferences.getState().update({ githubStar: 'done' });
 const openPage = () => void window.open(REPO_URL, '_blank');
 
-/** Asks gh once whether Switchboard is starred; starred elsewhere means the button never needs to ask again. */
+/** Asks gh once whether Seshboard is starred; starred elsewhere means the button never needs to ask again. */
 function askStatus(client: EngineClient): void {
   if (asked) return;
   asked = true;
@@ -46,7 +46,7 @@ async function star(client: EngineClient | null, prompt: StarPrompt): Promise<vo
   useStar.setState({ starring: true });
   try {
     await client.call('github.star', {});
-    toast('Starred Switchboard on GitHub. Thank you!', { tone: 'ok' });
+    toast('Starred Seshboard on GitHub. Thank you!', { tone: 'ok' });
   } catch {
     openPage();
   } finally {
@@ -71,7 +71,7 @@ function useStarPrompt(sessions: number) {
     starring,
     onStar: () => void star(client, prompt),
     // gh stars it with your sign-in, without asking: the tooltip says so.
-    tooltip: prompt === 'star' ? 'Stars Switchboard with your GitHub CLI sign-in' : 'Opens Switchboard on GitHub',
+    tooltip: prompt === 'star' ? 'Stars Seshboard with your GitHub CLI sign-in' : 'Opens Seshboard on GitHub',
   };
 }
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@switchboard/protocol/client';
+import type { LiveSession, SessionHostInfo, SessionsChanged, SessionsSnapshot, SessionSummary } from '@seshboard/protocol/client';
 import { hostAsLive, isActiveHost } from './hostsStore.ts';
 import { mergeSessionChanges, patchedSessions } from './sessionChanges.ts';
 import * as panes from './paneState.ts';
@@ -104,7 +104,7 @@ interface SessionsState {
   closeSettings(): void;
   /**
    * Opens the New session view and asks it to focus the prompt. It starts on this computer, or with `runOn: 'last'`
-   * (the sidebar's +) on the computer picked last in Run on.
+   * (the sidebar's +) on the computer picked last in Run on while a prompt typed for it there is not sent.
    */
   openNewSession(options?: { runOn?: 'here' | 'last' }): void;
   setFilter(filter: string): void;
@@ -116,7 +116,7 @@ interface SessionsState {
  */
 function showElsewhere(id: string): boolean {
   if (!shownElsewhere(id)) return false;
-  window.switchboard?.showSession(id);
+  window.seshboard?.showSession(id);
   return true;
 }
 
@@ -211,7 +211,7 @@ export interface SessionRowData {
   /** When the user unarchived it by hand: in the main list until there's activity after it. */
   restoredAt: number | null;
   unread: boolean;
-  /** Started, forked or continued in Switchboard, or running in it now. */
+  /** Started, forked or continued in Seshboard, or running in it now. */
   inApp: boolean;
   /** The last run in this app failed. */
   error: boolean;

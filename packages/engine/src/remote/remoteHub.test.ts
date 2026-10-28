@@ -31,8 +31,8 @@ import {
   type SessionSummary,
   type TranscriptMessage,
   writeStub,
-} from '@switchboard/protocol';
-import type { RemoteLimitStanding } from '@switchboard/protocol';
+} from '@seshboard/protocol';
+import type { RemoteLimitStanding } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -118,7 +118,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     return new Response(null, { status: options.pushStatus ?? 201 });
   }) as unknown as typeof fetch;
   const identity = options.identity === undefined ? generateKeyPair().secretKey : options.identity;
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-remote-hub-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-hub-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
@@ -130,7 +130,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   /** How each session stands with its usage limit. */
   const limitOf: Record<string, RemoteLimitStanding> = {};
   // The session's checkout: a real repository with one change.
-  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remote-repo-')));
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-repo-')));
   await git(repo, ['init', '-q', '-b', 'main']);
   await git(repo, ['config', 'user.email', 'test@example.com']);
   await git(repo, ['config', 'user.name', 'Test']);
@@ -172,7 +172,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     scope: () => 'switchboard',
     projects: () => [
       { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null }, profileId: null },
-      // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
+      // Only Claude Code sessions here, never added to Seshboard: a phone doesn't see it.
       { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS, profileId: null },
       { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS, profileId: 'work' },
     ],
@@ -205,6 +205,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     setEffort: async (sessionId, effort) => void calls.push(`effort ${sessionId} ${effort}`),
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
+    globalPermissionMode: () => 'default',
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -322,18 +323,38 @@ describe('Remote hub', () => {
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
     const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual([new URL(REMOTE_APP_URL).origin]);
-    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual([new URL(REMOTE_APP_URL).origin, preview]);
-    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview]);
+    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com', preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins('http://localhost:5199/remote/', false)).toEqual(['http://localhost:5199']);
 
     const release = await setup();
     await release.on();
     await expect(open(release.port, preview)).rejects.toThrow('HTTP 403');
+    await expect(open(release.port, 'https://switch-dev.struyfconsulting.com')).rejects.toThrow('HTTP 403');
     const beta = await setup({ previewApp: true });
     await beta.on();
     const socket = await open(beta.port, preview);
     socket.ws.close();
+    // A phone paired on the preview's old address, until 1.3.0.
+    (await open(beta.port, 'https://switch-dev.struyfconsulting.com')).ws.close();
     (await open(beta.port)).ws.close();
+  });
+
+  it('follows the update channel: Stable closes phones on the preview and refuses them, Beta lets them in again', async () => {
+    const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
+    const { hub, port, on } = await setup({ previewApp: true });
+    await on();
+    const onPreview = await open(port, preview);
+    const onSite = await open(port);
+    const closed = new Promise<void>((resolve) => onPreview.ws.once('close', () => resolve()));
+    hub.setPreviewApp(false);
+    await closed;
+    expect(onSite.ws.readyState).toBe(onSite.ws.OPEN);
+    await expect(open(port, preview)).rejects.toThrow('HTTP 403');
+    hub.setPreviewApp(true);
+    (await open(port, preview)).ws.close();
+    onSite.ws.close();
   });
 
   it('gives a phone only what it needs, and only the sessions the sidebar lists', async () => {
@@ -449,8 +470,9 @@ describe('Remote hub', () => {
     expect(options.projects.find((p) => p.id === projectIdOf(ROOT))).toEqual({ id: projectIdOf(ROOT), profileId: null, defaults: { model: 'opus', effort: null, permissionMode: null, worktree: null } });
     expect(options.projects.find((p) => p.id === projectIdOf(FIRST))?.profileId).toBe('work');
     expect(options.profiles).toEqual([
-      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, worktree: null } },
-      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, worktree: true } },
+      // A profile without a mode starts in the global one.
+      { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: 'default', worktree: null } },
+      { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: 'default', worktree: true } },
     ]);
     expect(options.defaultProfileId).toBe('default');
     expect(JSON.stringify(options)).not.toContain(ROOT);
@@ -1082,6 +1104,10 @@ describe('what a phone sees', () => {
     const work = { id: 'work', defaults: { model: 'sonnet', effort: 'high' as const, permissionMode: 'plan' as const, workspace: 'current' as const, baseRef: 'fresh' as const } };
     expect(sessionChoice({}, NO_DEFAULTS, work)).toEqual({ profileId: 'work', model: 'sonnet', effort: 'high', permissionMode: 'plan', worktree: false, baseRef: 'fresh', checkoutBranch: null });
     expect(sessionChoice({}, defaults, work)).toEqual({ profileId: 'work', model: 'opus', effort: 'low', permissionMode: 'acceptEdits', worktree: true, baseRef: 'head', checkoutBranch: null });
+    // The global mode where neither sets one, or where the project skips its profile's.
+    expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
+    expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalPermissionMode: true }, work, 'auto').permissionMode).toBe('auto');
   });
 });
 

@@ -1,4 +1,5 @@
 import type { LaterItem, QueueStarted, QueueWaitFor, SessionOutcome } from './later.ts';
+import { safeLocale } from './locale.ts';
 import { trimTrailingSeparators } from './paths.ts';
 import type { UsageLimitHit } from './usageLimit.ts';
 
@@ -17,8 +18,8 @@ export interface QueueSession {
   /** Starting, running or waiting for you: what the sidebar shows under Needs you and Working. */
   busy: boolean;
   /**
-   * Where it runs when Switchboard doesn't run it: `terminal` (Claude Code in a terminal) or `app` (another app).
-   * Switchboard sees such a session go idle, but not how its turn ended. Null for its own sessions and closed ones.
+   * Where it runs when Seshboard doesn't run it: `terminal` (Claude Code in a terminal) or `app` (another app).
+   * Seshboard sees such a session go idle, but not how its turn ended. Null for its own sessions and closed ones.
    */
   elsewhere?: 'terminal' | 'app' | null;
 }
@@ -37,7 +38,7 @@ export interface QueueEntry {
   blockers: string[];
   /** The state without the usage limit: an item at a limit is `waiting`, whatever this says. */
   baseState: QueueStateKind;
-  /** It starts by itself: `autoStart` is on, it waits for something, and Switchboard can tell when that finishes. */
+  /** It starts by itself: `autoStart` is on, it waits for something, and Seshboard can tell when that finishes. */
   autoStart: boolean;
   /** Why it can't start by itself (it waits for nothing, or for a session in the terminal); null when it can. */
   autoBlocked: string | null;
@@ -84,6 +85,7 @@ export function promptLabel(prompt: string, max = 48): string {
 
 /** "15:16" today, or "Mon 15:16" further away. `locale` is for tests; the app uses the system's. */
 export function clockTime(at: number, now = Date.now(), locale?: string): string {
+  locale = safeLocale(locale);
   const time = new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
   return sameDay ? time : `${new Date(at).toLocaleDateString(locale, { weekday: 'short' })} ${time}`;
@@ -115,7 +117,7 @@ export const FOCUS_HELD_LABEL = 'waits for a free slot (focus limit)';
 
 /**
  * Why an item can't start by itself, or null when it can: it waits for nothing, or what it waits for runs outside
- * Switchboard, which sees it go idle but can't tell whether its turn ended cleanly. New session asks before the
+ * Seshboard, which sees it go idle but can't tell whether its turn ended cleanly. New session asks before the
  * item exists, with the wait it would get.
  */
 export function autoStartBlock(waitFor: QueueWaitFor, inputs: { cwd: string; sessions: readonly QueueSession[]; started: readonly QueueStarted[] }): string | null {
@@ -123,7 +125,7 @@ export function autoStartBlock(waitFor: QueueWaitFor, inputs: { cwd: string; ses
   const byId = new Map(inputs.sessions.map((s) => [s.id, s]));
   const outside = (session: QueueSession | undefined) =>
     session?.elsewhere
-      ? `${quoted(sessionTitle(session))} runs ${session.elsewhere === 'terminal' ? 'in the terminal' : 'in another app'}, so Switchboard can't tell when it finishes. Start this one yourself.`
+      ? `${quoted(sessionTitle(session))} runs ${session.elsewhere === 'terminal' ? 'in the terminal' : 'in another app'}, so Seshboard can't tell when it finishes. Start this one yourself.`
       : null;
   switch (waitFor.kind) {
     case 'session':

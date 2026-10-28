@@ -1,5 +1,5 @@
 # Builds the website (website/, Astro + Starlight) and publishes it to GitHub Pages at
-# https://switchboard.struyfconsulting.com/, with the remote app (apps/remote) at /remote/. Pull requests that touch the site, the UI (the shortcuts page is
+# https://seshboard.app/, with the remote app (apps/remote) at /remote/. Pull requests that touch the site, the UI (the shortcuts page is
 # built from its registry) or the changelog only build it, so a broken link or a missing screenshot fails there.
 # It doesn't run when a release is published: that run is on the tag, which the github-pages environment doesn't allow
 # to deploy (only main), and the Release commit's push to main has already deployed the new changelog.
@@ -47,7 +47,7 @@ jobs:
 
       # Only the website's dependencies and the remote app's (built into the site at /remote/): none of Electron's.
       - name: Install
-        run: npm ci --workspace @switchboard/website --workspace @switchboard/remote --workspace @switchboard/protocol --include-workspace-root
+        run: npm ci --workspace @seshboard/website --workspace @seshboard/remote --workspace @seshboard/protocol --include-workspace-root
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { firstSentence, isSameOrInside, slugify } from '@switchboard/protocol/client';
+import { firstSentence, isSameOrInside, slugify } from '@seshboard/protocol/client';
 import { basename } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';

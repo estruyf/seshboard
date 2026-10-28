@@ -1,7 +1,7 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { ArrowRight, FolderOpen, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { BACKUP_SECTIONS, settingsFileName, type BackupSection, type FolderMapping, type ImportChange, type ImportMode, type ImportPreview } from '@switchboard/protocol/client';
+import { BACKUP_SECTIONS, settingsFileName, type BackupSection, type FolderMapping, type ImportChange, type ImportMode, type ImportPreview } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { DEFAULT_EXPORT_SECTIONS, groupChanges, hasEffect, SECTION_INFO, summarizeChanges } from '../../lib/backup.ts';
 import { basename, tildify } from '../../lib/format.ts';
@@ -14,7 +14,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
 
-const appVersion = () => window.switchboard?.appInfo.version ?? 'unknown';
+const appVersion = () => window.seshboard?.appInfo.version ?? 'unknown';
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function SectionChoices({ available, selected, onChange, attr }: { available: readonly BackupSection[]; selected: readonly BackupSection[]; onChange(next: BackupSection[]): void; attr: `data-${string}` }) {
@@ -53,7 +53,7 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
     setError(null);
     setBusy(true);
     try {
-      const path = await window.switchboard?.chooseExportFile(settingsFileName(new Date()));
+      const path = await window.seshboard?.chooseExportFile(settingsFileName(new Date()));
       if (path) setSaved((await client.call('settings.export', { path, sections, preferences: { ...prefs }, themes: importedThemes(), appVersion: appVersion() })).path);
     } catch (e) {
       setError(message(e));
@@ -66,7 +66,7 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
     <Dialog
       placement="top"
       title="Export settings"
-      subtitle="Save your Switchboard setup to a file, to move to another Mac, restore after a reset, or share your actions. Sessions stay in ~/.claude."
+      subtitle="Save your Seshboard setup to a file, to move to another Mac, restore after a reset, or share your actions. Sessions stay in ~/.claude."
       onClose={onClose}
       data-export-dialog
       footer={
@@ -129,7 +129,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
   // Ask for the file first; cancelling the dialog closes this one too.
   useEffect(() => {
     let cancelled = false;
-    void window.switchboard?.chooseImportFile().then((chosen) => {
+    void window.seshboard?.chooseImportFile().then((chosen) => {
       if (cancelled) return;
       if (chosen) setPath(chosen);
       else onClose();
@@ -176,7 +176,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
     try {
       const result = await request(true);
       // Themes first, so a theme the imported preferences pick is there when they apply.
-      for (const theme of result.themes) await window.switchboard?.addTheme(theme.raw, theme.how);
+      for (const theme of result.themes) await window.seshboard?.addTheme(theme.raw, theme.how);
       if (result.preferences && Object.keys(result.preferences).length > 0) usePreferences.getState().update(result.preferences);
       setPreview(result.preview);
       setBackupPath(result.backupPath);
@@ -188,7 +188,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
   };
 
   const pointAt = async (from: string) => {
-    const to = await window.switchboard?.pickFolder();
+    const to = await window.seshboard?.pickFolder();
     if (to) setRelocate((list) => [...list.filter((m) => m.from !== from), { from, to }]);
   };
 
@@ -208,7 +208,7 @@ export function ImportDialog({ onClose }: { onClose(): void }) {
       title="Import settings"
       subtitle={
         preview
-          ? `From ${basename(path)}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Switchboard ${preview.appVersion}` : ''}.`
+          ? `From ${basename(path)}${exported && !Number.isNaN(exported.getTime()) ? `, exported ${exported.toLocaleDateString()}` : ''}${preview.appVersion !== 'unknown' ? ` by Seshboard ${preview.appVersion}` : ''}.`
           : error
             ? `From ${basename(path)}.`
             : `Reading ${basename(path)}…`

@@ -1,5 +1,5 @@
 import { dirname } from 'node:path';
-import { bodyTokens, splitFrontmatter } from '@switchboard/protocol';
+import { bodyTokens, splitFrontmatter } from '@seshboard/protocol';
 
 /** A memory as links see it: where it is, its name and its text. */
 export interface LinkedMemory {

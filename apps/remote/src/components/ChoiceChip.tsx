@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useWide } from '../lib/media.ts';
 import { Sheet } from './Sheet.tsx';
 
@@ -19,6 +20,10 @@ export interface ChoiceOption<T> {
  * listbox, arrow keys move, Enter picks, Escape and a tap outside close it. The mouse moves the same highlight as the
  * arrow keys (focus), so there is one row lit at a time; the chosen one has a check. On a phone the list is a bottom
  * sheet instead, with rows big enough to tap, because a chip near the right edge has no room for a list beside it.
+ *
+ * `look="row"` is the same picker as a row of a list (a phone's Options sheet, Model and mode): its name on the left
+ * (`rowLabel`, and `rowIcon` before it), the value and › on the right. The sheet goes to `<body>`, so it opens over
+ * the sheet the row is in.
  */
 export function ChoiceChip<T>({
   label,
@@ -31,6 +36,9 @@ export function ChoiceChip<T>({
   placement = 'below',
   hook,
   spoken,
+  look = 'chip',
+  rowLabel,
+  rowIcon,
 }: {
   /** The full meaning, for screen readers and the list ("Effort"). */
   label: string;
@@ -45,6 +53,10 @@ export function ChoiceChip<T>({
   hook?: string;
   /** What a screen reader hears for the chip, when the face says more than the chosen option ("Model: Auto picked Sonnet"). */
   spoken?: string;
+  look?: 'chip' | 'row';
+  /** The row's name, when shorter than `label` ("Mode" for "Permission mode"). */
+  rowLabel?: string;
+  rowIcon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   /** The list opens to the left of the chip when it would run off the right edge. */
@@ -76,25 +88,47 @@ export function ChoiceChip<T>({
     onPick(option.value);
   };
 
+  const row = look === 'row';
+  const name = row ? (rowLabel ?? label) : label;
   return (
-    <div className="relative shrink-0">
+    <div className={row ? 'relative' : 'relative shrink-0'}>
       <button
         ref={button}
         type="button"
         disabled={disabled}
-        aria-label={spoken ?? `${label}: ${options.find((o) => o.value === selected)?.label ?? ''}`}
+        aria-label={spoken ?? `${name}: ${options.find((o) => o.value === selected)?.label ?? ''}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(!open)}
-        className="flex min-h-9 items-center gap-1.5 rounded-full border border-edge px-2.5 text-ui text-text hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7"
+        className={
+          row
+            ? 'flex min-h-12 w-full items-center gap-3 px-4 text-left enabled:active:bg-selected disabled:opacity-50'
+            : 'flex min-h-9 items-center gap-1.5 rounded-full border border-edge px-2.5 text-ui text-text hover:bg-border/45 disabled:opacity-50 pointer-fine:min-h-7'
+        }
         data-remote-choice={hook}
       >
-        {icon}
-        {face}
-        <ChevronDown className="size-3.5 text-faint" aria-hidden />
+        {row ? (
+          <>
+            {rowIcon && <span className="flex size-4 shrink-0 items-center justify-center text-muted [&>svg]:size-4">{rowIcon}</span>}
+            <span className="min-w-0 flex-1 truncate text-body">{name}</span>
+            <span className="flex min-w-0 shrink items-center gap-1.5 text-ui text-muted">
+              {icon}
+              <span className="truncate">{face}</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
+          </>
+        ) : (
+          <>
+            {icon}
+            {face}
+            <ChevronDown className="size-3.5 text-faint" aria-hidden />
+          </>
+        )}
       </button>
-      {open && !wide && (
+      {open &&
+        !wide &&
+        createPortal(
         <Sheet title={label} onClose={() => setOpen(false)} hook={hook ? `choice-${hook}` : 'choice'}>
           <ul role="listbox" aria-label={label} className="-mx-1 flex flex-col pb-1">
             {options.map((option, index) => {
@@ -112,8 +146,9 @@ export function ChoiceChip<T>({
               ];
             })}
           </ul>
-        </Sheet>
-      )}
+        </Sheet>,
+          document.body,
+        )}
       {open && wide && (
         <ul
           ref={list}

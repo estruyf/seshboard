@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { addedProjects, baseOrder } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';

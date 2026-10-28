@@ -17,7 +17,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { PrCheck, PrChecks, GitSyncAction, WorktreePullRequest, WorktreeStatus } from '@switchboard/protocol/client';
+import type { PrCheck, PrChecks, GitSyncAction, WorktreePullRequest, WorktreeStatus } from '@seshboard/protocol/client';
 import { useReadOnlyFork } from '../../state/githubOriginStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
@@ -187,7 +187,7 @@ export function GitButton({
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
-  // A fork's pull request Switchboard can't push back: push and Create PR are off here.
+  // A fork's pull request Seshboard can't push back: push and Create PR are off here.
   const readOnly = useReadOnlyFork(sessionId);
   const plan = status ? planGit(status, busy, readOnly) : null;
   const openTerminal = (terminalId: string) => {

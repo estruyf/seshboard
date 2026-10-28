@@ -43,6 +43,7 @@ import {
   AUTO_MODEL,
   DEFAULT_AUTO_MODEL,
   type AutoModelPrefs,
+  type PermissionMode,
   type ResumeAtLimit,
   type AutoPick,
   type CatchUp,
@@ -75,14 +76,14 @@ import {
   PipelineRunState,
   projectPrBase,
   type PipelineNotice,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
 import { sdkSessionSource, type SessionSource } from './claude/sessionSource.ts';
 import { findCheckout, githubPage } from './git/remotes.ts';
 import { ChecksWatcher, readCheckLogs, readChecks } from './git/prChecks.ts';
 import { createPullRequest, defaultGh, draftRefusal, firstUsefulLine, ghStatus, parseRemoteUrl, PrFailure, prOf, readPrDraft, runGh } from './git/pullRequest.ts';
-import { githubStarStatus, StarFailure, starSwitchboard } from './git/githubStar.ts';
+import { githubStarStatus, StarFailure, starSeshboard } from './git/githubStar.ts';
 import { baseBranch, checkoutRoot, commitAll, DivergedError, fileDiff, git, listBranches, listChanges, listRemoteBranches, removeWorktree, revert, setProjectDefaultBranch, stage, stageForCommit, switchBranch, syncCommand, topLevel, updateCheckout, worktreeStatus } from './git/gitChanges.ts';
 import { deleteBranches, fetchAllRemotes, listBranchOverview } from './git/branches.ts';
 import { fetchPullRequests, ignoredFiles, listWorktrees, measureSize, removeWorktrees, unlockWorktree, WorktreeRefusal, type SessionActivity, type SessionPlace } from './git/worktrees.ts';
@@ -117,6 +118,7 @@ import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import { HostManager, type SdkRuntime } from './host/hostManager.ts';
+import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
 import { LinkStore } from './links/linkStore.ts';
@@ -163,6 +165,7 @@ import type { ShellEnv } from './system/shellEnv.ts';
 import { LimitStore } from './usageLimit/limitStore.ts';
 import { remoteLimit, RESUME_PROMPT, snapshotReset } from './usageLimit/usageLimit.ts';
 import { UsageLimits } from './usageLimit/usageLimits.ts';
+import { SignIns } from './signIn/signIns.ts';
 import { PipelineStore } from './pipelines/pipelineStore.ts';
 import { isRunId, RunStore } from './pipelines/runStore.ts';
 import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
@@ -205,10 +208,11 @@ export interface EngineOptions {
    * when left out (tests). `appVersion` is the app's, for the extension; `socketParent` is where the socket's folder
    * is made (the temporary folder by default).
    */
-  companion?: { appVersion: string; socketParent?: string };
+  /** `legacyDataDir`: the data folder from before the rename, where older VS Code companions look (until 1.3.0). */
+  companion?: { appVersion: string; socketParent?: string; legacyDataDir?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
-   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds). `identity` asks main for Remote's key, which it keeps in the system's
+   * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds, and the Beta update channel; `setRemotePreview` changes it). `identity` asks main for Remote's key, which it keeps in the system's
    * keychain; only called once Remote is on. Off when left out (tests); nothing listens until Settings › Remote
    * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
    * way; only called once one is paired. Without it, this app can't pair with another computer.
@@ -266,7 +270,7 @@ export interface DemoUsage {
    */
   limitFile?: string;
   /**
-   * A file the screenshot tour writes to show a demo session as working in Switchboard rather than in the terminal,
+   * A file the screenshot tour writes to show a demo session as working in Seshboard rather than in the terminal,
    * so a queued item can start after it, only for the queue's picture: `{ sessionId, cwd }` sets it, anything else (or
    * no file) clears it. With `stubQueueStarts` only, which keeps the item from starting Claude Code.
    */
@@ -314,6 +318,8 @@ export interface Engine {
   setCatchUpSummaries(enabled: boolean): void;
   /** Settings › Conversation › Resume after a usage limit resets, from main. */
   setResumeAtLimit(mode: ResumeAtLimit): void;
+  /** Settings › General › Global permission mode, from main: what a phone's new session starts in where its profile and project set none. */
+  setGlobalPermissionMode(mode: PermissionMode): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -323,7 +329,7 @@ export interface Engine {
    * With `stubQueueStarts` only: a stand-in session this app "runs", for the smoke test's queue step. `running` starts
    * a turn, `idle` ends it with `outcome`, `closed` takes it away.
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped' }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
   /**
    * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
    * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
@@ -342,10 +348,12 @@ export interface Engine {
   setChrome(enabled: boolean): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
+  /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
+  setRemotePreview(enabled: boolean): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
-   * The smoke run's mods step (`SWITCHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
+   * The smoke run's mods step (`SESHBOARD_SMOKE_MODS`): adds a throwaway profile whose sessions load the test mod,
    * starts a session there with the mod's own `/smoke-ping` (answered without the model), and writes its id and
    * whether its Claude Code draws mods to the file the step reads.
    */
@@ -392,7 +400,7 @@ export function createEngine(options: EngineOptions): Engine {
   let sidebarScope: 'switchboard' | 'all' = 'switchboard';
   /** Set once the clean-up of archived sessions exists: it first runs after the first full scan. */
   let scanCompleteHook: () => void = () => {};
-  /** Set once memory search exists: every memory change (Switchboard's or a watcher's) re-indexes the files that changed. */
+  /** Set once memory search exists: every memory change (Seshboard's or a watcher's) re-indexes the files that changed. */
   let memoryChangedHook: () => void = () => {};
   let memorySyncTimer: ReturnType<typeof setTimeout> | undefined;
   const broadcast: RpcServer<Contract>['emit'] = (name, payload) => {
@@ -558,7 +566,7 @@ export function createEngine(options: EngineOptions): Engine {
   const github = new GithubService({ gh: defaultGh, env: () => shell.ready.then(({ env }) => env) });
   /** Attached issues and pull requests, written out for Claude right before it reads the message. */
   const githubContext = new GithubExpander(github);
-  /** The issue or pull request each session started from, and the forks' pull requests Switchboard can't push to. */
+  /** The issue or pull request each session started from, and the forks' pull requests Seshboard can't push to. */
   const githubOrigins = new GithubOriginStore(cache.db);
   // A fixed delay, not a debounce: busy sessions change every second and must not keep pushing it back.
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -574,7 +582,12 @@ export function createEngine(options: EngineOptions): Engine {
   const ephemeral = new Set<string>();
   /** Running Claude Code processes, from each profile's `sessions` folder. */
   const registries = new Map<string, LiveRegistry>();
-  const liveList = (): LiveSession[] => [...registries.values()].flatMap((r) => r.list());
+  /** The hosts' Claude Code processes, so a later engine knows the ones this one leaves behind if it dies. */
+  const hostProcesses = new HostProcesses(join(options.dataDir, 'host-processes.json'));
+  /** Records the hosts' processes after each registry change (set up with the hosts, below). */
+  let recordHostProcesses: (() => void) | undefined;
+  const liveList = (): LiveSession[] =>
+    [...registries.values()].flatMap((r) => r.list().map((l) => (hostProcesses.isLeftover(l) ? { ...l, leftover: true } : l)));
   const scanLive = () => registries.forEach((r) => r.scan());
   /** One registry per profile folder; started ones follow profiles being added and removed. */
   const syncRegistries = (start: boolean) => {
@@ -593,6 +606,7 @@ export function createEngine(options: EngineOptions): Engine {
         profileId: profile.id,
         resolveRoot: (cwd) => resolver.resolve(cwd).root,
         onChange: () => {
+          recordHostProcesses?.();
           broadcast('sessions.live', { live: liveList() });
           void autoStarter?.check();
           runner?.check();
@@ -605,7 +619,7 @@ export function createEngine(options: EngineOptions): Engine {
   const watching = options.watchSessions !== false;
   syncRegistries(watching);
   if (watching) sessions.start();
-  // Signing in happens in a terminal (`/login`), outside Switchboard: follow each profile's login file.
+  // Signing in happens in a terminal (`/login`), outside Seshboard: follow each profile's login file.
   const accounts = new AccountWatcher(
     () => profiles.accountFiles(),
     () => {
@@ -785,6 +799,7 @@ export function createEngine(options: EngineOptions): Engine {
   // --- Usage limits -------------------------------------------------------------------------------------------------
   /** Main sends Settings › Conversation › "Resume after a usage limit resets" when the engine starts and after each change. */
   let resumeAtLimit: ResumeAtLimit = 'ask';
+  let globalPermissionMode: PermissionMode = 'default';
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -805,8 +820,28 @@ export function createEngine(options: EngineOptions): Engine {
     onResumed: (sessionId) => broadcast('limits.resumed', { sessionId }),
     log,
   });
+  // --- Signing in again ---------------------------------------------------------------------------------------------
+  /** Profiles whose login stopped working (signed out, expired): their sessions offer Sign in. */
+  const signIns = new SignIns({ onChange: (state) => broadcast('signIn.changed', state) });
+  /**
+   * You signed in again: each session the login stopped starts a new process (one started before you signed in may
+   * still hold the old login) and continues where it left off.
+   */
+  const continueAfterSignIn = async (profileId: string) => {
+    for (const sessionId of signIns.signedIn(profileId)) {
+      try {
+        if (hosts.list().hosts.some((h) => h.sessionId === sessionId && (h.state === 'running' || h.state === 'needs-you'))) continue;
+        await hosts.release(sessionId);
+        await hosts.send({ sessionId, text: RESUME_PROMPT, attachments: [], fork: false });
+        sessions.wake(sessionId);
+      } catch (error) {
+        log('warn', `Could not continue ${sessionId} after signing in: ${(error as Error).message}`);
+      }
+    }
+  };
   const hosts = new HostManager({
     limits,
+    signIns,
     sdk,
     ephemeral,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
@@ -814,6 +849,17 @@ export function createEngine(options: EngineOptions): Engine {
     env: envFor,
     claudePath: async () => (await claude)?.path,
     isOpenElsewhere: (id) => !hosts.has(id) && liveList().some((l) => l.sessionId === id),
+    stopLeftover: (id) => {
+      const leftover = liveList().find((l) => l.sessionId === id && l.leftover);
+      if (!leftover) return false;
+      log('info', `Stopping the Claude Code process (pid ${leftover.pid}) an earlier run left holding session ${id}`);
+      try {
+        process.kill(leftover.pid, 'SIGTERM');
+      } catch {
+        // Already gone.
+      }
+      return true;
+    },
     refreshLive: scanLive,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
     sessionProfile,
@@ -915,6 +961,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
   });
+  recordHostProcesses = () => hostProcesses.record(liveList(), (id) => hosts.has(id));
+  recordHostProcesses();
 
   // Armed resumes kept from before start their timers (one due while the app was closed goes shortly).
   limits.start();
@@ -1018,7 +1066,10 @@ export function createEngine(options: EngineOptions): Engine {
       for (const viewer of terminalViewers.get(id) ?? []) viewer.emit('terminal.data', { id, data });
     },
     onChange: (list) => broadcast('terminals.changed', { terminals: list }),
-    onExit: (info, run) => reportRun(info, run),
+    onExit: (info, run) => {
+      reportRun(info, run);
+      signInEnded(info);
+    },
     log,
   });
   /** The terminals each connection is attached to, so one dispose hook per connection detaches it from all of them. */
@@ -1052,7 +1103,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   const actions = new ActionStore(cache.db);
   const savedPrompts = new SavedPromptStore(cache.db);
-  /** A pull (or anyone) changing a project's .switchboard.json updates its shared actions and prompts in every window. */
+  /** A pull (or anyone) changing a project's .seshboard.json updates its shared actions and prompts in every window. */
   const sharedFileWatcher = new SharedFileWatcher((root) => {
     broadcast('actions.changed', { root });
     broadcast('savedPrompts.changed', { root });
@@ -1087,7 +1138,7 @@ export function createEngine(options: EngineOptions): Engine {
     for (const entry of liveList()) {
       if (out.has(entry.sessionId) || ephemeral.has(entry.sessionId)) continue;
       const busy = entry.status === 'running' || entry.status === 'needs-you';
-      // Switchboard's own processes register as SDK ones; without a host here, one is another app's.
+      // Seshboard's own processes register as SDK ones; without a host here, one is another app's.
       const elsewhere = entry.origin === 'cli' ? 'terminal' : 'app';
       out.set(entry.sessionId, { id: entry.sessionId, title: title(entry.sessionId, entry.name), projectRoot: sessions.get(entry.sessionId)?.projectRoot ?? entry.projectRoot ?? entry.cwd ?? '', busy, elsewhere });
     }
@@ -1163,7 +1214,7 @@ export function createEngine(options: EngineOptions): Engine {
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1185,6 +1236,7 @@ export function createEngine(options: EngineOptions): Engine {
         backgroundTasks: [],
       }),
       state,
+      ...(compacting !== undefined ? { compacting } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
     };
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
@@ -1364,7 +1416,7 @@ export function createEngine(options: EngineOptions): Engine {
       triggersBroadcast();
     });
   }
-  /** Pauses the triggers of a project removed from Switchboard, with the reason the card shows. */
+  /** Pauses the triggers of a project removed from Seshboard, with the reason the card shows. */
   const pauseTriggersIn = (root: string, reason: string) => {
     let changed = false;
     for (const trigger of triggers.inProject(root)) {
@@ -1422,7 +1474,7 @@ export function createEngine(options: EngineOptions): Engine {
     scheduler.rearm();
     return { schedule };
   };
-  /** Pauses the schedules of a folder (a project removed from Switchboard), with the reason the row shows. */
+  /** Pauses the schedules of a folder (a project removed from Seshboard), with the reason the row shows. */
   const pauseSchedulesIn = (root: string, reason: string) => {
     let changed = false;
     for (const schedule of schedules.list()) {
@@ -1459,7 +1511,7 @@ export function createEngine(options: EngineOptions): Engine {
       scheduler.rearm();
     });
   }
-  // Runs due while Switchboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
+  // Runs due while Seshboard was closed are dealt with once it has settled (profiles, the shell, main's notifier).
   if (options.schedules !== false) scheduler.start(options.stubQueueStarts ? 0 : 5_000);
 
   // --- Pipelines (#179) ---------------------------------------------------------------------------------------------
@@ -1660,7 +1712,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
     });
   }
-  // Runs that were going when Switchboard quit go on once it has settled.
+  // Runs that were going when Seshboard quit go on once it has settled.
   const resumeRuns = options.schedules !== false ? setTimeout(() => void runner?.resumeAll(), options.stubQueueStarts ? 0 : 5_000) : undefined;
   resumeRuns?.unref?.();
   /** Projects' memory and instructions: every profile's memory folder, the project's own profile first. */
@@ -1722,6 +1774,17 @@ export function createEngine(options: EngineOptions): Engine {
    * A run that reports back has ended: its exit code and the end of its output go to the session as your message, held
    * in Up next while Claude works. A line under the output says where it went, or why it couldn't go.
    */
+  /** Terminals running `claude auth login`, by the profile they sign in to; kept after they end, so Restart signs in again. */
+  const signInTerminals = new Map<string, string>();
+  /** A Sign in terminal ended: signed in (it exited with 0), so the sessions continue; otherwise Sign in can be tried again. */
+  const signInEnded = (info: TerminalInfo) => {
+    const profileId = signInTerminals.get(info.id);
+    if (!profileId) return;
+    signIns.signingIn(profileId, null);
+    if (info.exitCode !== 0) return;
+    terminals.note(info.id, '↳ Signed in. The session continues.');
+    void continueAfterSignIn(profileId);
+  };
   const reportRun = (info: TerminalInfo, run: { output: string; stopped: boolean }) => {
     const report = runReports.get(info.id);
     if (!report) return;
@@ -1759,14 +1822,14 @@ export function createEngine(options: EngineOptions): Engine {
     }
   };
 
-  /** Where every known session is (transcripts, Switchboard's processes and the live registry), for the worktree overview. */
+  /** Where every known session is (transcripts, Seshboard's processes and the live registry), for the worktree overview. */
   const sessionPlaces = (): SessionPlace[] => {
     const places = new Map<string, SessionPlace>(sessions.snapshot().sessions.map((s) => [s.id, { id: s.id, cwd: s.cwd, updatedAt: s.updatedAt }]));
     for (const l of liveList()) if (!places.has(l.sessionId) && l.origin !== 'sdk') places.set(l.sessionId, { id: l.sessionId, cwd: l.cwd, updatedAt: l.updatedAt ?? l.startedAt ?? 0 });
     for (const h of hosts.list().hosts) if (!places.has(h.sessionId)) places.set(h.sessionId, { id: h.sessionId, cwd: h.cwd, updatedAt: h.promptedAt ?? h.startedAt });
     return [...places.values()];
   };
-  /** What could be working in a worktree: Switchboard's sessions, and every process in the live registry. */
+  /** What could be working in a worktree: Seshboard's sessions, and every process in the live registry. */
   const sessionActivity = (): SessionActivity[] => {
     scanLive();
     const here = hosts.list().hosts.filter((h) => h.state !== 'closed' && h.state !== 'error');
@@ -1830,7 +1893,7 @@ export function createEngine(options: EngineOptions): Engine {
     const action = actions.list(projectRoot).actions.find((a) => a.id === id);
     if (!action) throw new RpcError('NOT_FOUND', 'No such action');
     if (!action.trusted) {
-      const from = action.scope === 'shared' ? `${projectRoot}/.switchboard.json` : 'a settings file';
+      const from = action.scope === 'shared' ? `${projectRoot}/.seshboard.json` : 'a settings file';
       throw new RpcError('UNTRUSTED', `"${action.name}" comes from ${from} and has not been approved yet`);
     }
     return action;
@@ -1994,6 +2057,7 @@ export function createEngine(options: EngineOptions): Engine {
   if (options.companion) {
     companion = new CompanionHub({
       infoDir: join(options.dataDir, COMPANION_DIR),
+      ...(options.companion.legacyDataDir ? { legacyInfoDir: join(options.companion.legacyDataDir, COMPANION_DIR) } : {}),
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
@@ -2002,7 +2066,7 @@ export function createEngine(options: EngineOptions): Engine {
       respond: async (requestId, decision, acceptEdits) => {
         const sessionId = hosts.list().permissions.find((p) => p.requestId === requestId)?.sessionId;
         hosts.respond(requestId, decision);
-        // Only once the plan is really approved, as its card in Switchboard does.
+        // Only once the plan is really approved, as its card in Seshboard does.
         if (acceptEdits && sessionId && decision.behavior === 'allow') await hosts.setPermissionMode(sessionId, 'acceptEdits').catch(() => {});
       },
       log,
@@ -2092,6 +2156,7 @@ export function createEngine(options: EngineOptions): Engine {
       setPermissionMode: (sessionId, mode) => hosts.setPermissionMode(sessionId, mode),
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
+      globalPermissionMode: () => globalPermissionMode,
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
@@ -2179,7 +2244,7 @@ export function createEngine(options: EngineOptions): Engine {
   let retention: RetentionPolicy = DEFAULT_RETENTION;
   /** Session files only ever go to the Trash: without a way to put them there, nothing is deleted. */
   const sessionTrash = () => {
-    if (!options.trash) throw new RpcError('NO_TRASH', "Switchboard can't move sessions to the Trash here, so it won't delete them.");
+    if (!options.trash) throw new RpcError('NO_TRASH', "Seshboard can't move sessions to the Trash here, so it won't delete them.");
     return options.trash;
   };
   /** Every indexed session with what the archive and keep rules need, now. */
@@ -2222,6 +2287,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessions.forget(sessionId);
     hosts.forget(sessionId);
     limits.forget(sessionId);
+    signIns.forget(sessionId);
     triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
@@ -2587,6 +2653,30 @@ export function createEngine(options: EngineOptions): Engine {
       limits.arm(sessionId, armed);
       return {};
     },
+    'signIn.state': () => signIns.state(),
+    'signIn.start': async ({ sessionId }) => {
+      const profileId = sessionProfile(sessionId);
+      const running = signIns.of(profileId)?.terminalId;
+      const open = running ? terminals.list().find((t) => t.id === running && t.exitCode === null) : undefined;
+      if (open) return open;
+      const [path, userShell] = await Promise.all([claude.then((c) => c?.path), terminals.shell()]);
+      const program = path ? `${userShell.kind === 'powershell' ? '& ' : ''}${userShell.quote(path)}` : 'claude';
+      // The session's folder, so the tab sits with it; a folder that is gone (a removed worktree) can't hold a terminal.
+      const folder = sessionCwd(sessionId);
+      const cwd = folder && existsSync(folder) ? folder : homedir();
+      try {
+        const info = await terminals.open({ sessionId, cwd, kind: 'action', command: `${program} auth login`, title: 'Sign in', cols: 100, rows: 20, fork: false, env: profileEnv(profileId) });
+        signInTerminals.set(info.id, profileId);
+        signIns.signingIn(profileId, info.id);
+        return info;
+      } catch (error) {
+        throw new RpcError('TERMINAL_FAILED', (error as Error).message);
+      }
+    },
+    'signIn.continue': async ({ sessionId }) => {
+      await continueAfterSignIn(sessionProfile(sessionId));
+      return {};
+    },
     'session.forkAt': async ({ sessionId, messageUuid }) => {
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
@@ -2631,6 +2721,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.close': ({ sessionId }) => {
       hosts.close(sessionId);
+      return {};
+    },
+    'session.retry': async ({ sessionId }) => {
+      await hosts.retry(sessionId);
       return {};
     },
     'session.continueInEditor': async ({ sessionId, editorId }) => {
@@ -2679,10 +2773,15 @@ export function createEngine(options: EngineOptions): Engine {
     'session.commands': async ({ sessionId, cwd, profileId }) => ({
       commands: await hosts.commands(sessionId, cwd, profileId ?? (sessionId ? sessionProfile(sessionId) : cwd ? folderProfile(cwd) : profiles.defaultId())),
     }),
-    'session.capabilities': ({ sessionId, cwd, refresh, profileId }) =>
-      hosts.capabilities(sessionId, cwd, refresh, profileId ?? (sessionId ? sessionProfile(sessionId) : folderProfile(cwd))),
+    'session.capabilities': ({ sessionId, cwd, refresh, reload, profileId }) =>
+      hosts.capabilities(sessionId, cwd, refresh, profileId ?? (sessionId ? sessionProfile(sessionId) : folderProfile(cwd)), reload),
     'skills.reload': () => {
       hosts.reloadSkills(profiles.runtimes().map((p) => p.id));
+      broadcast('commands.changed', {});
+      return {};
+    },
+    'mcp.reload': async () => {
+      await hosts.reloadPlugins(profiles.runtimes().map((p) => p.id));
       broadcast('commands.changed', {});
       return {};
     },
@@ -3068,7 +3167,7 @@ export function createEngine(options: EngineOptions): Engine {
       const status = await worktreeStatus(cwd).catch((error: Error) => {
         throw new RpcError('GIT_FAILED', error.message);
       });
-      // A fork's pull request Switchboard can't push to: nothing goes back from here (the header has push off too).
+      // A fork's pull request Seshboard can't push to: nothing goes back from here (the header has push off too).
       if (action === 'push' && (githubOrigins.get(sessionId)?.readOnly || githubOrigins.readOnlyAt(status.path, status.branch))) throw new RpcError('READ_ONLY', FORK_READ_ONLY);
       const sync = syncCommand(status, action, (await terminals.shell()).quote);
       if ('code' in sync) throw new RpcError(sync.code, sync.message);
@@ -3187,12 +3286,12 @@ export function createEngine(options: EngineOptions): Engine {
     'github.starStatus': async () => ({ status: await githubStarStatus(defaultGh(), homedir(), (await shell.ready).env) }),
     'github.star': async () => {
       try {
-        await starSwitchboard(defaultGh(), homedir(), (await shell.ready).env);
+        await starSeshboard(defaultGh(), homedir(), (await shell.ready).env);
       } catch (error) {
         if (error instanceof StarFailure) throw new RpcError(error.code, error.message);
         throw error;
       }
-      log('info', 'github: starred Switchboard');
+      log('info', 'github: starred Seshboard');
       return {};
     },
     'worktree.status': async ({ cwd }) => {
@@ -3335,7 +3434,7 @@ export function createEngine(options: EngineOptions): Engine {
     'terminal.open': async (params) => {
       if (params.kind === 'claude' && params.sessionId && !params.fork) {
         if (hosts.has(params.sessionId)) {
-          throw new RpcError('SESSION_RUNNING_HERE', 'This session is running in Switchboard. Stop it there first, or open a fork in the terminal.');
+          throw new RpcError('SESSION_RUNNING_HERE', 'This session is running in Seshboard. Stop it there first, or open a fork in the terminal.');
         }
         if (liveList().some((l) => l.sessionId === params.sessionId)) {
           throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first, or open a fork.');
@@ -3391,6 +3490,7 @@ export function createEngine(options: EngineOptions): Engine {
       terminalViewers.delete(id);
       actionRuns.delete(id);
       runReports.delete(id);
+      signInTerminals.delete(id);
       return {};
     },
     'terminal.stop': ({ id }) => {
@@ -3646,6 +3746,8 @@ export function createEngine(options: EngineOptions): Engine {
         if (action.sendOutput) runReports.set(id, { sessionId: run.sessionId, command: change.command!, action: action.name });
         else runReports.delete(id);
       }
+      const signInProfile = signInTerminals.get(id);
+      if (signInProfile) signIns.signingIn(signInProfile, id);
       try {
         return await terminals.restart(id, change);
       } catch (error) {
@@ -3677,6 +3779,9 @@ export function createEngine(options: EngineOptions): Engine {
     setResumeAtLimit: (mode) => {
       resumeAtLimit = mode;
     },
+    setGlobalPermissionMode: (mode) => {
+      globalPermissionMode = mode;
+    },
     smokeQueueHost: standInHost,
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {
       if (!options.stubQueueStarts) return;
@@ -3698,9 +3803,10 @@ export function createEngine(options: EngineOptions): Engine {
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
     setAppIcon: (key) => remote?.setAppIcon(key),
+    setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setForeground: (foreground) => checksWatcher.setForeground(foreground),
     startModsSmoke: async () => {
-      const spec = JSON.parse(process.env.SWITCHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
+      const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
       if (!spec) return;
       const write = (result: Record<string, unknown>) => writeFileSync(spec.out, JSON.stringify(result));
       try {

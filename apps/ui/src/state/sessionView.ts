@@ -1,4 +1,4 @@
-import type { SessionView } from '@switchboard/protocol/bridge';
+import type { SessionView } from '@seshboard/protocol/bridge';
 import { useAgentsPanel } from './agentsPanelStore.ts';
 import { useAsk } from './askStore.ts';
 import { useChangesPanel } from './changesPanelStore.ts';

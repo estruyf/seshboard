@@ -1,4 +1,4 @@
-// Opens the real Switchboard, the built app in apps/desktop/out, in the made-up
+// Opens the real Seshboard, the built app in apps/desktop/out, in the made-up
 // home folder the README screenshots use (apps/desktop/scripts/screenshot-demo.ts),
 // and hands back a page the shot list can drive.
 //
@@ -108,7 +108,7 @@ export const hidePointer = (page) => setPointer(page, 'none');
 export const showPointer = (page) => setPointer(page, '');
 
 /// Chromium stops painting a window another one covers, and slows down one in the background. The companion beat
-/// records VS Code and Switchboard at the same time, one on top of the other, so both have to keep painting.
+/// records VS Code and Seshboard at the same time, one on top of the other, so both have to keep painting.
 const KEEP_PAINTING = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'];
 
 /** Resizes the window's content to `size` (points) and centres it. */
@@ -121,7 +121,7 @@ export async function sizeWindow(app, size = VIEWPORT) {
   }, size);
 }
 
-/// Where the demo home is built. Switchboard shortens paths to `~/…` only under
+/// Where the demo home is built. Seshboard shortens paths to `~/…` only under
 /// `/Users/<name>`, so a home in the temporary folder shows every project as
 /// `/private/var/folders/2d/…/Developer/acme-store`. `/Users/Shared` is the one
 /// folder of that shape anyone can write to; the demo only adds these entries to
@@ -176,7 +176,7 @@ function addWorktrees(repo) {
   rmSync(tree('gentle-cobalt-heron'), { recursive: true, force: true });
 }
 
-/** Builds the demo world and opens Switchboard in it. `stop()` closes both. */
+/** Builds the demo world and opens Seshboard in it. `stop()` closes both. */
 export async function openApp({ scheme = 'dark' } = {}) {
   const taken = DEMO_ENTRIES.filter((name) => existsSync(join(DEMO_HOME, name)));
   if (taken.length) {
@@ -190,8 +190,8 @@ export async function openApp({ scheme = 'dark' } = {}) {
     symlinkSync(claude, join(world.home, '.local', 'bin', 'claude'));
   }
   // The app's own data: its database, preferences and the companion's engine.json.
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-promo-data-')));
-  // Every session in the list, not only those started in Switchboard: the demo's were "started in a terminal".
+  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-promo-data-')));
+  // Every session in the list, not only those started in Seshboard: the demo's were "started in a terminal".
   writeFileSync(join(dataDir, 'preferences.json'), `${JSON.stringify({ colorScheme: scheme, sessionScope: 'all', confirmQuit: false, autoUpdate: false }, null, 2)}\n`);
 
   const electronPath = createRequire(join(APP_DIR, 'package.json'))('electron');
@@ -215,12 +215,12 @@ export async function openApp({ scheme = 'dark' } = {}) {
         ...env,
         HOME: world.home,
         CLAUDE_CONFIG_DIR: join(world.home, '.claude'),
-        SWITCHBOARD_DATA_DIR: dataDir,
+        SESHBOARD_DATA_DIR: dataDir,
         // The Claude Code check reads a registry with nothing newer, and an update is refused anyway.
-        SWITCHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '0.0.1', stable: '0.0.1' }))}`,
-        SWITCHBOARD_NO_CLAUDE_UPDATE: '1',
+        SESHBOARD_CLAUDE_REGISTRY: `data:application/json,${encodeURIComponent(JSON.stringify({ latest: '0.0.1', stable: '0.0.1' }))}`,
+        SESHBOARD_NO_CLAUDE_UPDATE: '1',
         // Forces the scheme without saving it (the preference file alone loses to the system's).
-        SWITCHBOARD_COLOR_SCHEME: scheme,
+        SESHBOARD_COLOR_SCHEME: scheme,
         ELECTRON_ENABLE_LOGGING: '0',
       },
       // Playwright emulates a light scheme unless told otherwise; the app's own setting (above) decides instead.
@@ -254,10 +254,10 @@ const CODE_PORT = 9339;
 /** Opens an isolated VS Code (its own profile and extensions folder, the
  *  companion loaded from apps/vscode-extension) on `folder`, with `file` open.
  *
- *  It can only ever reach the Switchboard opened by `openApp`: the companion's
- *  `switchboard.appDataFolder` points at that app's data folder, which replaces
+ *  It can only ever reach the Seshboard opened by `openApp`: the companion's
+ *  `seshboard.appDataFolder` points at that app's data folder, which replaces
  *  the usual places it looks rather than adding to them, and HOME is the demo
- *  home, where no other Switchboard keeps its data either. */
+ *  home, where no other Seshboard keeps its data either. */
 export async function openCode({ dataDir, folder, file }) {
   // Installed from its package, as people get it: loaded as a development extension, the title bar says so.
   const { version } = JSON.parse(readFileSync(join(EXTENSION_DIR, 'package.json'), 'utf8'));
@@ -319,7 +319,7 @@ export async function openCode({ dataDir, folder, file }) {
     }
     if (!page) throw new Error('VS Code opened no workbench window');
     // A CDP client can't call Electron to size the window, and Electron has no Browser.setWindowBounds. The whole
-    // workbench, title bar included, is the page, so giving the page Switchboard's size comes to the same thing.
+    // workbench, title bar included, is the page, so giving the page Seshboard's size comes to the same thing.
     // The session stays attached: the override ends with it.
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: VIEWPORT.width, height: VIEWPORT.height, deviceScaleFactor: 2, mobile: false });
@@ -335,9 +335,9 @@ export async function openCode({ dataDir, folder, file }) {
 
 /** VS Code as it comes, minus what would sit over the shot: no AI side bar, no tips, no update or git prompts. */
 const CODE_SETTINGS = (dataDir) => ({
-  'switchboard.appDataFolder': dataDir,
-  'switchboard.editorTitleButton': true,
-  'switchboard.bringToFront': false,
+  'seshboard.appDataFolder': dataDir,
+  'seshboard.editorTitleButton': true,
+  'seshboard.bringToFront': false,
   'workbench.colorTheme': 'Default Dark Modern',
   'workbench.startupEditor': 'none',
   'workbench.tips.enabled': false,

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
+import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
@@ -99,6 +99,14 @@ class FakeQuery {
         state('idle');
         continue;
       }
+      if (text.startsWith('signed out')) {
+        // The login expired: Claude Code says so as an error message, and the turn ends as an error.
+        const said = 'OAuth token has expired · Please run /login';
+        this.out.push({ type: 'assistant', uuid: `a-${text}`, error: 'authentication_failed', parent_tool_use_id: null, session_id: sessionId, message: { model: 'fake', content: [{ type: 'text', text: said }] } });
+        this.out.push({ type: 'result', subtype: 'success', is_error: true, result: said, total_cost_usd: 0, session_id: sessionId });
+        state('idle');
+        continue;
+      }
       if (text === 'crash') {
         this.out.fail(new Error('Claude Code process exited with code 1'));
         return;
@@ -176,6 +184,19 @@ class FakeQuery {
     this.skills = [...this.newSkills];
     return { skills: this.skills };
   }
+  async mcpServerStatus() {
+    return [];
+  }
+  async supportedAgents() {
+    return [];
+  }
+  /** How often the host asked for /reload-plugins. */
+  pluginReloads = 0;
+  async reloadPlugins() {
+    this.pluginReloads++;
+    this.skills = [...this.newSkills];
+    return { commands: await this.supportedCommands(), agents: [], plugins: [{ name: 'linear', path: '/plugins/linear' }], mcpServers: [], error_count: 0 };
+  }
   async supportedModels() {
     return [{ value: 'fake', displayName: 'Fake', description: 'Test model', supportsEffort: false }];
   }
@@ -226,14 +247,18 @@ function setup(
     profiles?: Record<string, string>;
     settings?: SessionSettingsStore;
     refreshLive?: () => void;
+    stopLeftover?: HostManagerDeps['stopLeftover'];
     upNext?: ReturnType<typeof memoryUpNext>;
     /** Pre-warmed processes fail to start, at once or after a while (no login, a crash). */
     warmFails?: { message: string; afterMs?: number };
     /** Claude Code can't be started at all. */
     startFails?: string;
+    /** Claude Code starts, then dies before it reads a message (a binary that won't launch). */
+    launchFails?: string;
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
+    signIns?: HostManagerDeps['signIns'];
     links?: HostManagerDeps['links'];
     readOnly?: HostManagerDeps['readOnly'];
     planApproved?: HostManagerDeps['planApproved'];
@@ -255,6 +280,12 @@ function setup(
   const sdk: SdkRuntime = {
     query: ({ prompt, options }) => {
       if (opts.startFails) throw new Error(opts.startFails);
+      if (opts.launchFails) {
+        const dead = new FakeQuery(new Channel<SDKUserMessage>(), options);
+        const message = opts.launchFails;
+        setTimeout(() => dead.out.fail(new Error(message)), 10);
+        return dead as never;
+      }
       const q = new FakeQuery(prompt, options);
       queries.push(q);
       opts.onQuery?.(q);
@@ -287,6 +318,7 @@ function setup(
     sessionCwd: (id) => opts.cwds?.[id] ?? null,
     sessionProfile: (id) => opts.profiles?.[id] ?? 'default',
     refreshLive: opts.refreshLive,
+    stopLeftover: opts.stopLeftover,
     onInfo: (i) => infos.push(i),
     onStream: (d) => streams.push(d),
     onMessages: (id, m) => messages.push({ id, messages: m }),
@@ -296,6 +328,7 @@ function setup(
     onTurnEnd: (sessionId, outcome) => turns.push({ sessionId, ...outcome }),
     sessionSettings: opts.settings,
     limits: opts.limits,
+    signIns: opts.signIns,
     links: opts.links,
     readOnly: opts.readOnly,
     planApproved: opts.planApproved,
@@ -430,6 +463,21 @@ describe('HostManager', () => {
     await until(() => t.turns.length === 2);
     expect(limit).toBeNull();
     await until(() => t.infos.at(-1)!.usageLimit === null);
+    t.manager.closeAll();
+  });
+
+  it('reports a turn the login stopped, and clears it once a turn gets through', async () => {
+    const hits: Array<{ profileId: string; sessionId: string; message: string | null }> = [];
+    const oks: string[] = [];
+    const t = setup({ signIns: { hit: (profileId, sessionId, message) => hits.push({ profileId, sessionId, message }), ok: (profileId) => oks.push(profileId) } });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'signed out' });
+    await until(() => lastState(t.infos, id) === 'idle' && t.turns.length === 1);
+    expect(hits).toEqual([{ profileId: 'default', sessionId: id, message: 'OAuth token has expired · Please run /login' }]);
+    expect(oks).toEqual([]);
+    await t.manager.send({ sessionId: id, text: 'Say hi', attachments: [], fork: false });
+    await until(() => t.turns.length === 2);
+    expect(hits).toHaveLength(1);
+    expect(oks).toEqual(['default']);
     t.manager.closeAll();
   });
 
@@ -849,6 +897,30 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('stops a process an earlier run left holding the session, and resumes it here instead', async () => {
+    const elsewhere = ['left', 'busy'];
+    const stopped: string[] = [];
+    const t = setup({
+      openElsewhere: elsewhere,
+      cwds: { left: '/repo', busy: '/repo' },
+      // Only 'left' is a leftover; it leaves the registry once stopped.
+      stopLeftover: (id) => {
+        if (id !== 'left') return false;
+        stopped.push(id);
+        elsewhere.splice(elsewhere.indexOf(id), 1);
+        return true;
+      },
+    });
+    const sent = await t.manager.send({ sessionId: 'left', text: 'hi', attachments: [], fork: false });
+    expect(stopped).toEqual(['left']);
+    expect(sent.sessionId).toBe('left');
+    expect(t.queries[0]!.options).toMatchObject({ resume: 'left' });
+    expect(t.queries[0]!.options.forkSession).toBeUndefined();
+    // A process that isn't a leftover is still someone else's.
+    await expect(t.manager.send({ sessionId: 'busy', text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'SESSION_BUSY_ELSEWHERE' });
+    t.manager.closeAll();
+  });
+
   it('shows a sent slash command the way the transcript stores it', async () => {
     const t = setup({ cwds: { old: '/repo' } });
     await t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false });
@@ -927,7 +999,7 @@ describe('HostManager', () => {
   });
 
   it('ignores a startup message without a session id, so the session list keeps working', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-host-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-host-'));
     const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
     try {
       const t = setup({ settings: createSessionSettingsStore(cache.db), onQuery: (q) => q.out.push({ type: 'system', subtype: 'init' }) });
@@ -990,6 +1062,27 @@ describe('HostManager', () => {
     expect(t.queries).toHaveLength(1);
     expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan', model: 'opus' });
     expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    t.manager.closeAll();
+  });
+
+  it('sends a message again after Claude Code failed before it got it', async () => {
+    const opts: Parameters<typeof setup>[0] = { cwds: { old: '/w' }, launchFails: 'Claude Code native binary at /opt/homebrew/bin/claude exists but failed to launch.' };
+    const t = setup(opts);
+    const { messageUuid } = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    await until(() => lastState(t.infos, 'old') === 'error');
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    // It fails again: the message is still there to send.
+    await expect(t.manager.retry('old')).resolves.toBeUndefined();
+    await until(() => lastState(t.infos, 'old') === 'error' && t.infos.filter((i) => i.sessionId === 'old').length > 2);
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    delete opts.launchFails;
+    await t.manager.retry('old');
+    await until(() => lastState(t.infos, 'old') === 'idle');
+    expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    // The same uuid each time, so the transcript shows the message once.
+    expect(new Set(t.messages.filter((m) => m.messages[0]?.type === 'user').map((m) => m.messages[0]!.uuid))).toEqual(new Set([messageUuid]));
+    // Once Claude Code has it, there is nothing left to send again.
+    await expect(t.manager.retry('old')).rejects.toMatchObject({ code: 'NOT_RUNNING' });
     t.manager.closeAll();
   });
 
@@ -1221,6 +1314,41 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('has running sessions read their plugins and MCP servers again, a busy one once its turn ends', async () => {
+    const t = setup();
+    const idle = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Hi' });
+    await until(() => lastState(t.infos, idle) === 'idle');
+    const busy = await t.manager.create({ ...base, cwd: '/work/api', prompt: 'bash:npm test' });
+    await until(() => t.permissions.length === 1);
+    const [first, second] = [t.queries.find((q) => q.options.sessionId === idle)!, t.queries.find((q) => q.options.sessionId === busy)!];
+    first.newSkills = [{ name: 'linear', description: 'From the plugin', argumentHint: '' }];
+    await t.manager.commands(undefined, '/projects/web', 'default');
+    const helpers = t.queries.length;
+    await t.manager.reloadPlugins(['default']);
+    expect(first.pluginReloads).toBe(1);
+    expect(second.pluginReloads).toBe(0);
+    expect((await t.manager.commands(idle, undefined, 'default')).map((c) => c.name)).toContain('linear');
+    // The folder lists are asked for again, as after Reload skills.
+    await t.manager.commands(undefined, '/projects/web', 'default');
+    expect(t.queries).toHaveLength(helpers + 1);
+    t.manager.respond(t.permissions[0]!.requestId, { behavior: 'allow' });
+    await until(() => second.pluginReloads === 1);
+    t.manager.closeAll();
+  });
+
+  it('reloads a running session\'s plugins when the Tools list asks to', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Hi' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const query = t.queries.at(-1)!;
+    await t.manager.capabilities(id, '/work/app', true, 'default');
+    expect(query.pluginReloads).toBe(0);
+    const caps = await t.manager.capabilities(id, '/work/app', true, 'default', true);
+    expect(query.pluginReloads).toBe(1);
+    expect(caps.plugins.map((p) => p.name)).toEqual(['linear']);
+    t.manager.closeAll();
+  });
+
   it('replaces the command list when Claude Code reports a change', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Hi' });
@@ -1318,6 +1446,37 @@ describe('HostManager', () => {
     await until(() => lastState(t.infos, id) === 'idle');
     t.queries[0]!.out.push({ type: 'system', subtype: 'status', status: null, permissionMode: 'acceptEdits', session_id: id });
     await until(() => t.infos.at(-1)?.permissionMode === 'acceptEdits');
+    t.manager.closeAll();
+  });
+
+  it('shows a session as compacting from Claude Code\'s status until the compact ends', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    const out = t.queries[0]!.out;
+    const status = (value: string | null) => out.push({ type: 'system', subtype: 'status', status: value, session_id: id });
+    expect(t.infos.at(-1)!.compacting).not.toBe(true);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    status(null);
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    // The boundary, a result and going idle each end it when no status did.
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 1 }, session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
+
+    status('compacting');
+    await until(() => t.infos.at(-1)?.compacting === true);
+    out.push({ type: 'system', subtype: 'session_state_changed', state: 'idle', session_id: id });
+    await until(() => t.infos.at(-1)?.compacting === false);
     t.manager.closeAll();
   });
 

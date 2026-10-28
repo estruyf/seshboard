@@ -6,6 +6,7 @@ import {
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
+  REMOTE_LEGACY_APP_URLS,
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
@@ -59,7 +60,7 @@ import {
   withRunStub,
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
@@ -100,7 +101,7 @@ export interface RemoteProject {
   root: string;
   name: string;
   exists: boolean;
-  /** Added to Switchboard by hand; folders that only have Claude Code sessions are not offered to a phone. */
+  /** Added to Seshboard by hand; folders that only have Claude Code sessions are not offered to a phone. */
   added: boolean;
   /** Position in your project list (null: after the ordered ones, by name). */
   order: number | null;
@@ -158,7 +159,10 @@ export interface RemoteHubOptions {
   computerName?: () => string;
   /** The remote app (`REMOTE_APP_URL`; a development build can point at its own). */
   appUrl?: string;
-  /** Also accept the preview's remote app (`REMOTE_PREVIEW_APP_URL`): development and beta builds. */
+  /**
+   * Also accept the preview's remote app (`REMOTE_PREVIEW_APP_URL`): development and beta builds, and a release whose
+   * update channel is Beta. Changes with `setPreviewApp`.
+   */
   previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
@@ -210,6 +214,8 @@ export interface RemoteHubOptions {
   models(): ModelOption[];
   /** Settings › Conversation › Auto model: whether New session offers Auto, and the models it may pick. */
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
+  /** Settings › General › Global permission mode: what a session starts in where its profile and project set none. */
+  globalPermissionMode(): PermissionMode;
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   /**
@@ -251,11 +257,19 @@ export interface RemoteHubOptions {
   catchUpWaitMs?: number;
 }
 
-/** The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`. */
+/**
+ * The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`, each with the
+ * address it had before seshboard.app (`REMOTE_LEGACY_APP_URLS`), so phones paired there keep working.
+ */
 export function remoteAppOrigins(appUrl: string, previewApp: boolean): string[] {
-  const origins = [new URL(appUrl).origin];
-  const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-  if (previewApp && !origins.includes(preview)) origins.push(preview);
+  const urls = [appUrl];
+  if (previewApp) urls.push(REMOTE_PREVIEW_APP_URL);
+  const origins: string[] = [];
+  for (const url of urls) {
+    for (const origin of [new URL(url).origin, ...(REMOTE_LEGACY_APP_URLS[url] ? [new URL(REMOTE_LEGACY_APP_URLS[url]).origin] : [])]) {
+      if (!origins.includes(origin)) origins.push(origin);
+    }
+  }
   return origins;
 }
 
@@ -278,6 +292,8 @@ export class RemoteHub {
   private settings: RemoteSettings;
   private problem: RemoteStatus['problem'] = null;
   private readonly appUrl: string;
+  /** Whether the preview's remote app is let in (`previewApp`, then `setPreviewApp`). */
+  private previewApp: boolean;
   /** The engine's public address while the tunnel runs. */
   private address: string | null = null;
   private tunnelState: RemoteStatus['tunnel'] = { state: 'off', message: null };
@@ -317,6 +333,7 @@ export class RemoteHub {
     const theme = RemoteTheme.safeParse(options.appState.get(THEME_KEY));
     this.theme = theme.success ? theme.data : null;
     this.appUrl = options.appUrl ?? REMOTE_APP_URL;
+    this.previewApp = options.previewApp ?? false;
     this.server = new RemoteServer({
       // The server only starts once there is one (see `apply`).
       identity: () => this.identity!,
@@ -325,8 +342,8 @@ export class RemoteHub {
       appVersion: options.appVersion,
       ...(options.computerName ? { computerName: options.computerName } : {}),
       appIcon: () => this.appIcon,
-      // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
-      origins: [...remoteAppOrigins(this.appUrl, options.previewApp ?? false), REMOTE_DESKTOP_ORIGIN],
+      // Seshboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
+      origins: () => [...remoteAppOrigins(this.appUrl, this.previewApp), REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
       log: options.log,
@@ -449,6 +466,16 @@ export class RemoteHub {
     if (this.server.listening) this.server.each((rpc) => rpc.emit('app.icon', { key }));
   }
 
+  /**
+   * The update channel changed: Beta lets in the preview's remote app too, Stable only the website's. Phones on the
+   * preview are closed when it stops being let in, rather than at their next reconnect.
+   */
+  setPreviewApp(enabled: boolean): void {
+    if (enabled === this.previewApp) return;
+    this.previewApp = enabled;
+    if (!enabled && this.server.listening) this.server.closeRefused();
+  }
+
   /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
   limitsChanged(): void {
     for (const [phone, watch] of this.watches) phone.emit('limits.changed', { sessionId: watch.sessionId, limit: this.options.limit(watch.sessionId) });
@@ -534,7 +561,7 @@ export class RemoteHub {
     if (!this.identity) {
       const secret = await this.options.identity().catch(() => null);
       if (!secret) {
-        this.problem = { kind: 'failed', message: "Switchboard can't keep Remote's key in this computer's keychain." };
+        this.problem = { kind: 'failed', message: "Seshboard can't keep Remote's key in this computer's keychain." };
         return this.statusChanged();
       }
       this.identity = keyPairFromSecret(secret);
@@ -558,7 +585,7 @@ export class RemoteHub {
       return this.statusChanged();
     }
     if (tool === 'custom') {
-      // Your own tunnel or proxy: Switchboard only needs to know the address it forwards from.
+      // Your own tunnel or proxy: Seshboard only needs to know the address it forwards from.
       this.address = customUrl;
       this.tunnelState = customUrl ? { state: 'running', message: null } : { state: 'failed', message: 'Add the address that forwards to Remote.' };
       return this.statusChanged();
@@ -753,7 +780,7 @@ export class RemoteHub {
    * remote branch, or a name that isn't one.
    */
   private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
-    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId));
+    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode());
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
@@ -989,17 +1016,18 @@ export class RemoteHub {
       },
       'options.get': () => {
         const { profiles, defaultId } = this.options.profiles();
+        const globalMode = this.options.globalPermissionMode();
         return {
           models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
           efforts: [...Effort.options],
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
-          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults) })),
+          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode) })),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
-            defaults: remoteDefaults(p.defaults),
+            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null),
           })),
         };
       },

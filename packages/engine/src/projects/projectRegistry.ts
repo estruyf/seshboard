@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { isLocalAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@switchboard/protocol';
+import { isLocalAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@seshboard/protocol';
 import { detectIconPath, iconDataUrl, MAX_ICON_BYTES } from './projectIcons.ts';
 
-/** A custom icon as stored: a file is Switchboard's own copy, in the icon folder. */
+/** A custom icon as stored: a file is Seshboard's own copy, in the icon folder. */
 export type StoredIcon = { kind: 'emoji'; value: string } | { kind: 'file'; path: string } | { kind: 'none' };
 
 interface Row {
@@ -42,7 +42,8 @@ export function parseDefaults(input: unknown): ProjectDefaults {
   const out = { ...NO_DEFAULTS } as Record<string, unknown>;
   for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
     const parsed = shape[key].safeParse(raw[key]);
-    if (parsed.success) out[key] = parsed.data;
+    // An optional field that isn't set stays out, so a project without defaults still has none.
+    if (parsed.success && parsed.data !== undefined) out[key] = parsed.data;
   }
   return out as ProjectDefaults;
 }

@@ -1,7 +1,7 @@
 import { themeCss } from './themeCss.ts';
 import type { ResolvedTheme } from './themeResolve.ts';
 
-const STYLE_ID = 'switchboard-theme';
+const STYLE_ID = 'seshboard-theme';
 
 /**
  * Puts a theme's tokens on the page: one generated <style> element, last in <head>, so it wins over

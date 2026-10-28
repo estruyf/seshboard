@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
 import { Attention } from './attention.ts';
 
 const host = (state: SessionHostInfo['state'], extra: Partial<SessionHostInfo> = {}): SessionHostInfo => ({
@@ -117,7 +117,7 @@ describe('Attention', () => {
     expect(a.badge()).toBe(0);
   });
 
-  it('leaves terminal sessions alone when only Switchboard sessions are shown', () => {
+  it('leaves terminal sessions alone when only Seshboard sessions are shown', () => {
     let external = false;
     const a = new Attention({ external: () => external });
     expect(a.onLive([live('cli', 'needs-you')])).toEqual([]);

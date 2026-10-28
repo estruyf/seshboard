@@ -16,7 +16,7 @@ const HOME_ROWS = 3;
  * with its last window (`window-all-closed` in main), so a window must be open.
  */
 export const schedulesRunLine = (platform = currentPlatform()) =>
-  platform === 'darwin' ? 'Schedules run while Switchboard is running, also with its windows closed.' : 'Schedules run while a Switchboard window is open.';
+  platform === 'darwin' ? 'Schedules run while Seshboard is running, also with its windows closed.' : 'Schedules run while a Seshboard window is open.';
 
 
 /**

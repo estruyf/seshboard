@@ -11,7 +11,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Personal memory is one folder of memory that loads in every project, with any Claude profile: who you are, how you like to work. Claude Code has no such folder of its own, so Switchboard adds one line to your profiles' `CLAUDE.md` that loads it.
+Personal memory is one folder of memory that loads in every project, with any Claude profile: who you are, how you like to work. Claude Code has no such folder of its own, so Seshboard adds one line to your profiles' `CLAUDE.md` that loads it.
 
 <Screenshot name="settings-memory" alt="Settings on Memory: Import from Claude export, Paste from Claude app and Copy for Claude app, the Personal memory card with its folder, MEMORY.md meter and Remove from Claude Code, the Personal memories list and every project with its memory count" eager />
 
@@ -22,12 +22,12 @@ Personal memory is one folder of memory that loads in every project, with any Cl
 
 ## The folder
 
-Personal memory lives in Switchboard's app data until you choose another folder:
+Personal memory lives in Seshboard's app data until you choose another folder:
 
 <OnlyOn os="mac">
 
 ```
-~/Library/Application Support/Switchboard/memory
+~/Library/Application Support/Seshboard/memory
 ```
 
 </OnlyOn>
@@ -35,7 +35,7 @@ Personal memory lives in Switchboard's app data until you choose another folder:
 <OnlyOn os="windows">
 
 ```
-%APPDATA%\Switchboard\memory
+%APPDATA%\Seshboard\memory
 ```
 
 </OnlyOn>
@@ -59,13 +59,13 @@ Choose a folder in iCloud Drive, Dropbox, Google Drive, OneDrive or a git reposi
 
 </Steps>
 
-Switchboard adds this block to the end of each profile's `CLAUDE.md`, after one blank line:
+Seshboard adds this block to the end of each profile's `CLAUDE.md`, after one blank line:
 
 <OnlyOn os="mac">
 
 ```markdown
 <!-- switchboard:memory start -->
-@~/Library/Application\ Support/Switchboard/memory/MEMORY.md
+@~/Library/Application\ Support/Seshboard/memory/MEMORY.md
 <!-- switchboard:memory end -->
 ```
 
@@ -75,7 +75,7 @@ Switchboard adds this block to the end of each profile's `CLAUDE.md`, after one 
 
 ```markdown
 <!-- switchboard:memory start -->
-@~/AppData/Roaming/Switchboard/memory/MEMORY.md
+@~/AppData/Roaming/Seshboard/memory/MEMORY.md
 <!-- switchboard:memory end -->
 ```
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from '@switchboard/protocol/client';
+import type { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from '@seshboard/protocol/client';
 import { engineConnection } from '../engine/connection.ts';
 import { runOnce } from '../lib/inFlight.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';

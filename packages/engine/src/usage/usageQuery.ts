@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { costOf, tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, type UsageLimit, UsagePeriod, UsageRow, type WindowCost } from '@switchboard/protocol';
+import { costOf, tierOf, type TokenCounts, UsageBreakdown, UsageBucket, UsageGroup, type UsageLimit, UsagePeriod, UsageRow, type WindowCost } from '@seshboard/protocol';
 import { hourOf } from './transcriptUsage.ts';
 import { measuredDeltas, sharesOf, weightOf, type PlanSample } from './shares.ts';
 
@@ -303,7 +303,7 @@ const windowLength = (kind: string) => WINDOW_MS[kind] ?? (kind.startsWith('week
 /**
  * What each running plan window's tokens would cost at API list prices: every model's tokens since the window began
  * (its reset minus its length; totals are per hour, so the first hour counts whole, as in the Usage view's This
- * window), the helper calls Switchboard made included. A scoped window ("Opus") counts only that model's tokens.
+ * window), the helper calls Seshboard made included. A scoped window ("Opus") counts only that model's tokens.
  * Windows without a reset ahead are left out.
  */
 export function windowCosts(db: DatabaseSync, scope: string, limits: readonly UsageLimit[], now: number): WindowCost[] {

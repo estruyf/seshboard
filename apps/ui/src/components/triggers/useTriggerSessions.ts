@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { runIsBusy, type TriggerEvent } from '@switchboard/protocol/client';
+import { runIsBusy, type TriggerEvent } from '@seshboard/protocol/client';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useLater } from '../../state/laterStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';

@@ -29,7 +29,7 @@ export const ClaudeUpdateState = z.object({
   method: ClaudeInstallMethod,
   /** The command that updates this install, to run here or (when `canUpdate` is false) in a terminal. */
   command: z.string().nullable(),
-  /** Switchboard can run `command` itself. */
+  /** Seshboard can run `command` itself. */
   canUpdate: z.boolean(),
   /** Why Update isn't offered (a custom binary path, an unknown install), shown with the command. */
   manualReason: z.string().nullable(),

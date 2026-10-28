@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ContextItem, ImageAttachment, SavedPrompt } from '@switchboard/protocol/client';
+import type { ContextItem, ImageAttachment, SavedPrompt } from '@seshboard/protocol/client';
 import { addChips, contextFromPrompt } from '../components/composer/contextItems.ts';
 import type { FillState } from '../components/savedPrompts/fillModel.ts';
 import { DRAFT_SETTLE_MS, isCountingDraft, nextDraft, settleFirstPrompts, type Draft, type DraftForm, type FirstPrompt, type SessionsSeen } from './drafts.ts';

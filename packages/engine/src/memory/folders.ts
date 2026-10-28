@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync, readFileSync, statSync, type Dirent, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { memoryMeta, rulePaths, splitFrontmatter, type InstructionFile, type MemoryFile } from '@switchboard/protocol';
+import { memoryMeta, rulePaths, splitFrontmatter, type InstructionFile, type MemoryFile } from '@seshboard/protocol';
 import { git } from '../git/gitChanges.ts';
 import { conflictBase } from './personal.ts';
 

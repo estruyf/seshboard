@@ -21,3 +21,6 @@ export function PenBadge({ size = 16, className = '', ...rest }: { size?: number
 
 /** The + button's tooltip while a New session prompt is unsent. */
 export const newSessionDraftTooltip = (project: string | null) => (project ? `New session · unsent prompt in ${project}` : 'New session · unsent prompt');
+
+/** The same, for a prompt typed for another computer. */
+export const remoteNewSessionDraftTooltip = (computer: string) => `New session · unsent prompt on ${computer}`;

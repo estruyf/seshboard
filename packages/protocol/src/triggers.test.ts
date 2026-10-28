@@ -33,7 +33,7 @@ const issue = (number: number, extra: Partial<IssueItem> = {}): IssueItem => ({
   number,
   title: `Issue ${number}`,
   url: `https://github.com/o/r/issues/${number}`,
-  labels: [{ name: 'switchboard' }],
+  labels: [{ name: 'seshboard' }],
   assignees: [],
   author: { login: 'estruyf' },
   authorAssociation: 'OWNER',
@@ -56,7 +56,7 @@ const run = (id: number, workflow: string, sha: string, extra: Partial<CiRunItem
 
 describe('issueQuery', () => {
   it('asks for open issues with the label only', () => {
-    expect(issueQuery(trigger({ kind: 'issues', label: 'switchboard' }))).toEqual(['issue', 'list', '--state', 'open', '--label', 'switchboard', '--json', 'number,title,url,labels,assignees,author,body,updatedAt', '--limit', '100']);
+    expect(issueQuery(trigger({ kind: 'issues', label: 'seshboard' }))).toEqual(['issue', 'list', '--state', 'open', '--label', 'seshboard', '--json', 'number,title,url,labels,assignees,author,body,updatedAt', '--limit', '100']);
   });
 
   it('asks for issues assigned to the gh account only', () => {
@@ -67,13 +67,13 @@ describe('issueQuery', () => {
   });
 
   it('asks for both', () => {
-    const args = issueQuery(trigger({ kind: 'issues', label: 'switchboard', assignee: 'a-colleague' }));
-    expect(args.slice(4, 8)).toEqual(['--label', 'switchboard', '--assignee', 'a-colleague']);
+    const args = issueQuery(trigger({ kind: 'issues', label: 'seshboard', assignee: 'a-colleague' }));
+    expect(args.slice(4, 8)).toEqual(['--label', 'seshboard', '--assignee', 'a-colleague']);
   });
 
   it('refuses an issues filter with neither part', () => {
     expect(TriggerSource.safeParse({ kind: 'issues', label: null, assignee: null }).success).toBe(false);
-    expect(TriggerSource.safeParse({ kind: 'issues', label: 'switchboard' }).success).toBe(true);
+    expect(TriggerSource.safeParse({ kind: 'issues', label: 'seshboard' }).success).toBe(true);
   });
 });
 
@@ -85,7 +85,7 @@ describe('eventKey', () => {
 });
 
 describe('newEvents', () => {
-  const labelled = trigger({ kind: 'issues', label: 'switchboard' });
+  const labelled = trigger({ kind: 'issues', label: 'seshboard' });
 
   it('finds what is new since the last answer, oldest first', () => {
     const seen = seedSeen(labelled, [issue(1)]);
@@ -102,7 +102,7 @@ describe('newEvents', () => {
 
   it('fills the fields an issue has', () => {
     const [event] = newEvents(labelled, [issue(212, { title: 'Pinned sessions lose their order', assignees: [{ login: 'estruyf' }] })], {}).events;
-    expect(event).toMatchObject({ kind: 'issue', title: 'Pinned sessions lose their order', fields: { number: '212', author: 'estruyf', labels: 'switchboard', assignees: 'estruyf' }, context: 'The text' });
+    expect(event).toMatchObject({ kind: 'issue', title: 'Pinned sessions lose their order', fields: { number: '212', author: 'estruyf', labels: 'seshboard', assignees: 'estruyf' }, context: 'The text' });
     expect(triggerSessionTitle(event!)).toBe('#212 Pinned sessions lose their order');
   });
 
@@ -118,16 +118,16 @@ describe('newEvents', () => {
   });
 
   it('takes an outsider when collaborators only is off', () => {
-    const anyone = trigger({ kind: 'issues', label: 'switchboard', collaboratorsOnly: false });
+    const anyone = trigger({ kind: 'issues', label: 'seshboard', collaboratorsOnly: false });
     expect(newEvents(anyone, [issue(2, { authorAssociation: 'NONE' })], {}).events).toHaveLength(1);
   });
 
   it('skips an issue that already has a state label, and takes it once the label is gone', () => {
     const mine = trigger({ kind: 'issues', assignee: '@me' }, { stateLabels: { on: true } });
-    const elsewhere = issue(5, { labels: [{ name: 'switchboard: working' }] });
+    const elsewhere = issue(5, { labels: [{ name: 'seshboard: working' }] });
     const first = newEvents(mine, [elsewhere], {});
     expect(first.events).toEqual([]);
-    expect(first.skipped.map((e) => e.reason)).toEqual(['already has the switchboard: working label']);
+    expect(first.skipped.map((e) => e.reason)).toEqual(['already has the seshboard: working label']);
     expect(first.seen).toEqual({ '#5': 'held' });
     // Still labelled: no second skip.
     expect(newEvents(mine, [elsewhere], first.seen).skipped).toEqual([]);
@@ -135,10 +135,10 @@ describe('newEvents', () => {
     expect(newEvents(mine, [issue(5, { labels: [] })], first.seen).events.map((e) => e.key)).toEqual(['#5']);
   });
 
-  it("doesn't start an issue whose state label Switchboard took off, while it stays in the answer", () => {
+  it("doesn't start an issue whose state label Seshboard took off, while it stays in the answer", () => {
     const mine = trigger({ kind: 'issues', assignee: '@me' }, { stateLabels: { on: true } });
     // A read from before still shows the label: it stays released.
-    const stale = newEvents(mine, [issue(5, { labels: [{ name: 'switchboard: working' }] })], { '#5': 'released' });
+    const stale = newEvents(mine, [issue(5, { labels: [{ name: 'seshboard: working' }] })], { '#5': 'released' });
     expect(stale).toMatchObject({ events: [], skipped: [], seen: { '#5': 'released' } });
     const off = newEvents(mine, [issue(5, { labels: [] })], stale.seen);
     expect(off).toMatchObject({ events: [], skipped: [], seen: { '#5': 'match' } });
@@ -147,24 +147,24 @@ describe('newEvents', () => {
   });
 
   it('starts again when the trigger label is added to an issue whose work ended', () => {
-    const withLabels = trigger({ kind: 'issues', label: 'switchboard' }, { stateLabels: { on: true } });
+    const withLabels = trigger({ kind: 'issues', label: 'seshboard' }, { stateLabels: { on: true } });
     // Picked up: the label came off, so it left the answer.
     const seen = newEvents(withLabels, [], { '#7': 'match' }).seen;
     expect(seen).toEqual({});
-    const again = newEvents(withLabels, [issue(7, { labels: [{ name: 'switchboard' }, { name: 'switchboard: failed' }] })], seen);
+    const again = newEvents(withLabels, [issue(7, { labels: [{ name: 'seshboard' }, { name: 'seshboard: failed' }] })], seen);
     expect(again.events.map((e) => e.key)).toEqual(['#7']);
     // Labelled again while another computer still works on it: held.
-    expect(newEvents(withLabels, [issue(8, { labels: [{ name: 'switchboard' }, { name: 'switchboard: needs input' }] })], {}).events).toEqual([]);
+    expect(newEvents(withLabels, [issue(8, { labels: [{ name: 'seshboard' }, { name: 'seshboard: needs input' }] })], {}).events).toEqual([]);
   });
 
   it('uses renamed state labels', () => {
     const renamed = trigger({ kind: 'issues', label: 'bot' }, { stateLabels: { on: true, working: 'bot: busy' } });
     expect(blockingStateLabel(renamed, { labels: [{ name: 'Bot: Busy' }] })).toBe('bot: busy');
-    expect(blockingStateLabel(renamed, { labels: [{ name: 'switchboard: working' }] })).toBeNull();
+    expect(blockingStateLabel(renamed, { labels: [{ name: 'seshboard: working' }] })).toBeNull();
   });
 
   it('skips an issue that has an assignee when it would assign you', () => {
-    const assigning = trigger({ kind: 'issues', label: 'switchboard' }, { assignOnPickUp: true });
+    const assigning = trigger({ kind: 'issues', label: 'seshboard' }, { assignOnPickUp: true });
     const found = newEvents(assigning, [issue(1, { assignees: [{ login: 'mara-k' }] }), issue(2)], {});
     expect(found.events.map((e) => e.key)).toEqual(['#2']);
     expect(found.skipped[0]?.reason).toBe('already assigned to @mara-k');
@@ -172,14 +172,14 @@ describe('newEvents', () => {
 
   it("doesn't skip assigned issues when the filter has an assignee", () => {
     // Every issue of an assignee filter has one: Assign to me only applies to a label alone.
-    for (const source of [{ kind: 'issues', assignee: '@me' }, { kind: 'issues', label: 'switchboard', assignee: '@me' }]) {
+    for (const source of [{ kind: 'issues', assignee: '@me' }, { kind: 'issues', label: 'seshboard', assignee: '@me' }]) {
       const assigning = trigger(source, { assignOnPickUp: true });
       expect(assignsOnPickUp(assigning)).toBe(false);
       const found = newEvents(assigning, [issue(1, { assignees: [{ login: 'estruyf' }] })], {});
       expect(found.events.map((e) => e.key)).toEqual(['#1']);
       expect(found.skipped).toEqual([]);
     }
-    expect(assignsOnPickUp(trigger({ kind: 'issues', label: 'switchboard' }, { assignOnPickUp: true }))).toBe(true);
+    expect(assignsOnPickUp(trigger({ kind: 'issues', label: 'seshboard' }, { assignOnPickUp: true }))).toBe(true);
   });
 
   it('makes one event of a failed workflow on a commit, and a new one for a new commit', () => {
@@ -214,7 +214,7 @@ describe('newEvents', () => {
 
 describe('slots', () => {
   const ev = (id: string, createdAt: number, kind: 'ci' | 'issue' = 'issue', workflow = ''): SlotEvent => ({ id, kind, createdAt, fields: kind === 'ci' ? { workflow, branch: 'main' } : {} });
-  const worktree = trigger({ kind: 'issues', label: 'switchboard' }, { maxAtOnce: 2, maxWaiting: 2 });
+  const worktree = trigger({ kind: 'issues', label: 'seshboard' }, { maxAtOnce: 2, maxWaiting: 2 });
 
   it('starts the oldest in free slots, lets the next wait, and skips past maxWaiting', () => {
     const result = slots(worktree, 1, [ev('d', 4), ev('a', 1), ev('c', 3), ev('b', 2)]);
@@ -235,14 +235,14 @@ describe('slots', () => {
   });
 
   it('allows one at a time in the project folder', () => {
-    const folder = trigger({ kind: 'issues', label: 'switchboard' }, { maxAtOnce: 5, draft: { workspace: 'current' } });
+    const folder = trigger({ kind: 'issues', label: 'seshboard' }, { maxAtOnce: 5, draft: { workspace: 'current' } });
     expect(effectiveMaxAtOnce(folder)).toBe(1);
     expect(slots(folder, 0, [ev('a', 1), ev('b', 2)]).start.map((e) => e.id)).toEqual(['a']);
     expect(slots(folder, 1, [ev('a', 1)]).start).toEqual([]);
   });
 
   it('counts pipeline runs, each in a worktree of its own, whatever the draft says', () => {
-    const pipeline = trigger({ kind: 'issues', label: 'switchboard' }, { maxAtOnce: 2, maxWaiting: 1, start: { kind: 'pipeline', pipelineId: 'p1' }, draft: { workspace: 'current' } });
+    const pipeline = trigger({ kind: 'issues', label: 'seshboard' }, { maxAtOnce: 2, maxWaiting: 1, start: { kind: 'pipeline', pipelineId: 'p1' }, draft: { workspace: 'current' } });
     expect(effectiveMaxAtOnce(pipeline)).toBe(2);
     // One run busy (its steps don't count apart): one more starts, the next waits, the last is skipped.
     const result = slots(pipeline, 1, [ev('a', 1), ev('b', 2), ev('c', 3)]);
@@ -301,11 +301,11 @@ describe('state labels', () => {
   });
 
   it('moves an issue in one edit, taking the trigger label off at pick-up', () => {
-    expect(stateLabelEdit(212, 'switchboard: working', null, { removeTrigger: 'switchboard' })).toEqual(['issue', 'edit', '212', '--add-label', 'switchboard: working', '--remove-label', 'switchboard']);
-    expect(stateLabelEdit(212, 'switchboard: pr open', 'switchboard: working')).toEqual(['issue', 'edit', '212', '--add-label', 'switchboard: pr open', '--remove-label', 'switchboard: working']);
-    expect(stateLabelEdit(212, 'switchboard: working', 'switchboard: working')).toBeNull();
+    expect(stateLabelEdit(212, 'seshboard: working', null, { removeTrigger: 'seshboard' })).toEqual(['issue', 'edit', '212', '--add-label', 'seshboard: working', '--remove-label', 'seshboard']);
+    expect(stateLabelEdit(212, 'seshboard: pr open', 'seshboard: working')).toEqual(['issue', 'edit', '212', '--add-label', 'seshboard: pr open', '--remove-label', 'seshboard: working']);
+    expect(stateLabelEdit(212, 'seshboard: working', 'seshboard: working')).toBeNull();
     expect(stateLabelEdit(212, null, null, { assign: true })).toEqual(['issue', 'edit', '212', '--add-assignee', '@me']);
-    expect(stateLabelEdit(212, null, 'switchboard: working')).toEqual(['issue', 'edit', '212', '--remove-label', 'switchboard: working']);
+    expect(stateLabelEdit(212, null, 'seshboard: working')).toEqual(['issue', 'edit', '212', '--remove-label', 'seshboard: working']);
   });
 });
 
@@ -338,7 +338,7 @@ describe('triggerProblem', () => {
 
   it('wants at least one part of the issues filter', () => {
     expect(triggerProblem({ ...base, source: { kind: 'issues', label: ' ', assignee: null, collaboratorsOnly: true } })).toBe('Pick a label, an assignee, or both.');
-    expect(triggerProblem({ ...base, source: { kind: 'issues', label: 'switchboard', assignee: null, collaboratorsOnly: true } })).toBeNull();
+    expect(triggerProblem({ ...base, source: { kind: 'issues', label: 'seshboard', assignee: null, collaboratorsOnly: true } })).toBeNull();
   });
 
   it('never bypasses permissions', () => {

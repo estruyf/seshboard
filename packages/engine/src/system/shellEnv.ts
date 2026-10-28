@@ -9,7 +9,7 @@ export interface ShellEnv {
   durationMs: number;
 }
 
-const MARKER = '__SWITCHBOARD_ENV__';
+const MARKER = '__SESHBOARD_ENV__';
 
 /** Extracts NUL-separated `env -0` output from between two markers (shell rc files may print noise). */
 export function parseEnvOutput(output: string): Record<string, string> | null {

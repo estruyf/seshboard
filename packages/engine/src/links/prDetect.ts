@@ -1,4 +1,4 @@
-import type { TranscriptMessage } from '@switchboard/protocol';
+import type { TranscriptMessage } from '@seshboard/protocol';
 import { parsePrUrl } from '../git/pullRequest.ts';
 
 /** A pull request a session opened: `gh pr create` ran in it and printed the link. */

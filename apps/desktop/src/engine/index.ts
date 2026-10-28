@@ -3,8 +3,9 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { createEngine, type DemoUsage, type TrashScope } from '@switchboard/engine';
-import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@switchboard/protocol/bridge';
+import { basename, dirname, join } from 'node:path';
+import { createEngine, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
 function argValue(name: string): string | undefined {
@@ -40,14 +41,14 @@ const remoteKey = (key: 'identity' | 'device') => () =>
     process.parentPort.postMessage({ type: 'remote-identity', id, key });
   });
 
-/** The website's screenshots give the demo logins plan numbers (SWITCHBOARD_DEMO_USAGE, a JSON file). */
+/** The website's screenshots give the demo logins plan numbers (SESHBOARD_DEMO_USAGE, a JSON file). */
 function demoUsage(): DemoUsage | undefined {
-  const file = process.env.SWITCHBOARD_DEMO_USAGE;
+  const file = process.env.SESHBOARD_DEMO_USAGE;
   if (!file) return undefined;
   try {
     return JSON.parse(readFileSync(file, 'utf8')) as DemoUsage;
   } catch (error) {
-    console.error(`[engine] SWITCHBOARD_DEMO_USAGE unreadable: ${(error as Error).message}`);
+    console.error(`[engine] SESHBOARD_DEMO_USAGE unreadable: ${(error as Error).message}`);
     return undefined;
   }
 }
@@ -55,35 +56,52 @@ function demoUsage(): DemoUsage | undefined {
 const engine = createEngine({
   dataDir,
   trash,
-  // The VS Code companion connects over a socket; SWITCHBOARD_NO_COMPANION=1 leaves it closed.
-  ...(process.env.SWITCHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
-  // Remote, for a paired phone. SWITCHBOARD_REMOTE_APP_URL points it at a development build of the remote app
-  // (`npm run dev:remote`); SWITCHBOARD_NO_REMOTE=1 leaves it out. --remote-preview (development and beta builds)
-  // also lets in the website preview's remote app.
-  ...(process.env.SWITCHBOARD_NO_REMOTE === '1'
+  // The VS Code companion connects over a socket; SESHBOARD_NO_COMPANION=1 leaves it closed.
+  // Until 1.3.0 it also writes engine.json where companions up to 0.2.0 look: the data folder's name before the rename.
+  ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion, ...(basename(dataDir) === 'Seshboard' ? { legacyDataDir: join(dirname(dataDir), 'Switchboard') } : {}) } }),
+  // Remote, for a paired phone. SESHBOARD_REMOTE_APP_URL points it at a development build of the remote app
+  // (`npm run dev:remote`); SESHBOARD_NO_REMOTE=1 leaves it out. Whether the website preview's remote app is let
+  // in too comes from main (`remotePreview`), as it follows the update channel.
+  ...(process.env.SESHBOARD_NO_REMOTE === '1'
     ? {}
     : {
         remote: {
           appVersion,
           identity: remoteKey('identity'),
           deviceKey: remoteKey('device'),
-          previewApp: process.argv.includes('--remote-preview'),
-          ...(process.env.SWITCHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SWITCHBOARD_REMOTE_APP_URL } : {}),
+          ...(process.env.SESHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SESHBOARD_REMOTE_APP_URL } : {}),
         },
       }),
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
-  claudeUpdates: { allowUpdate: process.env.SWITCHBOARD_NO_CLAUDE_UPDATE !== '1' },
+  claudeUpdates: { allowUpdate: process.env.SESHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),
   demoUsage: demoUsage(),
   // The smoke test and the screenshots: Auto model picks without calling a model.
-  stubRouter: process.env.SWITCHBOARD_STUB_ROUTER === '1',
-  stubSideQuestions: process.env.SWITCHBOARD_STUB_BTW === '1',
-  stubCatchUp: process.env.SWITCHBOARD_STUB_CATCHUP === '1',
+  stubRouter: process.env.SESHBOARD_STUB_ROUTER === '1',
+  stubSideQuestions: process.env.SESHBOARD_STUB_BTW === '1',
+  stubCatchUp: process.env.SESHBOARD_STUB_CATCHUP === '1',
   // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
-  stubQueueStarts: process.env.SWITCHBOARD_STUB_QUEUE === '1',
+  stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
-  ...(process.env.SWITCHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SWITCHBOARD_CLONE_SOURCE } : {}),
+  ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });
+
+// Main stops the engine with SIGTERM (utilityProcess.kill() when the app quits, restarts or installs an update). Left to
+// Node's default, the process ends on the spot: the hosts never close, and neither does the SDK's own `exit` hook that
+// stops its Claude Code processes. A session with a background task then kept running with nothing to talk to, holding
+// the session open "elsewhere". Closing the engine ends the hosts' turns as `quit`, and the exit stops the processes.
+let shuttingDown = false;
+const shutDown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    engine.close();
+  } catch (error) {
+    console.error(`[engine] closing on shutdown failed: ${(error as Error).message}`);
+  }
+  process.exit(0);
+};
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, shutDown);
 
 // One misbehaving session must never take the whole engine (and every other session) down.
 process.on('uncaughtException', (error) => engine.log('error', `Uncaught: ${error.stack ?? error.message}`));
@@ -105,9 +123,9 @@ process.parentPort.on('message', (event) => {
   }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown };
+    const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };
     if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}) });
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}) });
     }
     return;
   }
@@ -122,7 +140,7 @@ process.parentPort.on('message', (event) => {
     engine.wake();
     return;
   }
-  // The smoke run's schedules step: moves the schedules' clock on (with SWITCHBOARD_STUB_QUEUE only).
+  // The smoke run's schedules step: moves the schedules' clock on (with SESHBOARD_STUB_QUEUE only).
   if (data?.type === 'smokeScheduleClock') {
     const { ms } = data as { ms?: unknown };
     if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) engine.advanceScheduleClock(ms);
@@ -148,9 +166,20 @@ process.parentPort.on('message', (event) => {
     engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
     return;
   }
+  // The preview's remote app: development and beta builds, or the Beta update channel (Settings › About).
+  if (data?.type === 'remotePreview') {
+    engine.setRemotePreview((data as { enabled?: unknown }).enabled === true);
+    return;
+  }
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
+    return;
+  }
+  // Settings › General › Global permission mode, for sessions started from a phone.
+  if (data?.type === 'permissionMode') {
+    const mode = (data as { mode?: unknown }).mode;
+    engine.setGlobalPermissionMode(mode === 'acceptEdits' || mode === 'plan' || mode === 'auto' ? mode : 'default');
     return;
   }
   // Settings › Conversation › Resume after a usage limit resets.

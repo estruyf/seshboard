@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { contrastOf, parseColor, toHex, toOklch } from '@switchboard/protocol/color';
-import { parseThemeFile, THEME_MODES, THEME_TOKENS, type ThemeFile, type ThemeMode, type ThemeSyntax, type ThemeTokens } from '@switchboard/protocol/theme';
+import { contrastOf, parseColor, toHex, toOklch } from '@seshboard/protocol/color';
+import { parseThemeFile, THEME_MODES, THEME_TOKENS, type ThemeFile, type ThemeMode, type ThemeSyntax, type ThemeTokens } from '@seshboard/protocol/theme';
 import styles from '../styles.css?raw';
 import themesDoc from '../../../../docs/themes.md?raw';
 import { BUILT_IN_THEMES } from '../themes/index.ts';

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { SavedPrompt } from '@switchboard/protocol/client';
+import type { SavedPrompt } from '@seshboard/protocol/client';
 import { engineConnection } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 
@@ -13,7 +13,7 @@ export function engineClient() {
 /** One list as the engine gave it: the global prompts, plus a project's own when it has a root. */
 interface PromptList {
   prompts: SavedPrompt[];
-  /** What in the project's .switchboard.json couldn't be read. */
+  /** What in the project's .seshboard.json couldn't be read. */
   errors: string[];
 }
 

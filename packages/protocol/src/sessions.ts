@@ -42,13 +42,13 @@ export const SessionSummary = z.object({
   viewedAt: z.number().nullable(),
   /** Changed since the user last looked at it. */
   unread: z.boolean(),
-  /** Started, forked or continued in Switchboard (the default sidebar shows only these). */
+  /** Started, forked or continued in Seshboard (the default sidebar shows only these). */
   inApp: z.boolean(),
   /** The Claude profile whose config folder holds the transcript (resume and fork use it). */
   profileId: z.string(),
   /**
    * The session (or pipeline run row) it sits under in the sidebar: a pipeline's step under the session it was run
-   * from (#179). Kept in Switchboard's database; Claude Code doesn't know about it.
+   * from (#179). Kept in Seshboard's database; Claude Code doesn't know about it.
    */
   parentId: z.string().nullable().optional(),
 });
@@ -73,12 +73,14 @@ export type ProjectIconChoice = z.infer<typeof ProjectIconChoice>;
 
 /**
  * What a new session in a project starts with. Null fields fall back to the profile's defaults,
- * then to the global ones (the choices last used in the New session view).
+ * then to the global ones (the choices last used in the New session view, and Settings' global permission mode).
  */
 export const ProjectDefaults = z.object({
   model: z.string().max(200).nullable().default(null),
   effort: Effort.nullable().default(null),
   permissionMode: PermissionMode.nullable().default(null),
+  /** With no `permissionMode`: skip the profile's mode and start in the global one (see `inheritedPermissionMode`). */
+  globalPermissionMode: z.boolean().optional(),
   workspace: z.enum(['current', 'worktree']).nullable().default(null),
   /** For a new worktree: branch from origin's default branch (`fresh`), the local HEAD, or a branch of this repository. */
   baseRef: WorktreeBaseSchema.nullable().default(null),
@@ -96,7 +98,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalPermissionMode: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({
@@ -107,7 +109,7 @@ export const ProjectInfo = z.object({
   nameSource: z.enum(['custom', 'folder']),
   icon: ProjectIcon.nullable(),
   iconSource: z.enum(['custom', 'detected']).nullable(),
-  /** Added to Switchboard by hand. Folders that only have Claude Code sessions are listed with `added: false`. */
+  /** Added to Seshboard by hand. Folders that only have Claude Code sessions are listed with `added: false`. */
   added: z.boolean(),
   exists: z.boolean(),
   /** Position in the user's project list (null: after the ordered ones). */
@@ -141,6 +143,11 @@ export const LiveSession = z.object({
   profileId: z.string(),
   /** Descriptions of background tasks still running. Only known for sessions running in this app. */
   background: z.array(z.string()).optional(),
+  /**
+   * A process this app started before it last quit or crashed, still running with nothing to talk to. Sending to the
+   * session stops it and continues here, instead of forking.
+   */
+  leftover: z.boolean().optional(),
 });
 export type LiveSession = z.infer<typeof LiveSession>;
 
@@ -296,7 +303,7 @@ export type TranscriptFinding = z.infer<typeof TranscriptFinding>;
 export const TranscriptDiagnosis = z.object({
   sessionId: z.string(),
   checkedAt: z.number(),
-  /** The file Switchboard's session list knows the session by, if any. */
+  /** The file Seshboard's session list knows the session by, if any. */
   indexedPath: z.string().nullable(),
   profiles: z.array(TranscriptProfileCheck),
   /** Plain-language conclusions, most serious first. */

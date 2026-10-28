@@ -81,7 +81,7 @@ export const UsageRow = z.object({
   tokens: TokenCounts,
   /**
    * What the row's tokens would cost at API list prices, in US dollars, each model at its own price (`costEstimate.ts`).
-   * An estimate, never a charge. Left out by a computer on an older Switchboard.
+   * An estimate, never a charge. Left out by a computer on an older Seshboard.
    */
   cost: z.number().optional(),
   /** The largest context of a single turn: its input, cache read and cache write together. */

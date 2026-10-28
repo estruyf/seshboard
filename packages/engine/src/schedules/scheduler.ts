@@ -1,4 +1,4 @@
-import { nextRuns, oneTimeDone, runsBetween, runTitle, SKIPPED_BY_YOU, type LaterDraft, type Schedule, type ScheduleRunEvent } from '@switchboard/protocol';
+import { nextRuns, oneTimeDone, runsBetween, runTitle, SKIPPED_BY_YOU, type LaterDraft, type Schedule, type ScheduleRunEvent } from '@seshboard/protocol';
 import type { ScheduleStore } from './scheduleStore.ts';
 
 /** Why a run goes to the queue instead of starting: a short reason for the row, and a line for the notification. */
@@ -74,7 +74,7 @@ export class Scheduler {
 
   constructor(private readonly deps: SchedulerDeps) {}
 
-  /** Starts the timer. Runs due while Switchboard was closed are dealt with at once (or after `delayMs`). */
+  /** Starts the timer. Runs due while Seshboard was closed are dealt with at once (or after `delayMs`). */
   start(delayMs = 0): void {
     if (delayMs > 0) this.arm(delayMs);
     else void this.check();
@@ -149,7 +149,7 @@ export class Scheduler {
     let quiet = false;
     for (const { schedule, checkedAt } of this.deps.store.stored()) {
       // A one-time schedule whose run is past History's days: nothing shows it any more.
-      // Only once its run was dealt with (a run due while Switchboard was closed still runs or is recorded first).
+      // Only once its run was dealt with (a run due while Seshboard was closed still runs or is recorded first).
       const oneTimeAt = schedule.rule.kind === 'once' ? (nextRuns(schedule.rule, 0, 1)[0]?.getTime() ?? null) : null;
       if (oneTimeAt !== null && oneTimeDone(schedule.rule, now) && checkedAt >= oneTimeAt && oneTimeAt < now - ONE_TIME_KEEP_MS) {
         this.deps.store.remove(schedule.id);

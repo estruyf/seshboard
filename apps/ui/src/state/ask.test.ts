@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AskThread } from '@switchboard/protocol/client';
+import type { AskThread } from '@seshboard/protocol/client';
 import { answering, closed, currentThread, EMPTY_ASK, itemCount, lastQuestion, newThread, opened, pickedThread, threadRows, withAsked, withEvent, withoutItem, withThreads, type SessionAsk } from './ask.ts';
 
 const thread = (id: string, createdAt: number, questions: string[]): AskThread => ({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WorktreeEntry, WorktreeSize } from '@switchboard/protocol/client';
+import type { WorktreeEntry, WorktreeSize } from '@seshboard/protocol/client';
 import {
   aheadLabel,
   branchChoice,

@@ -20,11 +20,15 @@ import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
 import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
+import { callComputer } from '../computers/callComputer.ts';
 import { stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
-import { archiveTreeLabel, runRowMenu, unarchiveTreeLabel } from '../../state/runTree.ts';
+import { archiveTreeLabel, runGoesOn, runRowMenu, treeRunsOf, unarchiveTreeLabel } from '../../state/runTree.ts';
+import { toast } from '../../state/toastStore.ts';
 import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
+import { QUICK_UNDO, quickActionToast, type QuickActionMethod } from './quickActions.ts';
+import { quickActionDone } from './quickUndo.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -39,6 +43,11 @@ export interface SessionMenus {
   flagAll(targets: SessionRowData[], change: FlagChange): void;
   /** A middle-click on a row: archives the session if it has finished, and does nothing otherwise. */
   middleClick(data: SessionRowData): void;
+  /**
+   * A row's quick action (its button on hover, or E, U or P in the sidebar): runs the same function as the menu item,
+   * then shows a toast with Undo. Stop has no toast.
+   */
+  quickAction(method: QuickActionMethod, data: SessionRowData): void;
   /** Asks before moving sessions to the Trash. */
   requestDelete(targets: SessionRowData[]): void;
   requestRename(data: SessionRowData): void;
@@ -63,16 +72,20 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
   const [renaming, setRenaming] = useState<SessionRowData | null>(null);
+  /** Archive on a session that works or waits for you: asks to stop it first. */
+  const [stopping, setStopping] = useState<{ data: SessionRowData; then?: () => void } | null>(null);
 
   // Only indexed sessions have flags; a session still starting has nothing to keep them against.
   // Archiving a session with an unsent message asks first (and discards the message). The parent of a pipeline run
   // (#179) archives and unarchives with its sub-sessions, as one tree.
-  const flagAll = (targets: SessionRowData[], change: FlagChange) => {
+  // `then` runs once the sessions' flags are sent (after the question about an unsent message, when one is asked).
+  const flagAll = (targets: SessionRowData[], change: FlagChange, then?: () => void) => {
     const trees = change.archived !== undefined ? targets.filter((target) => isTreeParent(target.id)) : [];
     for (const target of trees) archiveTree(target.id, change.archived!, target.title);
     const indexed = targets.filter((target) => target.summary && !trees.includes(target));
     const apply = () => {
       for (const target of indexed) void client?.call('sessions.setFlags', { sessionId: target.id, ...change });
+      then?.();
     };
     if (change.archived) archiveSessions(indexed, apply);
     else apply();
@@ -103,6 +116,77 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     void client?.call('sessions.markUnviewed', { sessionId: data.id }).catch(() => {});
   };
 
+  // Pin and Unpin, here or on another computer (through its own contract).
+  const setPinned = (data: SessionRowData, pinned: boolean, then?: () => void) => {
+    if (!data.remote) return flagAll([data], { pinned }, then);
+    setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, { pinned });
+    then?.();
+  };
+
+  /** Stop, as the session's own Stop does: Claude's turn, or a pipeline's run that goes on. */
+  const stop = async (data: SessionRowData) => {
+    if (data.remote) return void (await (client ? callComputer(client, data.remote.computerId, 'session.interrupt', { sessionId: data.remote.sessionId }) : null));
+    for (const state of treeRunsOf(usePipelines.getState().runs.values(), data.id).filter(runGoesOn)) await stopRun(state.run.id);
+    if (!isRunRowId(data.id) && isActiveHost(useHosts.getState().hosts.get(data.id))) await client?.call('session.interrupt', { sessionId: data.id });
+  };
+
+  /**
+   * Archive, from the menu or a quick action. A run row or a pipeline's parent goes as one tree (which asks itself when
+   * its run goes on); a session that works or waits for you asks first (Stop and archive), so nothing keeps running
+   * out of sight.
+   */
+  const archive = (data: SessionRowData, then?: () => void) => {
+    const status = rowStatus(data);
+    if (!data.remote && archiveTree(data.id, true, data.title, then)) return;
+    if (status === 'running' || status === 'needs-you') return setStopping({ data, then });
+    archiveNow(data, then);
+  };
+
+  /** Archives without asking: a finished session, or one Stop and archive has stopped. */
+  const archiveNow = (data: SessionRowData, then?: () => void) => {
+    if (!data.remote) return flagAll([data], ARCHIVE, then);
+    setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    then?.();
+  };
+
+  const unarchive = (data: SessionRowData, then?: () => void) => {
+    if (archiveTree(data.id, false, data.title, then)) return;
+    flagAll([data], { archived: false }, then);
+  };
+
+  const runMethod = (method: QuickActionMethod, data: SessionRowData, then?: () => void) => {
+    switch (method) {
+      case 'markRead':
+        markRead(data);
+        return then?.();
+      case 'markUnread':
+        markUnread(data);
+        return then?.();
+      case 'pin':
+      case 'unpin':
+        return setPinned(data, method === 'pin', then);
+      case 'archive':
+        return archive(data, then);
+      case 'unarchive':
+        return unarchive(data, then);
+      case 'stop':
+        return void stop(data).catch((error: unknown) => toast(`Couldn't stop it: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  };
+
+  const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
+    if (method === 'stop') return runMethod(method, data);
+    const message = quickActionToast(method, data.title);
+    runMethod(method, data, () => {
+      if (!message) return;
+      quickActionDone(message, () => {
+        runMethod(QUICK_UNDO[method], data);
+        // Archiving took the pin away; Undo puts it back.
+        if (method === 'archive' && data.pinned) setPinned(data, true);
+      }, method === 'archive' || method === 'unarchive' ? 'archive' : undefined);
+    });
+  };
+
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
     // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
     if (data.remote) {
@@ -113,11 +197,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       return;
     }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
-    const flag = (change: FlagChange) => flagAll([data], change);
     // A run row (#179) isn't a session: it opens, stops, archives or deletes as one tree with its sub-sessions.
     const runState = isRunRowId(data.id) ? usePipelines.getState().runs.get(data.id) : undefined;
     if (runState) {
-      const act = { open: () => useSessions.getState().select(data.id), stop: () => void stopRun(data.id), archive: () => archiveTree(data.id, true, data.title), unarchive: () => archiveTree(data.id, false, data.title), delete: () => askDeleteTree(data.id, data.title) };
+      const act = { open: () => useSessions.getState().select(data.id), stop: () => void stopRun(data.id), archive: () => archive(data), unarchive: () => unarchive(data), delete: () => askDeleteTree(data.id, data.title) };
       setMenu({
         ...at,
         label: `Pipeline run “${data.title}”`,
@@ -148,10 +231,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
               : ({ label: 'Mark as unread', onSelect: () => markUnread(data), data: { 'data-mark-unread': true } } satisfies MenuEntry)]
           : []),
-        { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => flag({ pinned: !data.pinned }), disabled: !data.summary },
+        { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => setPinned(data, !data.pinned), disabled: !data.summary },
         archivedNow
-          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => flag({ archived: false }), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
-          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => flag(ARCHIVE), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
+          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
+          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
         'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
@@ -205,7 +288,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
               {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the {trashName()}, so you can
               restore them {restoreFrom()}. Files Claude changed in your project are not touched.
               {deleting.some((target) => isActiveHost(hosts.get(target.id))) &&
-                (deleting.length === 1 ? ' It is running in Switchboard and will be stopped first.' : ' Sessions running in Switchboard will be stopped first.')}
+                (deleting.length === 1 ? ' It is running in Seshboard and will be stopped first.' : ' Sessions running in Seshboard will be stopped first.')}
             </>
           }
           onConfirm={async () => {
@@ -231,10 +314,57 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           onClose={() => setDeleting(null)}
         />
       )}
+      {stopping && <StopAndArchive data={stopping.data} hosted={isActiveHost(hosts.get(stopping.data.id))} stop={() => stop(stopping.data)} archive={() => archiveNow(stopping.data, stopping.then)} onClose={() => setStopping(null)} />}
       {renaming && <RenameSessionDialog sessionId={renaming.id} title={renaming.title} onClose={() => setRenaming(null)} />}
       {projectIcons.overlays}
     </>
   );
 
-  return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, requestDelete: setDeleting, requestRename: setRenaming, overlays };
+  return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, requestDelete: setDeleting, requestRename: setRenaming, overlays };
+}
+
+/** Waits until a session in Seshboard has stopped working (or a few seconds pass), so archiving comes after its last activity. */
+function untilStopped(sessionId: string, timeoutMs = 5_000): Promise<void> {
+  const busy = () => {
+    const state = useHosts.getState().hosts.get(sessionId)?.state;
+    return state === 'running' || state === 'starting' || state === 'needs-you';
+  };
+  if (!busy()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    const unsubscribe = useHosts.subscribe(() => {
+      if (!busy()) done();
+    });
+  });
+}
+
+/**
+ * Archive on a session that works or waits for you asks first. Running in Seshboard (or on another computer), it is
+ * stopped, then archived. Running in another app, nothing here can stop it: archiving says it keeps running there.
+ */
+function StopAndArchive({ data, hosted, stop, archive, onClose }: { data: SessionRowData; hosted: boolean; stop(): Promise<void>; archive(): void; onClose(): void }) {
+  const title = data.title.length > 60 ? `${data.title.slice(0, 59)}…` : data.title;
+  const state = rowStatus(data) === 'needs-you' ? 'waiting for you' : 'still working';
+  const stoppable = hosted || !!data.remote;
+  return (
+    <ConfirmDialog
+      title={stoppable ? 'Stop and archive?' : 'Archive while it works?'}
+      body={stoppable ? `“${title}” is ${state}. It is stopped first, then archived.` : `“${title}” is ${state} in another app. It keeps running there after you archive it.`}
+      confirmLabel={stoppable ? 'Stop and archive' : 'Archive'}
+      data={{ 'data-stop-archive-confirm': stoppable ? 'stop' : 'archive' }}
+      onConfirm={async () => {
+        if (stoppable) {
+          await stop();
+          if (!data.remote) await untilStopped(data.id);
+        }
+        archive();
+      }}
+      onClose={onClose}
+    />
+  );
 }

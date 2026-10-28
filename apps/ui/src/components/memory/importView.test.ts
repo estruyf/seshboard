@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ImportEntry, MemoryImportPreview } from '@switchboard/protocol/client';
+import type { ImportEntry, MemoryImportPreview } from '@seshboard/protocol/client';
 import { copiedByDefault, flagsOf, personalLinesAfter, picked, rowsOf } from './importView.ts';
 
 const entry = (id: string, extra: Partial<ImportEntry> = {}): ImportEntry => ({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteMessage } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage } from '@seshboard/protocol/remote-client';
 import { formatDuration, turnStart, workingLabel } from './working.ts';
 
 const message = (uuid: string, role: RemoteMessage['role'], timestamp: number, blocks: RemoteMessage['blocks']): RemoteMessage => ({ uuid, role, timestamp, parentToolUseId: null, blocks });

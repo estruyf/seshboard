@@ -33,8 +33,8 @@ import {
   type NotificationPrefs,
   type SoundEvent,
   type SoundPrefs,
-} from '@switchboard/protocol';
-import { parseThemeFile } from '@switchboard/protocol/theme';
+} from '@seshboard/protocol';
+import { parseThemeFile } from '@seshboard/protocol/theme';
 import type { ActionStore } from '../actions/actionStore.ts';
 import type { ScheduleStore } from '../schedules/scheduleStore.ts';
 import type { TriggerStore } from '../triggers/triggerStore.ts';
@@ -74,7 +74,7 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   sessionScope: 'Sessions in the sidebar',
   startupView: 'On startup',
   projectOrder: 'Project order',
-  newSessionMode: 'Permission mode for new sessions',
+  newSessionMode: 'Global permission mode',
   chrome: 'Use Claude in Chrome',
   keepAwake: 'Keep this computer awake',
   autoUpdate: 'Automatic updates',
@@ -88,9 +88,11 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   appIconOnRemote: 'Use the app icon on your phone too',
   archiveAfterDays: 'Archive finished sessions after',
   deleteArchived: 'Delete archived sessions',
+  markReadAfter: 'Mark as read after',
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
   catchUpSummaries: 'Write catch-up summaries with Haiku',
+  catchUpFolded: 'Show catch-ups folded',
   resumeAtLimit: 'Resume after a usage limit resets',
   showCost: 'Show estimated cost',
   showBarCost: 'Show it on the usage bars',
@@ -100,6 +102,8 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   hiddenMods: 'Mods with their UI hidden',
   githubHintSeen: 'Projects that showed the GitHub CLI hint',
   sidebarSort: 'Sidebar order',
+  quickActions: 'Quick actions on hover',
+  quickActionsShow: 'Quick actions to show',
   githubStar: 'Star on GitHub',
   notifications: 'Notifications',
   sounds: 'Sounds',
@@ -190,6 +194,7 @@ function exportIcon(icon: StoredIcon | null): ExportedIcon | null {
 export function exportSettings(stores: SettingsStores, options: ExportOptions): SettingsFile {
   const want = new Set(options.sections);
   const file: SettingsFile = {
+    // The file's kind keeps the name from before the rename, so older versions still import it.
     kind: 'switchboard-settings',
     format: SETTINGS_FILE_FORMAT,
     appVersion: options.appVersion,
@@ -232,7 +237,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
     file.triggers = stores.triggers.list().map(exportedTrigger);
   }
   if (want.has('pipelines') && stores.pipelines) {
-    // Built-ins come with every Switchboard, and runs point at sessions on this computer: neither goes in the file.
+    // Built-ins come with every Seshboard, and runs point at sessions on this computer: neither goes in the file.
     file.pipelines = stores.pipelines.own();
   }
   if (want.has('choices')) {
@@ -266,7 +271,7 @@ export function readSettingsFile(path: string): SettingsFile {
     raw = JSON.parse(readFileSync(path, 'utf8'));
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException).code === 'ENOENT';
-    throw new RpcError(missing ? 'NOT_FOUND' : 'INVALID', missing ? `No file at ${path}` : 'This file is not valid JSON, so it is not a Switchboard settings file.');
+    throw new RpcError(missing ? 'NOT_FOUND' : 'INVALID', missing ? `No file at ${path}` : 'This file is not valid JSON, so it is not a Seshboard settings file.');
   }
   const parsed = parseSettingsFile(raw);
   if ('error' in parsed) throw new RpcError('INVALID', parsed.error);
@@ -279,12 +284,13 @@ const BACKUPS_KEPT = 10;
 export function writeBackup(dir: string, file: SettingsFile, now = new Date()): string {
   mkdirSync(dir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, '-');
-  const path = join(dir, `switchboard-settings-before-import-${stamp}.json`);
+  const path = join(dir, `seshboard-settings-before-import-${stamp}.json`);
   writeSettingsFile(path, file);
+  // Also the ones named before the rename (switchboard-…), newest first by their time.
+  const stampOf = (name: string) => name.replace(/^(seshboard|switchboard)-settings-before-import-/, '');
   const old = readdirSync(dir)
-    .filter((name) => name.startsWith('switchboard-settings-before-import-') && name.endsWith('.json'))
-    .sort()
-    .reverse()
+    .filter((name) => /^(seshboard|switchboard)-settings-before-import-.*\.json$/.test(name))
+    .sort((a, b) => stampOf(b).localeCompare(stampOf(a)))
     .slice(BACKUPS_KEPT);
   for (const name of old) rmSync(join(dir, name), { force: true });
   return path;
@@ -784,8 +790,8 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
     const ids = (sql: string) => new Set((stores.db.prepare(sql).all() as Array<{ id: string }>).map((r) => r.id));
     const groups = [
       { label: 'pinned', ids: pinned, have: ids('SELECT id FROM session_flags WHERE pinned = 1'), sql: 'INSERT INTO session_flags (id, pinned) VALUES (?, 1) ON CONFLICT (id) DO UPDATE SET pinned = 1' },
-      { label: 'started in Switchboard', ids: owned, have: ids('SELECT id FROM owned_sessions'), sql: 'INSERT OR IGNORE INTO owned_sessions (id, created_at) VALUES (?, ?)' },
-      { label: 'continued in Switchboard', ids: continued, have: ids('SELECT id FROM continued_sessions'), sql: 'INSERT OR IGNORE INTO continued_sessions (id, created_at) VALUES (?, ?)' },
+      { label: 'started in Seshboard', ids: owned, have: ids('SELECT id FROM owned_sessions'), sql: 'INSERT OR IGNORE INTO owned_sessions (id, created_at) VALUES (?, ?)' },
+      { label: 'continued in Seshboard', ids: continued, have: ids('SELECT id FROM continued_sessions'), sql: 'INSERT OR IGNORE INTO continued_sessions (id, created_at) VALUES (?, ?)' },
     ];
     for (const group of groups) {
       const add = [...new Set(group.ids)].filter((id) => !group.have.has(id));
