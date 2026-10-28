@@ -64,12 +64,18 @@ Each mode has a dot in the chip: green for Ask first, blue for Accept edits, gre
 
 Press <Kbd shortcut="mode.cycle" /> in the message box to switch mode. Like the Claude Code CLI, it cycles through Ask before edits, Accept edits and Plan mode. Pick Auto mode from the menu.
 
-A new session starts in the project's own default mode, then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), else Ask before edits. **Permission mode** in [Settings → General](/settings/#new-sessions) can change that: **Remember last** starts in the mode you picked last, and a mode such as Auto mode always starts in that one, even in a project with its own default.
+A new session starts in the first mode that is set:
+
+1. The project's own default mode, on its [Settings tab](/projects/settings/#defaults-for-new-sessions).
+2. The default mode of its [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions).
+3. **Global permission mode** in [Settings › General](/settings/#new-sessions): Ask before edits unless you change it, or with **Remember last** the mode you picked last.
+
+The session can still change it, with the chip or <Kbd shortcut="mode.cycle" />.
 
 What the cards look like when Claude asks: [Permissions and questions](/permissions/).
 
 <Aside>
-Some starts never use a mode that skips prompts (Auto mode or bypassing permissions). A session started by a `seshboard://` link with `autostart=1` uses the project's own default mode, or Ask before edits. A quick question starts in the mode you last picked for one, or Ask before edits when that was such a mode. Pick it again each time you want it.
+Some starts never use a mode that skips prompts (Auto mode or bypassing permissions). A session started by a `seshboard://` link with `autostart=1` uses the project's or profile's mode, else the global permission mode, and Ask before edits when that one would skip prompts. A quick question starts in the mode you last picked for one, or Ask before edits when that was such a mode. Pick it again each time you want it.
 </Aside>
 
 ## In a narrow window

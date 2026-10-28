@@ -82,6 +82,29 @@ seshboard://session/0b9a7c1e-1234-4abc-9def-001122334455
 
 This shows that session, as if you picked it in the sidebar. To get a session's ID, right-click it in the sidebar and choose **Copy session ID**, or run *Copy session id* in the command palette (<Kbd shortcut="palette.commands" />).
 
+## Open a folder from a terminal
+
+Type `seshboard .` in a terminal to open New session in that folder, like `code .` for VS Code. `sesh .` is the short form, and `switchboard .` works too. Give another folder instead of `.` to open that one; without a folder, it opens the one you are in.
+
+```bash
+cd ~/dev/payments
+seshboard .
+```
+
+New session opens with the folder filled in, as a link with `cwd` does. You write the prompt and start the session yourself.
+
+Install the commands once:
+
+- In [Settings › General](/settings/#terminal), under **Terminal**, click **Install** next to **Shell command**.
+- Or press <Kbd shortcut="palette.commands" /> and choose *Install the seshboard command*.
+
+Where they go:
+
+- <Os mac="On a Mac, in /usr/local/bin. If your user can't write there, macOS asks for your password." windows="On Windows, in a folder in Seshboard's app data, which Seshboard adds to your PATH. Terminals you open after that find the commands." />
+- On Linux, in `~/.local/bin`, which has to be on your PATH.
+
+A name another program already uses, such as the tmux tool `sesh`, is left alone: Settings says which one, and the other commands still work. Settings also says when the commands were installed for another copy of Seshboard, with **Update**. **Remove** takes them out again. The commands only install from the installed app, not from a development build.
+
 ## Examples
 
 ### From a shell
@@ -181,7 +204,7 @@ Parameters Seshboard doesn't know are ignored, so a link made for a newer versio
 
 ## Settings
 
-Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/).
+Links have no settings. What a started session uses comes from the [project's settings](/projects/settings/). The `seshboard` command is installed from [Settings › General › Terminal](/settings/#terminal).
 
 ## Related
 

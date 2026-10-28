@@ -165,12 +165,12 @@ After a compaction the whole conversation stays: a *Conversation compacted* line
 
 Anthropic keeps a conversation's context in its prompt cache for a while after the last message: an hour or 5 minutes, depending on what Claude Code asks for. Each message that reads from the cache starts that time again. Once the cache expires, the next message reads the whole context again, at a price several times higher than reading it from the cache. It doesn't matter whether Seshboard is open: only the time since the last message counts.
 
-When a session's context is large (60% full or more, by default), the ring turns orange and a note above the message box says so while the session waits for you:
+When a session's context is large (120k tokens or more by default, which is 60% of a 200k window, whatever the session's own window), the ring turns orange and a note above the message box says so while the session waits for you:
 
 - While the cache is kept: *Large context: 412k tokens (82%). Its cache expires in 48 min. After that, your next message reads all of it again (≈$3.20).* **Compact now** compacts it while that is still cheap.
 - After the cache expired, such as the next morning: *Its cache expired 14 h ago, so your next message reads all of it again (≈$3.20).* Compacting now would read it all again too, so the note doesn't offer it.
 
-The cost shows with **Show estimated cost** on, and reading it all again counts toward your plan's limits too. For a session that isn't running in Seshboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Seshboard starts.
+The cost shows with **Show estimated cost** on. It is the price of the model your next message goes to, so it changes when you pick another model in the model chip. Reading it all again counts toward your plan's limits too. For a session that isn't running in Seshboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Seshboard starts.
 
 With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Seshboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
 
@@ -229,15 +229,31 @@ When Claude asks you something, you can answer each question under a quote of it
 
 ## Continue a past session
 
-Open any session and type below it. If it isn't running, the header says **Not running** and the message box says "Message Claude to resume this session". Sending picks the session up in Seshboard. The chips under the message box set the model, effort and permission mode it resumes with, so you can change them before you send. If its last run failed, the reason shows next to the chips.
+Open any session and type below it. If it isn't running, the header says **Not running** and the message box says "Message Claude to resume this session". Sending picks the session up in Seshboard. The chips under the message box set the model, effort and permission mode it resumes with, so you can change them before you send. If its last run failed, a notice above the message box says why (see [When Claude Code fails](#when-claude-code-fails)).
 
 If the session is still open somewhere else, such as a terminal, Seshboard says so above the message box. Sending then starts a **fork**: a new session that continues from this conversation, leaving the original untouched. The send button says **Fork and send**.
+
+Seshboard stops its own Claude Code processes when it quits, restarts or updates, also those of a session with a task in the background, so a session doesn't look open elsewhere afterwards. If one still runs after a crash, sending stops it and continues the same session instead of forking it.
+
+## When Claude Code fails
+
+When Claude Code stops with an error, a notice above the message box says why, in full. A long message shows its first lines, with **Show all**. Click **×** to hide the notice.
+
+- **Claude Code could not start:** it failed before it got your message, which says "Your message did not reach Claude." **Try again** starts Claude Code again and sends your message, so it shows once in the conversation. *Try again* in the [command palette](/command-palette/) does the same.
+- **Claude Code stopped with an error:** it failed later. Send a message to start the session again.
+
+### Signed out
+
+When Claude Code's login expired or was removed, the session says **Claude Code is signed out** instead of showing a bare error (with the [Claude profile's](/settings/claude-profiles/) name when you have more than one).
+
+- **Sign in** opens the session's [terminal panel](/terminal-changes-git/terminal/) and runs Claude Code's sign-in there, for the session's profile. Finish signing in in the terminal. Once you are signed in, the session continues where it left off. Each session of that profile that stopped this way continues too.
+- **Continue** is for when you signed in somewhere else, such as your own terminal: the session continues with the new login.
 
 ## Agents and tools
 
 - **Agents:** the agents Claude starts, background ones included, show in the [Agents panel](/sessions/agents/) next to the conversation. Open it with the **Agents** button in the header, or from the background tasks above the message box.
 - **Commands:** the commands Claude runs in the background, and monitors, show in the [Commands panel](/sessions/commands/) with their output, live while they run.
-- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Seshboard, you can turn a server on or off, or reconnect it. With **Use Claude in Chrome** on in [Settings › General](/settings/#new-sessions), sessions you start or resume list **claude-in-chrome** here, with the browser tools of the Claude in Chrome extension.
+- **Tools:** the blocks button under the message box (or *Tools: MCP servers, skills, agents, plugins* in the command palette) opens the session's **MCP servers**, **Skills & commands**, **Agents** and **Plugins**. MCP servers show their status and tools; while the session runs in Seshboard, you can turn a server on or off, or reconnect it. Added an MCP server to your Claude Code settings or the project's `.mcp.json` after the session started? The refresh button at the top of Tools reloads the session's MCP servers and plugins, so its next message can use the new server. A session that isn't running asks Claude Code again instead. *Reload MCP servers* in the [command palette](/command-palette/) does the same for every running session: one that is working reloads when its turn ends. With **Use Claude in Chrome** on in [Settings › General](/settings/#new-sessions), sessions you start or resume list **claude-in-chrome** here, with the browser tools of the Claude in Chrome extension.
 
 <Screenshot name="tools" alt="The Tools dialog on the MCP servers tab: each server with its status and number of tools, and tabs for skills and commands, agents and plugins" />
 

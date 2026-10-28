@@ -1,6 +1,6 @@
 ---
 title: Sessions
-description: When finished sessions are archived, moving old archived sessions to the Trash, Claude Code's own cleanup, and an overview of every session.
+description: When an opened session is marked read, when finished sessions are archived, moving old archived sessions to the Trash, Claude Code's own cleanup, and an overview of every session.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -8,7 +8,7 @@ import Os from '../../../components/Os.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-**Settings › Sessions** keeps the sidebar short. Choose when finished sessions move to [Archived](/sessions/archived/), turn on moving old archived sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
+**Settings › Sessions** keeps the sidebar short. Choose when an opened session is marked read, when finished sessions move to [Archived](/sessions/archived/), turn on moving old archived sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
 
 ## Open it
 
@@ -16,6 +16,16 @@ import Related from '../../../components/Related.astro';
 - Click the **⋯** on the **Archived** header in the sidebar and choose **Manage sessions…** (it shows only archived sessions) or **Archive settings…**.
 - Click the session count at the bottom of the sidebar.
 - Run *Manage sessions* or *Delete archived sessions…* in the command palette (<Kbd shortcut="palette.commands" />). *Delete archived sessions…* puts the keyboard on the **Delete archived sessions** switch.
+
+## Unread sessions
+
+A finished session stays unread, in blue, until you have looked at it.
+
+### Mark as read after
+
+A session you open unread is marked read once it has been in front of you this long: 3 seconds by default, anything from 1 to 60. So a session you only pass through, with <Kbd shortcut="session.next" /> for example, stays unread. A session that opens with a [catch-up](/sessions/catch-up/) is read the same way, and its banner stays open until you fold it. What happens while you look at a session, such as Claude finishing, is read almost at once: you watched it happen.
+
+Turn the switch off to mark sessions read yourself: with **Mark as read** in the catch-up or the session's menu, or <Kbd shortcut="sidebar.quick-read" /> in the sidebar.
 
 ## Keep the list short
 

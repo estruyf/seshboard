@@ -99,6 +99,14 @@ If `claude` works in PowerShell but Seshboard doesn't find it, check that the fo
 
 </OnlyOn>
 
+## Claude Code can't start
+
+When Claude Code fails before it gets your message, a notice above the message box says why, in full. Fix what it says, such as a setting or a missing tool, then click **Try again** (or run *Try again* in the command palette): Claude Code starts again and your message is sent. See [When Claude Code fails](/sessions/conversation/#when-claude-code-fails).
+
+## A session says Claude Code is signed out
+
+Claude Code's login expired or was removed. Click **Sign in** in the notice: Claude Code's sign-in runs in the session's terminal panel, and once you are signed in, the session continues where it left off. Signed in somewhere else, such as your own terminal? Click **Continue**. See [Signed out](/sessions/conversation/#signed-out).
+
 ## Sessions from other apps don't show
 
 By default the sidebar only lists the sessions you started or continued in Seshboard. Turn on **Show sessions from other apps** in [Settings → Sidebar](/settings/#sidebar) to also see sessions from Terminal, Claude desktop and your editor.
@@ -108,6 +116,10 @@ Sessions that run with another Claude Code config folder (`CLAUDE_CONFIG_DIR=…
 ## New skills or commands don't show
 
 Run *Reload skills* in the command palette. Seshboard reads your skill and command folders again, and running sessions pick up the change the next time they list them.
+
+## A new MCP server doesn't show
+
+Sessions read their MCP servers when they start. After you add a server to your Claude Code settings or a project's `.mcp.json`, run *Reload MCP servers* in the command palette: running sessions pick it up for their next message, without a restart. For one session, click the refresh button at the top of its Tools. See [Agents and tools](/sessions/conversation/#agents-and-tools).
 
 ## Windows: commands in the terminal or in actions
 
@@ -155,7 +167,7 @@ No. On a Mac, Seshboard is built for Apple Silicon, and needs macOS 13 (Ventura)
 
 ### Is there a Windows or Linux version?
 
-There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Install Seshboard](/getting-started/install/) and [Seshboard on Windows](/getting-started/windows/). The Arm64 build hasn't been tried on Arm hardware yet. There is no Linux version.
+There is a Windows version, for Windows 10 and 11 on x64 and Arm64 PCs: see [Install Seshboard](/getting-started/install/) and [Seshboard on Windows](/getting-started/windows/). The Arm64 build hasn't been tried on Arm hardware yet. There is a Linux version too: see [Seshboard on Linux](/getting-started/linux/).
 
 ### How do I uninstall it?
 

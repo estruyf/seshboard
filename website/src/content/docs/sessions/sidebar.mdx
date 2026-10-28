@@ -78,6 +78,26 @@ The session count at the bottom of the sidebar opens [Settings › Sessions](/se
 - **Archive a finished session:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
 - **Delete:** press <Kbd shortcut="sidebar.delete" />, or choose **Delete session…**. After you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**, the conversation and any subagent transcripts go to the <Os mac="Trash" windows="Recycle Bin" />, so you can get them back.
 
+### Quick actions on hover
+
+Hover a session and buttons show at the end of its row, so you can tidy the list in one click:
+
+- **Mark as read** or **Mark as unread**, **Pin** or **Unpin**, and **Archive** on a finished session.
+- **Pin**, **Stop** and **Archive** on a session that is working or needs you.
+- **Unarchive** on a session under Archived.
+
+Each button does the same as its item in the session menu. A toast then says what it did, such as "Pinned", with **Undo**. <Kbd shortcut="sidebar.undo" /> in the sidebar undoes it too, while the toast is up.
+
+Archive on a session that is still working or waits for you asks first: **Stop and archive** stops it, then archives it. A session that runs in another app keeps running there after you archive it.
+
+The keys do the same on the focused session, or the one under the pointer, also with the buttons turned off:
+
+- <Kbd shortcut="sidebar.quick-archive" /> archives the session, or unarchives it.
+- <Kbd shortcut="sidebar.quick-read" /> marks it read or unread.
+- <Kbd shortcut="sidebar.quick-pin" /> pins or unpins it.
+
+Press <Kbd keys="tab" /> on a row to move into its buttons, and <Kbd keys="escape" /> to go back to the row. Turn the buttons off, or down to Archive only, in [Settings](#settings).
+
 ### The session menu
 
 Right-click a session, or press <Kbd shortcut="context-menu" /> on it, for:
@@ -134,6 +154,7 @@ In [Settings, Sidebar](/settings/#sidebar):
 - **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
 - **When collapsed:** what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do: **Minimal rail** (the default) or **Hidden**.
 - **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Seshboard.
+- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Archive only** or **Read · Pin · Archive** (the default). Working sessions show Stop too.
 
 <Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />
 

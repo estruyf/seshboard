@@ -34,13 +34,13 @@ With more than one [Claude profile](/settings/claude-profiles/), **Claude profil
 | Row | Choices |
 |---|---|
 | **Model** | A model, **Auto** (Haiku picks from the first prompt, see [Auto model](/new-session/auto-model/)), or *Global default*. Next to it, an effort level, or *Global effort*. Queued prompts on Auto are routed when they start, not when you add them. |
-| **Permissions** | A permission mode, or *Global default*. |
+| **Permissions** | *Profile default* (the mode of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), the default), *Global default* (skips the profile's mode and uses **Global permission mode** in [Settings › General](/settings/#new-sessions)), or a permission mode. Each shows the mode it comes to, such as *Profile default (Plan mode)*. Under an inherited choice, a line says where the mode is set, with **Change** to go there. |
 | **Workspace** | *Current folder*, *New worktree*, or *Global default*. Outside git, a new worktree can't be chosen. |
 | **Worktree base** | What a new worktree branches from: *Worktree from origin*, *Worktree from HEAD*, *Worktree from &lt;branch&gt;* for any local or remote branch, or the global default. Shown unless the workspace is the current folder. With a branch here, pull requests go into that branch, and queued items, scheduled sessions and triggers in the project start from it too. |
 | **Default branch** | The branch the project develops on, when it isn't the one GitHub calls the default (`dev` instead of `main`). New worktrees from origin start from it, pull requests go into it, and [Changes](/terminal-changes-git/changes/) compares against it. *The remote's default branch* follows GitHub. Only in a git repository. |
 | **Branch** | For the current folder: *Keep what is checked out*, or *Check out &lt;branch&gt;* first. Only in a git repository, and not for a new worktree. |
 
-A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else Claude Code's own defaults, and for **Permissions** the mode set in [Settings → General](/settings/#new-sessions). When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
+A field you leave unset uses the defaults of the project's [Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), and else Claude Code's own defaults, and for **Permissions** the global permission mode in [Settings › General](/settings/#new-sessions). When the profile sets that field, the choice says so, for example *Profile default (Opus)* instead of *Global default*. See [Models and options](/new-session/models-and-options/) and [Worktrees](/new-session/worktrees/).
 
 The project's [Overview](/projects/overview/) shows a summary of these defaults under **How sessions start here** ("Opus · high effort · worktree"), or, when none are set, *Profile defaults* or *Global defaults*, depending on whether the project's profile has any.
 
