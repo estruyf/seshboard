@@ -5915,7 +5915,8 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     const longRow = one(`[data-new-session-view] [data-folder-option=${JSON.stringify(long)}]`);
     if (!(await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000))) return `a long name in a narrow column was not cut (${String(await js(`${longRow}?.querySelector('[data-project-name]').textContent`))})`;
     const cutName = (await js(`${longRow}.querySelector('[data-project-name]').textContent`)) as string;
-    if (!/^pointfire-.+….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
+    // A wider font (Linux) may cut right after the dash.
+    if (!/^pointfire-.*….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
     if (!(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
 
     // One column, six rows: as a side panel would make it.
@@ -5939,8 +5940,10 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     // Wide again before Projects opens, where a narrow view folds its list into an overlay.
     await waitInPage(win, `window.innerWidth === ${width}`, 3_000);
     // Off the throwaway profile's projects again.
+    // Projects may not open on the first try while the window settles at its size again; a project left behind would
+    // point at a deleted folder, which the backup step's import then skips.
     for (const dir of added) {
-      const removed = await removeProjectInProjects(win, dir);
+      const removed = (await removeProjectInProjects(win, dir)) && (await settle(win), await removeProjectInProjects(win, dir));
       if (removed) console.log(`[smoke] could not remove the project ${dir}: ${removed}`);
     }
     // New session back on its folder (the ones added are about to go), or on none.
