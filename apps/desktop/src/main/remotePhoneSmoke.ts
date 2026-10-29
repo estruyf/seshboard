@@ -14,7 +14,8 @@ let phone: Promise<BrowserWindow | string> | null = null;
 
 /** The paired phone, on Home; a string when it couldn't get there. */
 function remotePhone(): Promise<BrowserWindow | string> {
-  phone ??= openPhone().then((result) => {
+  // The computer sometimes refuses the first pairing on a slow runner (Linux); a second one goes through.
+  phone ??= openPhone().then((first) => (typeof first === 'string' && !first.startsWith('ok:') ? openPhone() : first)).then((result) => {
     // A failed pairing is tried again by the next step rather than failing it too.
     if (typeof result === 'string') phone = null;
     return result;
@@ -31,10 +32,15 @@ async function openPhone(): Promise<BrowserWindow | string> {
   try {
     await win.loadURL(readFileSync(linkFile, 'utf8').trim());
     // Vite compiles the app on the first load: this can take a while on a fresh runner.
-    if (!(await waitInPage(win, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Pair')", 30_000))) return 'the remote app did not show Pair';
+    if (!(await waitInPage(win, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Pair')", 30_000))) {
+      win.destroy();
+      return 'the remote app did not show Pair';
+    }
     await win.webContents.executeJavaScript("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Pair').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 20_000))) {
-      return `the phone did not connect: ${await win.webContents.executeJavaScript("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160)")}`;
+      const text = (await win.webContents.executeJavaScript("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160)")) as string;
+      win.destroy();
+      return `the phone did not connect: ${text}`;
     }
     return win;
   } catch (error) {

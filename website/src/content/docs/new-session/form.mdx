@@ -12,7 +12,7 @@ import Related from '../../../components/Related.astro';
 
 New session is where every Claude Code session starts. You pick a project, choose whether Claude works on your checkout or in a new worktree, write the first prompt and press **Start**.
 
-<Screenshot name="new-session" alt="The New session view: the heading Where do we start?, four project tiles with one picked, and the message box below with a typed prompt, the route strip above it and the profile, model, effort and mode chips under it" eager />
+<Screenshot name="new-session" alt="The New session view: the heading Where do we start?, project rows in columns with one picked, and the message box below with a typed prompt, the route strip above it and the profile, model, effort and mode chips under it" eager />
 
 ## Open it
 
@@ -25,13 +25,13 @@ When you left a prompt unsent in New session, the **+** button carries a small p
 
 ## Pick a project
 
-The view opens with the heading *Where do we start?* and your first four projects as tiles. Each tile shows the project's icon, its name and what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle.
+The view opens with the heading *Where do we start?* and your projects in rows. Each row shows the project's icon, its whole name, and under it what is going on there: <Pill tone="needs-you">1 needs you</Pill>, <Pill tone="working">2 working</Pill>, or how long it has been idle, with its branch. The rows sit in one to three columns, as the space allows, so the list shows 6, 8 or 9 projects. A name too long for its row is cut in the middle; hover it for the whole name and its folder.
 
-- Press <Kbd shortcut="new-session.pick" /> to pick a tile by its number. This works wherever focus is, also while you type the prompt.
-- **Filter**, at the right of the *Project* heading, opens all projects with a filter field. With more than four projects, the fifth tile, **+N more**, does the same. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a tile has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move.
-- **Quick question**, under the tiles, starts without a project. See [Quick questions](/new-session/quick-questions/).
+- Press <Kbd shortcut="new-session.pick" /> to pick a row by its number, shown faint on the right of each row. This works wherever focus is, also while you type the prompt. The arrow keys move through the rows.
+- **All N projects…**, under the list when some don't show, opens all of them with a filter field. **Find…** (<Kbd shortcut="new-session.find" />), at the right of the *Project* heading, does the same with the filter ready. Type a few letters of a name; the field shows how many match, such as "2 of 9". Typing a letter while a row has focus opens the list filtered by it. <Kbd keys="enter" /> picks the highlighted project, the arrow keys move.
+- **Quick question**, under the list, starts without a project. See [Quick questions](/new-session/quick-questions/).
 
-The order of the tiles follows *Project order* in [Settings → Projects](/settings/#projects): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
+The order of the projects follows *Project order* in [Settings → Projects](/settings/#projects): *Recent* (the ones you used last first) or *Your order*. New session remembers the last project you picked and opens on it next time. A project you filtered the sidebar to is picked first.
 
 ### Add a folder
 
@@ -42,11 +42,11 @@ Adding a folder takes one step. The folder becomes a project and is picked right
 - When a name matches none of your projects, the list shows the folders Claude Code already has sessions for that aren't projects yet. <Kbd keys="enter" /> adds the highlighted one. The last row, **Choose a folder…**, opens the folder dialog.
 - Drag a folder from <Os mac="Finder" windows="File Explorer" /> onto the projects and drop it. Files, or several items at once, are not added.
 
-Without any projects yet, one wide tile, **Add project…**, opens the same dialog. You can also start typing a path there.
+Without any projects yet, one wide row, **Add project…**, opens the same dialog. You can also start typing a path there.
 
 ### Clone from GitHub
 
-With [Clone from GitHub](/projects/clone-from-github/) on in Settings › Projects, **Clone from GitHub…** sits next to **Add project…**. It replaces the tiles with a form: paste a repository's URL, check the folder it goes in, and press <Kbd keys="enter" /> to clone. A GitHub URL pasted in the filter field offers **Clone owner/name** too. Type the prompt while it clones: Start waits for the clone, then starts the session in it. **Pick a project instead** goes back to the tiles.
+With [Clone from GitHub](/projects/clone-from-github/) on in Settings › Projects, **Clone from GitHub…** sits next to **Add project…**. It replaces the project list with a form: paste a repository's URL, check the folder it goes in, and press <Kbd keys="enter" /> to clone. A GitHub URL pasted in the filter field offers **Clone owner/name** too. Type the prompt while it clones: Start waits for the clone, then starts the session in it. **Pick a project instead** goes back to the list.
 
 When you pick a folder that isn't one of your projects yet, a checkbox under the message box, **Add &lt;folder&gt; to your projects**, adds it when the session starts. Leave it ticked to find the folder in New session next time.
 
@@ -109,9 +109,9 @@ The session opens as soon as it starts. Claude Code was already warmed up in the
 
 ## Project defaults
 
-New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then Claude Code's own defaults. The permission mode follows **Permission mode** in [Settings › General](/settings/#new-sessions), which can also remember the last one you picked or always use one.
+New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then Claude Code's own defaults. When neither the project nor the profile sets a permission mode, the session starts in **Global permission mode** from [Settings › General](/settings/#new-sessions), which can also remember the last one you picked.
 
-Change something in New session, and it applies to that prompt only: the next one starts from the project's defaults again (the permission mode too, unless Settings › General says **Remember last**). To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
+Change something in New session, and it applies to that prompt only: the next one starts from the project's defaults again (the permission mode too, unless it comes from **Remember last** in Settings › General). To keep it, open the **Where** menu (the route button in the strip) and choose **Save as project default**, or run *Save as project default* in the command palette. A line under the message box confirms it ("Saved as acme-store's defaults"). The menu item says **Saved** when the choices on screen already are the defaults.
 
 You can also edit the defaults on the project's [Settings tab](/projects/settings/).
 
@@ -121,11 +121,11 @@ With more than one [Claude profile](/settings/claude-profiles/), the first chip 
 
 ## Run on another computer
 
-<Screenshot name="computers-new-session" alt="New session with Run on set to mystic: three project tiles from mystic with a monitor badge, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
+<Screenshot name="computers-new-session" alt="New session with Run on set to mystic: project rows from mystic with two-letter icons, the strip above the message box with mystic, the project and Current checkout, and Start on mystic, with a line under it that Claude runs on mystic" />
 
 With [another computer paired](/other-computers/), **Run on** sits under the heading: <Os mac="This Mac" windows="This PC" /> and each paired computer, with a green dot when it is connected. Pick a computer and Claude runs there, in its folders and with one of its Claude profiles. You follow the session from here.
 
-- The tiles are that computer's projects, each with a small monitor badge. <Kbd shortcut="new-session.pick" /> still picks one, and **+6 more on mystic** shows the rest. Folders on another computer can't be picked from here, so there is no **Other folder** or **Add project…**.
+- The list holds that computer's projects. Their icons show two letters of the name, since **Run on** already says where they are. <Kbd shortcut="new-session.pick" /> still picks one, and **All N projects…** shows the rest. Folders on another computer can't be picked from here, so there is no **Other folder** or **Add project…**.
 - The strip above the message box starts with the computer's name, then the project. **Where** (the current checkout or a new worktree) and the chips under the message box show when the other computer's Seshboard offers them. An older version only takes the project and the prompt.
 - On the current checkout, the strip ends with the branch checked out on that computer. Click it to pick another local branch, with a search field, as in [Work on another branch](#work-on-another-branch): it is checked out there before the session starts. A branch checked out in another worktree can't be picked. This needs this version of Seshboard on the other computer.
 - The chips start from the project's defaults on that computer. With more than one Claude profile there, the first chip is the profile: the project's own, else that computer's default, marked "(project)" or "(default)" in the menu. Pick another for this session only, and the other chips show that profile's defaults where the project sets none. With [Auto model](/new-session/auto-model/) on there, the model list starts with **Auto**. The effort chip only shows for a model that takes an effort.
@@ -166,7 +166,7 @@ A `seshboard://new-session` link opens New session with a project and a prompt f
 ## Settings
 
 - [Settings → General](/settings/#general): Seshboard can open on New session.
-- [Settings → Projects](/settings/#projects): *Project order* sets how the tiles are ordered, and [Clone from GitHub](/projects/clone-from-github/) turns on cloning a repository from New session.
+- [Settings → Projects](/settings/#projects): *Project order* sets how the projects are ordered, and [Clone from GitHub](/projects/clone-from-github/) turns on cloning a repository from New session.
 - [Settings → Claude profiles](/settings/#claude-profiles): the profiles you can pick from.
 - [Settings → Focus](/settings/#focus): the focus limit.
 - A project's [Settings tab](/projects/settings/): its defaults and profile.

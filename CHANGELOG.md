@@ -2,7 +2,7 @@
 
 All notable changes to Seshboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
-## [Unreleased]
+## [1.2.0] - 2026-10-28
 
 **Updating from Switchboard? Switchboard is now Seshboard.** After the update, pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again): a shortcut to Switchboard no longer opens it.
 

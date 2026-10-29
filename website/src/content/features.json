@@ -998,12 +998,12 @@
     },
     {
       "id": "shortcut:new-session.find",
-      "name": "new-session.find",
+      "name": "Find a project (Find…), the full project list with its filter",
       "page": "new-session/form"
     },
     {
       "id": "shortcut:new-session.pick",
-      "name": "new-session.pick",
+      "name": "Pick a recent project by its number",
       "page": "new-session/form"
     },
     {
@@ -1349,6 +1349,11 @@
     {
       "id": "settings:about",
       "name": "Settings: About",
+      "page": "settings"
+    },
+    {
+      "id": "feature:settings-groups",
+      "name": "Settings: the pages grouped under App, Claude, Your work and Connect, with Backup, Diagnostics and About at the bottom",
       "page": "settings"
     },
     {
@@ -2947,6 +2952,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:project-permission-default",
+      "name": "Project Settings › Permissions: Profile default or Global default, each with a Change link to where it is set",
+      "page": "projects/settings"
+    },
+    {
       "id": "feature:project-actions",
       "name": "Project actions",
       "page": "projects/actions"
@@ -3198,8 +3208,8 @@
     },
     {
       "id": "feature:reload-mcp",
-      "name": "Reload MCP servers",
-      "page": "troubleshooting"
+      "name": "Reload MCP servers: the palette command for every running session, and the refresh button in a session's Tools",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:reload-skills",
@@ -3354,7 +3364,7 @@
     {
       "id": "feature:mark-read-after",
       "name": "Mark as read after a few seconds of looking at a session (Settings › Sessions)",
-      "page": "sessions/catch-up"
+      "page": "settings/sessions"
     },
     {
       "id": "feature:session-hud",
@@ -3444,7 +3454,17 @@
     {
       "id": "feature:sign-in-again",
       "name": "Signed out: Sign in runs claude auth login in the session's terminal panel, and the session continues once you are signed in",
-      "page": "troubleshooting"
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:run-failed-notice",
+      "name": "A notice above the message box when Claude Code fails, with the error in full and Try again when your message did not reach Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:no-forks-after-restart",
+      "name": "Claude Code processes stop when Seshboard quits, and sending to a leftover one continues the same session instead of forking",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:sidebar-search-filter",
