@@ -532,12 +532,22 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('says when a prompt is too long to show in full', async () => {
+    const t = setup();
+    await t.manager.create({ ...base, cwd: '/w', prompt: `bash:${'x'.repeat(25_000)}` });
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]!.truncated).toBe(true);
+    expect((t.permissions[0]!.input as { command: string }).command).toHaveLength(20_000);
+    t.manager.closeAll();
+  });
+
   it('brokers permission prompts and applies "always allow"', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
     await until(() => t.permissions.length === 1);
     const request = t.permissions[0]!;
     expect(request).toMatchObject({ sessionId: id, toolName: 'Bash', toolUseId: 'tool-1', input: { command: 'npm test' } });
+    expect(request.truncated).toBeUndefined();
     expect(request.alwaysLabel).toBe('Allow Bash(npm test:*) in this project (just you)');
     expect(t.manager.list().permissions).toHaveLength(1);
     t.manager.respond(request.requestId, { behavior: 'allow', always: true });

@@ -31,6 +31,11 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
+- **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
+- **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
+- **Importing a memory named "memory" no longer hangs.** A memory whose name became `memory` (a `# Memory` heading, or one in another script) made the import never finish and the app stop responding. It is saved as `memory-2.md` now.
+- **Allow shows what it approves.** On the phone, a permission prompt shows the whole command, every line of it, instead of only the first. A prompt that doesn't fit the one line of a card on Home, or of a notification, opens its session to be answered there. A request too long to show in full says so on the computer and on the phone.
 - **Long links stay inside toasts.** An error with a long URL or path, such as a failed update, now wraps inside the toast instead of running past its edge.
 - **No crash before a cache expires on Windows.** The reminder that a large session's cache expires in 5 minutes no longer stops the app with "A JavaScript error occurred in the main process" (Invalid language tag). Its cost shows in your system's format.
 - **Windows and Linux builds know your language.** They left out Chromium's English language files, so the app saw no language at all, which is what made the reminder before a cache expires crash on Windows.

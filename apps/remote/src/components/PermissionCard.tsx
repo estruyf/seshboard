@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PermissionDecision, RemotePrompt } from '@seshboard/protocol/remote-client';
-import { DECLINED, promptAsk, promptKind, toolLabel } from '../lib/prompts.ts';
-import { editLines, toolSummary } from '../lib/transcript.ts';
+import { DECLINED, promptAsk, promptKind, promptText, toolLabel } from '../lib/prompts.ts';
+import { editLines } from '../lib/transcript.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -133,9 +133,11 @@ function ToolPrompt({ prompt, disabled, respond, hints, compact }: Props) {
     <div className="flex flex-col gap-2">
       {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
       {prompt.description && <p className="text-ui text-muted">{prompt.description}</p>}
-      <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">
-        {diff ? diff.map((line, i) => <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>{`${line.kind} ${line.text}`}</div>) : toolSummary(prompt.toolName, prompt.input)}
+      {/* All of it, every line: Allow approves all of it. */}
+      <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta break-words whitespace-pre-wrap" data-remote-prompt-text>
+        {diff ? diff.map((line, i) => <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>{`${line.kind} ${line.text}`}</div>) : promptText(prompt)}
       </pre>
+      {prompt.truncated && <p className="text-meta text-warn">This is too long to show in full. Allow approves all of it.</p>}
       <div className="flex gap-2 pt-1">
         {/* With Always allow, Deny and Allow take what their word needs and Always the rest, so its label fits a phone. */}
         <Button variant="danger" disabled={disabled} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} className={prompt.alwaysLabel ? 'px-4!' : 'flex-1'} data-remote-deny>

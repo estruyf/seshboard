@@ -1138,12 +1138,14 @@ export class HostManager {
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+      const clipped = clipJson(input, 20_000);
       const request: PermissionRequest = {
         requestId,
         sessionId,
         toolName,
         toolUseId: str(options.toolUseID),
-        input: clipJson(input, 20_000).value,
+        input: clipped.value,
+        ...(clipped.truncated ? { truncated: true } : {}),
         title: str((options as { title?: unknown }).title),
         description: str((options as { description?: unknown }).description),
         decisionReason: str(options.decisionReason),

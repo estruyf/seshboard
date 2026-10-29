@@ -254,7 +254,10 @@ export class RemoteServer {
       // The phone holds the device key only once a frame from it decrypts: until then it is nobody.
       onFirstFrame: () => {
         // Revoked between the handshake and now: Revoke only closes connections it can see, which this wasn't yet.
-        if (!this.options.devices.find(phoneKey)) return ws.close(CLOSE.unknownDevice);
+        if (!this.options.devices.find(phoneKey)) {
+          ws.close(CLOSE.unknownDevice);
+          return false;
+        }
         this.backoff.succeeded(address);
         this.options.devices.touch(known.id, this.options.address?.() ?? null);
         this.pending.delete(ws);
@@ -307,6 +310,7 @@ export class RemoteServer {
         claimed = pairing.claim();
         if (claimed) this.backoff.succeeded(address);
         else ws.close(CLOSE.pairingClosed);
+        return claimed;
       },
     });
     let asked = false;

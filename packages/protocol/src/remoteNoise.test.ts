@@ -229,12 +229,24 @@ describe('the encrypted channel', () => {
     expect(received).toEqual([{ kind: 'event', name: 'x', payload: long }, { kind: 'event', name: 'y', payload: 1 }]);
   });
 
+  it('drops the first frame and closes when the other side is refused', () => {
+    const { engineSession, phoneSession } = handshake('connect', { engine: generateKeyPair(), phone: generateKeyPair() });
+    const [phoneSocket, engineSocket, state] = socketPair();
+    const received: unknown[] = [];
+    lineTransport(encryptedStream(engineSocket, engineSession, { onFirstFrame: () => false })).onMessage((m) => received.push(m));
+    const phone = lineTransport(encryptedStream(phoneSocket, phoneSession));
+    phone.send({ kind: 'event', name: 'x', payload: 1 });
+    phone.send({ kind: 'event', name: 'y', payload: 2 });
+    expect(received).toEqual([]);
+    expect(state.closed).toBe(1);
+  });
+
   it('closes on the first frame that does not decrypt', () => {
     const { engineSession } = handshake('connect', { engine: generateKeyPair(), phone: generateKeyPair() });
     const [phoneSocket, engineSocket, state] = socketPair();
     const errors: string[] = [];
     let first = 0;
-    encryptedStream(engineSocket, engineSession, { onError: (e) => errors.push(e), onFirstFrame: () => first++ });
+    encryptedStream(engineSocket, engineSession, { onError: (e) => errors.push(e), onFirstFrame: () => void first++ });
     phoneSocket.send(bytes('not encrypted at all'));
     expect(errors).toEqual(['A message did not decrypt']);
     expect(state.closed).toBe(1);

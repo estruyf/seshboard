@@ -131,6 +131,7 @@ export const remotePrompt = (p: PermissionRequest): RemotePrompt => ({
   sessionId: p.sessionId,
   toolName: p.toolName,
   input: p.input,
+  ...(p.truncated ? { truncated: true } : {}),
   title: p.title,
   description: p.description,
   alwaysLabel: p.alwaysLabel,

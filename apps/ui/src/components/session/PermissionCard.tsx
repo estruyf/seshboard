@@ -5,6 +5,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { Markdown } from '../transcript/Markdown.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Notice } from '../ui/Notice.tsx';
 import { CheckMark } from '../ui/Checkbox.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { toolSummary } from '../transcript/toolSummary.ts';
@@ -247,6 +248,11 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
         <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-bg px-3 py-2 font-mono text-ui whitespace-pre-wrap select-text">{command}</pre>
       ) : (
         detail && <p className="truncate rounded-lg border border-border bg-bg px-3 py-2 font-mono text-ui text-muted">{detail}</p>
+      )}
+      {request.truncated && (
+        <Notice tone="caution" data-permission-truncated>
+          This is too long to show in full. Allow approves all of it.
+        </Notice>
       )}
       {/* Claude Code often describes a command with the command itself: it shows once, above. */}
       {request.description && request.description.trim() !== command?.trim() && <p className="text-ui text-muted">{request.description}</p>}

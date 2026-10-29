@@ -27,6 +27,8 @@ async function setup(options: { backoff?: Backoff } = {}) {
   const devices = new DeviceStore(cache.db);
   const states: PairingState[] = [];
   let onRequest: (state: PairingState) => void = () => {};
+  /** The sessions a phone interrupted: what reached a handler. */
+  const interrupted: string[] = [];
   const pairing = new Pairing((state) => {
     states.push(state);
     if (state.request) onRequest(state);
@@ -53,7 +55,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'limits.get': () => ({ limit: null }),
       'limits.resume': () => ({}),
       'limits.arm': () => ({}),
-      'session.interrupt': () => ({}),
+      'session.interrupt': ({ sessionId }) => (interrupted.push(sessionId), {}),
       'session.stopTask': () => ({}),
       'session.respond': () => ({}),
       'session.create': () => {
@@ -106,7 +108,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     cache.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  return { server, devices, pairing, identity, port, states, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
+  return { server, devices, pairing, identity, port, states, interrupted, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
 }
 
 async function pairPhone(env: Awaited<ReturnType<typeof setup>>, name = "Elio's iPhone") {
@@ -156,9 +158,11 @@ describe('Remote server', () => {
     const connecting = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     env.devices.revoke(deviceId);
     env.server.disconnect(deviceId);
-    void client<RemoteContract>(connecting.frames, connecting.session!).call('hello', { client: { version: '1' } }).catch(() => {});
+    // Its first message is a request that does something: it must not run.
+    void client<RemoteContract>(connecting.frames, connecting.session!).call('session.interrupt', { sessionId: '00000000-0000-4000-8000-000000000001' }).catch(() => {});
     expect(await connecting.closed).toBe(CLOSE.unknownDevice);
     expect(env.server.list()).toEqual([]);
+    expect(env.interrupted).toEqual([]);
   });
 
   it('keeps a phone that is denied, or too slow, out', async () => {

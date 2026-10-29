@@ -104,6 +104,8 @@ export const RemotePrompt = z.object({
   sessionId: z.string(),
   toolName: z.string(),
   input: z.json(),
+  /** `input` is shorter than what Claude sent: Allow approves all of it, so the card says so. */
+  truncated: z.boolean().optional(),
   title: z.string().nullable(),
   description: z.string().nullable(),
   /** What "Always allow" would do; null when not offered. */

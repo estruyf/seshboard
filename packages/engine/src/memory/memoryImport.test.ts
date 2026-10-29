@@ -166,6 +166,14 @@ describe('importing', () => {
     expect(readFileSync(join(personal, 'MEMORY.md'), 'utf8')).toContain('— Belgian dev, cyclist');
   });
 
+  it('never names an imported memory after the index', () => {
+    const files = [{ path: '/Memory.md', content: md('Memory', 'Notes kept in a file named memory', 'x'), updatedAt: '2026-10-01T10:00:00Z' }];
+    const preview = service.planImport(candidatesOf({ files, projects: new Map() }), projects());
+    expect(service.applyImport(preview.token, [{ id: '/Memory.md', target: 'personal', type: 'user' }], [root])).toEqual({ created: 1, updated: 0 });
+    expect(readFileSync(join(personal, 'memory-2.md'), 'utf8')).toContain('Notes kept');
+    expect(readFileSync(join(personal, 'MEMORY.md'), 'utf8')).toContain('(~/personal/memory-2.md)');
+  });
+
   it('refuses an expired token and targets outside your projects', () => {
     const preview = service.planImport(candidatesOf(parsed()), projects());
     expect(() => service.applyImport('nope', [], [root])).toThrow(/again/);

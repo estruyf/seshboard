@@ -559,7 +559,8 @@ export class MemoryService {
       }
       const stem = c.fileName.replace(/\.md$/, '');
       let file = `${stem}.md`;
-      for (let n = 2; existsSync(join(dir, file)) || stem.toLowerCase() === 'memory'; n++) file = `${stem}-${n}.md`;
+      // Never `memory.md`: on a Mac or Windows disk that is MEMORY.md, the index.
+      for (let n = 2; existsSync(join(dir, file)) || file.toLowerCase() === MEMORY_INDEX.toLowerCase(); n++) file = `${stem}-${n}.md`;
       writeFileSync(join(dir, file), text, { flag: 'wx' });
       const link = dir === personalDir ? tildePath(join(dir, file), this.home) : file;
       writeFileSync(indexPath, appendIndexLine(index, styledIndexLine(index, c.name, link, c.description)));

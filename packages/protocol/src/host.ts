@@ -135,6 +135,8 @@ export const PermissionRequest = z.object({
   toolName: z.string(),
   toolUseId: z.string().nullable(),
   input: z.json(),
+  /** `input` is shorter than what Claude sent (a very long string): Allow approves all of it, so the card says so. */
+  truncated: z.boolean().optional(),
   /** Claude Code's own prompt text, e.g. "Claude wants to run npm test". */
   title: z.string().nullable(),
   description: z.string().nullable(),
