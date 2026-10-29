@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
@@ -13,6 +13,7 @@ import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
+import { DockActivity } from './dockActivity.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
@@ -194,6 +195,25 @@ const appIcon = new AppIcon({
   exists: existsSync,
 });
 /**
+ * Settings › Theme › App icon › Show when Claude is working: the Dock's icon lights its jacks in turn while a session
+ * works (macOS only; the Notifier says when). Frames are drawn from the colourway's own Dock file.
+ */
+const dockActivity = new DockActivity<NativeImage>({
+  file: () => appIcon.dockFile(),
+  bitmap: (file, size) => {
+    const image = nativeImage.createFromPath(file);
+    return image.isEmpty() ? undefined : image.resize({ width: size, height: size, quality: 'best' }).toBitmap();
+  },
+  image: (bitmap, size) => nativeImage.createFromBitmap(bitmap, { width: size, height: size }),
+  show: (image) => app.dock?.setIcon(image),
+  restore: () => appIcon.restore(),
+  reducedMotion: () => systemPreferences.getAnimationSettings().prefersReducedMotion,
+  every: (ms, tick) => {
+    const timer = setInterval(guarded('dock activity', tick), ms);
+    return () => clearInterval(timer);
+  },
+});
+/**
  * Settings › General › Keep awake: `caffeinate` on macOS, Electron's sleep blocker elsewhere. Applied on `ready` and on
  * every change; let go on quit.
  */
@@ -214,7 +234,11 @@ const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
 /** Applies a change from any window or the menu bar, and tells every window. */
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
-  if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
+  if (next.appIcon !== appIcon.key) {
+    appIcon.apply(next.appIcon);
+    dockActivity.iconChanged();
+  }
+  dockActivity.setEnabled(next.dockActivity);
   keepAwake.apply(next.keepAwake);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
@@ -4192,6 +4216,43 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
  * Settings › Theme › App icon: pick Signal yellow (checked, saved, applied in main), the keys, both modes, the saved
  * file as the next launch reads it, then Reset to Graphite.
  */
+/**
+ * Settings › Theme › App icon › Show when Claude is working: on by default on macOS, where it animates the Dock's icon
+ * (held here, as nothing works in the demo) and stops when turned off; no switch elsewhere. Leaves it on.
+ */
+async function runDockActivityStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const switchIs = (on: boolean) => waitInPage(win, `document.querySelector('[data-dock-activity][role="switch"]')?.getAttribute('aria-checked') === '${on}'`, 2_000);
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="theme"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-app-icon-picker]')", 3_000))) return 'failed: Settings › Theme has no App icon';
+  if (process.platform !== 'darwin') {
+    const shown = await js("Boolean(document.querySelector('[data-dock-activity]'))");
+    await click('[data-close-settings]');
+    return shown ? 'failed: the switch shows without a Dock' : 'ok (no Dock here, no switch)';
+  }
+  if (!(await switchIs(true)) || !preferences.get().dockActivity) return 'failed: Show when Claude is working is not on by default';
+
+  // Reduce motion shows one still frame instead of the animation.
+  const still = systemPreferences.getAnimationSettings().prefersReducedMotion;
+  const before = dockActivity.shown;
+  dockActivity.hold(true);
+  try {
+    if (!(await until(() => dockActivity.showing && dockActivity.shown >= before + (still ? 1 : 4), 3_000))) return `failed: the Dock showed ${dockActivity.shown - before} frames`;
+    await click('[data-dock-activity]');
+    if (!(await switchIs(false)) || !(await until(() => !preferences.get().dockActivity && !dockActivity.showing, 2_000))) return 'failed: turning it off did not stop the animation';
+    await click('[data-dock-activity]');
+    if (!(await switchIs(true)) || !(await until(() => preferences.get().dockActivity && dockActivity.showing, 2_000))) return 'failed: turning it on again did not start it';
+  } finally {
+    dockActivity.hold(false);
+  }
+  if (dockActivity.showing) return 'failed: still animating with nothing working';
+  await click('[data-close-settings]');
+  return `ok (${still ? 'a still frame, Reduce motion is on' : 'animated'}, off and on again, the icon put back)`;
+}
+
 async function runAppIconStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
@@ -10134,6 +10195,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 150_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
+  await step('settings › theme › app icon: Show when Claude is working animates the Dock and stops when off', () => runDockActivityStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -10163,6 +10225,7 @@ app.whenReady().then(() => {
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
+  dockActivity.setEnabled(preferences.get().dockActivity);
   keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
@@ -10203,6 +10266,8 @@ app.whenReady().then(() => {
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
     notificationIcon: () => appIcon.windowIcon(),
+    // Only the Dock has an icon to animate: Windows and Linux show the window's.
+    ...(process.platform === 'darwin' ? { working: (working: boolean) => dockActivity.setWorking(working) } : {}),
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();

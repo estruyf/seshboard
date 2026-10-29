@@ -41,6 +41,8 @@ export interface NotifierOptions {
    * the app's own. macOS always shows the bundle's icon on notifications.
    */
   notificationIcon?: () => string | undefined;
+  /** Whether Claude is working somewhere, after every change: the Dock's icon shows it (macOS). */
+  working?: (working: boolean) => void;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
   /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
@@ -91,6 +93,8 @@ export class Notifier {
   connect(): void {
     this.client?.dispose();
     this.attention.reset();
+    // The engine's sessions went with it: nothing works until the fresh snapshot says so.
+    this.options.working?.(false);
     this.cache.reset();
     const { port1, port2 } = new MessageChannelMain();
     this.options.engine.connect(port1);
@@ -240,7 +244,9 @@ export class Notifier {
     this.updateBadge();
   }
 
+  /** The badge, and whether the Dock's icon shows Claude working: both follow the sessions' states. */
   private updateBadge(): void {
+    this.options.working?.(this.attention.working());
     const count = this.attention.badge();
     app.dock?.setBadge(count > 0 ? String(count) : '');
     // Windows has no badge count: a dot over the taskbar button says it instead.
