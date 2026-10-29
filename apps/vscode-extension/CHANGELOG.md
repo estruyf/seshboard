@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Asks where to add, every time: the session open in Seshboard is first, so Enter adds to it, then **New session** and the workspace's other sessions. To add straight to the open session as before, turn on `seshboard.addToOpenSession`.
+- **Seshboard: New Session** opens New session in Seshboard on the workspace folder (you pick the folder when there are several).
+- **Add File to Seshboard** in the editor's right-click menu and the command palette adds the file you have open, whatever is selected.
 - Claude Code's `Read` deny rules now also keep files from Claude when the workspace or home folder has `[`, `]`, `{` or `}` in its name. A crafted exclude glob or deny rule in a repository's settings can no longer make VS Code stop responding.
 
 ## [0.3.0]

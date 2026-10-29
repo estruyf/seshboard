@@ -3,12 +3,12 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
-import type { CompanionContextItemInput as ContextItemInput, CompanionSessions, CompanionTarget } from '@seshboard/protocol/companion-client';
+import type { CompanionContextItemInput as ContextItemInput, CompanionSession, CompanionSessions, CompanionTarget } from '@seshboard/protocol/companion-client';
 import { SeshboardConnection, type CompanionClient } from './connection.ts';
 import { deniedByRead, excludedBy, readRules, type ClaudeSettingsFile } from './exclusions.ts';
 import { describeItems, itemPaths, problemsItem, resourceItems, selectionItem, terminalItem, type EditorSelection, type Problem } from './payload.ts';
 import { PromptNotifier } from './promptNotifier.ts';
-import { focusedTarget, folderFor, isWithin, sessionRow, statusBarView } from './targets.ts';
+import { focusedTarget, folderFor, isWithin, statusBarView, targetChoices } from './targets.ts';
 
 /** Seshboard's bundle id, to open it without changing what it shows. */
 const APP_ID = 'dev.switchboard.app';
@@ -90,21 +90,24 @@ export function activate(context: vscode.ExtensionContext): void {
     return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Starting Seshboard…' }, () => connection.waitForStart());
   };
 
-  /** Asks which session to add to: this workspace's sessions, then New session in each workspace folder. */
-  const pickTarget = async (snapshot: CompanionSessions, folders: string[], preferred: string | null, title: string): Promise<CompanionTarget | undefined> => {
+  /**
+   * Asks which session to add to: the session open in Seshboard (when given), New session in each workspace folder and
+   * this workspace's other sessions. Adding lists New session before the sessions; showing lists it after them.
+   */
+  const pickTarget = async (snapshot: CompanionSessions, folders: string[], preferred: string | null, title: string, open: CompanionSession | null = null, adding = false): Promise<CompanionTarget | undefined> => {
     type Item = vscode.QuickPickItem & { target?: CompanionTarget };
-    const now = Date.now();
-    const sessions: Item[] = snapshot.sessions.map((session) => ({ ...sessionRow(session, now, shortPath), target: { kind: 'session', sessionId: session.id } }));
     const roots = preferred ? [preferred, ...folders.filter((f) => f !== preferred)] : folders;
-    const fresh: Item[] = roots.map((folder) => ({ label: `$(add) New session in ${basename(folder)}`, target: { kind: 'new', cwd: folder } }));
-    const items: Item[] = [...sessions, ...(sessions.length ? [{ label: '', kind: vscode.QuickPickItemKind.Separator }] : []), ...fresh];
-    const picked = await vscode.window.showQuickPick(items, { title, placeHolder: sessions.length ? 'Pick a session, or start a new one' : 'No sessions for this workspace yet', matchOnDescription: true, matchOnDetail: true });
+    const choices = targetChoices(snapshot, { open, folders: roots, newFirst: adding, now: Date.now(), relative: shortPath, folderName: (folder) => basename(folder) });
+    const items: Item[] = choices.map((choice) => ('separator' in choice ? { label: choice.separator, kind: vscode.QuickPickItemKind.Separator } : choice));
+    const placeHolder = snapshot.sessions.length ? (open ? 'Enter adds to the session open in Seshboard' : 'Pick a session, or start a new one') : 'No sessions for this workspace yet';
+    const picked = await vscode.window.showQuickPick(items, { title, placeHolder, matchOnDescription: true, matchOnDetail: true });
     return picked?.target;
   };
 
   /**
-   * Adds context to a session in Seshboard: the focused session when its folder holds the files, otherwise the one
-   * you pick. Nothing is sent to Claude; it shows as chips in the message box until you press send.
+   * Adds context to a session in Seshboard: the one you pick, with the focused session first when its folder holds the
+   * files (or straight to it, with Add to Open Session on). Nothing is sent to Claude; it shows as chips in the
+   * message box until you press send.
    */
   const send = async (items: ContextItemInput[], anchor: string | null = null) => {
     if (items.length === 0) return;
@@ -124,7 +127,10 @@ export function activate(context: vscode.ExtensionContext): void {
         snapshot = await client.call('sessions.list', { folders });
       }
       const focused = focusedTarget(snapshot, paths.length ? paths : folder ? [folder] : []);
-      const target = focused ? ({ kind: 'session', sessionId: focused.id } as const) : await pickTarget(snapshot, folders.length ? folders : folder ? [folder] : [], folder, `Add ${describeItems(items)} to…`);
+      const target =
+        focused && config().get<boolean>('addToOpenSession', false)
+          ? ({ kind: 'session', sessionId: focused.id } as const)
+          : await pickTarget(snapshot, folders.length ? folders : folder ? [folder] : [], folder, `Add ${describeItems(items)} to…`, focused, true);
       if (!target) return;
       await client.call('context.add', { target, items, reveal: config().get<boolean>('bringToFront', true) });
       const where = target.kind === 'new' ? `New session in ${basename(target.cwd)}` : (snapshot.sessions.find((s) => s.id === target.sessionId) ?? snapshot.focused)?.title;
@@ -165,10 +171,14 @@ export function activate(context: vscode.ExtensionContext): void {
     await send([...(await rangeItems(document, [lines])), problems]);
   });
 
-  command('addFile', async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+  const addFile = async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
     const picked = uris?.length ? uris : uri ? [uri] : vscode.window.activeTextEditor ? [vscode.window.activeTextEditor.document.uri] : [];
+    if (picked.length === 0) return void vscode.window.showInformationMessage('Open a file first.');
     await send(await resources(picked));
-  });
+  };
+  command('addFile', addFile);
+  // The same for the file in the editor, under a name that says so next to Add Selection.
+  command('addActiveFile', addFile);
 
   command('addOpenEditors', async () => send(await resources(vscode.window.tabGroups.all.flatMap((group) => group.tabs.map(tabUri)))));
   command('addEditorGroup', async () => send(await resources(vscode.window.tabGroups.activeTabGroup.tabs.map(tabUri))));
@@ -214,6 +224,24 @@ export function activate(context: vscode.ExtensionContext): void {
     if (target?.kind === 'session') await client.call('session.reveal', { sessionId: target.sessionId });
     else if (target?.kind === 'new') await openLink(`switchboard://new-session?cwd=${encodeURIComponent(target.cwd)}`);
   };
+  // New session in Seshboard on a workspace folder (the active file's first), with nothing added to it.
+  command('newSession', async () => {
+    const folders = workspaceFolders();
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const file = active?.scheme === 'file' ? active.fsPath : null;
+    const preferred = file ? folderFor(file, folders) : null;
+    let cwd = preferred ?? folders[0] ?? (file ? dirname(file) : null);
+    if (folders.length > 1) {
+      const roots = preferred ? [preferred, ...folders.filter((f) => f !== preferred)] : folders;
+      const picked = await vscode.window.showQuickPick(
+        roots.map((folder) => ({ label: `$(add) New session in ${basename(folder)}`, description: folder.replace(homedir(), '~'), folder })),
+        { title: 'New session in Seshboard', placeHolder: 'Pick a folder' },
+      );
+      if (!picked) return;
+      cwd = picked.folder;
+    }
+    if (!(await openLink(cwd ? `switchboard://new-session?cwd=${encodeURIComponent(cwd)}` : 'switchboard://new-session'))) showOffline(connection);
+  });
   command('showSessions', () => showSessions().catch((error: Error) => vscode.window.showErrorMessage(`Couldn't reach Seshboard: ${error.message}`)));
   command('answerPrompts', async () => {
     const client = await connection.connect();

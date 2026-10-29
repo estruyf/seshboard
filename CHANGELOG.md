@@ -4,6 +4,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Added
+
+- **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
+
 ### Fixed
 
 - **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
