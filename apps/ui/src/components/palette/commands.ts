@@ -21,6 +21,7 @@ import {
   CircleDot,
   CircleHelp,
   CloudDownload,
+  Coffee,
   Code,
   ChevronsDown,
   ChevronsUp,
@@ -186,6 +187,8 @@ export interface PaletteApi {
   showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
+  /** Keep awake until done, on or off, for the session on screen. */
+  setKeepAwake(on: boolean): void;
   copyLastReply(): void;
   /** Preview last written file: opens the previewable file Claude wrote last in the session. */
   previewLastFile(): void;
@@ -766,6 +769,16 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.connected && (session(ctx)?.prompts ?? 0) > 0,
     next: () => ({ kind: 'pick', list: 'rewind', chip: 'Rewind to a message' }),
   },
+  {
+    id: 'keep-awake-on',
+    title: 'Keep awake until done',
+    group: 'session',
+    icon: Coffee,
+    keywords: 'sleep caffeinate awake power background tasks lid idle prevent finish',
+    when: (ctx) => hosted(ctx) && !session(ctx)!.host!.keepAwake && session(ctx)!.host!.state !== 'closed' && session(ctx)!.host!.state !== 'error',
+    run: (api) => api.setKeepAwake(true),
+  },
+  { id: 'keep-awake-off', title: 'Stop keeping awake', group: 'session', icon: Coffee, keywords: 'sleep caffeinate awake power until done', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.keepAwake, run: (api) => api.setKeepAwake(false) },
   { id: 'compact', title: 'Compact context', group: 'session', icon: Shrink, keywords: '/compact summarise', when: (ctx) => hosted(ctx) && (session(ctx)!.host!.contextTokens ?? 0) > 0, run: (api) => api.compact() },
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },

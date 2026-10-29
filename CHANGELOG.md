@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Keep awake until done.** Turn it on for a session in its **⋯** menu, or with **Keep awake until done** in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike the Keep awake setting, it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop. ([#241](https://github.com/estruyf/seshboard/issues/241))
 - **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
 
 ### Fixed

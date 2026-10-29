@@ -1,4 +1,4 @@
-import { Bot, Code, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
+import { Bot, Code, Coffee, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -17,13 +17,15 @@ import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { Button } from '../ui/Button.tsx';
+import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 
 const MENU_WIDTH = 260;
 
 /**
  * The session header's "⋯" menu: opening the folder in an editor, terminal or Finder (⌘O opens the
  * default one), opening the session in Claude Code's terminal interface, the project's actions (and "Edit actions…"), the agents Claude
- * started, the Claude profile the session bills to, renaming the session, checking its transcript, and stopping its Claude Code process.
+ * started, the Claude profile the session bills to, renaming the session, checking its transcript, keeping the computer awake until it is
+ * done, and stopping its Claude Code process.
  * A dot on the button says agents are running. The project actions come from the session view's
  * single `useActionsMenu` (it also feeds the pills above the message box and renders the dialogs).
  */
@@ -74,6 +76,11 @@ export function MoreMenu({
   const busy = useHosts((s) => {
     const state = s.hosts.get(sessionId)?.state;
     return state === 'starting' || state === 'running' || state === 'needs-you';
+  });
+  // Keep awake until done: only for a session running here; it turns off by itself once the session is done.
+  const awake = useHosts((s) => {
+    const host = s.hosts.get(sessionId);
+    return !host || host.state === 'closed' || host.state === 'error' ? null : host.keepAwake === true;
   });
 
   // Claude Code's own terminal interface on this session, in the terminal panel: with the editors under "Open in", before Copy path.
@@ -158,6 +165,18 @@ export function MoreMenu({
       disabled: !projectRoot,
       onSelect: () => projectRoot && startAfter({ id: sessionId, projectRoot }),
       data: { 'data-start-after': true, 'data-tooltip': 'Queue a prompt that starts by itself once this session finishes' },
+    },
+    {
+      label: 'Keep awake until done',
+      icon: <Coffee size={13} />,
+      checkbox: true,
+      checked: awake === true,
+      disabled: !client || awake === null,
+      onSelect: () =>
+        void client
+          ?.call('session.keepAwake', { sessionId, on: !awake })
+          .catch((error: Error) => toast(`Couldn't change Keep awake: ${error.message}`)),
+      data: { 'data-keep-awake-session': true, 'data-tooltip': awake === null ? 'Only while the session runs in Seshboard' : keepAwakeUntilDoneDetail() },
     },
     {
       label: 'Check transcript…',

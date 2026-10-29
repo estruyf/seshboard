@@ -15,6 +15,11 @@ export function keepAwakeDetail(platform = currentPlatform()): string {
     : 'Stops sleep while Seshboard is open. The display can still sleep.';
 }
 
+/** What Keep awake until done does, for a session's menu entry and pill: the Mac's caffeinate holds idle sleep off on battery too. */
+export function keepAwakeUntilDoneDetail(platform = currentPlatform()): string {
+  return `${thisComputerName(platform)} doesn't sleep until this session is done, background tasks included. Then this turns off by itself.`;
+}
+
 /** The status line while sleep is held off: "Keeping this Mac awake". */
 export function keepAwakeActive(platform = currentPlatform()): string {
   return `Keeping ${thisComputer(platform)} awake`;

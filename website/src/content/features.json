@@ -4382,6 +4382,21 @@
       "page": "settings"
     },
     {
+      "id": "feature:keep-awake-until-done",
+      "name": "Keep awake until done (a session's ⋯ menu and the pill above the message box)",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-on",
+      "name": "Keep awake until done",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-off",
+      "name": "Stop keeping awake",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:run-pipeline",
       "name": "Run pipeline…",
       "page": "sessions/pipelines"
