@@ -151,7 +151,7 @@ export function usePaletteContext(): PaletteContext {
       projectRoot: summary?.projectRoot ?? live.get(id)?.projectRoot ?? null,
       isWorktree: Boolean(summary?.worktree || (cwd && inWorktree(cwd))),
       host: active
-        ? { state: active.state, contextTokens: active.contextTokens, supportsEffort: findModelOption(models, active.model)?.supportsEffort ?? true }
+        ? { state: active.state, contextTokens: active.contextTokens, supportsEffort: findModelOption(models, active.model)?.supportsEffort ?? true, keepAwake: active.keepAwake === true }
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',

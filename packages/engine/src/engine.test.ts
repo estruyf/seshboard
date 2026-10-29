@@ -69,7 +69,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -85,6 +85,7 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     claudeBinary: '/nonexistent/claude',
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
+    ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -193,6 +194,25 @@ describe('engine over a MessagePort', () => {
     const usage = await client.call('usage.breakdown', { period: 'day', groupBy: 'model' });
     expect(usage.rows).toContainEqual(expect.objectContaining({ key: 'auto-routing', label: 'Auto routing', model: 'claude-haiku-4-5', autoRouting: { picks: 1 } }));
     expect(usage.totals.tokens.input).toBe(1_000);
+  });
+
+  it('keeps the computer awake while a flagged session works, and lets go when it stops', async () => {
+    const awake: boolean[] = [];
+    const { client, dataDir } = connect({ sdk: fakeSdk([]), onKeepAwake: (on) => awake.push(on) });
+    await expect(client.call('session.keepAwake', { sessionId: SESSION_ID, on: true })).rejects.toThrow("isn't running here");
+    const { item } = await client.call('later.add', { draft: { cwd: dataDir, prompt: 'Run the full test suite' } });
+    const { sessionId } = await client.call('later.start', { id: item.id });
+    await client.call('session.keepAwake', { sessionId, on: true });
+    expect(awake).toEqual([true]);
+    expect((await client.call('hosts.list', {})).hosts.find((h) => h.sessionId === sessionId)?.keepAwake).toBe(true);
+    // Stopping the session ends its process: the flag goes with it.
+    await client.call('session.close', { sessionId });
+    for (let tries = 0; awake.length < 2; tries++) {
+      if (tries > 100) throw new Error('Keep awake never let go');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(awake).toEqual([true, false]);
+    expect((await client.call('hosts.list', {})).hosts.find((h) => h.sessionId === sessionId)?.keepAwake).toBeUndefined();
   });
 
   it('saves, lists, runs now, pauses, deletes and restores schedules, and tells every window', async () => {

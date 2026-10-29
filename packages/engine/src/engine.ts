@@ -127,6 +127,7 @@ import { createSessionSettingsStore } from './host/sessionSettings.ts';
 import { UsageMonitor } from './host/usageMonitor.ts';
 import { commandRunMessage, shellName } from './terminals/outputMessage.ts';
 import { readTaskOutput } from './host/taskOutput.ts';
+import { SessionsAwake } from './host/keepAwake.ts';
 import { agentUsage } from './usage/agentUsage.ts';
 import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
@@ -184,6 +185,11 @@ export interface EngineOptions {
   shellEnv?: Promise<ShellEnv>;
   /** Mirror of every log entry, e.g. to write it to stderr. */
   onLog?: (entry: LogEntry) => void;
+  /**
+   * Keep awake until done (#241): whether a session holds sleep off now. The desktop app keeps the computer awake
+   * while it does.
+   */
+  onKeepAwake?: (on: boolean) => void;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
   /** Start watching ~/.claude immediately. Defaults to true. */
@@ -846,6 +852,18 @@ export function createEngine(options: EngineOptions): Engine {
       }
     }
   };
+  /** Keep awake until done (#241): the sessions that hold sleep off until they finish. A flag that goes by itself is reported. */
+  const awake = new SessionsAwake({
+    onChange: (on) => options.onKeepAwake?.(on),
+    onCleared: (id) => {
+      const info = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === id);
+      if (info) broadcast('session.host', info);
+    },
+    // The smoke test waits for the flag to go: no need to sit through the whole grace period there.
+    ...(options.stubQueueStarts ? { graceMs: 500 } : {}),
+  });
+  /** A host as the windows see it: with its Keep awake flag. */
+  const withAwake = (info: HostInfo): HostInfo => (awake.has(info.sessionId) ? { ...info, keepAwake: true } : info);
   const hosts = new HostManager({
     limits,
     signIns,
@@ -873,7 +891,8 @@ export function createEngine(options: EngineOptions): Engine {
     sessionProfile,
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
-      broadcast('session.host', info);
+      awake.update(info.sessionId, info);
+      broadcast('session.host', withAwake(info));
       catchUpOnInfo(info);
       // After the broadcast, so main's "Claude finished" still sees the item it says starts next.
       autoStarter?.onHost(info);
@@ -1250,7 +1269,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
     if (state === 'closed') smokeHosts.delete(sessionId);
     else smokeHosts.set(sessionId, info);
-    broadcast('session.host', info);
+    awake.update(sessionId, info);
+    broadcast('session.host', withAwake(info));
     autoStarter?.onHost(info);
   };
   const demoQueueFile = options.stubQueueStarts ? options.demoUsage?.queueHostFile : undefined;
@@ -2634,7 +2654,7 @@ export function createEngine(options: EngineOptions): Engine {
 
     'hosts.list': () => {
       const list = hosts.list();
-      return smokeHosts.size ? { ...list, hosts: [...list.hosts, ...smokeHosts.values()] } : list;
+      return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake) };
     },
     'session.create': createSession,
     'session.send': async (params) => {
@@ -2715,6 +2735,12 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.stopTask': async ({ sessionId, taskId }) => {
       await hosts.stopTask(sessionId, taskId);
+      return {};
+    },
+    'session.keepAwake': ({ sessionId, on }) => {
+      const info = [...hosts.list().hosts, ...smokeHosts.values()].find((h) => h.sessionId === sessionId);
+      if (!info || !awake.set(sessionId, on, info)) throw new Error("This session isn't running here.");
+      broadcast('session.host', withAwake(info));
       return {};
     },
     'session.taskOutput': async ({ outputFile }) => readTaskOutput(outputFile),
@@ -3878,6 +3904,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (demoTriggersFile) unwatchFile(demoTriggersFile);
       if (demoPipelinesFile) unwatchFile(demoPipelinesFile);
       hosts.closeAll();
+      awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();
       checksWatcher.close();
