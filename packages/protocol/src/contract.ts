@@ -648,8 +648,14 @@ export const contract = {
     },
     /** Deletes one of your actions, or with `shared` takes it out of the project's .seshboard.json. */
     'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
-    /** Approves a shared action's exact command (an edited command needs approval again), or an imported action of yours. */
-    'actions.trust': { params: z.object({ projectRoot: AbsolutePath, id: z.string() }), result: z.object({}) },
+    /**
+     * Approves a shared action's exact command, kind and Run in new worktrees (a change to any needs approval again), or
+     * an imported action of yours, as `seen` in the dialog: CHANGED when it is no longer that (its file changed meanwhile).
+     */
+    'actions.trust': {
+      params: z.object({ projectRoot: AbsolutePath, id: z.string(), seen: z.object({ type: z.enum(['shell', 'prompt']), command: z.string(), runOnWorktreeCreate: z.boolean() }) }),
+      result: z.object({}),
+    },
     /** Starter actions for a project (package.json scripts, git, gh). */
     'actions.suggest': { params: z.object({ projectRoot: AbsolutePath }), result: z.object({ suggestions: z.array(ActionSuggestion) }) },
     /** Runs an action for a session: shell actions open a terminal tab, prompt actions message the session. */

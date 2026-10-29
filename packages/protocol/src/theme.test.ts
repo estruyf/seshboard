@@ -33,6 +33,14 @@ describe('theme colours', () => {
     }
   });
 
+  it('refuses a long run of spaces at once, and a value over 80 characters before the pattern runs', () => {
+    const started = Date.now();
+    expect(new RegExp(COLOR_PATTERN).test(`rgb(1${' '.repeat(50_000)}x`)).toBe(false);
+    expect(parseThemeFile({ format: 'seshboard-theme', name: 'x', mode: 'dark', colors: { bg: `rgb(1${' '.repeat(50_000)}x` } })).toHaveProperty('error');
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(toHex(parseColor('rgb(1 ,2,  3)')!)).toBe('#010203');
+  });
+
   it('converts to and from OKLCH without drift', () => {
     for (const hex of ['#ffffff', '#15181f', '#ffd43b', '#916c00', '#74c0fc', '#d1186b']) expect(toHex(fromOklch(toOklch(parseColor(hex)!)))).toBe(hex);
   });

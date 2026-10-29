@@ -285,6 +285,7 @@ export class RemoteServer {
     const pairing = this.options.pairing;
     const psk = pairing.psk();
     if (!psk) return ws.close(CLOSE.pairingClosed);
+    const generation = pairing.generation;
     const handshake = responderHandshake({ mode: 'pair', staticKey: this.options.identity(), psk });
     let phoneKey: Uint8Array;
     let session: NoiseSession;
@@ -307,7 +308,7 @@ export class RemoteServer {
     const stream = encryptedStream(frameSocket(ws), session, {
       onError: () => !claimed && refuse(),
       onFirstFrame: () => {
-        claimed = pairing.claim();
+        claimed = pairing.claim(generation);
         if (claimed) this.backoff.succeeded(address);
         else ws.close(CLOSE.pairingClosed);
         return claimed;
@@ -316,7 +317,7 @@ export class RemoteServer {
     let asked = false;
     const rpc = serveRpc(remotePairContract, lineTransport(stream, { maxLineLength: 4096 }), {
       'pair.request': async ({ name }) => {
-        if (!claimed || asked) throw new RpcError('DENIED', 'Pairing is closed');
+        if (!claimed || asked || pairing.generation !== generation) throw new RpcError('DENIED', 'Pairing is closed');
         asked = true;
         const allowed = await pairing.ask(name, pairingCode(session.handshakeHash));
         if (!allowed) throw new RpcError('DENIED', 'Pairing was not allowed on the computer');

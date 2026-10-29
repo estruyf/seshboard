@@ -16,7 +16,13 @@ export const slugify = (name: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'action';
 
-const hash = (command: string) => createHash('sha256').update(command).digest('hex');
+/**
+ * What approving a shared action covers: its command, and whether it runs in a shell (not sent as a prompt) and by
+ * itself in a new worktree. A repository that changes any of them is asked about again: a prompt you saved must not
+ * become a shell command already approved.
+ */
+const trustKey = (action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>) =>
+  createHash('sha256').update(`${action.type}\0${action.runOnWorktreeCreate ? 1 : 0}\0${action.command}`).digest('hex');
 
 /** Where an action's keys go in the shared file: these first, then anything else it had. */
 const ENTRY_ORDER = ['id', 'name', 'icon', 'type', 'command', 'cwd', 'confirm', 'shortcut', 'runOnWorktreeCreate', 'sendOutput'] as const;
@@ -197,12 +203,12 @@ export class ActionStore {
     return { actions, file: read.file, errors };
   }
 
-  isTrusted(projectRoot: string, command: string): boolean {
-    return this.statements.trusted.get(projectRoot, hash(command)) !== undefined;
+  isTrusted(projectRoot: string, action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>): boolean {
+    return this.statements.trusted.get(projectRoot, trustKey(action)) !== undefined;
   }
 
-  trust(projectRoot: string, command: string): void {
-    this.statements.trust.run(projectRoot, hash(command), Date.now());
+  trust(projectRoot: string, action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>): void {
+    this.statements.trust.run(projectRoot, trustKey(action), Date.now());
   }
 
   /** Yours for this project win over shared, which win over your global ones (matched by id). */
@@ -210,7 +216,7 @@ export class ActionStore {
     const shared = this.shared(projectRoot);
     const merged = new Map<string, ListedAction>();
     for (const entry of this.own(null)) merged.set(entry.action.id, { ...entry.action, scope: 'global', trusted: ActionStore.trustedOwn(entry) });
-    for (const action of shared.actions) merged.set(action.id, { ...action, scope: 'shared', trusted: this.isTrusted(projectRoot, action.command) });
+    for (const action of shared.actions) merged.set(action.id, { ...action, scope: 'shared', trusted: this.isTrusted(projectRoot, action) });
     for (const entry of this.own(projectRoot)) merged.set(entry.action.id, { ...entry.action, scope: 'project', trusted: ActionStore.trustedOwn(entry) });
     return { actions: [...merged.values()], sharedFile: shared.file, errors: shared.errors };
   }
@@ -247,7 +253,7 @@ export class ActionStore {
       const renamed = previousId && previousId !== action.id ? renameEntry(data, previousId, action.id) : data;
       return upsertEntry(renamed, 'actions', sharedEntry(action), ENTRY_ORDER, sharedId);
     });
-    this.trust(projectRoot, action.command);
+    this.trust(projectRoot, action);
   }
 
   /** Takes an action out of the project's .seshboard.json. */

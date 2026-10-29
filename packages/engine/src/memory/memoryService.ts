@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, parse, relative, resolve } from 'node:path';
 import {
   countLines,
@@ -88,6 +88,21 @@ function exportMeta(text: string): { source: string | null; exportPath: string |
   const meta = data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? (data.metadata as Record<string, unknown>) : {};
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
   return { source: str(meta.source), exportPath: str(meta.path), updatedAt: str(meta.updated_at) };
+}
+
+/**
+ * Writes a folder's MEMORY.md, which must be a file of its own. A memory folder can be shared or kept in git, and a
+ * MEMORY.md that is a link there would have every new memory's line written to the file it points at, elsewhere.
+ */
+function writeIndex(path: string, text: string): void {
+  assertIndexFile(path);
+  writeFileSync(path, text);
+}
+
+/** Refuses (FORBIDDEN) a MEMORY.md that is there but isn't a file of its own (`writeIndex`). */
+function assertIndexFile(path: string): void {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (stat && !stat.isFile()) throw new RpcError('FORBIDDEN', `${path} is a link or not a file, so Seshboard won't change it.`);
 }
 
 const readText = (path: string): string | null => {
@@ -180,13 +195,15 @@ export class MemoryService {
     const file = `${params.name}.md`;
     const path = join(dir, file);
     if (existsSync(path)) throw new RpcError('NAME_TAKEN', `There is a memory called ${params.name} already`);
+    // Before the memory is written, so a refused index leaves nothing half done.
+    assertIndexFile(join(dir, MEMORY_INDEX));
     mkdirSync(dir, { recursive: true });
     writeFileSync(path, memoryFileText({ name: params.name, description: params.description, type: params.type, body: params.body, metadata: params.metadata }), { flag: 'wx' });
     const indexPath = join(dir, MEMORY_INDEX);
     const index = readText(indexPath) ?? '';
     // The personal index is read from every project, so it links its files by full path.
     const link = params.root === null ? tildePath(path, this.home) : file;
-    writeFileSync(indexPath, appendIndexLine(index, styledIndexLine(index, params.name, link, params.description)));
+    writeIndex(indexPath, appendIndexLine(index, styledIndexLine(index, params.name, link, params.description)));
     return { path };
   }
 
@@ -206,7 +223,7 @@ export class MemoryService {
       const indexPath = join(dir, MEMORY_INDEX);
       const index = readText(indexPath);
       const updated = index === null ? null : updateIndexLine(index, basename(params.path), { hook: params.description });
-      if (updated !== null && updated !== index) writeFileSync(indexPath, updated);
+      if (updated !== null && updated !== index) writeIndex(indexPath, updated);
     }
     return { modified: statSync(params.path).mtimeMs };
   }
@@ -242,7 +259,7 @@ export class MemoryService {
     const indexPath = join(dir, MEMORY_INDEX);
     const index = readText(indexPath);
     const updated = index === null ? null : updateIndexLine(index, basename(params.path), { file });
-    if (updated !== null) writeFileSync(indexPath, updated);
+    if (updated !== null) writeIndex(indexPath, updated);
     const updatedLinks: string[] = [];
     for (const path of linking) {
       if (path === params.path) continue;
@@ -265,7 +282,7 @@ export class MemoryService {
     const indexPath = join(dir, MEMORY_INDEX);
     const index = readText(indexPath);
     const removed = index === null ? null : removeIndexLine(index, basename(params.path));
-    if (removed) writeFileSync(indexPath, removed.text);
+    if (removed) writeIndex(indexPath, removed.text);
     const undoToken = randomUUID();
     this.removed.set(undoToken, { path: params.path, content, index: removed ? { path: indexPath, line: removed.line, at: removed.at } : null });
     // A handful of deletes can be undone; older tokens lapse.
@@ -280,7 +297,7 @@ export class MemoryService {
     if (existsSync(record.path)) throw new RpcError('CHANGED', `There is a new ${basename(record.path)}; nothing was put back`);
     mkdirSync(dirname(record.path), { recursive: true });
     writeFileSync(record.path, record.content, { flag: 'wx' });
-    if (record.index) writeFileSync(record.index.path, restoreIndexLine(readText(record.index.path) ?? '', record.index.line, record.index.at));
+    if (record.index) writeIndex(record.index.path, restoreIndexLine(readText(record.index.path) ?? '', record.index.line, record.index.at));
     this.removed.delete(token);
     return { path: record.path };
   }
@@ -333,7 +350,7 @@ export class MemoryService {
   installBlock(): void {
     const dir = this.personal().dir;
     mkdirSync(dir, { recursive: true });
-    if (!existsSync(join(dir, MEMORY_INDEX))) writeFileSync(join(dir, MEMORY_INDEX), '');
+    if (!existsSync(join(dir, MEMORY_INDEX))) writeIndex(join(dir, MEMORY_INDEX), '');
     const line = importLine(dir, this.home);
     for (const p of this.options.allProfiles?.() ?? []) {
       const path = join(p.configDir, 'CLAUDE.md');
@@ -391,12 +408,12 @@ export class MemoryService {
       writeFileSync(next, content, { flag: 'wx' });
       await this.options.trash([params.path], { memoryDir: from });
     }
-    if (removed) writeFileSync(fromIndexPath, removed.text);
+    if (removed) writeIndex(fromIndexPath, removed.text);
     const toIndexPath = join(to, MEMORY_INDEX);
     const toIndex = readText(toIndexPath) ?? '';
     const hook = old?.hook || (memoryMeta(splitFrontmatter(content).data).description ?? '');
     const link = to === this.personalDirOrNull() ? tildePath(next, this.home) : file;
-    writeFileSync(toIndexPath, appendIndexLine(toIndex, styledIndexLine(toIndex, old?.title || file.replace(/\.md$/, ''), link, hook)));
+    writeIndex(toIndexPath, appendIndexLine(toIndex, styledIndexLine(toIndex, old?.title || file.replace(/\.md$/, ''), link, hook)));
     return { path: next };
   }
 
@@ -421,7 +438,7 @@ export class MemoryService {
     const indexPath = join(to, MEMORY_INDEX);
     const index = readText(indexPath) ?? '';
     const hook = line?.hook || (memoryMeta(splitFrontmatter(content).data).description ?? '');
-    writeFileSync(indexPath, appendIndexLine(index, styledIndexLine(index, line && line.title !== stem ? line.title : name, `${name}.md`, hook)));
+    writeIndex(indexPath, appendIndexLine(index, styledIndexLine(index, line && line.title !== stem ? line.title : name, `${name}.md`, hook)));
     return { path: next };
   }
 
@@ -553,7 +570,7 @@ export class MemoryService {
       if (before) {
         writeFileSync(before.path, text);
         const next = updateIndexLine(index, basename(before.path), { hook: c.description });
-        if (next !== null && next !== index) writeFileSync(indexPath, next);
+        if (next !== null && next !== index) writeIndex(indexPath, next);
         updated++;
         continue;
       }
@@ -563,7 +580,7 @@ export class MemoryService {
       for (let n = 2; existsSync(join(dir, file)) || file.toLowerCase() === MEMORY_INDEX.toLowerCase(); n++) file = `${stem}-${n}.md`;
       writeFileSync(join(dir, file), text, { flag: 'wx' });
       const link = dir === personalDir ? tildePath(join(dir, file), this.home) : file;
-      writeFileSync(indexPath, appendIndexLine(index, styledIndexLine(index, c.name, link, c.description)));
+      writeIndex(indexPath, appendIndexLine(index, styledIndexLine(index, c.name, link, c.description)));
       created++;
     }
     return { created, updated };
@@ -662,7 +679,7 @@ export class MemoryService {
   /** Writes what `fixIndexPreview` shows. */
   fixIndex(root: string | null, indexPath: string): void {
     const { before, after } = this.fixIndexPreview(root, indexPath);
-    if (after !== before) writeFileSync(indexPath, after);
+    if (after !== before) writeIndex(indexPath, after);
   }
 
   private personalDirOrNull(): string | null {
@@ -717,7 +734,7 @@ export class MemoryService {
       const indexPath = join(dirname(request.memoryPath), MEMORY_INDEX);
       const index = readText(indexPath);
       const removed = index === null ? null : removeIndexLine(index, basename(request.memoryPath));
-      if (removed) writeFileSync(indexPath, removed.text);
+      if (removed) writeIndex(indexPath, removed.text);
       memory = { path: request.memoryPath, content: memoryContent, index: removed ? { path: indexPath, line: removed.line, at: removed.at } : null };
     }
     const undoToken = randomUUID();
@@ -739,7 +756,7 @@ export class MemoryService {
       mkdirSync(dirname(record.memory.path), { recursive: true });
       writeFileSync(record.memory.path, record.memory.content, { flag: 'wx' });
       const { index } = record.memory;
-      if (index) writeFileSync(index.path, restoreIndexLine(readText(index.path) ?? '', index.line, index.at));
+      if (index) writeIndex(index.path, restoreIndexLine(readText(index.path) ?? '', index.line, index.at));
     }
     this.last = null;
     return record.root;
@@ -778,7 +795,7 @@ export class MemoryService {
     if (!params.dryRun) {
       mkdirSync(dir, { recursive: true });
       writeFileSync(path, content, { flag: 'wx' });
-      writeFileSync(indexPath, index);
+      writeIndex(indexPath, index);
     }
     return { path, name, content, indexLine, indexLines: countLines(index) };
   }

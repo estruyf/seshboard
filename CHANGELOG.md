@@ -21,6 +21,14 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **A mod draws only inside its own frame.** A box a mod places freely stays in its band or pane, and never covers the line that names the mod.
 - **On Windows, `seshboard` with a folder name that has `&` in it** no longer runs part of the name as a command when the folder doesn't exist.
 - **A pull request's base branch can't make git write a file.** A base starting with `-` in a session's `gh pr create` is ignored when Seshboard lists the commits of a linked session.
+- **Approving a shared action approves what you saw.** If the project's `.seshboard.json` changes while the approval dialog is open, nothing is approved and you're asked to check again. A shared prompt that becomes a shell command, or starts running in new worktrees, needs approval again too. Shared actions you approved before ask once more.
+- **Files that are links stay untouched.** A `MEMORY.md` that is a link is no longer written through. Saving shared settings, and copying ignored files such as `.env` into a new worktree, never write through a link the repository holds.
+- **Undo after archiving on a phone works only on that phone.** Another paired phone can't bring the session or run back.
+- **A phone stops getting a session's messages once it leaves its list,** for example when the session is archived.
+- **Pairing a device is tied to its QR code.** A phone that scanned an earlier code, or one shown before you closed the dialog, can't pair with the current one.
+- **On the phone, drafts and Ask answers stay with their computer.** With more than one computer paired, a draft or an answer never shows on another computer's session.
+- **Installing the `seshboard` command on a Mac** writes the commands directly with the administrator's password, instead of copying them from a temporary folder.
+- **Theme colours with long runs of spaces are refused at once,** instead of slowing down a theme import.
 
 ## [1.2.0] - 2026-10-28
 

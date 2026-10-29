@@ -1680,13 +1680,16 @@ export function createEngine(options: EngineOptions): Engine {
   const expandRunBriefs = (text: string) => {
     const { runs } = parseRunBriefs(text);
     if (!runs.some((r) => r.stub)) return text;
-    let out = text;
+    // Each stub is replaced where it was found, not wherever its text first appears: elsewhere (inside another
+    // block) it could change what the rest of the message means.
+    let out = '';
+    let from = 0;
     for (const block of runs.filter((r) => r.stub)) {
       const state = runner?.state(block.runId);
-      const stub = writeRunStub(block.label, block.runId);
-      out = out.replace(stub, state ? writeRunBrief(state) : '');
+      out += text.slice(from, block.start) + (state ? writeRunBrief(state) : '');
+      from = block.end;
     }
-    return out.replace(/\n{3,}/g, '\n\n').trim();
+    return (out + text.slice(from)).replace(/\n{3,}/g, '\n\n').trim();
   };
   const demoPipelinesFile = options.stubQueueStarts ? options.demoUsage?.pipelinesFile : undefined;
   /** The demo runs the screenshot tour put in, to take out again. */
@@ -2903,10 +2906,14 @@ export function createEngine(options: EngineOptions): Engine {
       broadcast('actions.changed', { root: projectRoot });
       return {};
     },
-    'actions.trust': ({ projectRoot, id }) => {
+    'actions.trust': ({ projectRoot, id, seen }) => {
       const action = actions.list(projectRoot).actions.find((a) => a.id === id);
       if (!action) throw new RpcError('NOT_FOUND', 'No such action');
-      if (action.scope === 'shared') actions.trust(projectRoot, action.command);
+      // Only what the dialog showed is approved: the file can change while it is open (a pull, a checkout).
+      if (action.command !== seen.command || action.type !== seen.type || action.runOnWorktreeCreate !== seen.runOnWorktreeCreate) {
+        throw new RpcError('CHANGED', 'This action changed while you were looking at it. Check it again.');
+      }
+      if (action.scope === 'shared') actions.trust(projectRoot, action);
       else actions.approve(action.scope === 'global' ? null : projectRoot, action.id);
       return {};
     },
@@ -3638,6 +3645,8 @@ export function createEngine(options: EngineOptions): Engine {
       return result;
     },
     'companion.focus': ({ sessionId, scope }, context) => {
+      // Which sessions phones may see follows the scope.
+      if (scope !== sidebarScope) remote?.sessionsChanged();
       sidebarScope = scope;
       companion?.focus(context, sessionId, scope);
       return {};

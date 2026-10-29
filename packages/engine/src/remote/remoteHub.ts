@@ -315,10 +315,16 @@ export class RemoteHub {
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
   /**
-   * Sessions a phone archived, and when: it may take that back (Undo) for a while, although an archived session has
-   * left its list and nothing else may touch it.
+   * Sessions and runs a phone archived, by which phone and when: that phone may take it back (Undo) for a while,
+   * although an archived session has left its list and nothing else may touch it. Another phone may not.
    */
-  private readonly archivedFromPhone = new Map<string, number>();
+  private readonly archivedFromPhone = new Map<string, { deviceId: string; at: number }>();
+
+  /** Whether `device` may unarchive `id` without seeing it in its list: it archived it a moment ago. */
+  private mayUndoArchive(id: string, device: RemoteDevice): boolean {
+    const archived = this.archivedFromPhone.get(id);
+    return archived !== undefined && archived.deviceId === device.id && Date.now() - archived.at < UNDO_ARCHIVE_MS;
+  }
   private applying: Promise<void> = Promise.resolve();
   /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
   private appIcon: string = DEFAULT_APP_ICON;
@@ -434,6 +440,14 @@ export class RemoteHub {
     this.changeTimer = setTimeout(() => {
       this.changeTimer = undefined;
       const snapshot = this.list();
+      // A session that left the list (archived, out of scope) is no longer a phone's to follow: its watch ends, so
+      // nothing more of it is sent.
+      const listed = new Set(snapshot.sessions.map((s) => s.id));
+      for (const [phone, watch] of this.watches) {
+        if (listed.has(watch.sessionId)) continue;
+        watch.stop();
+        this.watches.delete(phone);
+      }
       const json = JSON.stringify(snapshot);
       if (json === this.lastSessions) return;
       this.lastSessions = json;
@@ -939,10 +953,10 @@ export class RemoteHub {
       },
       'runs.archive': async ({ runId, archived }) => {
         // As for a session: an archived run row leaves the list, and the phone that archived it may take that back.
-        const undo = !archived && Date.now() - (this.archivedFromPhone.get(runId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = !archived && this.mayUndoArchive(runId, device);
         if (!undo) this.checkRun(runId);
         await this.requirePipelines().archive(runId, archived);
-        if (archived) this.archivedFromPhone.set(runId, Date.now());
+        if (archived) this.archivedFromPhone.set(runId, { deviceId: device.id, at: Date.now() });
         else this.archivedFromPhone.delete(runId);
         this.sessionsChanged();
         return {};
@@ -988,9 +1002,9 @@ export class RemoteHub {
         return {};
       },
       'session.setFlags': ({ sessionId, pinned, archived }) => {
-        const undo = archived === false && pinned === undefined && Date.now() - (this.archivedFromPhone.get(sessionId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = archived === false && pinned === undefined && this.mayUndoArchive(sessionId, device);
         if (!undo) this.checkSession(sessionId);
-        if (archived === true) this.archivedFromPhone.set(sessionId, Date.now());
+        if (archived === true) this.archivedFromPhone.set(sessionId, { deviceId: device.id, at: Date.now() });
         else if (archived === false) this.archivedFromPhone.delete(sessionId);
         this.options.setFlags(sessionId, { ...(pinned !== undefined ? { pinned } : {}), ...(archived !== undefined ? { archived } : {}) });
         this.sessionsChanged();

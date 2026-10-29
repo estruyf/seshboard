@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { existsSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
@@ -85,15 +86,19 @@ export function writeSharedFile(projectRoot: string, change: (data: Record<strin
   }
   const next = change(read.data ?? {});
   const body = `${JSON.stringify(next, null, indent)}${finalNewline ? '\n' : ''}`;
-  const temp = `${read.file}.${process.pid}.tmp`;
+  // A name no one can guess, made new (`wx`): a link the repository holds at a known name would have the write go
+  // through it, to a file elsewhere.
+  const temp = `${read.file}.${randomBytes(6).toString('hex')}.tmp`;
+  let made = false;
   try {
-    writeFileSync(temp, body);
+    writeFileSync(temp, body, { flag: 'wx' });
+    made = true;
     renameSync(temp, read.file);
   } catch (error) {
     try {
-      if (existsSync(temp)) unlinkSync(temp);
+      if (made) unlinkSync(temp);
     } catch {
-      // Left behind; the next write replaces it.
+      // Left behind.
     }
     const code = (error as NodeJS.ErrnoException).code;
     const why = code === 'EACCES' || code === 'EPERM' ? "you don't have permission to change it" : code === 'EROFS' ? 'the folder is read-only' : code === 'ENOENT' ? 'the project folder is gone' : (error as Error).message;

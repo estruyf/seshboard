@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, accessSync, constants } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, accessSync, constants } from 'node:fs';
 import path from 'node:path';
 import type { ShellCommandState } from '@seshboard/protocol/bridge';
 
@@ -275,8 +274,18 @@ export function pathCheck(plan: ShellCommandPlan, editsPath: boolean): () => Pro
 }
 
 /**
+ * The shell command an administrator runs to write the commands into `dir`. Each script's text is in the command
+ * itself: copied from a temporary folder instead, another program of this user could swap a file there for a link
+ * while the password prompt waits, and have a file it can't read published in `dir`.
+ */
+export function privilegedInstall(dir: string, files: ReadonlyArray<{ file: string; script: string }>): string {
+  const writes = files.map((entry) => `/usr/bin/printf '%s' ${shQuote(entry.script)} > ${shQuote(entry.file)} && /bin/chmod 755 ${shQuote(entry.file)}`);
+  return `/bin/mkdir -p ${shQuote(dir)} && ${writes.join(' && ')}`;
+}
+
+/**
  * Writes the commands, skipping a name another program has a file for (never overwritten). Where the folder isn't writable (macOS's
- * /usr/local/bin), the scripts are written to a temporary folder and copied with the administrator's password.
+ * /usr/local/bin), they are written with the administrator's password (`privilegedInstall`).
  * `editsPath` adds the folder to the user's PATH (Windows).
  */
 export async function installShellCommand(plan: ShellCommandPlan, editsPath: boolean): Promise<void> {
@@ -289,14 +298,7 @@ export async function installShellCommand(plan: ShellCommandPlan, editsPath: boo
       if (plan.platform !== 'win32') chmodSync(entry.file, 0o755);
     }
   } else if (plan.platform === 'darwin') {
-    const staging = mkdtempSync(path.join(tmpdir(), 'seshboard-shell-command-'));
-    try {
-      for (const entry of files) writeFileSync(path.join(staging, entry.name), entry.script, { mode: 0o755 });
-      const copies = files.map((entry) => `/bin/cp ${shQuote(path.join(staging, entry.name))} ${shQuote(entry.file)} && /bin/chmod 755 ${shQuote(entry.file)}`);
-      await asAdministrator(`/bin/mkdir -p ${shQuote(plan.dir)} && ${copies.join(' && ')}`, `Seshboard wants to add the ${listed(files.map((entry) => entry.name))} commands to ${plan.dir}.`);
-    } finally {
-      rmSync(staging, { recursive: true, force: true });
-    }
+    await asAdministrator(privilegedInstall(plan.dir, files), `Seshboard wants to add the ${listed(files.map((entry) => entry.name))} commands to ${plan.dir}.`);
   } else {
     throw new Error(`Seshboard can't write to ${plan.dir}.`);
   }
