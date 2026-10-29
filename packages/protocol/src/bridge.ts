@@ -336,6 +336,11 @@ export interface Preferences {
   appIcon: AppIconKey;
   /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
   appIconOnRemote: boolean;
+  /**
+   * Settings › Theme › App icon: "Show when Claude is working" (macOS). On, the empty jacks of the Dock's icon light
+   * up in turn while a session works. On by default.
+   */
+  dockActivity: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -432,6 +437,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
+  dockActivity: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
@@ -612,6 +618,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
+  if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.

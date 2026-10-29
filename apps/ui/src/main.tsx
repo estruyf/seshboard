@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
-import { SELECTABLE } from './lib/selectable.ts';
+import { KEEPS_SELECTION, SELECTABLE } from './lib/selectable.ts';
 import { popoutSession } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
@@ -22,10 +22,11 @@ window.addEventListener('pointerdown', () => root.removeAttribute('data-keyboard
 
 // The body is `user-select: none`, and Chromium keeps a selection when you press on such an element. So a press
 // outside the text people can select (`.select-text`, messages, code, fields) clears it, as it would on a normal page.
+// Not on the selection toolbar, whose actions need the selection still there when the click lands.
 window.addEventListener(
   'mousedown',
   (event) => {
-    if (event.target instanceof Element && event.target.closest(`${SELECTABLE}, input, textarea, [contenteditable]`)) return;
+    if (event.target instanceof Element && event.target.closest(`${SELECTABLE}, ${KEEPS_SELECTION}, input, textarea, [contenteditable]`)) return;
     window.getSelection()?.removeAllRanges();
   },
   true,

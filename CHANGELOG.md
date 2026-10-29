@@ -6,11 +6,13 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another, in whichever app icon you picked. With Reduce motion on, they stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
 - **Keep awake until done.** Turn it on for a session in its **⋯** menu, or with **Keep awake until done** in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike the Keep awake setting, it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop. ([#241](https://github.com/estruyf/seshboard/issues/241))
 - **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
 
 ### Fixed
 
+- **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
 - **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
 - **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
 - **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.

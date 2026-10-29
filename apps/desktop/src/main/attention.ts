@@ -30,6 +30,7 @@ export class Attention {
   private readonly hostStates = new Map<string, HostState>();
   private readonly pending = new Map<string, PermissionRequest>();
   private readonly cliWaiting = new Set<string>();
+  private readonly cliRunning = new Set<string>();
   private readonly terminalExit = new Map<string, number | null>();
   private readonly titles = new Map<string, string>();
 
@@ -95,8 +96,10 @@ export class Attention {
     const events: AttentionEvent[] = [];
     const now = new Set<string>();
     const external = this.options.external?.() ?? true;
+    this.cliRunning.clear();
     for (const session of live) {
       if (!external) break;
+      if (session.origin === 'cli' && session.status === 'running') this.cliRunning.add(session.sessionId);
       if (session.origin !== 'cli' || session.status !== 'needs-you') continue;
       now.add(session.sessionId);
       if (!this.cliWaiting.has(session.sessionId)) {
@@ -135,11 +138,21 @@ export class Attention {
     return sessions.size;
   }
 
+  /**
+   * Whether Claude is working somewhere: a session in Seshboard starting or running, or a Terminal session running when
+   * the sidebar lists sessions from other apps. One that waits on you isn't working: the badge says that.
+   */
+  working(): boolean {
+    for (const state of this.hostStates.values()) if (state === 'running' || state === 'starting') return true;
+    return this.cliRunning.size > 0;
+  }
+
   /** After an engine restart, state is rebuilt from the fresh snapshot. */
   reset(): void {
     this.hostStates.clear();
     this.pending.clear();
     this.cliWaiting.clear();
+    this.cliRunning.clear();
     this.terminalExit.clear();
   }
 }
