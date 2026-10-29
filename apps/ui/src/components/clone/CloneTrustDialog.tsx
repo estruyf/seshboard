@@ -1,6 +1,7 @@
 import { ShieldAlert } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RepoBrings } from '@seshboard/protocol/client';
+import { useRepoTrust } from '../../state/repoTrust.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { trustGroups, trustText } from './cloneModel.ts';
@@ -51,9 +52,15 @@ export function CloneTrustDialog({ brings, onAnswer }: { brings: RepoBrings; onA
   );
 }
 
+/** The trust question a start on this computer raised (`trustRepository`); mounted once per window. */
+export function RepoTrustDialog() {
+  const request = useRepoTrust((s) => s.request);
+  return request ? <CloneTrustDialog brings={request.brings} onAnswer={request.resolve} /> : null;
+}
+
 /**
- * The trust question as a promise: `ask` shows the dialog (once per folder) and resolves with the answer; `dialog` is
- * what to render.
+ * The trust question as a promise, for a clone on another computer: `ask` shows the dialog (once per folder) and
+ * resolves with the answer; `dialog` is what to render. On this computer the engine keeps the answer (`trustRepository`).
  */
 export function useTrustQuestion(): { ask(root: string, brings: RepoBrings): Promise<boolean>; dialog: ReactNode } {
   const [open, setOpen] = useState<{ brings: RepoBrings; answer(start: boolean): void } | null>(null);

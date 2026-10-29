@@ -305,7 +305,7 @@ export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ p
 export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
 /** One mode of the computer's theme, every token worked out (`--sb-*` names without the prefix). Colours only. */
-const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80).regex(new RegExp(COLOR_PATTERN)));
+const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80, { abort: true }).regex(new RegExp(COLOR_PATTERN)));
 
 /**
  * The theme in use on the computer, resolved there (what it leaves out generated from its canvas and accent), so the

@@ -577,7 +577,9 @@ describe('engine over a MessagePort', () => {
     expect(terminals[0]).toMatchObject({ kind: 'action', title: 'Greet', sessionId: SESSION_ID });
 
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).rejects.toMatchObject({ code: 'UNTRUSTED' });
-    await client.call('actions.trust', { projectRoot: project, id: 'shared' });
+    // Only what the dialog showed: a command that changed meanwhile is not approved.
+    await expect(client.call('actions.trust', { projectRoot: project, id: 'shared', seen: { type: 'shell', command: 'make it nicely', runOnWorktreeCreate: false } })).rejects.toMatchObject({ code: 'CHANGED' });
+    await client.call('actions.trust', { projectRoot: project, id: 'shared', seen: { type: 'shell', command: 'make it', runOnWorktreeCreate: false } });
     await expect(client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'shared' })).resolves.toMatchObject({ kind: 'terminal' });
 
     // One you share yourself goes in the file, is approved for you, and says the project's actions changed.
@@ -703,7 +705,7 @@ describe('engine over a MessagePort', () => {
     });
     const exitCode = async () => (await client.call('terminal.list', {})).terminals[0]!.exitCode;
 
-    await client.call('actions.trust', { projectRoot: project, id: 'dev' });
+    await client.call('actions.trust', { projectRoot: project, id: 'dev', seen: { type: 'shell', command: 'npm run dev', runOnWorktreeCreate: false } });
     const run = await client.call('actions.run', { sessionId: SESSION_ID, projectRoot: project, cwd: project, id: 'dev' });
     if (run.kind !== 'terminal') throw new Error('expected a terminal');
     await expect(client.call('terminal.restart', { id: run.terminalId })).rejects.toMatchObject({ code: 'TERMINAL_FAILED' });
@@ -727,7 +729,7 @@ describe('engine over a MessagePort', () => {
     writeFileSync(sharedFile, JSON.stringify({ actions: [{ id: 'dev', name: 'Dev', command: 'npm run dev -- --open' }] }));
     await expect(client.call('terminal.restart', { id: run.terminalId })).rejects.toMatchObject({ code: 'UNTRUSTED' });
     expect(spawned).toHaveLength(2);
-    await client.call('actions.trust', { projectRoot: project, id: 'dev' });
+    await client.call('actions.trust', { projectRoot: project, id: 'dev', seen: { type: 'shell', command: 'npm run dev -- --open', runOnWorktreeCreate: false } });
     await client.call('terminal.restart', { id: run.terminalId });
     expect(spawned[2]!.args).toEqual(shell.run('npm run dev -- --open'));
   });

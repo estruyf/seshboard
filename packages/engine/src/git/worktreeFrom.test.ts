@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -104,6 +104,25 @@ describe('worktrees from a branch and from a pull request', () => {
     expect(readFileSync(join(made.path, 'secrets', 'key.pem'), 'utf8')).toBe('key\n');
     expect(existsSync(join(made.path, '.env.local'))).toBe(false);
     expect(existsSync(join(made.path, 'notes.txt'))).toBe(false);
+  });
+
+  it.runIf(process.platform !== 'win32')('never copies through a link the branch holds where a file or its folder goes', async () => {
+    const outside = join(scratch, 'outside');
+    mkdirSync(outside);
+    // The branch tracks `.env` as a link to a file that isn't there yet, and `secrets` as a link to a folder elsewhere.
+    await git(repo, ['switch', '-q', '-c', 'linked']);
+    symlinkSync(join(outside, 'stolen.env'), join(repo, '.env'));
+    symlinkSync(outside, join(repo, 'secrets'));
+    await git(repo, ['add', '-f', '.env', 'secrets']);
+    await commit(repo, 'links');
+    await git(repo, ['switch', '-q', 'main']);
+    writeFileSync(join(repo, '.git', 'info', 'exclude'), '.env\nsecrets/\n');
+    writeFileSync(join(repo, '.worktreeinclude'), '.env\nsecrets/\n');
+    writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
+    mkdirSync(join(repo, 'secrets'));
+    writeFileSync(join(repo, 'secrets', 'key.pem'), 'key\n');
+    await makeWorktreeFrom(repo, 'linked', { branch: 'linked' });
+    expect(readdirSync(outside)).toEqual([]);
   });
 
   it('refuses a taken name and a missing branch, with one line', async () => {

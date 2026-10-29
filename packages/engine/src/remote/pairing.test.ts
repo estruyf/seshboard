@@ -29,9 +29,22 @@ describe('pairing', () => {
   it('lets the secret be used once', () => {
     const { pairing } = make();
     pairing.start();
-    expect(pairing.claim()).toBe(true);
-    expect(pairing.claim()).toBe(false);
+    expect(pairing.claim(pairing.generation)).toBe(true);
+    expect(pairing.claim(pairing.generation)).toBe(false);
     expect(pairing.psk()).toBeNull();
+  });
+
+  it('never lets a connection from an earlier QR code, or one made before a cancel, claim the current one', () => {
+    const { pairing } = make();
+    pairing.start();
+    const earlier = pairing.generation;
+    pairing.start();
+    expect(pairing.claim(earlier)).toBe(false);
+    const current = pairing.generation;
+    pairing.cancel();
+    pairing.start();
+    expect(pairing.claim(current)).toBe(false);
+    expect(pairing.claim(pairing.generation)).toBe(true);
   });
 
   it('gives each QR code its own secret', () => {
@@ -55,7 +68,7 @@ describe('pairing', () => {
   it('asks on the Mac, and takes no answer for a no', async () => {
     const { pairing, states } = make();
     pairing.start();
-    pairing.claim();
+    pairing.claim(pairing.generation);
     const allowed = pairing.ask('Phone', '123456');
     const request = pairing.state().request!;
     expect(request).toMatchObject({ name: 'Phone', code: '123456' });

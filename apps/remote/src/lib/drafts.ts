@@ -4,10 +4,13 @@
  */
 const DRAFT = 'switchboard-remote:draft';
 
-/** New session's prompt, or a session's message box. */
-export type DraftKey = { kind: 'new' } | { kind: 'session'; sessionId: string };
+/**
+ * New session's prompt, or a session's message box. A session's is kept per computer: ids come from the computer,
+ * and another paired computer that names a session with the same id must not get your draft for it.
+ */
+export type DraftKey = { kind: 'new' } | { kind: 'session'; computer: string; sessionId: string };
 
-const storageKey = (key: DraftKey) => (key.kind === 'new' ? `${DRAFT}:new` : `${DRAFT}:session:${key.sessionId}`);
+const storageKey = (key: DraftKey) => (key.kind === 'new' ? `${DRAFT}:new` : `${DRAFT}:session:${encodeURIComponent(key.computer)}:${key.sessionId}`);
 
 export function loadDraft(key: DraftKey): string {
   try {

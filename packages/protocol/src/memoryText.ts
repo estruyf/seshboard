@@ -38,6 +38,9 @@ const scalar = (value: string): string | string[] => {
   return unquote(v);
 };
 
+/** Sets `key` as an own property, so a `__proto__:` line is a key like any other, not the object's prototype. */
+const put = (target: Record<string, unknown>, key: string, value: unknown) => Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+
 export interface Frontmatter {
   /** Top-level keys; a nested block is an object, a `- item` block a list. Unknown keys are kept. */
   data: Record<string, unknown>;
@@ -62,9 +65,15 @@ export function splitFrontmatter(text: string): Frontmatter {
     if (indented && current) {
       const item = /^\s+-\s*(.*)$/.exec(line);
       const pair = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-      const existing = data[current];
-      if (item) data[current] = [...(Array.isArray(existing) ? existing : []), unquote(item[1]!)];
-      else if (pair) data[current] = { ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), [pair[1]!]: scalar(pair[2]!) };
+      // Added to in place: a copy for every line would take a file of many lines (a repository's rule) seconds.
+      const existing = Object.hasOwn(data, current) ? data[current] : undefined;
+      if (item) {
+        if (Array.isArray(existing)) existing.push(unquote(item[1]!));
+        else put(data, current, [unquote(item[1]!)]);
+      } else if (pair) {
+        if (existing && typeof existing === 'object' && !Array.isArray(existing)) put(existing as Record<string, unknown>, pair[1]!, scalar(pair[2]!));
+        else put(data, current, put({}, pair[1]!, scalar(pair[2]!)));
+      }
       continue;
     }
     const pair = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
@@ -73,7 +82,7 @@ export function splitFrontmatter(text: string): Frontmatter {
       continue;
     }
     current = pair[1]!;
-    data[current] = pair[2]!.trim() === '' ? null : scalar(pair[2]!);
+    put(data, current, pair[2]!.trim() === '' ? null : scalar(pair[2]!));
   }
   const rest = text.slice(match[0].length).replace(/^(?:[ \t]*\r?\n)+/, '');
   return { data, body: rest, raw: match[0] };

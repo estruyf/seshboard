@@ -15,6 +15,24 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
 - **Importing a memory named "memory" no longer hangs.** A memory whose name became `memory` (a `# Memory` heading, or one in another script) made the import never finish and the app stop responding. It is saved as `memory-2.md` now.
 - **Allow shows what it approves.** On the phone, a permission prompt shows the whole command, every line of it, instead of only the first. A prompt that doesn't fit the one line of a card on Home, or of a notification, opens its session to be answered there. A request too long to show in full says so on the computer and on the phone.
+- **A cloned repository asks before its first session, however you start it.** The question about the hooks and MCP servers a cloned repository brings came only from Start in the clone form. Now nothing of Claude Code runs in the repository until it is answered, also when you start from the palette or another window.
+- **A repository can't freeze Seshboard with a linked file.** Its `.seshboard.json`, `package.json` or Claude Code settings are read only when they are small, ordinary files. Saving shared settings never copies a file from elsewhere into the repository.
+- **On Windows, a repository's own `git.exe` or `gh.exe` never runs.** Seshboard now always starts the git and GitHub CLI installed on your PATH.
+- **On Windows, a network path in a reply or an HTML preview no longer sends your login.** Seshboard only looks at files on this computer's drives, so a `\\server\share` path can't make it connect to another computer.
+- **A large HTML file previews at once.** A page with many unclosed tags no longer takes minutes to open, an image named many times counts toward the page's limit each time, and the preview's security policy always applies.
+- **Nested Markdown blocks no longer freeze the window.** A Markdown block inside a Markdown block's preview shows as its source.
+- **Large rule files load at once.** A rule or memory file whose frontmatter has a very long list no longer takes seconds to read.
+- **A mod draws only inside its own frame.** A box a mod places freely stays in its band or pane, and never covers the line that names the mod.
+- **On Windows, `seshboard` with a folder name that has `&` in it** no longer runs part of the name as a command when the folder doesn't exist.
+- **A pull request's base branch can't make git write a file.** A base starting with `-` in a session's `gh pr create` is ignored when Seshboard lists the commits of a linked session.
+- **Approving a shared action approves what you saw.** If the project's `.seshboard.json` changes while the approval dialog is open, nothing is approved and you're asked to check again. A shared prompt that becomes a shell command, or starts running in new worktrees, needs approval again too. Shared actions you approved before ask once more.
+- **Files that are links stay untouched.** A `MEMORY.md` that is a link is no longer written through. Saving shared settings, and copying ignored files such as `.env` into a new worktree, never write through a link the repository holds.
+- **Undo after archiving on a phone works only on that phone.** Another paired phone can't bring the session or run back.
+- **A phone stops getting a session's messages once it leaves its list,** for example when the session is archived.
+- **Pairing a device is tied to its QR code.** A phone that scanned an earlier code, or one shown before you closed the dialog, can't pair with the current one.
+- **On the phone, drafts and Ask answers stay with their computer.** With more than one computer paired, a draft or an answer never shows on another computer's session.
+- **Installing the `seshboard` command on a Mac** writes the commands directly with the administrator's password, instead of copying them from a temporary folder.
+- **Theme colours with long runs of spaces are refused at once,** instead of slowing down a theme import.
 
 ## [1.2.0] - 2026-10-28
 

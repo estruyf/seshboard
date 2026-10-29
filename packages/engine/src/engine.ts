@@ -154,7 +154,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
-import { CloneService } from './projects/cloneService.ts';
+import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
@@ -476,6 +476,11 @@ export function createEngine(options: EngineOptions): Engine {
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
   /** A project's own default branch, for any folder in it (its worktrees fold into it); null follows the remote's. */
+  /** Throws TRUST_NEEDED for a folder in a cloned repository whose trust question isn't answered (`CloneService.trustNeeded`). */
+  function assertTrusted(cwd: string): void {
+    const needed = clones.trustNeeded(cwd, resolver.resolve(cwd).root);
+    if (needed) throw trustNeededError(needed);
+  }
   const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
   // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
   setProjectDefaultBranch(projectDefaultBranch);
@@ -553,9 +558,11 @@ export function createEngine(options: EngineOptions): Engine {
     inRepo: (folder) => !!resolver.resolve(folder).gitDir,
     pullRequests: (root) => pullRequestsFor(root, false),
     commits: async (folder, branch, base) => {
-      const from = base ?? (await baseBranch(folder));
+      // The base comes from a transcript (`gh pr create --base …`): one that reads as an option is not used, and
+      // `--end-of-options` keeps git from reading the range as one (`--output=…` would write a file).
+      const from = base && !base.startsWith('-') ? base : await baseBranch(folder);
       const range = from ? [`${from}..${branch}`] : [branch];
-      const out = await git(folder, ['log', '--oneline', '--no-decorate', '--max-count=10', ...range], { timeout: 5_000 });
+      const out = await git(folder, ['log', '--oneline', '--no-decorate', '--max-count=10', '--end-of-options', ...range], { timeout: 5_000 });
       return out.split('\n').map((line) => line.trim()).filter(Boolean);
     },
     lastReply: async (id) => lastTurn(await source.messages(id))?.finalText ?? null,
@@ -844,6 +851,7 @@ export function createEngine(options: EngineOptions): Engine {
     signIns,
     sdk,
     ephemeral,
+    assertTrusted,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
     onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
     env: envFor,
@@ -1672,13 +1680,16 @@ export function createEngine(options: EngineOptions): Engine {
   const expandRunBriefs = (text: string) => {
     const { runs } = parseRunBriefs(text);
     if (!runs.some((r) => r.stub)) return text;
-    let out = text;
+    // Each stub is replaced where it was found, not wherever its text first appears: elsewhere (inside another
+    // block) it could change what the rest of the message means.
+    let out = '';
+    let from = 0;
     for (const block of runs.filter((r) => r.stub)) {
       const state = runner?.state(block.runId);
-      const stub = writeRunStub(block.label, block.runId);
-      out = out.replace(stub, state ? writeRunBrief(state) : '');
+      out += text.slice(from, block.start) + (state ? writeRunBrief(state) : '');
+      from = block.end;
     }
-    return out.replace(/\n{3,}/g, '\n\n').trim();
+    return (out + text.slice(from)).replace(/\n{3,}/g, '\n\n').trim();
   };
   const demoPipelinesFile = options.stubQueueStarts ? options.demoUsage?.pipelinesFile : undefined;
   /** The demo runs the screenshot tour put in, to take out again. */
@@ -1984,6 +1995,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
+    // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
+    assertTrusted(params.cwd);
     const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
     const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
     // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
@@ -2203,7 +2216,7 @@ export function createEngine(options: EngineOptions): Engine {
       clone: async (jobId, url, name, onProgress) => {
         cloneListeners.set(jobId, onProgress);
         try {
-          await clones.start(jobId, url, name);
+          await clones.start(jobId, url, name, { askTrust: false });
         } catch (error) {
           cloneListeners.delete(jobId);
           throw error;
@@ -2498,6 +2511,10 @@ export function createEngine(options: EngineOptions): Engine {
     'projects.clonePlan': ({ url, name }) => clones.plan(url, name),
     'projects.clone': async ({ jobId, url, name }) => {
       await clones.start(jobId, url, name);
+      return {};
+    },
+    'projects.trustClone': ({ root }) => {
+      clones.trust(root);
       return {};
     },
     'projects.cancelClone': ({ jobId }) => {
@@ -2889,10 +2906,14 @@ export function createEngine(options: EngineOptions): Engine {
       broadcast('actions.changed', { root: projectRoot });
       return {};
     },
-    'actions.trust': ({ projectRoot, id }) => {
+    'actions.trust': ({ projectRoot, id, seen }) => {
       const action = actions.list(projectRoot).actions.find((a) => a.id === id);
       if (!action) throw new RpcError('NOT_FOUND', 'No such action');
-      if (action.scope === 'shared') actions.trust(projectRoot, action.command);
+      // Only what the dialog showed is approved: the file can change while it is open (a pull, a checkout).
+      if (action.command !== seen.command || action.type !== seen.type || action.runOnWorktreeCreate !== seen.runOnWorktreeCreate) {
+        throw new RpcError('CHANGED', 'This action changed while you were looking at it. Check it again.');
+      }
+      if (action.scope === 'shared') actions.trust(projectRoot, action);
       else actions.approve(action.scope === 'global' ? null : projectRoot, action.id);
       return {};
     },
@@ -3624,6 +3645,8 @@ export function createEngine(options: EngineOptions): Engine {
       return result;
     },
     'companion.focus': ({ sessionId, scope }, context) => {
+      // Which sessions phones may see follows the scope.
+      if (scope !== sidebarScope) remote?.sessionsChanged();
       sidebarScope = scope;
       companion?.focus(context, sessionId, scope);
       return {};

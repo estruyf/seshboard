@@ -63,9 +63,12 @@ export function SessionView({
   wide = false,
   initialChanges = false,
   computerName,
+  computerId,
   onOpenSession,
 }: {
   client: Client;
+  /** The paired computer it is on (drafts are kept per computer). */
+  computerId: string;
   /** What the computer takes beyond what every version does (its hello). */
   features: readonly string[];
   sessionId: string;
@@ -421,6 +424,7 @@ export function SessionView({
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         <Composer
+          computerId={computerId}
           sessionId={sessionId}
           fill={fill}
           features={features}
@@ -741,6 +745,7 @@ function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemo
  * sit under the box, as on the computer.
  */
 function Composer({
+  computerId,
   sessionId,
   fill,
   features,
@@ -756,6 +761,7 @@ function Composer({
   onError,
   onFocusChange,
 }: {
+  computerId: string;
   /** Whose draft the box keeps when you go to another view and come back. */
   sessionId: string;
   /** Text to put in the box and focus it (Ask Claude to fix…), or to quote at its end; a new `id` each time. */
@@ -777,7 +783,7 @@ function Composer({
   /** The box got or lost focus: on a touch screen, the keyboard came up or went. */
   onFocusChange: (focused: boolean) => void;
 }) {
-  const draft: DraftKey = { kind: 'session', sessionId };
+  const draft: DraftKey = { kind: 'session', computer: computerId, sessionId };
   const [text, setText] = useState(() => loadDraft(draft));
   const [busy, setBusy] = useState(false);
   const attachments = useAttachments({ features, blocked: answering ? "Attachments can't go with an answer. Answer the prompt first." : null, onError });

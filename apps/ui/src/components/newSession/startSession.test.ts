@@ -178,3 +178,27 @@ describe('sessionCreateParams from an issue or pull request', () => {
     expect(params.github).toEqual({ type: 'issue', repo: 'o/r', number: 32, readOnly: false });
   });
 });
+
+describe('startNewSession in a cloned repository the engine holds', () => {
+  const needed = { root: '/work/app', brings: { hooks: [{ event: 'SessionStart', command: './setup.sh' }], mcpServers: [], allow: [], plugins: [], settings: [] } };
+  const refusal = Object.assign(new Error('Answer whether to trust it first.'), { code: 'TRUST_NEEDED', details: needed });
+
+  it('asks the trust question and starts again once it is trusted', async () => {
+    const d = deps();
+    d.createSession.mockRejectedValueOnce(refusal);
+    const trust = vi.fn(async () => true);
+    expect(await startNewSession(START, { ...d, trust })).toEqual({ kind: 'started', sessionId: 'new-1' });
+    expect(trust).toHaveBeenCalledWith(needed);
+    expect(d.createSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops, keeping the prompt, when the question is cancelled; fails as before without one', async () => {
+    const d = deps();
+    d.createSession.mockRejectedValueOnce(refusal);
+    expect(await startNewSession(START, { ...d, trust: async () => false })).toEqual({ kind: 'stopped' });
+    expect(d.calls).not.toContain('open');
+    const plain = deps();
+    plain.createSession.mockRejectedValueOnce(refusal);
+    await expect(startNewSession(START, plain)).rejects.toBe(refusal);
+  });
+});

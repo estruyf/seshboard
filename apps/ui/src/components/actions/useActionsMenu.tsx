@@ -205,7 +205,8 @@ export function useActionsMenu({
           }
           onConfirm={async () => {
             if (pending.reason === 'trust' && client && projectRoot) {
-              await client.call('actions.trust', { projectRoot, id: pending.action.id });
+              const { type, command, runOnWorktreeCreate } = pending.action;
+              await client.call('actions.trust', { projectRoot, id: pending.action.id, seen: { type, command, runOnWorktreeCreate } });
               reload();
             }
             await execute(pending.action);

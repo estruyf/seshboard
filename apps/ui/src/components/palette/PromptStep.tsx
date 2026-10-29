@@ -5,6 +5,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
 import { nextMode } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue } from '../../state/laterStore.ts';
 import { busyInProject } from '../../state/queue.ts';
@@ -234,6 +235,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
         {
           createSession: (params) => client.call('session.create', params),
           gate: passFocusGate,
+          trust: (needed) => trustRepository(client, needed),
           addProject: (path) => client.call('projects.add', { path }).then(() => useProjects.getState().reload()),
           keep: useDrafts.getState().keepFirstPrompt,
           open: (sessionId) => {

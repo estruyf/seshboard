@@ -40,6 +40,9 @@ describe('pull requests opened in a session', () => {
     expect(repoOfPrUrl('https://github.com/demo/switchboard/pull/12')).toBe('demo/switchboard');
     expect(baseOfCommand('gh pr create -B main --fill')).toBe('main');
     expect(baseOfCommand("gh pr create --base='feat/a'")).toBe('feat/a');
+    // No branch starts with `-`; git would read it as an option (`--output=…` writes a file).
+    expect(baseOfCommand('gh pr create --base=--output=/tmp/x')).toBeNull();
+    expect(baseOfCommand('gh pr create -B "-x"')).toBeNull();
     expect(baseOfCommand('gh pr create --fill')).toBeNull();
   });
 });
