@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 - Asks where to add, every time: the session open in Seshboard is first, so Enter adds to it, then **New session** and the workspace's other sessions. To add straight to the open session as before, turn on `seshboard.addToOpenSession`.
 - **Seshboard: New Session** opens New session in Seshboard on the workspace folder (you pick the folder when there are several).
