@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Asks where to add, every time: the session open in Seshboard is first, so Enter adds to it, then **New session** and the workspace's other sessions. To add straight to the open session as before, turn on `seshboard.addToOpenSession`.
+- **Seshboard: New Session** opens New session in Seshboard on the workspace folder (you pick the folder when there are several).
+- **Add File to Seshboard** in the editor's right-click menu and the command palette adds the file you have open, whatever is selected.
+
 ## [0.3.0]
 
 - Works with Seshboard on Linux: it starts Seshboard and brings it up there with `xdg-open`.

@@ -3782,6 +3782,11 @@
       "page": "vscode-companion"
     },
     {
+      "id": "feature:vscode-new-session",
+      "name": "Pick the session or start a new one from VS Code",
+      "page": "vscode-companion"
+    },
+    {
       "id": "feature:vscode-send-context",
       "name": "Send context from VS Code",
       "page": "vscode-companion"

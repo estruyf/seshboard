@@ -1,5 +1,5 @@
 import { isSameOrInside } from '@seshboard/protocol/paths';
-import type { CompanionSession, CompanionSessions, CompanionStatus } from '@seshboard/protocol/companion-client';
+import type { CompanionSession, CompanionSessions, CompanionStatus, CompanionTarget } from '@seshboard/protocol/companion-client';
 
 /** Which session context goes to, and what the status bar says. Pure, so it can be tested. */
 
@@ -63,6 +63,36 @@ export function sessionRow(session: CompanionSession, now: number, relative: (pa
     description: [STATUS_LABEL[session.status], session.branch, shortAge(session.updatedAt, now)].filter(Boolean).join(' · '),
     ...(folder ? { detail: folder } : {}),
   };
+}
+
+/** A row of the session picker, or a separator with a heading. */
+export type TargetChoice = { label: string; description?: string; detail?: string; target: CompanionTarget } | { separator: string };
+
+export interface TargetChoiceOptions {
+  /** The session open in Seshboard, when what you add fits it: listed first, so Enter adds there. */
+  open: CompanionSession | null;
+  /** Folders to offer New session on, the one the files are in first. */
+  folders: readonly string[];
+  /** New session before the other sessions (adding context), or after them (showing a session). */
+  newFirst: boolean;
+  now: number;
+  relative: (path: string) => string;
+  folderName: (folder: string) => string;
+}
+
+/**
+ * The session picker: the session open in Seshboard, New session on each folder and this workspace's other
+ * sessions, each under its heading.
+ */
+export function targetChoices(snapshot: CompanionSessions, { open, folders, newFirst, now, relative, folderName }: TargetChoiceOptions): TargetChoice[] {
+  const row = (session: CompanionSession): TargetChoice => ({ ...sessionRow(session, now, relative), target: { kind: 'session', sessionId: session.id } });
+  const others = snapshot.sessions.filter((s) => s.id !== open?.id).map(row);
+  const fresh = folders.map((folder): TargetChoice => ({ label: `$(add) New session in ${folderName(folder)}`, target: { kind: 'new', cwd: folder } }));
+  const section = (heading: string, rows: TargetChoice[]): TargetChoice[] => (rows.length ? [{ separator: heading }, ...rows] : []);
+  return [
+    ...section('Open in Seshboard', open ? [row(open)] : []),
+    ...(newFirst ? [...section('New', fresh), ...section('Sessions', others)] : [...section('Sessions', others), ...section('New', fresh)]),
+  ];
 }
 
 export interface StatusBarView {

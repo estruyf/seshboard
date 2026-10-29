@@ -63,6 +63,11 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "seshboard.addActiveFile",
+        "title": "Add File to Seshboard",
+        "category": "Seshboard"
+      },
+      {
         "command": "seshboard.addOpenEditors",
         "title": "Add Open Editors to Seshboard",
         "category": "Seshboard"
@@ -98,6 +103,12 @@
         "category": "Seshboard"
       },
       {
+        "command": "seshboard.newSession",
+        "title": "New Session",
+        "category": "Seshboard",
+        "icon": "$(add)"
+      },
+      {
         "command": "seshboard.answerPrompts",
         "title": "Answer Prompts",
         "category": "Seshboard"
@@ -121,8 +132,13 @@
           "when": "resourceScheme == file || resourceScheme == untitled"
         },
         {
-          "command": "seshboard.addProblems",
+          "command": "seshboard.addActiveFile",
           "group": "seshboard@2",
+          "when": "resourceScheme == file"
+        },
+        {
+          "command": "seshboard.addProblems",
+          "group": "seshboard@3",
           "when": "resourceScheme == file"
         }
       ],
@@ -174,6 +190,10 @@
       "commandPalette": [
         {
           "command": "seshboard.addFile",
+          "when": "false"
+        },
+        {
+          "command": "seshboard.addActiveFile",
           "when": "resourceScheme == file"
         },
         {
@@ -201,6 +221,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Bring Seshboard to the front on the session when you add something to it. Turn off to add context quietly; it waits in the session's message box."
+        },
+        "seshboard.addToOpenSession": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Add straight to the session open in Seshboard when its folder holds what you add. Off, you pick the session each time: the open one is first, so Enter adds to it, then **New session** and the other sessions."
         },
         "seshboard.statusBar": {
           "type": "boolean",
