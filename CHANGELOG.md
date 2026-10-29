@@ -12,6 +12,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **No more ghost agents.** An agent that Claude tried to send a message to after it finished, and that could not be woken up again (for example because its worktree was removed), no longer stays under Active in the Agents panel.
 - **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
 - **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
 - **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
