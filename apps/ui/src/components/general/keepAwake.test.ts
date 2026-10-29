@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { keepAwakeActive, keepAwakeDetail, keepAwakeLabel } from './keepAwake.ts';
+import { keepAwakeActive, keepAwakeDetail, keepAwakeLabel, keepAwakeUntilDoneDetail } from './keepAwake.ts';
+
+describe('keepAwakeUntilDoneDetail', () => {
+  it('names the computer', () => {
+    expect(keepAwakeUntilDoneDetail('darwin')).toBe("This Mac doesn't sleep until this session is done, background tasks included. Then this turns off by itself.");
+    expect(keepAwakeUntilDoneDetail('win32')).toMatch(/^This PC doesn't sleep/);
+  });
+});
 
 describe('keepAwakeLabel', () => {
   it('says Mac on macOS and PC elsewhere', () => {

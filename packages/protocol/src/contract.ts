@@ -447,6 +447,11 @@ export const contract = {
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
     /**
+     * Keep awake until done (#241): holds sleep off until the session is done, its background tasks included, then
+     * turns itself off. Only for a session running here; the host's `keepAwake` reports it.
+     */
+    'session.keepAwake': { params: z.object({ sessionId: SessionId, on: z.boolean() }), result: z.object({}) },
+    /**
      * The end of what a background command printed, from the output file Claude Code named in the transcript (the
      * engine reads only task output files). `missing`: no such file, yet or any more.
      */

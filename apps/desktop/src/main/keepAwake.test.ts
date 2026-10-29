@@ -41,6 +41,10 @@ describe('awakeCommand', () => {
     expect(awakeCommand('darwin', 4242)).toEqual({ file: '/usr/bin/caffeinate', args: ['-s', '-w', '4242'] });
   });
 
+  it('holds idle sleep off on battery too for sessions', () => {
+    expect(awakeCommand('darwin', 4242, true)).toEqual({ file: '/usr/bin/caffeinate', args: ['-i', '-w', '4242'] });
+  });
+
   it('has no command on Windows and Linux', () => {
     expect(awakeCommand('win32', 4242)).toBeNull();
     expect(awakeCommand('linux', 4242)).toBeNull();

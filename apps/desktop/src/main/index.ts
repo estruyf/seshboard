@@ -224,6 +224,17 @@ const keepAwake = new KeepAwake({
   blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
 });
 ipcMain.handle(IpcChannel.keepAwakeStatus, () => keepAwake.active);
+/**
+ * Keep awake until done (#241): held while the engine says a session works with the flag on, on battery too, since it
+ * lets go by itself. Apart from the setting, so each starts and stops on its own.
+ */
+const sessionsAwake = new KeepAwake({
+  platform: process.platform,
+  pid: process.pid,
+  onBattery: true,
+  spawn: (file, args) => spawn(file, args, { stdio: 'ignore' }),
+  blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
+});
 
 /** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
 const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
@@ -496,7 +507,12 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; on?: unknown } | null;
+  // Keep awake until done: a session with the flag on works, or the last one finished.
+  if (request?.type === 'keep-awake') {
+    sessionsAwake.apply(request.on === true);
+    return undefined;
+  }
   // Remote's keys, only asked for once Remote is on or another computer is paired (so the keychain is left alone otherwise).
   if (request?.type === 'remote-identity' && typeof request.id === 'number') {
     try {
@@ -7281,6 +7297,58 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Keep awake until done (#241), on a stand-in session: the ⋯ menu turns it on and the pill above the message box
+ * shows it, main holds sleep off while the session works, the pill turns it off, and once the session is done the flag
+ * goes by itself (after the engine's short grace period with `SESHBOARD_STUB_QUEUE`).
+ */
+async function runKeepAwakeSessionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-keep-awake-')));
+  const standIn = `smoke-keep-awake-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const view = `[data-current-session="${standIn}"]`;
+  const pill = `!!document.querySelector('${view} [data-keep-awake-pill]')`;
+  /** The ⋯ menu's Keep awake until done, picked. */
+  const pick = async (): Promise<string | null> => {
+    await js(`document.querySelector('${view} [data-more-menu]')?.click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-keep-awake-session]:not([aria-disabled=true])')", 2_000))) return 'the ⋯ menu has no Keep awake until done to pick';
+    await js("document.querySelector('[role=menu] [data-keep-awake-session]').click()");
+    return null;
+  };
+  try {
+    if (!smokeSessionId) return 'no session to switch back to';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 5_000))) return 'the stand-in session did not open';
+    const first = await pick();
+    if (first) return first;
+    if (!(await waitInPage(win, pill, 3_000))) return 'no Awake until done pill after turning it on';
+    if (!(await until(() => sessionsAwake.active, 3_000))) return 'sleep was not held off while the session works';
+    await shot(win, 'keep-awake-session.png');
+    await js(`document.querySelector('${view} [data-keep-awake-pill]').click()`);
+    if (!(await waitInPage(win, `!${pill}`, 3_000))) return 'the pill did not turn it off';
+    if (!(await until(() => !sessionsAwake.active, 3_000))) return 'sleep stayed held off after turning it off';
+    const again = await pick();
+    if (again) return again;
+    if (!(await until(() => sessionsAwake.active, 3_000))) return 'turning it on again did not hold sleep off';
+    host('idle', 'clean');
+    if (!(await until(() => !sessionsAwake.active, 5_000))) return 'sleep stayed held off after the session was done';
+    if (!(await waitInPage(win, `!${pill}`, 3_000))) return 'the pill stayed after the session was done';
+    return 'ok: the ⋯ menu turned Keep awake until done on, sleep was held off while the session worked, the pill turned it off, and it went by itself once the session was done';
+  } finally {
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
 async function runQueueAutoStartStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-autostart-')));
@@ -10133,6 +10201,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
@@ -10240,6 +10309,8 @@ app.whenReady().then(() => {
     appVersion: app.getVersion(),
     onRequest: handleEngineRequest,
     onRestarted: () => {
+      // The sessions ended with the engine that ran them.
+      sessionsAwake.apply(false);
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);
       notifier.connect();
     },
@@ -10339,4 +10410,7 @@ app.on('before-quit', () => {
   engine?.stop();
 });
 
-app.on('will-quit', () => keepAwake.dispose());
+app.on('will-quit', () => {
+  keepAwake.dispose();
+  sessionsAwake.dispose();
+});

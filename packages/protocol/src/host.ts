@@ -126,6 +126,11 @@ export const SessionHostInfo = z.object({
   autoChoosing: z.boolean().optional(),
   /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
   usageLimit: UsageLimitHit.nullable().optional(),
+  /**
+   * Keep awake until done (#241): the computer doesn't sleep until this session is done, background tasks and Up next
+   * included. The flag goes by itself once it is. Missing: off.
+   */
+  keepAwake: z.boolean().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 
