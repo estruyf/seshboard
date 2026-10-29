@@ -1,6 +1,6 @@
 import { Brain } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { MemoryHit } from '@switchboard/protocol/client';
+import type { MemoryHit } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
 import type { MenuEntry } from '../Menu.tsx';

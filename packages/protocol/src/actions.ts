@@ -23,7 +23,7 @@ export const ProjectAction = z.object({
 });
 export type ProjectAction = z.infer<typeof ProjectAction>;
 
-/** `project`: yours, for this project. `global`: yours, every project. `shared`: from the repo's .switchboard.json. */
+/** `project`: yours, for this project. `global`: yours, every project. `shared`: from the repo's .seshboard.json. */
 export const ActionScope = z.enum(['project', 'global', 'shared']);
 export type ActionScope = z.infer<typeof ActionScope>;
 

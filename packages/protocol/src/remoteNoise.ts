@@ -34,7 +34,7 @@ const PROTOCOL_NAMES: Record<HandshakeMode, string> = {
   connect: 'Noise_IK_25519_ChaChaPoly_SHA256',
 };
 
-/** Binds the handshake to Switchboard, the protocol version and the mode, so a message can't be reused across them. */
+/** Binds the handshake to Seshboard, the protocol version and the mode, so a message can't be reused across them. */
 const prologue = (mode: HandshakeMode) => utf8ToBytes(`switchboard-remote/${REMOTE_PROTOCOL}/${mode}`);
 
 export function generateKeyPair(): KeyPair {

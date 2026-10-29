@@ -1,4 +1,4 @@
-import type { HookableComponent } from '@switchboard/protocol/client';
+import type { HookableComponent } from '@seshboard/protocol/client';
 import type { RenderItem } from '../transcript/displayItems.ts';
 
 /**

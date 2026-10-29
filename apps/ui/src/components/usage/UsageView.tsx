@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, Gauge, RefreshCw } from 'lucide-react';
-import type { UsagePeriod } from '@switchboard/protocol/client';
+import type { UsagePeriod } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { matches } from '../../lib/shortcuts.ts';

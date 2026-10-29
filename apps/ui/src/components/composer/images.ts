@@ -1,4 +1,4 @@
-import type { ImageAttachment } from '@switchboard/protocol/client';
+import type { ImageAttachment } from '@seshboard/protocol/client';
 
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
 export const MAX_IMAGE_BYTES = 7_000_000;

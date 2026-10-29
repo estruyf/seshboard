@@ -1,3 +1,4 @@
+import { safeLocale } from './locale.ts';
 import type { TokenCounts } from './usage.ts';
 
 /**
@@ -103,9 +104,10 @@ export function convertUsd(usd: number, currency: CurrencyCode): number {
 
 /**
  * "$3.20", "€12", "¥480": an estimate in a currency, whole units from 100 up (cents don't matter there). Under the
- * smallest unit it says "<$0.01". `locale` is for tests; the app uses the system's.
+ * smallest unit it says "<$0.01". `locale` is the app's or a test's; the system's when `Intl` can't read it.
  */
 export function formatCost(usd: number, currency: CurrencyCode, locale?: string): string {
+  locale = safeLocale(locale);
   const amount = convertUsd(usd, currency);
   const base = new Intl.NumberFormat(locale, { style: 'currency', currency });
   const digits = base.resolvedOptions().maximumFractionDigits ?? 2;

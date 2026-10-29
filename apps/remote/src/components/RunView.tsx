@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ListTree, Send } from 'lucide-react';
-import { PARENT_PLACEHOLDER, runProgress, type RemoteSessions } from '@switchboard/protocol/remote-client';
+import { PARENT_PLACEHOLDER, runProgress, type RemoteSessions } from '@seshboard/protocol/remote-client';
 import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.ts';
 import { useFinePointer } from '../lib/media.ts';
 import type { Client } from './Connected.tsx';
@@ -23,8 +23,11 @@ export function RunView({
   onLeave,
   onOpenSession,
   computerName,
+  computerId,
 }: {
   client: Client;
+  /** The paired computer it is on (drafts are kept per computer). */
+  computerId: string;
   runId: string;
   /** The computer's list: the run, and which of its sub-sessions can be opened. */
   sessions: RemoteSessions;
@@ -101,7 +104,7 @@ export function RunView({
               </p>
             </footer>
           ) : (
-            <RunComposer client={client} runId={runId} onSent={(sessionId) => onOpenSession(sessionId, { replace: true })} />
+            <RunComposer client={client} computerId={computerId} runId={runId} onSent={(sessionId) => onOpenSession(sessionId, { replace: true })} />
           )}
         </>
       )}
@@ -110,8 +113,8 @@ export function RunView({
 }
 
 /** A run row's message box: what you write starts the run's own session, in its folder, with the run's brief first. */
-function RunComposer({ client, runId, onSent }: { client: Client; runId: string; onSent: (sessionId: string) => void }) {
-  const draft: DraftKey = { kind: 'session', sessionId: runId };
+function RunComposer({ client, computerId, runId, onSent }: { client: Client; computerId: string; runId: string; onSent: (sessionId: string) => void }) {
+  const draft: DraftKey = { kind: 'session', computer: computerId, sessionId: runId };
   const [text, setText] = useState(() => loadDraft(draft));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

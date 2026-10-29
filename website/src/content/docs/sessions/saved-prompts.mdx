@@ -110,7 +110,7 @@ A saved prompt is text. A blank is written as `{{name}}` or `{{name:type}}`:
 | `{{test:file}}` | A file in the project |
 | `{{context?}}` | A `?` after the name makes it optional |
 
-The same name used twice is one blank, filled once. A type Switchboard doesn't know is a text blank. `\{{` writes the braces themselves. Paste a prompt with blanks written out into the editor and they become chips.
+The same name used twice is one blank, filled once. A type Seshboard doesn't know is a text blank. `\{{` writes the braces themselves. Paste a prompt with blanks written out into the editor and they become chips.
 
 ```text
 Start implementing {{issue:issue}} on {{branch:branch}}. Deploy to {{env:choice=staging|production}} when the tests pass.
@@ -133,7 +133,7 @@ Sharing a prompt, or taking it out of the shared ones, changes a file in the rep
 
 ## Shared prompts
 
-Shared prompts are kept in the project's `.switchboard.json`, next to its [shared actions](/projects/actions/#share-actions-with-your-team), under `prompts`. Commit the file and everyone on the project gets them. When the file changes, for example after a pull, the lists update.
+Shared prompts are kept in the project's `.seshboard.json`, next to its [shared actions](/projects/actions/#share-actions-with-your-team), under `prompts`. Commit the file and everyone on the project gets them. When the file changes, for example after a pull, the lists update.
 
 ```json
 {
@@ -150,7 +150,7 @@ Shared prompts are kept in the project's `.switchboard.json`, next to its [share
 | `text` | The prompt, with its blanks (required) |
 | `id` | Lowercase letters, digits and dashes. From the name when it's left out |
 
-Switchboard keeps the other keys in the file as they are and writes the keys in the same order, so a change is a small diff. How often you use a shared prompt stays on your computer, never in the file.
+Seshboard keeps the other keys in the file as they are and writes the keys in the same order, so a change is a small diff. How often you use a shared prompt stays on your computer, never in the file.
 
 <Aside type="note">
 Saved prompts are on your computer. The [remote app](/remote-access/) doesn't show them yet.

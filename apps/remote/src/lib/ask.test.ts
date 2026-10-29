@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AskThread } from '@switchboard/protocol/remote-client';
+import type { AskThread } from '@seshboard/protocol/remote-client';
 import { answering, asQuote, closed, currentThread, EMPTY_ASK, lastQuestion, newThread, opened, pickedThread, threadRows, withAsked, withEvent, withoutItem, withQuote, withThreads, type SessionAsk } from './ask.ts';
 
 const thread = (id: string, createdAt: number, questions: string[]): AskThread => ({

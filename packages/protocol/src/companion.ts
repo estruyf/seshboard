@@ -26,7 +26,7 @@ export const CompanionSession = z.object({
   branch: z.string().nullable(),
   status: CompanionStatus,
   updatedAt: z.number(),
-  /** Started, forked or continued in Switchboard. */
+  /** Started, forked or continued in Seshboard. */
   inApp: z.boolean(),
 });
 export type CompanionSession = z.infer<typeof CompanionSession>;
@@ -38,11 +38,11 @@ export const CompanionTarget = z.discriminatedUnion('kind', [
 ]);
 export type CompanionTarget = z.infer<typeof CompanionTarget>;
 
-/** The sessions for some folders, and the one on screen in Switchboard (wherever it is). */
+/** The sessions for some folders, and the one on screen in Seshboard (wherever it is). */
 export const CompanionSessions = z.object({
   sessions: z.array(CompanionSession),
   focused: CompanionSession.nullable(),
-  /** Switchboard windows connected to the engine; without one, context has nowhere to show. */
+  /** Seshboard windows connected to the engine; without one, context has nowhere to show. */
   windows: z.number(),
   /**
    * What the listed sessions are waiting on you for (a permission, a question, a plan), oldest first. Left out by
@@ -72,18 +72,18 @@ export const companionContract = {
     'sessions.watch': { params: z.object({ folders: Folders }), result: z.object({}) },
     /**
      * Adds context to a session's message box, or to New session on a folder. Nothing is sent to Claude: it shows as
-     * chips until you press send. Resolves once a Switchboard window has added them (NO_WINDOW without one).
-     * `reveal` brings Switchboard to the front on that session.
+     * chips until you press send. Resolves once a Seshboard window has added them (NO_WINDOW without one).
+     * `reveal` brings Seshboard to the front on that session.
      */
     'context.add': {
       params: z.object({ target: CompanionTarget, items: CompanionContextItems, reveal: z.boolean().default(true) }),
       result: z.object({}),
     },
-    /** Shows a session in Switchboard and brings it to the front (the status bar item). */
+    /** Shows a session in Seshboard and brings it to the front (the status bar item). */
     'session.reveal': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /**
-     * Answers one of `prompts`, as its card in Switchboard would. `acceptEdits` switches the session to accepting
-     * edits once a plan is approved. Fails with NOT_FOUND when it was already answered (in Switchboard, say).
+     * Answers one of `prompts`, as its card in Seshboard would. `acceptEdits` switches the session to accepting
+     * edits once a plan is approved. Fails with NOT_FOUND when it was already answered (in Seshboard, say).
      */
     'prompt.respond': {
       params: z.object({ requestId: z.string().min(1).max(200), decision: PermissionDecision, acceptEdits: z.boolean().default(false) }),

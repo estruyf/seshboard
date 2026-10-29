@@ -1,14 +1,14 @@
 import { Puzzle } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { MOD_LIMITS } from '@switchboard/protocol/client';
-import { RpcError } from '@switchboard/protocol/client';
+import { MOD_LIMITS } from '@seshboard/protocol/client';
+import { RpcError } from '@seshboard/protocol/client';
 import { toast } from '../../state/toastStore.ts';
 import type { ModRenderError } from './useModRender.ts';
 
 /**
  * The frame around everything a mod draws: a 24px header with the puzzle icon and the mod's name, a 1px border and a
- * 10px radius, the body on `card`. The header is Switchboard's, so a mod can never draw its own or pass for one of
- * Switchboard's cards (it never has the pink frame of a permission card).
+ * 10px radius, the body on `card`. The header is Seshboard's, so a mod can never draw its own or pass for one of
+ * Seshboard's cards (it never has the pink frame of a permission card).
  */
 export function ModFrame({
   plugin,
@@ -37,7 +37,10 @@ export function ModFrame({
         <span className="min-w-0 truncate">{title ?? plugin}</span>
         {end && <span className="ml-auto flex shrink-0 items-center">{end}</span>}
       </header>
-      <div className={`min-w-0 px-2.5 py-2 ${bodyClassName}`}>{error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}</div>
+      {/* What a mod draws stays in the body: a box it places `absolute` is placed and clipped here, never over the header that names it. */}
+      <div className={`relative isolate min-w-0 overflow-hidden px-2.5 py-2 ${bodyClassName}`} data-mod-frame-body>
+        {error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}
+      </div>
     </section>
   );
 }

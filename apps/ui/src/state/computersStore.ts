@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ComputersStatus, RemoteSessions } from '@switchboard/protocol/client';
+import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
 import { parseRemoteRowId, remoteRowId, type RemoteRef } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
 

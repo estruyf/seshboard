@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@switchboard/protocol/client';
+import type { HostState, LiveSession, PermissionRequest, SessionHostInfo, SessionSummary } from '@seshboard/protocol/client';
 import { focusLevel, focusSessions, focusVerdict, ordinal, savedAgo, waitedFor, type FocusInput, type FocusPrefs } from './focus.ts';
 
 const NOW = Date.UTC(2026, 9, 7, 12);
@@ -133,7 +133,7 @@ describe('what counts as going', () => {
     expect(counted.every((s) => s.external)).toBe(true);
   });
 
-  it("counts Switchboard's own sessions once, from the host, and never its helper processes", () => {
+  it("counts Seshboard's own sessions once, from the host, and never its helper processes", () => {
     const counted = input({
       hosts: [host('mine', 'running')],
       live: [live('mine', 'idle', 'sdk'), live('helper', 'running', 'sdk'), live('app', 'running', 'app')],

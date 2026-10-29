@@ -1,13 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { joinPath, type WorktreeBranchBase } from '@switchboard/protocol';
+import { isSameOrInside, joinPath, type WorktreeBranchBase } from '@seshboard/protocol';
 import { git, GitError } from './gitChanges.ts';
 import { firstUsefulLine } from './pullRequest.ts';
 
 /** git (or a check before it) refused to make the worktree: what to say, in one line. */
 export class WorktreeFromError extends Error {}
 
-/** Where a worktree named `name` goes: the place Claude Code's `--worktree` uses, so Switchboard treats it like one. */
+/** Where a worktree named `name` goes: the place Claude Code's `--worktree` uses, so Seshboard treats it like one. */
 export const worktreePath = (root: string, name: string) => joinPath(root, `.claude/worktrees/${name}`);
 
 /** The folder a branch is checked out in (the main checkout or another worktree), or null. */
@@ -96,12 +96,17 @@ async function copyIncluded(root: string, path: string): Promise<void> {
     const out = await git(root, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--', ...matching.slice(i, i + 200)]).catch(() => '');
     ignored.push(...out.split('\0').filter(Boolean));
   }
+  // The branch checked out decides what is in the worktree: a link it holds where `.env` goes, or in a folder on the
+  // way, must not have the copy written somewhere else.
+  const worktree = realpathSync(path);
   for (const file of ignored) {
     const target = join(path, file);
-    if (existsSync(target)) continue;
+    // lstat: a link that points nowhere is something too.
+    if (lstatSync(target, { throwIfNoEntry: false })) continue;
     try {
       mkdirSync(dirname(target), { recursive: true });
-      copyFileSync(join(root, file), target);
+      if (!isSameOrInside(realpathSync(dirname(target)), worktree)) continue;
+      copyFileSync(join(root, file), target, constants.COPYFILE_EXCL);
     } catch {
       // A file that went away or can't be read: the others still come.
     }

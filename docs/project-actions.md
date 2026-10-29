@@ -25,7 +25,7 @@ Your actions are listed under **Project actions** in the **⋯** menu, with thei
 
 ### Suggestions
 
-When you add an action, Switchboard suggests some to start from:
+When you add an action, Seshboard suggests some to start from:
 
 - your `package.json` scripts (with npm, pnpm, yarn or bun, whichever the project uses), plus *Install*
 - *Commit* (asks Claude to commit with a clear message), *Push* (`git push`) and *Create PR* (`gh pr create --web`)
@@ -47,7 +47,7 @@ In commands, every value is quoted for the shell, so a branch name or title can 
 
 ## Sharing actions with your team
 
-Put a `.switchboard.json` file in the root of the repository and commit it. Everyone using Switchboard on that repo gets its actions. In the action editor, **Saved for** › **Shared with the project** writes an action to the file for you (and creates the file when there is none); moving it back to *This project* or *All projects*, or deleting it, takes it out again.
+Put a `.seshboard.json` file in the root of the repository and commit it. Everyone using Seshboard on that repo gets its actions. In the action editor, **Saved for** › **Shared with the project** writes an action to the file for you (and creates the file when there is none); moving it back to *This project* or *All projects*, or deleting it, takes it out again.
 
 ```json
 {
@@ -76,11 +76,11 @@ Put a `.switchboard.json` file in the root of the repository and commit it. Ever
 
 Actions with the same `id` (by default, the same name) replace each other: your actions for this project win over shared ones, and shared ones win over your *All projects* actions.
 
-When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, and leaves out settings that are at their default, so the commit shows only the action that changed. A file it can't read is never overwritten. The file is watched: a pull that changes it updates the actions in the app.
+When Seshboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, and leaves out settings that are at their default, so the commit shows only the action that changed. A file it can't read is never overwritten. The file is watched: a pull that changes it updates the actions in the app.
 
 ### Shared prompts
 
-The same file holds the project's shared [saved prompts](https://switchboard.struyfconsulting.com/sessions/saved-prompts/), under `prompts`. Switchboard writes them there when you choose **Share with the project** for a prompt, and takes them out again when you move it back:
+The same file holds the project's shared [saved prompts](https://seshboard.app/sessions/saved-prompts/), under `prompts`. Seshboard writes them there when you choose **Share with the project** for a prompt, and takes them out again when you move it back:
 
 ```json
 {
@@ -97,13 +97,13 @@ The same file holds the project's shared [saved prompts](https://switchboard.str
 | `text` | The prompt, with blanks written as `{{name}}` or `{{name:type}}` (required) |
 | `id` | Lowercase letters, digits and dashes. From the name when it's left out |
 
-When Switchboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the prompt that changed. How often you use a shared prompt is kept on your computer, never in the file. The file is watched: a pull that changes it updates the prompts in the app.
+When Seshboard writes the file, it keeps keys it doesn't know and their order, and the file's indent, so the commit shows only the prompt that changed. How often you use a shared prompt is kept on your computer, never in the file. The file is watched: a pull that changes it updates the prompts in the app.
 
-**Safety:** a command from a repository could do anything, so Switchboard shows you the exact command the first time you run a shared action and asks you to approve it. If someone changes the command later, you're asked again. An action you share yourself is approved for you when you save it.
+**Safety:** a command from a repository could do anything, so Seshboard shows you the exact command the first time you run a shared action and asks you to approve it. If someone changes the command later, you're asked again. An action you share yourself is approved for you when you save it.
 
 ## Project icons
 
-Switchboard picks up a project's icon from the repository when it can: a logo or favicon in the usual places, the `icon` in `package.json`, or an `iconPath` you set in `.switchboard.json`:
+Seshboard picks up a project's icon from the repository when it can: a logo or favicon in the usual places, the `icon` in `package.json`, or an `iconPath` you set in `.seshboard.json`:
 
 ```json
 { "iconPath": "assets/logo.svg" }

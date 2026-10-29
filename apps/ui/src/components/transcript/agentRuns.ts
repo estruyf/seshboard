@@ -1,4 +1,4 @@
-import type { BackgroundTask } from '@switchboard/protocol/client';
+import type { BackgroundTask } from '@seshboard/protocol/client';
 import type { DisplayItem } from './displayItems.ts';
 import type { ToolItem } from './ToolDetails.tsx';
 import type { AgentTokens } from './turns.ts';
@@ -43,9 +43,18 @@ export function agentModel(run: AgentRun, usage: AgentTokens | undefined): strin
   return usage?.model ?? run.asked;
 }
 
+/** A send that Claude Code turned down without an error: `{"success":false,…}` (an agent that can't be resumed, its worktree gone). */
+const refused = (text: string) => {
+  try {
+    return (JSON.parse(text) as { success?: unknown }).success === false;
+  } catch {
+    return false;
+  }
+};
+
 /** A message to the agent with this id (`SendMessage`), which wakes it up again when it had stopped. Failed sends don't. */
 const isMessageTo = (item: DisplayItem, agentId: string) => {
-  if (item.kind !== 'tool' || item.name !== 'SendMessage' || item.result?.isError) return false;
+  if (item.kind !== 'tool' || item.name !== 'SendMessage' || item.result?.isError || (item.result && refused(item.result.text))) return false;
   const input = (item.input ?? {}) as { to?: unknown; recipient?: unknown };
   return input.to === agentId || input.recipient === agentId;
 };

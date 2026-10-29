@@ -1,6 +1,6 @@
 ---
 title: Claude profiles
-description: Use more than one Claude account in Switchboard, such as a personal plan and a work one.
+description: Use more than one Claude account in Seshboard, such as a personal plan and a work one.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -10,7 +10,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-If you use more than one Claude account, such as a personal plan and a work one, profiles let you use them side by side in one app. A Claude profile is one Claude Code config folder with its own login, settings, plugins and sessions. Add a profile for each account you use, and Switchboard lists all their sessions together, shows which account each one runs on, and keeps their usage apart.
+If you use more than one Claude account, such as a personal plan and a work one, profiles let you use them side by side in one app. A Claude profile is one Claude Code config folder with its own login, settings, plugins and sessions. Add a profile for each account you use, and Seshboard lists all their sessions together, shows which account each one runs on, and keeps their usage apart.
 
 <Screenshot name="settings-profiles" alt="Settings on Claude profiles: a Personal profile in yellow and a Work profile in blue, each with its config folder, the account it is signed in with and the Default choice, then Add profile and How to set up another profile" eager />
 
@@ -23,7 +23,7 @@ If you use more than one Claude account, such as a personal plan and a work one,
 
 Your first profile is Claude Code's own folder, usually <Os mac="~/.claude" windows="%USERPROFILE%\.claude" />. Every other profile is a folder of its own, such as <Os mac="~/.claude-work" windows="%USERPROFILE%\.claude-work" />, the same folder you would point `CLAUDE_CONFIG_DIR` at in a terminal.
 
-Switchboard never handles your login. You sign in with Claude Code itself, once per folder, and Switchboard runs Claude Code with that folder for the sessions of that profile.
+Seshboard never handles your login. You sign in with Claude Code itself, once per folder, and Seshboard runs Claude Code with that folder for the sessions of that profile.
 
 ## Add a profile
 
@@ -31,8 +31,8 @@ Switchboard never handles your login. You sign in with Claude Code itself, once 
 
 1. Click **Add profile**.
 2. Give it a name and pick a colour.
-3. Check the **Config folder**. Switchboard suggests one in your home folder from the name (`.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
-4. Leave **Sign in now** on to sign in right after, in Switchboard's terminal. See [Sign in](#sign-in).
+3. Check the **Config folder**. Seshboard suggests one in your home folder from the name (`.claude-work` for "Work"); type another path or click **Choose…**. A folder that doesn't exist yet is created. To see the sessions of a folder you already use with `CLAUDE_CONFIG_DIR`, pick that folder.
+4. Leave **Sign in now** on to sign in right after, in Seshboard's terminal. See [Sign in](#sign-in).
 5. Click **Add profile**.
 
 </Steps>
@@ -43,7 +43,7 @@ A profile that isn't signed in yet says **Not signed in yet**, with a **Sign in*
 
 <Steps>
 
-1. Click **Sign in**. Switchboard's terminal opens next to Settings, with Claude Code running on the profile's folder.
+1. Click **Sign in**. Seshboard's terminal opens next to Settings, with Claude Code running on the profile's folder.
 2. Follow Claude Code's steps to sign in with the other account. If it doesn't ask, type `/login`.
 
 </Steps>
@@ -68,7 +68,7 @@ claude
 The variable stays set in that PowerShell window only. Close it when you're done, so a later `claude` there doesn't use the other account by mistake.
 
 <Aside title="How to set up another profile">
-Under the list, **How to set up another profile** walks through it step by step: create the folder and sign in, add it in Switchboard, link your projects, and optionally add a terminal alias such as `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'` to `~/.zshrc`.
+Under the list, **How to set up another profile** walks through it step by step: create the folder and sign in, add it in Seshboard, link your projects, and optionally add a terminal alias such as `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'` to `~/.zshrc`.
 
 <OnlyOn os="windows">
 
@@ -104,9 +104,9 @@ Every change saves at once. A new session takes each field from the first place 
 
 1. The project's own defaults, on its [Settings tab](/projects/settings/).
 2. The defaults of the session's profile.
-3. Claude Code's own defaults.
+3. Claude Code's own defaults, and for the permission mode **Global permission mode** in [Settings › General](/settings/#new-sessions).
 
-For the permission mode, **Permission mode** in [Settings → General](/settings/#new-sessions) decides: on **Use project default** this order applies, and the other choices are used instead of it.
+A project can skip its profile's permission mode: on its Settings tab, choose *Global default* under **Permissions**.
 
 What you change in [New session](/new-session/form/) applies to that prompt only and doesn't change these defaults.
 
@@ -129,7 +129,7 @@ With more than one profile:
 ## Rename, recolour or remove a profile
 
 - Type a new name in the profile's name field, and pick another colour from its swatches.
-- **×** removes a profile from Switchboard after you confirm. Its sessions leave the sidebar and its projects use the default profile again. The folder, its login and its sessions stay on disk; add the folder again to get them back. Claude Code's own folder can't be removed.
+- **×** removes a profile from Seshboard after you confirm. Its sessions leave the sidebar and its projects use the default profile again. The folder, its login and its sessions stay on disk; add the folder again to get them back. Claude Code's own folder can't be removed.
 
 A profile whose folder is gone says **folder not found**.
 

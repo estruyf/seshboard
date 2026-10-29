@@ -16,6 +16,8 @@ interface Ask {
   /** The session, or the run row's run, the tree hangs from. */
   parentId: string;
   title: string;
+  /** Archive: called once it is done (after the question, when one was asked). */
+  then?: () => void;
 }
 
 const useAsk = create<{ ask: Ask | null }>(() => ({ ask: null }));
@@ -41,23 +43,32 @@ function treeTargets(parentId: string, title: string): Array<{ id: string; title
 /**
  * Archives the tree as a session is archived: an unsent message in it asks first, and whatever of it is open closes.
  */
-function putAway(parentId: string, title: string, runId: string): void {
-  archiveSessions(treeTargets(parentId, title), () => void archiveRunTree(runId, true).catch((error: unknown) => toast(`Couldn't archive the run: ${describe(error)}`)));
+function putAway(parentId: string, title: string, runId: string, then?: () => void): void {
+  archiveSessions(treeTargets(parentId, title), () =>
+    void archiveRunTree(runId, true).then(
+      () => then?.(),
+      (error: unknown) => toast(`Couldn't archive the run: ${describe(error)}`),
+    ),
+  );
 }
 
 /**
  * Archives (or unarchives) the tree under a parent in one go. A run that still goes on asks first (Stop and archive).
- * False when the parent has no run: archive it as a session.
+ * False when the parent has no run: archive it as a session. `then` runs once it is done (quick actions show their toast).
  */
-export function archiveTree(parentId: string, archived: boolean, title: string): boolean {
+export function archiveTree(parentId: string, archived: boolean, title: string, then?: () => void): boolean {
   const runs = runsOf(parentId);
   if (!runs.length) return false;
   if (archived && runs.some(runGoesOn)) {
-    useAsk.setState({ ask: { kind: 'archive', parentId, title } });
+    useAsk.setState({ ask: { kind: 'archive', parentId, title, then } });
     return true;
   }
-  if (archived) putAway(parentId, title, runs[0]!.run.id);
-  else void archiveRunTree(runs[0]!.run.id, false).catch((error: unknown) => toast(`Couldn't unarchive the run: ${describe(error)}`));
+  if (archived) putAway(parentId, title, runs[0]!.run.id, then);
+  else
+    void archiveRunTree(runs[0]!.run.id, false).then(
+      () => then?.(),
+      (error: unknown) => toast(`Couldn't unarchive the run: ${describe(error)}`),
+    );
   return true;
 }
 
@@ -88,7 +99,7 @@ function StopAndArchive({ ask, onClose }: { ask: Ask; onClose(): void }) {
         const runs = runsOf(ask.parentId);
         // Never archived while it goes on in the background: stopped first.
         for (const state of runs.filter(runGoesOn)) await stopRunNow(state.run.id);
-        if (runs[0]) putAway(ask.parentId, ask.title, runs[0].run.id);
+        if (runs[0]) putAway(ask.parentId, ask.title, runs[0].run.id, ask.then);
       }}
       onClose={onClose}
     />

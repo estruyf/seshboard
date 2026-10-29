@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import type { ModInfo, ModSource } from '@switchboard/protocol';
+import type { ModInfo, ModSource } from '@seshboard/protocol';
 
 /**
  * Which plugins are mods, for Settings › Mods. A mod is a plugin whose `hooks/hooks.json` names a module under
- * `modules`. Only that manifest is read: the module itself is Claude Code's to load and run, never Switchboard's.
+ * `modules`. Only that manifest is read: the module itself is Claude Code's to load and run, never Seshboard's.
  * Best effort: a file in an unknown format just lists nothing.
  */
 

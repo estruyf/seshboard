@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClonePlan } from '@switchboard/protocol/client';
+import type { ClonePlan } from '@seshboard/protocol/client';
 import { canClone, planLine, progressLine, remoteCloneProblem, trustGroups, trustText } from './cloneModel.ts';
 
 const plan = (state: ClonePlan['state']): ClonePlan => ({ state, repo: { owner: 'acme', name: 'payments', branch: null }, name: 'payments', where: state === 'off' ? '' : '~/Developer/payments' });
@@ -19,7 +19,7 @@ describe('cloneModel', () => {
   });
 
   it('asks an older computer to update', () => {
-    expect(remoteCloneProblem({ name: 'mystic', features: ['branches'] })).toBe('Update Switchboard on mystic to clone there.');
+    expect(remoteCloneProblem({ name: 'mystic', features: ['branches'] })).toBe('Update Seshboard on mystic to clone there.');
     expect(remoteCloneProblem({ name: 'mystic', features: ['projects.clone'] })).toBeNull();
     expect(remoteCloneProblem(null)).toBeNull();
   });

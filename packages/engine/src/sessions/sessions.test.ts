@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, unlinkSync, write
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionsChanged, TranscriptFileCheck, TranscriptMessage, TranscriptProfileCheck, TranscriptUpdate } from '@switchboard/protocol';
+import type { SessionsChanged, TranscriptFileCheck, TranscriptMessage, TranscriptProfileCheck, TranscriptUpdate } from '@seshboard/protocol';
 import { createProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -20,7 +20,7 @@ afterEach(async () => {
   for (const fn of cleanups.splice(0).reverse()) await fn();
 });
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-sessions-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-sessions-')));
   cleanups.push(() => removeDir(dir));
   return dir;
 };

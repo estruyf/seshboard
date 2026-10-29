@@ -1,5 +1,5 @@
-import { isSameOrInside } from '@switchboard/protocol/paths';
-import type { CompanionSession, CompanionSessions, CompanionStatus } from '@switchboard/protocol/companion-client';
+import { isSameOrInside } from '@seshboard/protocol/paths';
+import type { CompanionSession, CompanionSessions, CompanionStatus, CompanionTarget } from '@seshboard/protocol/companion-client';
 
 /** Which session context goes to, and what the status bar says. Pure, so it can be tested. */
 
@@ -7,7 +7,7 @@ import type { CompanionSession, CompanionSessions, CompanionStatus } from '@swit
 export const isWithin = (path: string, folder: string) => isSameOrInside(path, folder);
 
 /**
- * The session focused in Switchboard, when its folder holds every path (or, for text that isn't from a file, the
+ * The session focused in Seshboard, when its folder holds every path (or, for text that isn't from a file, the
  * workspace folder). Otherwise null: ask which session.
  */
 export function focusedTarget(snapshot: CompanionSessions, paths: readonly string[]): CompanionSession | null {
@@ -42,7 +42,7 @@ export const STATUS_ICON: Record<CompanionStatus, string> = {
   stopped: '$(history)',
 };
 
-/** "5m", "3h", "2d": how long ago, the way Switchboard's sidebar says it. */
+/** "5m", "3h", "2d": how long ago, the way Seshboard's sidebar says it. */
 export function shortAge(at: number, now: number): string {
   const minutes = Math.max(0, Math.round((now - at) / 60_000));
   if (minutes < 1) return 'now';
@@ -65,10 +65,40 @@ export function sessionRow(session: CompanionSession, now: number, relative: (pa
   };
 }
 
+/** A row of the session picker, or a separator with a heading. */
+export type TargetChoice = { label: string; description?: string; detail?: string; target: CompanionTarget } | { separator: string };
+
+export interface TargetChoiceOptions {
+  /** The session open in Seshboard, when what you add fits it: listed first, so Enter adds there. */
+  open: CompanionSession | null;
+  /** Folders to offer New session on, the one the files are in first. */
+  folders: readonly string[];
+  /** New session before the other sessions (adding context), or after them (showing a session). */
+  newFirst: boolean;
+  now: number;
+  relative: (path: string) => string;
+  folderName: (folder: string) => string;
+}
+
+/**
+ * The session picker: the session open in Seshboard, New session on each folder and this workspace's other
+ * sessions, each under its heading.
+ */
+export function targetChoices(snapshot: CompanionSessions, { open, folders, newFirst, now, relative, folderName }: TargetChoiceOptions): TargetChoice[] {
+  const row = (session: CompanionSession): TargetChoice => ({ ...sessionRow(session, now, relative), target: { kind: 'session', sessionId: session.id } });
+  const others = snapshot.sessions.filter((s) => s.id !== open?.id).map(row);
+  const fresh = folders.map((folder): TargetChoice => ({ label: `$(add) New session in ${folderName(folder)}`, target: { kind: 'new', cwd: folder } }));
+  const section = (heading: string, rows: TargetChoice[]): TargetChoice[] => (rows.length ? [{ separator: heading }, ...rows] : []);
+  return [
+    ...section('Open in Seshboard', open ? [row(open)] : []),
+    ...(newFirst ? [...section('New', fresh), ...section('Sessions', others)] : [...section('Sessions', others), ...section('New', fresh)]),
+  ];
+}
+
 export interface StatusBarView {
   text: string;
   tooltip: string;
-  /** Pink like "Needs you" in Switchboard. */
+  /** Pink like "Needs you" in Seshboard. */
   warning: boolean;
   /** The session a click shows; null opens the session list. */
   reveal: string | null;
@@ -76,18 +106,18 @@ export interface StatusBarView {
 
 /** The status bar item: what needs you in this workspace first, then what is working. */
 export function statusBarView(snapshot: CompanionSessions | null): StatusBarView {
-  if (!snapshot) return { text: '$(circle-slash) Switchboard', tooltip: "Switchboard isn't running. Click to open it.", warning: false, reveal: null };
+  if (!snapshot) return { text: '$(circle-slash) Seshboard', tooltip: "Seshboard isn't running. Click to open it.", warning: false, reveal: null };
   const needsYou = snapshot.sessions.filter((s) => s.status === 'needs-you');
   const working = snapshot.sessions.filter((s) => s.status === 'working').length;
   if (needsYou.length) {
     const first = needsYou[0]!;
     return {
-      text: `$(bell-dot) Switchboard: ${needsYou.length} needs you`,
-      tooltip: `${needsYou.map((s) => s.title).join('\n')}\n\nClick to show ${needsYou.length === 1 ? 'it' : `"${first.title}"`} in Switchboard.`,
+      text: `$(bell-dot) Seshboard: ${needsYou.length} needs you`,
+      tooltip: `${needsYou.map((s) => s.title).join('\n')}\n\nClick to show ${needsYou.length === 1 ? 'it' : `"${first.title}"`} in Seshboard.`,
       warning: true,
       reveal: first.id,
     };
   }
-  if (working) return { text: `$(loading~spin) Switchboard: ${working} working`, tooltip: 'Click to see the sessions for this workspace.', warning: false, reveal: null };
-  return { text: '$(comment-discussion) Switchboard', tooltip: 'Click to see the sessions for this workspace.', warning: false, reveal: null };
+  if (working) return { text: `$(loading~spin) Seshboard: ${working} working`, tooltip: 'Click to see the sessions for this workspace.', warning: false, reveal: null };
+  return { text: '$(comment-discussion) Seshboard', tooltip: 'Click to see the sessions for this workspace.', warning: false, reveal: null };
 }

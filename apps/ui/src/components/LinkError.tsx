@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useLinks } from '../state/linksStore.ts';
 import { Notice } from './ui/Notice.tsx';
 
-/** Why a `switchboard://` link did nothing. Nothing else changed; it goes away on its own. */
+/** Why a `seshboard://` link did nothing. Nothing else changed; it goes away on its own. */
 export function LinkError() {
   const error = useLinks((s) => s.error);
   useEffect(() => {

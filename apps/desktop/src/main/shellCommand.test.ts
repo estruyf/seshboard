@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { commandFolders, folderFromArgv, installShellCommand, readShellCommand, removeShellCommand, shellCommandDir, shellCommandFile, shellCommandPlan, shellCommandScript, windowsPathScript } from './shellCommand.ts';
+import { commandFolders, folderFromArgv, installShellCommand, privilegedInstall, readShellCommand, removeShellCommand, shellCommandDir, shellCommandFile, shellCommandPlan, shellCommandScript, windowsPathScript } from './shellCommand.ts';
 
 const posix = process.platform !== 'win32';
 
@@ -11,7 +11,7 @@ describe('shellCommandDir', () => {
   it('puts the commands on the PATH, or in a folder of the app on Windows', () => {
     expect(shellCommandDir('darwin', { home: '/Users/me', userData: '/x' })).toBe('/usr/local/bin');
     expect(shellCommandDir('linux', { home: '/home/me', userData: '/x' })).toBe('/home/me/.local/bin');
-    expect(shellCommandDir('win32', { home: 'C:\\Users\\me', userData: 'C:\\Users\\me\\AppData\\Roaming\\Switchboard' })).toBe('C:\\Users\\me\\AppData\\Roaming\\Switchboard\\bin');
+    expect(shellCommandDir('win32', { home: 'C:\\Users\\me', userData: 'C:\\Users\\me\\AppData\\Roaming\\Seshboard' })).toBe('C:\\Users\\me\\AppData\\Roaming\\Seshboard\\bin');
     expect(shellCommandFile('win32', 'C:\\bin', 'seshboard')).toBe('C:\\bin\\seshboard.cmd');
     expect(shellCommandFile('darwin', '/usr/local/bin', 'seshboard')).toBe('/usr/local/bin/seshboard');
   });
@@ -19,22 +19,25 @@ describe('shellCommandDir', () => {
 
 describe('shellCommandScript', () => {
   it('opens the bundle with a link on macOS, quoting its path', () => {
-    const script = shellCommandScript('darwin', 'seshboard', "/Applications/Elio's Switchboard.app");
-    expect(script).toContain(`exec open -a '/Applications/Elio'\\''s Switchboard.app' "switchboard://new-session?cwd=$cwd"`);
+    const script = shellCommandScript('darwin', 'seshboard', "/Applications/Elio's Seshboard.app");
+    expect(script).toContain(`exec open -a '/Applications/Elio'\\''s Seshboard.app' "seshboard://new-session?cwd=$cwd"`);
     expect(script).toContain('Usage: seshboard [folder]');
   });
 
   it('writes the executable under %LOCALAPPDATA% on Windows, and doubles a % elsewhere', () => {
     const env = { LOCALAPPDATA: 'C:\\Users\\Jörg\\AppData\\Local' };
-    expect(shellCommandScript('win32', 'switchboard', 'C:\\Users\\Jörg\\AppData\\Local\\Programs\\switchboard\\Switchboard.exe', env)).toContain('start "" "%LOCALAPPDATA%\\Programs\\switchboard\\Switchboard.exe" "%dir%"');
-    expect(shellCommandScript('win32', 'switchboard', 'D:\\100% apps\\Switchboard.exe', env)).toContain('start "" "D:\\100%% apps\\Switchboard.exe" "%dir%"');
-    expect(shellCommandScript('win32', 'switchboard', 'D:\\Switchboard.exe')).toContain('\r\n');
+    expect(shellCommandScript('win32', 'switchboard', 'C:\\Users\\Jörg\\AppData\\Local\\Programs\\switchboard\\Seshboard.exe', env)).toContain('start "" "%LOCALAPPDATA%\\Programs\\switchboard\\Seshboard.exe" "%dir%"');
+    expect(shellCommandScript('win32', 'switchboard', 'D:\\100% apps\\Seshboard.exe', env)).toContain('start "" "D:\\100%% apps\\Seshboard.exe" "%dir%"');
+    expect(shellCommandScript('win32', 'switchboard', 'D:\\Seshboard.exe')).toContain('\r\n');
+    // A folder named `R&D` is echoed as text, never run as a command after the `&`.
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe')).toContain('echo seshboard: "%~1" is not a folder 1>&2');
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe').split('\r\n').filter((line) => line.includes('%~1') && !line.includes('"%~1"'))).toEqual([]);
   });
 
   describe.runIf(posix)('run', () => {
     let root: string;
     beforeEach(() => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-shell-command-')));
+      root = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-shell-command-')));
     });
     afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -61,10 +64,10 @@ describe('shellCommandScript', () => {
       mkdirSync(join(root, 'bin'));
       const out = join(root, 'open.txt');
       recorder(join(root, 'bin', 'open'), out);
-      const result = runScript(shellCommandScript('darwin', 'switchboard', '/Applications/Switchboard.app'), ['.'], folder, { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}` });
+      const result = runScript(shellCommandScript('darwin', 'switchboard', '/Applications/Seshboard.app'), ['.'], folder, { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}` });
       expect(result.status).toBe(0);
       const [flag, app, link] = readFileSync(out, 'utf8').trim().split('\n');
-      expect([flag, app]).toEqual(['-a', '/Applications/Switchboard.app']);
+      expect([flag, app]).toEqual(['-a', '/Applications/Seshboard.app']);
       expect(new URL(link!).searchParams.get('cwd')).toBe(folder);
     });
 
@@ -89,20 +92,20 @@ describe('shellCommandScript', () => {
 describe.runIf(posix)('install and remove', () => {
   let dir: string;
   beforeEach(() => {
-    dir = join(mkdtempSync(join(tmpdir(), 'switchboard-shell-command-')), 'bin');
+    dir = join(mkdtempSync(join(tmpdir(), 'seshboard-shell-command-')), 'bin');
   });
   afterEach(() => rmSync(join(dir, '..'), { recursive: true, force: true }));
 
   it('installs every name, tells an older script from the current one, and removes them', async () => {
-    const plan = shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard');
+    const plan = shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard');
     expect((await readShellCommand(plan)).status).toBe('missing');
     await installShellCommand(plan, false);
-    expect(await readShellCommand(plan)).toEqual({ status: 'installed', names: ['switchboard', 'seshboard', 'sesh'], dir, taken: [] });
+    expect(await readShellCommand(plan)).toEqual({ status: 'installed', names: ['seshboard', 'sesh', 'switchboard'], dir, taken: [] });
     expect(existsSync(join(dir, 'sesh'))).toBe(true);
     expect(statSync(join(dir, 'seshboard')).mode & 0o777).toBe(0o755);
     // Another copy of the app, somewhere else.
-    expect((await readShellCommand(shellCommandPlan('linux', dir, '/home/me/Switchboard.AppImage'))).status).toBe('outdated');
-    await removeShellCommand(shellCommandPlan('linux', dir, '/home/me/Switchboard.AppImage'), false);
+    expect((await readShellCommand(shellCommandPlan('linux', dir, '/home/me/Seshboard.AppImage'))).status).toBe('outdated');
+    await removeShellCommand(shellCommandPlan('linux', dir, '/home/me/Seshboard.AppImage'), false);
     expect(existsSync(join(dir, 'switchboard'))).toBe(false);
     expect((await readShellCommand(plan)).status).toBe('missing');
   });
@@ -110,38 +113,38 @@ describe.runIf(posix)('install and remove', () => {
   it('skips a name another program has (the tmux tool sesh) and installs the others', async () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'sesh'), '#!/bin/sh\necho tmux sessions\n');
-    const plan = shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard');
-    expect(await readShellCommand(plan)).toEqual({ status: 'missing', names: ['switchboard', 'seshboard'], dir, taken: [join(dir, 'sesh')] });
+    const plan = shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard');
+    expect(await readShellCommand(plan)).toEqual({ status: 'missing', names: ['seshboard', 'switchboard'], dir, taken: [join(dir, 'sesh')] });
     await installShellCommand(plan, false);
-    expect(await readShellCommand(plan)).toMatchObject({ status: 'installed', names: ['switchboard', 'seshboard'] });
+    expect(await readShellCommand(plan)).toMatchObject({ status: 'installed', names: ['seshboard', 'switchboard'] });
     expect(readFileSync(join(dir, 'sesh'), 'utf8')).toContain('tmux sessions');
     await removeShellCommand(plan, false);
     expect(existsSync(join(dir, 'switchboard'))).toBe(false);
     expect(readFileSync(join(dir, 'sesh'), 'utf8')).toContain('tmux sessions');
   });
 
-  it('skips a name another program has in another folder, like Homebrew’s sesh, but not Switchboard’s own executable', async () => {
+  it('skips a name another program has in another folder, like Homebrew’s sesh, but not Seshboard’s own executable', async () => {
     const brew = join(dir, '..', 'homebrew-bin');
     const opt = join(dir, '..', 'opt');
     mkdirSync(brew, { recursive: true });
     mkdirSync(opt, { recursive: true });
     writeFileSync(join(brew, 'sesh'), '#!/bin/sh\necho tmux sessions\n', { mode: 0o755 });
-    // A Linux package links /usr/bin/switchboard to the app itself.
-    writeFileSync(join(opt, 'switchboard'), 'ELF', { mode: 0o755 });
-    symlinkSync(join(opt, 'switchboard'), join(brew, 'switchboard'));
-    const plan = shellCommandPlan('linux', dir, join(opt, 'switchboard'), {}, [brew]);
-    expect(await readShellCommand(plan)).toMatchObject({ status: 'missing', names: ['switchboard', 'seshboard'], taken: [join(brew, 'sesh')] });
+    // A Linux package links /usr/bin/seshboard to the app itself.
+    writeFileSync(join(opt, 'seshboard'), 'ELF', { mode: 0o755 });
+    symlinkSync(join(opt, 'seshboard'), join(brew, 'seshboard'));
+    const plan = shellCommandPlan('linux', dir, join(opt, 'seshboard'), {}, [brew]);
+    expect(await readShellCommand(plan)).toMatchObject({ status: 'missing', names: ['seshboard', 'switchboard'], taken: [join(brew, 'sesh')] });
     await installShellCommand(plan, false);
     expect(existsSync(join(dir, 'sesh'))).toBe(false);
-    expect(existsSync(join(dir, 'switchboard'))).toBe(true);
+    expect(existsSync(join(dir, 'seshboard'))).toBe(true);
   });
 
   it('keeps managing a command it wrote before another program got the name', async () => {
     const brew = join(dir, '..', 'homebrew-bin');
-    await installShellCommand(shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard'), false);
+    await installShellCommand(shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard'), false);
     mkdirSync(brew, { recursive: true });
     writeFileSync(join(brew, 'sesh'), '#!/bin/sh\n', { mode: 0o755 });
-    const plan = shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard', {}, [brew]);
+    const plan = shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard', {}, [brew]);
     expect(await readShellCommand(plan)).toMatchObject({ status: 'installed', taken: [] });
     await removeShellCommand(plan, false);
     expect(existsSync(join(dir, 'sesh'))).toBe(false);
@@ -150,13 +153,27 @@ describe.runIf(posix)('install and remove', () => {
   it('is taken when another program has every name', async () => {
     mkdirSync(dir, { recursive: true });
     for (const name of ['switchboard', 'seshboard', 'sesh']) writeFileSync(join(dir, name), '#!/bin/sh\n');
-    expect((await readShellCommand(shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard'))).status).toBe('taken');
+    expect((await readShellCommand(shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard'))).status).toBe('taken');
   });
 
   it('counts the commands as not installed while their folder is off the PATH', async () => {
-    const plan = shellCommandPlan('linux', dir, '/opt/Switchboard/switchboard');
+    const plan = shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard');
     await installShellCommand(plan, false);
     expect((await readShellCommand(plan, async () => false)).status).toBe('outdated');
+  });
+});
+
+describe.runIf(posix)('privilegedInstall', () => {
+  it('writes each script from the command itself, byte for byte, executable', () => {
+    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'sb-admin-'))), 'bin');
+    const script = shellCommandScript('darwin', 'seshboard', "/Applications/It's Seshboard.app");
+    const files = [{ file: join(dir, 'seshboard'), script }, { file: join(dir, 'sesh'), script: "a 'quoted' %s \\n line\n" }];
+    execFileSync('/bin/sh', ['-c', privilegedInstall(dir, files)]);
+    for (const entry of files) {
+      expect(readFileSync(entry.file, 'utf8')).toBe(entry.script);
+      expect(statSync(entry.file).mode & 0o777).toBe(0o755);
+    }
+    expect(privilegedInstall(dir, files)).not.toContain('/bin/cp');
   });
 });
 
@@ -191,6 +208,6 @@ describe('folderFromArgv', () => {
 
   it('is null without one', () => {
     expect(folderFromArgv([], '/x', 'linux')).toBeNull();
-    expect(folderFromArgv(['--updated', 'switchboard://show'], '/x', 'linux')).toBeNull();
+    expect(folderFromArgv(['--updated', 'seshboard://show'], '/x', 'linux')).toBeNull();
   });
 });

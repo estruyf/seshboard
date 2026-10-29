@@ -1,6 +1,6 @@
 # Building, signing and notarisation
 
-How to package Switchboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. Windows has [its own section](#windows): an installer, signed with Authenticode. So does [Linux](#linux): an AppImage, a `.deb` and an `.rpm`, unsigned.
+How to package Seshboard as a Mac app, and how to sign and notarise it with an Apple Developer ID so it opens on any Mac without warnings. Windows has [its own section](#windows): an installer, signed with Authenticode. So does [Linux](#linux): an AppImage, a `.deb` and an `.rpm`, unsigned.
 
 [← Back to the README](../README.md)
 
@@ -13,9 +13,9 @@ npm install
 npm run dist
 ```
 
-This builds `apps/desktop/dist/mac-arm64/Switchboard.app` and `apps/desktop/dist/Switchboard-<version>-arm64.dmg`. Open the `.dmg` and drag Switchboard to Applications.
+This builds `apps/desktop/dist/mac-arm64/Seshboard.app` and `apps/desktop/dist/Seshboard-<version>-arm64.dmg`. Open the `.dmg` and drag Seshboard to Applications.
 
-It also writes what the in-app updater needs: `Switchboard-<version>-arm64-mac.zip` (Squirrel.Mac installs from the zip, not the `.dmg`), its `.blockmap`, and the update feed `latest-mac.yml`. Inside the app, `Contents/Resources/app-update.yml` tells the updater where to look (the GitHub releases of `estruyf/switchboard`, from the `publish` section of `electron-builder.yml`). electron-builder never uploads anything itself (`--publish never`); the release workflow does.
+It also writes what the in-app updater needs: `Seshboard-<version>-arm64-mac.zip` (Squirrel.Mac installs from the zip, not the `.dmg`), its `.blockmap`, and the update feed `latest-mac.yml`. Inside the app, `Contents/Resources/app-update.yml` tells the updater where to look (the GitHub releases of `estruyf/switchboard`, from the `publish` section of `electron-builder.yml`). electron-builder never uploads anything itself (`--publish never`); the release workflow does.
 
 ### Preview builds
 
@@ -27,14 +27,14 @@ npm run dist:preview
 
 It uses [`electron-builder.preview.yml`](../apps/desktop/electron-builder.preview.yml), which is the normal configuration with `publish: null`: the app has no `app-update.yml` (Settings → About says updates are off) and no `latest-mac.yml` is written.
 
-Switchboard uses your installed Claude Code (`claude` on your PATH) and its login; it doesn't ship its own copy.
+Seshboard uses your installed Claude Code (`claude` on your PATH) and its login; it doesn't ship its own copy.
 
 ### Opening an unsigned build
 
 Without a Developer ID certificate, the build is unsigned. On the Mac that built it, it opens normally. If you copy it to another Mac, macOS blocks the first launch: right-click the app and choose **Open**, or run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Switchboard.app
+xattr -dr com.apple.quarantine /Applications/Seshboard.app
 ```
 
 ## Signing and notarisation
@@ -60,8 +60,8 @@ With an Apple Developer ID, the app is signed with the hardened runtime and nota
 ### Checking the result
 
 ```bash
-spctl -a -vv apps/desktop/dist/mac-arm64/Switchboard.app
-xcrun stapler validate apps/desktop/dist/mac-arm64/Switchboard.app
+spctl -a -vv apps/desktop/dist/mac-arm64/Seshboard.app
+xcrun stapler validate apps/desktop/dist/mac-arm64/Seshboard.app
 ```
 
 `spctl` should say `accepted` and `source=Notarized Developer ID`.
@@ -88,9 +88,9 @@ npm install
 npm run dist
 ```
 
-This builds `apps/desktop/dist/Switchboard-<version>-setup.exe`, one installer for both x64 and Arm64 that installs the build matching the PC, with its `.blockmap` and the update feed `latest.yml`. The unpacked apps are in `dist/win-unpacked` (x64) and `dist/win-arm64-unpacked`.
+This builds `apps/desktop/dist/Seshboard-<version>-setup.exe`, one installer for both x64 and Arm64 that installs the build matching the PC, with its `.blockmap` and the update feed `latest.yml`. The unpacked apps are in `dist/win-unpacked` (x64) and `dist/win-arm64-unpacked`.
 
-The installer needs no administrator: it installs for the current user in `%LOCALAPPDATA%\Programs\switchboard`, with a Start menu and desktop shortcut, and the in-app updater installs updates the same way. Uninstalling (Settings › Apps) keeps your data in `%APPDATA%\Switchboard`, and removes the `switchboard://` link handler the app registers when it starts. `npm run dist:preview` makes an installer without an update feed, as on macOS.
+The installer needs no administrator: it installs for the current user in `%LOCALAPPDATA%\Programs\switchboard`, with a Start menu and desktop shortcut, and the in-app updater installs updates the same way. Uninstalling (Settings › Apps) keeps your data in `%APPDATA%\Seshboard`, and removes the `seshboard://` link handler the app registers when it starts. `npm run dist:preview` makes an installer without an update feed, as on macOS.
 
 ### Opening an unsigned build
 
@@ -106,7 +106,7 @@ Windows checks an Authenticode signature. Code signing certificates can no longe
 To sign locally with Azure Trusted Signing, set the variables from [Signing secrets](#signing-secrets) in the environment before `npm run dist`; [`scripts/dist.mjs`](../apps/desktop/scripts/dist.mjs) passes them to electron-builder. Check the result in PowerShell:
 
 ```powershell
-Get-AuthenticodeSignature apps/desktop/dist/Switchboard-*-setup.exe, apps/desktop/dist/win-unpacked/Switchboard.exe
+Get-AuthenticodeSignature apps/desktop/dist/Seshboard-*-setup.exe, apps/desktop/dist/win-unpacked/Seshboard.exe
 ```
 
 The status should be `Valid`. Once the installed app is signed, the in-app updater only installs an update signed by the same publisher.
@@ -115,8 +115,8 @@ The status should be `Valid`. Once the installed app is signed, the in-app updat
 
 - The same configuration as macOS ([`electron-builder.yml`](../apps/desktop/electron-builder.yml) → `win` and `nsis`), with `build/icon.ico` made by `npm run icon` (which on Windows makes only the `.ico`).
 - `node-pty`'s Windows binaries (`prebuilds/win32-x64` and `win32-arm64`, with ConPTY) instead of the macOS ones.
-- [`build/installer.nsh`](../apps/desktop/build/installer.nsh) adds to the installer: uninstalling removes the `switchboard://` link handler, except during an update.
-- `scripts/dist.mjs` names the package `switchboard` for the installer (`extraMetadata.name`, in a config file it writes for Windows builds that extends the one asked for: `scripts/windowsBuildConfig.mjs`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Switchboard`.
+- [`build/installer.nsh`](../apps/desktop/build/installer.nsh) adds to the installer: uninstalling removes the `seshboard://` link handler, except during an update.
+- `scripts/dist.mjs` names the package `switchboard` for the installer (`extraMetadata.name`, in a config file it writes for Windows builds that extends the one asked for: `scripts/windowsBuildConfig.mjs`), so it installs to `Programs\switchboard` rather than a folder named after the npm workspace. The data folder comes from the product name, so it stays `Seshboard`.
 
 ## Linux
 
@@ -131,14 +131,14 @@ npm run dist
 
 This builds, for this machine's architecture only (a build for the other one needs `node-pty` compiled for it, so the release builds each on its own runner):
 
-- `Switchboard-<version>-x86_64.AppImage` (`arm64` on Arm);
-- `Switchboard-<version>-amd64.deb` (`arm64`), named `switchboard` in apt, installed in `/opt/Switchboard`, with an AppArmor profile so Electron's sandbox starts on Ubuntu 24.04 and later;
-- `Switchboard-<version>-x86_64.rpm` (`aarch64`), named `switchboard` in dnf;
+- `Seshboard-<version>-x86_64.AppImage` (`arm64` on Arm);
+- `Seshboard-<version>-amd64.deb` (`arm64`), named `switchboard` in apt, installed in `/opt/Seshboard`, with an AppArmor profile so Electron's sandbox starts on Ubuntu 24.04 and later;
+- `Seshboard-<version>-x86_64.rpm` (`aarch64`), named `switchboard` in dnf;
 - the update feed `latest-linux.yml` (`latest-linux-arm64.yml` on Arm), which lists all three.
 
 Without `rpmbuild`, [`scripts/dist.mjs`](../apps/desktop/scripts/dist.mjs) says so and builds the AppImage and the `.deb`. electron-builder makes the `.deb` and `.rpm` with its own copy of `fpm`, which needs `libcrypt.so.1`: on Arch that is the `libxcrypt-compat` package. The unpacked app is in `dist/linux-unpacked` (`linux-arm64-unpacked`).
 
-The desktop entry is `switchboard.desktop`, after `desktopName` in `apps/desktop/package.json`, which Electron also gives the window as its app id, so the desktop links the window to the entry and its icon. The `.deb` and `.rpm` register `switchboard://` through the entry.
+The desktop entry is `seshboard.desktop`, after `desktopName` in `apps/desktop/package.json`, which Electron also gives the window as its app id, so the desktop links the window to the entry and its icon. The `.deb` and `.rpm` register `seshboard://` through the entry.
 
 ### Updates
 
@@ -174,11 +174,11 @@ The Linux job runs on an x64 and an Arm64 Ubuntu runner:
 
 1. runs the typecheck and unit tests there too;
 2. builds the AppImage, `.deb` and `.rpm` with the version from the tag;
-3. checks that there is one of each, that the `.deb` is called `switchboard` and holds the app in `/opt/Switchboard`, and that the update feed (`latest-linux.yml` or `latest-linux-arm64.yml`) lists all three.
+3. checks that there is one of each, that the `.deb` is called `switchboard` and holds the app in `/opt/Seshboard`, and that the update feed (`latest-linux.yml` or `latest-linux-arm64.yml`) lists all three.
 
 Only when all of them have passed, the publish job:
 
-1. attaches `Switchboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap`, `Switchboard-X.Y.Z-setup.exe` and its `.blockmap`, and the Linux AppImages, `.deb`s and `.rpm`s to the release, then the update feeds last, so a feed never points at a file that isn't there yet;
+1. attaches `Seshboard-X.Y.Z-arm64.dmg`, the `.zip` and its `.blockmap`, `Seshboard-X.Y.Z-setup.exe` and its `.blockmap`, and the Linux AppImages, `.deb`s and `.rpm`s to the release, then the update feeds last, so a feed never points at a file that isn't there yet;
 2. fails if a `latest*.yml` ended up on a draft or pre-release;
 3. fills in the release notes from the CHANGELOG section, if you left them empty. The in-app updater shows these notes (cleaned up and shortened) for the new version;
 4. for a Stable release, stamps the Homebrew cask with the version and the `.zip`'s checksum and pushes it to [estruyf/homebrew-tap](https://github.com/estruyf/homebrew-tap) (see [Homebrew](homebrew.md)).
@@ -245,28 +245,28 @@ There is no client secret. The Windows job runs in the GitHub environment `windo
 npm run smoke:packaged
 ```
 
-Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Switchboard.app` instead of the development build, or on Windows against `dist/win-unpacked/Switchboard.exe` (`win-arm64-unpacked` on an Arm PC), or on Linux against `dist/linux-unpacked/switchboard` (`linux-arm64-unpacked`).
+Runs the smoke test (see [Development](development.md)) against `dist/mac-arm64/Seshboard.app` instead of the development build, or on Windows against `dist/win-unpacked/Seshboard.exe` (`win-arm64-unpacked` on an Arm PC), or on Linux against `dist/linux-unpacked/switchboard` (`linux-arm64-unpacked`).
 
 ## Testing updates with the mock server
 
-[`apps/desktop/scripts/mock-update-server.ts`](../apps/desktop/scripts/mock-update-server.ts) serves an update feed on `http://localhost:8484`. Starting Switchboard with `SWITCHBOARD_MOCK_UPDATES=1` points the updater at it instead of GitHub (set `SWITCHBOARD_MOCK_UPDATES_URL` for another port). Nothing is published.
+[`apps/desktop/scripts/mock-update-server.ts`](../apps/desktop/scripts/mock-update-server.ts) serves an update feed on `http://localhost:8484`. Starting Seshboard with `SESHBOARD_MOCK_UPDATES=1` points the updater at it instead of GitHub (set `SESHBOARD_MOCK_UPDATES_URL` for another port). Nothing is published.
 
 **The check and the UI**, with a made-up feed (works from a development build too):
 
 ```bash
-npm run mock-updates -w @switchboard/desktop -- --fake 9.9.9
-SWITCHBOARD_MOCK_UPDATES=1 npm run dev
+npm run mock-updates -w @seshboard/desktop -- --fake 9.9.9
+SESHBOARD_MOCK_UPDATES=1 npm run dev
 ```
 
-Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. The fake feed answers as both `latest-mac.yml` and `latest.yml`, so it works on Windows too; `--fake 9.9.9-beta.1` serves `beta-mac.yml` and `beta.yml` for the Beta channel. The smoke test runs one check against the mock feed when `SWITCHBOARD_MOCK_UPDATES=1` is set (it never downloads).
+Settings → About → *Check for Updates* finds v9.9.9 with its release notes, and the update message shows in the window's corner. Downloading fails, since there is no build behind a fake feed. The fake feed answers as both `latest-mac.yml` and `latest.yml`, so it works on Windows too; `--fake 9.9.9-beta.1` serves `beta-mac.yml` and `beta.yml` for the Beta channel. The smoke test runs one check against the mock feed when `SESHBOARD_MOCK_UPDATES=1` is set (it never downloads).
 
 **The whole flow** (download, restart, *Updated to vX*) needs two signed builds, since Squirrel.Mac only installs an update signed by the same Developer ID:
 
-1. Build the newer version and keep its `dist` folder: `npm pkg set version=0.0.9 -w @switchboard/desktop && npm run dist`, then move `apps/desktop/dist` to, say, `/tmp/switchboard-0.0.9`.
+1. Build the newer version and keep its `dist` folder: `npm pkg set version=0.0.9 -w @seshboard/desktop && npm run dist`, then move `apps/desktop/dist` to, say, `/tmp/seshboard-0.0.9`.
 2. Build and install the current version as usual (put `version` back first).
-3. Serve the newer one: `npm run mock-updates -w @switchboard/desktop -- --dir /tmp/switchboard-0.0.9`.
-4. Open the installed app with the mock feed: `SWITCHBOARD_MOCK_UPDATES=1 /Applications/Switchboard.app/Contents/MacOS/Switchboard`.
+3. Serve the newer one: `npm run mock-updates -w @seshboard/desktop -- --dir /tmp/seshboard-0.0.9`.
+4. Open the installed app with the mock feed: `SESHBOARD_MOCK_UPDATES=1 /Applications/Seshboard.app/Contents/MacOS/Seshboard`.
 
-On Windows the whole flow also works with unsigned builds, as the updater checks the publisher only when the installed app is signed. Build the newer version and move its `dist` folder aside, build and install the current one with its `Switchboard-<version>-setup.exe`, serve the newer folder with `--dir`, and start `%LOCALAPPDATA%\Programs\switchboard\Switchboard.exe` with `SWITCHBOARD_MOCK_UPDATES=1` set. Uninstall it from Settings › Apps afterwards.
+On Windows the whole flow also works with unsigned builds, as the updater checks the publisher only when the installed app is signed. Build the newer version and move its `dist` folder aside, build and install the current one with its `Seshboard-<version>-setup.exe`, serve the newer folder with `--dir`, and start `%LOCALAPPDATA%\Programs\switchboard\Seshboard.exe` with `SESHBOARD_MOCK_UPDATES=1` set. Uninstall it from Settings › Apps afterwards.
 
-`SWITCHBOARD_DISABLE_AUTO_UPDATE=1` turns updates off for a run, with that reason shown in Settings → About. `Switchboard --version` prints the version and exits.
+`SESHBOARD_DISABLE_AUTO_UPDATE=1` turns updates off for a run, with that reason shown in Settings → About. `Seshboard --version` prints the version and exits.

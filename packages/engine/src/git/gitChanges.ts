@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@switchboard/protocol';
+import type { ChangedFile, ChangesBase, GitChanges, GitSyncAction, WorktreeStatus } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
 
 const MAX_DIFF_BYTES = 512 * 1024;
 /** How much of the untracked files' contents `listChanges` reads in total to count their lines. */
@@ -21,6 +22,12 @@ export class GitError extends Error {}
  */
 export const GIT_SETTINGS: readonly string[] = process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
 
+/** What to say when git can't be found. */
+export const GIT_MISSING = 'git isn’t installed, or isn’t on the PATH.';
+
+/** The git to start with `env`'s PATH, never one in the folder it runs in (see `programPath`); null when it is missing. */
+export const gitProgram = (env: Record<string, string | undefined> = process.env): string | null => programPath('git', env);
+
 /**
  * Runs git in `cwd`; resolves with stdout. Never goes through a shell. Pathspecs are literal: the paths
  * passed come from the file list, and `app/[id]/page.tsx` or `a*.txt` must not match other files.
@@ -30,11 +37,14 @@ export function git(cwd: string, args: string[], options: { env?: Record<string,
   // installed, and a file as `cwd` as "spawn ENOTDIR" (thrown, not passed on). Neither is an allowed exit code.
   const spawnFailed = (error: NodeJS.ErrnoException) => (error.code === 'ENOENT' || error.code === 'ENOTDIR' ? folderProblem(cwd) : null);
   return new Promise((resolvePromise, reject) => {
+    const env = { ...process.env, ...options.env, GIT_OPTIONAL_LOCKS: '0', GIT_LITERAL_PATHSPECS: '1', LC_ALL: 'C' };
+    const file = gitProgram(env);
+    if (!file) return reject(new GitError(GIT_MISSING));
     try {
       execFile(
-        'git',
+        file,
         [...GIT_SETTINGS, ...args],
-        { cwd, env: { ...process.env, ...options.env, GIT_OPTIONAL_LOCKS: '0', GIT_LITERAL_PATHSPECS: '1', LC_ALL: 'C' }, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
+        { cwd, env, maxBuffer: 32 * 1024 * 1024, timeout: options.timeout ?? 20_000 },
         (error, stdout, stderr) => {
           const problem = error ? spawnFailed(error as NodeJS.ErrnoException) : null;
           if (problem) return reject(new GitError(problem));
@@ -473,11 +483,14 @@ export async function commitAll(cwd: string, message: string, env: Record<string
   await git(root, ['add', '-A']);
   const files = (await git(root, ['diff', '--cached', '--name-only', '-z'])).split('\0').filter(Boolean).length;
   if (files === 0) return { ok: false, output: 'There is nothing to commit.' };
+  const commitEnv = { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' };
+  const file = gitProgram(commitEnv);
+  if (!file) return { ok: false, output: GIT_MISSING };
   const output = await new Promise<{ code: number; text: string }>((resolvePromise) => {
     execFile(
-      'git',
+      file,
       [...GIT_SETTINGS, 'commit', '-m', message],
-      { cwd: root, env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }, maxBuffer: 8 * 1024 * 1024, timeout: 300_000 },
+      { cwd: root, env: commitEnv, maxBuffer: 8 * 1024 * 1024, timeout: 300_000 },
       (error, stdout, stderr) => resolvePromise({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, text: `${stdout}${stderr}` }),
     );
   });

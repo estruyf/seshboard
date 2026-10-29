@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { AUTO_MODEL, type Computer, type Contract, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RpcClient } from '@switchboard/protocol/client';
+import { AUTO_MODEL, type Computer, type Contract, type Effort, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RpcClient } from '@seshboard/protocol/client';
 import { autoDescription } from '../../lib/autoModel.ts';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { AutoWand } from '../composer/ComposerChips.tsx';
@@ -15,7 +15,7 @@ import { remoteModelLabel, remoteProfiles } from './remoteNewSession.ts';
  * model, effort and mode, with that computer's lists from `options.get`. Worded as the local chips and the remote app.
  */
 
-/** That computer's choices, or null while it hasn't answered or when its Switchboard is too old to have `options.get`. */
+/** That computer's choices, or null while it hasn't answered or when its Seshboard is too old to have `options.get`. */
 export function useRemoteOptions(client: RpcClient<Contract> | null, computer: Computer): RemoteOptions | null {
   const [options, setOptions] = useState<RemoteOptions | null>(null);
   const connected = computer.state === 'connected';
@@ -109,7 +109,7 @@ export function RemoteModelChip({ options, value, onPick, offerAuto = false, aut
   const face = autoFace ?? remoteModelLabel(options.models, value);
   const entries: MenuEntry[] = [
     ...(offerAuto ? [{ label: 'Auto', detail: autoDescription(options.auto?.allowed ?? []), icon: <AutoWand />, checked: value === AUTO_MODEL, onSelect: () => onPick(AUTO_MODEL) }, 'separator' as const] : []),
-    ...(listDefault ? [] : [{ label: 'Default model', detail: 'What Switchboard starts sessions with', checked: value === null, onSelect: () => onPick(null) }]),
+    ...(listDefault ? [] : [{ label: 'Default model', detail: 'What Seshboard starts sessions with', checked: value === null, onSelect: () => onPick(null) }]),
     ...(known ? [] : [{ label: remoteModelLabel(options.models, value), checked: true, onSelect: () => onPick(value) }]),
     ...options.models.map((m) => ({
       label: m.displayName,

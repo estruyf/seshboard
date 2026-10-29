@@ -1,7 +1,7 @@
 import { AlertTriangle, Clock } from 'lucide-react';
 import { trashName } from '../../lib/platform.ts';
 import { useEffect, useState } from 'react';
-import { memoryMeta, splitFrontmatter, type HealthFinding } from '@switchboard/protocol/client';
+import { memoryMeta, splitFrontmatter, type HealthFinding } from '@seshboard/protocol/client';
 import { basename, pathTail } from '../../lib/format.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { openMemoryFile } from '../../state/memoryStore.ts';
@@ -179,7 +179,7 @@ function FixIndexDialog({ root, indexPath, onClose }: { root: string | null; ind
 
 /**
  * Health: what to look at in this project's memory and the personal folder, each with what you can do about it.
- * Switchboard never changes memory on its own: every fix is a button you press, and Tidy with Claude… only fills in
+ * Seshboard never changes memory on its own: every fix is a button you press, and Tidy with Claude… only fills in
  * New session.
  */
 export function HealthPanel({ root, findings, onClose }: { root: string; findings: readonly HealthFinding[]; onClose(): void }) {

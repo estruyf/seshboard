@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
-import type { UsageLimit, UsageSnapshot } from '@switchboard/protocol/client';
+import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useProfile, useProfiles } from '../state/profilesStore.ts';

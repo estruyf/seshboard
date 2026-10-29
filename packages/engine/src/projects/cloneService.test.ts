@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CloneProgress } from '@switchboard/protocol';
+import type { CloneProgress } from '@seshboard/protocol';
 import type { AppStateStore, JsonValue } from '../db/appState.ts';
 import { git } from '../git/gitChanges.ts';
-import { CloneService } from './cloneService.ts';
+import { CloneService, trustNeededError } from './cloneService.ts';
 
 /** A path in the home folder as the service says it, with this platform's separator (`~\Developer\x` on Windows). */
 const inHome = (...parts: string[]) => ['~', ...parts].join(sep);
@@ -42,7 +42,7 @@ if (args[0] === 'repo' && args[1] === 'clone') {
 `;
 
 async function setup(options: { signedIn?: boolean; hang?: boolean; source?: boolean } = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-clones-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-clones-')));
   dirs.push(root);
   // The "GitHub" side: a repository with project settings, as a bare repository at <source>/acme/payments.git.
   const work = join(root, 'work');
@@ -137,6 +137,37 @@ describe('Clone from GitHub', () => {
     await service.start('j2', 'acme/payments', 'payments');
     expect(await ended('j2')).toMatchObject({ state: 'done', root: target, reused: true, brings: null });
     expect(added).toEqual([target]);
+  });
+
+  it('lets Claude Code start in a clone that brings a hook only once its trust question is answered', async () => {
+    const { service, folder, ended } = await setup();
+    service.setSettings({ enabled: true, folder });
+    await service.start('j1', 'acme/payments', 'payments');
+    await ended('j1');
+    const target = join(folder, 'payments');
+    const brings = { hooks: [{ event: 'SessionStart', command: './setup.sh' }] };
+    // Its folders, and a worktree of it elsewhere (by its main checkout), wait; other folders don't.
+    expect(service.trustNeeded(target)).toMatchObject({ root: target, brings });
+    expect(service.trustNeeded(join(target, 'src'))).toMatchObject({ root: target });
+    expect(service.trustNeeded(join(folder, 'payments-wt'), target)).toMatchObject({ root: target });
+    expect(service.trustNeeded(folder)).toBeNull();
+    expect(trustNeededError(service.trustNeeded(target)!)).toMatchObject({ code: 'TRUST_NEEDED', details: { root: target, brings } });
+    service.trust(target);
+    expect(service.trustNeeded(target)).toBeNull();
+  });
+
+  it('lets a clone go that no longer brings anything, and never holds one cloned from a phone', async () => {
+    const { service, folder, ended } = await setup();
+    service.setSettings({ enabled: true, folder });
+    await service.start('j1', 'acme/payments', 'payments');
+    await ended('j1');
+    const target = join(folder, 'payments');
+    rmSync(join(target, '.claude'), { recursive: true });
+    expect(service.trustNeeded(target)).toBeNull();
+
+    await service.start('j2', 'acme/payments', 'phone', { askTrust: false });
+    expect(await ended('j2')).toMatchObject({ state: 'done', brings: { hooks: [{ command: './setup.sh' }] } });
+    expect(service.trustNeeded(join(folder, 'phone'))).toBeNull();
   });
 
   it('asks for another name when something else has it', async () => {

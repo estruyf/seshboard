@@ -244,7 +244,7 @@ export const uiCases: Record<string, Case> = {
       const dialog = await c.page.evaluate(() => (document.querySelector('[data-import-dialog]') as HTMLElement | null)?.innerText ?? '');
       await closeAll(c);
       const reading = /Reading /.test(dialog);
-      const times = dialog.split('This is not a Switchboard settings file').length - 1;
+      const times = dialog.split('This is not a Seshboard settings file').length - 1;
       return { ok: !reading && times <= 1, saw: { reading, reasonShown: times } };
     },
   },

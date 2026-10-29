@@ -1,4 +1,4 @@
-import type { CheckLog, ContextItem, PrCheck, PrChecks } from '@switchboard/protocol/client';
+import type { CheckLog, ContextItem, PrCheck, PrChecks } from '@seshboard/protocol/client';
 
 /** At most this many checks are listed in the git menu; the rest are a link to the pull request's checks. */
 export const MENU_CHECKS = 8;

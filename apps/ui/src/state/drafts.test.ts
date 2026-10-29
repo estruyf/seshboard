@@ -21,7 +21,7 @@ import {
   type SessionsSeen,
   draftMessage,
 } from './drafts.ts';
-import type { HostState } from '@switchboard/protocol/client';
+import type { HostState } from '@seshboard/protocol/client';
 
 const draft = (text: string, over: Partial<Draft<string>> = {}): Draft<string> => ({ text, attachments: [], updatedAt: 1_000, counted: true, lostImages: 0, ...over });
 

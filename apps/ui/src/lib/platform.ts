@@ -1,9 +1,9 @@
 /**
- * The platform Switchboard runs on, from the preload (`process.platform`). macOS when there is no window, as in
+ * The platform Seshboard runs on, from the preload (`process.platform`). macOS when there is no window, as in
  * unit tests, so what they check stays the macOS wording. Read when called, never at load.
  */
 export function currentPlatform(): string {
-  return (typeof window !== 'undefined' && window.switchboard?.platform) || 'darwin';
+  return (typeof window !== 'undefined' && window.seshboard?.platform) || 'darwin';
 }
 
 /** What the file manager is called: Finder, File Explorer, or Files on Linux. */

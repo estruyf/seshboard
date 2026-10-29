@@ -1,4 +1,4 @@
-import type { OpenAtLogin } from '@switchboard/protocol/bridge';
+import type { OpenAtLogin } from '@seshboard/protocol/bridge';
 
 /** What `app.getLoginItemSettings()` answers that matters here. `status` is only there on macOS 13 and later. */
 export interface LoginItemReading {

@@ -1,6 +1,6 @@
 import { ChevronRight, Link2 } from 'lucide-react';
 import { useId, useState } from 'react';
-import { writeBrief, type Brief } from '@switchboard/protocol/client';
+import { writeBrief, type Brief } from '@seshboard/protocol/client';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { briefPr } from '../composer/sessionLinks.ts';

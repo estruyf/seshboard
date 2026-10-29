@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, Info } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { THEME_MODES, type ThemeFile, type ThemeMode } from '@switchboard/protocol/theme-format';
+import { THEME_MODES, type ThemeFile, type ThemeMode } from '@seshboard/protocol/theme-format';
 import { highlightWith, syntaxThemeData } from '../../lib/highlight.ts';
 import { contrastIssues, syntaxColorsOf, themeReport, type SyntaxColors } from '../../lib/themeReport.ts';
 import { resolveTheme } from '../../lib/themeResolve.ts';
@@ -84,7 +84,7 @@ function ImportPreview({ theme, ignored, fileName, raw }: { theme: ThemeFile; ig
     setBusy(true);
     setError(null);
     try {
-      const id = (await window.switchboard?.addTheme(raw, how)) ?? null;
+      const id = (await window.seshboard?.addTheme(raw, how)) ?? null;
       close();
       if (id && use) useThemes.getState().select(id, { announce: true });
       else if (id) toast(`Added ${useThemes.getState().themes.find((t) => t.id === id)?.file.name ?? theme.name}`);
@@ -278,7 +278,7 @@ function useThemeDrop() {
       const file = event.dataTransfer?.files[0];
       if (!file || !/\.jsonc?$/i.test(file.name)) return;
       event.preventDefault();
-      const path = window.switchboard?.getPathForFile(file);
+      const path = window.seshboard?.getPathForFile(file);
       if (path) void useThemes.getState().openImport(path);
     };
     window.addEventListener('dragover', onOver);

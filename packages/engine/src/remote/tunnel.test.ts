@@ -65,7 +65,7 @@ describe('a running tunnel', () => {
     await expect(tunnel.start()).rejects.toThrow("tailscale didn't give an address in time");
   });
 
-  it('is quiet when Switchboard stops it', async () => {
+  it('is quiet when Seshboard stops it', async () => {
     const tunnel = new Tunnel({ tool: 'cloudflare', port: 1, binary: '', command: fake("console.error('https://a-b.trycloudflare.com'); setInterval(() => {}, 1000)") });
     let heard = false;
     tunnel.onExit(() => (heard = true));

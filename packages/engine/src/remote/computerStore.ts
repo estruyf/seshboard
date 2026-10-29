@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { fromBase64Url, toBase64Url } from '@switchboard/protocol';
+import { fromBase64Url, toBase64Url } from '@seshboard/protocol';
 
 /** Another computer this app paired with, as a phone pairs with it. */
 export interface PairedComputer {

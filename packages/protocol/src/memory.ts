@@ -14,7 +14,7 @@ export const MemoryFile = z.object({
   profileId: z.string().nullable(),
   /** The session that wrote it (`metadata.originSessionId`, which Claude Code adds). */
   originSessionId: z.string().nullable(),
-  /** Where it came from (`metadata.source`: `claude-app`, `switchboard`), when it says. */
+  /** Where it came from (`metadata.source`: `claude-app`, `seshboard`, `switchboard` before the rename), when it says. */
   source: z.string().nullable(),
   /** A sync tool's conflicted copy (`name 2.md`, `name (conflicted copy).md`): the path of the memory it stands for. */
   conflictOf: z.string().nullable(),
@@ -172,7 +172,7 @@ export const ImportEntry = z.object({
   duplicateOf: z.string().nullable(),
   /** Its text looks like it holds a token, key or password: left unticked. */
   secret: z.boolean(),
-  /** An area with no Switchboard project of that name: it goes to Personal unless you pick one. */
+  /** An area with no Seshboard project of that name: it goes to Personal unless you pick one. */
   noProject: z.boolean(),
   status: z.enum(['new', 'newer', 'same', 'older']),
   checked: z.boolean(),

@@ -24,7 +24,8 @@ const AZURE_SIGNING = {
  * written.
  *
  * - `extraMetadata.name`: the per-user installer names its folder after the package (%LOCALAPPDATA%\Programs\<name>),
- *   which would be "@switchboarddesktop". Only the installer sees this name: the data folder comes from productName.
+ *   which would be "@seshboarddesktop". It stays switchboard, its name from before the rename, so an update installs
+ *   in the same folder. Only the installer sees this name: the data folder comes from productName.
  *   It isn't in electron-builder.yml because on macOS it would also move the updater's download cache.
  * - `win.azureSignOptions`: Azure Trusted Signing, when set up.
  *

@@ -44,12 +44,12 @@ describe('sidebarCollapsed preference', () => {
 describe('fileLinkClick preference', () => {
   const REV = FILE_LINK_CLICK_REVISION;
 
-  it('opens files in Switchboard by default, on the current revision', () => {
+  it('opens files in Seshboard by default, on the current revision', () => {
     expect(DEFAULT_PREFERENCES.fileLinkClick).toBe('switchboard');
     expect(DEFAULT_PREFERENCES.fileLinkClickRevision).toBe(REV);
   });
 
-  it('keeps the editor and Switchboard, whatever the revision, and drops anything else', () => {
+  it('keeps the editor and Seshboard, whatever the revision, and drops anything else', () => {
     expect(sanitizePreferences({ fileLinkClick: 'editor' })).toEqual({ fileLinkClick: 'editor' });
     expect(sanitizePreferences({ fileLinkClick: 'editor', fileLinkClickRevision: 1 })).toEqual({ fileLinkClick: 'editor' });
     expect(sanitizePreferences({ fileLinkClick: 'switchboard' })).toEqual({ fileLinkClick: 'switchboard' });

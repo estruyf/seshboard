@@ -1,7 +1,8 @@
-import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@switchboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
+import { trustNeededOf, type TrustNeeded } from '../../state/repoTrust.ts';
 import { linkPermissionMode, type Choices } from './choices.ts';
 
 /** A new session as New session (the view, or the palette's prompt step) is about to start it. */
@@ -46,6 +47,11 @@ export interface StartDeps {
   keep(sessionId: string, first: FirstPromptStart): void;
   /** Shows the new session. */
   open(sessionId: string): void;
+  /**
+   * Asks the trust question for a cloned repository the engine won't start in yet (`trustRepository`): true once it
+   * is trusted. Without it, such a start fails with the engine's error.
+   */
+  trust?(needed: TrustNeeded): Promise<boolean>;
 }
 
 /** A new session's first prompt, and what it takes to start it again from New session. */
@@ -141,7 +147,18 @@ export async function startNewSession(start: NewSessionStart, deps: StartDeps): 
     if (outcome === 'stop') return { kind: 'stopped' };
     if (outcome === 'saved') return { kind: 'saved' };
   }
-  const { sessionId } = await deps.createSession(sessionCreateParams(start));
+  const params = sessionCreateParams(start);
+  let created: { sessionId: string };
+  try {
+    created = await deps.createSession(params);
+  } catch (error) {
+    // A cloned repository's hooks and MCP servers run only once the person said so, whichever way the start came.
+    const needed = trustNeededOf(error);
+    if (!needed || !deps.trust) throw error;
+    if (!(await deps.trust(needed))) return { kind: 'stopped' };
+    created = await deps.createSession(params);
+  }
+  const { sessionId } = created;
   deps.keep(sessionId, firstPromptOf(start));
   if (start.addProject && !start.fromLink) await deps.addProject(start.cwd).catch(() => {});
   deps.open(sessionId);

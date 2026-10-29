@@ -116,15 +116,15 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       useClaudeUpdate.getState().check();
     },
     installShellCommand: () => {
-      const pending = toast('Installing the switchboard command…', { durationMs: 120_000 });
-      void window.switchboard
+      const pending = toast('Installing the seshboard command…', { durationMs: 120_000 });
+      void window.seshboard
         ?.shellCommand('install')
         .then(({ state, error }) => {
-          if (error) toast(`Couldn't install the switchboard command: ${error}`);
+          if (error) toast(`Couldn't install the seshboard command: ${error}`);
           else if (state.status === 'installed') toast(`Installed ${listNames(state.names)} in ${state.dir}`, { tone: 'ok' });
           // Cancelled at the password prompt: nothing changed, nothing to say.
           else if (state.status !== 'missing' && state.status !== 'outdated') toast(shellCommandStatus(state));
-        }, failed('install the switchboard command'))
+        }, failed('install the seshboard command'))
         .finally(() => useToasts.getState().dismiss(pending));
     },
     reloadSkills: () => call('reload skills', (c) => c.call('skills.reload', {})),
@@ -174,6 +174,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       if (change.archived && session) archiveSessions([{ id: sessionId, title: session.title }], apply);
       else apply();
     },
+    setKeepAwake: (on) => call(on ? 'keep the computer awake' : 'stop keeping the computer awake', (c) => c.call('session.keepAwake', { sessionId, on })),
     // Finishing work: the focus limit never stands in the way of compacting.
     compact: () => call('compact the context', (c) => c.call('session.send', { sessionId, text: '/compact', attachments: [], fork: false })),
     copyLastReply: () => {

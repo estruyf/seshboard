@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Trigger, TriggerEvent } from '@switchboard/protocol/client';
+import type { Trigger, TriggerEvent } from '@seshboard/protocol/client';
 import {
   cardEvents,
   checkedLine,
@@ -32,13 +32,13 @@ import {
   type TriggerSection,
 } from './triggers.ts';
 
-const ROOT = '/dev/switchboard';
+const ROOT = '/dev/seshboard';
 const form = (over = {}) => ({ ...newTriggerForm(ROOT, null), ...over });
 
 describe('the trigger editor', () => {
   it('starts on issues for you, with the project defaults and a worktree', () => {
     const f = newTriggerForm(ROOT, { model: 'sonnet', effort: null, permissionMode: 'acceptEdits', workspace: null, baseRef: null, branch: null, defaultBranch: null });
-    expect(f).toMatchObject({ kind: 'issues', which: 'both', label: 'switchboard', assignee: '@me', collaboratorsOnly: true, model: 'sonnet', permissionMode: 'acceptEdits', workspace: 'worktree', maxAtOnce: 3, maxWaiting: 10, name: 'Issues for you', prompt: DEFAULT_PROMPTS.issues, stateLabels: { on: false } });
+    expect(f).toMatchObject({ kind: 'issues', which: 'both', label: 'seshboard', assignee: '@me', collaboratorsOnly: true, model: 'sonnet', permissionMode: 'acceptEdits', workspace: 'worktree', maxAtOnce: 3, maxWaiting: 10, name: 'Issues for you', prompt: DEFAULT_PROMPTS.issues, stateLabels: { on: false } });
     expect(newTriggerForm(ROOT, null, { prompt: 'Fix it' }).prompt).toBe('Fix it');
   });
 
@@ -54,7 +54,7 @@ describe('the trigger editor', () => {
     expect(formProblem(form({ which: 'assignee', assignee: '' }))).toBe('Pick who the issues are assigned to.');
     expect(formProblem(form({ which: 'assignee', label: '' }))).toBeNull();
     expect(formSource(form({ which: 'assignee' }))).toEqual({ kind: 'issues', label: null, assignee: '@me', collaboratorsOnly: true });
-    expect(formSource(form({ which: 'label' }))).toEqual({ kind: 'issues', label: 'switchboard', assignee: null, collaboratorsOnly: true });
+    expect(formSource(form({ which: 'label' }))).toEqual({ kind: 'issues', label: 'seshboard', assignee: null, collaboratorsOnly: true });
   });
 
   it('assigns you only with a label alone, since an assignee filter has one on every issue', () => {
@@ -85,10 +85,10 @@ describe('the trigger editor', () => {
   });
 
   it('warns about a label alone on a shared repository', () => {
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'estruyf/switchboard', 6)).toBe("estruyf/switchboard has 6 collaborators. Everyone's switchboard issues will start here. Pick Both, or turn on state labels in 3.");
-    expect(sharedRepoWarning({ kind: 'issues', which: 'both', label: 'switchboard' }, 'estruyf/switchboard', 6)).toBeNull();
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'me/solo', 1)).toBeNull();
-    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'switchboard' }, 'o/r', null)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'seshboard' }, 'estruyf/seshboard', 6)).toBe("estruyf/seshboard has 6 collaborators. Everyone's seshboard issues will start here. Pick Both, or turn on state labels in 3.");
+    expect(sharedRepoWarning({ kind: 'issues', which: 'both', label: 'seshboard' }, 'estruyf/seshboard', 6)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'seshboard' }, 'me/solo', 1)).toBeNull();
+    expect(sharedRepoWarning({ kind: 'issues', which: 'label', label: 'seshboard' }, 'o/r', null)).toBeNull();
   });
 
   it('reads a stored trigger back as the form it came from', () => {
@@ -109,10 +109,10 @@ describe('the summary sentence', () => {
   });
 
   it('says which issues, for each choice', () => {
-    expect(say(triggerSummary(form({ which: 'label' })))).toMatch(/^When an issue gets the \*\*switchboard\*\* label, /);
+    expect(say(triggerSummary(form({ which: 'label' })))).toMatch(/^When an issue gets the \*\*seshboard\*\* label, /);
     expect(say(triggerSummary(form({ which: 'assignee' }), { login: 'estruyf' }))).toMatch(/^When an issue is assigned to \*\*@estruyf\*\*, /);
     expect(say(triggerSummary(form({ which: 'assignee', assignee: 'mara-k' })))).toMatch(/^When an issue is assigned to \*\*@mara-k\*\*, /);
-    expect(say(triggerSummary(form(), { login: 'estruyf' }))).toBe('When an issue with the **switchboard** label is assigned to **@estruyf**, start a **session** in a new worktree. Up to **3** at once.');
+    expect(say(triggerSummary(form(), { login: 'estruyf' }))).toBe('When an issue with the **seshboard** label is assigned to **@estruyf**, start a **session** in a new worktree. Up to **3** at once.');
   });
 
   it('says what it starts, and where', () => {
@@ -237,7 +237,7 @@ describe('the Triggers tab', () => {
   });
 
   it('says what Check now found, or why it did not work', () => {
-    const issues = { name: 'Issues for you', source: { kind: 'issues' as const, label: 'switchboard', assignee: '@me', collaboratorsOnly: true }, paused: false, pausedReason: null, failures: 0, lastError: null, blockedUntil: null };
+    const issues = { name: 'Issues for you', source: { kind: 'issues' as const, label: 'seshboard', assignee: '@me', collaboratorsOnly: true }, paused: false, pausedReason: null, failures: 0, lastError: null, blockedUntil: null };
     const ci = { ...issues, name: 'CI fails on main', source: { kind: 'ci' as const, branch: 'main', workflows: [] } };
     expect(checkedNowLine(issues, 0, 0)).toEqual({ text: 'Checked Issues for you. Nothing new.', ok: true });
     expect(checkedNowLine(issues, null, 0)).toEqual({ text: 'Checked Issues for you.', ok: true });

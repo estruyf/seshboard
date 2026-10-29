@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { cacheTtlOf, type CacheTtl } from '@switchboard/protocol';
+import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -16,7 +16,7 @@ import type {
   SlashCommand,
   StreamDelta,
   ClaudeWorktreeRequest,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
@@ -103,10 +103,10 @@ export interface HostConfig {
 }
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
-export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Switchboard can’t find it. Install it, then try again.';
+export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Seshboard can’t find it. Install it, then try again.';
 
 /**
- * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Switchboard and fails
+ * Without a `claude` of the user's, the SDK falls back to a native binary it doesn't ship with Seshboard and fails
  * with "Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk": say what's really wrong.
  */
 export function failureMessage(message: string, claudePath: string | undefined): string {
@@ -231,6 +231,11 @@ export class SessionHost {
   private readonly input = new InputQueue<SDKUserMessage>();
   /** Messages held back until Claude's turn ends, in the order they go. Their images stay here. */
   private readonly pending: StoredUpNext[] = [];
+  /**
+   * Messages you sent before Claude Code started (its first init message), as typed. Claude Code never got them if it
+   * fails before it starts; `session.retry` sends them again in a new process. Null once it has started.
+   */
+  private early: { uuid: UUID; text: string; attachments: readonly ImageAttachment[] }[] | null = [];
   private query: Promise<Query | undefined> = Promise.resolve(undefined);
   private closing = false;
   private initResolve!: (sessionId: string) => void;
@@ -329,13 +334,18 @@ export class SessionHost {
    * While Claude works, Claude reads it at its next step (a steer); `sendNow` stops the turn first instead.
    * Sending yourself means you are back in charge of the queue, so a hold on it ends.
    */
-  send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>): string {
+  send(text: string, attachments: readonly ImageAttachment[] = [], after?: Promise<unknown>, uuid?: UUID): string {
     if (!this.active) throw new Error('This session is not running');
     if (this.queueHold) {
       this.queueHold = null;
       this.publishQueue();
     }
-    return this.push(text, attachments, after);
+    return this.push(text, attachments, after, uuid);
+  }
+
+  /** After Claude Code failed before it started: the messages it never got, oldest first (`session.retry`). */
+  get unsent(): readonly { uuid: UUID; text: string; attachments: readonly ImageAttachment[] }[] {
+    return this.info.state === 'error' ? (this.early ?? []) : [];
   }
 
   /**
@@ -366,8 +376,9 @@ export class SessionHost {
     this.drain();
   }
 
-  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>): string {
-    const uuid = randomUUID();
+  /** `uuid`: a message sent again keeps the one it had, so the transcript shows it once. */
+  private push(typed: string, attachments: readonly ImageAttachment[], after?: Promise<unknown>, uuid: UUID = randomUUID()): string {
+    this.early?.push({ uuid, text: typed, attachments });
     const text = this.events.expand ? this.expandSafely(typed) : typed;
     const content = [
       ...attachments.map((a) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: a.mediaType, data: a.data } })),
@@ -634,7 +645,7 @@ export class SessionHost {
     const message = failureMessage(error instanceof Error ? error.message : String(error), this.config.claudePath);
     this.events.log('error', `Session ${this.sessionId} failed: ${message}`);
     this.initReject(new Error(message));
-    this.update({ state: 'error', error: message, ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
+    this.update({ state: 'error', error: message, ...(this.early?.length ? { unsent: this.early.length } : {}), ...(this.pending.length > 0 ? { queueHold: 'error' as const } : {}) });
   }
 
   private async loop(query: Query): Promise<void> {
@@ -763,6 +774,7 @@ export class SessionHost {
       // Every turn's init lists them: one without `ui_surface_v1` means the mods are gone.
       if (Array.isArray(capabilities)) this.mods.setCapabilities(capabilities.filter((c): c is string => typeof c === 'string'));
       this.initResolve(init.session_id);
+      this.early = null;
       if (first) {
         void this.loadCatalogs();
         void this.refreshContext();

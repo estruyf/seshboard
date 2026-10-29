@@ -1,4 +1,4 @@
-import { checkRemoteSessions, REMOTE_FEATURE_THEME, unreadableLine, type RemoteSessions, type RemoteTheme } from '@switchboard/protocol/remote-client';
+import { checkRemoteSessions, REMOTE_FEATURE_THEME, unreadableLine, type RemoteSessions, type RemoteTheme } from '@seshboard/protocol/remote-client';
 import { Connection, type ConnectionState, type Dial } from './connection.ts';
 import { computerId, type Paired } from './link.ts';
 import type { PushComputers, PushTarget } from './push.ts';
@@ -96,7 +96,7 @@ export class Computers {
 
   /**
    * A list as the computer sent it (`sessions.list`, `sessions.changed`, pull to refresh), checked first: another
-   * version, or something that isn't Switchboard, may send one the views can't read. What can't be read is left
+   * version, or something that isn't Seshboard, may send one the views can't read. What can't be read is left
    * out, and the computer's `problem` says so; a list that can't be read at all keeps the last one.
    */
   setSessions(id: string, value: unknown): void {

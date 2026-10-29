@@ -1,4 +1,4 @@
-import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
 
 export interface AttentionEvent {
   kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-stopped' | 'pipeline-done';
@@ -17,10 +17,10 @@ export interface AttentionEvent {
 const basename = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
 
 /**
- * Decides when Switchboard should get your attention. Pure, so it is tested
+ * Decides when Seshboard should get your attention. Pure, so it is tested
  * without Electron; main turns events into notifications and the badge (the Dock, or the taskbar on Windows).
  *
- * - Sessions running in Switchboard: needs approval, turn finished, failed.
+ * - Sessions running in Seshboard: needs approval, turn finished, failed.
  * - Terminal (CLI) sessions waiting for you, when the sidebar lists sessions from
  *   other apps. Claude desktop and IDE sessions are skipped: they notify on their own.
  * - Project actions that finish.
@@ -30,6 +30,7 @@ export class Attention {
   private readonly hostStates = new Map<string, HostState>();
   private readonly pending = new Map<string, PermissionRequest>();
   private readonly cliWaiting = new Set<string>();
+  private readonly cliRunning = new Set<string>();
   private readonly terminalExit = new Map<string, number | null>();
   private readonly titles = new Map<string, string>();
 
@@ -95,8 +96,10 @@ export class Attention {
     const events: AttentionEvent[] = [];
     const now = new Set<string>();
     const external = this.options.external?.() ?? true;
+    this.cliRunning.clear();
     for (const session of live) {
       if (!external) break;
+      if (session.origin === 'cli' && session.status === 'running') this.cliRunning.add(session.sessionId);
       if (session.origin !== 'cli' || session.status !== 'needs-you') continue;
       now.add(session.sessionId);
       if (!this.cliWaiting.has(session.sessionId)) {
@@ -128,11 +131,20 @@ export class Attention {
     return events;
   }
 
-  /** Sessions waiting on you: open prompts in Switchboard plus terminal sessions waiting. */
+  /** Sessions waiting on you: open prompts in Seshboard plus terminal sessions waiting. */
   badge(): number {
     const sessions = new Set<string>([...this.pending.values()].map((p) => p.sessionId));
     for (const id of this.cliWaiting) sessions.add(id);
     return sessions.size;
+  }
+
+  /**
+   * Whether Claude is working somewhere: a session in Seshboard starting or running, or a Terminal session running when
+   * the sidebar lists sessions from other apps. One that waits on you isn't working: the badge says that.
+   */
+  working(): boolean {
+    for (const state of this.hostStates.values()) if (state === 'running' || state === 'starting') return true;
+    return this.cliRunning.size > 0;
   }
 
   /** After an engine restart, state is rebuilt from the fresh snapshot. */
@@ -140,6 +152,7 @@ export class Attention {
     this.hostStates.clear();
     this.pending.clear();
     this.cliWaiting.clear();
+    this.cliRunning.clear();
     this.terminalExit.clear();
   }
 }

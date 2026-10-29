@@ -1,4 +1,4 @@
-import type { PlanSeries, TokenCounts, UsageBucket, UsageLimit, UsagePeriod, UsageRow } from '@switchboard/protocol/client';
+import { safeLocale, type PlanSeries, type TokenCounts, type UsageBucket, type UsageLimit, type UsagePeriod, type UsageRow } from '@seshboard/protocol/client';
 
 /** The periods in their order on screen (and keys 1 to 4). */
 export const PERIODS: readonly UsagePeriod[] = ['window', 'day', 'week', 'month'];
@@ -74,6 +74,7 @@ export const isLow = (left: number) => left <= 20;
 
 /** "Resets in 2h 14m · 19:30", or "Resets in 2d 15h · Thu 09:00" beyond a day. `locale` and `timeZone` are for tests. */
 export function resetsIn(resetsAt: number, now: number, locale?: string, timeZone?: string): { wait: string; at: string } {
+  locale = safeLocale(locale);
   const minutes = Math.max(0, Math.round((resetsAt - now) / 60_000));
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
@@ -116,6 +117,7 @@ export function historyTooShort(period: UsagePeriod, since: number | null, serie
 
 /** When the readings start, if that is inside the chart's range: "Oct 12" at 7 and 30 days, "14:30" otherwise. */
 export function recordedSince(period: UsagePeriod, since: number | null, from: number, locale?: string, timeZone?: string): string | null {
+  locale = safeLocale(locale);
   if (since === null || since <= from) return null;
   return period === 'week' || period === 'month'
     ? new Date(since).toLocaleDateString(locale, { month: 'short', day: 'numeric', timeZone })
@@ -183,6 +185,7 @@ export function stackOf(bucket: UsageBucket, types: readonly TokenType[]): Array
 
 /** A bucket's label on the axis: the hour ("14:00") or the weekday ("Mon"; the date at 30 days). */
 export function bucketLabel(start: number, bucket: 'hour' | 'day', period: UsagePeriod, locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   if (bucket === 'hour') return new Date(start).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
   if (period === 'month') return new Date(start).toLocaleDateString(locale, { month: 'short', day: 'numeric', timeZone });
   return new Date(start).toLocaleDateString(locale, { weekday: 'short', timeZone });
@@ -190,6 +193,7 @@ export function bucketLabel(start: number, bucket: 'hour' | 'day', period: Usage
 
 /** A local day key (`2026-10-12`) as "Mon Oct 12". */
 export function dayLabel(key: string, locale?: string): string {
+  locale = safeLocale(locale);
   const [y, m, d] = key.split('-').map(Number);
   if (!y || !m || !d) return key;
   return new Date(y, m - 1, d).toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -197,6 +201,7 @@ export function dayLabel(key: string, locale?: string): string {
 
 /** When the current window started, as a time ("14:30"). */
 export function sinceLabel(from: number, locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   return new Date(from).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
 }
 

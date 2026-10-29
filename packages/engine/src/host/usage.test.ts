@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageSnapshot } from '@switchboard/protocol';
+import type { UsageSnapshot } from '@seshboard/protocol';
 import type { SdkRuntime } from './hostManager.ts';
 import { toUsageSnapshot, UsageMonitor } from './usageMonitor.ts';
 

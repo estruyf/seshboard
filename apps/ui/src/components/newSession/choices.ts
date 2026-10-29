@@ -1,4 +1,4 @@
-import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@switchboard/protocol/client';
+import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {

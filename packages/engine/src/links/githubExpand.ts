@@ -1,4 +1,4 @@
-import { CONTEXT_BUDGET, GITHUB_ITEM_BUDGET, parseBriefs, parseGithubBlocks, replaceGithubBlocks, writeGithubContext, writeGithubUnreachable, type GithubIssueDetail, type GithubItemType, type GithubPrDetail } from '@switchboard/protocol';
+import { CONTEXT_BUDGET, GITHUB_ITEM_BUDGET, parseBriefs, parseGithubBlocks, replaceGithubBlocks, writeGithubContext, writeGithubUnreachable, type GithubIssueDetail, type GithubItemType, type GithubPrDetail } from '@seshboard/protocol';
 import { WARM_WAIT_MS } from './linkService.ts';
 
 /** What the expansion needs from `GithubService`: reading an item (cached), and what is known of it without waiting. */

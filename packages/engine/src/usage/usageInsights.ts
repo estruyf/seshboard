@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { LogLevel, PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from '@switchboard/protocol';
+import type { LogLevel, PlanHistory, UsageBreakdown, UsageGroup, UsagePeriod, UsageScan, UsageSnapshot, WindowCost } from '@seshboard/protocol';
 import { PlanHistoryStore, type RateLimitInfo } from './planHistory.ts';
 import { breakdown, periodRange, sessionCost, windowCosts, windowCostsFrom, type PlanWindow, type SessionLookup } from './usageQuery.ts';
 import { scopeOf, UsageScanner } from './usageScanner.ts';

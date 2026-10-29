@@ -1,4 +1,4 @@
-import type { RemoteTunnel } from '@switchboard/protocol/client';
+import type { RemoteTunnel } from '@seshboard/protocol/client';
 
 /** The tunnels Settings › Remote offers, with what each needs. Pure, so the wording is easy to check. */
 /** `hint`: the few words the setup steps show next to each choice. */

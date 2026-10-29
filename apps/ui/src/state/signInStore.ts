@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { SignInState } from '@switchboard/protocol/client';
+import type { SignInState } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 /** The Claude profiles whose login stopped working, and the sessions it stopped, as the engine keeps them. */

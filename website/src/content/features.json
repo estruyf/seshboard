@@ -1,5 +1,5 @@
 {
-  "$comment": "Every user-facing feature of Switchboard and the docs page that covers it. Checked by website/src/features.test.ts (npm run check).",
+  "$comment": "Every user-facing feature of Seshboard and the docs page that covers it. Checked by website/src/features.test.ts (npm run check).",
   "features": [
     {
       "id": "palette:action:*",
@@ -58,7 +58,7 @@
     },
     {
       "id": "palette:install-shell-command",
-      "name": "Install the switchboard command",
+      "name": "Install the seshboard command",
       "page": "links"
     },
     {
@@ -637,6 +637,16 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-remote",
+      "name": "Settings: Remote",
+      "page": "settings"
+    },
+    {
+      "id": "palette:settings-mods",
+      "name": "Settings: Mods",
+      "page": "settings"
+    },
+    {
       "id": "palette:share-memory",
       "name": "Share memory with the team…",
       "page": "memory/share-with-the-team"
@@ -684,6 +694,11 @@
     {
       "id": "palette:stop",
       "name": "Stop Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:retry",
+      "name": "Try again",
       "page": "sessions/conversation"
     },
     {
@@ -813,7 +828,7 @@
     },
     {
       "id": "saved-prompts:shared",
-      "name": "Shared prompts in .switchboard.json",
+      "name": "Shared prompts in .seshboard.json",
       "page": "sessions/saved-prompts"
     },
     {
@@ -982,8 +997,13 @@
       "page": "new-session/models-and-options"
     },
     {
+      "id": "shortcut:new-session.find",
+      "name": "Find a project (Find…), the full project list with its filter",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:new-session.pick",
-      "name": "new-session.pick",
+      "name": "Pick a recent project by its number",
       "page": "new-session/form"
     },
     {
@@ -1237,6 +1257,21 @@
       "page": "sessions/split-view"
     },
     {
+      "id": "shortcut:sidebar.quick-archive",
+      "name": "Archive the session, or unarchive it",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.quick-pin",
+      "name": "Pin or unpin the session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.quick-read",
+      "name": "Mark the session read or unread",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "shortcut:sidebar.rename",
       "name": "sidebar.rename",
       "page": "sessions/sidebar"
@@ -1265,6 +1300,11 @@
       "id": "shortcut:sidebar.toggle",
       "name": "sidebar.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:sidebar.undo",
+      "name": "Undo the last quick action",
+      "page": "sessions/sidebar"
     },
     {
       "id": "shortcut:terminal.clear",
@@ -1309,6 +1349,11 @@
     {
       "id": "settings:about",
       "name": "Settings: About",
+      "page": "settings"
+    },
+    {
+      "id": "feature:settings-groups",
+      "name": "Settings: the pages grouped under App, Claude, Your work and Connect, with Backup, Diagnostics and About at the bottom",
       "page": "settings"
     },
     {
@@ -1394,6 +1439,11 @@
     {
       "id": "feature:app-icon",
       "name": "Settings: Theme: App icon (nine colourways, Use it on your phone too)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:dock-activity",
+      "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
       "page": "settings"
     },
     {
@@ -2073,7 +2123,7 @@
     },
     {
       "id": "feature:check-for-updates-menu",
-      "name": "Switchboard → Check for Updates…",
+      "name": "Seshboard → Check for Updates…",
       "page": "settings/updates"
     },
     {
@@ -2243,7 +2293,7 @@
     },
     {
       "id": "feature:deep-link-new-session",
-      "name": "switchboard://new-session",
+      "name": "seshboard://new-session",
       "page": "links"
     },
     {
@@ -2253,12 +2303,12 @@
     },
     {
       "id": "feature:deep-link-session",
-      "name": "switchboard://session/<id>",
+      "name": "seshboard://session/<id>",
       "page": "links"
     },
     {
       "id": "feature:deep-links",
-      "name": "switchboard:// links",
+      "name": "seshboard:// links",
       "page": "links"
     },
     {
@@ -2353,7 +2403,7 @@
     },
     {
       "id": "feature:file-link-click",
-      "name": "Clicking a file link: open in Switchboard, show in the file manager or open in the editor (Settings, Conversation)",
+      "name": "Clicking a file link: open in Seshboard, show in the file manager or open in the editor (Settings, Conversation)",
       "page": "settings"
     },
     {
@@ -2677,6 +2727,16 @@
       "page": "sessions/archived"
     },
     {
+      "id": "feature:sidebar-quick-actions",
+      "name": "Quick actions on hover: Mark as read, Pin and Archive on a session row, with Undo",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-quick-actions-setting",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Archive only or Read · Pin · Archive)",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:model-chip",
       "name": "Model chip",
       "page": "new-session/models-and-options"
@@ -2703,7 +2763,7 @@
     },
     {
       "id": "feature:new-session-link",
-      "name": "switchboard://new-session links",
+      "name": "seshboard://new-session links",
       "page": "new-session/form"
     },
     {
@@ -2878,7 +2938,7 @@
     },
     {
       "id": "feature:profile-sign-in",
-      "name": "Sign in to a profile in Switchboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
+      "name": "Sign in to a profile in Seshboard's terminal, or with CLAUDE_CONFIG_DIR and /login",
       "page": "settings/claude-profiles"
     },
     {
@@ -2895,6 +2955,11 @@
       "id": "feature:new-session-permission-mode",
       "name": "Global permission mode: what new sessions start in where the profile and project set none, or Remember last",
       "page": "settings"
+    },
+    {
+      "id": "feature:project-permission-default",
+      "name": "Project Settings › Permissions: Profile default or Global default, each with a Change link to where it is set",
+      "page": "projects/settings"
     },
     {
       "id": "feature:project-actions",
@@ -2967,8 +3032,8 @@
       "page": "projects/sessions"
     },
     {
-      "id": "feature:project-tiles",
-      "name": "Project tiles with status",
+      "id": "feature:project-list",
+      "name": "Project list: rows with the whole name and status, in one to three columns as the space allows, long names cut in the middle, All N projects…",
       "page": "new-session/form"
     },
     {
@@ -3148,8 +3213,8 @@
     },
     {
       "id": "feature:reload-mcp",
-      "name": "Reload MCP servers",
-      "page": "troubleshooting"
+      "name": "Reload MCP servers: the palette command for every running session, and the refresh button in a session's Tools",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:reload-skills",
@@ -3173,12 +3238,12 @@
     },
     {
       "id": "feature:remove-project",
-      "name": "Remove a project from Switchboard, in its Settings or from its row menu",
+      "name": "Remove a project from Seshboard, in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
       "id": "feature:rename-project",
-      "name": "Rename a project (Switchboard name only), in its Settings or from its row menu",
+      "name": "Rename a project (Seshboard name only), in its Settings or from its row menu",
       "page": "projects/projects-view"
     },
     {
@@ -3203,7 +3268,7 @@
     },
     {
       "id": "feature:link-issue-pr",
-      "name": "issue and pr parameters in switchboard://new-session links",
+      "name": "issue and pr parameters in seshboard://new-session links",
       "page": "links"
     },
     {
@@ -3304,7 +3369,7 @@
     {
       "id": "feature:mark-read-after",
       "name": "Mark as read after a few seconds of looking at a session (Settings › Sessions)",
-      "page": "sessions/catch-up"
+      "page": "settings/sessions"
     },
     {
       "id": "feature:session-hud",
@@ -3394,7 +3459,17 @@
     {
       "id": "feature:sign-in-again",
       "name": "Signed out: Sign in runs claude auth login in the session's terminal panel, and the session continues once you are signed in",
-      "page": "troubleshooting"
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:run-failed-notice",
+      "name": "A notice above the message box when Claude Code fails, with the error in full and Try again when your message did not reach Claude",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:no-forks-after-restart",
+      "name": "Claude Code processes stop when Seshboard quits, and sending to a leftover one continues the same session instead of forking",
+      "page": "sessions/conversation"
     },
     {
       "id": "feature:sidebar-search-filter",
@@ -3508,12 +3583,12 @@
     },
     {
       "id": "feature:switchboard-json",
-      "name": "Shared actions in .switchboard.json",
+      "name": "Shared actions in .seshboard.json",
       "page": "projects/actions"
     },
     {
       "id": "feature:switchboard-updates",
-      "name": "Switchboard updates (Download, Restart to update)",
+      "name": "Seshboard updates (Download, Restart to update)",
       "page": "settings/updates"
     },
     {
@@ -3708,7 +3783,12 @@
     },
     {
       "id": "feature:vscode-fix-in-switchboard",
-      "name": "Fix in Switchboard quick fix",
+      "name": "Fix in Seshboard quick fix",
+      "page": "vscode-companion"
+    },
+    {
+      "id": "feature:vscode-new-session",
+      "name": "Pick the session or start a new one from VS Code",
       "page": "vscode-companion"
     },
     {
@@ -3733,7 +3813,7 @@
     },
     {
       "id": "feature:windows-app-data-folder",
-      "name": "App data in %APPDATA%\\Switchboard (personal memory, themes)",
+      "name": "App data in %APPDATA%\\Seshboard (personal memory, themes)",
       "page": "memory/personal-memory"
     },
     {
@@ -3778,7 +3858,7 @@
     },
     {
       "id": "feature:windows-deep-links",
-      "name": "switchboard:// links on Windows (drive paths, Start-Process)",
+      "name": "seshboard:// links on Windows (drive paths, Start-Process)",
       "page": "links"
     },
     {
@@ -3848,7 +3928,7 @@
     },
     {
       "id": "feature:windows-support",
-      "name": "Switchboard on Windows 10 and 11",
+      "name": "Seshboard on Windows 10 and 11",
       "page": "getting-started/windows"
     },
     {
@@ -3868,7 +3948,7 @@
     },
     {
       "id": "feature:windows-terminal-keys",
-      "name": "Ctrl keys for the shell, Ctrl+Shift for Switchboard in the terminal",
+      "name": "Ctrl keys for the shell, Ctrl+Shift for Seshboard in the terminal",
       "page": "terminal-changes-git/terminal"
     },
     {
@@ -4163,7 +4243,7 @@
     },
     {
       "id": "feature:linux-support",
-      "name": "Switchboard on Linux (x64 and Arm64)",
+      "name": "Seshboard on Linux (x64 and Arm64)",
       "page": "getting-started/linux"
     },
     {
@@ -4298,13 +4378,28 @@
     },
     {
       "id": "feature:shell-command",
-      "name": "Settings: General, Shell command (switchboard ., seshboard . and sesh .)",
+      "name": "Settings: General, Shell command (seshboard ., sesh . and switchboard .)",
       "page": "links"
     },
     {
       "id": "feature:keep-awake",
       "name": "Settings: General, Keep awake",
       "page": "settings"
+    },
+    {
+      "id": "feature:keep-awake-until-done",
+      "name": "Keep awake until done (a session's ⋯ menu and the pill above the message box)",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-on",
+      "name": "Keep awake until done",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-off",
+      "name": "Stop keeping awake",
+      "page": "sessions/conversation"
     },
     {
       "id": "palette:run-pipeline",

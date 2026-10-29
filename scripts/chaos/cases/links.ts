@@ -17,13 +17,13 @@ export const linkCases: Record<string, Case> = {
       const value = ((globals.result as { value?: Record<string, unknown> } | undefined)?.value ?? {}) as Record<string, unknown>;
       await c.rpc('appState.set', { key: 'newSession.defaults', value: { ...value, permissionMode: 'bypassPermissions' } });
       const links = [
-        `switchboard://new-session?cwd=${enc(acme)}&autostart=1&prompt=one`,
-        `switchboard://new-session?cwd=${enc(acme)}&autostart=1&prompt=two&mode=bypassPermissions&permissionMode=bypassPermissions&dangerouslySkipPermissions=1`,
+        `seshboard://new-session?cwd=${enc(acme)}&autostart=1&prompt=one`,
+        `seshboard://new-session?cwd=${enc(acme)}&autostart=1&prompt=two&mode=bypassPermissions&permissionMode=bypassPermissions&dangerouslySkipPermissions=1`,
       ];
       // A project default is only read when the window loads its projects: set it, then restart.
       await c.rpc('projects.setDefaults', { root: acme, defaults: { permissionMode: 'bypassPermissions' } });
       await c.restart();
-      links.push('switchboard://new-session?project=acme-store&autostart=1&prompt=three');
+      links.push('seshboard://new-session?project=acme-store&autostart=1&prompt=three');
       const modes: string[] = [];
       for (const url of links) {
         await c.calls(true);
@@ -43,10 +43,10 @@ export const linkCases: Record<string, Case> = {
     async run(c, note) {
       const results: boolean[] = [];
       const cases: Array<[string, (s: { newSession: string | null; current: string | null; alerts: string[]; modes: string[] }) => boolean]> = [
-        [`switchboard://new-session?prompt=${enc('cold start')}&cwd=${enc(c.world.acme)}`, (s) => s.newSession === 'cold start'],
-        [`switchboard://new-session?prompt=${enc('cold autostart')}&cwd=${enc(c.world.acme)}&autostart=1`, (s) => s.modes.join() === 'default'],
-        [`switchboard://session/${c.world.sessions.hero}`, (s) => s.current === c.world.sessions.hero],
-        ['switchboard://not-a-thing', (s) => s.alerts.some((a) => /Couldn.t open that link/.test(a))],
+        [`seshboard://new-session?prompt=${enc('cold start')}&cwd=${enc(c.world.acme)}`, (s) => s.newSession === 'cold start'],
+        [`seshboard://new-session?prompt=${enc('cold autostart')}&cwd=${enc(c.world.acme)}&autostart=1`, (s) => s.modes.join() === 'default'],
+        [`seshboard://session/${c.world.sessions.hero}`, (s) => s.current === c.world.sessions.hero],
+        ['seshboard://not-a-thing', (s) => s.alerts.some((a) => /Couldn.t open that link/.test(a))],
       ];
       for (const [url, check] of cases) {
         await c.quit();
@@ -86,7 +86,7 @@ export const linkCases: Record<string, Case> = {
       await closeAll(c);
       await goHome(c);
       await c.calls(true);
-      await openLink(c, 'switchboard://new-session?project=acme-store&autostart=1&prompt=link');
+      await openLink(c, 'seshboard://new-session?project=acme-store&autostart=1&prompt=link');
       await sleep(4_000);
       const created = (await c.calls()).find((x) => x.method === 'session.create')?.params;
       const saw = { defaults, actions, newSessionMode: mode, linkMode: created?.permissionMode, linkModel: created?.model };

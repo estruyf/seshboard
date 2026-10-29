@@ -1,6 +1,6 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
-import { resolveSound } from '@switchboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@switchboard/protocol/client';
+import { resolveSound } from '@seshboard/protocol/bridge';
+import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
@@ -20,7 +20,7 @@ export interface NotifierOptions {
   engine: EngineProcess;
   /** The main window: its taskbar button flashes, and carries the badge on Windows. */
   window: () => BrowserWindow | undefined;
-  /** A Switchboard window (the main one or a pop-out) is in front and not minimized. */
+  /** A Seshboard window (the main one or a pop-out) is in front and not minimized. */
   focused: () => boolean;
   /** The session the user is looking at in the window in front (reported by its renderer). */
   focusedSession: () => string | null;
@@ -41,6 +41,8 @@ export interface NotifierOptions {
    * the app's own. macOS always shows the bundle's icon on notifications.
    */
   notificationIcon?: () => string | undefined;
+  /** Whether Claude is working somewhere, after every change: the Dock's icon shows it (macOS). */
+  working?: (working: boolean) => void;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
   /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
@@ -91,6 +93,8 @@ export class Notifier {
   connect(): void {
     this.client?.dispose();
     this.attention.reset();
+    // The engine's sessions went with it: nothing works until the fresh snapshot says so.
+    this.options.working?.(false);
     this.cache.reset();
     const { port1, port2 } = new MessageChannelMain();
     this.options.engine.connect(port1);
@@ -163,7 +167,7 @@ export class Notifier {
   }
 
   /**
-   * The sessions running in a Claude Code process right now (in Switchboard or anywhere else), and their folders,
+   * The sessions running in a Claude Code process right now (in Seshboard or anywhere else), and their folders,
    * from the engine. Throws before the engine is connected: an empty list would say nothing runs.
    */
   async runningSessions(): Promise<{ ids: Set<string>; folders: string[] }> {
@@ -186,7 +190,7 @@ export class Notifier {
    * sounds are on. It is never for the session on screen, so it always shows.
    */
   test(): void {
-    this.handle([{ kind: 'needs-you', sessionId: '', title: 'Claude needs you', body: 'A test notification from Switchboard.' }], { test: true });
+    this.handle([{ kind: 'needs-you', sessionId: '', title: 'Claude needs you', body: 'A test notification from Seshboard.' }], { test: true });
   }
 
   private handle(events: AttentionEvent[], { test = false } = {}): void {
@@ -240,7 +244,9 @@ export class Notifier {
     this.updateBadge();
   }
 
+  /** The badge, and whether the Dock's icon shows Claude working: both follow the sessions' states. */
   private updateBadge(): void {
+    this.options.working?.(this.attention.working());
     const count = this.attention.badge();
     app.dock?.setBadge(count > 0 ? String(count) : '');
     // Windows has no badge count: a dot over the taskbar button says it instead.

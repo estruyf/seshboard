@@ -11,7 +11,7 @@ afterEach(() => Promise.all(dirs.splice(0).map((d) => removeDir(d))));
 
 describe('parseEnvOutput', () => {
   it('reads NUL-separated entries between markers and ignores rc-file noise', () => {
-    const out = 'Welcome to zsh!\n__SWITCHBOARD_ENV__PATH=/opt/homebrew/bin:/usr/bin\0MULTI=line one\nline two\0EMPTY=\0__SWITCHBOARD_ENV__';
+    const out = 'Welcome to zsh!\n__SESHBOARD_ENV__PATH=/opt/homebrew/bin:/usr/bin\0MULTI=line one\nline two\0EMPTY=\0__SESHBOARD_ENV__';
     expect(parseEnvOutput(out)).toEqual({ PATH: '/opt/homebrew/bin:/usr/bin', MULTI: 'line one\nline two', EMPTY: '' });
   });
 
@@ -47,7 +47,7 @@ describe('claude binary', () => {
   });
 
   it('finds an executable on PATH and reads its version', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-bin-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-bin-'));
     dirs.push(dir);
     mkdirSync(join(dir, 'bin'));
     if (process.platform === 'win32') {

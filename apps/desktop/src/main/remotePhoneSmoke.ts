@@ -5,7 +5,7 @@ import { until, waitInPage } from './pageDriver.ts';
 /**
  * The smoke steps of the remote app on a phone: the real app from apps/remote, served by Vite, in a hidden 390×844
  * window with a throwaway session of its own, paired with a made-up computer (scripts/remote-demo.ts, "Phone Mac").
- * The smoke script starts both and writes the computer's pairing links to `SWITCHBOARD_SMOKE_PHONE_LINK`. The window
+ * The smoke script starts both and writes the computer's pairing links to `SESHBOARD_SMOKE_PHONE_LINK`. The window
  * pairs once, for the first step that needs it, so each step also runs on its own with `--only`. Nothing here
  * touches real data: the computer is made up, and the window has no preload.
  */
@@ -14,7 +14,8 @@ let phone: Promise<BrowserWindow | string> | null = null;
 
 /** The paired phone, on Home; a string when it couldn't get there. */
 function remotePhone(): Promise<BrowserWindow | string> {
-  phone ??= openPhone().then((result) => {
+  // The computer sometimes refuses the first pairing on a slow runner (Linux); a second one goes through.
+  phone ??= openPhone().then((first) => (typeof first === 'string' && !first.startsWith('ok:') ? openPhone() : first)).then((result) => {
     // A failed pairing is tried again by the next step rather than failing it too.
     if (typeof result === 'string') phone = null;
     return result;
@@ -23,7 +24,7 @@ function remotePhone(): Promise<BrowserWindow | string> {
 }
 
 async function openPhone(): Promise<BrowserWindow | string> {
-  const linkFile = process.env.SWITCHBOARD_SMOKE_PHONE_LINK;
+  const linkFile = process.env.SESHBOARD_SMOKE_PHONE_LINK;
   if (!linkFile) return 'ok: skipped, no remote app to drive (run through npm run smoke)';
   if (!(await until(() => existsSync(linkFile), 20_000))) return "the phone's computer wrote no pairing link";
   const win = new BrowserWindow({ width: 390, height: 844, show: false, webPreferences: { partition: `smoke-phone-${Date.now()}`, sandbox: true, contextIsolation: true, backgroundThrottling: false } });
@@ -31,10 +32,15 @@ async function openPhone(): Promise<BrowserWindow | string> {
   try {
     await win.loadURL(readFileSync(linkFile, 'utf8').trim());
     // Vite compiles the app on the first load: this can take a while on a fresh runner.
-    if (!(await waitInPage(win, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Pair')", 30_000))) return 'the remote app did not show Pair';
+    if (!(await waitInPage(win, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Pair')", 30_000))) {
+      win.destroy();
+      return 'the remote app did not show Pair';
+    }
     await win.webContents.executeJavaScript("[...document.querySelectorAll('button')].find((b) => b.textContent === 'Pair').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 20_000))) {
-      return `the phone did not connect: ${await win.webContents.executeJavaScript("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160)")}`;
+      const text = (await win.webContents.executeJavaScript("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 160)")) as string;
+      win.destroy();
+      return `the phone did not connect: ${text}`;
     }
     return win;
   } catch (error) {

@@ -20,6 +20,7 @@ const SESSION: PaletteSession = {
   catchUp: null,
   prompts: 0,
   hasReply: false,
+  unsent: 0,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */
@@ -262,10 +263,32 @@ describe('when(): a session is open', () => {
     expect(ids(inSession({ host: { state: 'idle', contextTokens: null, supportsEffort: false } }))).not.toContain('change-effort');
   });
 
+  it('keeps the computer awake until done only while it runs here, and offers to stop once it does', () => {
+    expect(ids(inSession())).not.toContain('keep-awake-on');
+    const working = inSession({ host: { state: 'running', contextTokens: 0, supportsEffort: true } });
+    expect(ids(working)).toContain('keep-awake-on');
+    expect(ids(working)).not.toContain('keep-awake-off');
+    const kept = inSession({ host: { state: 'running', contextTokens: 0, supportsEffort: true, keepAwake: true } });
+    expect(ids(kept)).toContain('keep-awake-off');
+    expect(ids(kept)).not.toContain('keep-awake-on');
+    expect(ids(inSession({ host: { state: 'closed', contextTokens: 0, supportsEffort: true } }))).not.toContain('keep-awake-on');
+    const api = { setKeepAwake: vi.fn() } as unknown as PaletteApi;
+    const byId = (id: string) => COMMANDS.find((c) => c.id === id)!;
+    byId('keep-awake-on').run!(api, working);
+    byId('keep-awake-off').run!(api, kept);
+    expect(api.setKeepAwake).toHaveBeenNthCalledWith(1, true);
+    expect(api.setKeepAwake).toHaveBeenNthCalledWith(2, false);
+  });
+
   it('forks, rewinds and copies once there is a conversation', () => {
     expect(ids(inSession())).not.toContain('fork');
     const talked = ids(inSession({ prompts: 2, hasReply: true }));
     expect(talked).toEqual(expect.arrayContaining(['fork', 'rewind', 'copy-last-reply']));
+  });
+
+  it('offers Try again only when Claude Code failed before it got a message', () => {
+    expect(ids(inSession())).not.toContain('retry');
+    expect(ids(inSession({ unsent: 1 }))).toContain('retry');
   });
 
   it('previews the last written file only when the open session wrote a Markdown or HTML one', () => {

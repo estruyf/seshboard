@@ -30,7 +30,7 @@ import {
   REMOTE_FEATURE_PUSH_KEY,
   REMOTE_FEATURE_QUEUE_SEND_NOW,
   REMOTE_FEATURE_USAGE_TOKENS,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { computerName } from './computerName.ts';
 import type { DeviceKind, DeviceStore, RemoteDevice } from './devices.ts';
 import type { Pairing } from './pairing.ts';
@@ -189,7 +189,7 @@ export class RemoteServer {
   /** Only the socket lives here: the app's page comes from its own site. */
   private serve(_request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
-    response.end('Switchboard Remote: open the remote app on your phone.');
+    response.end('Seshboard Remote: open the remote app on your phone.');
   }
 
   private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -254,7 +254,10 @@ export class RemoteServer {
       // The phone holds the device key only once a frame from it decrypts: until then it is nobody.
       onFirstFrame: () => {
         // Revoked between the handshake and now: Revoke only closes connections it can see, which this wasn't yet.
-        if (!this.options.devices.find(phoneKey)) return ws.close(CLOSE.unknownDevice);
+        if (!this.options.devices.find(phoneKey)) {
+          ws.close(CLOSE.unknownDevice);
+          return false;
+        }
         this.backoff.succeeded(address);
         this.options.devices.touch(known.id, this.options.address?.() ?? null);
         this.pending.delete(ws);
@@ -282,6 +285,7 @@ export class RemoteServer {
     const pairing = this.options.pairing;
     const psk = pairing.psk();
     if (!psk) return ws.close(CLOSE.pairingClosed);
+    const generation = pairing.generation;
     const handshake = responderHandshake({ mode: 'pair', staticKey: this.options.identity(), psk });
     let phoneKey: Uint8Array;
     let session: NoiseSession;
@@ -304,15 +308,16 @@ export class RemoteServer {
     const stream = encryptedStream(frameSocket(ws), session, {
       onError: () => !claimed && refuse(),
       onFirstFrame: () => {
-        claimed = pairing.claim();
+        claimed = pairing.claim(generation);
         if (claimed) this.backoff.succeeded(address);
         else ws.close(CLOSE.pairingClosed);
+        return claimed;
       },
     });
     let asked = false;
     const rpc = serveRpc(remotePairContract, lineTransport(stream, { maxLineLength: 4096 }), {
       'pair.request': async ({ name }) => {
-        if (!claimed || asked) throw new RpcError('DENIED', 'Pairing is closed');
+        if (!claimed || asked || pairing.generation !== generation) throw new RpcError('DENIED', 'Pairing is closed');
         asked = true;
         const allowed = await pairing.ask(name, pairingCode(session.handshakeHash));
         if (!allowed) throw new RpcError('DENIED', 'Pairing was not allowed on the computer');
@@ -359,7 +364,7 @@ function toBytes(data: unknown): Uint8Array {
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
-/** What pairs, for its icon: Switchboard on another computer, a phone's browser, or a computer's browser. */
+/** What pairs, for its icon: Seshboard on another computer, a phone's browser, or a computer's browser. */
 export function deviceKind(origin: string, userAgent: string | undefined): DeviceKind {
   if (origin === REMOTE_DESKTOP_ORIGIN) return 'computer';
   return /Mobi|iPhone|iPad|iPod|Android/i.test(userAgent ?? '') ? 'phone' : 'browser';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ImportChange } from '@switchboard/protocol/client';
+import type { ImportChange } from '@seshboard/protocol/client';
 import { DEFAULT_EXPORT_SECTIONS, groupChanges, hasEffect, summarizeChanges } from './backup.ts';
 
 const change = (section: ImportChange['section'], change: ImportChange['change'], label: string = section): ImportChange => ({ section, label, change, detail: null });

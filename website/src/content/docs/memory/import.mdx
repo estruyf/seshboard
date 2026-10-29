@@ -10,7 +10,7 @@ import Related from '../../../components/Related.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The Claude app keeps its own memory about you. Import it, and Claude Code starts out knowing what the app already knows instead of learning it again. Switchboard brings it in as memory files, from the app's data export or from text you paste, and copies your Claude Code memories the other way, to paste in the app.
+The Claude app keeps its own memory about you. Import it, and Claude Code starts out knowing what the app already knows instead of learning it again. Seshboard brings it in as memory files, from the app's data export or from text you paste, and copies your Claude Code memories the other way, to paste in the app.
 
 <Screenshot name="memory-paste" alt="The Paste from the Claude app dialog with pasted text, and its preview listing each memory with where it goes" eager />
 
@@ -29,7 +29,7 @@ All three are buttons at the top of [Settings › Memory](/settings/#memory), in
 <Steps>
 
 1. In the Claude app, go to Settings › Privacy › Export data, and download the export.
-2. Click **Import from Claude export…** and pick what you downloaded: `memories-000.zip` (with `projects-000.zip` for project names), the unzipped export folder, or the manifest JSON. With the manifest, Switchboard looks for the zips next to it.
+2. Click **Import from Claude export…** and pick what you downloaded: `memories-000.zip` (with `projects-000.zip` for project names), the unzipped export folder, or the manifest JSON. With the manifest, Seshboard looks for the zips next to it.
 3. Check the preview, and change where each memory goes.
 4. Click **Import N** (<Kbd keys="mod+enter" />).
 
@@ -62,7 +62,7 @@ The footer says how full your personal `MEMORY.md` will be. Nothing is written u
 Importing a newer export later updates what you imported before instead of adding copies.
 
 <Aside>
-The export format isn't documented and has changed before. Switchboard skips what it doesn't recognise instead of failing.
+The export format isn't documented and has changed before. Seshboard skips what it doesn't recognise instead of failing.
 </Aside>
 
 ## Paste from Claude app

@@ -1,6 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { FileText, Paperclip, Plus, X } from 'lucide-react';
-import type { RemoteFile, RemoteImage } from '@switchboard/protocol/remote-client';
+import type { RemoteFile, RemoteImage } from '@seshboard/protocol/remote-client';
 import { acceptsFor, fileName, fileSize, placeFor, type Accepts, type Attachment } from '../lib/attachments.ts';
 import { base64, toImage } from '../lib/images.ts';
 import { Button, RoundButton } from './ui.tsx';
@@ -25,7 +25,7 @@ export interface AttachmentsState {
 
 /**
  * The images and files of a message: picked, pasted or dropped. Images are resized on this device first; files go as
- * they are, and only to a Switchboard that says it takes them (`features`, from its hello). `blocked` says why nothing
+ * they are, and only to a Seshboard that says it takes them (`features`, from its hello). `blocked` says why nothing
  * can be added right now (a prompt is open, the connection is down).
  */
 export function useAttachments({ features, newSession = false, blocked = null, onError }: { features: readonly string[]; newSession?: boolean; blocked?: string | null; onError: (message: string) => void }): AttachmentsState {
@@ -111,7 +111,7 @@ export function AttachButton({ state, disabled, title, look = 'quiet' }: { state
   const input = useRef<HTMLInputElement>(null);
   const { accepts } = state;
   const label = accepts.files ? 'Attach images and files' : 'Add an image';
-  const hint = !accepts.images && !accepts.files ? 'Update Switchboard on your computer to attach images and files' : label;
+  const hint = !accepts.images && !accepts.files ? 'Update Seshboard on your computer to attach images and files' : label;
   return (
     <>
       {look === 'quiet' ? (

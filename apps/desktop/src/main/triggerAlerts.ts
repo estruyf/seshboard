@@ -1,4 +1,4 @@
-import type { TriggerNotice } from '@switchboard/protocol/client';
+import type { TriggerNotice } from '@seshboard/protocol/client';
 import type { AttentionEvent } from './attention.ts';
 
 /**

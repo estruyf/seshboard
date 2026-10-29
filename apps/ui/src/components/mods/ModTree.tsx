@@ -1,5 +1,5 @@
 import { createContext, Fragment, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { MOD_LIMITS, type ModComponent } from '@switchboard/protocol/client';
+import { MOD_LIMITS, type ModComponent } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
 import { Select } from '../ui/Select.tsx';

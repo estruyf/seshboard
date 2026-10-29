@@ -5,7 +5,7 @@
 //   ../ui/src/assets/app-icon.png  64×64 for the sidebar header
 // Uses Electron to render the SVG and macOS's own sips + iconutil. Elsewhere only build/icon.ico is
 // made, from the build/icon.png in the repository: the rest needs a Mac.
-// Usage: npm run icon -w @switchboard/desktop
+// Usage: npm run icon -w @seshboard/desktop
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';

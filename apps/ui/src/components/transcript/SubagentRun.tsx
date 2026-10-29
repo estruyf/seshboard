@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { TranscriptMessage } from '@switchboard/protocol/client';
+import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { buildDisplayItems } from './displayItems.ts';
 import { TranscriptItem } from './TranscriptItem.tsx';

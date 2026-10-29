@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { CatchUp, RequestWhy, reviewMinutes, type GitChanges, type LogLevel, type PermissionRequest } from '@switchboard/protocol';
+import { CatchUp, RequestWhy, reviewMinutes, type GitChanges, type LogLevel, type PermissionRequest } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { CatchUpStore } from './catchUpStore.ts';
 import { fallbackSummary, waitingNeed, type Summary } from './fallback.ts';

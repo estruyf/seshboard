@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ASK_THREADS_KEPT, threadTitle, type AskEvent } from '@switchboard/protocol';
+import { ASK_THREADS_KEPT, threadTitle, type AskEvent } from '@seshboard/protocol';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { migrations } from '../db/migrations.ts';
 import { breakdown } from '../usage/usageQuery.ts';
@@ -17,7 +17,7 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 const cachePath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-ask-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-ask-'));
   dirs.push(dir);
   return join(dir, 'cache.sqlite');
 };
@@ -225,7 +225,17 @@ describe('AskStore', () => {
 describe('read-only tools', () => {
   it('lets reading and git status, diff, log and show through, and nothing else', () => {
     for (const name of ['Read', 'Grep', 'Glob']) expect(isReadOnlyTool(name, {})).toBe(true);
-    for (const command of ['git status', 'git diff', 'git diff --stat HEAD~3', 'git log --oneline -20', 'git show HEAD:src/a.ts', 'git --no-pager log -p -- src']) {
+    for (const command of [
+      'git status',
+      'git diff',
+      'git diff --stat HEAD~3',
+      'git log --oneline -20',
+      'git show HEAD:src/a.ts',
+      'git --no-pager log -p -- src',
+      'git log --format="%h %s" --grep=\'fix it\'',
+      'git diff --output-indicator-new=+ HEAD',
+      'git diff -- *.ts',
+    ]) {
       expect(isReadOnlyTool('Bash', { command })).toBe(true);
     }
     for (const name of ['Write', 'Edit', 'NotebookEdit', 'Task', 'Agent', 'WebFetch', 'mcp__github__create_issue', 'TodoWrite']) expect(isReadOnlyTool(name, {})).toBe(false);
@@ -240,6 +250,14 @@ describe('read-only tools', () => {
       'git log $(rm x)',
       'git show `id`',
       'git diff --output=x.patch',
+      'git diff --output x.patch',
+      // The shell takes the quotes off, or makes the option from a brace or a file name.
+      'git log -1 "--output=/tmp/x"',
+      "git log -1 '--output'=/tmp/x",
+      'git log -1 --out"put=/tmp/x"',
+      'git log -1 {--output=/tmp/x,-1}',
+      'git log -1 --out*',
+      'git log "-1',
       'git -c core.pager=sh log',
       'rm -rf node_modules',
       'git status\nrm x',

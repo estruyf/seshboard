@@ -1,5 +1,5 @@
-import { useEffect, useSyncExternalStore } from 'react';
-import type { AskEvent } from '@switchboard/protocol/remote-client';
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
+import type { AskEvent } from '@seshboard/protocol/remote-client';
 import { closed, currentThread, EMPTY_ASK, opened, withAsked, withEvent, withoutItem, withThreads, type SessionAsk } from '../lib/ask.ts';
 import type { Client } from './Connected.tsx';
 
@@ -13,6 +13,21 @@ let sessions: ReadonlyMap<string, SessionAsk> = new Map();
 /** Answers that came in before this tab knew the question's id (the ask's reply was still on its way). */
 let early: ReadonlyMap<string, AskEvent[]> = new Map();
 const listeners = new Set<() => void>();
+/**
+ * The paired computer all of this is from. Session ids come from the computer, so another one could name a session
+ * with the same id: switching computers starts afresh (the computer keeps the threads, so they are read again), and
+ * a reply from the computer before arrives too late to land.
+ */
+let owner: string | null = null;
+
+/** Makes the store `computer`'s, emptying it when it was another's. */
+function ownedBy(computer: string): void {
+  if (owner === computer) return;
+  owner = computer;
+  sessions = new Map();
+  early = new Map();
+  for (const listener of listeners) listener();
+}
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
@@ -32,7 +47,9 @@ export function useSessionAsk(sessionId: string): SessionAsk {
 /** Reads the threads the computer keeps for a session. */
 export async function loadAskThreads(client: Client, sessionId: string): Promise<void> {
   if (!client) return;
+  const from = owner;
   const list = await client.call('session.askThreads', { sessionId });
+  if (owner !== from) return;
   updateAsk(sessionId, (state) => withThreads(state, list));
 }
 
@@ -40,7 +57,9 @@ export async function loadAskThreads(client: Client, sessionId: string): Promise
 export async function askAbout(client: Client, sessionId: string, question: string, options: { threadId?: string; replaces?: string } = {}): Promise<void> {
   if (!client) throw new Error('Not connected to your computer.');
   const threadId = options.threadId ?? currentThread(sessions.get(sessionId) ?? EMPTY_ASK)?.id;
+  const from = owner;
   const asked = await client.call('session.ask', { sessionId, question, ...(threadId ? { threadId } : {}), ...(options.replaces ? { replaces: options.replaces } : {}) });
+  if (owner !== from) return;
   const waiting = early.get(asked.id) ?? [];
   if (waiting.length) {
     const left = new Map(early);
@@ -82,7 +101,9 @@ function receive(event: AskEvent): boolean {
  * Follows answers from the computer. A question asked on the computer (or another phone) shows once it is kept; after a
  * reconnect, every session read before is read again, for answers that ended meanwhile.
  */
-export function useAskSync(client: Client): void {
+export function useAskSync(client: Client, computer: string): void {
+  // Before the screen is painted, so a session of the computer switched to never shows the other's answers.
+  useLayoutEffect(() => ownedBy(computer), [computer]);
   useEffect(() => {
     if (!client) return;
     for (const [sessionId, state] of sessions) if (state.loaded) void loadAskThreads(client, sessionId).catch(() => {});

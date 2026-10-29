@@ -316,7 +316,8 @@ describe('runs', () => {
     expect(read.runs[0]).toMatchObject({ label: 'Plan, execute, validate, push', runId: 'run-1', stub: false });
     expect(read.runs[0]!.body).toContain('- Validate: failed, verdict changes needed (fix), session s1');
     expect(read.runs[0]!.body).toContain('pull request: #152');
-    expect(parseRunBriefs(`hi\n\n${writeRunStub('Plan, execute', 'run-1')}`).runs).toEqual([{ label: 'Plan, execute', runId: 'run-1', stub: true, body: '' }]);
+    const stub = writeRunStub('Plan, execute', 'run-1');
+    expect(parseRunBriefs(`hi\n\n${stub}`).runs).toEqual([{ label: 'Plan, execute', runId: 'run-1', stub: true, body: '', start: 4, end: 4 + stub.length }]);
   });
 
   it('cuts a long run brief to its budget', () => {

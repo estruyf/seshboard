@@ -1,4 +1,4 @@
-import type { MainWindowRequest } from '@switchboard/protocol/bridge';
+import type { MainWindowRequest } from '@seshboard/protocol/bridge';
 import type { PaletteContext } from './paletteContext.ts';
 
 /**
@@ -122,6 +122,8 @@ const PLANS: Record<string, Plan> = {
   fork: 'here',
   rewind: 'here',
   compact: 'here',
+  'keep-awake-on': 'here',
+  'keep-awake-off': 'here',
   'change-model': 'here',
   'change-effort': 'here',
   'change-mode': 'here',
@@ -149,6 +151,7 @@ const PLANS: Record<string, Plan> = {
   'close-session': 'here',
   'delete-session': 'here',
   stop: 'here',
+  retry: 'here',
   'go-to-waiting': 'here',
 
   // Git, project actions and the session's terminal.

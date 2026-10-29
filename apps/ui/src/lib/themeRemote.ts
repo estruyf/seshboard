@@ -1,6 +1,6 @@
-import { isColor } from '@switchboard/protocol/color';
-import { THEME_NAME_MAX, type ThemeTokens } from '@switchboard/protocol/theme-format';
-import type { RemoteTheme } from '@switchboard/protocol/client';
+import { isColor } from '@seshboard/protocol/color';
+import { THEME_NAME_MAX, type ThemeTokens } from '@seshboard/protocol/theme-format';
+import type { RemoteTheme } from '@seshboard/protocol/client';
 import type { ResolvedTheme } from './themeResolve.ts';
 
 /** Only valid colours: the engine refuses the whole theme over one bad value. */

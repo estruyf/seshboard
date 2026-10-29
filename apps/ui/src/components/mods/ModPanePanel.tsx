@@ -1,6 +1,6 @@
 import { Puzzle, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import type { ModPane } from '@switchboard/protocol/client';
+import type { ModPane } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { holdModToasts } from '../../state/useModsSync.ts';
@@ -146,7 +146,8 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
         </header>
       )}
       {source}
-      <div ref={body} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-body" data-mod-pane-body>
+      {/* `relative`: a box the mod places `absolute` stays in (and scrolls with) the body, never over the header or the source line. */}
+      <div ref={body} className="relative isolate min-h-0 flex-1 overflow-y-auto px-3 py-2 text-body" data-mod-pane-body>
         {error ? (
           <ModError plugin={pane.plugin} error={error} onRetry={retry} />
         ) : prepared ? (

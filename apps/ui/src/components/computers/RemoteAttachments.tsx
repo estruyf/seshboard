@@ -1,6 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type RefObject } from 'react';
 import { FileText, Paperclip, X } from 'lucide-react';
-import { REMOTE_FEATURE_ATTACHMENTS, type Computer, type RemoteFile, type RemoteImage } from '@switchboard/protocol/client';
+import { REMOTE_FEATURE_ATTACHMENTS, type Computer, type RemoteFile, type RemoteImage } from '@seshboard/protocol/client';
 import { toast } from '../../state/toastStore.ts';
 import { AttachmentThumbs } from '../composer/Attachments.tsx';
 import { useDropTarget, type DropState } from '../composer/useDropTarget.ts';
@@ -71,7 +71,7 @@ export function useRemoteAttachments({ computer, rootRef, newSession = false, di
 
   const drop = useDropTarget(
     rootRef,
-    (drag) => remoteDropVerdict(drag, { items: latest.current, accepts, computer: computer.name, disabledReason: disabledReason ?? (accepts.images || accepts.files ? null : `Update Switchboard on ${computer.name} to send images and files.`) }),
+    (drag) => remoteDropVerdict(drag, { items: latest.current, accepts, computer: computer.name, disabledReason: disabledReason ?? (accepts.images || accepts.files ? null : `Update Seshboard on ${computer.name} to send images and files.`) }),
     (files, directories) => {
       if (directories.some(Boolean)) toast(`Folders can't go to ${computer.name}. Drop the files in it instead.`);
       void add(files.filter((_, i) => !directories[i]));
@@ -106,7 +106,7 @@ export function RemoteAttachButton({ state, computer, disabled }: { state: Remot
   const input = useRef<HTMLInputElement>(null);
   const { accepts } = state;
   const label = accepts.files ? 'Attach images and files' : 'Attach images';
-  const tooltip = !accepts.images ? `Update Switchboard on ${computer.name} to send images and files.` : accepts.files ? `Attach images and files (or paste / drop them). They go to ${computer.name} with the message.` : `Attach images (or paste / drop them). Update Switchboard on ${computer.name} to send files too.`;
+  const tooltip = !accepts.images ? `Update Seshboard on ${computer.name} to send images and files.` : accepts.files ? `Attach images and files (or paste / drop them). They go to ${computer.name} with the message.` : `Attach images (or paste / drop them). Update Seshboard on ${computer.name} to send files too.`;
   return (
     <>
       <input

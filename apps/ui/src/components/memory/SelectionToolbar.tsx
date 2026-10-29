@@ -184,6 +184,7 @@ export function SelectionToolbar({ anchor, toolbarRef, container, onClose, actio
       className="fixed z-50 flex items-center gap-px rounded-[9px] border border-edge bg-popover p-[3px] shadow-overlay"
       style={place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: 'hidden' }}
       {...{ [hook]: true }}
+      data-keeps-selection
       data-side={place?.side}
     >
       {actions.map((item, index) => (

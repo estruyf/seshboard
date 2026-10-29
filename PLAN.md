@@ -1,6 +1,6 @@
-# Switchboard: Plan
+# Seshboard: Plan
 
-> Working name: **Switchboard**, a desktop switchboard for your Claude Code sessions. It's easy to rename later.
+> **Seshboard** (called Switchboard until 1.2.0): a desktop switchboard for your Claude Code sessions.
 
 A fast macOS desktop control surface for Claude Code: start sessions, see what's running, jump between them, and approve or steer Claude without hunting through terminal tabs. It's inspired by [t3code](https://github.com/pingdotgg/t3code), but it only supports Claude Code, so it can go deeper than a multi-agent tool can.
 
@@ -18,7 +18,7 @@ A fast macOS desktop control surface for Claude Code: start sessions, see what's
 - Support for other agents (Codex, Cursor and so on). That's t3code's job.
 - A mobile app or a web UI. The desktop app is the product; the one exception is **Remote** (below).
 
-**Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Switchboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).
+**Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Seshboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).
 - Reimplementing Claude Code. We drive the real thing.
 
 ---
@@ -123,7 +123,7 @@ sessions(id, project_id, title, origin[app|cli|ide|desktop], status,
 messages_fts(session_id, uuid, role, text)   -- FTS5 for global search
 project_actions(id, project_id NULL=global, name, icon, type, command,
                 cwd_mode, confirm, shortcut, run_on_worktree_create, sort)
-trusted_commands(project_id, command_hash)   -- approvals for .switchboard.json actions
+trusted_commands(project_id, command_hash)   -- approvals for .seshboard.json actions
 app_state(key, value)                        -- UI prefs, default editor, last open session…
 ```
 
@@ -200,10 +200,10 @@ Configurable buttons that run a command for the current project, like t3code's p
 | Layer | Location | Use |
 |---|---|---|
 | Personal | App database, per project | Your own actions; the default when you click "+ Add action" |
-| Shared | `.switchboard.json` in the repo root (optional, committable) | Team actions that travel with the repo |
+| Shared | `.seshboard.json` in the repo root (optional, committable) | Team actions that travel with the repo |
 | Global | App settings | Actions offered in every project (for example "Open PR in browser") |
 
-Personal overrides shared, which overrides global. **Safety:** commands from a repo's `.switchboard.json` are untrusted. The first time each one runs, you see the exact command and confirm it. That approval is remembered per command hash, so an edited command asks again.
+Personal overrides shared, which overrides global. **Safety:** commands from a repo's `.seshboard.json` are untrusted. The first time each one runs, you see the exact command and confirm it. That approval is remembered per command hash, so an edited command asks again.
 
 **Starter templates** you can add with one click: *Commit* (prompt `/commit`), *Push*, *Create PR* (`gh pr create --web`), *Test*, *Dev server*, *Install*. Templates are suggested from `package.json` scripts when present.
 
@@ -218,9 +218,9 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 ### 5.4 Projects ✅ ([#13](https://github.com/estruyf/switchboard/issues/13))
 
-- **Added by hand.** The sidebar filter, the New session folder list and the palette only offer projects you added. *Add project* lists the folders Claude Code has sessions for (most recent first, filterable), or opens the folder dialog. A session started in another folder offers to add it. Upgrading keeps every folder with a session started or continued in Switchboard (migration v8); a new install starts empty, with a prompt to add a project.
+- **Added by hand.** The sidebar filter, the New session folder list and the palette only offer projects you added. *Add project* lists the folders Claude Code has sessions for (most recent first, filterable), or opens the folder dialog. A session started in another folder offers to add it. Upgrading keeps every folder with a session started or continued in Seshboard (migration v8); a new install starts empty, with a prompt to add a project.
 - **Defaults per project** (`project_settings.defaults_json`): model, effort, permission mode, workspace (current folder or worktree, and its base), and a branch to check out for current-folder sessions. Unset fields use the choices last made in the New session view. Changing a decided field there applies to that session only, until *Save as project default*.
-- **Projects view** (sidebar footer, palette, a project's menu): add, remove (from Switchboard only), reorder, defaults, actions, icon, and a warning when the folder is gone.
+- **Projects view** (sidebar footer, palette, a project's menu): add, remove (from Seshboard only), reorder, defaults, actions, icon, and a warning when the folder is gone.
 - ✅ The Claude profile per project (#11, see 5.5). Later: Remote Control (#9), environment variables, additional directories.
 
 ### 5.5 Claude profiles ✅ ([#11](https://github.com/estruyf/switchboard/issues/11))
@@ -232,7 +232,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 
 ### 5.6 Links ✅ ([#5](https://github.com/estruyf/switchboard/issues/5))
 
-- **`switchboard://new-session?prompt=…&cwd=…|project=name|repo=owner/name[&autostart=1]`** fills in New session (`cwd` > `project` > `repo`); **`switchboard://session/<id>`** opens a session. By default nothing is sent and the message box says the prompt came from a link until it is sent or cleared; `autostart=1` starts it once the folder and the project's defaults are in place, only when the link names the folder, and without adding the folder to your projects. A link naming no folder leaves it empty and opens the project list. `project` matches your projects' names (then folder names) in the renderer, before anything changes. Format and examples in [docs/deep-links.md](docs/deep-links.md).
+- **`seshboard://new-session?prompt=…&cwd=…|project=name|repo=owner/name[&autostart=1]`** fills in New session (`cwd` > `project` > `repo`); **`seshboard://session/<id>`** opens a session. By default nothing is sent and the message box says the prompt came from a link until it is sent or cleared; `autostart=1` starts it once the folder and the project's defaults are in place, only when the link names the folder, and without adding the folder to your projects. A link naming no folder leaves it empty and opens the project list. `project` matches your projects' names (then folder names) in the renderer, before anything changes. Format and examples in [docs/deep-links.md](docs/deep-links.md).
 - **Main** validates the URL in a pure module (`deepLink.ts`): prompt ≤ 5,000 characters without control or invisible characters, `cwd` absolute and local without `.`/`..`, `repo` as `owner/name`. Unknown parameters are ignored, a bad value refuses the link with a short message. Links arriving before the renderer is ready (cold start via `open-url`, engine restart) are queued and handed over on `rendererReady`.
 - **Engine:** `projects.findByRepo` matches GitHub remotes (`git config --local`) of your projects, then other folders with sessions, a few at a time.
 - **Registration:** `protocols` in `electron-builder.yml` (Info.plist) plus `setAsDefaultProtocolClient` in packaged builds only; development and smoke builds don't touch the system's handlers.
@@ -241,7 +241,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 ### 5.7 Focus limit ✅ ([#24](https://github.com/estruyf/switchboard/issues/24))
 
 - **Preferences** (main): `focusLimit` (1–10, null is off), `focusMode` (`nudge` | `strict`), `focusCountExternal`, `focusCountRemote` (on by default). They travel with settings backups like every preference.
-- **Counting** is a pure module (`apps/ui/src/state/focus.ts`): active hosts that are working, need you, or are idle with an unread turn, minus sessions archived since (needs you always counts); with `focusCountExternal`, live registry entries from the terminal and IDEs too (never SDK processes, which are Switchboard's own); with `focusCountRemote`, sessions on connected paired computers that are working, need you or are unread. `focusVerdict` answers `allowed`, `ask` (Nudge) or `blocked` (Strict); a message to a session that already counts is always allowed.
+- **Counting** is a pure module (`apps/ui/src/state/focus.ts`): active hosts that are working, need you, or are idle with an unread turn, minus sessions archived since (needs you always counts); with `focusCountExternal`, live registry entries from the terminal and IDEs too (never SDK processes, which are Seshboard's own); with `focusCountRemote`, sessions on connected paired computers that are working, need you or are unread. `focusVerdict` answers `allowed`, `ask` (Nudge) or `blocked` (Strict); a message to a session that already counts is always allowed.
 - **One gate** (`passFocusGate` in `focusGate.ts`) in front of every start: New session (and `autostart` links), messages to a session that doesn't count, forks, prompt actions, and Claude in the terminal. It shows one `alertdialog`; committing and compacting skip it.
 - **Later list:** `later_prompts` (migration v14, a user choice) with `later.list` / `later.add` / `later.remove` and a `later.changed` event. Undo re-adds an item with its id and time. A minimal toast with Undo stands in until #14.
 - Later: a reminder when a session has needed you for a while, waiting sessions in the quit prompt, a "hard stop" time, and the queue in settings backups.
@@ -258,7 +258,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - `autoStart` on `LaterItem`, kept in `settings_json` (no migration); waiting for nothing turns it off. `later.update` takes it.
 - The ready rules moved to `packages/protocol/src/queueStates.ts`, shared by the UI (what rows say) and the engine (what starts), with how the session waited on ended (`SessionOutcome`: clean, error, stopped, quit) and the items held at the focus limit, sent with `later.changed` as `auto`.
 - `QueueAutoStarter` (`packages/engine/src/later/autoStart.ts`) arms an item once it has seen it waiting, and starts it through `later.start`'s path when it turns ready after clean finishes only; at the focus limit (from main as a standing `focus` message, counted with the shared `focusSessions`) it waits for a slot, at a usage limit for the reset. Errors and stops leave it ready and emit `later.autoSkipped`; starts emit `later.autoStarted`; main's notifier shows both.
-- Sessions Claude Code runs outside Switchboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
+- Sessions Claude Code runs outside Seshboard (the terminal, other apps) show in the registry as busy or idle, but not how a turn ended, so Start by itself is off for them (`autoStartBlock`).
 - Not yet: other computers' sessions are counted by the window's focus count but not the engine's.
 
 ### 5.8.2 Scheduled sessions ✅ ([#173](https://github.com/estruyf/switchboard/issues/173))
@@ -268,7 +268,7 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - `Scheduler` (`packages/engine/src/schedules/scheduler.ts`) owns one timer, capped at a minute so a clock or time zone change is seen (and logged as a jump), and re-armed after every change and on wake (`powerMonitor` `resume`, forwarded by main). A run is skipped while the last one is busy, queued at the focus or usage limit as an item that starts by itself (`QueueAutoStarter.armForLimit`), and pauses its schedule when the folder is gone; removing a project pauses its schedules. Titles are set with the SDK's rename once the transcript exists.
 - `schedules.*` RPCs, `schedules.changed` and `schedules.ran` (main's notifier, one notification for several missed runs); a **Schedules** section in the settings file (missing folders import paused).
 - UI: Schedule… and Save schedule in Start ▾, `ScheduleDialog`, the Home card and the project section (`components/schedules/`), the repeat icon on rows, *Schedule a session…* and *Schedules…* in the palette. Row text and labels are pure (`state/schedules.ts`).
-- Not yet: starting Switchboard or waking the computer for a run; on Windows the app quits with its last window, so schedules run only while one is open.
+- Not yet: starting Seshboard or waking the computer for a run; on Windows the app quits with its last window, so schedules run only while one is open.
 
 ### 5.8.3 Upcoming ✅
 
@@ -283,17 +283,17 @@ Personal overrides shared, which overrides global. **Safety:** commands from a r
 - Rules in `packages/protocol/src/triggers.ts` (`issueQuery`, `eventKey`, `newEvents`, `slots`, `nextStateLabel`, `fillTriggerPrompt`), zod in `triggerSchema.ts`; `triggers`, `trigger_events` and `trigger_sessions` (migration v36) are user data.
 - `TriggerWatcher` (`packages/engine/src/triggers/watcher.ts`) runs on the Scheduler's tick, polls through `gh` (one file per source), starts through the schedule run's path (focus and usage limits hold it in the queue), keeps state labels and Assign to me, and pauses after five failed checks.
 - UI: the Triggers tab and editor (`components/triggers/`), Start ▾ › Start when…, Triggers… in the project menu, *New trigger…* and *Triggers: pick one…*, Upcoming's Triggers filter, the bolt and the header line on triggered sessions, notifications from main.
-- Not yet: Changes requested and A command (phase 2), pipelines (phase 3), suggested triggers in `.switchboard.json` (phase 4).
+- Not yet: Changes requested and A command (phase 2), pipelines (phase 3), suggested triggers in `.seshboard.json` (phase 4).
 
 ### 5.9 VS Code companion and context tray ([#42](https://github.com/estruyf/switchboard/issues/42))
 
 - **Context tray** ✅: chips above the message box, kept in the drafts store with the draft (`context`), from drops, the `@` list, the Add context picker (⌘⇧A) and the companion. Sending turns them into `@path#L12-40` mentions and fenced text (`promptWithContext`).
 - **Socket and contract** ✅: `packages/engine/src/companion/` listens on a Unix socket with a token in `engine.json` (`0600` in `0700`); the contract is `packages/protocol/src/companion.ts` (`hello`, `sessions.list`, `sessions.watch`, `context.add`, `session.reveal`, `sessions.changed`). Windows report focus (`companion.focus`), receive `companion.context` and confirm with `companion.received`.
-- **Extension** ✅ (`apps/vscode-extension`): selection, file, Explorer multi-select, open editors and tab groups, problems, terminal selection, Source Control; the focused session or a quick pick with New session; a status bar item; launching Switchboard when it isn't running. Text from files excluded in VS Code, ignored by git or denied by `Read` rules is never sent.
-- **Prompts in VS Code** ✅: `sessions.list` / `sessions.changed` carry the listed sessions' `prompts`, and `prompt.respond` answers them; the extension shows each as a notification (permission, question, plan) and offers **Fix in Switchboard** as a quick fix on errors and warnings.
+- **Extension** ✅ (`apps/vscode-extension`): selection, file, Explorer multi-select, open editors and tab groups, problems, terminal selection, Source Control; the focused session or a quick pick with New session; a status bar item; launching Seshboard when it isn't running. Text from files excluded in VS Code, ignored by git or denied by `Read` rules is never sent.
+- **Prompts in VS Code** ✅: `sessions.list` / `sessions.changed` carry the listed sessions' `prompts`, and `prompt.respond` answers them; the extension shows each as a notification (permission, question, plan) and offers **Fix in Seshboard** as a quick fix on errors and warnings.
 - **Continue in VS Code** ✅: `session.continueInEditor` stops the host, waits for it to exit, opens the folder, then `vscode://anthropic.claude-code/open?session=<id>`.
 - **Release** ✅: `release-vscode.yml` publishes to the Marketplace and Open VSX on a `vscode-v*` release, a `#release #vscode` commit on main, or by hand.
-- Later: "Ask about these lines" from the Changes panel, the terminal's selection or a failed action's output as chips, closing the Claude Code tab when continuing in Switchboard, and a test against the Claude Code extension's own `ide` server.
+- Later: "Ask about these lines" from the Changes panel, the terminal's selection or a failed action's output as chips, closing the Claude Code tab when continuing in Seshboard, and a test against the Claude Code extension's own `ide` server.
 
 ### 5.10 Quick questions ✅
 
@@ -364,7 +364,7 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 | **1 · Foundation** ✅ done | Monorepo, Electron shell, engine utilityProcess, MessagePort RPC, SQLite cache | Window opens, engine responds over typed RPC. Verified by `npm run smoke`: UI talking to the engine in ~230 ms warm, 0.1 ms round trip, automatic recovery from an engine crash |
 | **2 · Discovery** ✅ done | Indexer, sessions registry watcher, sidebar, read-only transcript viewer, live tail of external sessions | All existing sessions browsable; running CLI sessions show as live. Transcript formats are read through the SDK (`listSessions`, `getSessionInfo`, `getSessionMessages`), so the app parses only the registry and the `entrypoint` field itself. Full-text search indexing moves to Phase 5 with global search |
 | **3 · Owned sessions** ✅ done | Create (current folder or worktree), resume, stream, composer, permissions, interrupt, status bar, **Open in editor**. Also: cache the login-shell environment (about 0.5 s per engine start today) | Verified against real Claude Code by `claude.live.test.ts` and the live smoke step: permission prompt in about 3 s, streaming, follow-up, stop/resume, interrupt, fork when open elsewhere. Only `PATH` is cached from the login shell, never the full environment | Can do a full day's work in the app instead of the terminal |
-| **4 · Rich rendering + actions** ✅ done (terminal first) | Tool cards, diffs, todos, subagents, plan mode, AskUserQuestion, notifications, clickable file links; **PtyHost + project actions** (shell and prompt types, toolbar, palette, shortcuts, `runOnWorktreeCreate`, `.switchboard.json`) | Verified in the app and against real Claude Code: inline diffs, todo checklist and strip, subagent transcripts (from `agent-<id>.meta.json`), Shiki highlighting loaded on demand, plan cards; project actions (shell in terminal tabs, prompts, `.switchboard.json` with per-command trust, shortcuts, worktree setup before the first prompt); notifications and dock badge from main's own engine connection |
+| **4 · Rich rendering + actions** ✅ done (terminal first) | Tool cards, diffs, todos, subagents, plan mode, AskUserQuestion, notifications, clickable file links; **PtyHost + project actions** (shell and prompt types, toolbar, palette, shortcuts, `runOnWorktreeCreate`, `.seshboard.json`) | Verified in the app and against real Claude Code: inline diffs, todo checklist and strip, subagent transcripts (from `agent-<id>.meta.json`), Shiki highlighting loaded on demand, plan cards; project actions (shell in terminal tabs, prompts, `.seshboard.json` with per-command trust, shortcuts, worktree setup before the first prompt); notifications and dock badge from main's own engine connection |
 | **5 · Power** ✅ done | Free-form terminal tab, diff panel and rewind, worktree finishing actions, search, fork, MCP/skills panels, palette | Done: Changes panel (uncommitted or vs base, stage/unstage/revert, reverted new files to the Trash), undo file changes since a prompt (`rewindFiles`, previewed first), fork from any reply and edit-and-resend (`forkSession` up to a message), worktree finishing (commit with Claude, merge, push + `gh pr create`, remove with branch), full-text search (FTS5, indexed in the background, ⌘⇧F jumps to the message), ⌘K palette, Tools window (MCP status/toggle/reconnect live, skills, agents, plugins), and two sessions side by side. Verified by unit tests, the smoke test and the live smoke step |
 | **6 · Ship** (packaging, signing and notarization ✅ done) | Perf CI, code signing and notarization, auto-update, crash reporting (opt-in) | Signed DMG and auto-updates. Done so far: `npm run dist` builds an unsigned arm64 `.app` and `.dmg` (249 MB / 113 MB) with electron-builder; the SDK's bundled `claude` is left out (the user's own is used), `node-pty` is unpacked from the asar, and the full smoke test (live session included) passes against the packaged app. Signing (Developer ID, hardened runtime) and notarization are done too: `npm run dist:notarized` produces an app Gatekeeper accepts as *Notarized Developer ID*. Auto-update is done too: `electron-updater` checks the GitHub releases (Stable, or Beta pre-releases too), downloads when asked and installs on restart; the release workflow attaches the `.zip` and `latest-mac.yml` feed. Still to do: perf CI, crash reporting |
 | **7 · Windows** (all 3 steps done on Windows and macOS; Windows signing to set up) | The same features on Windows, then a signed installer that updates itself. The plan, findings and progress are in [docs/windows-support.md](docs/windows-support.md) | `npm run check` and `npm run smoke` pass on Windows and macOS; a signed Windows installer is attached to each release. Steps 1 (usable on Windows) and 2 (the same features) pass `npm run check` and all 59 smoke steps on Windows, and `npm run check` and the same smoke steps as `main` on macOS. Step 3 builds the installer and the release job, and leaves the macOS build as it was; it needs Windows signing set up and a first release |
@@ -379,7 +379,7 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 | SDK API churn | Pin the version and wrap the SDK in one `SessionHost` module; nothing else imports it |
 | Two writers on one transcript | Check the registry before resuming, and offer to fork or open a terminal instead |
 | Subscription auth or terms for third-party GUIs | ✅ Technically verified. Keep `ANTHROPIC_API_KEY` / `apiKeyHelper` as a fallback |
-| A malicious repo ships a harmful `.switchboard.json` action | Shared actions never run without a confirmation that shows the exact command, with approval tied to the command hash |
+| A malicious repo ships a harmful `.seshboard.json` action | Shared actions never run without a confirmation that shows the exact command, with approval tied to the command hash |
 | SDK throws asynchronously after interrupt/error results | Per-session try/catch and process-level guards (see §2A), plus a regression test that replays the spike's interrupt case |
 | GUI lags behind new CLI features | The embedded `claude` TUI tab is always available as an escape hatch |
 | Electron memory or startup weight | Measure from phase 1 against the budget in §6, keep the renderer lean, and lazy-load heavy panels such as the terminal and diff view |
@@ -394,6 +394,6 @@ Mods such as [claude-stats-mod](https://github.com/estruyf/claude-stats-mod) dra
 | Language & UI | **TypeScript (strict) + React 19** across every package |
 | Scope | **Desktop** (macOS first), with no web or mobile app; a paired phone can follow and steer sessions through **Remote** |
 | Workspace | **Current folder by default**, with an optional **new worktree**, matching Claude Code |
-| Name | **Switchboard** (working name) |
-| Project actions | **In MVP.** Shell or prompt actions, personal + optional `.switchboard.json`, shown in the toolbar and palette |
+| Name | **Seshboard** (working name) |
+| Project actions | **In MVP.** Shell or prompt actions, personal + optional `.seshboard.json`, shown in the toolbar and palette |
 | Open in editor | **In MVP.** Auto-detected editors, default editor, file:line links |

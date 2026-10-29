@@ -65,6 +65,25 @@ describe('AppIcon', () => {
     expect(dock).toEqual([join(DIR, 'graphite.png')]);
   });
 
+  it('puts the colourway back in the Dock after the working animation, Graphite included', () => {
+    const { fake, dock } = host('darwin');
+    const icon = new AppIcon(fake);
+    icon.apply('graphite');
+    expect(icon.dockFile()).toBe(join(DIR, 'graphite.png'));
+    icon.restore();
+    expect(dock).toEqual([join(DIR, 'graphite.png')]);
+    // Once the Dock was drawn on, going back to Graphite has to set it.
+    icon.apply('plum');
+    icon.apply('graphite');
+    expect(dock.at(-1)).toBe(join(DIR, 'graphite.png'));
+
+    const windows = host('win32');
+    const onWindows = new AppIcon(windows.fake);
+    onWindows.restore();
+    expect(onWindows.dockFile()).toBeUndefined();
+    expect(windows.windows[0]!.icons).toEqual([]);
+  });
+
   it('takes an unknown key as Graphite', () => {
     const { fake, dock } = host('darwin');
     const icon = new AppIcon(fake);

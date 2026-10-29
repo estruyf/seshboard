@@ -33,6 +33,14 @@ describe('theme colours', () => {
     }
   });
 
+  it('refuses a long run of spaces at once, and a value over 80 characters before the pattern runs', () => {
+    const started = Date.now();
+    expect(new RegExp(COLOR_PATTERN).test(`rgb(1${' '.repeat(50_000)}x`)).toBe(false);
+    expect(parseThemeFile({ format: 'seshboard-theme', name: 'x', mode: 'dark', colors: { bg: `rgb(1${' '.repeat(50_000)}x` } })).toHaveProperty('error');
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(toHex(parseColor('rgb(1 ,2,  3)')!)).toBe('#010203');
+  });
+
   it('converts to and from OKLCH without drift', () => {
     for (const hex of ['#ffffff', '#15181f', '#ffd43b', '#916c00', '#74c0fc', '#d1186b']) expect(toHex(fromOklch(toOklch(parseColor(hex)!)))).toBe(hex);
   });
@@ -78,7 +86,7 @@ describe('theme files', () => {
     expect(refused({ name: 'x'.repeat(49), version: 1, dark: {} })).toBe('name is longer than 48 characters.');
     expect(refused({ name: 'A', dark: {} })).toBe('version is missing.');
     expect(refused({ name: 'A', version: 1 })).toMatch(/neither a light nor a dark mode/);
-    expect(refused({ name: 'A', version: 2, dark: {} })).toMatch(/newer Switchboard/);
+    expect(refused({ name: 'A', version: 2, dark: {} })).toMatch(/newer Seshboard/);
     expect(refused([])).toMatch(/one JSON object/);
   });
 
@@ -100,7 +108,7 @@ describe('theme files', () => {
 
   it('checks syntax themes: the Shiki allowlist and inline TextMate themes', () => {
     expect(ok({ name: 'A', version: 1, dark: { syntax: 'solarized-dark' } }).theme.dark?.syntax).toBe('solarized-dark');
-    expect(refused({ name: 'A', version: 1, dark: { syntax: 'solarized-drak' } })).toBe('dark.syntax uses “solarized-drak”, which isn\'t one of the code themes Switchboard ships. Did you mean “solarized-dark”?');
+    expect(refused({ name: 'A', version: 1, dark: { syntax: 'solarized-drak' } })).toBe('dark.syntax uses “solarized-drak”, which isn\'t one of the code themes Seshboard ships. Did you mean “solarized-dark”?');
     expect(refused({ name: 'A', version: 1, dark: { syntax: 'zzzzzzzzzzzzzzzz' } })).not.toMatch(/Did you mean/);
     const inline = (rule: unknown) => refused({ name: 'A', version: 1, light: { syntax: { tokenColors: [rule] } } });
     expect(inline({ scope: 'comment', settings: { foreground: 'url(x)' } })).toMatch(/^light\.syntax\.tokenColors\[0\]\.settings\.foreground uses url/);

@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /*
- * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Switchboard: the same surfaces,
+ * The desktop app's tokens (apps/ui/src/styles.css, Demo Time), so the phone looks like Seshboard: the same surfaces,
  * text and status colours (needs you `warn`, working `accent-ink`, background `ok`, unread `unread`). It follows the
  * phone's light or dark mode, or the one picked in Appearance. A computer's theme overrides these on `<html>` (Theme,
  * `lib/themeApply.ts`), so a new token here goes in `PHONE_TOKENS` (`lib/theme.ts`) too.

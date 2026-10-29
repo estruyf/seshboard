@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { modKey } from '../../lib/shortcuts.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { guardMemoryEdits } from '../../state/memoryStore.ts';

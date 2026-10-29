@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Archive, ArchiveRestore, Ellipsis, FolderSearch, Info, PanelLeft, Pin, PinOff, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
-import { ARCHIVE_AFTER_DAYS, DELETE_AFTER_DAYS, MARK_READ_SECONDS } from '@switchboard/protocol/bridge';
+import { ARCHIVE_AFTER_DAYS, DELETE_AFTER_DAYS, MARK_READ_SECONDS } from '@seshboard/protocol/bridge';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { shortAge } from '../../lib/format.ts';

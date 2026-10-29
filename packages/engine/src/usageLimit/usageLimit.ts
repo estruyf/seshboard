@@ -1,7 +1,7 @@
 /**
  * Recognising a turn that a plan usage limit stopped, and when to resume it. Pure, so it is tested without Claude Code.
  */
-import type { LimitsState, RemoteLimitStanding } from '@switchboard/protocol';
+import type { LimitsState, RemoteLimitStanding } from '@seshboard/protocol';
 
 /** The API can still refuse right at the reset: a resume waits this long after it. */
 export const RESUME_GRACE_MS = 30_000;

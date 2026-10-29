@@ -96,6 +96,11 @@ export const SessionHostInfo = z.object({
   cacheAt: z.number().nullable().optional(),
   cacheTtl: z.enum(['5m', '1h']).nullable().optional(),
   error: z.string().nullable(),
+  /**
+   * After a failure (`state: 'error'`): how many messages you sent that Claude Code never got, because it failed before
+   * it started. `session.retry` sends them again. Missing: none.
+   */
+  unsent: z.number().int().optional(),
   startedAt: z.number(),
   /** When you last sent a message (null before the first). The Working list orders by it, so sessions don't trade places as they write. */
   promptedAt: z.number().nullable(),
@@ -121,6 +126,11 @@ export const SessionHostInfo = z.object({
   autoChoosing: z.boolean().optional(),
   /** Its profile is at a plan usage limit: what is queued waits, and new sessions in the profile wait too. */
   usageLimit: UsageLimitHit.nullable().optional(),
+  /**
+   * Keep awake until done (#241): the computer doesn't sleep until this session is done, background tasks and Up next
+   * included. The flag goes by itself once it is. Missing: off.
+   */
+  keepAwake: z.boolean().optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 
@@ -130,6 +140,8 @@ export const PermissionRequest = z.object({
   toolName: z.string(),
   toolUseId: z.string().nullable(),
   input: z.json(),
+  /** `input` is shorter than what Claude sent (a very long string): Allow approves all of it, so the card says so. */
+  truncated: z.boolean().optional(),
   /** Claude Code's own prompt text, e.g. "Claude wants to run npm test". */
   title: z.string().nullable(),
   description: z.string().nullable(),

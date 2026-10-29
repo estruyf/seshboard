@@ -53,7 +53,7 @@ export function PaletteDialogs() {
           body={
             <>
               The conversation and any subagent transcripts move to the {trashName()}, so you can restore them {restoreFrom()}. Files Claude changed in your project are not touched.
-              {runningHere && ' It is running in Switchboard and will be stopped first.'}
+              {runningHere && ' It is running in Seshboard and will be stopped first.'}
             </>
           }
           onConfirm={async () => {

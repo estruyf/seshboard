@@ -11,7 +11,8 @@ const colorRe = new RegExp(COLOR_PATTERN);
 /** A colour value; everything else (url(), var(), color-mix(), named colours, `;`, `}`) is refused. */
 const Color = z
   .string()
-  .max(80)
+  // `abort`: a longer value is refused before the pattern looks at it.
+  .max(80, { abort: true })
   .regex(colorRe, { error: COLOR_HINT })
   .meta({ description: 'A colour: #rgb, #rrggbb, #rrggbbaa, rgb(), hsl() or oklch().' });
 
@@ -108,7 +109,7 @@ export const ThemeFileSchema = z
     light: Mode.optional(),
     dark: Mode.extend({ terminal: Terminal.optional() }).optional(),
   })
-  .meta({ title: 'Switchboard theme', description: 'A colour theme for Switchboard. See docs/themes.md.' });
+  .meta({ title: 'Seshboard theme', description: 'A colour theme for Seshboard. See docs/themes.md.' });
 
 /** The JSON Schema for `$schema` (docs/switchboard-theme.schema.json is generated from this). */
 export function themeJsonSchema(): Record<string, unknown> {
@@ -164,7 +165,7 @@ export function closestShikiTheme(name: string): string | null {
 function syntaxProblem(value: unknown): { path: PropertyKey[]; message: string } {
   if (typeof value === 'string') {
     const guess = closestShikiTheme(value);
-    return { path: [], message: `uses ${shortValue(value)}, which isn't one of the code themes Switchboard ships.${guess ? ` Did you mean “${guess}”?` : ''}` };
+    return { path: [], message: `uses ${shortValue(value)}, which isn't one of the code themes Seshboard ships.${guess ? ` Did you mean “${guess}”?` : ''}` };
   }
   const parsed = InlineSyntaxSchema.safeParse(value);
   const issue = parsed.success ? undefined : parsed.error.issues[0];
@@ -182,7 +183,7 @@ function issueMessage(issue: z.core.$ZodIssue, value: unknown): string {
   return /^[a-z]/.test(issue.message) ? issue.message : `is not valid (${issue.message}).`;
 }
 
-/** Known keys at each level, to list the ones a file has that Switchboard ignores. */
+/** Known keys at each level, to list the ones a file has that Seshboard ignores. */
 const KNOWN: Record<string, readonly string[]> = {
   root: ['$schema', 'name', 'author', 'version', 'light', 'dark'],
   light: ['canvas', 'accent', 'colors', 'syntax'],
@@ -230,9 +231,9 @@ function clean(theme: z.infer<typeof ThemeFileSchema>): ThemeFile {
  * ignored; otherwise the first problem, with its path: "dark.colors.bg uses url(…). Themes can only hold colour values…".
  */
 export function parseThemeFile(raw: unknown): { theme: ThemeFile; ignored: string[] } | { error: string } {
-  if (!isObject(raw)) return { error: 'This is not a Switchboard theme: the file should hold one JSON object.' };
+  if (!isObject(raw)) return { error: 'This is not a Seshboard theme: the file should hold one JSON object.' };
   if (typeof raw.version === 'number' && raw.version > THEME_FORMAT) {
-    return { error: `This theme was made for a newer Switchboard (format ${raw.version}). Update Switchboard, then import it again.` };
+    return { error: `This theme was made for a newer Seshboard (format ${raw.version}). Update Seshboard, then import it again.` };
   }
   if (raw.light === undefined && raw.dark === undefined) return { error: 'This theme has neither a light nor a dark mode. It needs at least one.' };
   const parsed = ThemeFileSchema.safeParse(raw);

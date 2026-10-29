@@ -13,7 +13,7 @@ import signal from './signal.json';
 import solarized from './solarized.json';
 
 /**
- * The themes that ship with Switchboard, in picker order. They are theme files like any other and go
+ * The themes that ship with Seshboard, in picker order. They are theme files like any other and go
  * through the same validation as imports (main checks them at start, and the unit tests too), so the
  * format is used every day and can't drift. After the ported themes come the ones that match the app
  * icon's colourways (assets/app-icons), in the App icon picker's order.

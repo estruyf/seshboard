@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseBriefs, writeStub, type CatchUp, type SessionSummary, type TranscriptMessage, type WorktreePullRequest } from '@switchboard/protocol';
+import { parseBriefs, writeStub, type CatchUp, type SessionSummary, type TranscriptMessage, type WorktreePullRequest } from '@seshboard/protocol';
 import { openCacheDatabase, type CacheDatabase } from '../db/database.ts';
 import { git } from '../git/gitChanges.ts';
 import { clockTime } from './brief.ts';
@@ -40,6 +40,9 @@ describe('pull requests opened in a session', () => {
     expect(repoOfPrUrl('https://github.com/demo/switchboard/pull/12')).toBe('demo/switchboard');
     expect(baseOfCommand('gh pr create -B main --fill')).toBe('main');
     expect(baseOfCommand("gh pr create --base='feat/a'")).toBe('feat/a');
+    // No branch starts with `-`; git would read it as an option (`--output=…` writes a file).
+    expect(baseOfCommand('gh pr create --base=--output=/tmp/x')).toBeNull();
+    expect(baseOfCommand('gh pr create -B "-x"')).toBeNull();
     expect(baseOfCommand('gh pr create --fill')).toBeNull();
   });
 });
@@ -98,7 +101,7 @@ describe('LinkService', () => {
     });
 
   beforeEach(async () => {
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-links-')));
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-links-')));
     repo = join(dir, 'repo');
     await git(dir, ['init', '-q', '-b', 'main', repo]);
     await git(repo, ['config', 'user.email', 'test@example.com']);

@@ -18,9 +18,10 @@ export const COMPANION_INFO_FILE = 'engine.json';
 
 /**
  * The app's data folders (under `~/Library/Application Support`, `%APPDATA%` on Windows), in the order the extension prefers them:
- * the installed app, then a development build (`npm run dev`).
+ * the installed app, then a development build (`npm run dev`), then both by their names from before the rename (an
+ * app that couldn't move its folder keeps using it, and one older than the rename is still called that).
  */
-export const APP_DATA_FOLDERS = ['Switchboard', 'Switchboard Dev'] as const;
+export const APP_DATA_FOLDERS = ['Seshboard', 'Seshboard Dev', 'Switchboard', 'Switchboard Dev'] as const;
 
 /** What `engine.json` holds. */
 export interface CompanionInfo {

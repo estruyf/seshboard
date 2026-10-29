@@ -6,7 +6,7 @@ Mention another session in the message box, and Claude gets what it needs to kno
 
 Claude starts from that session's branch and opens the new pull request with that branch as its base, without you copying a branch name or a PR link.
 
-This note is the design. Phase 1 is built (see [Phase 1 as built](#phase-1-as-built)); [PLAN.md 5.11](../PLAN.md#511-session-linking) tracks the rest. Places in the code are named as they are on `main` at 0.0.23. The mockups are Round 36 in the Switchboard UI suggestions canvas: the `@` list, the sent message with **What Claude got**, and the parts (chip states, start from its branch, the stacked base, the session menu, `ask_session`, the phone).
+This note is the design. Phase 1 is built (see [Phase 1 as built](#phase-1-as-built)); [PLAN.md 5.11](../PLAN.md#511-session-linking) tracks the rest. Places in the code are named as they are on `main` at 0.0.23. The mockups are Round 36 in the Seshboard UI suggestions canvas: the `@` list, the sent message with **What Claude got**, and the parts (chip states, start from its branch, the stacked base, the session menu, `ask_session`, the phone).
 
 ## What exists today, and what it means for this design
 
@@ -32,7 +32,7 @@ The **Usage cost toggle** session finished an hour ago. It ran in the worktree `
 6. The engine makes the worktree itself from `worktree-usage-cost` (see [Start from its branch](#start-from-its-branch)), then, right before the prompt goes to Claude Code, expands the stub into the full brief: folder, branch, PR #148 (open, base `main`), the catch-up's lines and the last reply.
 7. Claude reads the brief, sees it is already on a branch based on `worktree-usage-cost`, builds the feature and runs `gh pr create --base worktree-usage-cost`.
 8. The PR detector sees `gh pr create` in this session's output and stores PR #151 for it, with base `worktree-usage-cost`. The new session's header shows **Builds on Usage cost toggle · #148**.
-9. If you open PR #151 with Switchboard's **Create pull request** dialog instead, it picks `worktree-usage-cost` as the base for you, with "Stacked on #148" under it.
+9. If you open PR #151 with Seshboard's **Create pull request** dialog instead, it picks `worktree-usage-cost` as the base for you, with "Stacked on #148" under it.
 
 ## UI
 
@@ -183,7 +183,7 @@ The expanded brief is part of your message in the transcript, so everything that
 | Has no PR | `pull request: none yet`. |
 | Its worktree is gone | `folder: … (removed)`. Branch and PR still come from the stored values. |
 | Is in another repository | Its own `project:` and `folder:`. See [Edge cases](#edge-cases) for reading its files. |
-| Runs under another profile | The same brief: it's built from Switchboard's own data, no Claude call. |
+| Runs under another profile | The same brief: it's built from Seshboard's own data, no Claude call. |
 | Was deleted | The chip turns into "This session is gone" in the box; on send the stub becomes `state: gone`. |
 
 ## Pull requests per session
@@ -191,14 +191,14 @@ The expanded brief is part of your message in the transcript, so everything that
 ### Where they come from
 
 1. **Opened in the session:** the indexer sees a Bash call whose command has `gh pr create` and a PR link in its output (`parsePrUrl`). Stored with `source: 'opened'`.
-2. **Opened by Switchboard:** `git.prCreate` stores the PR for the session it was started from (`source: 'opened'`).
+2. **Opened by Seshboard:** `git.prCreate` stores the PR for the session it was started from (`source: 'opened'`).
 3. **By branch:** the session's branch matched in `fetchPullRequests` (`source: 'branch'`). Any PR whose head is the session's branch counts as the session's own, whoever opened it (from the browser, another tool): for stacking, "the PR of that branch" is what you mean. `source` keeps the two apart for the UI.
 
 A PR link that only shows up in text (Claude mentions someone else's PR) is not stored.
 
 ### When and how it is detected
 
-In the incremental transcript pass that already reads every new message for search (`searchIndex.ts` with `transcript_indexed`), so sessions started outside Switchboard are covered too and nothing is read twice. Tool calls and their output are left out of search today; the PR pass reads them, the search text doesn't change.
+In the incremental transcript pass that already reads every new message for search (`searchIndex.ts` with `transcript_indexed`), so sessions started outside Seshboard are covered too and nothing is read twice. Tool calls and their output are left out of search today; the PR pass reads them, the search text doesn't change.
 
 ### Staleness
 
@@ -324,7 +324,7 @@ Claude Code's worktree setting only knows `fresh` and `head`, so for a branch th
 git -C <repo root> worktree add -b worktree-<name> <repo root>/.claude/worktrees/<name> <branch>
 ```
 
-then starts the session with that folder as `cwd` and no `extraArgs.worktree`. Same place and branch name as Claude Code's, so the session index, the Worktrees tab and cleanup treat it like any other: Switchboard tells a worktree by its path (`host/sessionFolder.ts`, `git/worktrees.ts`), not by who made it. Claude Code's own worktree setup (a `WorktreeCreate` hook, if a project has one) doesn't run for it; the docs page says so, and Switchboard's own setup actions (`runOnWorktreeCreate`) still do. A branch that only exists on the remote is fetched first (`origin/<branch>`). Git refusing (the branch is gone, the name is taken) fails `session.create` with git's first useful line (`firstUsefulLine`), and the form keeps everything.
+then starts the session with that folder as `cwd` and no `extraArgs.worktree`. Same place and branch name as Claude Code's, so the session index, the Worktrees tab and cleanup treat it like any other: Seshboard tells a worktree by its path (`host/sessionFolder.ts`, `git/worktrees.ts`), not by who made it. Claude Code's own worktree setup (a `WorktreeCreate` hook, if a project has one) doesn't run for it; the docs page says so, and Seshboard's own setup actions (`runOnWorktreeCreate`) still do. A branch that only exists on the remote is fetched first (`origin/<branch>`). Git refusing (the branch is gone, the name is taken) fails `session.create` with git's first useful line (`firstUsefulLine`), and the form keeps everything.
 
 ### Recording links
 
@@ -471,7 +471,7 @@ The design's open questions, as decided on 2026-10-18.
 1. **The brief is built in the engine, when Claude reads it,** not in the renderer at send: Up next and the queue send later, and the engine has the data. The stub in the text is the cost, and it is accepted.
 2. **No new field on `session.send` and `session.create`.** The stub in the text carries the link through every path that carries text.
 3. **`session_links` and `session_prs` are a cache** that a rebuild may drop: both can be read back from transcripts.
-4. **Start from its branch runs `git worktree add` in the engine.** Switchboard tells worktrees by their path, so one made at `.claude/worktrees/<name>` looks the same everywhere. A project's `WorktreeCreate` hook doesn't run for it; the docs page says so.
+4. **Start from its branch runs `git worktree add` in the engine.** Seshboard tells worktrees by their path, so one made at `.claude/worktrees/<name>` looks the same everywhere. A project's `WorktreeCreate` hook doesn't run for it; the docs page says so.
 5. **Any PR whose head is the session's branch counts,** not only one opened in the session. `source` keeps them apart.
 6. **No dragging a session onto the message box** for now (phase 4 at the earliest). The session menu and `@` cover it.
 7. **A `session` blank in saved prompts:** phase 2.

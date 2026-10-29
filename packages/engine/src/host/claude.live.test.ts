@@ -1,6 +1,6 @@
 /**
  * End-to-end against the real Claude Code CLI (costs a few cents of Haiku).
- * Opt-in: SWITCHBOARD_LIVE_CWD=/path/to/throwaway/git/repo npx vitest run claude.live
+ * Opt-in: SESHBOARD_LIVE_CWD=/path/to/throwaway/git/repo npx vitest run claude.live
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -17,10 +17,10 @@ import {
   type SessionHostInfo,
   type StreamDelta,
   type TranscriptMessage,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { createEngine } from '../engine.ts';
 
-const cwd = process.env.SWITCHBOARD_LIVE_CWD;
+const cwd = process.env.SESHBOARD_LIVE_CWD;
 const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 
 const until = async (what: string, check: () => boolean, timeoutMs = 90_000) => {
@@ -35,7 +35,7 @@ const texts = (messages: TranscriptMessage[]) =>
   messages.flatMap((m) => m.blocks.flatMap((b) => (b.type === 'text' ? [`${m.role}:${b.text.trim()}`] : [])));
 
 describe.skipIf(!cwd)('live Claude Code session', () => {
-  const dataDir = mkdtempSync(join(tmpdir(), 'switchboard-live-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-live-'));
   const engine = createEngine({ dataDir, onLog: (e) => e.level !== 'debug' && console.log(`[engine] ${e.level}: ${e.message}`) });
   const { port1, port2 } = new MessageChannel();
   engine.attach(messagePortTransport(asDomPort(port1)));
@@ -107,7 +107,7 @@ describe.skipIf(!cwd)('live Claude Code session', () => {
     const uuids = transcript.map((m) => m.uuid);
     expect(new Set(uuids).size).toBe(uuids.length);
 
-    // 6. The index picks it up as a Switchboard session.
+    // 6. The index picks it up as a Seshboard session.
     const listed = async () => (await client.call('sessions.list', {})).sessions.find((s) => s.id === sessionId);
     const deadline = Date.now() + 15_000;
     let summary = await listed();
@@ -155,8 +155,8 @@ describe.skipIf(!cwd)('live Claude Code session', () => {
     }
   }, 300_000);
 
-  it.skipIf(!process.env.SWITCHBOARD_LIVE_SUBAGENT)('loads a real subagent transcript from its Task call', async () => {
-    const [sessionId, toolUseId] = process.env.SWITCHBOARD_LIVE_SUBAGENT!.split(':');
+  it.skipIf(!process.env.SESHBOARD_LIVE_SUBAGENT)('loads a real subagent transcript from its Task call', async () => {
+    const [sessionId, toolUseId] = process.env.SESHBOARD_LIVE_SUBAGENT!.split(':');
     await until('index ready', () => true, 1);
     await new Promise((r) => setTimeout(r, 1_500));
     const result = await client.call('transcript.subagent', { sessionId: sessionId!, toolUseId: toolUseId! });
@@ -165,8 +165,8 @@ describe.skipIf(!cwd)('live Claude Code session', () => {
     expect(result.messages.length).toBeGreaterThan(0);
   });
 
-  it.skipIf(!process.env.SWITCHBOARD_LIVE_IMAGES)('serves images that Claude read, from a real transcript', async () => {
-    const sessionId = process.env.SWITCHBOARD_LIVE_IMAGES!;
+  it.skipIf(!process.env.SESHBOARD_LIVE_IMAGES)('serves images that Claude read, from a real transcript', async () => {
+    const sessionId = process.env.SESHBOARD_LIVE_IMAGES!;
     const { messages } = await client.call('transcript.get', { sessionId });
     const refs = messages.flatMap((m) => m.blocks.flatMap((b) => (b.type === 'tool_result' ? b.images : b.type === 'image' && b.ref ? [b.ref] : [])));
     const payload = JSON.stringify(messages).length;

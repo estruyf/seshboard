@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { useId, useState } from 'react';
-import type { GithubBlock } from '@switchboard/protocol/client';
+import type { GithubBlock } from '@seshboard/protocol/client';
 import { clockTime } from '../../lib/usageLimit.ts';
 import { typeWord } from '../github/githubText.ts';
 import { GithubStateIcon } from '../github/GithubParts.tsx';

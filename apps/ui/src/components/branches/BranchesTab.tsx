@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowRightLeft, Copy, Ellipsis, ExternalLink, GitBranch, Lock, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
-import type { BranchDeleteResult } from '@switchboard/protocol/client';
+import type { BranchDeleteResult } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { agoText } from '../../lib/format.ts';

@@ -1,7 +1,9 @@
-import { ArrowDownCircle, CheckCircle2, CircleAlert, LoaderCircle } from 'lucide-react';
+import { ArrowDownCircle, CheckCircle2, CircleAlert, Info, LoaderCircle } from 'lucide-react';
 import { useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { claudeUpdateToast } from '../../lib/claudeUpdate.ts';
+import { currentPlatform } from '../../lib/platform.ts';
+import { RENAME_NOTICE_KEY, renameNotice } from '../../lib/renameNotice.ts';
 import { updateToast } from '../../lib/updates.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -65,8 +67,49 @@ function Progress({ percent }: { percent: number }) {
   );
 }
 
+const renameNoticeDismissed = () => {
+  try {
+    return localStorage.getItem(RENAME_NOTICE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
 /**
- * News about updates to Switchboard and to Claude Code, on top of the toast stack. Closing an offer hides it until
+ * Switchboard is now Seshboard: what people coming from it may have to do once (pair again, put the shortcut back).
+ * It stays until it is dismissed, which the data folder remembers, whether the app updated itself or was installed again.
+ */
+function RenameNotice() {
+  const [dismissed, setDismissed] = useState(renameNoticeDismissed);
+  const notice = renameNotice(window.seshboard?.appInfo.fromSwitchboard ?? false, dismissed, currentPlatform());
+  if (!notice) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(RENAME_NOTICE_KEY, '1');
+    } catch {
+      // Shown again next time, which is better than never.
+    }
+    setDismissed(true);
+  };
+  return (
+    <ToastFrame
+      lead={<Info size={14} className="shrink-0 text-accent-ink" aria-hidden />}
+      title={notice.title}
+      body={notice.body}
+      actions={
+        <Button variant="primary" onClick={() => useSessions.getState().openSettings('remote')} data-rename-notice-action="remote">
+          Pair again
+        </Button>
+      }
+      onDismiss={dismiss}
+      dismissLabel="Dismiss"
+      data-rename-notice
+    />
+  );
+}
+
+/**
+ * News about updates to Seshboard and to Claude Code, on top of the toast stack. Closing an offer hides it until
  * the next step (or the next launch); closing "Updated" or a Claude Code version tells main or the engine it was seen.
  */
 export function UpdateToasts() {
@@ -83,6 +126,7 @@ export function UpdateToasts() {
 
   return (
     <>
+      <RenameNotice />
       {appToast && appKey && !hidden.has(appKey) && (
         <UpdateCard
           key={appKey}
@@ -94,14 +138,14 @@ export function UpdateToasts() {
             appToast.action && (
               <Button
                 variant="primary"
-                onClick={() => (appToast.action?.run === 'install' ? install() : window.switchboard?.update(appToast.action!.run))}
+                onClick={() => (appToast.action?.run === 'install' ? install() : window.seshboard?.update(appToast.action!.run))}
                 data-update-toast-action={appToast.action.run}
               >
                 {appToast.action.label}
               </Button>
             )
           }
-          onClose={() => (appToast.close === 'dismiss' ? window.switchboard?.update('dismiss') : hide(appKey))}
+          onClose={() => (appToast.close === 'dismiss' ? window.seshboard?.update('dismiss') : hide(appKey))}
           closeLabel={appToast.close === 'dismiss' ? 'Dismiss' : 'Not now'}
           data-update-toast={app?.status}
         />

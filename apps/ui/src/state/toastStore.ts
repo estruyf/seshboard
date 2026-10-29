@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ShortcutId } from '../lib/shortcuts.ts';
 
 /** A button on a toast: the one thing to do about it ("Start it"), or a second choice ("Review first"). */
 export interface ToastAction {
@@ -21,7 +22,7 @@ export interface Toast {
   /** The line, or the card's title. */
   message: string;
   /** A small icon before the message: added to the queue, a pull request created, a device connected (by its kind). */
-  icon?: 'queue' | 'pull-request' | 'phone' | 'browser' | 'computer' | 'shared';
+  icon?: 'queue' | 'pull-request' | 'phone' | 'browser' | 'computer' | 'shared' | 'archive';
   /** A coloured dot before the message instead (a theme's accent); a validated colour value. */
   dot?: string;
   /** A status dot in a theme colour: `ok` for something that became free, `error` for something that failed. */
@@ -32,6 +33,8 @@ export interface Toast {
   body?: string;
   /** A one-click way back, for about five seconds. */
   undo?: () => void;
+  /** The key that also undoes it where it was done (⌘Z in the sidebar), shown after Undo. */
+  undoShortcut?: ShortcutId;
   actions?: ToastAction[];
   /** How long it stays while visible; `TOAST_MS` when left out. */
   durationMs?: number;

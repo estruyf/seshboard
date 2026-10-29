@@ -10,7 +10,7 @@ import { ShellEnvironment } from './shellEnvironment.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-sys-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-sys-')));
   dirs.push(dir);
   return dir;
 };
@@ -146,6 +146,8 @@ describe('file search', () => {
     expect(await index.resolve(null, ['src/index.ts', '~/repo/docs'], home)).toEqual([null, join(dir, 'docs')]);
     // On Windows Claude may write them with backslashes.
     if (sep === '\\') expect(await index.resolve(dir, ['search\\suggestions.ts', '~\\repo\\docs'], home)).toEqual([join(dir, 'src', 'search', 'suggestions.ts'), join(dir, 'docs')]);
+    // A network path is never looked at: on Windows that would send the user's login to the server.
+    if (sep === '\\') expect(await index.resolve(dir, ['\\\\localhost\\c$\\Windows', '//localhost/c$/Windows'], home)).toEqual([null, null]);
   });
 
   it('walks shallow folders first, skips the home folder\'s Library and stops at its time budget', async () => {

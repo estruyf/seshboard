@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { COMPUTER_METHODS } from './computerConstants.ts';
 
 /**
- * Other computers: this Switchboard pairs with Remote on another computer, as a phone does, and shows that
+ * Other computers: this Seshboard pairs with Remote on another computer, as a phone does, and shows that
  * computer's sessions (docs/remote-access.md, "Other computers"). The engine keeps the connection; the app's
  * windows reach the other computer only through `computers.call`, with `COMPUTER_METHODS`: the remote contract minus
  * what only a browser needs.
@@ -31,7 +31,7 @@ export const Computer = z.object({
   /** Why it is offline or unpaired, in a sentence. */
   message: z.string().nullable(),
   retryAt: z.number().nullable(),
-  /** The other computer's Switchboard version, once connected. */
+  /** The other computer's Seshboard version, once connected. */
   version: z.string().nullable(),
   /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`), once connected. */
   features: z.array(z.string()),

@@ -30,16 +30,16 @@ const appDir = join(import.meta.dirname, '..');
 const outDir = join(appDir, '.smoke');
 rmSync(outDir, { recursive: true, force: true });
 
-// --packaged runs the built app (npm run dist) instead of the development build: Switchboard.app, or on Windows
+// --packaged runs the built app (npm run dist) instead of the development build: Seshboard.app, or on Windows
 // and Linux the unpacked folder for this computer's architecture.
 const packaged = process.argv.includes('--packaged');
 const unpacked = (os: string) => join(appDir, 'dist', process.arch === 'arm64' ? `${os}-arm64-unpacked` : `${os}-unpacked`);
 const packagedApp = () =>
   process.platform === 'win32'
-    ? join(unpacked('win'), 'Switchboard.exe')
+    ? join(unpacked('win'), 'Seshboard.exe')
     : process.platform === 'linux'
-      ? join(unpacked('linux'), 'switchboard')
-      : join(appDir, 'dist', 'mac-arm64', 'Switchboard.app', 'Contents', 'MacOS', 'Switchboard');
+      ? join(unpacked('linux'), 'seshboard')
+      : join(appDir, 'dist', 'mac-arm64', 'Seshboard.app', 'Contents', 'MacOS', 'Seshboard');
 const command = packaged ? packagedApp() : (createRequire(import.meta.url)('electron') as unknown as string);
 const started = performance.now();
 const childEnv: NodeJS.ProcessEnv = { ...process.env };
@@ -59,7 +59,7 @@ if (only) {
     console.error(`✗ --only ${patterns.map((pattern) => `"${pattern}"`).join(' ')} is not a valid pattern: ${(error as Error).message}`);
     process.exit(1);
   }
-  childEnv.SWITCHBOARD_SMOKE_ONLY = only;
+  childEnv.SESHBOARD_SMOKE_ONLY = only;
   console.log(`only the steps matching ${patterns.map((pattern) => `"${pattern}"`).join(' or ')}`);
 }
 
@@ -74,7 +74,7 @@ if (process.argv.includes('--demo')) {
   linkClaude(world.home);
   // The home folder is HOME on macOS and USERPROFILE on Windows; with CLAUDE_CONFIG_DIR, neither the app nor
   // Claude Code sees the real one.
-  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SWITCHBOARD_SMOKE_DEMO: '1' });
+  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SESHBOARD_SMOKE_DEMO: '1' });
   console.log(`demo home: ${world.home}`);
 }
 
@@ -88,7 +88,7 @@ if (process.platform !== 'win32') {
   const script = join(appDir, '..', '..', 'tests', 'fixtures', 'fake-gh.cjs');
   writeFileSync(fakeGh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`);
   chmodSync(fakeGh, 0o755);
-  childEnv.SWITCHBOARD_GH = fakeGh;
+  childEnv.SESHBOARD_GH = fakeGh;
   // The triggers step's repository: the step writes it, the fake answers triggers' calls from it while it exists.
   childEnv.FAKE_GH_TRIGGERS = join(outDir, 'fake-gh-triggers.json');
 }
@@ -104,36 +104,36 @@ const freePortNow = () =>
     });
   });
 const freePort = await freePortNow();
-const computerDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-computer-'));
+const computerDir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-computer-'));
 const computerLink = join(computerDir, 'link.txt');
 const otherComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
-  env: { ...process.env, SWITCHBOARD_DEMO_DIR: computerDir, SWITCHBOARD_DEMO_NAME: 'Smoke Mac', SWITCHBOARD_DEMO_LINK_FILE: computerLink, PORT: String(freePort) },
+  env: { ...process.env, SESHBOARD_DEMO_DIR: computerDir, SESHBOARD_DEMO_NAME: 'Smoke Mac', SESHBOARD_DEMO_LINK_FILE: computerLink, PORT: String(freePort) },
   stdio: 'ignore',
 });
-childEnv.SWITCHBOARD_SMOKE_COMPUTER_LINK = computerLink;
+childEnv.SESHBOARD_SMOKE_COMPUTER_LINK = computerLink;
 
 // The remote app on a phone: apps/remote served by Vite, and a made-up computer of its own ("Phone Mac") whose
 // pairing links point there. The app drives it in a phone-sized window (remotePhoneSmoke.ts).
 const [vitePort, phoneHubPort] = [await freePortNow(), await freePortNow()];
 const phoneAppUrl = `http://localhost:${vitePort}/remote/`;
 const remoteApp = spawn(process.execPath, [join(appDir, '..', '..', 'node_modules', 'vite', 'bin', 'vite.js'), '--port', String(vitePort), '--strictPort'], { cwd: join(appDir, '..', 'remote'), stdio: 'ignore' });
-const phoneDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-phone-'));
+const phoneDir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-phone-'));
 const phoneLink = join(phoneDir, 'link.txt');
 const phoneComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
-  env: { ...process.env, SWITCHBOARD_DEMO_DIR: phoneDir, SWITCHBOARD_DEMO_NAME: 'Phone Mac', SWITCHBOARD_DEMO_LINK_FILE: phoneLink, SWITCHBOARD_REMOTE_APP_URL: phoneAppUrl, PORT: String(phoneHubPort) },
+  env: { ...process.env, SESHBOARD_DEMO_DIR: phoneDir, SESHBOARD_DEMO_NAME: 'Phone Mac', SESHBOARD_DEMO_LINK_FILE: phoneLink, SESHBOARD_REMOTE_APP_URL: phoneAppUrl, PORT: String(phoneHubPort) },
   stdio: 'ignore',
 });
-childEnv.SWITCHBOARD_SMOKE_PHONE_LINK = phoneLink;
+childEnv.SESHBOARD_SMOKE_PHONE_LINK = phoneLink;
 
 // Claude Code mods: the test mod in a throwaway folder (Claude Code writes its types into a mod's folder), a throwaway
 // Claude config folder for its profile, and an empty folder for its session.
-const modsDir = mkdtempSync(join(tmpdir(), 'switchboard-smoke-mods-'));
+const modsDir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-mods-'));
 cpSync(join(appDir, '..', '..', 'tests', 'fixtures', 'smoke-mod'), join(modsDir, 'smoke-mod'), { recursive: true });
 for (const folder of ['config', 'project']) mkdirSync(join(modsDir, folder));
-childEnv.SWITCHBOARD_SMOKE_MODS = JSON.stringify({ pluginDir: join(modsDir, 'smoke-mod'), configDir: join(modsDir, 'config'), cwd: join(modsDir, 'project'), out: join(modsDir, 'started.json') });
+childEnv.SESHBOARD_SMOKE_MODS = JSON.stringify({ pluginDir: join(modsDir, 'smoke-mod'), configDir: join(modsDir, 'config'), cwd: join(modsDir, 'project'), out: join(modsDir, 'started.json') });
 
 const child = spawn(command, packaged ? [] : [appDir], {
-  env: { ...childEnv, SWITCHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
+  env: { ...childEnv, SESHBOARD_SMOKE_OUT: outDir, ELECTRON_ENABLE_LOGGING: '0' },
   stdio: 'inherit',
 });
 

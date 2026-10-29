@@ -1,4 +1,4 @@
-import { detectEol, flattenLinks, parseSections, sameHeading } from '@switchboard/protocol';
+import { detectEol, flattenLinks, parseSections, sameHeading } from '@seshboard/protocol';
 
 /** A file's lines with their line endings attached, so joining them gives the file back byte for byte. */
 const pieces = (text: string): string[] => (text === '' ? [] : text.split(/(?<=\n)/));

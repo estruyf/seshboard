@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectInfo } from '@switchboard/protocol/client';
+import type { ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders } from '../state/projectList.ts';
 import {
   INITIAL_QUESTION_CHOICES,
@@ -12,7 +12,7 @@ import {
   withQuestions,
 } from './questions.ts';
 
-const DIR = '/Users/me/Library/Application Support/Switchboard/questions';
+const DIR = '/Users/me/Library/Application Support/Seshboard/questions';
 
 const project = (root: string, added: boolean): ProjectInfo => ({
   root,

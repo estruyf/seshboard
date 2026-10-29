@@ -1,6 +1,6 @@
-import { mcpLabel, pathInside, toolStepLabel, type StepLabel } from '@switchboard/protocol/client';
+import { mcpLabel, pathInside, toolStepLabel, type StepLabel } from '@seshboard/protocol/client';
 
-export { gerund, type StepLabel } from '@switchboard/protocol/client';
+export { gerund, type StepLabel } from '@seshboard/protocol/client';
 
 /** One-line description of a tool call for its collapsed card. */
 export interface ToolSummary {

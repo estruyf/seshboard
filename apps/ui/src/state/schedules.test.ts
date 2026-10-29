@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { nextRuns, type Schedule, type ScheduleLastRun } from '@switchboard/protocol/client';
+import { nextRuns, type Schedule, type ScheduleLastRun } from '@seshboard/protocol/client';
 import { formOf, formProblem, inOneHour, lastRunLine, newForm, nextRunLine, ruleOf, scheduleLabel, toggleDay } from './schedules.ts';
 
 const savedTz = process.env.TZ;

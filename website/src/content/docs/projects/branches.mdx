@@ -58,7 +58,7 @@ On the branch the project is on, the menu has **Switch to &lt;base&gt;** instead
 
 - Uncommitted changes come along to the other branch. When git would overwrite them, it refuses, and a toast says why.
 - While Claude is working in the project's folder, wait for it to finish, or stop it first.
-- When other sessions are open in the project's folder, Switchboard asks first: they see the new branch too.
+- When other sessions are open in the project's folder, Seshboard asks first: they see the new branch too.
 - A branch checked out in a worktree can't be switched to here. Open the worktree instead, from the [Worktrees tab](/projects/worktrees/).
 
 ## Delete branches
@@ -74,8 +74,8 @@ On the branch the project is on, the menu has **Switch to &lt;base&gt;** instead
 The confirmation lists every branch and what happens to it, and has three choices:
 
 - **Delete the local branches** (on). Uses `git branch -D`.
-- **Also delete them on &lt;remote&gt;** (off). Uses `git push <remote> --delete`. Deleting there removes them for everyone who uses the remote, and can't be undone from Switchboard.
-- **Keep a recovery ref for each local branch**. Before a branch is deleted, Switchboard saves where it pointed under `refs/switchboard/removed/<branch>-<date>`, so you can bring it back with git.
+- **Also delete them on &lt;remote&gt;** (off). Uses `git push <remote> --delete`. Deleting there removes them for everyone who uses the remote, and can't be undone from Seshboard.
+- **Keep a recovery ref for each local branch**. Before a branch is deleted, Seshboard saves where it pointed under `refs/switchboard/removed/<branch>-<date>`, so you can bring it back with git.
 
 A branch that would lose commits gets a warning, with **Keep this branch** to leave it out. That happens when a local branch has commits that aren't pushed anywhere, or when a branch on the remote has commits that aren't in the base branch.
 
@@ -106,7 +106,7 @@ When an item is greyed out, the reason is at the bottom of the menu.
 
 ## What is never deleted
 
-Switchboard never deletes:
+Seshboard never deletes:
 
 - the base branch, here or on any remote;
 - the remote's default branch;

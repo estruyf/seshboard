@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimatePhrase, sanitizeAutoModel, tierOf, type AutoPick, type ModelOption } from '@switchboard/protocol/client';
+import { estimatePhrase, sanitizeAutoModel, tierOf, type AutoPick, type ModelOption } from '@seshboard/protocol/client';
 import type { DisplayItem } from '../components/transcript/displayItems.ts';
 import { autoChipModel, effectiveModel, estimateLine, failedLine, modelChoices, modelLabel, otherTiers, shortReason, toggleTier } from './autoModel.ts';
 import { shouldSuggest, strongerTier, suggestReason, suggestSignals, type SuggestSignals } from './autoSuggest.ts';

@@ -1,4 +1,4 @@
-import type { RemoteMessage, RemoteTranscriptUpdate, StreamDelta } from '@switchboard/protocol/remote-client';
+import type { RemoteMessage, RemoteTranscriptUpdate, StreamDelta } from '@seshboard/protocol/remote-client';
 
 /**
  * A session's conversation on the phone, kept as a list of messages by uuid. Pure functions, so the merging is easy

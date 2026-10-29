@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WorktreeStatus } from '@switchboard/protocol/client';
+import type { WorktreeStatus } from '@seshboard/protocol/client';
 import { catchUpStep, gitSummary, planGit, stepCount, syncStep, showsViewPr } from './gitPlan.ts';
 
 const base: WorktreeStatus = {

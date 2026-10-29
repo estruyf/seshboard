@@ -15,3 +15,8 @@ website/public/remote/
 
 # Claude Code worktrees: git checkouts of their own, never part of the repository.
 .claude/worktrees/
+
+# /brag (github.com/latent-spaces/brag): the skills, installed locally, and the videos they make.
+.claude/skills/brag/
+.claude/skills/brag-slim/
+brag-output*/

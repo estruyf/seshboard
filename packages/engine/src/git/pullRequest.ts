@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate, type WorktreePullRequest, type WorktreeStatus } from '@switchboard/protocol';
+import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate, type WorktreePullRequest, type WorktreeStatus } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 
 /**
- * How to start the GitHub CLI: `gh` from the PATH, or the program `SWITCHBOARD_GH` names (the smoke test's fake, so
+ * How to start the GitHub CLI: `gh` from the PATH, or the program `SESHBOARD_GH` names (the smoke test's fake, so
  * it never reaches GitHub). Tests pass Node and a script, which works the same on Windows.
  */
 export interface GhCommand {
@@ -13,7 +14,7 @@ export interface GhCommand {
   args: string[];
 }
 
-export const defaultGh = (): GhCommand => ({ file: process.env.SWITCHBOARD_GH || 'gh', args: [] });
+export const defaultGh = (): GhCommand => ({ file: process.env.SESHBOARD_GH || 'gh', args: [] });
 
 /** gh never asks anything (there is no terminal), and prints plain text. */
 export const ghEnv = (env: Record<string, string>): Record<string, string> => ({ ...env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', GH_SPINNER_DISABLED: '1', NO_COLOR: '1' });
@@ -32,6 +33,9 @@ export interface RunResult {
  * matter. `input` goes to its stdin (the description: never on the command line or in a URL).
  */
 export function runGh(gh: GhCommand, args: string[], options: { cwd: string; env: Record<string, string>; input?: string; timeout?: number }): Promise<RunResult> {
+  const env = { ...process.env, ...ghEnv(options.env) };
+  const file = programPath(gh.file, env);
+  if (!file) return Promise.resolve({ code: null, stdout: '', stderr: `${gh.file} isn’t installed, or isn’t on the PATH.`, missing: true });
   return new Promise((resolvePromise) => {
     let stdout = '';
     let stderr = '';
@@ -42,7 +46,7 @@ export function runGh(gh: GhCommand, args: string[], options: { cwd: string; env
       clearTimeout(timer);
       resolvePromise(result);
     };
-    const child = spawn(gh.file, [...gh.args, ...args], { cwd: options.cwd, env: { ...process.env, ...ghEnv(options.env) }, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(file, [...gh.args, ...args], { cwd: options.cwd, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     const timer = setTimeout(() => {
       child.kill();
       done({ code: null, stdout, stderr: `${stderr}\ngh took too long and was stopped.`.trim(), missing: false });
@@ -291,7 +295,7 @@ export async function createPullRequest(
   if (request.web) {
     const url = (await git(status.path, ['remote', 'get-url', remote]).catch(() => '')).trim();
     const where = parseRemoteUrl(url);
-    if (!where) throw new PrFailure(failure('UNKNOWN', `Switchboard can't tell which website ${remote} is on.`));
+    if (!where) throw new PrFailure(failure('UNKNOWN', `Seshboard can't tell which website ${remote} is on.`));
     return { compareUrl: compareUrl(where, request.base, branch, request.title) };
   }
 

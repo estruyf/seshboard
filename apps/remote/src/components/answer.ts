@@ -1,4 +1,4 @@
-import type { PermissionDecision, RemotePrompt } from '@switchboard/protocol/remote-client';
+import type { PermissionDecision, RemotePrompt } from '@seshboard/protocol/remote-client';
 import type { Client } from './Connected.tsx';
 import { toast } from './Toasts.tsx';
 

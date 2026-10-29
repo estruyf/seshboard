@@ -1,4 +1,4 @@
-import { threadTitle, type AskEvent, type AskItem, type AskThreadList } from '@switchboard/protocol/client';
+import { threadTitle, type AskEvent, type AskItem, type AskThreadList } from '@seshboard/protocol/client';
 
 /*
  * Ask about this session, for one session, as the panel shows it: the threads the engine keeps plus what this window

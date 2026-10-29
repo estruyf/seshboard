@@ -1,5 +1,5 @@
 import { Pause, Pencil, Play, RefreshCw, Trash2 } from 'lucide-react';
-import type { Trigger } from '@switchboard/protocol/client';
+import type { Trigger } from '@seshboard/protocol/client';
 import { checkTriggerNow, deleteTrigger, openTriggerEditor, setTriggerPaused, useTriggers } from '../../state/triggersStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import type { MenuEntry } from '../Menu.tsx';

@@ -11,8 +11,13 @@ export function keepAwakeLabel(platform = currentPlatform()): string {
 /** The line under it (Settings shows it, and its search finds it). `caffeinate -s` only holds sleep off on power. */
 export function keepAwakeDetail(platform = currentPlatform()): string {
   return platform === 'darwin'
-    ? 'Stops sleep while Switchboard is open and on power. The display can still sleep.'
-    : 'Stops sleep while Switchboard is open. The display can still sleep.';
+    ? 'Stops sleep while Seshboard is open and on power. The display can still sleep.'
+    : 'Stops sleep while Seshboard is open. The display can still sleep.';
+}
+
+/** What Keep awake until done does, for a session's menu entry and pill: the Mac's caffeinate holds idle sleep off on battery too. */
+export function keepAwakeUntilDoneDetail(platform = currentPlatform()): string {
+  return `${thisComputerName(platform)} doesn't sleep until this session is done, background tasks included. Then this turns off by itself.`;
 }
 
 /** The status line while sleep is held off: "Keeping this Mac awake". */

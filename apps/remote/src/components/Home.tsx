@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
-import type { CatchUp, PermissionDecision, RemoteSession } from '@switchboard/protocol/remote-client';
+import type { CatchUp, PermissionDecision, RemoteSession } from '@seshboard/protocol/remote-client';
 import type { ListedPrompt, ListedSession, ListedSessions, ListedUsage } from '../lib/everywhere.ts';
 import { catchUpChips, reviewLabel } from '../lib/catchUp.ts';
 import { age, homeHeadline, toReview } from '../lib/groups.ts';

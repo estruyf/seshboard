@@ -14,7 +14,7 @@ export const modKey = (event: { metaKey: boolean; ctrlKey: boolean }) =>
   isMac() ? event.metaKey : event.ctrlKey;
 
 /**
- * In the terminal, which keys are Switchboard's rather than the shell's: ⌘ keys on macOS, where the shell has ⌃ and
+ * In the terminal, which keys are Seshboard's rather than the shell's: ⌘ keys on macOS, where the shell has ⌃ and
  * ⌥; Ctrl+Shift keys elsewhere, where Ctrl+R, Ctrl+C and the rest are the shell's (as in Windows Terminal and VS Code).
  */
 export const appKeyInTerminal = (event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>
@@ -211,7 +211,7 @@ export const shortcutGlyphs = (keys: string) =>
 export const sameShortcut = (a: string, b: string) =>
   normalizeShortcut(a) === normalizeShortcut(b);
 
-// The registry: every shortcut Switchboard has, in one place. Handlers ask `matches(event, id)`, buttons
+// The registry: every shortcut Seshboard has, in one place. Handlers ask `matches(event, id)`, buttons
 // show `keysFor(id)`, the command palette, the shortcuts sheet (⌘/), the actions editor's reserved keys
 // and the README table all read from here, so a key is written down once.
 
@@ -371,7 +371,7 @@ export const SHORTCUTS = [
     keys: ["mod+q mod+q"],
     action: "Quit",
     section: "general",
-    context: "Switchboard asks first",
+    context: "Seshboard asks first",
     note: "Press once if you turned that off",
     menu: true,
   },
@@ -474,6 +474,39 @@ export const SHORTCUTS = [
     id: "sidebar.archive",
     keys: ["middleclick"],
     action: "Archive a finished session",
+    section: "sessions",
+    context: "In the sidebar",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.quick-archive",
+    keys: ["e"],
+    action: "Archive the session, or unarchive it",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session",
+    note: "A working session asks first",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.quick-read",
+    keys: ["u"],
+    action: "Mark the session read or unread",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.quick-pin",
+    keys: ["p"],
+    action: "Pin or unpin the session",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.undo",
+    keys: ["mod+z"],
+    action: "Undo the last quick action",
     section: "sessions",
     context: "In the sidebar",
     where: "sidebar",
@@ -1125,6 +1158,14 @@ export const SHORTCUTS = [
     section: "new-session",
     when: (ctx) => ctx.view === "new-session",
     reserve: false,
+  },
+  {
+    id: "new-session.find",
+    keys: ["mod+f"],
+    action: "Find a project",
+    section: "new-session",
+    context: "Opens the full list with its filter",
+    when: (ctx) => ctx.view === "new-session" && ctx.focus !== "terminal",
   },
   {
     id: "new-session.start",

@@ -3,7 +3,7 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket, type RemoteContract, type RemotePairContract } from '@switchboard/protocol';
+import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket, type RemoteContract, type RemotePairContract } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_MAX_FAILURES, type PairingState } from './pairing.ts';
@@ -21,12 +21,14 @@ const noRun = (): never => {
 };
 
 async function setup(options: { backoff?: Backoff } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-remote-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const identity = generateKeyPair();
   const devices = new DeviceStore(cache.db);
   const states: PairingState[] = [];
   let onRequest: (state: PairingState) => void = () => {};
+  /** The sessions a phone interrupted: what reached a handler. */
+  const interrupted: string[] = [];
   const pairing = new Pairing((state) => {
     states.push(state);
     if (state.request) onRequest(state);
@@ -53,7 +55,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'limits.get': () => ({ limit: null }),
       'limits.resume': () => ({}),
       'limits.arm': () => ({}),
-      'session.interrupt': () => ({}),
+      'session.interrupt': ({ sessionId }) => (interrupted.push(sessionId), {}),
       'session.stopTask': () => ({}),
       'session.respond': () => ({}),
       'session.create': () => {
@@ -106,7 +108,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     cache.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  return { server, devices, pairing, identity, port, states, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
+  return { server, devices, pairing, identity, port, states, interrupted, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
 }
 
 async function pairPhone(env: Awaited<ReturnType<typeof setup>>, name = "Elio's iPhone") {
@@ -156,9 +158,11 @@ describe('Remote server', () => {
     const connecting = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     env.devices.revoke(deviceId);
     env.server.disconnect(deviceId);
-    void client<RemoteContract>(connecting.frames, connecting.session!).call('hello', { client: { version: '1' } }).catch(() => {});
+    // Its first message is a request that does something: it must not run.
+    void client<RemoteContract>(connecting.frames, connecting.session!).call('session.interrupt', { sessionId: '00000000-0000-4000-8000-000000000001' }).catch(() => {});
     expect(await connecting.closed).toBe(CLOSE.unknownDevice);
     expect(env.server.list()).toEqual([]);
+    expect(env.interrupted).toEqual([]);
   });
 
   it('keeps a phone that is denied, or too slow, out', async () => {
@@ -266,7 +270,7 @@ describe('request paths', () => {
 });
 
 describe('a paired device\'s kind', () => {
-  it('tells Switchboard on another computer, a phone and a computer\'s browser apart', () => {
+  it('tells Seshboard on another computer, a phone and a computer\'s browser apart', () => {
     expect(deviceKind('switchboard-desktop://switchboard', undefined)).toBe('computer');
     expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148')).toBe('phone');
     expect(deviceKind(APP_ORIGIN, 'Mozilla/5.0 (Linux; Android 15) Mobile Safari/537.36')).toBe('phone');

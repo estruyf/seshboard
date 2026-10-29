@@ -19,7 +19,7 @@ const write = (path: string, text: string) => {
 const memoryOf = (profile: string) => join(base, profile, 'projects', encodeProjectPath(root), 'memory');
 
 beforeEach(async () => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-memory-profiles-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-memory-profiles-')));
   root = join(base, 'project');
   mkdirSync(root, { recursive: true });
   await git(root, ['init', '-q', '-b', 'main']);

@@ -1,21 +1,65 @@
 # Changelog
 
-All notable changes to Switchboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
+All notable changes to Seshboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
 ## [Unreleased]
 
 ### Added
 
-- **Open a folder from the terminal.** Type `switchboard .` (or `seshboard .`, or just `sesh .`) in a terminal to open New session in that folder, like `code .` for VS Code. Install the commands in Settings › General › Terminal, or press ⌘K and choose **Install the switchboard command**. On a Mac they go in /usr/local/bin, which may ask for your password; on Windows Switchboard adds them to your PATH; on Linux they go in ~/.local/bin. A name another program already uses, such as the tmux tool sesh, is left alone.
+- **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another and a pulse of light runs along the cables, in whichever app icon you picked. With Reduce motion on, the jacks stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
+- **Keep awake until done.** Turn it on for a session in its **⋯** menu, or with **Keep awake until done** in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike the Keep awake setting, it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop. ([#241](https://github.com/estruyf/seshboard/issues/241))
+- **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
+
+### Fixed
+
+- **No more ghost agents.** An agent that Claude tried to send a message to after it finished, and that could not be woken up again (for example because its worktree was removed), no longer stays under Active in the Agents panel.
+- **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
+- **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
+- **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
+- **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
+- **Importing a memory named "memory" no longer hangs.** A memory whose name became `memory` (a `# Memory` heading, or one in another script) made the import never finish and the app stop responding. It is saved as `memory-2.md` now.
+- **Allow shows what it approves.** On the phone, a permission prompt shows the whole command, every line of it, instead of only the first. A prompt that doesn't fit the one line of a card on Home, or of a notification, opens its session to be answered there. A request too long to show in full says so on the computer and on the phone.
+- **A cloned repository asks before its first session, however you start it.** The question about the hooks and MCP servers a cloned repository brings came only from Start in the clone form. Now nothing of Claude Code runs in the repository until it is answered, also when you start from the palette or another window.
+- **A repository can't freeze Seshboard with a linked file.** Its `.seshboard.json`, `package.json` or Claude Code settings are read only when they are small, ordinary files. Saving shared settings never copies a file from elsewhere into the repository.
+- **On Windows, a repository's own `git.exe` or `gh.exe` never runs.** Seshboard now always starts the git and GitHub CLI installed on your PATH.
+- **On Windows, a network path in a reply or an HTML preview no longer sends your login.** Seshboard only looks at files on this computer's drives, so a `\\server\share` path can't make it connect to another computer.
+- **A large HTML file previews at once.** A page with many unclosed tags no longer takes minutes to open, an image named many times counts toward the page's limit each time, and the preview's security policy always applies.
+- **Nested Markdown blocks no longer freeze the window.** A Markdown block inside a Markdown block's preview shows as its source.
+- **Large rule files load at once.** A rule or memory file whose frontmatter has a very long list no longer takes seconds to read.
+- **A mod draws only inside its own frame.** A box a mod places freely stays in its band or pane, and never covers the line that names the mod.
+- **On Windows, `seshboard` with a folder name that has `&` in it** no longer runs part of the name as a command when the folder doesn't exist.
+- **A pull request's base branch can't make git write a file.** A base starting with `-` in a session's `gh pr create` is ignored when Seshboard lists the commits of a linked session.
+- **Approving a shared action approves what you saw.** If the project's `.seshboard.json` changes while the approval dialog is open, nothing is approved and you're asked to check again. A shared prompt that becomes a shell command, or starts running in new worktrees, needs approval again too. Shared actions you approved before ask once more.
+- **Files that are links stay untouched.** A `MEMORY.md` that is a link is no longer written through. Saving shared settings, and copying ignored files such as `.env` into a new worktree, never write through a link the repository holds.
+- **Undo after archiving on a phone works only on that phone.** Another paired phone can't bring the session or run back.
+- **A phone stops getting a session's messages once it leaves its list,** for example when the session is archived.
+- **Pairing a device is tied to its QR code.** A phone that scanned an earlier code, or one shown before you closed the dialog, can't pair with the current one.
+- **On the phone, drafts and Ask answers stay with their computer.** With more than one computer paired, a draft or an answer never shows on another computer's session.
+- **Installing the `seshboard` command on a Mac** writes the commands directly with the administrator's password, instead of copying them from a temporary folder.
+- **Theme colours with long runs of spaces are refused at once,** instead of slowing down a theme import.
+
+## [1.2.0] - 2026-10-28
+
+**Updating from Switchboard? Switchboard is now Seshboard.** After the update, pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again): a shortcut to Switchboard no longer opens it.
+
+### Added
+
+- **Quick actions on hover.** Hover a session in the sidebar to mark it read, pin it or archive it in one click. E, U and P do the same from the keyboard, with Undo. Archiving a session that is still working asks first. Settings › Sidebar › **Quick actions on hover** turns the buttons off, or down to Archive only.
+- **Open a folder from the terminal.** Type `seshboard .` (or just `sesh .`) in a terminal to open New session in that folder, like `code .` for VS Code. `switchboard .` works too. Install the commands in Settings › General › Terminal, or press ⌘K and choose **Install the seshboard command**. On a Mac they go in /usr/local/bin, which may ask for your password; on Windows Seshboard adds them to your PATH; on Linux they go in ~/.local/bin. A name another program already uses, such as the tmux tool sesh, is left alone.
 - **Light or dark in the remote app.** Open **Theme** in the remote app's **⋯** menu and set Appearance to Match System, Light or Dark. **Sync now** there asks your computers for their theme again.
 - **Keep catch-ups folded.** Turn on Settings › Conversation › Catch-up › **Show catch-ups folded** and a finished session shows the one-line strip instead of the full briefing. Press Space to open it. A turn that stopped with an error still opens in full. In the command palette (⌘K), **Catch-ups: show folded** and **Catch-ups: show in full** switch it.
 - **Sign in again without leaving the app.** When Claude Code's login expires, the session says it is signed out instead of showing a bare error. Click **Sign in** to sign in from the session's terminal panel; once you are signed in, the session continues where it left off. Signed in somewhere else? Click **Continue**.
 - **Middle-click to close a terminal tab.** Middle-click a tab in the terminal panel to close it.
 - **Reload MCP servers.** Added an MCP server to your Claude Code settings or a project's `.mcp.json` while sessions were open? Press ⌘K and choose **Reload MCP servers**: running sessions pick it up for their next message without restarting, and the refresh button in a session's Tools does the same for that session.
+- **Try again when Claude Code can't start.** When Claude Code fails before it gets your message, a notice above the message box says why, in full, and **Try again** starts it again and sends your message. It is in the command palette (⌘K) too. Other failures show in the same notice instead of being cut off next to the model chip.
 - **Mark as read after a few seconds.** A finished session you open is marked read once it has been in front of you for 3 seconds, also when it opens with a catch-up, which stays open until you fold it. Settings › Sessions › Mark as read after sets the seconds, or turn it off to mark sessions read yourself.
 
 ### Changed
 
+- **Switchboard is now Seshboard.** The app has a new name, and a new home at [seshboard.app](https://seshboard.app/). *Sesh* is short for sessions, the sessions your agents run, and *board* is the one app where you manage them all. Your sessions, settings and projects come along. After the update, do two things once, and a notice in the app reminds you: pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again), since a shortcut to Switchboard no longer opens it. Homebrew moves `estruyf/tap/switchboard` to `estruyf/tap/seshboard`, `seshboard://` links work next to `switchboard://` ones, and a project's shared `.switchboard.json` keeps working (new projects get `.seshboard.json`). New triggers use the `seshboard` label and `seshboard: working` and the like; triggers you already have keep their labels.
+- **A new address.** The website, the docs and the remote app moved from switchboard.struyfconsulting.com to seshboard.app, and the beta's from switch-dev.struyfconsulting.com to beta.seshboard.app. New pairing links open the remote app at seshboard.app. A phone paired at the old address keeps working until Seshboard 1.3.0; pair it again at the new one before then.
+- **A project list you can read.** New session lists projects in rows that show the whole name, in one to three columns depending on the space. A name too long for its row is cut in the middle, and its tooltip has it whole. **All N projects…** under the list opens them all, and **Find…** (⌘F) does the same with the filter ready. Projects on another computer get two letters instead of one, without the monitor badge.
+- **Settings groups its pages.** Settings groups its pages under App, Claude, Your work and Connect, with Backup, Diagnostics and About at the bottom. Search keeps the groups, and its results follow the same order. In the command palette (⌘K), Settings now lists Remote and Mods too.
 - **On a phone, sessions and New session match the new look:** round buttons, a cleaner catch-up, one composer, and an Options sheet instead of seven chips.
 - **The remote app on a phone:** a menu button on every screen, a drawer with Settings and your computer at the bottom, a full-width Home, and a Settings page.
 - **New session from the remote app's drawer.** In a session, open the drawer and tap **New session** under Home: no need to go back to Home first. Back from New session goes to your sessions.
@@ -23,7 +67,10 @@ All notable changes to Switchboard are listed here. Each release is also on the 
 
 ### Fixed
 
-- **No more surprise forks after a restart.** A session that was running a background task, such as a watcher, kept its Claude Code process running after Switchboard quit, restarted or updated. Switchboard then saw the session as open elsewhere, and your next message started a fork of it. Quitting now stops those processes. If one is still running after a crash, sending stops it and continues the same session.
+- **Long links stay inside toasts.** An error with a long URL or path, such as a failed update, now wraps inside the toast instead of running past its edge.
+- **No crash before a cache expires on Windows.** The reminder that a large session's cache expires in 5 minutes no longer stops the app with "A JavaScript error occurred in the main process" (Invalid language tag). Its cost shows in your system's format.
+- **Windows and Linux builds know your language.** They left out Chromium's English language files, so the app saw no language at all, which is what made the reminder before a cache expires crash on Windows.
+- **No more surprise forks after a restart.** A session that was running a background task, such as a watcher, kept its Claude Code process running after Seshboard quit, restarted or updated. Seshboard then saw the session as open elsewhere, and your next message started a fork of it. Quitting now stops those processes. If one is still running after a crash, sending stops it and continues the same session.
 - **Saved prompts in New session on another computer.** With another computer picked in Run on, type `/` or click a chip above the message box to use a saved prompt, as on this computer.
 - **New session starts on this computer.** The **+** button in the sidebar no longer opens New session on the other computer you picked last. It only goes back there when you typed a prompt for it that you haven't started yet.
 - **A pen for a prompt typed for another computer.** The **+** button in the sidebar now shows its pen when you typed a prompt in New session on another computer and haven't started it yet, as it does for this computer.

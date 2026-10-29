@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionsChanged, SessionSummary } from '@switchboard/protocol/client';
+import type { SessionsChanged, SessionSummary } from '@seshboard/protocol/client';
 import { createBatcher, mergeSessionChanges } from './sessionChanges.ts';
 
 // Only the id matters to the merge; the rest of a summary rides along.

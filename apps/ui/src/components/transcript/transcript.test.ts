@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TranscriptMessage } from '@switchboard/protocol/client';
+import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { agentReport, buildDisplayItems, groupActivity, type DisplayItem } from './displayItems.ts';
 import { activitySummary, gerund, stepLabel, toolSummary } from './toolSummary.ts';
 import { agentForTask, agentModel, agentRuns, shownAgent, splitAgents, taskForAgent } from './agentRuns.ts';
@@ -179,8 +179,8 @@ describe('agentRuns', () => {
 
   it('runs a background agent again when a message to it follows its last report (resumed after the usage limit)', () => {
     const report = (key: string, status: string, text: string) => ({ kind: 'agent-report', key, at: null, agentId: 'abc123', toolUseId: null, status, title: text, text }) as DisplayItem;
-    const send = (key: string, to: string, isError = false) =>
-      ({ ...tool(key, 'SendMessage', { to, message: 'Carry on' }), result: { text: '{"success":true}', isError, truncated: false, images: [], at: null } }) as DisplayItem;
+    const send = (key: string, to: string, isError = false, text = '{"success":true}') =>
+      ({ ...tool(key, 'SendMessage', { to, message: 'Carry on' }), result: { text, isError, truncated: false, images: [], at: null } }) as DisplayItem;
     const bg = agent('bg', launched('abc123'));
     const stopped = report('r1', 'failed', 'Agent terminated early: You\'ve hit your session limit');
     const state = (items: DisplayItem[]) => agentRuns(items, true)[0]!;
@@ -198,6 +198,9 @@ describe('agentRuns', () => {
     expect(state([bg, send('s0', 'abc123'), stopped]).running).toBe(false);
     expect(state([bg, stopped, send('s1', 'other')]).running).toBe(false);
     expect(state([bg, stopped, send('s1', 'abc123', true)]).running).toBe(false);
+    // Turned down without an error (its worktree is gone, so it can't be resumed): it stays stopped.
+    const refusedSend = send('s1', 'abc123', false, '{"success":false,"message":"Agent \\"abc123\\" could not be resumed: its worktree no longer exists"}');
+    expect(state([bg, stopped, refusedSend]).running).toBe(false);
     expect(agentRuns([bg, stopped, send('s1', 'abc123')], false)[0]!.running).toBe(false);
   });
 

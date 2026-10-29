@@ -1,4 +1,4 @@
-import { parseRemoteLink, type RemoteLink } from '@switchboard/protocol/remote-client';
+import { parseRemoteLink, type RemoteLink } from '@seshboard/protocol/remote-client';
 
 /** What the phone keeps after pairing with a computer (in IndexedDB, on this site only), one per computer. */
 export interface Paired {

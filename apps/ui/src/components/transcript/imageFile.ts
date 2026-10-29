@@ -1,4 +1,4 @@
-import { IMAGE_EXTENSIONS } from '@switchboard/protocol/bridge';
+import { IMAGE_EXTENSIONS } from '@seshboard/protocol/bridge';
 
 /**
  * A file name to suggest when saving an image from the conversation: `image-<message>-<n>.png`, from the

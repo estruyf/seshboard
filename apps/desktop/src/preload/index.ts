@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SwitchboardBridge, type ThemeCommand, type UpdateState } from '@switchboard/protocol/bridge';
-import type { ThemeFileCheck, ThemeState } from '@switchboard/protocol/theme-format';
+import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
 ipcRenderer.on(IpcChannel.enginePort, (event) => {
@@ -9,7 +9,7 @@ ipcRenderer.on(IpcChannel.enginePort, (event) => {
 
 const theme = (command: ThemeCommand) => ipcRenderer.invoke(IpcChannel.themeCommand, command);
 
-const bridge: SwitchboardBridge = {
+const bridge: SeshboardBridge = {
   platform: process.platform,
   requestEnginePort: () => ipcRenderer.send(IpcChannel.requestEnginePort),
   onEngineRestarted(listener) {
@@ -145,4 +145,4 @@ const bridge: SwitchboardBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld('switchboard', bridge);
+contextBridge.exposeInMainWorld('seshboard', bridge);

@@ -26,7 +26,7 @@ import {
   type ModsSurfaceState,
   type ModStatus,
   type ModToast,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { isUnsupported, ModsTimeout, UI_HOST_ANSWERS, type ModsBridge, type UiHost } from './modsBridge.ts';
 
 /** What a session's mods tell the windows (each becomes a `mods.*` event). */
@@ -44,7 +44,7 @@ export interface ModsEvents {
   diagnostics(level: LogLevel, message: string): void;
 }
 
-/** Switchboard draws mods as Claude Code's `desktop` surface does: a remote surface drawn as HTML. */
+/** Seshboard draws mods as Claude Code's `desktop` surface does: a remote surface drawn as HTML. */
 export const MODS_SURFACE = 'desktop';
 
 /** Requests whose schema has no `surface` (the client id says it). */

@@ -1,6 +1,6 @@
-import type { ExportCandidate, ImportEntry, MemoryImportPreview } from '@switchboard/protocol/client';
+import type { ExportCandidate, ImportEntry, MemoryImportPreview } from '@seshboard/protocol/client';
 
-/** What to paste in the Claude app to get its memory out as a list Switchboard can split. */
+/** What to paste in the Claude app to get its memory out as a list Seshboard can split. */
 export const PASTE_PROMPT =
   'Write out every memory you have of me, verbatim, as a Markdown list: one bullet per memory, in your own words as you stored them. No introduction and nothing after the list.';
 

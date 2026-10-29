@@ -6,6 +6,7 @@ import {
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
+  REMOTE_LEGACY_APP_URLS,
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
@@ -59,7 +60,7 @@ import {
   withRunStub,
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
 import { DeviceStore, type RemoteDevice } from './devices.ts';
@@ -100,7 +101,7 @@ export interface RemoteProject {
   root: string;
   name: string;
   exists: boolean;
-  /** Added to Switchboard by hand; folders that only have Claude Code sessions are not offered to a phone. */
+  /** Added to Seshboard by hand; folders that only have Claude Code sessions are not offered to a phone. */
   added: boolean;
   /** Position in your project list (null: after the ordered ones, by name). */
   order: number | null;
@@ -256,11 +257,19 @@ export interface RemoteHubOptions {
   catchUpWaitMs?: number;
 }
 
-/** The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`. */
+/**
+ * The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`, each with the
+ * address it had before seshboard.app (`REMOTE_LEGACY_APP_URLS`), so phones paired there keep working.
+ */
 export function remoteAppOrigins(appUrl: string, previewApp: boolean): string[] {
-  const origins = [new URL(appUrl).origin];
-  const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-  if (previewApp && !origins.includes(preview)) origins.push(preview);
+  const urls = [appUrl];
+  if (previewApp) urls.push(REMOTE_PREVIEW_APP_URL);
+  const origins: string[] = [];
+  for (const url of urls) {
+    for (const origin of [new URL(url).origin, ...(REMOTE_LEGACY_APP_URLS[url] ? [new URL(REMOTE_LEGACY_APP_URLS[url]).origin] : [])]) {
+      if (!origins.includes(origin)) origins.push(origin);
+    }
+  }
   return origins;
 }
 
@@ -306,10 +315,16 @@ export class RemoteHub {
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
   /**
-   * Sessions a phone archived, and when: it may take that back (Undo) for a while, although an archived session has
-   * left its list and nothing else may touch it.
+   * Sessions and runs a phone archived, by which phone and when: that phone may take it back (Undo) for a while,
+   * although an archived session has left its list and nothing else may touch it. Another phone may not.
    */
-  private readonly archivedFromPhone = new Map<string, number>();
+  private readonly archivedFromPhone = new Map<string, { deviceId: string; at: number }>();
+
+  /** Whether `device` may unarchive `id` without seeing it in its list: it archived it a moment ago. */
+  private mayUndoArchive(id: string, device: RemoteDevice): boolean {
+    const archived = this.archivedFromPhone.get(id);
+    return archived !== undefined && archived.deviceId === device.id && Date.now() - archived.at < UNDO_ARCHIVE_MS;
+  }
   private applying: Promise<void> = Promise.resolve();
   /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
   private appIcon: string = DEFAULT_APP_ICON;
@@ -333,7 +348,7 @@ export class RemoteHub {
       appVersion: options.appVersion,
       ...(options.computerName ? { computerName: options.computerName } : {}),
       appIcon: () => this.appIcon,
-      // Switchboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
+      // Seshboard on another computer pairs and connects as a phone does (docs/remote-access.md, Other computers).
       origins: () => [...remoteAppOrigins(this.appUrl, this.previewApp), REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
@@ -425,6 +440,14 @@ export class RemoteHub {
     this.changeTimer = setTimeout(() => {
       this.changeTimer = undefined;
       const snapshot = this.list();
+      // A session that left the list (archived, out of scope) is no longer a phone's to follow: its watch ends, so
+      // nothing more of it is sent.
+      const listed = new Set(snapshot.sessions.map((s) => s.id));
+      for (const [phone, watch] of this.watches) {
+        if (listed.has(watch.sessionId)) continue;
+        watch.stop();
+        this.watches.delete(phone);
+      }
       const json = JSON.stringify(snapshot);
       if (json === this.lastSessions) return;
       this.lastSessions = json;
@@ -552,7 +575,7 @@ export class RemoteHub {
     if (!this.identity) {
       const secret = await this.options.identity().catch(() => null);
       if (!secret) {
-        this.problem = { kind: 'failed', message: "Switchboard can't keep Remote's key in this computer's keychain." };
+        this.problem = { kind: 'failed', message: "Seshboard can't keep Remote's key in this computer's keychain." };
         return this.statusChanged();
       }
       this.identity = keyPairFromSecret(secret);
@@ -576,7 +599,7 @@ export class RemoteHub {
       return this.statusChanged();
     }
     if (tool === 'custom') {
-      // Your own tunnel or proxy: Switchboard only needs to know the address it forwards from.
+      // Your own tunnel or proxy: Seshboard only needs to know the address it forwards from.
       this.address = customUrl;
       this.tunnelState = customUrl ? { state: 'running', message: null } : { state: 'failed', message: 'Add the address that forwards to Remote.' };
       return this.statusChanged();
@@ -930,10 +953,10 @@ export class RemoteHub {
       },
       'runs.archive': async ({ runId, archived }) => {
         // As for a session: an archived run row leaves the list, and the phone that archived it may take that back.
-        const undo = !archived && Date.now() - (this.archivedFromPhone.get(runId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = !archived && this.mayUndoArchive(runId, device);
         if (!undo) this.checkRun(runId);
         await this.requirePipelines().archive(runId, archived);
-        if (archived) this.archivedFromPhone.set(runId, Date.now());
+        if (archived) this.archivedFromPhone.set(runId, { deviceId: device.id, at: Date.now() });
         else this.archivedFromPhone.delete(runId);
         this.sessionsChanged();
         return {};
@@ -979,9 +1002,9 @@ export class RemoteHub {
         return {};
       },
       'session.setFlags': ({ sessionId, pinned, archived }) => {
-        const undo = archived === false && pinned === undefined && Date.now() - (this.archivedFromPhone.get(sessionId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = archived === false && pinned === undefined && this.mayUndoArchive(sessionId, device);
         if (!undo) this.checkSession(sessionId);
-        if (archived === true) this.archivedFromPhone.set(sessionId, Date.now());
+        if (archived === true) this.archivedFromPhone.set(sessionId, { deviceId: device.id, at: Date.now() });
         else if (archived === false) this.archivedFromPhone.delete(sessionId);
         this.options.setFlags(sessionId, { ...(pinned !== undefined ? { pinned } : {}), ...(archived !== undefined ? { archived } : {}) });
         this.sessionsChanged();

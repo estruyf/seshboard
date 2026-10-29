@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteOptions } from '@switchboard/protocol/remote-client';
+import type { RemoteOptions } from '@seshboard/protocol/remote-client';
 import { autoDescription, autoFace, autoOn, changedFrom, defaultChoice, modelLabel, profilesOf, projectProfile, takesEffort } from './options.ts';
 
 const options: RemoteOptions = {

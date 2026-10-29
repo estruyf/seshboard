@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILT_IN_PIPELINES, isBuiltInPipeline, isSameOrInside, Pipeline, PipelineScope, PipelineStep, type PipelineSave } from '@switchboard/protocol';
+import { BUILT_IN_PIPELINES, isBuiltInPipeline, isSameOrInside, Pipeline, PipelineScope, PipelineStep, type PipelineSave } from '@seshboard/protocol';
 import { z } from 'zod';
 
 interface Row {
@@ -13,7 +13,7 @@ interface Row {
   updated_at: number;
 }
 
-/** The built-ins, as pipelines: never stored, so a new version of Switchboard brings their new version. */
+/** The built-ins, as pipelines: never stored, so a new version of Seshboard brings their new version. */
 export const builtInPipelines = (): Pipeline[] => BUILT_IN_PIPELINES.map((p) => ({ ...p, steps: p.steps.map((s) => ({ ...s })), builtIn: true, createdAt: 0, updatedAt: 0 }));
 
 /**

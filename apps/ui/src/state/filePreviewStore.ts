@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PreviewKind } from '@switchboard/protocol/client';
+import type { PreviewKind } from '@seshboard/protocol/client';
 import { useRightPanel } from './rightPanelStore.ts';
 
 /** What the preview shows of a file: the rendered page, or its text. */

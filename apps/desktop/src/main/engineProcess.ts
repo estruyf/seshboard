@@ -1,4 +1,5 @@
 import { utilityProcess, type MessagePortMain, type UtilityProcess } from 'electron';
+import { guarded } from './guarded.ts';
 
 export interface EngineProcessOptions {
   entry: string;
@@ -26,7 +27,7 @@ export class EngineProcess {
   start(): void {
     const args = ['--data-dir', this.options.dataDir, '--app-version', this.options.appVersion];
     const child = utilityProcess.fork(this.options.entry, args, {
-      serviceName: 'Switchboard Engine',
+      serviceName: 'Seshboard Engine',
       stdio: 'inherit',
     });
     this.child = child;
@@ -51,11 +52,14 @@ export class EngineProcess {
       if (this.stopping) return;
       const delay = Math.min(10_000, 200 * 2 ** this.consecutiveCrashes++);
       console.error(`[main] engine exited with code ${code}; restarting in ${delay}ms`);
-      setTimeout(() => {
-        if (this.stopping) return;
-        this.start();
-        this.options.onRestarted();
-      }, delay);
+      setTimeout(
+        guarded('engine restart', () => {
+          if (this.stopping) return;
+          this.start();
+          this.options.onRestarted();
+        }),
+        delay,
+      );
     });
   }
 

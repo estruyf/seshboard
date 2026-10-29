@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_MAX_IMAGES } from '@switchboard/protocol/remote-client';
+import { REMOTE_MAX_IMAGES } from '@seshboard/protocol/remote-client';
 import { addReason, ATTEMPTS, fitWithin, imageFiles, jpegName } from './images.ts';
 
 describe('fitWithin', () => {

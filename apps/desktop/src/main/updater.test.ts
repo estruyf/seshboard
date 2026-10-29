@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UpdateState } from '@switchboard/protocol/bridge';
+import type { UpdateState } from '@seshboard/protocol/bridge';
 import { readUpdateMarker, Updater, type UpdaterOptions } from './updater.ts';
 
 const dirs: string[] = [];
@@ -11,7 +11,7 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 const markerPath = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-update-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-update-'));
   dirs.push(dir);
   return join(dir, 'update-marker.json');
 };
@@ -144,7 +144,7 @@ describe('Updater', () => {
     expect(fake.installed).toBe(1);
     await vi.advanceTimersByTimeAsync(30_000);
     expect([stopped(), resumed()]).toEqual([2, 2]);
-    expect(updater.state).toMatchObject({ status: 'error', error: 'Switchboard didn’t restart to install the update.' });
+    expect(updater.state).toMatchObject({ status: 'error', error: 'Seshboard didn’t restart to install the update.' });
 
     // Quitting (stop) during an install that works is not a failure.
     await updater.install();

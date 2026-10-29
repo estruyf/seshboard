@@ -1,8 +1,8 @@
 {
   "name": "switchboard-companion",
-  "displayName": "Switchboard Companion",
-  "description": "Send the open file, selected lines, problems and terminal output from VS Code to a Switchboard session.",
-  "version": "0.2.0",
+  "displayName": "Seshboard Companion",
+  "description": "Send the open file, selected lines, problems and terminal output from VS Code to a Seshboard session.",
+  "version": "0.4.0",
   "license": "MIT",
   "publisher": "eliostruyf",
   "author": "Elio Struyf",
@@ -27,6 +27,7 @@
   "keywords": [
     "claude",
     "claude code",
+    "seshboard",
     "switchboard",
     "context",
     "ai"
@@ -38,7 +39,7 @@
     "untrustedWorkspaces": {
       "supported": true,
       "restrictedConfigurations": [
-        "switchboard.appDataFolder"
+        "seshboard.appDataFolder"
       ]
     },
     "virtualWorkspaces": false
@@ -50,182 +51,207 @@
   "contributes": {
     "commands": [
       {
-        "command": "switchboard.addSelection",
-        "title": "Add Selection to Switchboard",
-        "category": "Switchboard",
+        "command": "seshboard.addSelection",
+        "title": "Add Selection to Seshboard",
+        "category": "Seshboard",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "switchboard.addFile",
-        "title": "Add to Switchboard",
-        "category": "Switchboard",
+        "command": "seshboard.addFile",
+        "title": "Add to Seshboard",
+        "category": "Seshboard",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "switchboard.addOpenEditors",
-        "title": "Add Open Editors to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addActiveFile",
+        "title": "Add File to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.addEditorGroup",
-        "title": "Add Editors in This Group to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addOpenEditors",
+        "title": "Add Open Editors to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.addProblems",
-        "title": "Add Problems in This File to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addEditorGroup",
+        "title": "Add Editors in This Group to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.fixProblems",
-        "title": "Fix in Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addProblems",
+        "title": "Add Problems in This File to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.addWorkspaceProblems",
-        "title": "Add Problems in the Workspace to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.fixProblems",
+        "title": "Fix in Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.addTerminalSelection",
-        "title": "Add Terminal Selection to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addWorkspaceProblems",
+        "title": "Add Problems in the Workspace to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.addChanges",
-        "title": "Add Changes to Switchboard",
-        "category": "Switchboard"
+        "command": "seshboard.addTerminalSelection",
+        "title": "Add Terminal Selection to Seshboard",
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.answerPrompts",
+        "command": "seshboard.addChanges",
+        "title": "Add Changes to Seshboard",
+        "category": "Seshboard"
+      },
+      {
+        "command": "seshboard.newSession",
+        "title": "New Session",
+        "category": "Seshboard",
+        "icon": "$(add)"
+      },
+      {
+        "command": "seshboard.answerPrompts",
         "title": "Answer Prompts",
-        "category": "Switchboard"
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.showSessions",
+        "command": "seshboard.showSessions",
         "title": "Show Sessions",
-        "category": "Switchboard"
+        "category": "Seshboard"
       },
       {
-        "command": "switchboard.reconnect",
+        "command": "seshboard.reconnect",
         "title": "Reconnect",
-        "category": "Switchboard"
+        "category": "Seshboard"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "switchboard.addSelection",
-          "group": "switchboard@1",
+          "command": "seshboard.addSelection",
+          "group": "seshboard@1",
           "when": "resourceScheme == file || resourceScheme == untitled"
         },
         {
-          "command": "switchboard.addProblems",
-          "group": "switchboard@2",
+          "command": "seshboard.addActiveFile",
+          "group": "seshboard@2",
+          "when": "resourceScheme == file"
+        },
+        {
+          "command": "seshboard.addProblems",
+          "group": "seshboard@3",
           "when": "resourceScheme == file"
         }
       ],
       "editor/title": [
         {
-          "command": "switchboard.addSelection",
+          "command": "seshboard.addSelection",
           "group": "navigation@100",
-          "when": "resourceScheme == file && config.switchboard.editorTitleButton"
+          "when": "resourceScheme == file && config.seshboard.editorTitleButton"
         }
       ],
       "editor/title/context": [
         {
-          "command": "switchboard.addFile",
-          "group": "switchboard@1",
+          "command": "seshboard.addFile",
+          "group": "seshboard@1",
           "when": "resourceScheme == file"
         },
         {
-          "command": "switchboard.addEditorGroup",
-          "group": "switchboard@2"
+          "command": "seshboard.addEditorGroup",
+          "group": "seshboard@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "switchboard.addFile",
-          "group": "switchboard@1",
+          "command": "seshboard.addFile",
+          "group": "seshboard@1",
           "when": "resourceScheme == file"
         }
       ],
       "terminal/context": [
         {
-          "command": "switchboard.addTerminalSelection",
-          "group": "switchboard@1"
+          "command": "seshboard.addTerminalSelection",
+          "group": "seshboard@1"
         }
       ],
       "scm/resourceState/context": [
         {
-          "command": "switchboard.addChanges",
-          "group": "switchboard@1",
+          "command": "seshboard.addChanges",
+          "group": "seshboard@1",
           "when": "scmProvider == git"
         }
       ],
       "scm/resourceGroup/context": [
         {
-          "command": "switchboard.addChanges",
-          "group": "switchboard@1",
+          "command": "seshboard.addChanges",
+          "group": "seshboard@1",
           "when": "scmProvider == git"
         }
       ],
       "commandPalette": [
         {
-          "command": "switchboard.addFile",
+          "command": "seshboard.addFile",
+          "when": "false"
+        },
+        {
+          "command": "seshboard.addActiveFile",
           "when": "resourceScheme == file"
         },
         {
-          "command": "switchboard.fixProblems",
+          "command": "seshboard.fixProblems",
           "when": "resourceScheme == file"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "switchboard.addSelection",
+        "command": "seshboard.addSelection",
         "key": "alt+shift+k",
         "when": "editorTextFocus"
       },
       {
-        "command": "switchboard.addTerminalSelection",
+        "command": "seshboard.addTerminalSelection",
         "key": "alt+shift+k",
         "when": "terminalFocus && terminalTextSelected"
       }
     ],
     "configuration": {
-      "title": "Switchboard",
+      "title": "Seshboard",
       "properties": {
-        "switchboard.bringToFront": {
+        "seshboard.bringToFront": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Bring Switchboard to the front on the session when you add something to it. Turn off to add context quietly; it waits in the session's message box."
+          "markdownDescription": "Bring Seshboard to the front on the session when you add something to it. Turn off to add context quietly; it waits in the session's message box."
         },
-        "switchboard.statusBar": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show what needs you in Switchboard (for this workspace) in the status bar."
-        },
-        "switchboard.prompts": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show permission prompts, questions and plans from this workspace's sessions as notifications, and answer them in VS Code. Dismissing one leaves it waiting in Switchboard; **Switchboard: Answer Prompts** shows it again."
-        },
-        "switchboard.quickFix": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Offer **Fix in Switchboard** in the quick fixes of an error or warning: it adds the problem and its lines to a session."
-        },
-        "switchboard.editorTitleButton": {
+        "seshboard.addToOpenSession": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Show a button in the editor title bar that adds the selection (or the file) to Switchboard."
+          "markdownDescription": "Add straight to the session open in Seshboard when its folder holds what you add. Off, you pick the session each time: the open one is first, so Enter adds to it, then **New session** and the other sessions."
         },
-        "switchboard.appDataFolder": {
+        "seshboard.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show what needs you in Seshboard (for this workspace) in the status bar."
+        },
+        "seshboard.prompts": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show permission prompts, questions and plans from this workspace's sessions as notifications, and answer them in VS Code. Dismissing one leaves it waiting in Seshboard; **Seshboard: Answer Prompts** shows it again."
+        },
+        "seshboard.quickFix": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Offer **Fix in Seshboard** in the quick fixes of an error or warning: it adds the problem and its lines to a session."
+        },
+        "seshboard.editorTitleButton": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show a button in the editor title bar that adds the selection (or the file) to Seshboard."
+        },
+        "seshboard.appDataFolder": {
           "type": "string",
           "default": "",
           "scope": "application",
-          "markdownDescription": "Where Switchboard keeps its data, when it isn't in the usual place (a build started with `SWITCHBOARD_DATA_DIR`). Leave empty to find the installed app, then a development build."
+          "markdownDescription": "Where Seshboard keeps its data, when it isn't in the usual place (a build started with `SESHBOARD_DATA_DIR`). Leave empty to find the installed app, then a development build."
         }
       }
     }
@@ -237,7 +263,7 @@
     "package": "node scripts/build.ts --production && npx --yes @vscode/vsce@4 package --no-dependencies"
   },
   "devDependencies": {
-    "@switchboard/protocol": "*",
+    "@seshboard/protocol": "*",
     "@types/vscode": "~1.95.0",
     "esbuild": "^0.28.2"
   }

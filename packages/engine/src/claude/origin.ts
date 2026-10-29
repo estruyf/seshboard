@@ -1,6 +1,6 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
-import type { SessionOrigin } from '@switchboard/protocol';
+import type { SessionOrigin } from '@seshboard/protocol';
 
 /** Maps Claude Code's `entrypoint` value to a coarse origin for badges. */
 export function originFromEntrypoint(entrypoint: string | null | undefined): SessionOrigin {

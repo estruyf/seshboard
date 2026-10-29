@@ -1,7 +1,7 @@
-import type { PromptScope } from '@switchboard/protocol/client';
-import type { ColorScheme, SidebarStyle } from '@switchboard/protocol/bridge';
+import type { PromptScope } from '@seshboard/protocol/client';
+import type { ColorScheme, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
-import type { ActionIcon, HostState } from '@switchboard/protocol/client';
+import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
 import type { Direction } from '../../state/tiling.ts';
@@ -24,7 +24,7 @@ export interface PaletteSession {
   projectRoot: string | null;
   isWorktree: boolean;
   /** Running in this app (its model, effort and mode can change); null otherwise. */
-  host: { state: HostState; contextTokens: number | null; supportsEffort: boolean } | null;
+  host: { state: HostState; contextTokens: number | null; supportsEffort: boolean; keepAwake?: boolean } | null;
   /** Claude is working or waiting for you here, so it can be stopped. */
   running: boolean;
   /** What it is waiting for. */
@@ -35,6 +35,8 @@ export interface PaletteSession {
   prompts: number;
   /** Claude has replied at least once (Copy last reply). */
   hasReply: boolean;
+  /** Claude Code failed before it got this many of your messages: Try again sends them. */
+  unsent: number;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */

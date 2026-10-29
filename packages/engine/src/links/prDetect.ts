@@ -1,4 +1,4 @@
-import type { TranscriptMessage } from '@switchboard/protocol';
+import type { TranscriptMessage } from '@seshboard/protocol';
 import { parsePrUrl } from '../git/pullRequest.ts';
 
 /** A pull request a session opened: `gh pr create` ran in it and printed the link. */
@@ -20,10 +20,10 @@ export function repoOfPrUrl(url: string): string | null {
   return match ? match[1]! : null;
 }
 
-/** The `--base` a `gh pr create` command asked for. */
+/** The `--base` a `gh pr create` command asked for. Never one starting with `-`: no branch does, and git would take it for an option. */
 export function baseOfCommand(command: string): string | null {
   const match = /(?:--base|-B)(?:=|\s+)(["']?)([^\s"']+)\1/.exec(command);
-  return match ? match[2]! : null;
+  return match && !match[2]!.startsWith('-') ? match[2]! : null;
 }
 
 /**

@@ -1,10 +1,28 @@
-import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { existsSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { z } from 'zod';
-import { RpcError } from '@switchboard/protocol';
+import { RpcError } from '@seshboard/protocol';
+import { readRepoFile } from '../system/repoFile.ts';
 
 /** The project's shared settings, committed with the repository: actions, prompts and the icon. */
-export const SHARED_FILE = '.switchboard.json';
+export const SHARED_FILE = '.seshboard.json';
+/**
+ * Its name from before the rename. A project that has it keeps it (teammates on older versions read only that one):
+ * it is read and written where it is, and a new file gets the new name.
+ */
+export const LEGACY_SHARED_FILE = '.switchboard.json';
+
+/** The project's shared file: `.seshboard.json`, or `.switchboard.json` when only that one is there. */
+export function sharedFilePath(projectRoot: string): string {
+  const file = join(projectRoot, SHARED_FILE);
+  if (existsSync(file)) return file;
+  const legacy = join(projectRoot, LEGACY_SHARED_FILE);
+  return existsSync(legacy) ? legacy : file;
+}
+
+/** Whether a file name is the shared file's, by either name. */
+export const isSharedFileName = (name: string) => name === SHARED_FILE || name === LEGACY_SHARED_FILE;
 
 /**
  * The entries of one list in the file (`actions`, `prompts`). The file is hand-written, so entries are loose records
@@ -28,17 +46,18 @@ export interface SharedFileRead {
 
 /** Reads the project's shared file. A missing file is no error; one that doesn't read says why. */
 export function readSharedFile(projectRoot: string): SharedFileRead {
-  const file = join(projectRoot, SHARED_FILE);
+  const file = sharedFilePath(projectRoot);
+  const name = basename(file);
   if (!existsSync(file)) return { file, data: null, error: null, mtime: 0 };
   let raw: unknown;
   let mtime = 0;
   try {
     mtime = statSync(file).mtimeMs;
-    raw = JSON.parse(readFileSync(file, 'utf8'));
+    raw = JSON.parse(readRepoFile(file));
   } catch (error) {
-    return { file, data: null, error: `${SHARED_FILE}: ${(error as Error).message}`, mtime };
+    return { file, data: null, error: `${name}: ${(error as Error).message}`, mtime };
   }
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { file, data: null, error: `${SHARED_FILE}: expected { "actions": [...] }`, mtime };
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { file, data: null, error: `${name}: expected { "actions": [...] }`, mtime };
   return { file, data: raw as Record<string, unknown>, error: null, mtime };
 }
 
@@ -50,35 +69,40 @@ function indentOf(text: string): string {
 
 /**
  * Changes the project's shared file: `change` gets what it holds (an empty object when there is no file yet) and
- * returns what it should hold. Keys keep their order, keys Switchboard doesn't know stay, and the indent stays, so a
+ * returns what it should hold. Keys keep their order, keys Seshboard doesn't know stay, and the indent stays, so a
  * commit shows only what changed. Written to a file next to it, then moved over it, so it is never half written.
  * Refuses (WRITE_FAILED, with the reason) a file that doesn't read, rather than overwrite what someone wrote.
  */
 export function writeSharedFile(projectRoot: string, change: (data: Record<string, unknown>) => Record<string, unknown>): void {
   const read = readSharedFile(projectRoot);
-  if (read.error) throw new RpcError('WRITE_FAILED', `The project's ${SHARED_FILE} can't be read, so Switchboard won't overwrite it. Fix it first. (${read.error.replace(`${SHARED_FILE}: `, '')})`);
+  const name = basename(read.file);
+  if (read.error) throw new RpcError('WRITE_FAILED', `The project's ${name} can't be read, so Seshboard won't overwrite it. Fix it first. (${read.error.replace(`${name}: `, '')})`);
   let indent = '  ';
   let finalNewline = true;
   if (read.data) {
-    const text = readFileSync(read.file, 'utf8');
+    const text = readRepoFile(read.file);
     indent = indentOf(text);
     finalNewline = text.endsWith('\n');
   }
   const next = change(read.data ?? {});
   const body = `${JSON.stringify(next, null, indent)}${finalNewline ? '\n' : ''}`;
-  const temp = `${read.file}.${process.pid}.tmp`;
+  // A name no one can guess, made new (`wx`): a link the repository holds at a known name would have the write go
+  // through it, to a file elsewhere.
+  const temp = `${read.file}.${randomBytes(6).toString('hex')}.tmp`;
+  let made = false;
   try {
-    writeFileSync(temp, body);
+    writeFileSync(temp, body, { flag: 'wx' });
+    made = true;
     renameSync(temp, read.file);
   } catch (error) {
     try {
-      if (existsSync(temp)) unlinkSync(temp);
+      if (made) unlinkSync(temp);
     } catch {
-      // Left behind; the next write replaces it.
+      // Left behind.
     }
     const code = (error as NodeJS.ErrnoException).code;
     const why = code === 'EACCES' || code === 'EPERM' ? "you don't have permission to change it" : code === 'EROFS' ? 'the folder is read-only' : code === 'ENOENT' ? 'the project folder is gone' : (error as Error).message;
-    throw new RpcError('WRITE_FAILED', `The project's ${SHARED_FILE} can't be written: ${why}.`);
+    throw new RpcError('WRITE_FAILED', `The project's ${name} can't be written: ${why}.`);
   }
 }
 

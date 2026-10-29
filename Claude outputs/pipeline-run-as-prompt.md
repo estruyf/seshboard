@@ -111,7 +111,7 @@ Treat a run as one thing in the sidebar: the parent (a session or a run row) and
    - Never archive a run that keeps going in the background.
 4. **Deleting.** Delete… on a run row or a parent opens a confirm:
    - Title: "Delete <title>?"
-   - Body: "The run and its 4 sub-sessions go away from Switchboard. Their Claude Code transcripts stay on disk."
+   - Body: "The run and its 4 sub-sessions go away from Seshboard. Their Claude Code transcripts stay on disk."
    - The buttons are Delete, and Cancel.
    - A checkbox "Keep the sub-sessions" (off). With it on, the run row goes away and its sub-sessions stay as normal sessions on their own. That's what `PipelineRunner.remove` already does (`runner.ts`, `remove`).
    - Deleting a running run stops it first, without a second question.

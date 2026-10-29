@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { appIconKey, DEFAULT_APP_ICON, desktopIconFiles, type AppIconKey } from '@switchboard/protocol/bridge';
+import { appIconKey, DEFAULT_APP_ICON, desktopIconFiles, type AppIconKey } from '@seshboard/protocol/bridge';
 
 /** What `AppIcon` needs from Electron, so a test can stand in for it. */
 export interface AppIconHost {
@@ -41,6 +41,23 @@ export class AppIcon {
     this.#changed = true;
     if (this.host.platform === 'darwin') this.host.dock?.setIcon(file);
     else for (const win of this.host.windows()) if (!win.isDestroyed()) win.setIcon(file);
+  }
+
+  /** The colourway's 1024px Dock file on macOS, which the working animation draws its frames from. */
+  dockFile(): string | undefined {
+    return this.host.platform === 'darwin' ? this.#file() : undefined;
+  }
+
+  /**
+   * The colourway in the Dock again, after the working animation drew over it. Graphite included: the Dock no longer
+   * shows the bundle's icon once something else was set.
+   */
+  restore(): void {
+    if (this.host.platform !== 'darwin') return;
+    const file = this.#file();
+    if (!file) return;
+    this.#changed = true;
+    this.host.dock?.setIcon(file);
   }
 
   /**

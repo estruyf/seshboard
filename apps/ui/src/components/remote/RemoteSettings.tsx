@@ -1,6 +1,6 @@
 import { Check, ChevronRight, Copy, ExternalLink, Globe, Laptop, Pencil, ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import type { RemoteSettings as Settings, RemoteStatus, RemoteTunnel } from '@switchboard/protocol/client';
+import type { RemoteSettings as Settings, RemoteStatus, RemoteTunnel } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ComputersSettings } from '../computers/ComputersSettings.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -76,7 +76,7 @@ export function RemoteSettings() {
   };
 
   if (!status) return (error ?? loadError) ? <Notice tone="error">{error ?? loadError}</Notice> : <p className="py-6 text-ui text-muted">Checking…</p>;
-  if (!status.available) return <Notice className="my-6">Remote isn't available in this build of Switchboard.</Notice>;
+  if (!status.available) return <Notice className="my-6">Remote isn't available in this build of Seshboard.</Notice>;
 
   const { settings } = status;
   // Open by default while Remote is off (you are setting it up), folded once it runs.
@@ -160,7 +160,7 @@ export function RemoteSettings() {
           <h3 id={`${titleId}-computers`} className="text-body font-semibold">
             Other computers
           </h3>
-          <p className="text-ui text-muted">Follow Switchboard on another computer from here. Claude keeps running there.</p>
+          <p className="text-ui text-muted">Follow Seshboard on another computer from here. Claude keeps running there.</p>
         </div>
         <ComputersSettings />
       </section>
@@ -564,7 +564,7 @@ function SetupSteps({ status, configure }: { status: RemoteStatus; configure(cha
             </Button>
           )}
         </Step>
-        <Step n={2} title="Turn on Remote." detail="Switchboard starts the tunnel and shows the address.">
+        <Step n={2} title="Turn on Remote." detail="Seshboard starts the tunnel and shows the address.">
           <Button variant="primary" className="mt-2" onClick={() => configure({ ...draft, enabled: true })} data-remote-turn-on>
             Turn on Remote
           </Button>

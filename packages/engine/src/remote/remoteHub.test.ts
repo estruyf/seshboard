@@ -31,8 +31,8 @@ import {
   type SessionSummary,
   type TranscriptMessage,
   writeStub,
-} from '@switchboard/protocol';
-import type { RemoteLimitStanding } from '@switchboard/protocol';
+} from '@seshboard/protocol';
+import type { RemoteLimitStanding } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -118,11 +118,13 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     return new Response(null, { status: options.pushStatus ?? 201 });
   }) as unknown as typeof fetch;
   const identity = options.identity === undefined ? generateKeyPair().secretKey : options.identity;
-  const dir = mkdtempSync(join(tmpdir(), 'switchboard-remote-hub-'));
+  const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-hub-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
   const sentImages: RemoteImage[][] = [];
+  /** The sessions phones follow now (a watch's `stop` takes it out). */
+  const watching = new Set<string>();
   const answered: string[] = [];
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
@@ -130,7 +132,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   /** How each session stands with its usage limit. */
   const limitOf: Record<string, RemoteLimitStanding> = {};
   // The session's checkout: a real repository with one change.
-  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remote-repo-')));
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remote-repo-')));
   await git(repo, ['init', '-q', '-b', 'main']);
   await git(repo, ['config', 'user.email', 'test@example.com']);
   await git(repo, ['config', 'user.name', 'Test']);
@@ -172,7 +174,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     scope: () => 'switchboard',
     projects: () => [
       { root: ROOT, name: 'Web', exists: true, added: true, order: null, defaults: { model: 'opus', effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null }, profileId: null },
-      // Only Claude Code sessions here, never added to Switchboard: a phone doesn't see it.
+      // Only Claude Code sessions here, never added to Seshboard: a phone doesn't see it.
       { root: SEEN_ONLY, name: 'Seen', exists: true, added: false, order: null, defaults: NO_DEFAULTS, profileId: null },
       { root: FIRST, name: 'Api', exists: true, added: true, order: 0, defaults: NO_DEFAULTS, profileId: 'work' },
     ],
@@ -184,7 +186,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       defaultId: 'default',
     }),
     readTranscript: async () => ['a', 'b', 'c'].map(message),
-    watchTranscript: () => () => {},
+    watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
@@ -278,7 +280,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -323,17 +325,21 @@ describe('Remote hub', () => {
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
     const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual([new URL(REMOTE_APP_URL).origin]);
-    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual([new URL(REMOTE_APP_URL).origin, preview]);
-    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview]);
+    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com', preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins('http://localhost:5199/remote/', false)).toEqual(['http://localhost:5199']);
 
     const release = await setup();
     await release.on();
     await expect(open(release.port, preview)).rejects.toThrow('HTTP 403');
+    await expect(open(release.port, 'https://switch-dev.struyfconsulting.com')).rejects.toThrow('HTTP 403');
     const beta = await setup({ previewApp: true });
     await beta.on();
     const socket = await open(beta.port, preview);
     socket.ws.close();
+    // A phone paired on the preview's old address, until 1.3.0.
+    (await open(beta.port, 'https://switch-dev.struyfconsulting.com')).ws.close();
     (await open(beta.port)).ws.close();
   });
 
@@ -531,6 +537,9 @@ describe('Remote hub', () => {
     // Gone from the list: nothing but Undo may touch it.
     await expect(remote.call('session.markRead', { sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false, pinned: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Only the phone that archived it: another paired phone may not bring it back.
+    const other = await pair(hub, port);
+    await expect(other.remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
     // Once only.
@@ -538,6 +547,18 @@ describe('Remote hub', () => {
     // A session the phone never archived stays out of reach.
     archived.add(HIDDEN);
     await expect(remote.call('session.setFlags', { sessionId: HIDDEN, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {
+    const archived = new Set<string>();
+    const { hub, port, on, watching } = await setup({ archived });
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    expect(watching.has(SESSION)).toBe(true);
+    archived.add(SESSION);
+    hub.sessionsChanged();
+    await until(() => !watching.has(SESSION));
   });
 
   it('lists what a session runs in the background, and stops only a task it lists', async () => {

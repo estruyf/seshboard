@@ -3,7 +3,6 @@ import {
   Activity,
   AppWindow,
   Archive,
-  ArchiveRestore,
   ArrowDown,
   ArrowDownCircle,
   ArrowLeft,
@@ -22,6 +21,7 @@ import {
   CircleDot,
   CircleHelp,
   CloudDownload,
+  Coffee,
   Code,
   ChevronsDown,
   ChevronsUp,
@@ -49,7 +49,6 @@ import {
   GitPullRequest,
   Hash,
   House,
-  Info,
   Keyboard,
   ListChecks,
   ListEnd,
@@ -57,7 +56,6 @@ import {
   NotebookText,
   PencilLine,
   Maximize2,
-  MessageSquare,
   MessageCircleQuestion,
   MessagesSquare,
   Monitor,
@@ -87,7 +85,6 @@ import {
   Share2,
   ShieldCheck,
   Shrink,
-  SlidersHorizontal,
   Square,
   SquareCode,
   SquarePen,
@@ -102,7 +99,6 @@ import {
   Undo2,
   UnfoldVertical,
   Upload,
-  Users,
   Volume2,
   VolumeX,
   Wrench,
@@ -113,11 +109,12 @@ import {
   CalendarClock,
   BookOpen,
 } from 'lucide-react';
-import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@switchboard/protocol/bridge';
-import type { PromptScope } from '@switchboard/protocol/client';
+import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
 import type { SettingsSection } from '../../state/sessionsStore.ts';
+import { SETTINGS_SECTIONS } from '../settingsSections.ts';
 import type { Way } from '../../state/tilingGeometry.ts';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import { ACTION_ICON } from '../actions/actionIcon.ts';
@@ -128,7 +125,7 @@ import type { PaletteContext } from './paletteContext.ts';
 import { NEW_SESSION_STEP, type PaletteMode, type PaletteStep } from './paletteState.ts';
 
 /** Requests the session view answers, because the dialog or menu they open lives there. */
-export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next';
+export type SessionRequest = 'commit' | 'create-pr' | 'fix-checks' | 'branch-menu' | 'edit-actions' | 'new-action' | 'ask' | 'prompt-previous' | 'prompt-next' | 'retry';
 /** Requests the New session view answers: they change its own choices. */
 export type NewSessionRequest = 'toggle-worktree' | 'save-defaults' | 'add-to-queue' | 'schedule' | 'catch-up' | 'add-project';
 
@@ -165,7 +162,7 @@ export interface PaletteApi {
   memoryTransfer(kind: 'import-export' | 'paste' | 'copy'): void;
   addProject(): void;
   checkClaudeUpdate(): void;
-  /** Installs the `switchboard`, `seshboard` and `sesh` shell commands, and says how that went. */
+  /** Installs the `seshboard`, `sesh` and `switchboard` shell commands, and says how that went. */
   installShellCommand(): void;
   reloadSkills(): void;
   /** Running sessions read their plugins and MCP servers again. */
@@ -190,6 +187,8 @@ export interface PaletteApi {
   showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   compact(): void;
+  /** Keep awake until done, on or off, for the session on screen. */
+  setKeepAwake(on: boolean): void;
   copyLastReply(): void;
   /** Preview last written file: opens the previewable file Claude wrote last in the session. */
   previewLastFile(): void;
@@ -287,7 +286,7 @@ export interface PaletteCommand {
   group: CommandGroup;
   /** Other words it answers to. */
   keywords?: string;
-  /** Stored (`cmd+shift+p`): `keysFor(id)` from the registry for Switchboard's own, an action's own shortcut for actions. */
+  /** Stored (`cmd+shift+p`): `keysFor(id)` from the registry for Seshboard's own, an action's own shortcut for actions. */
   shortcut?: string;
   /** A quiet note on the right when there is no shortcut ("current project"), or one made from where you are. */
   hint?: string | ((ctx: PaletteContext) => string);
@@ -328,27 +327,6 @@ const SIDEBAR_STYLES: Array<{ value: SidebarStyle; label: string }> = [
   { value: 'standard', label: 'Standard' },
   { value: 'large', label: 'Large icons' },
 ];
-/** Settings' pages, in the order of its own sidebar. */
-const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; icon: LucideIcon }> = [
-  { id: 'general', label: 'General', icon: SlidersHorizontal },
-  { id: 'theme', label: 'Theme', icon: Palette },
-  { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
-  { id: 'sessions', label: 'Sessions', icon: Archive },
-  { id: 'projects', label: 'Projects', icon: FolderGit2 },
-  { id: 'conversation', label: 'Conversation', icon: MessageSquare },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'profiles', label: 'Claude profiles', icon: Users },
-  { id: 'usage', label: 'Usage', icon: Gauge },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'prompts', label: 'Prompts', icon: Bookmark },
-  { id: 'pipelines', label: 'Pipelines', icon: ListTree },
-  { id: 'vscode', label: 'VS Code', icon: SquareCode },
-  { id: 'backup', label: 'Backup', icon: ArchiveRestore },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { id: 'about', label: 'About', icon: Info },
-];
-
 /** The project New session from an issue or pull request works on: New session's folder there, else the one on screen. */
 const githubProject = (ctx: PaletteContext): string | null => (ctx.connected ? (ctx.newSession?.root ?? ctx.currentProject?.root ?? null) : null);
 
@@ -545,7 +523,7 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.projectCount > 0 && ctx.connected,
     next: () => ({ kind: 'projects', purpose: 'rename-project', worktree: false, chip: 'Rename project' }),
   },
-  { id: 'install-shell-command', title: 'Install the switchboard command', group: 'general', icon: SquareTerminal, keywords: 'shell terminal cli command line path code . seshboard sesh open folder', when: always, run: (api) => api.installShellCommand() },
+  { id: 'install-shell-command', title: 'Install the seshboard command', group: 'general', icon: SquareTerminal, keywords: 'shell terminal cli command line path code . seshboard sesh switchboard open folder', when: always, run: (api) => api.installShellCommand() },
   { id: 'claude-update', title: 'Check for Claude Code updates…', group: 'general', icon: ArrowDownCircle, keywords: 'upgrade version cli', when: always, run: (api) => api.checkClaudeUpdate() },
   { id: 'reload-skills', title: 'Reload skills', group: 'general', icon: RefreshCw, keywords: 'refresh slash commands plugins', when: (ctx) => ctx.connected, run: (api) => api.reloadSkills() },
   { id: 'reload-mcp', title: 'Reload MCP servers', group: 'general', icon: RefreshCw, keywords: 'refresh mcp servers plugins tools connectors', when: (ctx) => ctx.connected, run: (api) => api.reloadMcp() },
@@ -791,6 +769,16 @@ export const COMMANDS: PaletteCommand[] = [
     when: (ctx) => ctx.connected && (session(ctx)?.prompts ?? 0) > 0,
     next: () => ({ kind: 'pick', list: 'rewind', chip: 'Rewind to a message' }),
   },
+  {
+    id: 'keep-awake-on',
+    title: 'Keep awake until done',
+    group: 'session',
+    icon: Coffee,
+    keywords: 'sleep caffeinate awake power background tasks lid idle prevent finish',
+    when: (ctx) => hosted(ctx) && !session(ctx)!.host!.keepAwake && session(ctx)!.host!.state !== 'closed' && session(ctx)!.host!.state !== 'error',
+    run: (api) => api.setKeepAwake(true),
+  },
+  { id: 'keep-awake-off', title: 'Stop keeping awake', group: 'session', icon: Coffee, keywords: 'sleep caffeinate awake power until done', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.keepAwake, run: (api) => api.setKeepAwake(false) },
   { id: 'compact', title: 'Compact context', group: 'session', icon: Shrink, keywords: '/compact summarise', when: (ctx) => hosted(ctx) && (session(ctx)!.host!.contextTokens ?? 0) > 0, run: (api) => api.compact() },
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
@@ -845,6 +833,15 @@ export const COMMANDS: PaletteCommand[] = [
   },
   { id: 'close-session', title: 'Close session', group: 'session', icon: X, keywords: 'home', when: (ctx) => session(ctx) !== null, run: (api) => api.closeSession() },
   { id: 'delete-session', title: 'Delete session…', group: 'session', icon: Trash2, keywords: 'trash remove', when: (ctx) => indexed(ctx) && ctx.connected, run: (api) => api.deleteSession() },
+  {
+    id: 'retry',
+    title: 'Try again',
+    group: 'session',
+    icon: RefreshCw,
+    keywords: 'retry restart refresh failed error start again send again',
+    when: (ctx) => (session(ctx)?.unsent ?? 0) > 0 && ctx.connected,
+    run: (api) => api.sessionRequest('retry'),
+  },
   { id: 'stop', title: 'Stop Claude', group: 'session', shortcut: keysFor('claude.stop'), icon: StopCircle, keywords: 'interrupt cancel', when: (ctx) => !!session(ctx)?.running && !!session(ctx)?.host && ctx.connected, run: (api) => api.stop() },
   {
     id: 'go-to-waiting',
@@ -922,7 +919,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'save-defaults', title: 'Save as project default', group: 'new-session', icon: Save, keywords: 'model effort mode', when: (ctx) => !!ctx.newSession?.canSaveDefaults, run: (api) => api.newSessionRequest('save-defaults') },
   { id: 'catch-up', title: 'Update from remote', group: 'new-session', icon: CloudDownload, keywords: 'git pull fetch sync latest', when: (ctx) => !!ctx.newSession?.canCatchUp, run: (api) => api.newSessionRequest('catch-up') },
 
-  // Settings is open: its pages
+  // Settings is open: its pages, in the order of its menu
   ...SETTINGS_SECTIONS.map(
     ({ id, label, icon }): PaletteCommand => ({
       id: `settings-${id}`,

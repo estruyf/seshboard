@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@switchboard/protocol/client';
+import type { LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
 import { Attention } from './attention.ts';
 
 const host = (state: SessionHostInfo['state'], extra: Partial<SessionHostInfo> = {}): SessionHostInfo => ({
@@ -117,13 +117,39 @@ describe('Attention', () => {
     expect(a.badge()).toBe(0);
   });
 
-  it('leaves terminal sessions alone when only Switchboard sessions are shown', () => {
+  it('leaves terminal sessions alone when only Seshboard sessions are shown', () => {
     let external = false;
     const a = new Attention({ external: () => external });
     expect(a.onLive([live('cli', 'needs-you')])).toEqual([]);
     expect(a.badge()).toBe(0);
     external = true;
     expect(a.onLive([live('cli', 'needs-you')])).toMatchObject([{ kind: 'needs-you', sessionId: 'cli' }]);
+  });
+
+  it('says when Claude is working: a Seshboard session starting or running, or a shown Terminal session running', () => {
+    let external = false;
+    const a = new Attention({ external: () => external });
+    expect(a.working()).toBe(false);
+    a.onHost(host('starting'));
+    expect(a.working()).toBe(true);
+    a.onHost(host('running'));
+    expect(a.working()).toBe(true);
+    // Waiting on you is the badge's news, not work.
+    a.onHost(host('needs-you'));
+    expect(a.working()).toBe(false);
+    a.onHost(host('idle'));
+    expect(a.working()).toBe(false);
+
+    a.onLive([live('cli', 'running')]);
+    expect(a.working()).toBe(false);
+    external = true;
+    a.onLive([live('cli', 'running'), live('desk', 'running', 'desktop')]);
+    expect(a.working()).toBe(true);
+    a.onLive([live('cli', 'idle')]);
+    expect(a.working()).toBe(false);
+    a.onLive([live('cli', 'running')]);
+    a.reset();
+    expect(a.working()).toBe(false);
   });
 
   it('reports project actions that finish', () => {

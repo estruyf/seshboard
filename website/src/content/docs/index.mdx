@@ -1,5 +1,5 @@
 ---
-title: Switchboard
+title: Seshboard
 description: A fast app for macOS, Windows and Linux that runs and keeps track of your Claude Code sessions, across all your Claude accounts.
 template: splash
 tableOfContents: false
@@ -53,7 +53,7 @@ import Related from '../../components/Related.astro';
 
 <Feature eyebrow="In parallel" title="Many tasks at once, without the mess" shot="split" focus="20% 30%" alt="Two sessions side by side in split view, each with its own conversation" href="/guides/parallel-sessions/" linkText="Run sessions in parallel">
   <p>Start each task in its own worktree, on its own branch, so sessions never step on each other. Queue the prompts that have to wait, and start them with one click when their project is free.</p>
-  <p>Watch two sessions side by side, or give one its own window on another screen. Set a focus limit, and Switchboard asks before you start one more.</p>
+  <p>Watch two sessions side by side, or give one its own window on another screen. Set a focus limit, and Seshboard asks before you start one more.</p>
 
   - [Worktrees](/new-session/worktrees/)
   - [Queue](/new-session/queue/)
@@ -80,7 +80,7 @@ import Related from '../../components/Related.astro';
   - [Start from a GitHub issue](/sessions/github-issues/)
 </Feature>
 
-<Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Switchboard" flip>
+<Feature eyebrow="Ship" title="From changed files to a pull request" shot="git-checks" focus="100% 0%" alt="A session with the git button showing the pull request's checks, one failing, and Fix failing checks with Claude" href="/terminal-changes-git/git/" linkText="Git in Seshboard" flip>
   <p>See what Claude changed in the **Changes** panel (<Kbd shortcut="changes.toggle" />): stage, unstage or revert files, and open any diff inline. The git button offers the next step: commit, push or create a pull request.</p>
   <p>Once the pull request is open, its checks show on the same button. When one fails, let Claude fix it. A terminal per session is one key away (<Kbd shortcut="terminal.toggle" first />).</p>
 
@@ -152,7 +152,7 @@ import Related from '../../components/Related.astro';
 <section class="sb-companion not-content">
   <h2>The VS Code companion</h2>
   <p>
-    The <strong>Switchboard Companion</strong> extension sends what you are looking at in the editor to a session: the lines you selected, files, problems and terminal output. It also works in Cursor and Windsurf. Nothing goes to Claude until you press send.
+    The <strong>Seshboard Companion</strong> extension sends what you are looking at in the editor to a session: the lines you selected, files, problems and terminal output. It also works in Cursor and Windsurf. Nothing goes to Claude until you press send.
   </p>
   <div class="sb-companion-actions">
     <a class="sb-button primary" href="https://marketplace.visualstudio.com/items?itemName=eliostruyf.switchboard-companion">Get it on the Marketplace</a>
@@ -161,16 +161,21 @@ import Related from '../../components/Related.astro';
   <p class="sb-companion-id"><code>eliostruyf.switchboard-companion</code></p>
 </section>
 
+<section class="sb-name not-content">
+  <h2>Why Seshboard?</h2>
+  <p><strong>Sesh</strong> is short for sessions: the sessions your agents run. <strong>Board</strong> is the one app where you manage them all.</p>
+</section>
+
 <section class="sb-cta not-content">
   <h2>Try it on the sessions you already have</h2>
-  <p>Switchboard picks up your existing Claude Code sessions the moment it opens. Nothing to set up first.</p>
+  <p>Seshboard picks up your existing Claude Code sessions the moment it opens. Nothing to set up first.</p>
   <div class="sb-cta-actions">
     <a class="sb-button primary large sb-os-mac" href="https://github.com/estruyf/switchboard/releases/latest">Download for Mac</a>
     <a class="sb-button primary large sb-os-windows" href="https://github.com/estruyf/switchboard/releases/latest">Download for Windows</a>
     <a class="sb-button secondary large" href="/getting-started/install/">Install guide</a>
   </div>
   <p class="sb-cta-linux">On Linux? Get the AppImage, <code>.deb</code> or <code>.rpm</code>: <a href="/getting-started/install/#install-on-linux">install on Linux</a>.</p>
-  <div class="sb-os-mac sb-cta-brew"><CopyCommand command="brew install --cask estruyf/tap/switchboard" /></div>
+  <div class="sb-os-mac sb-cta-brew"><CopyCommand command="brew install --cask estruyf/tap/seshboard" /></div>
 </section>
 
 <style>{`
@@ -179,16 +184,16 @@ import Related from '../../components/Related.astro';
   .sb-proof h2 { margin: 0; font-size: var(--sb-text-title); font-weight: 600; color: var(--sb-text); }
   .sb-proof p { margin: 0.4rem 0 0; font-size: var(--sb-text-ui); line-height: 1.55; color: var(--sb-muted); }
   .sb-proof code { font-size: 0.9em; }
-  .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-cta { padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
-  .sb-keys h2, .sb-more h2, .sb-tour h2, .sb-companion h2, .sb-cta h2 { margin: 0; font-size: calc(var(--sb-text-hero) * 1.2); font-weight: 600; color: var(--sb-text); }
-  .sb-keys > p, .sb-more > p, .sb-companion p, .sb-cta p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
+  .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 3.5rem 0; border-top: 1px solid var(--sb-border); text-align: center; }
+  .sb-keys h2, .sb-more h2, .sb-tour h2, .sb-companion h2, .sb-name h2, .sb-cta h2 { margin: 0; font-size: calc(var(--sb-text-hero) * 1.2); font-weight: 600; color: var(--sb-text); }
+  .sb-keys > p, .sb-more > p, .sb-companion p, .sb-name p, .sb-cta p { max-width: 42rem; margin: 0.75rem auto 0; color: var(--sb-muted); }
   .sb-keys ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; max-width: 52rem; margin: 2rem auto 0; padding: 0; list-style: none; }
   .sb-keys li { display: flex; align-items: center; gap: 0.75rem; margin: 0; padding: 0.8rem 1rem; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-card); background: var(--sb-card); font-size: var(--sb-text-ui); color: var(--sb-text); text-align: start; }
   .sb-more-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin: -1.5rem 0 1rem; }
   .sb-more .sb-more-links { margin: 2rem 0 0; }
   .sb-more .sb-cards { margin-top: 2rem; text-align: start; }
   .sb-tour h2 { margin-bottom: 1.5rem; }
-  .sb-companion strong { color: var(--sb-text); }
+  .sb-companion strong, .sb-name strong { color: var(--sb-text); }
   .sb-companion-actions, .sb-cta-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
   .sb-companion-id { font-size: var(--sb-text-meta); }
   .sb-cta { padding-bottom: 2rem; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--sb-accent) 10%, transparent), transparent 60%); }
@@ -197,7 +202,7 @@ import Related from '../../components/Related.astro';
   @media (max-width: 40rem) {
     .sb-proof { margin-top: 2.5rem; gap: 0.75rem; }
     .sb-proof > div { padding: 0.9rem 1rem; }
-    .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-cta { padding: 2.5rem 0; }
+    .sb-keys, .sb-more, .sb-tour, .sb-companion, .sb-name, .sb-cta { padding: 2.5rem 0; }
     .sb-keys ul { grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 1.5rem; }
     .sb-keys li { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem; }
     .sb-more-links { margin-top: -0.5rem; }

@@ -1,4 +1,4 @@
-import type { RemotePrompt } from '@switchboard/protocol/remote-client';
+import type { RemotePrompt } from '@seshboard/protocol/remote-client';
 import { toolSummary } from './transcript.ts';
 
 /** What the computer's card says when you decline (apps/ui PermissionCard). */
@@ -36,6 +36,22 @@ export function toolLabel(name: string): string {
 /** The one line a card shows in its code box: the command, the file or the address. */
 export function promptSubject(prompt: Pick<RemotePrompt, 'toolName' | 'input'>): string {
   return toolSummary(prompt.toolName, prompt.input);
+}
+
+/**
+ * All of what a tool prompt asks, every line of it: the command, the file or the address. Allow approves all of it,
+ * so the card that offers Allow shows all of it.
+ */
+export function promptText(prompt: Pick<RemotePrompt, 'toolName' | 'input'>): string {
+  const input = (prompt.input ?? {}) as Record<string, unknown>;
+  const text = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'prompt'].map((key) => input[key]).find((value): value is string => typeof value === 'string' && value.trim() !== '');
+  return text?.trim() ?? prompt.toolName;
+}
+
+/** Whether the one line of a home card shows all of what a tool prompt asks, so Allow can sit under it. */
+export function promptFitsLine(prompt: Pick<RemotePrompt, 'toolName' | 'input' | 'truncated'>): boolean {
+  const text = promptText(prompt);
+  return !prompt.truncated && !text.includes('\n') && text.length <= 120;
 }
 
 /** The first line of a question (the first of several), or the plan's first line, for the compact row. */

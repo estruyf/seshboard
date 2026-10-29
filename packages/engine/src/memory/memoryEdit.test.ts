@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ const read = (path: string) => readFileSync(path, 'utf8');
 const CLAUDE_FILE = '---\nname: sidebar-order\ndescription: Needs you first\nmetadata:\n  node_type: memory\n  type: feedback\n  originSessionId: 9b9414df\n  modified: 2026-10-04T14:16:33.977Z\n---\n\nNeeds you, then Working.\n';
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-memory-edit-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-memory-edit-')));
   root = join(base, 'project');
   const configDir = join(base, 'config');
   mkdirSync(root, { recursive: true });
@@ -69,6 +69,17 @@ describe('memory files', () => {
     expect(read(join(memoryDir, 'MEMORY.md'))).toBe('# Memory\n- [sidebar-order](sidebar-order.md) — Needs you first\n- [release-process](release-process.md) — npm run release, then CHANGELOG\n');
     expect(() => service.create({ root, name: 'sidebar-order', type: 'project', description: '', body: '' })).toThrow(/already/);
     expect(() => service.create({ root, name: 'MEMORY', type: 'project', description: '', body: '' })).toThrow(/name/);
+  });
+
+  it.runIf(process.platform !== 'win32')('never writes through a MEMORY.md that is a link (a shared folder could point it anywhere)', () => {
+    const outside = join(base, 'outside.txt');
+    writeFileSync(outside, 'keep\n');
+    rmSync(join(memoryDir, 'MEMORY.md'));
+    symlinkSync(outside, join(memoryDir, 'MEMORY.md'));
+    expect(() => service.create({ root, name: 'linked', type: 'project', description: 'd', body: 'b' })).toThrow(/is a link/);
+    expect(existsSync(join(memoryDir, 'linked.md'))).toBe(false);
+    expect(() => service.fixIndex(root, join(memoryDir, 'MEMORY.md'))).toThrow(/is a link/);
+    expect(read(outside)).toBe('keep\n');
     expect(() => service.create({ root, name: '../x', type: 'project', description: '', body: '' })).toThrow(/name/);
   });
 

@@ -2,7 +2,7 @@ import type { RemotePrompt, RemoteRunState, RemoteSession, RemoteSessions } from
 
 /**
  * Checks a paired computer's session list where zod can't (the remote app, which leaves zod out). Another computer
- * may run an older or newer Switchboard, or not be Switchboard at all, and a list the views can't read would blank
+ * may run an older or newer Seshboard, or not be Seshboard at all, and a list the views can't read would blank
  * them. Each session, prompt and run is checked on its own, for the fields the views read: one that doesn't pass is
  * left out and counted, so the rest still shows. Unknown fields and values of an enum (a status a newer version
  * added) pass, as the views fall back on them. The engine checks the same lists with the contract's schemas.
@@ -15,7 +15,7 @@ const isString = (value: unknown): value is string => typeof value === 'string';
 const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 const nullable = (check: (value: unknown) => boolean) => (value: unknown) => value === null || check(value);
-/** Left out by an older Switchboard, or null. */
+/** Left out by an older Seshboard, or null. */
 const optional = (check: (value: unknown) => boolean) => (value: unknown) => value === undefined || value === null || check(value);
 const arrayOf = (check: (value: unknown) => boolean) => (value: unknown) => Array.isArray(value) && value.every(check);
 
@@ -111,5 +111,5 @@ export function unreadableLine(name: string, dropped: number | null): string {
   const who = name || 'The other computer';
   const what = dropped === null ? 'data' : dropped === 1 ? '1 item in its session list' : `${dropped} items in its session list`;
   const shown = dropped === null ? '' : dropped === 1 ? ', so it isn’t shown' : ', so they aren’t shown';
-  return `${who} sent ${what} this version of Switchboard can’t read${shown}. It may run an older or newer version. Update Switchboard on both computers.`;
+  return `${who} sent ${what} this version of Seshboard can’t read${shown}. It may run an older or newer version. Update Seshboard on both computers.`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONTEXT_WARNING, type SessionHostInfo } from '@switchboard/protocol/client';
+import { DEFAULT_CONTEXT_WARNING, type SessionHostInfo } from '@seshboard/protocol/client';
 import { CacheReminder, REMIND_BEFORE_MS, reminderDue, type CacheReminderNotice, type CacheReminderPrefs } from './cacheReminder.ts';
 
 const HOUR = 60 * 60_000;
@@ -26,19 +26,21 @@ const host = (patch: Partial<SessionHostInfo> = {}): SessionHostInfo => ({
   ...patch,
 });
 
-function setup(prefs: Partial<CacheReminderPrefs> = {}) {
+function setup(prefs: Partial<CacheReminderPrefs> = {}, remind?: (n: CacheReminderNotice) => void) {
   let now = 0;
   const timers: Array<{ run: () => void; at: number }> = [];
   const notices: CacheReminderNotice[] = [];
+  const logged: Array<[string, unknown]> = [];
   const reminder = new CacheReminder({
     prefs: () => ({ contextWarning: DEFAULT_CONTEXT_WARNING, showCost: true, costCurrency: 'USD', locale: 'en-US', ...prefs }),
-    remind: (n) => notices.push(n),
+    remind: remind ?? ((n) => notices.push(n)),
     now: () => now,
     setTimer: (run, ms) => {
       timers.push({ run, at: now + ms });
       return timers.length as unknown as ReturnType<typeof setTimeout>;
     },
     clearTimer: (t) => timers.splice((t as unknown as number) - 1, 1, { run: () => {}, at: Infinity }),
+    log: (message, error) => logged.push([message, error]),
   });
   const advance = (to: number) => {
     now = to;
@@ -47,7 +49,7 @@ function setup(prefs: Partial<CacheReminderPrefs> = {}) {
       t.run();
     }
   };
-  return { reminder, notices, advance };
+  return { reminder, notices, logged, advance };
 }
 
 describe('reminderDue', () => {
@@ -95,6 +97,31 @@ describe('CacheReminder', () => {
     reminder.onHost(host({ cacheAt: 2 * HOUR, state: 'closed' }));
     advance(3 * HOUR);
     expect(notices).toHaveLength(1);
+  });
+
+  it("shows the cost in the system's locale when the app's locale is one Intl can't read", () => {
+    // '' is what app.getLocale() returns in the Windows build, which ships no locale file for the language.
+    for (const locale of ['', 'en_US', 'nl-BE.UTF-8']) {
+      const { reminder, notices, logged, advance } = setup({ locale });
+      reminder.onHost(host());
+      advance(HOUR - REMIND_BEFORE_MS);
+      expect(notices).toEqual([{ sessionId: 's1', tokens: '400k', cost: `≈${new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(3.2)}` }]);
+      expect(logged).toEqual([]);
+    }
+  });
+
+  it('logs a reminder that fails instead of throwing from its timer, and still sends the next', () => {
+    const error = new Error('broken');
+    let sent = 0;
+    const { reminder, logged, advance } = setup({}, () => {
+      if (sent++ === 0) throw error;
+    });
+    reminder.onHost(host());
+    expect(() => advance(HOUR - REMIND_BEFORE_MS)).not.toThrow();
+    expect(logged).toEqual([['[main] cache reminder failed', error]]);
+    reminder.onHost(host({ sessionId: 's2', cacheAt: 10 * 60_000 }));
+    advance(HOUR + 5 * 60_000);
+    expect(sent).toBe(2);
   });
 
   it('says nothing about a cache that lapsed while the computer slept', () => {

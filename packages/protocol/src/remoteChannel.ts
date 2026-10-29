@@ -42,8 +42,11 @@ export function parseHello(frame: Uint8Array): ParsedHello {
 export interface EncryptedStreamOptions {
   /** A frame that didn't decrypt or wasn't text. The socket is closed right after. */
   onError?(reason: string): void;
-  /** Called once, after the first frame from the other side decrypted (in `pair`, the proof the phone knows the secret). */
-  onFirstFrame?(): void;
+  /**
+   * Called once, after the first frame from the other side decrypted (in `pair`, the proof the phone knows the
+   * secret). `false` refuses the other side: the frame is dropped and the stream closes.
+   */
+  onFirstFrame?(): boolean | void;
 }
 
 /**
@@ -72,7 +75,8 @@ export function encryptedStream(socket: FrameSocket, session: NoiseSession, opti
     }
     if (!seen) {
       seen = true;
-      options.onFirstFrame?.();
+      // Refused (a phone revoked since its handshake): its first request must not reach the listeners.
+      if (options.onFirstFrame?.() === false) return close();
     }
     for (const listener of listeners) listener(text);
   });

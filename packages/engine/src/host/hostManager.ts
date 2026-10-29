@@ -25,7 +25,7 @@ import {
   type ModPromptAnswer,
   type ModPromptAsk,
   type ModsSnapshot,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 import { clipJson } from '../claude/transcript.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
@@ -68,9 +68,9 @@ export interface HostManagerDeps {
   onClosed?: (sessionId: string) => void;
   onPermission: (request: PermissionRequest) => void;
   onPermissionResolved: (requestId: string, sessionId: string) => void;
-  /** A session this app created (for the "Switchboard" origin badge). */
+  /** A session this app created (for the "Seshboard" origin badge). */
   onCreated: (sessionId: string) => void;
-  /** You sent a message to an existing session from this app (it now counts as a Switchboard session). */
+  /** You sent a message to an existing session from this app (it now counts as a Seshboard session). */
   onContinued?: (sessionId: string) => void;
   log: (level: LogLevel, message: string) => void;
   /** Close processes idle for longer than this (default 30 min). The transcript stays; sending resumes. */
@@ -81,6 +81,12 @@ export interface HostManagerDeps {
   onUsageHint?: (profileId: string) => void;
   /** A session's turn reported where a plan window stands (Claude Code's `rate_limit_event`). */
   onRateLimit?: (profileId: string, sessionId: string, info: { rateLimitType?: string; utilization?: number; resetsAt?: number }) => void;
+  /**
+   * Throws (TRUST_NEEDED) when Claude Code may not start in `cwd` yet: a cloned repository whose trust question isn't
+   * answered (`CloneService.trustNeeded`). Every process started in a folder goes through it, helpers too, as they load
+   * the folder's hooks and MCP servers as a session does.
+   */
+  assertTrusted?: (cwd: string) => void;
   /** Helper processes register in the live registry while they run; the engine hides them. */
   ephemeral?: { add(sessionId: string): void; delete(sessionId: string): void };
   /** A profile's installed plugins, for sessions that aren't running (their own list comes from Claude Code). */
@@ -191,7 +197,7 @@ export interface CreateParams {
   pickModel?: (sessionId: string) => Promise<{ model: string | null; autoPick: AutoPick }>;
 }
 
-const NOT_RUNNING_MESSAGE = 'This session is not running in Switchboard';
+const NOT_RUNNING_MESSAGE = 'This session is not running in Seshboard';
 
 const DEFAULT_MODELS: ModelOption[] = [
   { value: 'default', displayName: 'Default', description: 'Your Claude Code default', supportsEffort: true },
@@ -357,6 +363,19 @@ export class HostManager {
       if (saved?.model || saved?.effort) this.settings.set(sessionId, { model: saved.model, effort: saved.effort });
     } else this.deps.onContinued?.(sessionId);
     return { sessionId, messageUuid, queued };
+  }
+
+  /**
+   * After Claude Code failed before it started (a binary that won't launch, a login that ran out): starts the session
+   * again and sends what the failed process never got, under the same uuids, so the transcript shows each message once.
+   */
+  async retry(sessionId: string): Promise<void> {
+    const unsent = this.hosts.get(sessionId)?.unsent ?? [];
+    if (unsent.length === 0) throw new RpcError('NOT_RUNNING', 'Nothing to send again. Send a message to start the session.');
+    const host = await this.ensureHost(sessionId, false, 'This session is open in another Claude Code window. Fork it to continue here.');
+    if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
+    for (const message of unsent) host.send(message.text, message.attachments, undefined, message.uuid);
+    this.deps.onContinued?.(sessionId);
   }
 
   /**
@@ -738,7 +757,7 @@ export class HostManager {
 
   async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
     const host = this.hosts.get(sessionId);
-    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Switchboard to change its MCP servers.');
+    if (!host?.active) throw new RpcError('NOT_RUNNING', 'Start the session in Seshboard to change its MCP servers.');
     try {
       await host.mcp(server, action);
     } catch (error) {
@@ -760,6 +779,7 @@ export class HostManager {
     const settings = this.settings.get(sessionId);
     const model = running?.model ?? settings?.model ?? null;
     const effort = running?.effort ?? settings?.effort ?? null;
+    this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     const helperId = randomUUID();
     this.deps.ephemeral?.add(helperId);
@@ -834,6 +854,7 @@ export class HostManager {
    * so no session is written. It answers control requests (commands, agents, MCP) and is closed after.
    */
   private async withHelper<T>(cwd: string, profileId: string, ask: (query: Query) => Promise<T>, more: { extra?: Partial<Options>; timeoutMs?: number } = {}): Promise<T> {
+    this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     // A prompt that never yields: Claude Code starts, answers the question, and no session is written.
     const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
@@ -944,6 +965,12 @@ export class HostManager {
   async prewarm(cwd: string, profileId: string): Promise<void> {
     const target = this.warm ?? this.warming;
     if (target?.cwd === cwd && target.profileId === profileId) return;
+    try {
+      this.deps.assertTrusted?.(cwd);
+    } catch {
+      // Nothing starts there before the trust question is answered; the session starts cold after it.
+      return;
+    }
     this.discardWarm();
     const generation = this.warmGeneration;
     this.warming = { cwd, profileId };
@@ -1041,6 +1068,7 @@ export class HostManager {
   }
 
   private async spawn(config: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool'>, warm?: Warm): Promise<SessionHost> {
+    this.deps.assertTrusted?.(config.cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(config.profileId), this.deps.claudePath(), this.deps.sdk()]);
     // The session id can change (forks), so permission prompts look it up through the host.
     let hostRef: SessionHost | undefined;
@@ -1125,12 +1153,14 @@ export class HostManager {
     return new Promise((resolve) => {
       const requestId = randomUUID();
       const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+      const clipped = clipJson(input, 20_000);
       const request: PermissionRequest = {
         requestId,
         sessionId,
         toolName,
         toolUseId: str(options.toolUseID),
-        input: clipJson(input, 20_000).value,
+        input: clipped.value,
+        ...(clipped.truncated ? { truncated: true } : {}),
         title: str((options as { title?: unknown }).title),
         description: str((options as { description?: unknown }).description),
         decisionReason: str(options.decisionReason),

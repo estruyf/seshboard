@@ -20,74 +20,74 @@ export * from "./autoModel.ts";
 export * from "./appIcons.ts";
 
 /**
- * The small API the preload script exposes on `window.switchboard`.
+ * The small API the preload script exposes on `window.seshboard`.
  * Everything else goes over the engine MessagePort, not Electron IPC.
  */
 
 /** `window.postMessage` tag the preload uses to hand the engine port to the page. */
-export const ENGINE_PORT_MESSAGE = "switchboard:engine-port";
+export const ENGINE_PORT_MESSAGE = "seshboard:engine-port";
 
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
-  requestEnginePort: "switchboard:request-engine-port",
-  enginePort: "switchboard:engine-port",
-  engineRestarted: "switchboard:engine-restarted",
-  rendererReady: "switchboard:renderer-ready",
-  pickFolder: "switchboard:pick-folder",
-  pickImage: "switchboard:pick-image",
-  pasteClipboard: "switchboard:paste-clipboard",
-  pickContextFiles: "switchboard:pick-context-files",
-  chooseExportFile: "switchboard:choose-export-file",
-  chooseImportFile: "switchboard:choose-import-file",
-  chooseMemoryExport: "switchboard:choose-memory-export",
-  saveImage: "switchboard:save-image",
-  showSavedImage: "switchboard:show-saved-image",
-  focusSession: "switchboard:focus-session",
-  selectSession: "switchboard:select-session",
-  quitRequested: "switchboard:quit-requested",
-  quitAnswer: "switchboard:quit-answer",
-  quitContext: "switchboard:quit-context",
-  getPreferences: "switchboard:get-preferences",
-  setPreferences: "switchboard:set-preferences",
-  preferencesChanged: "switchboard:preferences-changed",
-  openSettings: "switchboard:open-settings",
-  toggleShortcuts: "switchboard:toggle-shortcuts",
-  getAppInfo: "switchboard:get-app-info",
-  getUpdateState: "switchboard:get-update-state",
-  updateState: "switchboard:update-state",
-  updateCommand: "switchboard:update-command",
-  deepLink: "switchboard:deep-link",
-  getThemes: "switchboard:get-themes",
-  themesChanged: "switchboard:themes-changed",
-  themeCommand: "switchboard:theme-command",
-  windowButtons: "switchboard:window-buttons",
-  focusWindow: "switchboard:focus-window",
-  listSounds: "switchboard:list-sounds",
-  playSound: "switchboard:play-sound",
-  notificationPermission: "switchboard:notification-permission",
-  openNotificationSettings: "switchboard:open-notification-settings",
-  testNotification: "switchboard:test-notification",
-  getOpenAtLogin: "switchboard:get-open-at-login",
-  setOpenAtLogin: "switchboard:set-open-at-login",
-  openLoginItemsSettings: "switchboard:open-login-items-settings",
-  shellCommand: "switchboard:shell-command",
-  keepAwakeStatus: "switchboard:keep-awake-status",
-  getPopouts: "switchboard:get-popouts",
-  popOut: "switchboard:pop-out",
-  popIn: "switchboard:pop-in",
-  showSession: "switchboard:show-session",
-  forwardKeys: "switchboard:forward-keys",
-  keysForwarded: "switchboard:keys-forwarded",
-  showInMain: "switchboard:show-in-main",
-  mainRequested: "switchboard:main-requested",
-  popoutsChanged: "switchboard:popouts-changed",
-  relayDrafts: "switchboard:relay-drafts",
-  draftsRelayed: "switchboard:drafts-relayed",
-  requestDrafts: "switchboard:request-drafts",
-  draftsRequested: "switchboard:drafts-requested",
-  getPopoutView: "switchboard:get-popout-view",
-  reportView: "switchboard:report-view",
-  viewReturned: "switchboard:view-returned",
+  requestEnginePort: "seshboard:request-engine-port",
+  enginePort: "seshboard:engine-port",
+  engineRestarted: "seshboard:engine-restarted",
+  rendererReady: "seshboard:renderer-ready",
+  pickFolder: "seshboard:pick-folder",
+  pickImage: "seshboard:pick-image",
+  pasteClipboard: "seshboard:paste-clipboard",
+  pickContextFiles: "seshboard:pick-context-files",
+  chooseExportFile: "seshboard:choose-export-file",
+  chooseImportFile: "seshboard:choose-import-file",
+  chooseMemoryExport: "seshboard:choose-memory-export",
+  saveImage: "seshboard:save-image",
+  showSavedImage: "seshboard:show-saved-image",
+  focusSession: "seshboard:focus-session",
+  selectSession: "seshboard:select-session",
+  quitRequested: "seshboard:quit-requested",
+  quitAnswer: "seshboard:quit-answer",
+  quitContext: "seshboard:quit-context",
+  getPreferences: "seshboard:get-preferences",
+  setPreferences: "seshboard:set-preferences",
+  preferencesChanged: "seshboard:preferences-changed",
+  openSettings: "seshboard:open-settings",
+  toggleShortcuts: "seshboard:toggle-shortcuts",
+  getAppInfo: "seshboard:get-app-info",
+  getUpdateState: "seshboard:get-update-state",
+  updateState: "seshboard:update-state",
+  updateCommand: "seshboard:update-command",
+  deepLink: "seshboard:deep-link",
+  getThemes: "seshboard:get-themes",
+  themesChanged: "seshboard:themes-changed",
+  themeCommand: "seshboard:theme-command",
+  windowButtons: "seshboard:window-buttons",
+  focusWindow: "seshboard:focus-window",
+  listSounds: "seshboard:list-sounds",
+  playSound: "seshboard:play-sound",
+  notificationPermission: "seshboard:notification-permission",
+  openNotificationSettings: "seshboard:open-notification-settings",
+  testNotification: "seshboard:test-notification",
+  getOpenAtLogin: "seshboard:get-open-at-login",
+  setOpenAtLogin: "seshboard:set-open-at-login",
+  openLoginItemsSettings: "seshboard:open-login-items-settings",
+  shellCommand: "seshboard:shell-command",
+  keepAwakeStatus: "seshboard:keep-awake-status",
+  getPopouts: "seshboard:get-popouts",
+  popOut: "seshboard:pop-out",
+  popIn: "seshboard:pop-in",
+  showSession: "seshboard:show-session",
+  forwardKeys: "seshboard:forward-keys",
+  keysForwarded: "seshboard:keys-forwarded",
+  showInMain: "seshboard:show-in-main",
+  mainRequested: "seshboard:main-requested",
+  popoutsChanged: "seshboard:popouts-changed",
+  relayDrafts: "seshboard:relay-drafts",
+  draftsRelayed: "seshboard:drafts-relayed",
+  requestDrafts: "seshboard:request-drafts",
+  draftsRequested: "seshboard:drafts-requested",
+  getPopoutView: "seshboard:get-popout-view",
+  reportView: "seshboard:report-view",
+  viewReturned: "seshboard:view-returned",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -143,7 +143,7 @@ export type ToolActivity = "summary" | "steps";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
 /**
- * What a click on a file link in the conversation does: open it in Switchboard (Markdown, HTML and code preview there,
+ * What a click on a file link in the conversation does: open it in Seshboard (Markdown, HTML and code preview there,
  * other files show in the file manager), always show it in the file manager, or open it in the editor.
  */
 export type FileLinkClick = "switchboard" | "file-manager" | "editor";
@@ -152,7 +152,7 @@ export type FileLinkClick = "switchboard" | "file-manager" | "editor";
  * apart from the old default (before "switchboard" existed). It counts as a choice only from this revision on.
  */
 export const FILE_LINK_CLICK_REVISION = 2;
-/** Sessions in the sidebar: only those started or continued in Switchboard, or every Claude Code session. */
+/** Sessions in the sidebar: only those started or continued in Seshboard, or every Claude Code session. */
 export type SessionScope = "switchboard" | "all";
 /** What a new window shows: Home, the session open last time, or New session. */
 export type StartupView = "home" | "last" | "new";
@@ -174,6 +174,8 @@ export type WhileWorking = "queue" | "steer";
 export type ResumeAtLimit = "ask" | "always";
 /** The sidebar's order: by time and state (`recent`), or what takes least to unblock first (`quickest`). */
 export type SidebarSort = "recent" | "quickest";
+/** Which buttons a session row shows under the pointer: only Archive, or Mark as read, Pin and Archive. */
+export type QuickActionsShow = "archive" | "all";
 
 /** At the focus limit: ask first and allow going over (`nudge`), or wait until a session is finished (`strict`). */
 export type FocusMode = "nudge" | "strict";
@@ -184,7 +186,7 @@ export const FOCUS_LIMIT_MAX = 10;
 /** What the limit starts at when it is turned on. */
 export const FOCUS_LIMIT_DEFAULT = 3;
 /**
- * The sidebar's Star on GitHub button: shown (`ask`) until Switchboard is starred, its page was opened instead, or
+ * The sidebar's Star on GitHub button: shown (`ask`) until Seshboard is starred, its page was opened instead, or
  * you dismissed it (`done`). It never asks again after that.
  */
 export type GithubStar = "ask" | "done";
@@ -311,7 +313,7 @@ export interface Preferences {
   chrome: boolean;
   /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
-   * Switchboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
+   * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
    * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
    */
   keepAwake: boolean;
@@ -321,7 +323,7 @@ export interface Preferences {
   /** The most sessions going at the same time (1–10); null turns the focus limit off. */
   focusLimit: number | null;
   focusMode: FocusMode;
-  /** Also count live sessions started outside Switchboard (terminal, IDE). */
+  /** Also count live sessions started outside Seshboard (terminal, IDE). */
   focusCountExternal: boolean;
   /** Also count the sessions working on other paired computers (Remote access). On by default. */
   focusCountRemote: boolean;
@@ -334,6 +336,11 @@ export interface Preferences {
   appIcon: AppIconKey;
   /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
   appIconOnRemote: boolean;
+  /**
+   * Settings › Theme › App icon: "Show when Claude is working" (macOS). On, the empty jacks of the Dock's icon light
+   * up in turn while a session works. On by default.
+   */
+  dockActivity: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -387,6 +394,10 @@ export interface Preferences {
   githubHintSeen: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
+  /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
+  quickActions: boolean;
+  /** Settings › Sidebar: which quick actions show ("Show"). Working rows keep Stop either way. */
+  quickActionsShow: QuickActionsShow;
   githubStar: GithubStar;
   /** Settings › Notifications: system notifications, separate from the sounds. */
   notifications: NotificationPrefs;
@@ -426,6 +437,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
+  dockActivity: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
@@ -442,6 +454,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   hiddenMods: [],
   githubHintSeen: [],
   sidebarSort: "recent",
+  quickActions: true,
+  quickActionsShow: "all",
   githubStar: "ask",
   notifications: DEFAULT_NOTIFICATIONS,
   sounds: DEFAULT_SOUNDS,
@@ -604,6 +618,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
+  if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -635,6 +650,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
     out.sidebarSort = raw.sidebarSort;
+  if (typeof raw.quickActions === "boolean") out.quickActions = raw.quickActions;
+  if (oneOf(["archive", "all"] as const, raw.quickActionsShow))
+    out.quickActionsShow = raw.quickActionsShow;
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.
@@ -654,6 +672,8 @@ export interface AppInfo {
   commit: string | null;
   /** A development or unpackaged build: show `dev`, never a release number. */
   dev: boolean;
+  /** The data folder is the one Switchboard used (the app's name before 1.2.0): the window explains the rename once. */
+  fromSwitchboard: boolean;
 }
 
 /** `releases/tag/v…` for a version, where its release notes are. */
@@ -661,7 +681,7 @@ export const releaseUrl = (version: string) =>
   `https://github.com/estruyf/switchboard/releases/tag/v${version}`;
 export const CHANGELOG_URL =
   "https://github.com/estruyf/switchboard/blob/main/CHANGELOG.md";
-/** Switchboard's repository, which Star on GitHub opens when gh can't star it. */
+/** Seshboard's repository, which Star on GitHub opens when gh can't star it. */
 export const REPO_URL = "https://github.com/estruyf/switchboard";
 
 /** Where the VS Code companion is published: the Marketplace for VS Code, Open VSX for Cursor and Windsurf. */
@@ -720,7 +740,7 @@ export type UpdateCommand =
   | "dismiss";
 
 /**
- * A validated `switchboard://` link, from main to the renderer. It opens New session with the folder and
+ * A validated `seshboard://` link, from main to the renderer. It opens New session with the folder and
  * prompt filled in (and starts the session only with `autostart`), or shows an existing session.
  */
 export type DeepLink =
@@ -793,7 +813,7 @@ export interface RendererReadyReport {
   sessionCount: number;
 }
 
-export interface SwitchboardBridge {
+export interface SeshboardBridge {
   readonly platform: string;
   /** Asks main for a fresh engine port; it arrives as a window message tagged ENGINE_PORT_MESSAGE. */
   requestEnginePort(): void;
@@ -839,7 +859,7 @@ export interface SwitchboardBridge {
   onPreferencesChanged(
     listener: (preferences: Preferences) => void,
   ): () => void;
-  /** Switchboard → Settings… (⌘,) in the menu bar, or Check for Updates… (which opens About). */
+  /** Seshboard → Settings… (⌘,) in the menu bar, or Check for Updates… (which opens About). */
   onOpenSettings(listener: (section: "about" | null) => void): () => void;
   /** Help › Keyboard Shortcuts (⌘/) in the menu bar: open the shortcuts sheet, or close it. */
   onToggleShortcuts(listener: () => void): () => void;
@@ -857,7 +877,7 @@ export interface SwitchboardBridge {
    * puts them back. macOS only; elsewhere it does nothing.
    */
   setWindowButtons(position: "default" | "rail"): void;
-  /** A `switchboard://` link was opened (main holds links until this window's renderer is ready). */
+  /** A `seshboard://` link was opened (main holds links until this window's renderer is ready). */
   onDeepLink(listener: (message: DeepLinkMessage) => void): () => void;
   /** Every theme, read once when the page loads (with the preferences), so the first paint has the right colours. */
   readonly themes: ThemeState;
@@ -885,19 +905,19 @@ export interface SwitchboardBridge {
   listSounds(): Promise<SoundList>;
   /** Plays a sound once at a volume (0 to 1), to try it. Only sounds from `listSounds`. */
   playSound(id: string, volume: number): void;
-  /** Whether the system lets Switchboard show notifications (System Settings, or Windows settings). */
+  /** Whether the system lets Seshboard show notifications (System Settings, or Windows settings). */
   notificationPermission(): Promise<NotificationPermission>;
-  /** Opens the system's notification settings, at Switchboard where the system allows. */
+  /** Opens the system's notification settings, at Seshboard where the system allows. */
   openNotificationSettings(): void;
   /** Shows one notification like a Needs you one, with its sound when sounds are on. */
   testNotification(): void;
-  /** Whether Switchboard opens when you log in to this computer, as the system has it. */
+  /** Whether Seshboard opens when you log in to this computer, as the system has it. */
   openAtLogin(): Promise<OpenAtLogin>;
-  /** Adds Switchboard to the system's login items, or takes it off; answers how it stands afterwards. */
+  /** Adds Seshboard to the system's login items, or takes it off; answers how it stands afterwards. */
   setOpenAtLogin(on: boolean): Promise<OpenAtLogin>;
   /** Opens the system's list of apps that open at login (Login Items, or Startup apps on Windows). */
   openLoginItemsSettings(): void;
-  /** How the `switchboard` and `seshboard` shell commands stand, or installs or removes them; answers how they stand afterwards. */
+  /** How the `seshboard`, `sesh` and `switchboard` shell commands stand, or installs or removes them; answers how they stand afterwards. */
   shellCommand(action?: "install" | "remove"): Promise<ShellCommandResult>;
   /** Whether Keep awake is holding sleep off right now (on, and `caffeinate` or the sleep blocker is running). */
   keepAwakeStatus(): Promise<boolean>;
@@ -941,17 +961,17 @@ export interface SwitchboardBridge {
 }
 
 /**
- * Whether Switchboard opens at login. The system holds it (System Settings › General › Login Items, or Startup apps
+ * Whether Seshboard opens at login. The system holds it (System Settings › General › Login Items, or Startup apps
  * on Windows), not the preferences, so a change made there shows here. `needs-approval`: macOS added it but waits for
  * you to allow it there. `unavailable`: a development build, which would add Electron itself, or Linux.
  */
 export type OpenAtLogin = "on" | "off" | "needs-approval" | "unavailable";
 
 /**
- * The `switchboard`, `seshboard` and `sesh` shell commands (`switchboard .` opens New session in that folder). A name
+ * The `seshboard`, `sesh` and `switchboard` shell commands (`seshboard .` opens New session in that folder). A name
  * another program already has a file for is left alone and listed in `taken`; the status is about the others.
  * `installed`: each is this build's script (on Windows, with its folder on the PATH). `outdated`: some are missing or
- * written by another copy of Switchboard. `taken`: every name belongs to another program. `unavailable`: a development
+ * written by another copy of Seshboard. `taken`: every name belongs to another program. `unavailable`: a development
  * build, whose commands would start Electron.
  */
 export interface ShellCommandState {
@@ -959,7 +979,7 @@ export interface ShellCommandState {
   names: string[];
   /** The folder the commands go in. */
   dir: string;
-  /** Files of these names that belong to another program, which Switchboard skips. */
+  /** Files of these names that belong to another program, which Seshboard skips. */
   taken: string[];
 }
 
@@ -969,5 +989,5 @@ export interface ShellCommandResult {
   error: string | null;
 }
 
-/** `blocked`: notifications are turned off for Switchboard (or for every app) in the system's settings. `unknown` when it can't be told. */
+/** `blocked`: notifications are turned off for Seshboard (or for every app) in the system's settings. `unknown` when it can't be told. */
 export type NotificationPermission = "allowed" | "blocked" | "unknown";

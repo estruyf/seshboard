@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { MAX_PREVIEW_BYTES, RpcError } from '@switchboard/protocol';
+import { join, sep } from 'node:path';
+import { MAX_PREVIEW_BYTES, RpcError } from '@seshboard/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
-import { inlineHtmlImages, readPreview, readPreviewImage, sniffImage, withPreviewCsp } from './filePreview.ts';
+import { imgTags, inlineHtmlImages, localImagePath, readPreview, readPreviewImage, sniffImage, withPreviewCsp } from './filePreview.ts';
 
 const dirs: string[] = [];
 const temp = () => {
@@ -32,18 +32,38 @@ const code = async (promise: Promise<unknown>) => {
 };
 
 describe('withPreviewCsp', () => {
-  it('goes first in the head', () => {
-    const out = withPreviewCsp('<!doctype html><html><head lang="x"><title>t</title></head><body></body></html>');
-    expect(out).toMatch(/<head lang="x"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><title>/);
+  const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">`;
+
+  it('goes at the very top, after a doctype that starts the page', () => {
+    expect(withPreviewCsp('<!doctype html><html><head lang="x"><title>t</title></head><body></body></html>')).toBe(`<!doctype html>${CSP}<html><head lang="x"><title>t</title></head><body></body></html>`);
+    expect(withPreviewCsp('<!DOCTYPE html>\n<p>hi</p>')).toBe(`<!DOCTYPE html>${CSP}\n<p>hi</p>`);
+    expect(withPreviewCsp('<p>hi</p>')).toBe(`${CSP}<p>hi</p>`);
   });
 
-  it('goes after the doctype when there is no head, and at the top without one', () => {
-    expect(withPreviewCsp('<!DOCTYPE html>\n<p>hi</p>')).toMatch(/^<!DOCTYPE html><meta http-equiv="Content-Security-Policy".*>\n<p>hi<\/p>$/);
-    expect(withPreviewCsp('<p>hi</p>')).toMatch(/^<meta http-equiv="Content-Security-Policy".*><p>hi<\/p>$/);
+  it('is never put where it would not count: after a <head> in a comment, a script or a title', () => {
+    for (const page of ['<!-- <head> --><head></head>', '<script>"<head>"</script>', '<title><head></title>']) expect(withPreviewCsp(page).startsWith(CSP)).toBe(true);
   });
 
-  it("doesn't take <header> for a head", () => {
-    expect(withPreviewCsp('<header>x</header>')).toMatch(/^<meta/);
+  it('takes no time on a large page of unclosed tags', () => {
+    const started = Date.now();
+    withPreviewCsp('<head '.repeat(400_000));
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+});
+
+describe('imgTags', () => {
+  it('finds <img> tags in any case, not <image> or <img2>, up to their first >', () => {
+    expect(imgTags('<p><IMG src=a.png><image src=b><img2><img\nsrc="c">').map((t) => [t.index, t.text])).toEqual([
+      [3, '<IMG src=a.png>'],
+      [37, '<img\nsrc="c">'],
+    ]);
+  });
+
+  it('stops at an <img without >, quickly however many there are', () => {
+    expect(imgTags('<img src=a.png><img src=b')).toHaveLength(1);
+    const started = Date.now();
+    expect(imgTags('<img '.repeat(400_000))).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(500);
   });
 });
 
@@ -80,7 +100,7 @@ describe('readPreview', () => {
     writeFileSync(join(dir, 'b.HTM'), '<p>plain</p>');
     const a = await readPreview(join(dir, 'a.html'));
     expect(a.kind).toBe('html');
-    expect(a.content).toContain("<head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'");
+    expect(a.content).toMatch(/^<meta http-equiv="Content-Security-Policy" content="default-src 'none'.*><html><head><title>/);
     expect((await readPreview(join(dir, 'b.HTM'))).content).toMatch(/^<meta http-equiv="Content-Security-Policy".*<p>plain<\/p>$/);
   });
 
@@ -179,6 +199,21 @@ describe('inlineHtmlImages', () => {
     const out = await inlineHtmlImages('<img src="1.png"><img src="2.png"><img src="3.png"><img src="4.png">', dir);
     expect(out.match(/src="data:/g)).toHaveLength(2);
     expect(out).toContain('<img src="3.png"><img src="4.png">');
+  });
+
+  it('reads only images on this computer, never from a network share', () => {
+    const dir = temp();
+    expect(localImagePath('a.png', dir)).toBe(join(dir, 'a.png'));
+    // On Windows, looking at a network path sends the user's login to that server.
+    for (const src of ['\\\\attacker\\share\\a.png', 'file://attacker/share/a.png', '//attacker/share/a.png']) expect(localImagePath(src, 'C:\\pages', 'win32')).toBeNull();
+    expect(localImagePath('C:\\pages\\a.png', 'C:\\pages', 'win32')).toBe(sep === '\\' ? 'C:\\pages\\a.png' : null);
+  });
+
+  it('counts every use of an image against the page total, not only the first', async () => {
+    const dir = temp();
+    writeFileSync(join(dir, 'big.png'), Buffer.concat([PNG, Buffer.alloc(9 * 1024 * 1024)]));
+    const out = await inlineHtmlImages('<img src="big.png">'.repeat(5), dir);
+    expect(out.match(/src="data:/g)).toHaveLength(2);
   });
 
   it('skips an image over 10 MB', async () => {

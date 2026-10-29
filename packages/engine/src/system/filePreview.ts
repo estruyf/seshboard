@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@switchboard/protocol';
+import { isLocalAbsolutePath, MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@seshboard/protocol';
 
 /** What `readPreview` returns (the result of `files.read`). */
 export interface FilePreview {
@@ -28,15 +28,35 @@ export interface PreviewImage {
 const PREVIEW_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">`;
 
 /**
- * Puts the Content-Security-Policy meta first in the page's `<head>`. Without a head it goes after the doctype
- * (before it, the page would fall into quirks mode) or at the very top.
+ * Puts the Content-Security-Policy meta at the very top of the page, after a doctype that starts it (before it, the
+ * page would fall into quirks mode). The parser puts it in the head it makes there, before anything of the page's
+ * own. Not after the page's `<head>`: a `<head>` inside a comment, a `<script>` or a `<title>` would take it out of
+ * effect, and looking for one in a large file can take minutes.
  */
 export function withPreviewCsp(html: string): string {
-  const head = /<head(?:\s[^>]*)?>/i.exec(html);
-  if (head) return html.slice(0, head.index + head[0].length) + PREVIEW_CSP + html.slice(head.index + head[0].length);
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
-  if (doctype) return html.slice(0, doctype[0].length) + PREVIEW_CSP + html.slice(doctype[0].length);
-  return PREVIEW_CSP + html;
+  const at = doctype ? doctype[0].length : 0;
+  return html.slice(0, at) + PREVIEW_CSP + html.slice(at);
+}
+
+/**
+ * The `<img …>` tags of a page, in order: where each starts and its text up to the first `>`. A scan, not a regular
+ * expression, so a page of `<img` without `>` takes as long as reading it, not minutes.
+ */
+export function imgTags(html: string): Array<{ index: number; text: string }> {
+  const tags: Array<{ index: number; text: string }> = [];
+  for (let from = 0; ; ) {
+    const start = html.indexOf('<', from);
+    if (start < 0) return tags;
+    from = start + 1;
+    // `<img` and then something that ends the name (`<image>` or `<img2>` is another tag).
+    if (html.slice(start + 1, start + 4).toLowerCase() !== 'img' || /[\w]/.test(html[start + 4] ?? '')) continue;
+    const end = html.indexOf('>', start + 4);
+    // No tag closes after this one, so none of the later ones does either.
+    if (end < 0) return tags;
+    tags.push({ index: start, text: html.slice(start, end + 1) });
+    from = end + 1;
+  }
 }
 
 /** The type of an image from its first bytes, or null when it is none of the kinds a preview shows. SVG is text, so it must start like an SVG document. */
@@ -110,8 +130,17 @@ export async function readPreviewImage(path: string): Promise<PreviewImage> {
   return { mediaType, data: bytes.toString('base64') };
 }
 
-/** The file a local `src` points at, or null for anything else (http, data:, a protocol-relative URL, an anchor). */
-function localImagePath(src: string, baseDir: string): string | null {
+/**
+ * The file a local `src` points at, or null for anything else (http, data:, a protocol-relative URL, an anchor, a
+ * network path). On Windows, looking at `\\server\share\a.png` or `file://server/share/a.png` connects to that
+ * server and sends it the user's Windows login, so only a path on this computer's drives is read.
+ */
+export function localImagePath(src: string, baseDir: string, platform: string = process.platform): string | null {
+  const path = imagePath(src, baseDir);
+  return path && isLocalAbsolutePath(path, platform) ? path : null;
+}
+
+function imagePath(src: string, baseDir: string): string | null {
   const value = src.trim();
   if (!value || value.startsWith('#') || value.startsWith('//')) return null;
   if (/^file:/i.test(value)) {
@@ -140,39 +169,39 @@ function localImagePath(src: string, baseDir: string): string | null {
  * `MAX_PREVIEW_PAGE_IMAGES_BYTES` together. Anything else is left as written (and won't load).
  */
 export async function inlineHtmlImages(html: string, baseDir: string): Promise<string> {
-  const tags = [...html.matchAll(/<img\b[^>]*>/gi)];
+  const tags = imgTags(html);
   if (!tags.length) return html;
-  const cache = new Map<string, string | null>();
+  // Each file is read once; every tag that uses it counts against the page's total, so one large image named a
+  // thousand times can't make a page of gigabytes.
+  const cache = new Map<string, { uri: string; size: number } | null>();
   let budget = MAX_PREVIEW_PAGE_IMAGES_BYTES;
-  const load = async (path: string): Promise<string | null> => {
+  const load = async (path: string): Promise<{ uri: string; size: number } | null> => {
     if (cache.has(path)) return cache.get(path) ?? null;
-    let uri: string | null = null;
+    let image: { uri: string; size: number } | null = null;
     try {
       const info = await stat(path);
       if (info.isFile() && info.size <= MAX_PREVIEW_IMAGE_BYTES && info.size <= budget) {
         const bytes = await readFile(path);
         const mediaType = sniffImage(bytes);
-        if (mediaType) {
-          budget -= bytes.length;
-          uri = `data:${mediaType};base64,${bytes.toString('base64')}`;
-        }
+        if (mediaType) image = { uri: `data:${mediaType};base64,${bytes.toString('base64')}`, size: bytes.length };
       }
     } catch {
       // Missing or unreadable: leave the tag alone.
     }
-    cache.set(path, uri);
-    return uri;
+    cache.set(path, image);
+    return image;
   };
   let out = '';
   let last = 0;
   for (const tag of tags) {
-    const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag[0]);
+    const src = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(tag.text);
     const value = src?.[1] ?? src?.[2] ?? src?.[3];
     const path = value === undefined ? null : localImagePath(value, baseDir);
-    const uri = path ? await load(path) : null;
-    if (!src || !uri) continue;
+    const image = path ? await load(path) : null;
+    if (!src || !image || image.size > budget) continue;
+    budget -= image.size;
     const start = tag.index + src.index;
-    out += html.slice(last, start) + ` src="${uri}"`;
+    out += html.slice(last, start) + ` src="${image.uri}"`;
     last = start + src[0].length;
   }
   return out + html.slice(last);

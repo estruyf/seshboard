@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteSession } from '@switchboard/protocol/remote-client';
+import type { RemoteSession } from '@seshboard/protocol/remote-client';
 import { fuzzyScore, paletteGroups, rankSessions, sessionScore } from './palette.ts';
 
 const session = (id: string, title: string, change: Partial<RemoteSession> = {}): RemoteSession => ({

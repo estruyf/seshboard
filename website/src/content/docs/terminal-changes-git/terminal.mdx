@@ -11,7 +11,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside, Steps } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Switchboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
+Every session has its own terminal panel. It opens a shell in the session's folder (its worktree, when it has one), so you can run a command without leaving Seshboard. [Project actions](/projects/actions/), git steps and code blocks from the conversation run there too.
 
 Outside a session you have a terminal too: on Home, a project's page, Projects, Usage, New session and Settings. See [Outside a session](#outside-a-session).
 
@@ -45,7 +45,7 @@ It is your login shell, so your `PATH`, `nvm` and aliases work as in your own te
 
 <OnlyOn os="windows">
 
-On Windows it is PowerShell: PowerShell 7 (`pwsh`) when it is installed, otherwise the Windows PowerShell every PC has. There is no setting to pick Command Prompt or Git Bash; type `cmd` in the panel to start Command Prompt inside it. Switchboard runs PowerShell with the execution policy set to Bypass for that window only, so `npm`, `npx` and `pnpm` scripts run (a policy your organisation sets still wins). Your PowerShell profile loads as usual.
+On Windows it is PowerShell: PowerShell 7 (`pwsh`) when it is installed, otherwise the Windows PowerShell every PC has. There is no setting to pick Command Prompt or Git Bash; type `cmd` in the panel to start Command Prompt inside it. Seshboard runs PowerShell with the execution policy set to Bypass for that window only, so `npm`, `npx` and `pnpm` scripts run (a policy your organisation sets still wins). Your PowerShell profile loads as usual.
 
 </OnlyOn>
 
@@ -59,7 +59,7 @@ A session can have several terminals, each in its own tab: shells, [project acti
 
 - **+** next to the tabs opens a new shell tab.
 - Click a tab to show it, or use <Kbd keys="arrowleft|arrowright" /> with a tab focused.
-- **×** on a tab closes it.
+- **×** on a tab closes it, and so does a middle-click on the tab (<Kbd shortcut="terminal.close-tab" />).
 
 A tab whose program has ended says it exited, with its exit code. Press <Kbd keys="escape" /> in it to close it. A yellow dot on a tab means an action is running there; a red one means what ran there failed. A finished tab shows its exit code next to its title.
 
@@ -69,13 +69,13 @@ Terminals keep running when you switch to another session or close the panel. Hi
 
 <OnlyOn os="mac">
 
-In the terminal, ⌃ and ⌥ keys belong to the shell, and ⌘ keys to Switchboard. <Kbd keys="mod+c" />, <Kbd keys="mod+v" /> and <Kbd keys="mod+a" /> copy, paste and select in the terminal.
+In the terminal, ⌃ and ⌥ keys belong to the shell, and ⌘ keys to Seshboard. <Kbd keys="mod+c" />, <Kbd keys="mod+v" /> and <Kbd keys="mod+a" /> copy, paste and select in the terminal.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-On Windows, Ctrl keys belong to the shell, as in Windows Terminal: <Kbd keys="ctrl+r" /> searches PowerShell's history and <Kbd keys="ctrl+c" /> stops a program. Switchboard's own shortcuts take Ctrl+Shift there: open the command palette with <Kbd keys="mod+shift+p" />, for example. A few keys stay Switchboard's in the terminal too: <Kbd shortcut="terminal.toggle" /> to hide it, <Kbd shortcut="session.next" /> to go to the next session, and <Kbd shortcut="terminal.clear" /> to clear it.
+On Windows, Ctrl keys belong to the shell, as in Windows Terminal: <Kbd keys="ctrl+r" /> searches PowerShell's history and <Kbd keys="ctrl+c" /> stops a program. Seshboard's own shortcuts take Ctrl+Shift there: open the command palette with <Kbd keys="mod+shift+p" />, for example. A few keys stay Seshboard's in the terminal too: <Kbd shortcut="terminal.toggle" /> to hide it, <Kbd shortcut="session.next" /> to go to the next session, and <Kbd shortcut="terminal.clear" /> to clear it.
 
 - **Copy:** select text, then press <Kbd keys="ctrl+c" />. With nothing selected, <Kbd keys="ctrl+c" /> stops the program as usual. <Kbd keys="ctrl+shift+c" /> always copies.
 - **Paste:** <Kbd keys="ctrl+v" /> or <Kbd keys="ctrl+shift+v" />.
@@ -98,7 +98,7 @@ Press <Kbd shortcut="terminal.maximize" />, or click the maximize button, to let
 
 ### Dock below or on the right
 
-The panel docks below the conversation by default. Click the dock button to move it to the right, or back below. *Dock terminal right* and *Dock terminal below* in the command palette do the same. Switchboard remembers your choice.
+The panel docks below the conversation by default. Click the dock button to move it to the right, or back below. *Dock terminal right* and *Dock terminal below* in the command palette do the same. Seshboard remembers your choice.
 
 On the right, the terminal shares the side with the [Changes panel](/terminal-changes-git/changes/), the [Ask panel](/sessions/ask/) and the [Agents panel](/sessions/agents/). With more than one of them open, tabs at the top switch between them, and **Terminal** is the last tab. Opening Changes, Ask or Agents brings that panel to the front and keeps the terminal on the right, behind it. Click the **Terminal** tab, the **Terminal** button in the header or press <Kbd shortcut="terminal.toggle" /> to bring it back to the front. Its shells keep running behind the other tabs. As a tab, the terminal has the same width as the other panels.
 
@@ -132,7 +132,7 @@ Press <Kbd shortcut="terminal.stop-action" /> in the terminal to stop a running 
 
 <OnlyOn os="windows">
 
-On Windows, actions and git steps run in the same PowerShell as the shell tabs. A stopped action shows **Failed** with its exit code, usually 1 (130 on a Mac). Windows PowerShell 5.1 has no `&&`: the steps Switchboard runs itself chain their commands the way it understands, but in your own action commands write `a; if ($?) { b }`, or install PowerShell 7. See [Troubleshooting](/troubleshooting/#windows-commands-in-the-terminal-or-in-actions).
+On Windows, actions and git steps run in the same PowerShell as the shell tabs. A stopped action shows **Failed** with its exit code, usually 1 (130 on a Mac). Windows PowerShell 5.1 has no `&&`: the steps Seshboard runs itself chain their commands the way it understands, but in your own action commands write `a; if ($?) { b }`, or install PowerShell 7. See [Troubleshooting](/troubleshooting/#windows-commands-in-the-terminal-or-in-actions).
 
 </OnlyOn>
 
@@ -144,7 +144,7 @@ When Claude's reply has a shell code block (`bash`, `sh`, `zsh`, `shell`, `conso
 
 To use Claude Code's own terminal interface on the session, with its status line, mods and every CLI feature, open the session header's **⋯** menu and choose **Open in → Claude Code**. It opens in a tab of the terminal panel.
 
-A session that is running in Switchboard can't be open in two places. Switchboard then offers **Stop it here and open**, or **Open a fork** to open a copy of the conversation instead. A session that is open in another Claude Code window can only be opened as a fork.
+A session that is running in Seshboard can't be open in two places. Seshboard then offers **Stop it here and open**, or **Open a fork** to open a copy of the conversation instead. A session that is open in another Claude Code window can only be opened as a fork.
 
 ## Settings
 

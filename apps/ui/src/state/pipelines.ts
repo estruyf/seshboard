@@ -1,4 +1,4 @@
-import { mentionsIn, modelWord, modeWord, PARENT_MENTION, type Pipeline, type PipelineClaudeStep, type PipelineStep } from '@switchboard/protocol/client';
+import { mentionsIn, modelWord, modeWord, PARENT_MENTION, type Pipeline, type PipelineClaudeStep, type PipelineStep } from '@seshboard/protocol/client';
 
 // Pipelines (#179) in the window: the words the editor shows, without React or the stores, so they can be tested. The
 // rules are the protocol's (`pipelines.ts`), and the words of a run, which the remote app shows too, are in its
@@ -27,7 +27,7 @@ export {
   type BoxChoiceUse,
   type RunAsStep,
   type StepView,
-} from '@switchboard/protocol/client';
+} from '@seshboard/protocol/client';
 
 /** The @ names a step's prompt uses, in order, once each ("@parent", "@Execute"). */
 export function stepMentions(step: PipelineClaudeStep, names: readonly string[]): string[] {

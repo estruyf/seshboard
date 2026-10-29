@@ -1,13 +1,13 @@
 import { CircleCheck, CircleDot, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { ContextItem, GithubIssueDetail, GithubItemType, GithubLabel, GithubPrDetail } from '@switchboard/protocol/client';
+import type { ContextItem, GithubIssueDetail, GithubItemType, GithubLabel, GithubPrDetail } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { liftContrast } from '../mods/modColor.ts';
 import { useCardColor } from '../mods/useModRender.ts';
 
 /**
  * An issue's or pull request's state, as GitHub draws it: an open one in `ok`, a draft, closed or merged one muted
- * (closed things are quiet everywhere in Switchboard; no state takes a colour of its own here).
+ * (closed things are quiet everywhere in Seshboard; no state takes a colour of its own here).
  */
 export function GithubStateIcon({ type, state, draft = false, size = 14 }: { type: GithubItemType; state: string | null; draft?: boolean; size?: number }) {
   const Icon = type === 'pr' ? (state === 'merged' ? GitMerge : state === 'closed' ? GitPullRequestClosed : draft ? GitPullRequestDraft : GitPullRequest) : state === 'closed' ? CircleCheck : CircleDot;

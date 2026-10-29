@@ -1,7 +1,8 @@
 import { currentPlatform } from '../../lib/platform.ts';
+import { basename } from '../../lib/format.ts';
 import { MoreHorizontal, Plus, Share2, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ACTION_ICONS, joinPath, type ActionIcon, type ActionSuggestion, type ListedAction } from '@switchboard/protocol/client';
+import { ACTION_ICONS, joinPath, type ActionIcon, type ActionSuggestion, type ListedAction } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { showInChanges } from '../../state/showInChanges.ts';
@@ -80,7 +81,7 @@ function ShortcutInput({
   value: string | null;
   onChange(value: string | null): void;
   labelId: string;
-  /** Why a recorded shortcut can't be used (Switchboard or another action has it), or null. */
+  /** Why a recorded shortcut can't be used (Seshboard or another action has it), or null. */
   check(shortcut: string): string | null;
   /** The form's message for the saved value, shown when nothing was recorded since. */
   invalid?: string;
@@ -251,7 +252,7 @@ export function DeleteActionDialog({ action, onConfirm, onClose }: { action: Lis
       title={`Delete ${action.name}?`}
       body={
         action.scope === 'shared' ? (
-          <>The action is taken out of the project’s .switchboard.json, and out of everyone’s projects once you commit it. Its command is not run.</>
+          <>The action is taken out of the project’s .seshboard.json, and out of everyone’s projects once you commit it. Its command is not run.</>
         ) : (
           <>The action is removed from {action.scope === 'global' ? 'all your projects' : 'this project'}. Its command is not run.</>
         )
@@ -266,7 +267,7 @@ export function DeleteActionDialog({ action, onConfirm, onClose }: { action: Lis
 
 /**
  * Add, edit and remove project actions: the list on the left, the selected action's form on the
- * right. Shared ones are kept in the project's .switchboard.json, which a save or delete writes.
+ * right. Shared ones are kept in the project's .seshboard.json, which a save or delete writes.
  * A successful save hands the action to `onSaved` (the caller closes the editor and confirms it); a
  * failed one keeps the editor open with the error above the form, so nothing typed is lost.
  */
@@ -316,7 +317,7 @@ export function ActionEditor({
 
   const { yours, shared } = groupActions(actions);
   /** Where the shared file is (or will be, for the first shared action). */
-  const sharedPath = sharedFile ?? joinPath(projectRoot, '.switchboard.json');
+  const sharedPath = sharedFile ?? joinPath(projectRoot, '.seshboard.json');
   const { shown, hidden } = visibleSuggestions(suggestions, actions, showAll);
 
   useEffect(() => {
@@ -449,7 +450,7 @@ export function ActionEditor({
   /** Says that an action went into the project's shared file, or out of it, with Show the change. */
   const announceShared = (name: string, shared: boolean) =>
     toast(shared ? `${name} is shared with ${shownName}` : `${name} is no longer shared with ${shownName}`, {
-      body: 'Commit the project’s .switchboard.json so your team gets the change.',
+      body: 'Commit the project’s .seshboard.json so your team gets the change.',
       icon: 'shared',
       data: { 'data-action-share-toast': shared ? 'shared' : 'unshared' },
       actions: [
@@ -497,7 +498,7 @@ export function ActionEditor({
             </ul>
             {shared.length > 0 && (
               <>
-                <SectionTitle id={`${id}-shared`}>From .switchboard.json</SectionTitle>
+                <SectionTitle id={`${id}-shared`}>From .seshboard.json</SectionTitle>
                 <ul aria-labelledby={`${id}-shared`} className="grid gap-px">
                   {shared.map(actionRow)}
                 </ul>
@@ -568,7 +569,7 @@ export function ActionEditor({
                   }
                   data-action-shared-note
                 >
-                  {sharedFile ? 'Saved in the project’s .switchboard.json. Commit it so your team gets it.' : 'Saving creates .switchboard.json in the project. Commit it so your team gets it.'}
+                  {sharedFile ? `Saved in the project’s ${basename(sharedFile)}. Commit it so your team gets it.` : 'Saving creates .seshboard.json in the project. Commit it so your team gets it.'}
                 </Notice>
               )}
               <div className="grid min-w-0 gap-4">
@@ -674,7 +675,7 @@ export function ActionEditor({
                       options={[
                         { value: 'project', label: 'This project', hint: 'just for you' },
                         { value: 'global', label: 'All projects', hint: 'just for you' },
-                        { value: 'shared', label: 'Shared with the project', hint: 'in .switchboard.json' },
+                        { value: 'shared', label: 'Shared with the project', hint: 'in .seshboard.json' },
                       ]}
                     />
                   </div>
@@ -770,7 +771,7 @@ export function ActionEditor({
         <p className="flex shrink-0 items-center gap-2 border-t border-edge bg-bg/40 px-5 py-2.5 text-ui text-muted">
           <Share2 size={14} className="shrink-0" aria-hidden />
           <span>
-            Share an action with your team: save it for <span className="text-text">Shared with the project</span> and commit <code className="font-mono text-text">.switchboard.json</code> · each shared command asks for approval once.
+            Share an action with your team: save it for <span className="text-text">Shared with the project</span> and commit <code className="font-mono text-text">.seshboard.json</code> · each shared command asks for approval once.
           </span>
         </p>
       </Dialog>

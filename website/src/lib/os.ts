@@ -1,7 +1,7 @@
 /**
  * The site shows every key for macOS and for Windows, and CSS keeps the reader's one (`data-os` on <html>, set in
  * overrides/ThemeProvider.astro, changed with the switch in the header). The app's shortcut helpers read the
- * platform from `window.switchboard.platform` when called, so at build time each key is rendered once per platform
+ * platform from `window.seshboard.platform` when called, so at build time each key is rendered once per platform
  * by pretending to be that window for the length of a synchronous call.
  */
 export type Os = 'mac' | 'windows';
@@ -14,7 +14,7 @@ const PLATFORM: Record<Os, string> = { mac: 'darwin', windows: 'win32' };
 export function asOs<T>(os: Os, fn: () => T): T {
   const scope = globalThis as { window?: unknown };
   const before = scope.window;
-  scope.window = { switchboard: { platform: PLATFORM[os] } };
+  scope.window = { seshboard: { platform: PLATFORM[os] } };
   try {
     return fn();
   } finally {

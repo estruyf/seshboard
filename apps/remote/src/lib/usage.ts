@@ -1,4 +1,4 @@
-import type { RemoteProfileUsage, UsageLimit, UsageSnapshot } from '@switchboard/protocol/remote-client';
+import type { RemoteProfileUsage, UsageLimit, UsageSnapshot } from '@seshboard/protocol/remote-client';
 
 /**
  * Plan usage on Home, as the computer's Home shows it: a bar per window in the level's colour, with when it resets.

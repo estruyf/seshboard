@@ -1,6 +1,6 @@
 import { Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { Fragment, useState, type MouseEvent } from 'react';
-import type { GithubListItem } from '@switchboard/protocol/client';
+import type { GithubListItem } from '@seshboard/protocol/client';
 import { shortAge } from '../../lib/format.ts';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';

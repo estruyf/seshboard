@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode } from '@switchboard/protocol/client';
+import type { Effort, PermissionMode } from '@seshboard/protocol/client';
 
 export const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 

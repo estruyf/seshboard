@@ -1,10 +1,10 @@
 import { mkdirSync } from 'node:fs';
-import { isSameOrInside, RpcError } from '@switchboard/protocol';
+import { isSameOrInside, RpcError } from '@seshboard/protocol';
 
 /**
  * The scratch folder every quick question runs in: one folder in the app's data folder, shared by all
  * of them. Claude Code sees an ordinary folder, so transcripts, resume, fork and search work as for any
- * other; Switchboard only makes sure it never becomes a project.
+ * other; Seshboard only makes sure it never becomes a project.
  */
 export class QuestionsFolder {
   constructor(readonly path: string) {}

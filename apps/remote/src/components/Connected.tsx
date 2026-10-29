@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Bell, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings } from 'lucide-react';
-import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@switchboard/protocol/remote-client';
+import { checkRemoteSessions, type RemoteContract, type RpcClient } from '@seshboard/protocol/remote-client';
 import { keepDisconnected, nameOf, needsYouOf, pushComputers, type Computer } from '../lib/computers.ts';
 import { fromKey, listKey, mergeSessions, mergeUsage, runOnDefault } from '../lib/everywhere.ts';
 import { setFaviconDot } from '../lib/favicon.ts';
@@ -69,7 +69,7 @@ export interface OpenRequest {
 let handledRequest = 0;
 
 /**
- * Every paired computer at once (App.tsx keeps them all connected): their sessions in one list, as Switchboard's
+ * Every paired computer at once (App.tsx keeps them all connected): their sessions in one list, as Seshboard's
  * sidebar shows another computer's sessions among its own, each row saying which computer it runs on once there is
  * more than one. A session and New session are on one computer (their route carries it), and so is what they show;
  * the list, Home, the palette and usage are every computer's. On a phone one view at a time, opening on the sessions
@@ -169,7 +169,7 @@ export function Connected({
     history.replaceState(route, '');
     location.reload();
   };
-  useAskSync(client);
+  useAskSync(client, id);
 
   // What is on screen is on this computer: the app opens there next time.
   useEffect(() => {
@@ -578,6 +578,7 @@ export function Connected({
       <RunView
         key={`${id}:${route.sessionId}`}
         client={client}
+        computerId={id}
         runId={route.sessionId}
         sessions={sessions}
         banner={wide ? null : banner}
@@ -590,6 +591,7 @@ export function Connected({
       <SessionView
         key={`${id}:${route.sessionId}`}
         client={client}
+        computerId={id}
         features={features}
         sessionId={route.sessionId}
         sessions={sessions}

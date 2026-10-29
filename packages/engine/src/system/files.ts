@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
-import { GIT_SETTINGS } from '../git/gitChanges.ts';
+import { isLocalAbsolutePath } from '@seshboard/protocol';
+import { GIT_SETTINGS, gitProgram } from '../git/gitChanges.ts';
 
 const MAX_FILES = 50_000;
 const CACHE_MS = 30_000;
@@ -13,9 +14,11 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.nex
 export const HOME_SKIP_DIRS = new Set(['Library', 'Desktop', 'Documents', 'Downloads', 'Pictures', 'Movies', 'Music']);
 
 function gitFiles(cwd: string): Promise<string[] | null> {
+  const file = gitProgram();
+  if (!file) return Promise.resolve(null);
   return new Promise((resolve) => {
     execFile(
-      'git',
+      file,
       [...GIT_SETTINGS, 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
       { cwd, maxBuffer: 64 * 1024 * 1024, timeout: 5000 },
       (error, stdout) => resolve(error ? null : stdout.split('\0').filter(Boolean).slice(0, MAX_FILES)),
@@ -119,7 +122,9 @@ export class FileIndex {
       paths.map(async (path) => {
         const homeRelative = path.startsWith('~/') || (sep === '\\' && path.startsWith('~\\'));
         const direct = path === '~' ? home : homeRelative ? join(home, path.slice(2)) : isAbsolute(path) ? normalize(path) : cwd ? resolve(cwd, path) : null;
-        if (direct && (await exists(direct))) return direct;
+        // Only a local path is looked at: on Windows, looking at `\\server\share\…` (which Claude may print, or a
+        // transcript may hold) connects to that server and sends it the user's Windows login.
+        if (direct && isLocalAbsolutePath(direct, process.platform) && (await exists(direct))) return direct;
         if (!cwd || path.startsWith('.') || path.startsWith('~') || isAbsolute(path)) return null;
         // The file list uses `/`; Claude may name a file with `\` on Windows.
         const wanted = sep === '/' ? path : path.split(sep).join('/');

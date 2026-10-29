@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { posix, win32 } from 'node:path';
-import type { ClaudeInstall } from '@switchboard/protocol';
+import type { ClaudeInstall } from '@seshboard/protocol';
 
 function isExecutable(path: string): boolean {
   try {

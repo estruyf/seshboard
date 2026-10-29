@@ -1,4 +1,4 @@
-import { isAbsolutePath } from '@switchboard/protocol/client';
+import { isAbsolutePath } from '@seshboard/protocol/client';
 import { useEffect, useMemo, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { basename } from '../../lib/format.ts';
@@ -151,13 +151,14 @@ export function usePaletteContext(): PaletteContext {
       projectRoot: summary?.projectRoot ?? live.get(id)?.projectRoot ?? null,
       isWorktree: Boolean(summary?.worktree || (cwd && inWorktree(cwd))),
       host: active
-        ? { state: active.state, contextTokens: active.contextTokens, supportsEffort: findModelOption(models, active.model)?.supportsEffort ?? true }
+        ? { state: active.state, contextTokens: active.contextTokens, supportsEffort: findModelOption(models, active.model)?.supportsEffort ?? true, keepAwake: active.keepAwake === true }
         : null,
       running: active?.state === 'running' || active?.state === 'needs-you',
       waiting: waitingOn.length === 0 ? null : waitingOn.some((p) => p.toolName === 'AskUserQuestion') ? 'question' : 'permission',
       catchUp: showOf({ card: catchUps.get(id) ?? null, enabled: prefs.catchUpSummaries, folded: prefs.catchUpFolded, summary, host, live: live.get(id) ?? null, permissions: waitingOn, collapsed: collapsedCatchUps }),
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
+      unsent: host?.state === 'error' ? (host.unsent ?? 0) : 0,
     };
   }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded]);
 

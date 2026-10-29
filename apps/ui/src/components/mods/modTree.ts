@@ -1,4 +1,4 @@
-import { MOD_TREE_LIMITS } from '@switchboard/protocol/client';
+import { MOD_TREE_LIMITS } from '@seshboard/protocol/client';
 import { sanitizeSvg } from './modSvg.ts';
 import { safeHref } from './modLinks.ts';
 

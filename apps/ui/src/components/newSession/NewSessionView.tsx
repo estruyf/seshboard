@@ -1,15 +1,17 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@switchboard/protocol/client';
+import { AUTO_MODEL, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
+import { NEW_SESSION_COLUMN } from './ProjectRow.tsx';
 import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
@@ -39,7 +41,6 @@ import { StartButton } from './StartButton.tsx';
 import { RunOnSwitch } from './RunOnSwitch.tsx';
 import { RemoteNewSession } from '../computers/RemoteNewSession.tsx';
 import { ClonePanel } from '../clone/ClonePanel.tsx';
-import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
 import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
 import { canClone, planLine } from '../clone/cloneModel.ts';
 import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
@@ -60,7 +61,6 @@ import { useMinute } from '../focus/useMinute.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Kbd } from '../ui/Kbd.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Switch } from '../ui/Toggle.tsx';
@@ -79,10 +79,7 @@ import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
 import { DEFAULTS_KEY, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
-import { comboPresses, shortcutById } from '../../lib/shortcuts.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
-
-const keysOf = (id: 'new-session.pick') => shortcutById(id).keys[0]!;
 
 /**
  * Starts a new Claude Code session. The prompt is the main thing; around it sit the project, the
@@ -158,7 +155,7 @@ function LocalNewSession() {
    * `undefined` while nothing was changed, so changes made before a folder is picked (`null`) count too.
    */
   const touchedFor = useRef<string | null | undefined>(undefined);
-  /** A `switchboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
+  /** A `seshboard://` link chose the folder (or chose to leave it empty): the remembered or preferred folder must not fill it. */
   const folderFromLink = useRef(useClone.getState().form !== null);
   const linkRequest = useLinks((s) => s.newSession);
   /** Replaces the prompt: a link's prompt, or clearing it. */
@@ -224,7 +221,6 @@ function LocalNewSession() {
   const [cloneSoon, setCloneSoon] = useState(false);
   /** The folder picked before the clone form opened, to go back to when it closes without a clone. */
   const beforeClone = useRef<string | null>(null);
-  const trust = useTrustQuestion();
   const focus = useFocus();
   const atLimit = focus.limit !== null && focus.count >= focus.limit;
   /** Strict at the limit: Start waits (⌘↵ still asks, with the queue offered), Add to queue stays in Start's menu. */
@@ -348,7 +344,7 @@ function LocalNewSession() {
     const preferred = projectFilter && folders.includes(projectFilter) ? projectFilter : folders[0];
     if (loaded && !cwd && preferred && !folderFromLink.current) setCwd((c) => c ?? preferred);
   }, [loaded, folders, cwd, projectFilter]);
-  // A `switchboard://new-session` link: fill in its folder and prompt. Unless it says `autostart`, nothing
+  // A `seshboard://new-session` link: fill in its folder and prompt. Unless it says `autostart`, nothing
   // is sent; the user reads it and presses Enter.
   useEffect(() => {
     if (!linkRequest) return;
@@ -755,7 +751,7 @@ function LocalNewSession() {
   };
   /** The system folder dialog, and the folder chosen there is added and selected. Cancelling changes nothing. */
   const chooseFolder = async () => {
-    const picked = await window.switchboard?.pickFolder(cwd ?? undefined);
+    const picked = await window.seshboard?.pickFolder(cwd ?? undefined);
     if (picked) await addFolder(picked);
   };
 
@@ -781,7 +777,7 @@ function LocalNewSession() {
   });
 
   // Filled in from an issue or pull request. A pull request is worked on in a new worktree or here (after
-  // `gh pr checkout`, only without changes); a fork's that Switchboard can't push back turns push and Create PR off.
+  // `gh pr checkout`, only without changes); a fork's that Seshboard can't push back turns push and Create PR off.
   const githubPr = fromGithub?.pr ?? null;
   const githubItem = fromGithub?.issue ?? githubPr;
   const prCurrentBlocked = githubPr ? currentCheckoutBlocked(gitStatus) : null;
@@ -966,7 +962,8 @@ function LocalNewSession() {
    * Returns false when nothing started and the prompt should stay.
    */
   const create = async (text: string, attachments: ImageAttachment[], parts: SentParts | undefined, { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
-    // With the clone form open, Start waits for the clone, then asks once about what the repository brings.
+    // With the clone form open, Start waits for the clone. The engine asks once about what the repository brings,
+    // whichever way its first session starts (TRUST_NEEDED, answered in `startNewSession`).
     let cloned: CloneResult | null = null;
     if (cloneForm && !fromLink) {
       try {
@@ -977,7 +974,6 @@ function LocalNewSession() {
       }
       if (!cloned.root) throw new Error('The clone has no folder here');
       onCloned(cloned);
-      if (bringsAnything(cloned.brings) && !(await trust.ask(cloned.root, cloned.brings))) return false;
     }
     const folder = cloned?.root ?? cwd;
     if (!client || !folder) throw new Error('Choose a folder first');
@@ -1005,6 +1001,7 @@ function LocalNewSession() {
       {
         createSession: (params) => client.call('session.create', params),
         gate: passFocusGate,
+        trust: (needed) => trustRepository(client, needed),
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         keep: useDrafts.getState().keepFirstPrompt,
         open: (sessionId) => {
@@ -1234,13 +1231,12 @@ function LocalNewSession() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto my-auto grid w-full max-w-3xl grid-cols-[minmax(0,1fr)] gap-5 px-6 pt-2 pb-12" data-new-session-view>
+        <div className={`my-auto ${NEW_SESSION_COLUMN} pt-2 pb-12`} data-new-session-view>
           <div className="text-center">
             {/* The one hero heading in the app, a little larger than text-title. */}
             <h1 className="text-hero leading-tight font-semibold">Where do we start?</h1>
-            <p className="mt-1 text-ui text-muted">
-              <Kbd keys={comboPresses(keysOf('new-session.pick'))[0]!} /> to <Kbd keys={comboPresses(keysOf('new-session.pick')).at(-1)!} /> picks a project, or start typing its name
-            </p>
+            {/* The keys that pick a project are under the list, as many as it shows. */}
+            <p className="mt-1 text-ui text-muted">Pick a project, or start typing its name</p>
             {/* With a paired computer: where Claude runs. */}
             <div className="mt-3">
               <RunOnSwitch />
@@ -1275,7 +1271,6 @@ function LocalNewSession() {
             onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
           />
           )}
-          {trust.dialog}
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 

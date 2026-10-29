@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { ASK_THREADS_KEPT, threadTitle, type AskEvent, type AskItem, type AskThread, type AskThreadList, type LogLevel, type TokenCounts } from '@switchboard/protocol';
+import { ASK_THREADS_KEPT, threadTitle, type AskEvent, type AskItem, type AskThread, type AskThreadList, type LogLevel, type TokenCounts } from '@seshboard/protocol';
 
 /*
  * Ask about this session (and `/btw`, which asks the same way): questions about a session that Claude answers from
@@ -32,8 +32,48 @@ export function isReadOnlyTool(name: string, input: Record<string, unknown>): bo
   if (READ_TOOLS.has(name)) return true;
   if (name !== 'Bash') return false;
   const command = typeof input.command === 'string' ? input.command.trim() : '';
-  // `--output` writes the diff or log to a file.
-  return READ_GIT.test(command) && !/[ \t]--output\b/.test(command);
+  if (!READ_GIT.test(command)) return false;
+  const words = shellWords(command);
+  // `--output` writes the diff or log to a file. It is looked for in the words the shell hands git, so quotes
+  // (`"--output=x"`) don't hide it.
+  return words !== null && !words.some((word) => word === '--output' || word.startsWith('--output='));
+}
+
+/**
+ * The words a shell makes of a command that `READ_GIT` let through (no `$`, backtick or backslash, so nothing inside
+ * quotes expands), with their quotes taken off. Null when the shell could make other words of it: a quote left open,
+ * an unquoted `{` (brace expansion turns `{--output=x,-1}` into `--output=x -1`), or an unquoted `*`, `?` or `[`
+ * before `--`, which a file named like an option could match.
+ */
+function shellWords(command: string): string[] | null {
+  const words: string[] = [];
+  let word: string | null = null;
+  let open: '"' | "'" | null = null;
+  let paths = false;
+  const end = () => {
+    if (word === null) return;
+    if (word === '--') paths = true;
+    words.push(word);
+    word = null;
+  };
+  for (const char of command) {
+    if (open) {
+      if (char === open) open = null;
+      else word += char;
+      continue;
+    }
+    if (char === ' ' || char === '\t') {
+      end();
+      continue;
+    }
+    word ??= '';
+    if (char === '"' || char === "'") open = char;
+    else if (char === '{' || (!paths && (char === '*' || char === '?' || char === '['))) return null;
+    else word += char;
+  }
+  if (open) return null;
+  end();
+  return words;
 }
 
 /** What a read-only pipeline step (#179) is told when it tries anything else. */

@@ -3,7 +3,7 @@ import { openAtLoginDetail, openAtLoginUnavailable } from './openAtLogin.ts';
 
 describe('openAtLoginDetail', () => {
   it('says log in on a Mac and sign in on Windows', () => {
-    expect(openAtLoginDetail('darwin')).toBe('Switchboard opens when you log in to this Mac, so it is running again after a restart.');
+    expect(openAtLoginDetail('darwin')).toBe('Seshboard opens when you log in to this Mac, so it is running again after a restart.');
     expect(openAtLoginDetail('win32')).toContain('sign in to Windows');
   });
 });

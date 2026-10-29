@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
-import type { LiveSession } from '@switchboard/protocol/client';
+import type { LiveSession } from '@seshboard/protocol/client';
 import { currentPlatform } from '../../lib/platform.ts';
 import { StatusDot } from '../StatusDot.tsx';
 import { Button } from '../ui/Button.tsx';

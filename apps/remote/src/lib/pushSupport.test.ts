@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REMOTE_FEATURE_PUSH_KEY } from '@switchboard/protocol/remote-client';
+import { REMOTE_FEATURE_PUSH_KEY } from '@seshboard/protocol/remote-client';
 import { base64url, isIosAgent, keyBytes, parsePrefs, pushKeyFor, pushLabel, pushSupport, sameBytes, type BrowserFacts } from './pushSupport.ts';
 
 const facts = (change: Partial<BrowserFacts> = {}): BrowserFacts => ({ serviceWorker: true, pushManager: true, notification: true, ios: false, standalone: false, permission: 'default', ...change });

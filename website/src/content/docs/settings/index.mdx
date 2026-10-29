@@ -10,22 +10,35 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-Settings is where you choose how Switchboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, usage, memory, backups and updates. Changes apply at once; there is nothing to save.
+Settings is where you choose how Seshboard looks and behaves: what it opens on, its theme, the sidebar, notifications and sounds, your Claude profiles, usage, memory, backups and updates. Changes apply at once; there is nothing to save.
 
 ## Open it
 
 - Press <Kbd shortcut="settings" />.
 - Click the gear at the bottom of the sidebar (also there when the sidebar is a narrow rail).
-- Choose **<Os mac="Switchboard → Settings…" windows="File → Settings…" />** in the menu bar. On Windows the menu bar shows when you press Alt.
-- Run *Settings* in the command palette (<Kbd shortcut="palette.commands" />). While Settings is open, the palette offers *Settings: &lt;section&gt;* for each other section, such as *Settings: Theme*.
+- Choose **<Os mac="Seshboard → Settings…" windows="File → Settings…" />** in the menu bar. On Windows the menu bar shows when you press Alt.
+- Run *Settings* in the command palette (<Kbd shortcut="palette.commands" />). While Settings is open, the palette offers *Settings: &lt;page&gt;* for each other page, such as *Settings: Theme*, in the menu's order.
 
-Settings fills the main area, with its sections in a list on the left. The app's sidebar stays next to it, so you still see what needs you. The version you run is at the bottom of the section list; click it for its release notes.
+Settings fills the main area, with its pages in a menu on the left. The app's sidebar stays next to it, so you still see what needs you. The version you run is at the bottom of the menu; click it for its release notes.
 
 To close Settings, press <Kbd shortcut="settings.close" /> or click the **×** at the top right. You go back to the view you came from, as you left it. Escape doesn't close Settings while a menu, a dropdown or a field you are typing in has it.
 
+## How it's organised
+
+The menu groups the pages by what they are about:
+
+| Group | Pages |
+|---|---|
+| **App** | [General](#general), [Theme](#theme), [Sidebar](#sidebar), [Notifications](#notifications) and [Focus](#focus) |
+| **Claude** | [Conversation](#conversation), [Claude profiles](#claude-profiles), [Usage](#usage) and [Memory](#memory) |
+| **Your work** | [Projects](#projects), [Sessions](#sessions), [Prompts](#prompts) and [Pipelines](#pipelines) |
+| **Connect** | [VS Code](#vs-code), [Remote](#remote) and [Mods](#mods) |
+
+[Backup](#backup), [Diagnostics](#diagnostics) and [About](#about) sit at the bottom of the menu, under a line. <Kbd keys="arrowup|arrowdown" /> moves between the pages in the menu.
+
 ## Search
 
-Type in **Search settings** at the top of the section list, or press <Kbd shortcut="settings.search" /> to get there. The page shows every setting that matches, from all sections, grouped by section, with your words marked. The section list says how many each section has. Search also knows other words for a setting: *dark mode* finds **Appearance**, *trash* finds **Delete archived sessions**.
+Type in **Search settings** at the top of the section list, or press <Kbd shortcut="settings.search" /> to get there. The page shows every setting that matches, from all pages, grouped by page in the menu's order, with your words marked. The menu keeps its groups and says how many each page has. Search also knows other words for a setting: *dark mode* finds **Appearance**, *trash* finds **Delete archived sessions**.
 
 Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd keys="enter" />. Its section opens at that setting, which lights up briefly, with the keyboard on it. <Kbd keys="escape" /> empties the field; in an empty field it closes Settings.
 
@@ -35,9 +48,9 @@ Click a result, or pick one with <Kbd keys="arrowup|arrowdown" /> and press <Kbd
 
 ### On startup
 
-**Open at login** (off by default): Switchboard opens when you <Os mac="log in to your Mac" windows="sign in to Windows" />. Turn it on for a computer that restarts without you, such as a virtual machine, so Switchboard is running again after a restart. The setting is the system's own: you can also change it in <Os mac="System Settings › General › Login Items" windows="Settings › Apps › Startup" />, and Settings shows what you set there. When macOS asks you to allow Switchboard first, Settings says so: click **Open System Settings** and turn it on under Login Items. On Linux the switch is greyed out: add Switchboard to your desktop's startup applications instead.
+**Open at login** (off by default): Seshboard opens when you <Os mac="log in to your Mac" windows="sign in to Windows" />. Turn it on for a computer that restarts without you, such as a virtual machine, so Seshboard is running again after a restart. The setting is the system's own: you can also change it in <Os mac="System Settings › General › Login Items" windows="Settings › Apps › Startup" />, and Settings shows what you set there. When macOS asks you to allow Seshboard first, Settings says so: click **Open System Settings** and turn it on under Login Items. On Linux the switch is greyed out: add Seshboard to your desktop's startup applications instead.
 
-What Switchboard shows when it opens:
+What Seshboard shows when it opens:
 
 - **Home** (the default): what needs you, what is working, and your projects. See [Home](/sessions/home/).
 - **The last session**: the session you had open, if the sidebar lists it. Otherwise New session.
@@ -45,23 +58,26 @@ What Switchboard shows when it opens:
 
 ### Sleep
 
-**<Os mac="Keep this Mac awake" windows="Keep this PC awake" />** (off by default) stops your computer from sleeping while Switchboard is open, so [schedules](/new-session/schedules/), [triggers](/projects/triggers/) and [remote access](/remote-access/) keep working. The display can still sleep. On a Mac, it only holds sleep off while the Mac is on power. While it holds sleep off, a line under the switch says **<Os mac="Keeping this Mac awake" windows="Keeping this PC awake" />**. On Linux the switch is called **Keep this PC awake**, as on Windows.
+**<Os mac="Keep this Mac awake" windows="Keep this PC awake" />** (off by default) stops your computer from sleeping while Seshboard is open, so [schedules](/new-session/schedules/), [triggers](/projects/triggers/) and [remote access](/remote-access/) keep working. The display can still sleep. On a Mac, it only holds sleep off while the Mac is on power. While it holds sleep off, a line under the switch says **<Os mac="Keeping this Mac awake" windows="Keeping this PC awake" />**. On Linux the switch is called **Keep this PC awake**, as on Windows.
+
+### Terminal
+
+**Shell command** installs `seshboard`, so `seshboard .` in a terminal opens New session in that folder. `sesh .` and `switchboard .` do the same. **Install** puts the commands in place, **Update** points them at this copy of Seshboard, and **Remove** takes them out. The line under it says where they are, and which name another program already uses. *Install the seshboard command* in the command palette does the same as **Install**. See [Open a folder from a terminal](/links/#open-a-folder-from-a-terminal).
 
 ### New sessions
 
-**Permission mode** sets the mode a new session starts in, in New session and in the command palette's New session step:
+**Global permission mode** is what new sessions start in, unless their Claude profile or project sets a mode:
 
-- **Use project default** (the default): the project's own default mode (its [Settings tab](/projects/settings/)), then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), else Ask before edits.
+- **Ask before edits** (the default), **Accept edits**, **Plan mode** or **Auto mode**.
 - **Remember last**: the mode you picked last in New session or the palette.
-- **Ask before edits**, **Accept edits**, **Plan mode** or **Auto mode**: always that one, even in a project that sets its own default mode. Picking another mode for one session doesn't change it.
 
-A session started by a link never starts in Auto mode and only takes the project's or profile's mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
+A project's own mode (its [Settings tab](/projects/settings/#defaults-for-new-sessions)) comes first, then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), then this one. A session can still change its mode. A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
-**Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Switchboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
+**Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Seshboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
 
 ### Quitting
 
-**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Switchboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.
+**Ask before quitting** (on by default): <Kbd keys="mod+q" /> shows a prompt first, and pressing it again quits. Turn it off to quit with one press. On Windows, closing the window quits Seshboard, so it asks then too (but not while Windows shuts down or signs you out). With **Warn when quitting** on under [Large context](#large-context), quitting with a large session open asks even with Ask before quitting off.
 
 ## Theme
 
@@ -77,23 +93,23 @@ See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [
 
 <Screenshot name="settings-app-icon" alt="The App icon section: nine icon tiles with Signal yellow chosen, Reset to Graphite, and a note on where the original icon stays" />
 
-Pick one of nine colourways of the Switchboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
+Pick one of nine colourways of the Seshboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
 
 <OnlyOn os="mac">
 
-The icon shows in the Dock and the app switcher. macOS shows it while Switchboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
+The icon shows in the Dock and the app switcher. macOS shows it while Seshboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-The icon shows on Switchboard's windows, in the taskbar and on notifications. Pinned shortcuts and the Start menu keep the original icon.
+The icon shows on Seshboard's windows, in the taskbar and on notifications. Pinned shortcuts and the Start menu keep the original icon.
 
 </OnlyOn>
 
-Switchboard doesn't change the app's own files or your shortcuts for this, so it applies the icon again each time it opens.
+Seshboard doesn't change the app's own files or your shortcuts for this, so it applies the icon again each time it opens.
 
-**Use it on your phone too** (on by default) shows once [Remote](/remote-access/) is set up. The remote app then takes the same icon, for its browser tab and for **Add to Home Screen**. A phone keeps the icon an app had when you added it to the Home Screen: to see the new one there, remove Switchboard Remote from the Home Screen and add it again. Off, the remote app keeps Graphite.
+**Use it on your phone too** (on by default) shows once [Remote](/remote-access/) is set up. The remote app then takes the same icon, for its browser tab and for **Add to Home Screen**. A phone keeps the icon an app had when you added it to the Home Screen: to see the new one there, remove Seshboard Remote from the Home Screen and add it again. Off, the remote app keeps Graphite.
 
 ## Sidebar
 
@@ -106,29 +122,32 @@ Switchboard doesn't change the app's own files or your shortcuts for this, so it
 
   The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact* too.
 - **When collapsed**: what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do. **Minimal rail** (the default) shrinks the sidebar to a narrow rail of project icons; **Hidden** hides it.
-- **Show sessions from other apps** (off by default): also list sessions from your terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Switchboard.
+- **Show sessions from other apps** (off by default): also list sessions from your terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard.
+- **Quick actions on hover** (on by default): Mark as read, Pin and Archive appear on a row under the pointer. **Show** picks **Archive only** or **Read · Pin · Archive** (the default); working sessions show Stop too. See [Quick actions on hover](/sessions/sidebar/#quick-actions-on-hover).
 
 See [Sidebar](/sessions/sidebar/).
 
-## Sessions
+## Notifications
 
-- **Archive finished sessions after**: the days without activity before a finished session moves to Archived (3 by default).
-- **Delete archived sessions** (off by default): move sessions to the <Os mac="Trash" windows="Recycle Bin" /> once they have been archived for the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.
-- A note says when Claude Code deletes old transcripts by itself, per Claude profile, with **Change…** to set it.
-- **All sessions**: every session in one table, to filter, select, unarchive or move to the <Os mac="Trash" windows="Recycle Bin" />.
+- **Notifications** (on by default): a notification when Claude needs you, finishes or stops with an error, and when a project action ends. <Os mac="The Dock badge" windows="The dot on the taskbar button" /> shows either way. **Send a test notification** checks that they come through.
+- **Sounds** (off by default): a sound for each moment, with notifications on or off. Pick the sound for **Needs you**, **Finished**, **Stopped with an error** and **Project action ended** (or **None**), with a button to play each, and the **Volume** for all of them.
 
-See [Sessions](/settings/sessions/) for the details.
+See [Notifications and sounds](/settings/notifications/).
 
-## Projects
+## Focus
 
-<Screenshot name="settings-projects" alt="Settings on Projects: Project order with Recent and Your order, and Clone from GitHub off, with Clone into and its Choose… button" />
+<Screenshot name="settings-focus" alt="Settings on Focus: the Focus limit switch turned on, with Sessions at the same time, When you reach it and Count terminal and IDE sessions under it" />
 
-**Project order** sets how New session, Home and the command palette list your projects:
+- **Focus limit** (off by default): ask before going over a set number of sessions. **Why a limit?** links to the article behind it.
 
-- **Recent** (the default): the ones you used last first.
-- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
+With the limit on:
 
-**Clone from GitHub** (off by default) starts a project from a GitHub URL: New session clones it, adds it to your projects and runs your first prompt there. Turning it on asks for the folder new projects go in, shown as **Clone into**, with **Choose…** to change it. Each computer has its own setting and folder. See [Clone from GitHub](/projects/clone-from-github/).
+- **Sessions at the same time**: the limit, from 1 to 10 (3 to start with), set with **−** and **+**. A session counts while it is working, waiting for you, or finished but not read yet.
+- **When you reach it**: **Nudge** (the default) asks first; **Strict** waits until you finish, settle or stop a session.
+- **Count terminal and IDE sessions** (off by default): also count live Claude Code sessions started outside Seshboard.
+- **Count sessions on other computers** (on by default): also count sessions that are working, need you or are unread on computers you paired.
+
+The command palette has *Focus limit: turn on*, *Focus limit: turn off* and *Focus limit: set limit…*. See [Focus limit](/focus-limit/).
 
 ## Conversation
 
@@ -156,11 +175,13 @@ See [How long a turn took](/sessions/conversation/#how-long-a-turn-took).
 
 **Clicking a file link** sets what a click does on a file in Claude's replies:
 
-- **Open in Switchboard** (the default): a Markdown, HTML or code file opens in a [preview](/sessions/file-preview/). Other files are selected in <Os mac="Finder" windows="File Explorer" />.
+- **Open in Seshboard** (the default): a Markdown, HTML or code file opens in a [preview](/sessions/file-preview/). Other files are selected in <Os mac="Finder" windows="File Explorer" />.
 - **Show in <Os mac="Finder" windows="File Explorer" />**: every file is selected in its folder.
 - **Open in editor**: the file opens in your default editor, at its line. If you had chosen this before, it stays chosen.
 
 <Kbd shortcut="transcript.file-link-other" /> on a link opens it in your editor (or, with **Open in editor** set, shows it in <Os mac="Finder" windows="File Explorer" />). Its right-click menu lists every way, with **Copy path**.
+
+**While Claude is working** sets what <Kbd keys="enter" /> does while Claude works: **Queue** holds your message in Up next until the turn ends, **Steer** gives it to Claude now. <Kbd shortcut="composer.send-now" /> always stops Claude and sends at once. See [While Claude works](/sessions/conversation/#while-claude-works).
 
 **Usage limits** has **Resume after a usage limit resets**:
 
@@ -169,35 +190,14 @@ See [How long a turn took](/sessions/conversation/#how-long-a-turn-took).
 
 See [When you hit a limit](/usage/#when-you-hit-a-limit).
 
-**Catch-up** has **Write catch-up summaries with Haiku**: on (the default), a finished session shows a short briefing over the conversation, and **Why?** on a permission gets a plain explanation. Off, neither calls a model. See [Catch-up](/sessions/catch-up/) and [Why is Claude asking?](/permissions/#why-is-claude-asking).
+**Catch-up** has:
+
+- **Write catch-up summaries with Haiku**: on (the default), a finished session shows a short briefing over the conversation, and **Why?** on a permission gets a plain explanation. Off, neither calls a model.
+- **Show catch-ups folded** (off by default): a finished session shows the one-line strip instead of the full briefing. Press <Kbd shortcut="catchup.expand" /> to open it. A turn that stopped with an error still opens in full. The command palette has *Catch-ups: show folded* and *Catch-ups: show in full*.
+
+See [Catch-up](/sessions/catch-up/) and [Why is Claude asking?](/permissions/#why-is-claude-asking).
 
 **Auto model** turns Auto on or off in the model menus, and sets the models it can pick, which way it leans when in doubt, and whether it suggests a stronger model later. See [Auto model](/new-session/auto-model/).
-
-## Mods
-
-**Show mods** turns Claude Code mods on or off in every session, without a restart: the bands, panes, statuses, toasts and views that plugins draw. Under it, each mod from your enabled plugins has a switch that shows or hides its UI here. See [Claude Code mods](/sessions/mods/).
-
-## Notifications
-
-- **Notifications** (on by default): a notification when Claude needs you, finishes or stops with an error, and when a project action ends. <Os mac="The Dock badge" windows="The dot on the taskbar button" /> shows either way. **Send a test notification** checks that they come through.
-- **Sounds** (off by default): a sound for each moment, with notifications on or off. Pick the sound for **Needs you**, **Finished**, **Stopped with an error** and **Project action ended** (or **None**), with a button to play each, and the **Volume** for all of them.
-
-See [Notifications and sounds](/settings/notifications/).
-
-## Focus
-
-<Screenshot name="settings-focus" alt="Settings on Focus: the Focus limit switch turned on, with Sessions at the same time, When you reach it and Count terminal and IDE sessions under it" />
-
-- **Focus limit** (off by default): ask before going over a set number of sessions. **Why a limit?** links to the article behind it.
-
-With the limit on:
-
-- **Sessions at the same time**: the limit, from 1 to 10 (3 to start with), set with **−** and **+**. A session counts while it is working, waiting for you, or finished but not read yet.
-- **When you reach it**: **Nudge** (the default) asks first; **Strict** waits until you finish, settle or stop a session.
-- **Count terminal and IDE sessions** (off by default): also count live Claude Code sessions started outside Switchboard.
-- **Count sessions on other computers** (on by default): also count sessions that are working, need you or are unread on computers you paired.
-
-The command palette has *Focus limit: turn on*, *Focus limit: turn off* and *Focus limit: set limit…*. See [Focus limit](/focus-limit/).
 
 ## Claude profiles
 
@@ -210,7 +210,7 @@ For each profile:
 - **Name** and **Colour** (Yellow, Blue, Green, Purple, Red, Orange or Grey).
 - **Default**: the profile that projects without a profile of their own use.
 - Its config folder, and the account it is signed in with. A profile that isn't signed in yet shows the command to run in a terminal, with a copy button. On Windows, see [Sign in on Windows](/settings/claude-profiles/#sign-in-on-windows) for the PowerShell form.
-- **×** removes a profile from Switchboard. The folder, its login and its sessions stay on disk. The first profile, Claude Code's own folder, can't be removed.
+- **×** removes a profile from Seshboard. The folder, its login and its sessions stay on disk. The first profile, Claude Code's own folder, can't be removed.
 
 Below the list:
 
@@ -235,7 +235,7 @@ How much of your plan's 5-hour and weekly limits you have used.
 When a session's context is large, its next message after the prompt cache expires reads all of it again. See [Large context](/sessions/conversation/#large-context).
 
 - **Warn about a large context** (on by default): a note above the message box says how large the context is and when its cache expires, while the session waits for you.
-- **Large from** (60% by default): how full the context window is before it counts as large. The context ring turns orange from here too.
+- **Large from** (60% by default): when a session's context counts as large, as a share of a 200k window, so 60% is 120k tokens. It counts tokens, whatever the session's window: a session on a 1M window is large from 120k too. The context ring turns orange from here too.
 - **Notify before the cache expires** (on by default): a notification 5 minutes before a large session's hour-long cache expires. It follows your [notification settings](#notifications).
 - **Warn when quitting** (off by default): quitting with a large session open asks first, and says what picking it up later would cost. Until you turn it on, the quit prompt says this once.
 
@@ -253,19 +253,40 @@ What Claude Code remembers about you and your projects. Everything stays plain M
 
 See [Claude Code memory](/memory/overview/).
 
+## Projects
+
+<Screenshot name="settings-projects" alt="Settings on Projects: Project order with Recent and Your order, and Clone from GitHub off, with Clone into and its Choose… button" />
+
+**Project order** sets how New session, Home and the command palette list your projects:
+
+- **Recent** (the default): the ones you used last first.
+- **Your order**: the order you set in the [Projects view](/projects/projects-view/).
+
+**Clone from GitHub** (off by default) starts a project from a GitHub URL: New session clones it, adds it to your projects and runs your first prompt there. Turning it on asks for the folder new projects go in, shown as **Clone into**, with **Choose…** to change it. Each computer has its own setting and folder. See [Clone from GitHub](/projects/clone-from-github/).
+
+## Sessions
+
+- **Mark as read after** (on, 3 seconds by default): a session you open unread is marked read once it has been in front of you this long. Turn it off to mark sessions read yourself.
+- **Archive finished sessions after**: the days without activity before a finished session moves to Archived (3 by default).
+- **Delete archived sessions** (off by default): move sessions to the <Os mac="Trash" windows="Recycle Bin" /> once they have been archived for the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.
+- A note says when Claude Code deletes old transcripts by itself, per Claude profile, with **Change…** to set it.
+- **All sessions**: every session in one table, to filter, select, unarchive or move to the <Os mac="Trash" windows="Recycle Bin" />.
+
+See [Sessions](/settings/sessions/) for the details.
+
 ## Prompts
 
 Your [saved prompts](/sessions/saved-prompts/): prompts with blanks you fill in when you use them. **New prompt** makes one. The list is grouped by where each prompt is kept: **Every project**, then per project **just for you** and **shared with the project**. Each row's **⋯** menu has **Edit…**, **Duplicate**, where to use it, and **Delete**.
 
 ## Pipelines
 
-Your [pipelines](/sessions/pipelines/): the built-in ones, those for all projects, and those for each project. **New pipeline** makes one, and a click opens one in the editor. **Built-in pipelines** (on by default) shows the pipelines that come with Switchboard; turn it off to see only your own. See [Make your own](/sessions/pipelines/#make-your-own).
+Your [pipelines](/sessions/pipelines/): the built-in ones, those for all projects, and those for each project. **New pipeline** makes one, and a click opens one in the editor. **Built-in pipelines** (on by default) shows the pipelines that come with Seshboard; turn it off to see only your own. See [Make your own](/sessions/pipelines/#make-your-own).
 
 ## VS Code
 
 <Screenshot name="settings-vscode" alt="Settings on VS Code: what the extension sends, a status line saying whether an editor is connected, and links to the Visual Studio Marketplace, Open VSX and How it works" />
 
-What the Switchboard extension for VS Code (also Cursor and Windsurf) sends to a session:
+What the Seshboard extension for VS Code (also Cursor and Windsurf) sends to a session:
 
 - The lines you have selected, or the open file.
 - Files and folders picked in the Explorer, and open editors.
@@ -274,6 +295,14 @@ What the Switchboard extension for VS Code (also Cursor and Windsurf) sends to a
 A status line says whether an editor is connected right now ("Connected to 1 editor window"), or that no editor is connected yet. Links: **Visual Studio Marketplace**, **Open VSX (Cursor, Windsurf)** and **How it works**.
 
 *VS Code extension* in the command palette opens this section. See [VS Code companion](/vscode-companion/).
+
+## Remote
+
+Use your sessions from your phone, or from another computer, over an encrypted connection through a tunnel. Turn it on with the switch next to the title. The status card says whether Remote works, with the fix as a button when it doesn't; under it are **Pair a device**, your paired devices with **Rename** and **Revoke**, and the tunnel. *Connect to another computer…* in the command palette opens this page. See [Remote access](/remote-access/#settings--remote) and [Other computers](/other-computers/).
+
+## Mods
+
+**Show mods** turns Claude Code mods on or off in every session, without a restart: the bands, panes, statuses, toasts and views that plugins draw. Under it, each mod from your enabled plugins has a switch that shows or hides its UI here. See [Claude Code mods](/sessions/mods/).
 
 ## Backup
 
@@ -290,7 +319,7 @@ The command palette has *Export settings…* and *Import settings…*. See [Back
 
 <Screenshot name="settings-diagnostics" alt="Settings on Diagnostics: the Engine, Claude Code and Runtime cards, a Rendering sample and the Engine log" />
 
-The engine behind Switchboard, the Claude Code it runs, and its recent log. Look here first when something doesn't work.
+The engine behind Seshboard, the Claude Code it runs, and its recent log. Look here first when something doesn't work.
 
 - **Engine**: **Status** (Connected, and how often it reconnected), **Round trip** (with **Ping again**) and **Engine version**.
 - **Claude Code**: **Binary** (the version and path of the `claude` it found, or that it wasn't found on your PATH), **Config dir** (with a button to open it in <Os mac="Finder" windows="File Explorer" />) and **Shell environment**.
@@ -303,19 +332,19 @@ The engine behind Switchboard, the Claude Code it runs, and its recent log. Look
 
 ## About
 
-<Screenshot name="settings-about" alt="Settings on About: the Switchboard version with Release notes and Changelog links, the Updates controls and channel, and the Claude Code section with its version, how it was installed and Check for Updates" />
+<Screenshot name="settings-about" alt="Settings on About: the Seshboard version with Release notes and Changelog links, the Updates controls and channel, and the Claude Code section with its version, how it was installed and Check for Updates" />
 
 - The version you run, and the commit it was built from (handy for bug reports), with **Release notes** and **Changelog** links.
-- **Updates**: whether Switchboard is up to date and when it last checked, with **Check for Updates**. When a new version is out: **Download**, then **Restart to update**, and what's new in it.
-- **Check for updates automatically** (on by default): shortly after Switchboard opens, then every few hours. Nothing downloads until you choose to.
+- **Updates**: whether Seshboard is up to date and when it last checked, with **Check for Updates**. When a new version is out: **Download**, then **Restart to update**, and what's new in it.
+- **Check for updates automatically** (on by default): shortly after Seshboard opens, then every few hours. Nothing downloads until you choose to.
 - **Channel**: **Stable** (published releases, the default) or **Beta** (beta versions to test what comes next, and the published releases).
-- **Claude Code**: the Claude Code Switchboard runs, whether it is up to date, **Installed**, **Latest**, **Installed with** and **Path**, with **Check for Updates** and, when a newer version is out, **Update to v…**.
+- **Claude Code**: the Claude Code Seshboard runs, whether it is up to date, **Installed**, **Latest**, **Installed with** and **Path**, with **Check for Updates** and, when a newer version is out, **Update to v…**.
 - **Check for Claude Code updates automatically** (on by default).
 
 See [Updates](/settings/updates/).
 
 <Aside>
-Your preferences, theme choice and the other choices here are kept in Switchboard's app data: <Os mac="~/Library/Application Support/Switchboard" windows="%APPDATA%\Switchboard" />. [Settings → Backup](/settings/backup/) saves them to a file.
+Your preferences, theme choice and the other choices here are kept in Seshboard's app data: <Os mac="~/Library/Application Support/Seshboard" windows="%APPDATA%\Seshboard" />. [Settings → Backup](/settings/backup/) saves them to a file.
 </Aside>
 
 ## Related

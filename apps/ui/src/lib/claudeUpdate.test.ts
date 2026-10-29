@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClaudeUpdateState } from '@switchboard/protocol/client';
+import type { ClaudeUpdateState } from '@seshboard/protocol/client';
 import { claudeInstallOptions, claudeUpdateStatusText, claudeUpdateToast } from './claudeUpdate.ts';
 
 const base: ClaudeUpdateState = {
@@ -22,7 +22,7 @@ const base: ClaudeUpdateState = {
 };
 
 describe('claudeUpdateToast', () => {
-  it('offers an update Switchboard can run, or opens About for one it can’t', () => {
+  it('offers an update Seshboard can run, or opens About for one it can’t', () => {
     expect(claudeUpdateToast(base)).toMatchObject({ title: 'Claude Code v2.2.0 is available', action: { run: 'update', primary: true }, close: 'dismiss' });
     expect(claudeUpdateToast({ ...base, canUpdate: false })?.action).toMatchObject({ run: 'about', primary: false });
   });

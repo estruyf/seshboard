@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChangedFile, GitChanges } from '@switchboard/protocol/client';
+import type { ChangedFile, GitChanges } from '@seshboard/protocol/client';
 import { sameChanges } from './gitChangesRefresh.ts';
 
 const file = (path: string, over: Partial<ChangedFile> = {}): ChangedFile => ({ path, status: 'modified', additions: 1, deletions: 0, staged: false, ...over });

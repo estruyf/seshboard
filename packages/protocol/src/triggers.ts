@@ -8,18 +8,18 @@ import { isSameOrInside } from './paths.ts';
 import type { Pipeline, PipelineRun } from './pipelineSchema.ts';
 import type { StateLabels, Trigger, TriggerEvent, TriggerSource } from './triggerSchema.ts';
 
-/** The state labels' names when you don't rename them. */
-export const DEFAULT_STATE_LABELS = { working: 'switchboard: working', needsInput: 'switchboard: needs input', prOpen: 'switchboard: pr open', failed: 'switchboard: failed' } as const;
+/** The state labels' names when you don't rename them. Triggers saved before the rename keep theirs (switchboard: …). */
+export const DEFAULT_STATE_LABELS = { working: 'seshboard: working', needsInput: 'seshboard: needs input', prOpen: 'seshboard: pr open', failed: 'seshboard: failed' } as const;
 export type StateLabelKey = keyof typeof DEFAULT_STATE_LABELS;
 export const STATE_LABEL_KEYS = ['working', 'needsInput', 'prOpen', 'failed'] as const satisfies readonly StateLabelKey[];
 /** Each state label's colour on GitHub (hex without `#`), the design's yellow, pink, green and red. */
 export const STATE_LABEL_COLORS: Record<StateLabelKey, string> = { working: 'e3b341', needsInput: 'db61a2', prOpen: '3fb950', failed: 'f85149' };
 /** What each state label says on GitHub, as the label's description. */
 export const STATE_LABEL_DESCRIPTIONS: Record<StateLabelKey, string> = {
-  working: 'Switchboard: a session works on this',
-  needsInput: 'Switchboard: the session working on this needs input',
-  prOpen: 'Switchboard: a pull request for this is open',
-  failed: 'Switchboard: the session working on this stopped',
+  working: 'Seshboard: a session works on this',
+  needsInput: 'Seshboard: the session working on this needs input',
+  prOpen: 'Seshboard: a pull request for this is open',
+  failed: 'Seshboard: the session working on this stopped',
 };
 
 /** What a trigger's numbers can be. */
@@ -123,7 +123,7 @@ export function eventKey(source: Pick<TriggerSource, 'kind'>, item: SourceItem):
  * forgotten, so when it matches again (the label added again, the state label taken off) it is new. A failed run is
  * remembered past its answer (`TRIGGER_RUNS_REMEMBERED`): a re-run leaves the list of failures while it runs, and
  * when it fails again on the same commit it is the same event. `released`: its session was archived or deleted and
- * Switchboard took its state label off; while it stays in the answer it isn't new (with an assignee alone, taking the
+ * Seshboard took its state label off; while it stays in the answer it isn't new (with an assignee alone, taking the
  * label off would otherwise start it again), even when a read from before still shows the label.
  */
 export type SeenState = Record<string, 'match' | 'held' | 'released'>;
@@ -375,7 +375,7 @@ export const runIsBusy = (run: Pick<PipelineRun, 'status'>) => run.status === 'r
 
 /**
  * Where the work on an event is, from the pipeline run that works on it. A pull request the run opened is `prOpen`. A
- * step that works (or a run held at a limit, or paused while Switchboard was closed) is `working`. A run that waits for
+ * step that works (or a run held at a limit, or paused while Seshboard was closed) is `working`. A run that waits for
  * you, for a stop, a step to confirm or Push, is `needsYou`. Stopped for good is `stopped`; done without a pull
  * request leaves the label as it is.
  */
@@ -408,7 +408,7 @@ export function pipelineProblem(pipeline: (Pick<Pipeline, 'name' | 'scope'> & { 
 }
 
 /**
- * The one `gh issue edit` arguments that move an issue to `next`: add it, take off the state label Switchboard put
+ * The one `gh issue edit` arguments that move an issue to `next`: add it, take off the state label Seshboard put
  * there last (`current`), the trigger's own label at pick-up (`removeTrigger`), and assign it to you (`assign`). A
  * `next` of null takes `current` off and adds nothing. Null when nothing changes.
  */

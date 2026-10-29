@@ -1,4 +1,4 @@
-import type { HealthFinding } from '@switchboard/protocol/client';
+import type { HealthFinding } from '@seshboard/protocol/client';
 
 /** Findings to act on; old memories are only shown, so they don't count. */
 export const toLookAt = (findings: readonly HealthFinding[]) => findings.filter((f) => f.kind !== 'old');
@@ -13,7 +13,7 @@ export function flaggedPaths(findings: readonly HealthFinding[]): Map<string, st
 /** The tone of a finding's icon: an index past what loads is an error, old is quiet, the rest caution. */
 export const findingTone = (finding: HealthFinding) => (finding.kind === 'overLimit' ? 'error' : finding.kind === 'old' ? 'faint' : 'caution');
 
-/** The prompt Tidy with Claude… puts in New session for you to read before starting it. Switchboard runs nothing. */
+/** The prompt Tidy with Claude… puts in New session for you to read before starting it. Seshboard runs nothing. */
 export const tidyPrompt = (indexPath: string) =>
   `Tidy ${indexPath}: merge duplicates and shorten lines so it fits in 200 lines; don't drop facts. Keep one line per memory file in the form "- [Title](file.md) — hook".`;
 

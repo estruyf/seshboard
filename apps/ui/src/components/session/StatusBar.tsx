@@ -1,5 +1,5 @@
-import { AUTO_MODEL, type SessionHostInfo } from '@switchboard/protocol/client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AUTO_MODEL, type SessionHostInfo } from '@seshboard/protocol/client';
+import { useEffect, useRef, useState } from 'react';
 import { autoChipModel } from '../../lib/autoModel.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -66,9 +66,9 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
 
 /**
  * The chip row of a session that isn't running here: what the next message resumes it with. A change is only saved,
- * so it takes effect when the session starts again. `note` goes after the chips (why the last run failed, say).
+ * so it takes effect when the session starts again.
  */
-export function SavedSessionControls({ sessionId, profileId, note }: { sessionId: string; profileId: string | null; note?: ReactNode }) {
+export function SavedSessionControls({ sessionId, profileId }: { sessionId: string; profileId: string | null }) {
   const connection = useEngineConnection();
   const models = useHosts((s) => s.models);
   const defaultProfile = useProfiles((s) => s.defaultId);
@@ -102,23 +102,20 @@ export function SavedSessionControls({ sessionId, profileId, note }: { sessionId
   const modelOption = findModelOption(models, saved?.model ?? null);
   const supportsEffort = modelOption?.supportsEffort ?? true;
   return (
-    <>
-      {saved && (
-        <ComposerChipRow
-          names={{ profile: 'session-profile', model: 'session-model', effort: 'effort', mode: 'permission-mode' }}
-          disabled={!client}
-          profile={{ value: profileId ?? defaultProfile }}
-          model={{
-            value: modelOption?.value ?? '',
-            label: modelOption?.displayName ?? saved.model ?? 'Default model',
-            choices: [...(modelOption ? [] : [{ value: '', label: saved.model ?? 'Default model' }]), ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))],
-            onChange: (model) => change({ model: model || null }, () => client?.call('session.setModel', { sessionId, model: model || null })),
-          }}
-          effort={supportsEffort ? { value: saved.effort ?? '', onChange: (effort) => change({ effort: effort || null }, () => client?.call('session.setEffort', { sessionId, effort: effort || null })) } : null}
-          mode={{ value: saved.permissionMode, onChange: (mode) => change({ permissionMode: mode }, () => client?.call('session.setPermissionMode', { sessionId, mode })) }}
-        />
-      )}
-      {note}
-    </>
+    saved && (
+      <ComposerChipRow
+        names={{ profile: 'session-profile', model: 'session-model', effort: 'effort', mode: 'permission-mode' }}
+        disabled={!client}
+        profile={{ value: profileId ?? defaultProfile }}
+        model={{
+          value: modelOption?.value ?? '',
+          label: modelOption?.displayName ?? saved.model ?? 'Default model',
+          choices: [...(modelOption ? [] : [{ value: '', label: saved.model ?? 'Default model' }]), ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))],
+          onChange: (model) => change({ model: model || null }, () => client?.call('session.setModel', { sessionId, model: model || null })),
+        }}
+        effort={supportsEffort ? { value: saved.effort ?? '', onChange: (effort) => change({ effort: effort || null }, () => client?.call('session.setEffort', { sessionId, effort: effort || null })) } : null}
+        mode={{ value: saved.permissionMode, onChange: (mode) => change({ permissionMode: mode }, () => client?.call('session.setPermissionMode', { sessionId, mode })) }}
+      />
+    )
   );
 }

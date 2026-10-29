@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import type { ImageAttachment, PromptScope, SavedPrompt } from '@switchboard/protocol/client';
+import type { ImageAttachment, PromptScope, SavedPrompt } from '@seshboard/protocol/client';
 import type { NewSessionRequest, SessionRequest } from '../components/palette/commands.ts';
 import type { Choices } from '../components/newSession/choices.ts';
 import { useSessions } from './sessionsStore.ts';

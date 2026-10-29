@@ -1,8 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProjectAction } from '@switchboard/protocol';
+import { ProjectAction } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { posixQuote, powershellQuote, windowsUnsafe } from '../system/shell.ts';
 import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
@@ -10,7 +11,7 @@ import { ActionStore, expandCommand, suggestActions } from './actionStore.ts';
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 const tempDir = () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-actions-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-actions-')));
   dirs.push(dir);
   return dir;
 };
@@ -28,11 +29,11 @@ describe('ActionStore', () => {
     const { store, project, cache } = setup();
     store.save(null, action({ id: 'test', name: 'Global test' }));
     store.save(null, action({ id: 'lint' }));
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ name: 'Test', command: 'npm test' }, { name: 'Deploy', command: 'make deploy', confirm: true }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ name: 'Test', command: 'npm test' }, { name: 'Deploy', command: 'make deploy', confirm: true }] }));
     store.save(project, action({ id: 'deploy', name: 'My deploy', command: 'make deploy-staging' }));
     const { actions, sharedFile, errors } = store.list(project);
     const byId = Object.fromEntries(actions.map((a) => [a.id, a]));
-    expect(sharedFile).toBe(join(project, '.switchboard.json'));
+    expect(sharedFile).toBe(join(project, '.seshboard.json'));
     expect(errors).toEqual([]);
     expect(byId.test).toMatchObject({ name: 'Test', scope: 'shared', trusted: false });
     expect(byId.deploy).toMatchObject({ name: 'My deploy', scope: 'project', trusted: true });
@@ -42,21 +43,35 @@ describe('ActionStore', () => {
 
   it('reports bad shared entries without dropping the good ones', () => {
     const { store, project, cache } = setup();
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ name: 'Ok', command: 'true' }, { name: 'No command' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ name: 'Ok', command: 'true' }, { name: 'No command' }] }));
     const { actions, errors } = store.list(project);
     expect(actions.map((a) => a.id)).toEqual(['ok']);
     expect(errors).toHaveLength(1);
-    writeFileSync(join(project, '.switchboard.json'), '{ nope');
-    expect(store.list(project).errors[0]).toMatch(/\.switchboard\.json/);
+    writeFileSync(join(project, '.seshboard.json'), '{ nope');
+    expect(store.list(project).errors[0]).toMatch(/\.seshboard\.json/);
     cache.close();
   });
 
   it('trusts a shared command by its exact text', () => {
     const { store, project, cache } = setup();
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build' }] }));
-    store.trust(project, 'npm run build');
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build' }] }));
+    store.trust(project, { type: 'shell', command: 'npm run build', runOnWorktreeCreate: false });
     expect(store.list(project).actions[0]!.trusted).toBe(true);
-    writeFileSync(join(project, '.switchboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build && curl evil' }] }));
+    writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build && curl evil' }] }));
+    expect(store.list(project).actions[0]!.trusted).toBe(false);
+    cache.close();
+  });
+
+  it('asks again when a shared prompt becomes a shell command, or starts running in new worktrees', () => {
+    const { store, project, cache } = setup();
+    const write = (entry: object) => writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'x', name: 'X', command: 'npm test', ...entry }] }));
+    store.trust(project, { type: 'prompt', command: 'npm test', runOnWorktreeCreate: false });
+    write({ type: 'prompt' });
+    expect(store.list(project).actions[0]!.trusted).toBe(true);
+    write({ type: 'shell' });
+    expect(store.list(project).actions[0]!.trusted).toBe(false);
+    store.trust(project, { type: 'shell', command: 'npm test', runOnWorktreeCreate: false });
+    write({ type: 'shell', runOnWorktreeCreate: true });
     expect(store.list(project).actions[0]!.trusted).toBe(false);
     cache.close();
   });
@@ -73,9 +88,9 @@ describe('ActionStore', () => {
     cache.close();
   });
 
-  it('saves, renames and deletes shared actions in .switchboard.json, keeping what it does not know', () => {
+  it('saves, renames and deletes shared actions in .seshboard.json, keeping what it does not know', () => {
     const { store, project, cache } = setup();
-    const file = join(project, '.switchboard.json');
+    const file = join(project, '.seshboard.json');
     writeFileSync(file, `{\n    "icon": "rocket",\n    "actions": [\n        { "name": "Test", "command": "npm test", "note": "keep" }\n    ]\n}\n`);
     store.saveShared(project, action({ id: 'dev', name: 'Dev', command: 'npm run dev', shortcut: 'cmd+shift+d', confirm: true }));
     const after = readFileSync(file, 'utf8');
@@ -101,11 +116,11 @@ describe('ActionStore', () => {
     cache.close();
   });
 
-  it('creates .switchboard.json for the first shared action, and refuses one that does not read', () => {
+  it('creates .seshboard.json for the first shared action, and refuses one that does not read', () => {
     const { store, project, cache } = setup();
     store.saveShared(project, action({ id: 'dev', name: 'Dev' }));
-    expect(JSON.parse(readFileSync(join(project, '.switchboard.json'), 'utf8'))).toEqual({ actions: [{ id: 'dev', name: 'Dev', command: 'echo dev' }] });
-    writeFileSync(join(project, '.switchboard.json'), '{ broken');
+    expect(JSON.parse(readFileSync(join(project, '.seshboard.json'), 'utf8'))).toEqual({ actions: [{ id: 'dev', name: 'Dev', command: 'echo dev' }] });
+    writeFileSync(join(project, '.seshboard.json'), '{ broken');
     expect(() => store.saveShared(project, action({ id: 'dev' }))).toThrow(/can't be read/);
     cache.close();
   });
@@ -155,10 +170,18 @@ describe('expandCommand', () => {
     // PowerShell reads `$` and the backtick inside double quotes, not `\`, so a Windows path goes in as it is.
     expect(expandCommand('cd "${cwd}"', { ...vars, cwd: 'C:\\Users\\me\\wt' }, powershell)).toBe('cd "C:\\Users\\me\\wt"');
     expect(() => expandCommand('echo "${branch}"', { ...vars, branch: 'a$b' }, powershell)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
-    // Single quotes in the action close nothing: the placeholder after them is quoted again.
-    expect(expandCommand("echo '${branch}'", { ...vars, branch: 'a$b' }, posix)).toBe(`echo '${posixQuote('a$b')}'`);
+    // Inside single quotes in the action, the value goes in without quotes of its own, which would close the action's.
+    expect(expandCommand("echo '${branch}'", { ...vars, branch: 'a$b' }, posix)).toBe("echo 'a$b'");
+    expect(expandCommand("echo 'on ${branch}'", vars, posix)).toBe(`echo 'on feat/x'\\''; rm -rf ~ #'`);
+    expect(expandCommand("echo 'on ${branch}'", vars, powershell)).toBe(`echo 'on feat/x''; rm -rf ~ #'`);
     // An escaped quote in the action doesn't open double quotes.
     expect(expandCommand('echo \\"${branch}\\"', { ...vars, branch: 'a$b' }, posix)).toBe(`echo \\"${posixQuote('a$b')}\\"`);
+  });
+  it.skipIf(process.platform === 'win32')('keeps a value inside single quotes from running in /bin/sh', () => {
+    for (const branch of ['x;echo PWNED;#', "x'; echo PWNED; #", '$(echo PWNED)', 'x`echo PWNED`']) {
+      const out = execFileSync('/bin/sh', ['-c', expandCommand("printf %s 'on ${branch}.'", { ...vars, branch }, posix)]).toString();
+      expect(out).toBe(`on ${branch}.`);
+    }
   });
   it('leaves prompt text unquoted', () => {
     expect(expandCommand('Review ${sessionTitle} on ${branch}', vars, null)).toBe(`Review Fix "login" on ${vars.branch}`);

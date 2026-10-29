@@ -1,8 +1,8 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@switchboard/protocol/client';
+import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -12,6 +12,7 @@ import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenSto
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -23,10 +24,12 @@ import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/termi
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
+import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
 import { SignInNotice } from '../session/SignInNotice.tsx';
+import { RunFailedNotice } from '../session/RunFailedNotice.tsx';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
 // xterm.js is large; it loads the first time a terminal panel opens, not at startup.
 const TerminalPanel = lazy(() => import('../terminal/TerminalPanel.tsx').then((m) => ({ default: m.TerminalPanel })));
@@ -138,7 +141,7 @@ import { useCatchUpShow } from '../../state/catchUpShow.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { WhyPanel } from '../session/WhyPanel.tsx';
 
-const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Switchboard', unknown: '' } as const;
+const ORIGIN_LABEL = { cli: 'Terminal', desktop: 'Claude desktop', ide: 'IDE', sdk: 'SDK', app: 'Seshboard', unknown: '' } as const;
 
 /**
  * The status word in the header's meta line takes the colour of its state: yellow while working,
@@ -454,6 +457,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const running = activeHost?.state === 'running' || activeHost?.state === 'needs-you';
   const showTodos = todos.some((t) => t.status !== 'completed') && (live !== null || activeHost !== null);
   const backgroundTasks = activeHost?.backgroundTasks ?? [];
+  // Keep awake until done: a pill beside the background tasks while it is on (clicking it turns it off).
+  const keepAwake = activeHost?.keepAwake === true;
   const backgroundOpen = openStrip === 'background' && backgroundTasks.length > 0;
   const stopTask = async (taskId: string) => {
     try {
@@ -1185,6 +1190,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
     else if (request.kind === 'prompt-previous') stepPrompt(-1);
     else if (request.kind === 'prompt-next') stepPrompt(1);
+    else if (request.kind === 'retry') void retry();
   });
 
   /**
@@ -1199,7 +1205,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
@@ -1221,6 +1227,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The profile is at a usage limit: Up next waits for it rather than sending into it.
   const limitHeld = useLimits((s) => profileId !== null && s.state.limits.some((l) => l.profileId === profileId));
   /** Sending from Up next brings a session that isn't running back, which the focus limit has a say in. */
+  // Try again, after Claude Code failed before it got your message: it starts again and sends it.
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retry = async () => {
+    if (!client || retrying) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      if ((await passFocusGate({ target: sessionId })) !== 'start') return;
+      await client.call('session.retry', { sessionId });
+      follow(true);
+    } catch (e) {
+      setRetryError(`Could not try again: ${(e as Error).message}`);
+    } finally {
+      setRetrying(false);
+    }
+  };
   const resumeAllowed = async () => Boolean(activeHost) || (await passFocusGate({ target: sessionId })) === 'start';
   const takeBack = async (id: string): Promise<boolean> => {
     if (!client) return false;
@@ -1548,7 +1571,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             iconOnly
             icon={<SquareArrowDownLeft size={15} aria-hidden />}
             data-move-to-main-window
-            onClick={() => window.switchboard?.popIn()}
+            onClick={() => window.seshboard?.popIn()}
             data-tooltip="Move back to main window"
             aria-label="Move back to main window"
             className="no-drag shrink-0"
@@ -1708,7 +1731,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   <AutoPickLine sessionId={sessionId} pick={autoPick} />
                 </div>
               )}
-              {/* Switchboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
+              {/* Seshboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
               {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
               {status === 'ready' && (
                 <div className="mx-auto max-w-3xl px-6 pb-4">
@@ -1793,7 +1816,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <div className={`shrink-0 border-t border-border bg-bg ${terminalMaximized ? 'hidden' : ''}`}>
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
             <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-1.5 @max-[860px]:px-4">
-              {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0) && (
+              {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0 || keepAwake) && (
                 <div className="grid gap-1.5">
                   {/* The project's actions on the left; Claude's task list and its background tasks on the right, as small pills. The task list opens below them. */}
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1814,6 +1837,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                             Tasks {todos.filter((t) => t.status === 'completed').length} of {todos.length}
                           </span>
                           <ChevronDown size={11} className={`transition-transform ${todosOpen ? 'rotate-180' : ''}`} aria-hidden />
+                        </Pill>
+                      )}
+                      {keepAwake && (
+                        <Pill
+                          tone="muted"
+                          icon={<Coffee size={12} aria-hidden />}
+                          onClick={() => void client?.call('session.keepAwake', { sessionId, on: false }).catch((error: Error) => toast(`Couldn't change Keep awake: ${error.message}`))}
+                          aria-label="Stop keeping awake"
+                          data-tooltip={`${keepAwakeUntilDoneDetail()} Click to stop.`}
+                          data-keep-awake-pill
+                        >
+                          Awake until done
                         </Pill>
                       )}
                       {backgroundTasks.length > 0 && (
@@ -1861,7 +1896,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   ))}
                 </div>
               )}
-              {/* Mods' bands: under Switchboard's own cards, above Up next. */}
+              {/* Mods' bands: under Seshboard's own cards, above Up next. */}
               <ModBands sessionId={sessionId} profileId={profileId} working={running} />
               {openElsewhere && (
                 <Notice role="note" data-open-elsewhere>
@@ -1871,7 +1906,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {leftover && (
                 <Notice role="note" data-leftover-host>
-                  This session is still running from before Switchboard restarted. Sending stops that process and continues the session here.
+                  This session is still running from before Seshboard restarted. Sending stops that process and continues the session here.
                 </Notice>
               )}
               {actionError && (
@@ -1892,6 +1927,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     presetBox('', []);
                   }}
                 />
+              )}
+              {host?.state === 'error' && (
+                <RunFailedNotice host={host} retrying={retrying} retryError={retryError} onRetry={!restart && (host.unsent ?? 0) > 0 ? () => void retry() : null} />
               )}
               {profileId && <SignInNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} />}
               {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
@@ -1959,25 +1997,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       <SessionControls host={activeHost} />
                     ) : !restart && (!registryLive || leftover) ? (
                       // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
-                      <SavedSessionControls
-                        sessionId={sessionId}
-                        profileId={profileId}
-                        note={
-                          host?.state === 'error' && (
-                            <span className="min-w-0 shrink truncate px-1.5 text-meta text-error" data-tooltip={host.error ?? undefined} data-session-elsewhere>
-                              Last run failed: {host.error}
-                            </span>
-                          )
-                        }
-                      />
+                      // Why the last run failed is in the notice above the message box, where it has room.
+                      <SavedSessionControls sessionId={sessionId} profileId={profileId} />
                     ) : (
-                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-tooltip={host?.state === 'error' ? (host.error ?? undefined) : undefined} data-session-elsewhere>
+                      <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
                         {host?.state === 'error' ? (
-                          <span className="text-error select-text">Last run failed: {host.error}</span>
+                          'Last run failed. Send a message to start it again.'
                         ) : registryLive ? (
-                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Switchboard.`
+                          `Open in ${ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'}, not in Seshboard.`
                         ) : (
-                          'Not running in Switchboard. Send a message to pick it up here.'
+                          'Not running in Seshboard. Send a message to pick it up here.'
                         )}
                       </span>
                     )

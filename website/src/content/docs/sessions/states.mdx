@@ -31,7 +31,7 @@ Every session is in one state, and each state has its own colour everywhere: in 
 | <Pill tone="background">Running in the background</Pill> | Claude finished its turn, but a background command or agent is still running. | A slow green spinner. The header says how many background tasks run, and a green pill above the message box lists them. |
 | <Pill tone="unread">Finished, unread</Pill> | It finished and you haven't looked since. | Blue rail, blue dot, bold title, and "Finished, unread" on the second line. |
 | <Pill tone="failed">Failed</Pill> | The last run stopped with an error. | A red **!** badge. The message box says what went wrong. |
-| <Pill tone="muted">Idle</Pill> | Open in Switchboard and ready for your next message. | A small green ring, no rail. |
+| <Pill tone="muted">Idle</Pill> | Open in Seshboard and ready for your next message. | A small green ring, no rail. |
 
 A session that isn't open anywhere has no status icon at all, only its age.
 
@@ -49,22 +49,22 @@ With more than one [Claude profile](/settings/claude-profiles/), the rail on eve
 
 ## Notifications and the badge
 
-Switchboard tells you when something changes while you are elsewhere:
+Seshboard tells you when something changes while you are elsewhere:
 
 - **A notification** when a session needs you ("Claude wants to use Bash", "Claude has a question", "Claude has a plan for you"), when Claude finishes ("Claude finished"), when a run fails ("Claude Code stopped with an error"), when a usage limit stops it ("Usage limit reached") and when it resumes after the limit reset ("Resumed after the usage limit reset"). Click it to open the session. You don't get one for the session you are looking at in a focused window.
-- <Os mac="The Dock badge counts the sessions that wait for you. When one starts waiting while Switchboard is in the background, the Dock icon bounces once." windows="A pink dot on Switchboard's taskbar button says sessions wait for you (hover the button for how many; Windows has no badge count). When one starts waiting while Switchboard is in the background, the taskbar button flashes until you switch to the window." />
+- <Os mac="The Dock badge counts the sessions that wait for you. When one starts waiting while Seshboard is in the background, the Dock icon bounces once." windows="A pink dot on Seshboard's taskbar button says sessions wait for you (hover the button for how many; Windows has no badge count). When one starts waiting while Seshboard is in the background, the taskbar button flashes until you switch to the window." />
 - With **Show sessions from other apps** on, a Claude Code session in your terminal that waits for you gets a notification too ("Claude is waiting for you in Terminal").
 - **A sound**, if you turn on **Sounds** in [Settings › Notifications](/settings/notifications/): one for each moment, such as a session that needs you, one that finishes and one that stops with an error. You can turn the notifications off there too; the badge stays.
 
 <OnlyOn os="mac">
 
-The notifications and badge work as long as Switchboard runs, also with the window closed.
+The notifications and badge work as long as Seshboard runs, also with the window closed.
 
 </OnlyOn>
 
 <OnlyOn os="windows">
 
-On Windows, closing the window quits Switchboard and stops its sessions, so it asks first (unless you turned off **Ask before quitting** in [Settings, General](/settings/#general)). Minimise the window instead to keep getting notifications. Windows' own notification settings (**Settings › System › Notifications**) decide whether they show as banners, and Do not disturb holds them back.
+On Windows, closing the window quits Seshboard and stops its sessions, so it asks first (unless you turned off **Ask before quitting** in [Settings, General](/settings/#general)). Minimise the window instead to keep getting notifications. Windows' own notification settings (**Settings › System › Notifications**) decide whether they show as banners, and Do not disturb holds them back.
 
 </OnlyOn>
 

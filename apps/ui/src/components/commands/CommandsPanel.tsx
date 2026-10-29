@@ -1,6 +1,6 @@
 import { CircleAlert, Copy, ScrollText, Square, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import type { BackgroundTask } from '@switchboard/protocol/client';
+import type { BackgroundTask } from '@seshboard/protocol/client';
 import { useCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { formatDuration, useTicker } from '../transcript/ActivityGroup.tsx';

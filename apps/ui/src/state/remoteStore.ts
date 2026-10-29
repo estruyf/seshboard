@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RemoteStatus } from '@switchboard/protocol/client';
+import type { RemoteStatus } from '@seshboard/protocol/client';
 import { actionOf, type FromDeviceEvent, type LastAction } from './connectedDevices.ts';
 import { toast } from './toastStore.ts';
 

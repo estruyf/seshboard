@@ -1,11 +1,12 @@
 import { Check, Info, RotateCcw } from 'lucide-react';
-import { APP_ICONS, DEFAULT_APP_ICON, settingsTileFile, type AppIconKey } from '@switchboard/protocol/bridge';
+import { APP_ICONS, DEFAULT_APP_ICON, settingsTileFile, type AppIconKey } from '@seshboard/protocol/bridge';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useRemote } from '../../state/remoteStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { RadioGroup } from '../ui/Radio.tsx';
 import { Toggle } from '../ui/Toggle.tsx';
-import { appIconDetail, appIconNote } from './appIconCopy.ts';
+import { currentPlatform } from '../../lib/platform.ts';
+import { appIconDetail, appIconNote, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from './appIconCopy.ts';
 import { Heading } from './Heading.tsx';
 
 /** Each colourway's tile (128px, for 64px on a Retina screen), made by the icon script with the platform's corners. */
@@ -40,11 +41,12 @@ function IconTile({ icon, selected, onSelect }: { icon: (typeof APP_ICONS)[numbe
 /**
  * Settings › Theme › App icon: nine colourways of the icon in the Dock (macOS) or on the windows and the taskbar. A
  * pick applies at once, through main (`appIcon` in Preferences), which every window hears; with Remote set up, the
- * remote app can follow it.
+ * remote app can follow it. On macOS, the Dock's icon can also show when Claude is working.
  */
 export function AppIconSettings() {
   const appIcon = usePreferences((s) => s.prefs.appIcon);
   const onRemote = usePreferences((s) => s.prefs.appIconOnRemote);
+  const dockActivity = usePreferences((s) => s.prefs.dockActivity);
   const update = usePreferences((s) => s.update);
   // Set up: Remote is on, or a phone or browser is paired (another computer has no Home Screen).
   const remoteSetUp = useRemote((s) => !!s.status?.available && (s.status.settings.enabled || s.status.devices.some((device) => device.kind !== 'computer')));
@@ -67,6 +69,12 @@ export function AppIconSettings() {
           ))}
         </div>
       </RadioGroup>
+
+      {currentPlatform() === 'darwin' && (
+        <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+          <Toggle label={DOCK_ACTIVITY_LABEL} detail={DOCK_ACTIVITY_DETAIL} checked={dockActivity} attr="data-dock-activity" onChange={(on) => update({ dockActivity: on })} />
+        </div>
+      )}
 
       {remoteSetUp && (
         <div className="rounded-lg border border-border bg-card px-3 py-2.5">

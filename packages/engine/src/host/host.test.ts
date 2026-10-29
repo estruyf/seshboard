@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@switchboard/protocol';
+import { RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
@@ -253,6 +253,8 @@ function setup(
     warmFails?: { message: string; afterMs?: number };
     /** Claude Code can't be started at all. */
     startFails?: string;
+    /** Claude Code starts, then dies before it reads a message (a binary that won't launch). */
+    launchFails?: string;
     /** Sees each process as it starts, before it gets a message. */
     onQuery?: (query: FakeQuery) => void;
     limits?: HostManagerDeps['limits'];
@@ -261,6 +263,7 @@ function setup(
     readOnly?: HostManagerDeps['readOnly'];
     planApproved?: HostManagerDeps['planApproved'];
     autoAnswer?: HostManagerDeps['autoAnswer'];
+    assertTrusted?: HostManagerDeps['assertTrusted'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -278,6 +281,12 @@ function setup(
   const sdk: SdkRuntime = {
     query: ({ prompt, options }) => {
       if (opts.startFails) throw new Error(opts.startFails);
+      if (opts.launchFails) {
+        const dead = new FakeQuery(new Channel<SDKUserMessage>(), options);
+        const message = opts.launchFails;
+        setTimeout(() => dead.out.fail(new Error(message)), 10);
+        return dead as never;
+      }
       const q = new FakeQuery(prompt, options);
       queries.push(q);
       opts.onQuery?.(q);
@@ -325,6 +334,7 @@ function setup(
     readOnly: opts.readOnly,
     planApproved: opts.planApproved,
     autoAnswer: opts.autoAnswer,
+    assertTrusted: opts.assertTrusted,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -524,12 +534,22 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('says when a prompt is too long to show in full', async () => {
+    const t = setup();
+    await t.manager.create({ ...base, cwd: '/w', prompt: `bash:${'x'.repeat(25_000)}` });
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]!.truncated).toBe(true);
+    expect((t.permissions[0]!.input as { command: string }).command).toHaveLength(20_000);
+    t.manager.closeAll();
+  });
+
   it('brokers permission prompts and applies "always allow"', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
     await until(() => t.permissions.length === 1);
     const request = t.permissions[0]!;
     expect(request).toMatchObject({ sessionId: id, toolName: 'Bash', toolUseId: 'tool-1', input: { command: 'npm test' } });
+    expect(request.truncated).toBeUndefined();
     expect(request.alwaysLabel).toBe('Allow Bash(npm test:*) in this project (just you)');
     expect(t.manager.list().permissions).toHaveLength(1);
     t.manager.respond(request.requestId, { behavior: 'allow', always: true });
@@ -991,7 +1011,7 @@ describe('HostManager', () => {
   });
 
   it('ignores a startup message without a session id, so the session list keeps working', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'switchboard-host-'));
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-host-'));
     const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
     try {
       const t = setup({ settings: createSessionSettingsStore(cache.db), onQuery: (q) => q.out.push({ type: 'system', subtype: 'init' }) });
@@ -1017,6 +1037,26 @@ describe('HostManager', () => {
     // A second session still works.
     const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
     await until(() => lastState(t.infos, other) === 'idle');
+    t.manager.closeAll();
+  });
+
+  it('starts nothing in a cloned repository whose trust question is not answered: no session, helper or pre-warm', async () => {
+    const t = setup({
+      cwds: { old: '/clone/app' },
+      assertTrusted: (cwd) => {
+        if (cwd.startsWith('/clone')) throw new RpcError('TRUST_NEEDED', 'Answer whether to trust it first.');
+      },
+    });
+    await expect(t.manager.create({ ...base, cwd: '/clone/app', prompt: 'hello' })).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    await expect(t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false })).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    await expect(t.manager.capabilities(undefined, '/clone/app', true, 'default')).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    expect(await t.manager.commands(undefined, '/clone/app', 'default')).toEqual([]);
+    await t.manager.prewarm('/clone/app', 'default');
+    expect(t.queries).toHaveLength(0);
+    expect(t.warmups).toHaveLength(0);
+    // Elsewhere everything starts as before.
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
     t.manager.closeAll();
   });
 
@@ -1054,6 +1094,27 @@ describe('HostManager', () => {
     expect(t.queries).toHaveLength(1);
     expect(t.queries[0]!.options).toMatchObject({ sessionId: id, permissionMode: 'plan', model: 'opus' });
     expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    t.manager.closeAll();
+  });
+
+  it('sends a message again after Claude Code failed before it got it', async () => {
+    const opts: Parameters<typeof setup>[0] = { cwds: { old: '/w' }, launchFails: 'Claude Code native binary at /opt/homebrew/bin/claude exists but failed to launch.' };
+    const t = setup(opts);
+    const { messageUuid } = await t.manager.send({ sessionId: 'old', text: 'Say hi', attachments: [], fork: false });
+    await until(() => lastState(t.infos, 'old') === 'error');
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    // It fails again: the message is still there to send.
+    await expect(t.manager.retry('old')).resolves.toBeUndefined();
+    await until(() => lastState(t.infos, 'old') === 'error' && t.infos.filter((i) => i.sessionId === 'old').length > 2);
+    expect(t.infos.filter((i) => i.sessionId === 'old').at(-1)).toMatchObject({ unsent: 1 });
+    delete opts.launchFails;
+    await t.manager.retry('old');
+    await until(() => lastState(t.infos, 'old') === 'idle');
+    expect(t.queries[0]!.received).toEqual([{ text: 'Say hi' }]);
+    // The same uuid each time, so the transcript shows the message once.
+    expect(new Set(t.messages.filter((m) => m.messages[0]?.type === 'user').map((m) => m.messages[0]!.uuid))).toEqual(new Set([messageUuid]));
+    // Once Claude Code has it, there is nothing left to send again.
+    await expect(t.manager.retry('old')).rejects.toMatchObject({ code: 'NOT_RUNNING' });
     t.manager.closeAll();
   });
 

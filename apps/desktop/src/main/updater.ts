@@ -1,5 +1,6 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import type { UpdateChannel, UpdateCommand, UpdateState } from '@switchboard/protocol/bridge';
+import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/protocol/bridge';
+import { guarded } from './guarded.ts';
 import { cleanReleaseNotes } from './releaseNotes.ts';
 import { available, changeChannel, checking, dismissUpdated, downloaded, downloading, failed, initialUpdateState, installing, isBusy, nextCommand, upToDate } from './updateState.ts';
 
@@ -38,7 +39,7 @@ export interface UpdaterOptions {
   disabledReason: string | null;
   /** Written before restarting into an update, read after it. */
   markerFile: string;
-  /** SWITCHBOARD_MOCK_UPDATES: a local generic feed instead of GitHub. */
+  /** SESHBOARD_MOCK_UPDATES: a local generic feed instead of GitHub. */
   mockFeedUrl?: string;
   onState(state: UpdateState): void;
   /** Called right before quitAndInstall, e.g. to stop the engine cleanly. */
@@ -221,9 +222,12 @@ export class Updater {
       updater.quitAndInstall(false, true);
       // Still here after a while: Squirrel didn't restart us.
       clearTimeout(this.#installTimer);
-      this.#installTimer = setTimeout(() => {
-        if (this.#state.status === 'installing') this.#installFailed('Switchboard didn’t restart to install the update.');
-      }, INSTALL_TIMEOUT_MS);
+      this.#installTimer = setTimeout(
+        guarded('update install timeout', () => {
+          if (this.#state.status === 'installing') this.#installFailed('Seshboard didn’t restart to install the update.');
+        }),
+        INSTALL_TIMEOUT_MS,
+      );
       this.#installTimer.unref?.();
     } catch (error) {
       this.#installFailed(shortMessage(error as Error));

@@ -42,13 +42,13 @@ export const SessionSummary = z.object({
   viewedAt: z.number().nullable(),
   /** Changed since the user last looked at it. */
   unread: z.boolean(),
-  /** Started, forked or continued in Switchboard (the default sidebar shows only these). */
+  /** Started, forked or continued in Seshboard (the default sidebar shows only these). */
   inApp: z.boolean(),
   /** The Claude profile whose config folder holds the transcript (resume and fork use it). */
   profileId: z.string(),
   /**
    * The session (or pipeline run row) it sits under in the sidebar: a pipeline's step under the session it was run
-   * from (#179). Kept in Switchboard's database; Claude Code doesn't know about it.
+   * from (#179). Kept in Seshboard's database; Claude Code doesn't know about it.
    */
   parentId: z.string().nullable().optional(),
 });
@@ -109,7 +109,7 @@ export const ProjectInfo = z.object({
   nameSource: z.enum(['custom', 'folder']),
   icon: ProjectIcon.nullable(),
   iconSource: z.enum(['custom', 'detected']).nullable(),
-  /** Added to Switchboard by hand. Folders that only have Claude Code sessions are listed with `added: false`. */
+  /** Added to Seshboard by hand. Folders that only have Claude Code sessions are listed with `added: false`. */
   added: z.boolean(),
   exists: z.boolean(),
   /** Position in the user's project list (null: after the ordered ones). */
@@ -303,7 +303,7 @@ export type TranscriptFinding = z.infer<typeof TranscriptFinding>;
 export const TranscriptDiagnosis = z.object({
   sessionId: z.string(),
   checkedAt: z.number(),
-  /** The file Switchboard's session list knows the session by, if any. */
+  /** The file Seshboard's session list knows the session by, if any. */
   indexedPath: z.string().nullable(),
   profiles: z.array(TranscriptProfileCheck),
   /** Plain-language conclusions, most serious first. */

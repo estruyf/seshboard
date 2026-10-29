@@ -6,11 +6,12 @@ export interface AwakeCommand {
 
 /**
  * What keeps a Mac awake: `caffeinate -s` holds system sleep off while on power (the display can still sleep), and
- * `-w` ends it with Switchboard's process, so a crash doesn't leave it running. Null elsewhere: Windows and Linux use
- * Electron's sleep blocker instead.
+ * `-w` ends it with Seshboard's process, so a crash doesn't leave it running. `onBattery` uses `-i` instead, which
+ * holds idle sleep off on battery too: for Keep awake until done, which lets go by itself. Null elsewhere: Windows and
+ * Linux use Electron's sleep blocker instead.
  */
-export function awakeCommand(platform: string, pid: number): AwakeCommand | null {
-  return platform === 'darwin' ? { file: '/usr/bin/caffeinate', args: ['-s', '-w', String(pid)] } : null;
+export function awakeCommand(platform: string, pid: number, onBattery = false): AwakeCommand | null {
+  return platform === 'darwin' ? { file: '/usr/bin/caffeinate', args: [onBattery ? '-i' : '-s', '-w', String(pid)] } : null;
 }
 
 /** The part of a child process Keep awake uses. */
@@ -27,14 +28,16 @@ export interface SleepBlocker {
 
 export interface KeepAwakeOptions {
   platform: string;
-  /** Switchboard's own process, which `caffeinate` waits for. */
+  /** Seshboard's own process, which `caffeinate` waits for. */
   pid: number;
   spawn(file: string, args: string[]): AwakeChild;
   blocker: SleepBlocker;
+  /** Hold sleep off on battery too (see `awakeCommand`). */
+  onBattery?: boolean;
 }
 
 /**
- * Settings › General › Keep awake: holds sleep off while it is on. `apply` is called with the preference at launch and
+ * Settings › General › Keep awake, and the sessions set to Keep awake until done: holds sleep off while it is on. `apply` is called with the preference at launch and
  * after every change, so it does something only when the state really changes. A `caffeinate` that exits by itself
  * isn't restarted on the spot (no restart loop); the next `apply(true)` starts it again.
  */
@@ -64,7 +67,7 @@ export class KeepAwake {
 
   #start(): void {
     if (this.active) return;
-    const command = awakeCommand(this.#options.platform, this.#options.pid);
+    const command = awakeCommand(this.#options.platform, this.#options.pid, this.#options.onBattery);
     if (!command) {
       this.#blockerId = this.#options.blocker.start();
       return;

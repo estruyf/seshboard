@@ -1,5 +1,5 @@
 /*
- * Switchboard Remote's service worker. It only shows notifications: a push from the computer (encrypted for this
+ * Seshboard Remote's service worker. It only shows notifications: a push from the computer (encrypted for this
  * browser, see docs/remote-access.md) when a session needs you or finishes, and a tap that opens that session. A
  * tool prompt gets Deny and Allow where the browser shows buttons (Chrome, Edge and Firefox on a computer; not
  * Safari or iOS): the page sends the answer once it is connected, and only if the prompt is still open. A phone
@@ -23,7 +23,7 @@ self.addEventListener('push', (event) => {
   } catch {
     // Not one of ours: still show something, as browsers require for every push.
   }
-  const title = typeof data.title === 'string' && data.title ? data.title : 'Switchboard';
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Seshboard';
   const line = typeof data.line === 'string' ? data.line : data.kind === 'finished' ? 'Claude finished a turn.' : 'Claude needs you.';
   // With more than one computer, its name first; with more than one Claude profile, the profile
   // ("mystic · Work · web · Allow Bash: npm publish --tag beta").
@@ -34,7 +34,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body,
       // One notification per computer, session and kind: a newer one replaces it.
-      tag: `${data.kind ?? 'switchboard'}:${deviceId ?? ''}:${data.sessionId ?? ''}`,
+      tag: `${data.kind ?? 'seshboard'}:${deviceId ?? ''}:${data.sessionId ?? ''}`,
       renotify: data.kind === 'needs-you',
       icon: new URL('icon-192.png', self.registration.scope).href,
       ...(answers

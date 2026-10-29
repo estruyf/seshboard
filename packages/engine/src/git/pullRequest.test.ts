@@ -98,7 +98,7 @@ describe('remotes and bases', () => {
 
 describe('findTemplates', () => {
   let top: string;
-  beforeEach(() => (top = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-templates-')))));
+  beforeEach(() => (top = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-templates-')))));
   afterEach(() => rmSync(top, { recursive: true, force: true }));
 
   it("finds them in GitHub's order: .github, the top folder, docs, then the folder of templates by name", () => {
@@ -141,9 +141,9 @@ describe('creating a pull request', () => {
   const ghLog = () => JSON.parse(readFileSync(join(scratch, 'gh.json'), 'utf8')) as { argv: string[]; stdin: string; env: Record<string, string> };
 
   beforeEach(async () => {
-    repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pr-')));
-    remote = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pr-remote-')));
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pr-gh-')));
+    repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pr-')));
+    remote = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pr-remote-')));
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pr-gh-')));
     // A fake gh: it writes down how it was started and what came in on stdin, then answers as FAKE_GH_MODE says.
     const script = join(scratch, 'gh.mjs');
     writeFileSync(
@@ -271,7 +271,7 @@ process.stdout.write('https://github.com/o/r/pull/123\\n');
   });
 
   it('refuses a description longer than GitHub takes before pushing anything', async () => {
-    const { PR_BODY_LIMIT } = await import('@switchboard/protocol');
+    const { PR_BODY_LIMIT } = await import('@seshboard/protocol');
     const error = await create({ body: 'x'.repeat(PR_BODY_LIMIT + 1) }).catch((e: PrFailure) => e.error.code);
     expect(error).toBe('BODY_TOO_LONG');
     expect((await git(remote, ['branch', '--list', 'feat/x'])).trim()).toBe('');

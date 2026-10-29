@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LaterDraft, Pipeline, PipelineRunState, PipelineRunStatus, TriggerNotice, TriggerSave } from '@switchboard/protocol';
+import type { LaterDraft, Pipeline, PipelineRunState, PipelineRunStatus, TriggerNotice, TriggerSave } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { runGh } from '../git/pullRequest.ts';
 import { builtInPipelines } from '../pipelines/pipelineStore.ts';
@@ -57,10 +57,10 @@ interface FakeState {
 
 /** A project folder, a real cache, the fake gh's repository, and a watcher on a clock the test moves. */
 function world(initial: FakeState = {}) {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-triggers-')));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-triggers-')));
   dirs.push(dir);
   const ghFile = join(dir, 'gh.json');
-  writeFileSync(ghFile, JSON.stringify({ repo: 'o/r', login: 'estruyf', labels: ['switchboard'], issues: [], runs: [], logs: {}, ...initial }));
+  writeFileSync(ghFile, JSON.stringify({ repo: 'o/r', login: 'estruyf', labels: ['seshboard'], issues: [], runs: [], logs: {}, ...initial }));
   writeFileSync(`${ghFile}.calls`, '');
   const { db } = openCacheDatabase(join(dir, 'cache.sqlite'));
   databases.push(db);
@@ -150,16 +150,16 @@ function fakeRun(id: string, status: PipelineRunStatus, extra: { pr?: { number: 
   return { run: { id, status, pr: extra.pr ?? null, waitingFor: status === 'waiting' ? 'push' : null }, steps } as unknown as PipelineRunState;
 }
 
-const issue = (number: number, extra: Partial<FakeIssue> = {}): FakeIssue => ({ number, title: `Issue ${number}`, body: `Body of ${number}`, labels: ['switchboard'], association: 'OWNER', updatedAt: new Date(START + number * 1000).toISOString(), ...extra });
+const issue = (number: number, extra: Partial<FakeIssue> = {}): FakeIssue => ({ number, title: `Issue ${number}`, body: `Body of ${number}`, labels: ['seshboard'], association: 'OWNER', updatedAt: new Date(START + number * 1000).toISOString(), ...extra });
 const edits = (calls: string[][]) => calls.filter((c) => c[0] === 'issue' && c[1] === 'edit');
 
 describe('trigger store', () => {
   it('saves, lists per project and across them, changes and deletes', () => {
     const w = world();
     const other = resolve(w.dir, '..');
-    const a = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const a = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     const b = w.store.save({ projectRoot: other, name: 'CI fails on main', prompt: 'Fix it', source: { kind: 'ci' }, paused: false });
-    expect(a).toMatchObject({ maxAtOnce: 3, maxWaiting: 10, intervalMinutes: 5, stateLabels: { on: false, working: 'switchboard: working' }, source: { collaboratorsOnly: true }, seededAt: null });
+    expect(a).toMatchObject({ maxAtOnce: 3, maxWaiting: 10, intervalMinutes: 5, stateLabels: { on: false, working: 'seshboard: working' }, source: { collaboratorsOnly: true }, seededAt: null });
     expect(w.store.list().map((t) => t.id)).toEqual([a.id, b.id]);
     expect(w.store.inProject(w.dir).map((t) => t.id)).toEqual([a.id]);
     const changed = w.store.save({ ...a, name: 'Mine', maxAtOnce: 5 });
@@ -177,7 +177,7 @@ describe('trigger store', () => {
 
   it('keeps the last 50 events and everything waiting', () => {
     const w = world();
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     const found = (n: number) => ({ key: `#${n}`, kind: 'issue' as const, title: `${n}`, url: '', fields: { number: String(n) }, at: n, context: null });
     for (let n = 1; n <= 5; n++) w.store.addEvent(t.id, found(n), 'waiting');
     for (let n = 6; n <= 70; n++) w.store.addEvent(t.id, found(n), 'skipped', 'x');
@@ -191,7 +191,7 @@ describe('trigger store', () => {
 describe('the watcher', () => {
   it('marks what is there as seen at the first check, and starts nothing', async () => {
     const w = world({ issues: [issue(1), issue(2)] });
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     expect(w.started).toEqual([]);
     expect(w.store.get(t.id)).toMatchObject({ seededAt: START, lastCheckedAt: START, failures: 0 });
@@ -203,7 +203,7 @@ describe('the watcher', () => {
 
   it('starts a new issue once, with the filled prompt and the issue to read, and only once across checks', async () => {
     const w = world({ issues: [issue(1)] });
-    w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(212, { title: 'Pinned sessions lose their order', comments: [{ author: 'mara-k', body: 'Seen it too.' }] })));
     // Not due yet: the interval hasn't passed.
@@ -248,7 +248,7 @@ describe('the watcher', () => {
 
   it('lets events wait for a slot, oldest first, and skips past maxWaiting', async () => {
     const w = world();
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' }, maxAtOnce: 1, maxWaiting: 1 });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' }, maxAtOnce: 1, maxWaiting: 1 });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(1), issue(2), issue(3)));
     await w.tick();
@@ -286,7 +286,7 @@ describe('the watcher', () => {
 
   it('pauses a trigger after five failed checks in a row, with the reason, and a success resets the count', async () => {
     const w = world({ fail: 'signed-out' });
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     for (let i = 0; i < 4; i++) await w.tick();
     expect(w.store.get(t.id)).toMatchObject({ failures: 4, paused: false, lastError: 'gh is signed out' });
     w.fake.write((s) => (s.fail = null));
@@ -304,7 +304,7 @@ describe('the watcher', () => {
 
   it('stops checking for an hour after a rate limit, without counting it as a failure', async () => {
     const w = world({ fail: 'rate-limit' });
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     expect(w.store.get(t.id)).toMatchObject({ failures: 0, blockedUntil: START + 60 * MINUTE });
     w.fake.write((s) => (s.fail = null));
@@ -318,7 +318,7 @@ describe('the watcher', () => {
 
   it("skips an outsider's issue with the reason, and starts it with Start anyway", async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(215, { title: 'Add a Polish translation', association: 'NONE' }), issue(216, { association: 'COLLABORATOR' })));
     await w.tick();
@@ -335,7 +335,7 @@ describe('the watcher', () => {
 
   it('sends a start a limit holds to the queue, and follows the session once it starts', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     w.holds.next = { reason: 'at the focus limit', detail: '' };
     w.fake.write((s) => s.issues!.push(issue(7)));
@@ -391,7 +391,7 @@ describe('the watcher', () => {
 
   it('marks what is there as seen again after a resume', async () => {
     const w = world();
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' } });
     await w.watcher.check();
     w.store.setPaused(t.id, true);
     w.fake.write((s) => s.issues!.push(issue(9)));
@@ -405,7 +405,7 @@ describe('the watcher', () => {
 });
 
 describe('state labels and assigning', () => {
-  const labelled = { source: { kind: 'issues' as const, label: 'switchboard' }, stateLabels: { on: true } };
+  const labelled = { source: { kind: 'issues' as const, label: 'seshboard' }, stateLabels: { on: true } };
 
   it('picks an issue up with one edit, makes the missing labels once, and follows the session', async () => {
     const w = world();
@@ -413,10 +413,10 @@ describe('state labels and assigning', () => {
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(212)));
     await w.tick();
-    expect(edits(w.fake.calls())).toEqual([['issue', 'edit', '212', '--add-label', 'switchboard: working', '--remove-label', 'switchboard']]);
-    expect(w.fake.read().labels).toEqual(['switchboard', 'switchboard: working', 'switchboard: needs input', 'switchboard: pr open', 'switchboard: failed']);
-    expect(w.fake.issue(212).labels).toEqual(['switchboard: working']);
-    expect(w.store.events()[0]!.label).toBe('switchboard: working');
+    expect(edits(w.fake.calls())).toEqual([['issue', 'edit', '212', '--add-label', 'seshboard: working', '--remove-label', 'seshboard']]);
+    expect(w.fake.read().labels).toEqual(['seshboard', 'seshboard: working', 'seshboard: needs input', 'seshboard: pr open', 'seshboard: failed']);
+    expect(w.fake.issue(212).labels).toEqual(['seshboard: working']);
+    expect(w.store.events()[0]!.label).toBe('seshboard: working');
 
     // Needs you, then working again, then a pull request: one edit for each change.
     w.fake.clearCalls();
@@ -428,13 +428,13 @@ describe('state labels and assigning', () => {
     w.prs.set('session-1', { number: 219, url: 'https://github.com/o/r/pull/219' });
     await w.tick(MINUTE);
     expect(edits(w.fake.calls()).map((c) => c.slice(3))).toEqual([
-      ['--add-label', 'switchboard: needs input', '--remove-label', 'switchboard: working'],
-      ['--add-label', 'switchboard: working', '--remove-label', 'switchboard: needs input'],
-      ['--add-label', 'switchboard: pr open', '--remove-label', 'switchboard: working'],
+      ['--add-label', 'seshboard: needs input', '--remove-label', 'seshboard: working'],
+      ['--add-label', 'seshboard: working', '--remove-label', 'seshboard: needs input'],
+      ['--add-label', 'seshboard: pr open', '--remove-label', 'seshboard: working'],
     ]);
     // Labels were made once.
     expect(w.fake.calls().filter((c) => c[0] === 'label')).toEqual([]);
-    expect(w.fake.issue(212).labels).toEqual(['switchboard: pr open']);
+    expect(w.fake.issue(212).labels).toEqual(['seshboard: pr open']);
   });
 
   it('moves to failed on an error or a stop, and back to working when it goes on', async () => {
@@ -446,14 +446,14 @@ describe('state labels and assigning', () => {
     w.sessions.set('session-1', null);
     w.watcher.turnEnded('session-1', { ok: false });
     await w.tick(MINUTE);
-    expect(w.fake.issue(5).labels).toEqual(['switchboard: failed']);
+    expect(w.fake.issue(5).labels).toEqual(['seshboard: failed']);
     w.sessions.set('session-1', 'working');
     await w.tick(MINUTE);
-    expect(w.fake.issue(5).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(5).labels).toEqual(['seshboard: working']);
     w.sessions.set('session-1', null);
     w.watcher.turnEnded('session-1', { ok: false, stopped: true });
     await w.tick(MINUTE);
-    expect(w.fake.issue(5).labels).toEqual(['switchboard: failed']);
+    expect(w.fake.issue(5).labels).toEqual(['seshboard: failed']);
   });
 
   it("doesn't put back a label changed by hand", async () => {
@@ -473,10 +473,10 @@ describe('state labels and assigning', () => {
     const w = world();
     w.save({ ...labelled, source: { kind: 'issues', assignee: '@me' } });
     await w.watcher.check();
-    w.fake.write((s) => s.issues!.push(issue(8, { labels: ['switchboard: working'], assignees: ['estruyf'] })));
+    w.fake.write((s) => s.issues!.push(issue(8, { labels: ['seshboard: working'], assignees: ['estruyf'] })));
     await w.tick();
     expect(w.started).toEqual([]);
-    expect(w.store.events()).toMatchObject([{ key: '#8', status: 'skipped', reason: 'already has the switchboard: working label' }]);
+    expect(w.store.events()).toMatchObject([{ key: '#8', status: 'skipped', reason: 'already has the seshboard: working label' }]);
     // The work there ended and someone took the state label off: it matches again, so it starts here.
     w.fake.write((s) => (s.issues!.find((i) => i.number === 8)!.labels = []));
     await w.tick();
@@ -492,11 +492,11 @@ describe('state labels and assigning', () => {
     w.sessions.set('session-1', null);
     w.watcher.turnEnded('session-1', { ok: false });
     await w.tick();
-    expect(w.fake.issue(11).labels).toEqual(['switchboard: failed']);
-    w.fake.write((s) => s.issues!.find((i) => i.number === 11)!.labels!.push('switchboard'));
+    expect(w.fake.issue(11).labels).toEqual(['seshboard: failed']);
+    w.fake.write((s) => s.issues!.find((i) => i.number === 11)!.labels!.push('seshboard'));
     await w.tick();
     expect(w.started).toHaveLength(2);
-    expect(w.fake.issue(11).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(11).labels).toEqual(['seshboard: working']);
   });
 
   it('takes working or needs input off when the session is archived, and moves the label no more', async () => {
@@ -507,11 +507,11 @@ describe('state labels and assigning', () => {
     await w.tick();
     w.sessions.set('session-1', 'waiting');
     await w.tick(MINUTE);
-    expect(w.fake.issue(20).labels).toEqual(['switchboard: needs input']);
+    expect(w.fake.issue(20).labels).toEqual(['seshboard: needs input']);
     w.fake.clearCalls();
     w.watcher.released('session-1');
     await w.tick(MINUTE);
-    expect(edits(w.fake.calls())).toEqual([['issue', 'edit', '20', '--remove-label', 'switchboard: needs input']]);
+    expect(edits(w.fake.calls())).toEqual([['issue', 'edit', '20', '--remove-label', 'seshboard: needs input']]);
     expect(w.fake.issue(20).labels).toEqual([]);
     expect(w.store.events()[0]).toMatchObject({ status: 'started', label: null });
     // Unarchived and working again: the label stays off.
@@ -534,7 +534,7 @@ describe('state labels and assigning', () => {
     w.watcher.released('session-1');
     await w.tick(MINUTE);
     expect(edits(w.fake.calls())).toEqual([]);
-    expect(w.fake.issue(21).labels).toEqual(['switchboard: failed']);
+    expect(w.fake.issue(21).labels).toEqual(['seshboard: failed']);
   });
 
   it("doesn't start an assigned issue again once its label came off for an archived session", async () => {
@@ -544,7 +544,7 @@ describe('state labels and assigning', () => {
     w.fake.write((s) => s.issues!.push(issue(22, { labels: [], assignees: ['estruyf'] })));
     await w.tick();
     await w.tick();
-    expect(w.fake.issue(22).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(22).labels).toEqual(['seshboard: working']);
     w.sessions.set('session-1', null);
     w.watcher.released('session-1');
     await w.tick();
@@ -566,7 +566,7 @@ describe('state labels and assigning', () => {
     w.holds.next = { reason: 'at the focus limit', detail: '' };
     w.fake.write((s) => s.issues!.push(issue(23)));
     await w.tick();
-    expect(w.fake.issue(23).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(23).labels).toEqual(['seshboard: working']);
     w.watcher.queueRemoved('item-1');
     await w.tick(MINUTE);
     expect(w.store.events()).toMatchObject([{ key: '#23', status: 'skipped', reason: 'removed from the queue', label: null }]);
@@ -575,7 +575,7 @@ describe('state labels and assigning', () => {
 
   it('assigns the issue to you when it is picked up, and skips one that has an assignee', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, assignOnPickUp: true });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, assignOnPickUp: true });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(3), issue(4, { assignees: ['mara-k'] })));
     await w.tick();
@@ -604,7 +604,7 @@ describe('triggers that start a pipeline', () => {
 
   it('starts a run with the event as its task, the issue to read apart, and the run row as the parent', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, start, prompt: 'Fix {{event.title}} ({{event.url}}).', draft: { profileId: 'work' } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start, prompt: 'Fix {{event.title}} ({{event.url}}).', draft: { profileId: 'work' } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(212, { title: 'Pinned sessions lose their order' })));
     await w.tick();
@@ -624,7 +624,7 @@ describe('triggers that start a pipeline', () => {
 
   it('starts runs without stopping, and opening the pull request, when the trigger says so', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, start: { ...start, unattended: true, autoPush: true } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start: { ...start, unattended: true, autoPush: true } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(3)));
     await w.tick();
@@ -633,7 +633,7 @@ describe('triggers that start a pipeline', () => {
 
   it('counts busy runs, not their steps, for maxAtOnce, and starts the next when one ends', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, start, maxAtOnce: 1, draft: { workspace: 'current' } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start, maxAtOnce: 1, draft: { workspace: 'current' } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(1), issue(2)));
     await w.tick();
@@ -662,31 +662,31 @@ describe('triggers that start a pipeline', () => {
 
   it('moves the state label with the run, and takes it off when the run is deleted', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, start, stateLabels: { on: true } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start, stateLabels: { on: true } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(7), issue(8)));
     await w.tick();
-    expect(w.fake.issue(7).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(7).labels).toEqual(['seshboard: working']);
     // Push waits for you: needs input. Then Push opens the pull request.
     w.setRun('run-1', 'waiting');
     await w.tick(MINUTE);
-    expect(w.fake.issue(7).labels).toEqual(['switchboard: needs input']);
+    expect(w.fake.issue(7).labels).toEqual(['seshboard: needs input']);
     w.setRun('run-1', 'done', { pr: { number: 30, url: 'https://github.com/o/r/pull/30' } });
     await w.tick(MINUTE);
-    expect(w.fake.issue(7).labels).toEqual(['switchboard: pr open']);
+    expect(w.fake.issue(7).labels).toEqual(['seshboard: pr open']);
     // A run stopped for good fails its issue; one deleted by hand while it works takes the label off.
     w.setRun('run-2', 'stopped');
     await w.tick(MINUTE);
-    expect(w.fake.issue(8).labels).toEqual(['switchboard: failed']);
+    expect(w.fake.issue(8).labels).toEqual(['seshboard: failed']);
   });
 
   it('takes working off an issue whose run is deleted while it works', async () => {
     const w = world();
-    w.save({ source: { kind: 'issues', label: 'switchboard' }, start, stateLabels: { on: true } });
+    w.save({ source: { kind: 'issues', label: 'seshboard' }, start, stateLabels: { on: true } });
     await w.watcher.check();
     w.fake.write((s) => s.issues!.push(issue(9)));
     await w.tick();
-    expect(w.fake.issue(9).labels).toEqual(['switchboard: working']);
+    expect(w.fake.issue(9).labels).toEqual(['seshboard: working']);
     w.runs.delete('run-1');
     w.watcher.released('run-1');
     await w.tick(MINUTE);
@@ -697,7 +697,7 @@ describe('triggers that start a pipeline', () => {
     const w = world();
     const mine: Pipeline = { ...w.pipelines.get(PIPELINE)!, id: 'mine', name: 'Ship it', builtIn: false, scope: { kind: 'project', root: w.dir } };
     w.pipelines.set('mine', mine);
-    const t = w.save({ source: { kind: 'issues', label: 'switchboard' }, start: { kind: 'pipeline', pipelineId: 'mine' } });
+    const t = w.save({ source: { kind: 'issues', label: 'seshboard' }, start: { kind: 'pipeline', pipelineId: 'mine' } });
     await w.watcher.check();
     w.pipelines.delete('mine');
     w.fake.write((s) => s.issues!.push(issue(1)));

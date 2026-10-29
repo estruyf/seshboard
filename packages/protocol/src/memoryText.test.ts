@@ -30,6 +30,25 @@ describe('frontmatter', () => {
   });
 });
 
+describe('a large frontmatter', () => {
+  it('reads a long list or block in one pass', () => {
+    const items = Array.from({ length: 50_000 }, (_, i) => `  - src/${i}.ts`).join('\n');
+    const pairs = Array.from({ length: 50_000 }, (_, i) => `  k${i}: v`).join('\n');
+    const started = Date.now();
+    const { data } = splitFrontmatter(`---\npaths:\n${items}\nmetadata:\n${pairs}\n---\nBody`);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect((data.paths as string[]).length).toBe(50_000);
+    expect(Object.keys(data.metadata as object)).toHaveLength(50_000);
+  });
+
+  it('keeps __proto__ as a key, not a prototype', () => {
+    const { data } = splitFrontmatter('---\n__proto__:\n  polluted: yes\n---\n');
+    expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
+    expect(Object.hasOwn(data, '__proto__')).toBe(true);
+    expect((data as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});
+
 describe('headings and names', () => {
   it('turns a memory name into a Title Case heading', () => {
     expect(defaultHeading('sidebar-order')).toBe('Sidebar Order');

@@ -1,4 +1,5 @@
-import type { TurnDetails } from '@switchboard/protocol/bridge';
+import type { TurnDetails } from '@seshboard/protocol/bridge';
+import { safeLocale } from '@seshboard/protocol/client';
 import { claudeMs, type Turn, type TurnTokens } from './turns.ts';
 
 /**
@@ -39,6 +40,7 @@ export function ageOf(at: number, now: number, timeZone?: string): Age {
 
 /** When a turn ended, short: "14:32" today, "Mon 09:12" this week, "3 Oct 14:32" this year, "12 Dec 2025" before. */
 export function formatTurnTime(at: number, now = Date.now(), locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   const date = new Date(at);
   const time = clock(date, locale, timeZone);
   switch (ageOf(at, now, timeZone)) {
@@ -56,11 +58,13 @@ export function formatTurnTime(at: number, now = Date.now(), locale?: string, ti
 
 /** The full date and time, for the time's tooltip: "Thursday 16 October 2026 at 14:32". */
 export function formatFullTime(at: number, locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   return new Date(at).toLocaleString(locale, { dateStyle: 'full', timeStyle: 'short', timeZone });
 }
 
 /** "Sent today at 14:30", "Sent yesterday at 09:12", "Sent Mon at 09:12", "Sent 3 Oct at 14:32", "Sent 12 Dec 2025 at 14:32", and " from <device>". */
 export function sentLine(at: number, device: string | null, now = Date.now(), locale?: string, timeZone?: string): string {
+  locale = safeLocale(locale);
   const date = new Date(at);
   const time = clock(date, locale, timeZone);
   const age = ageOf(at, now, timeZone);

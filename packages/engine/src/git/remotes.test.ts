@@ -28,7 +28,7 @@ describe('findCheckout', () => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
   const repoWith = async (...remotes: string[]) => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-remotes-')));
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-remotes-')));
     dirs.push(dir);
     await git(dir, ['init', '-q']);
     for (const [i, url] of remotes.entries()) await git(dir, ['remote', 'add', i === 0 ? 'origin' : `r${i}`, url]);

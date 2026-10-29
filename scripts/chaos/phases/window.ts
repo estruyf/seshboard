@@ -79,7 +79,7 @@ export const windowChaos: Phase = async (c) => {
     await escapeCheck(c);
   }
   // Built-in themes, light and dark, and an imported theme that leaves most tokens out.
-  const ids = await c.page.evaluate(() => (window as unknown as { switchboard: { themes: { themes?: Array<{ id: string }> } } }).switchboard.themes.themes?.map((t) => t.id) ?? []).catch(() => [] as string[]);
+  const ids = await c.page.evaluate(() => (window as unknown as { seshboard: { themes: { themes?: Array<{ id: string }> } } }).seshboard.themes.themes?.map((t) => t.id) ?? []).catch(() => [] as string[]);
   c.log('themes', '', ids);
   for (const id of ids.slice(0, 6)) {
     for (const scheme of ['theme-dark', 'theme-light']) {

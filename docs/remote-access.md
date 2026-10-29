@@ -1,19 +1,19 @@
 # Remote access
 
-Remote lets a paired phone follow and steer Switchboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt (with images), answering a permission prompt, question or plan, stopping a turn, marking read and archiving, a finished turn's catch-up, the session's uncommitted changes and committing them, starting a session in a known project (with a Claude profile, model, effort, permission mode, worktree and branch of its own) or queueing one for later, and push notifications. Everything else (the terminal, pushing, pull requests, memory, settings, managing profiles, files as attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
+Remote lets a paired phone follow and steer Seshboard's sessions from anywhere: the session list with its status, the live transcript, sending or queueing a prompt (with images), answering a permission prompt, question or plan, stopping a turn, marking read and archiving, a finished turn's catch-up, the session's uncommitted changes and committing them, starting a session in a known project (with a Claude profile, model, effort, permission mode, worktree and branch of its own) or queueing one for later, and push notifications. Everything else (the terminal, pushing, pull requests, memory, settings, managing profiles, files as attachments) stays on the computer. Issue [#93](https://github.com/estruyf/switchboard/issues/93) started it; this note is the design as built. The page for people using the app is [website/src/content/docs/remote-access.mdx](../website/src/content/docs/remote-access.mdx).
 
 Whoever controls a session can make Claude run commands on the computer. So a paired phone is treated like an SSH key: pairing needs you at the computer, every connection is authenticated both ways and encrypted end to end, and a phone can only do the few things above.
 
 ## The shape
 
 ```
-phone browser ── https ──▶ switchboard.struyfconsulting.com/remote/   (the remote app, static, GitHub Pages)
+phone browser ── https ──▶ seshboard.app/remote/   (the remote app, static, GitHub Pages)
       │
       └──── wss (Noise inside) ──▶ tunnel (Cloudflare, Tailscale, ngrok, your own) ──▶ 127.0.0.1:47615 (the engine)
 ```
 
 - **The engine listens on `127.0.0.1` only.** Nothing on the network reaches it directly; a tunnel forwards to it.
-- **A tunnel gives it an `https://` address.** Switchboard starts the tool, reads the address from what it prints, and restarts it with backoff when it stops (`packages/engine/src/remote/tunnel.ts`):
+- **A tunnel gives it an `https://` address.** Seshboard starts the tool, reads the address from what it prints, and restarts it with backoff when it stops (`packages/engine/src/remote/tunnel.ts`):
 
   | Tunnel | Command | Address |
   |---|---|---|
@@ -22,7 +22,7 @@ phone browser ── https ──▶ switchboard.struyfconsulting.com/remote/   
   | ngrok | `ngrok http http://127.0.0.1:<port> --log stdout --log-format json [--url https://<domain>]` | stable with the account's domain |
   | Custom | nothing: you run it | the `https://` address you enter |
 
-- **The remote app comes from Switchboard's own site** (`REMOTE_APP_URL`), built from `apps/remote` into `website/public/remote/` by `npm run website:build`. One fixed HTTPS origin:
+- **The remote app comes from Seshboard's own site** (`REMOTE_APP_URL`), built from `apps/remote` into `website/public/remote/` by `npm run website:build`. One fixed HTTPS origin:
   - the phone's device key lives on one origin, so it pairs once, whatever tunnel or tunnel address the computer has;
   - the app's code comes from the site, not from the tunnel provider, who terminates TLS and could otherwise change it;
   - it is a secure context (installable, WebCrypto, service workers and push notifications).
@@ -39,9 +39,11 @@ The first version listened on the local network. A page served from an HTTPS sit
 
 ### Development
 
-`npm run dev:remote` serves the remote app at `http://localhost:5199/remote/`. Start the desktop app with `SWITCHBOARD_REMOTE_APP_URL=http://localhost:5199/remote/` and the engine accepts that origin and links straight to `http://127.0.0.1:<port>`, without a tunnel (`localhost` is a secure context, and `ws://` to the same computer isn't mixed content).
+`npm run dev:remote` serves the remote app at `http://localhost:5199/remote/`. Start the desktop app with `SESHBOARD_REMOTE_APP_URL=http://localhost:5199/remote/` and the engine accepts that origin and links straight to `http://127.0.0.1:<port>`, without a tunnel (`localhost` is a secure context, and `ws://` to the same computer isn't mixed content).
 
-The website's preview (Cloudflare Pages, built from `dev`) serves the remote app at `REMOTE_PREVIEW_APP_URL` (`https://switch-dev.struyfconsulting.com/remote/`). Development builds (`npm run dev`), beta builds (`-beta.` versions) and releases whose update channel is Beta also accept sockets from its origin (`acceptsPreviewRemote` in main, sent to the engine as `remotePreview`; `remoteAppOrigins`), so the next remote app can be tried with a real tunnel: open the preview on the phone and paste the pairing link (it still points at the production app; only the part after `#` is used). Following the channel keeps a phone set up on the preview working when a beta's release is installed. A release on the Stable channel accepts only the production origin, so code that is only on `dev` can't reach the computer of anyone who didn't choose Beta; switching to Stable closes the phones connected through the preview. The preview has an origin of its own, so a phone pairs there apart from the production app.
+The website's preview (Cloudflare Pages, built from `dev`) serves the remote app at `REMOTE_PREVIEW_APP_URL` (`https://beta.seshboard.app/remote/`). Development builds (`npm run dev`), beta builds (`-beta.` versions) and releases whose update channel is Beta also accept sockets from its origin (`acceptsPreviewRemote` in main, sent to the engine as `remotePreview`; `remoteAppOrigins`), so the next remote app can be tried with a real tunnel: open the preview on the phone and paste the pairing link (it still points at the production app; only the part after `#` is used). Following the channel keeps a phone set up on the preview working when a beta's release is installed. A release on the Stable channel accepts only the production origin, so code that is only on `dev` can't reach the computer of anyone who didn't choose Beta; switching to Stable closes the phones connected through the preview. The preview has an origin of its own, so a phone pairs there apart from the production app.
+
+**The move to seshboard.app.** The site moved from `switchboard.struyfconsulting.com` to `seshboard.app`, and the preview from `switch-dev.struyfconsulting.com` to `beta.seshboard.app`. A phone's pairing lives on the origin it paired on, so until 1.3.0 the engine also accepts sockets from the old addresses (`REMOTE_LEGACY_APP_URLS`, added by `remoteAppOrigins`), as long as the old sites still serve the remote app at `/remote/`. New pairing links point at the new site. In 1.3.0, remove `REMOTE_LEGACY_APP_URLS` and the old addresses' tests.
 
 Without the desktop app, `node --experimental-transform-types scripts/remote-demo.ts` runs the real Remote hub against made-up sessions, prompts, a catch-up and changes, on port 47699, and allows every pairing by itself. It prints a pairing link for `npm run dev:remote`; a browser paired once stays paired across runs. It pushes for real, through the browser's push service.
 
@@ -52,7 +54,7 @@ Without the desktop app, `node --experimental-transform-types scripts/remote-dem
 | Someone who finds the tunnel's address connects | Only paired devices complete the handshake; an unknown key is refused before anything it sends is read |
 | Someone photographs or intercepts the QR code | One-time, two-minute secret, plus **Allow** on the computer with a matching 6-digit code |
 | The tunnel provider reads or changes traffic | Everything after the handshake is encrypted end to end (Noise); the provider sees ciphertext |
-| The tunnel provider changes the app's code | The app comes from Switchboard's site, not through the tunnel |
+| The tunnel provider changes the app's code | The app comes from Seshboard's site, not through the tunnel |
 | Someone replays recorded traffic | Fresh keys per connection and a counter nonce; a replayed or reordered frame closes the connection |
 | Someone pretends to be the computer | The phone checks the engine's key from the QR code on every connection |
 | A website open on the computer or the phone talks to the engine | `Origin` must be the remote app's; no cookies, no CORS; the engine listens on `127.0.0.1` |
@@ -83,7 +85,7 @@ Another computer (`computers/RemoteAttachments.tsx`) also sends files with `sess
 2. The engine's answer: Noise's second message.
 3. Every frame after that is one ChaCha20-Poly1305 ciphertext of up to 60,000 bytes of the RPC's text lines (`lineTransport`). The nonce is a counter that is never sent: a dropped, replayed, reordered or changed frame doesn't decrypt, and the connection closes on the first one.
 
-The prologue binds the handshake to Switchboard, the version and the mode (`switchboard-remote/1/pair`).
+The prologue binds the handshake to Seshboard, the version and the mode (`switchboard-remote/1/pair`).
 
 ### Links
 
@@ -116,7 +118,7 @@ WebSocket close codes: 4400 refused, 4403 unknown device, 4410 pairing closed, 4
 |---|---|
 | `packages/protocol/src/remote.ts` | The remote contract (what a phone may ask), the pairing contract, Settings › Remote's schemas, `REMOTE_APP_URL` |
 | `packages/protocol/src/remoteNoise.ts`, `remoteChannel.ts` | The handshakes, the framing, the links |
-| `packages/protocol/src/remoteClient.ts` | The remote app's entry (`@switchboard/protocol/remote-client`): no zod |
+| `packages/protocol/src/remoteClient.ts` | The remote app's entry (`@seshboard/protocol/remote-client`): no zod |
 | `packages/engine/src/remote/devices.ts` | `remote_devices` (migration v24): name and public key only |
 | `packages/engine/src/remote/pairing.ts` | The one-time secret, the attempt limit, Allow or Deny |
 | `packages/engine/src/remote/remoteServer.ts` | The socket on `127.0.0.1`, the origin check, the handshakes, the backoff |
@@ -163,7 +165,7 @@ Events: `sessions.changed`, `usage.changed` (a profile's new check), `theme.chan
 
 ### Push notifications
 
-The engine sends Web Push itself (`webPush.ts`), without a library or a server of Switchboard's: it keeps a VAPID key pair in its app state (`remote.vapid`, made the first time a phone asks), and each device's subscription (`remote.push`). It pushes when a prompt opens in a session the phone lists, and when a turn ends (a session it runs goes from working to idle), after waiting up to eight seconds for the turn's catch-up so the line can say "14 tests passed · ~2 min to review". A device with the app on screen (`device.visibility`) gets none. A push service that answers 404 or 410 drops the subscription; revoking a device does too.
+The engine sends Web Push itself (`webPush.ts`), without a library or a server of Seshboard's: it keeps a VAPID key pair in its app state (`remote.vapid`, made the first time a phone asks), and each device's subscription (`remote.push`). It pushes when a prompt opens in a session the phone lists, and when a turn ends (a session it runs goes from working to idle), after waiting up to eight seconds for the turn's catch-up so the line can say "14 tests passed · ~2 min to review". A device with the app on screen (`device.visibility`) gets none. A push service that answers 404 or 410 drops the subscription; revoking a device does too.
 
 The payload is the kind, the session id, its title and project, one line, and the `deviceId` of the device it goes to (and `computer`, the device's `label`, when it gave one); a tool prompt adds its `requestId` and `answers: true` (`promptAnswers`: not for a question or a plan, which need their session). It is encrypted for the browser, so the push service only carries ciphertext; the computer has to reach the push services over HTTPS. The remote app's service worker (`public/sw.js`, allowed by `worker-src 'self'`) shows it and opens the session on a tap (`?s=<id>`, or a message to a page already open). iOS only allows push for a page added to the Home Screen, and shows no buttons on notifications.
 
@@ -194,7 +196,7 @@ The page is laid out for daily use: the switch on the title's row, a status card
 
 ## Other computers
 
-Switchboard on another computer pairs with Remote as a phone does, and shows its sessions next to the local ones. The engine is the client (`packages/engine/src/remote/computerLink.ts`): the same pairing link (pasted, not scanned), the same `Noise_IKpsk2` and `Noise_IK` handshakes, framing and remote contract, from Node with `ws`. Nothing about what a paired device may do changes: the other computer is one more device in Settings › Remote, limited to `remoteContract`, and **Revoke** cuts it off.
+Seshboard on another computer pairs with Remote as a phone does, and shows its sessions next to the local ones. The engine is the client (`packages/engine/src/remote/computerLink.ts`): the same pairing link (pasted, not scanned), the same `Noise_IKpsk2` and `Noise_IK` handshakes, framing and remote contract, from Node with `ws`. Nothing about what a paired device may do changes: the other computer is one more device in Settings › Remote, limited to `remoteContract`, and **Revoke** cuts it off.
 
 - **One device key per install**, made the first time it pairs, kept like the identity key (`safeStorage`, `remote-device.bin`; `apps/desktop/src/main/remoteIdentity.ts`). `remote_computers` (migration v28) has the other computers' public keys, addresses and the ids they gave this one, never a secret.
 - **Origin.** It sends `REMOTE_DESKTOP_ORIGIN`, which the server accepts next to the remote app's. A browser page can't send it, so it doesn't widen what a website can reach; it isn't a lock either (any program can send any `Origin`). The handshake is. The server stores a device paired from that origin with `kind: 'computer'`, for its icon in Settings › Remote.
@@ -202,8 +204,8 @@ Switchboard on another computer pairs with Remote as a phone does, and shows its
 - **The windows** reach a computer only through `computers.call`, with `COMPUTER_METHODS`: the remote contract without `hello`, push and `device.visibility`. The other computer validates the params; the results are shown as text (`components/computers/RemoteText.tsx`: no file links, no Run, no images loaded). Its events come as `computers.event`.
 - **No loops.** A computer only ever serves its own sessions; the ones it shows from another computer are not in its list, so pairing both ways shows each computer's own sessions once.
 - **One sidebar.** Each computer's last `sessions.list` becomes rows of the normal sidebar (`apps/ui/src/state/remoteRows.ts`), with the same status rules as that computer's list (an open prompt is needs you), in the same groups, search, ⌃⇥ and ⌘⇧U. A remote row's id is `remote:<computer>:<session>` (`remoteSelection.ts`), and that id is a remote session's leaf in the panes, so it tiles beside local and other remote sessions (`RemotePane`); `localSessionId` keeps it away from this computer's engine, hosts and terminal. A row only offers what the contract has: Open, Pin and Archive (`session.setFlags`), Copy title, and New session in its project. An offline computer keeps its last list, dimmed, and `lastSeen` (from the hub: when its connection last ended) says since when; a forgotten computer's rows go. The Computers strip and "Show sessions from" filter by computer, per window.
-- **The same session view** (`RemoteSessionView.tsx`): the local header, column, permission card (with its keys) and message box, with the computer's chip and a 2px violet line. While the session runs in Switchboard there, its model, effort and mode chips change them with `session.setModel`, `session.setEffort` and `session.setPermissionMode`; its profile shows, but stays. The transcript stays `RemoteText`; consecutive tool calls fold into one line (`toolsSummary`). Changes, the terminal, the editor and pull requests are disabled, with the reason as a tooltip.
-- **New session on another computer** (`RemoteNewSession.tsx`): Run on picks the computer; its `projects.list` gives the tiles, `session.create` starts the session, and profile, model, effort, mode and worktree show only when `options.get` answers; on the current checkout, the branch chip shows when `hello` has `branches` (`projects.branches`, sent as `checkoutBranch` only when it differs from what is checked out) (an older Switchboard there has no `options.get`, so the start sends only the project and the prompt). They resolve as in the remote app (`remoteNewSession.ts`): the project's defaults, then its profile's, and only what you change is sent. The chips are `RemoteChips.tsx`. Images and files go with the prompt to a computer whose `hello` has `attachments` (see Files). With Clone from GitHub on here, the clone form clones there (`projects.clone`, when its `hello` has `projects.clone`; an older one is asked to update), in that computer's Clone into folder, and Start waits for it, asks about what the repository brings, then starts in the new project there. Folders there can't be picked, and Quick question, the queue and the focus limit are this computer's.
+- **The same session view** (`RemoteSessionView.tsx`): the local header, column, permission card (with its keys) and message box, with the computer's chip and a 2px violet line. While the session runs in Seshboard there, its model, effort and mode chips change them with `session.setModel`, `session.setEffort` and `session.setPermissionMode`; its profile shows, but stays. The transcript stays `RemoteText`; consecutive tool calls fold into one line (`toolsSummary`). Changes, the terminal, the editor and pull requests are disabled, with the reason as a tooltip.
+- **New session on another computer** (`RemoteNewSession.tsx`): Run on picks the computer; its `projects.list` gives the tiles, `session.create` starts the session, and profile, model, effort, mode and worktree show only when `options.get` answers; on the current checkout, the branch chip shows when `hello` has `branches` (`projects.branches`, sent as `checkoutBranch` only when it differs from what is checked out) (an older Seshboard there has no `options.get`, so the start sends only the project and the prompt). They resolve as in the remote app (`remoteNewSession.ts`): the project's defaults, then its profile's, and only what you change is sent. The chips are `RemoteChips.tsx`. Images and files go with the prompt to a computer whose `hello` has `attachments` (see Files). With Clone from GitHub on here, the clone form clones there (`projects.clone`, when its `hello` has `projects.clone`; an older one is asked to update), in that computer's Clone into folder, and Start waits for it, asks about what the repository brings, then starts in the new project there. Folders there can't be picked, and Quick question, the queue and the focus limit are this computer's.
 - **Its tokens in Usage** (`components/usage/useUsageData.ts`, `usageMerge.ts`): with All computers chosen, the Usage view asks each connected computer whose `hello` has `usage.tokens` for the same account's breakdown, every minute, and adds it to this computer's. Session and Project rows stay apart per computer (keyed `<computer>:<key>`, with its chip and the project's id and name instead of a folder); Model and Day rows add up; Computer is a grouping made from each computer's totals. Shares are split again over every row with `sharesOf`: a measured share stays, since plan % counts every computer already, and the rest goes by weight. A computer that is offline, too old, has no profile on the account or fails is listed as not counted, with why.
 - **Its costs** (`usage/useWindowCosts.ts`, `usage/SessionCost.tsx`): the usage bars and the Limits cards ask each connected computer whose `hello` has `costs` for the cost of the same plan windows (`usage.windowCosts`, with the starts this computer's plan gave, since the windows are the account's) and add it up; the tooltip says which computers count and why others don't. A session on another computer shows its cost under the message box from `usage.sessionCost` there.
 - **Not built yet:** Changes and Commit, Ask, plan usage, notifications for its sessions, projects matched across computers, and more than one window watching different sessions there (the remote contract watches one transcript per connection).
@@ -221,7 +223,7 @@ Switchboard on another computer pairs with Remote as a phone does, and shows its
 - With every tunnel but Tailscale, the address is public; the handshake keeps everyone else out, but they can try. Pairing closes after five wrong secrets.
 - The device key in IndexedDB can be read by script on the remote app's origin. The origin serves only the app, under a strict CSP. Non-extractable WebCrypto keys would need X25519 in WebCrypto, which phones' browsers don't all have yet.
 - Someone with your unlocked phone has access until you revoke it.
-- A tunnel tool left running after a crash of Switchboard keeps forwarding to a closed port until it is stopped.
+- A tunnel tool left running after a crash of Seshboard keeps forwarding to a closed port until it is stopped.
 - Not built yet: see Phase 2 below, and caching the app for offline starts.
 
 ## Phase 2

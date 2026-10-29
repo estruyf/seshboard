@@ -1,12 +1,12 @@
 # Claude Code mods
 
-Mods are Claude Code plugins that draw UI: a band above the prompt, panes, statuses, toasts, and their own drawing of built-in parts of a session (tool calls, messages, the spinner). A mod is a plugin whose `hooks/hooks.json` names one ES module under `modules`. Claude Code finds it in the enabled plugins (`enabledPlugins`, `CLAUDE_CODE_PLUGIN_DIRS`, managed settings), loads it and runs it. **Switchboard never reads or runs a mod's module.** It relays requests to Claude Code and draws the tree Claude Code sends back. Settings › Mods reads `hooks/hooks.json` only, to list which plugins are mods.
+Mods are Claude Code plugins that draw UI: a band above the prompt, panes, statuses, toasts, and their own drawing of built-in parts of a session (tool calls, messages, the spinner). A mod is a plugin whose `hooks/hooks.json` names one ES module under `modules`. Claude Code finds it in the enabled plugins (`enabledPlugins`, `CLAUDE_CODE_PLUGIN_DIRS`, managed settings), loads it and runs it. **Seshboard never reads or runs a mod's module.** It relays requests to Claude Code and draws the tree Claude Code sends back. Settings › Mods reads `hooks/hooks.json` only, to list which plugins are mods.
 
-People's docs are on the website ([Claude Code mods](https://switchboard.struyfconsulting.com/sessions/mods/)). This note is about how it works.
+People's docs are on the website ([Claude Code mods](https://seshboard.app/sessions/mods/)). This note is about how it works.
 
 ## The bridge
 
-Switchboard is a remote surface to Claude Code, like the VS Code extension: surface `desktop`, client id `switchboard-<sessionId>`, one surface per session.
+Seshboard is a remote surface to Claude Code, like the VS Code extension: surface `desktop`, client id `switchboard-<sessionId>`, one surface per session.
 
 | Part | Where |
 |---|---|
@@ -47,7 +47,7 @@ The marker is read as `part.plugin`, `part.name` or a plain `part` string. When 
 
 Renders are cached per instance (`useModRender.ts`) and asked again only when `ui_invalidate` names the instance (or all of them) or the props change. The props each component sends are in `ModBands.tsx` (`AbovePrompt`), `ModPanePanel.tsx` (`Pane`) and `modReplace.ts` (the replaced components).
 
-`AskUserQuestion` drawn by a mod is only a drawing: the question is still answered through Switchboard's own permission card.
+`AskUserQuestion` drawn by a mod is only a drawing: the question is still answered through Seshboard's own permission card.
 
 ### The hooked cache
 

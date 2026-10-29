@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { existsSync, statSync, type Dirent } from 'node:fs';
 import { lstat, readdir } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import { isSameOrInside, type WorktreeEntry, type WorktreeList, type WorktreePullRequest, type WorktreeRemoveItem, type WorktreeRemoveResult } from '@switchboard/protocol';
+import { isSameOrInside, type WorktreeEntry, type WorktreeList, type WorktreePullRequest, type WorktreeRemoveItem, type WorktreeRemoveResult } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 import { defaultGh, ghEnv, type GhCommand } from './pullRequest.ts';
 
@@ -184,8 +185,11 @@ export async function listWorktrees(root: string, options: { sessions?: readonly
 
 /** Runs a command; resolves with stdout, or null when it can't run (not installed, signed out, offline). */
 function run(command: string, args: string[], cwd: string, env: Record<string, string>, timeout: number): Promise<string | null> {
+  const fullEnv = { ...process.env, ...env };
+  const file = programPath(command, fullEnv);
+  if (!file) return Promise.resolve(null);
   return new Promise((resolvePromise) => {
-    execFile(command, args, { cwd, env: { ...process.env, ...env }, timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => resolvePromise(error ? null : stdout));
+    execFile(file, args, { cwd, env: fullEnv, timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => resolvePromise(error ? null : stdout));
   });
 }
 
@@ -349,19 +353,19 @@ export async function unlockWorktree(root: string, path: string): Promise<void> 
   await git(root, ['worktree', 'unlock', entry.path]);
 }
 
-/** A Claude Code process that may be working in a worktree: one Switchboard runs (`hosted`), or any from the live registry. */
+/** A Claude Code process that may be working in a worktree: one Seshboard runs (`hosted`), or any from the live registry. */
 export interface SessionActivity {
   sessionId: string;
   cwd: string | null;
   /** Working or waiting for you (not idle). */
   busy: boolean;
-  /** Run by Switchboard, which can stop it; anything else is another app's or a terminal's. */
+  /** Run by Seshboard, which can stop it; anything else is another app's or a terminal's. */
   hosted: boolean;
 }
 
 /**
  * Whether sessions keep a worktree from being removed: refused while one works there, or while another Claude Code
- * process (a terminal, an editor) has one open. Sessions idle in Switchboard don't block; they are returned to stop first.
+ * process (a terminal, an editor) has one open. Sessions idle in Seshboard don't block; they are returned to stop first.
  */
 export function sessionsBlocking(path: string, activity: readonly SessionActivity[]): { refusal: WorktreeRefusal | null; release: string[] } {
   const here = activity.filter((a) => a.cwd && inside(a.cwd, path));

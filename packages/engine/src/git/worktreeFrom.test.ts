@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -20,7 +20,7 @@ describe('worktrees from a branch and from a pull request', () => {
   let prHead: string;
 
   beforeEach(async () => {
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-wt-from-')));
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-wt-from-')));
     // The remote: a repository with main, a branch only it has, and a pull request's head.
     origin = join(scratch, 'origin');
     mkdirSync(origin);
@@ -106,6 +106,25 @@ describe('worktrees from a branch and from a pull request', () => {
     expect(existsSync(join(made.path, 'notes.txt'))).toBe(false);
   });
 
+  it.runIf(process.platform !== 'win32')('never copies through a link the branch holds where a file or its folder goes', async () => {
+    const outside = join(scratch, 'outside');
+    mkdirSync(outside);
+    // The branch tracks `.env` as a link to a file that isn't there yet, and `secrets` as a link to a folder elsewhere.
+    await git(repo, ['switch', '-q', '-c', 'linked']);
+    symlinkSync(join(outside, 'stolen.env'), join(repo, '.env'));
+    symlinkSync(outside, join(repo, 'secrets'));
+    await git(repo, ['add', '-f', '.env', 'secrets']);
+    await commit(repo, 'links');
+    await git(repo, ['switch', '-q', 'main']);
+    writeFileSync(join(repo, '.git', 'info', 'exclude'), '.env\nsecrets/\n');
+    writeFileSync(join(repo, '.worktreeinclude'), '.env\nsecrets/\n');
+    writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
+    mkdirSync(join(repo, 'secrets'));
+    writeFileSync(join(repo, 'secrets', 'key.pem'), 'key\n');
+    await makeWorktreeFrom(repo, 'linked', { branch: 'linked' });
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
   it('refuses a taken name and a missing branch, with one line', async () => {
     await makeWorktreeFrom(repo, 'taken', { branch: 'local-branch' });
     await expect(makeWorktreeFrom(repo, 'taken', { branch: 'local-branch' })).rejects.toThrow('There is a worktree named taken already. Give this one another name.');
@@ -121,8 +140,8 @@ describe('Current checkout for a pull request', () => {
   const log = () => join(scratch, 'calls.log');
 
   beforeEach(async () => {
-    repo = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pr-checkout-')));
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'switchboard-pr-checkout-gh-')));
+    repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pr-checkout-')));
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-pr-checkout-gh-')));
     const script = join(scratch, 'gh.cjs');
     writeFileSync(script, `require('node:fs').appendFileSync(${JSON.stringify(log())}, process.argv.slice(2).join(' ') + '\\n');\nif (process.argv[4] === '404') { process.stderr.write('GraphQL: Could not resolve to a PullRequest with the number of 404.\\n'); process.exit(1); }\n`);
     gh = { file: process.execPath, args: [script] };
@@ -155,7 +174,7 @@ describe('GithubOriginStore', () => {
   let dir: string;
   let cache: CacheDatabase;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'switchboard-origins-'));
+    dir = mkdtempSync(join(tmpdir(), 'seshboard-origins-'));
     cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   });
   afterEach(() => {
@@ -163,7 +182,7 @@ describe('GithubOriginStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('keeps where a session started, and which fork checkouts Switchboard must not push from', () => {
+  it('keeps where a session started, and which fork checkouts Seshboard must not push from', () => {
     const store = new GithubOriginStore(cache.db);
     store.save('a', { type: 'pr', repo: 'o/r', number: 149, readOnly: true }, { cwd: '/repo/.claude/worktrees/pr-149', branch: 'someone/patch-1' });
     store.save('b', { type: 'issue', repo: 'o/r', number: 32, readOnly: false }, { cwd: '/repo/.claude/worktrees/issue-32', branch: 'worktree-issue-32' });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionHostInfo } from '@switchboard/protocol/client';
+import type { SessionHostInfo } from '@seshboard/protocol/client';
 import { restartAsNew } from './restartAsNew.ts';
 
 const host = (over: Partial<SessionHostInfo> = {}): SessionHostInfo => ({

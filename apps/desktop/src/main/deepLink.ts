@@ -1,8 +1,15 @@
-import type { DeepLink } from '@switchboard/protocol/bridge';
-import { trimTrailingSeparators } from '@switchboard/protocol/paths';
+import type { DeepLink } from '@seshboard/protocol/bridge';
+import { trimTrailingSeparators } from '@seshboard/protocol/paths';
 
-/** The URL scheme Switchboard registers: `switchboard://…`. */
-export const DEEP_LINK_SCHEME = 'switchboard';
+/** The URL scheme Seshboard registers: `seshboard://…`. */
+export const DEEP_LINK_SCHEME = 'seshboard';
+/**
+ * The scheme from before the rename, still registered and read: the VS Code companion, shell commands written by
+ * earlier versions and links people saved use it.
+ */
+export const LEGACY_DEEP_LINK_SCHEME = 'switchboard';
+/** Whether a URL's protocol (`seshboard:`) is one of Seshboard's schemes. */
+const isOurProtocol = (protocol: string) => protocol === `${DEEP_LINK_SCHEME}:` || protocol === `${LEGACY_DEEP_LINK_SCHEME}:`;
 /** Longest prompt a link may carry, like Claude Code's `claude-cli://` links. */
 export const MAX_LINK_PROMPT = 5_000;
 /** Anything longer is not a link someone typed or generated on purpose. */
@@ -59,16 +66,16 @@ function checkFolder(cwd: string, platform: string): string | ParsedLink {
 }
 
 /**
- * Parses and validates a `switchboard://` link. Nothing is trusted: a link can come from any web page,
+ * Parses and validates a `seshboard://` link. Nothing is trusted: a link can come from any web page,
  * chat message or script. Unknown parameters are ignored (so links made for a newer version still
  * work); a known parameter with a bad value refuses the whole link.
  *
- * - `switchboard://new-session?prompt=…&cwd=/abs/path` (or `project=name`, or `repo=owner/name`; `q` is an alias
+ * - `seshboard://new-session?prompt=…&cwd=/abs/path` (or `project=name`, or `repo=owner/name`; `q` is an alias
  *   of `prompt`). `autostart=1` starts the session; by default it waits for the user to press Enter.
  *   `question=1` makes it a quick question, without a project (a folder, project or repo is then ignored).
  *   `issue=` or `pr=` (a number, `#123` or a link) fills New session in from that issue or pull request of the
  *   project; it needs `cwd`, `project` or `repo`, and such a link never starts on its own (`autostart` is ignored).
- * - `switchboard://session/<sessionId>`
+ * - `seshboard://session/<sessionId>`
  *
  * `platform` decides what an absolute folder looks like (a drive path on Windows); tests pass it.
  */
@@ -78,15 +85,15 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
   try {
     url = new URL(raw);
   } catch {
-    return fail('That is not a valid Switchboard link.');
+    return fail('That is not a valid Seshboard link.');
   }
-  if (url.protocol !== `${DEEP_LINK_SCHEME}:`) return fail('That is not a Switchboard link.');
-  // `switchboard://new-session` puts the action in the host; `switchboard:new-session` in the path.
+  if (!isOurProtocol(url.protocol)) return fail('That is not a Seshboard link.');
+  // `seshboard://new-session` puts the action in the host; `switchboard:new-session` in the path.
   let parts: string[];
   try {
     parts = [url.hostname, ...url.pathname.split('/')].filter(Boolean).map((part) => decodeURIComponent(part));
   } catch {
-    return fail('That is not a valid Switchboard link.');
+    return fail('That is not a valid Seshboard link.');
   }
   const action = parts[0]?.toLowerCase() ?? '';
 
@@ -164,24 +171,24 @@ export function parseDeepLink(raw: string, platform: string = process.platform):
     return { ok: true, link: { action: 'session', sessionId: id } };
   }
 
-  return fail(action ? `Switchboard links can't do "${action.slice(0, 40)}". Use new-session or session.` : 'The link has no action. Use new-session or session.');
+  return fail(action ? `Seshboard links can't do "${action.slice(0, 40)}". Use new-session or session.` : 'The link has no action. Use new-session or session.');
 }
 
 /**
- * `switchboard://show`: brings the window up without changing what it shows. The VS Code companion opens it to start
- * Switchboard outside macOS, where it can't open the app by its bundle id. Main handles it; the window never sees it.
+ * `seshboard://show`: brings the window up without changing what it shows. The VS Code companion opens it to start
+ * Seshboard outside macOS, where it can't open the app by its bundle id. Main handles it; the window never sees it.
  */
 export function isShowLink(raw: string): boolean {
   if (raw.length > MAX_URL_LENGTH) return false;
   try {
     const url = new URL(raw);
-    return url.protocol === `${DEEP_LINK_SCHEME}:` && !url.search && [url.hostname, ...url.pathname.split('/')].filter(Boolean).join('/').toLowerCase() === 'show';
+    return isOurProtocol(url.protocol) && !url.search && [url.hostname, ...url.pathname.split('/')].filter(Boolean).join('/').toLowerCase() === 'show';
   } catch {
     return false;
   }
 }
 
-/** The first `switchboard://` link in a command line (a second instance started with a link, outside macOS). */
+/** The first `seshboard://` link in a command line (a second instance started with a link, outside macOS). */
 export function linkFromArgv(argv: string[]): string | null {
-  return argv.find((arg) => arg.toLowerCase().startsWith(`${DEEP_LINK_SCHEME}:`)) ?? null;
+  return argv.find((arg) => [DEEP_LINK_SCHEME, LEGACY_DEEP_LINK_SCHEME].some((scheme) => arg.toLowerCase().startsWith(`${scheme}:`))) ?? null;
 }

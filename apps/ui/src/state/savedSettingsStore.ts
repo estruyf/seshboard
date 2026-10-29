@@ -1,4 +1,4 @@
-import type { Effort, PermissionMode } from '@switchboard/protocol/client';
+import type { Effort, PermissionMode } from '@seshboard/protocol/client';
 import { create } from 'zustand';
 
 /** What a session that isn't running resumes with: the model chip, effort and permission mode saved for it. */

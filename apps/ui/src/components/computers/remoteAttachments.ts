@@ -1,4 +1,4 @@
-import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES, type RemoteFile, type RemoteImage } from '@switchboard/protocol/client';
+import { REMOTE_ATTACHMENT_BYTES, REMOTE_IMAGE_BYTES, REMOTE_MAX_FILES, REMOTE_MAX_IMAGES, type RemoteFile, type RemoteImage } from '@seshboard/protocol/client';
 import type { DropVerdict } from '../composer/images.ts';
 
 /**
@@ -31,7 +31,7 @@ const count = (items: readonly RemoteAttachment[], kind: RemoteAttachment['kind'
 export function placeFor(file: { type: string; size: number; name: string }, items: readonly RemoteAttachment[], accepts: Accepts, computer: string): { as: 'image' | 'file' } | { skip: string } {
   const image = file.type.startsWith('image/');
   if (image && accepts.images && count(items, 'image') < REMOTE_MAX_IMAGES) return { as: 'image' };
-  if (!accepts.files) return { skip: image ? `A message takes up to ${REMOTE_MAX_IMAGES} images.` : `Update Switchboard on ${computer} to send files.` };
+  if (!accepts.files) return { skip: image ? `A message takes up to ${REMOTE_MAX_IMAGES} images.` : `Update Seshboard on ${computer} to send files.` };
   if (count(items, 'file') >= REMOTE_MAX_FILES) return { skip: `A message takes up to ${REMOTE_MAX_FILES} files.` };
   if (base64Length(file.size) > REMOTE_ATTACHMENT_BYTES - attachedBytes(items)) return { skip: `${file.name || 'That file'} is too big to send. A message takes ${megabytes(REMOTE_ATTACHMENT_BYTES)} in all.` };
   return { as: 'file' };
@@ -61,7 +61,7 @@ export function remoteDropVerdict(drag: { files: boolean; types: string[] }, sta
   if (attach + mention > 0) return { kind: 'ok', attach, mention, full: false };
   // The overlay's own "full" counts the local limit.
   if (images && accepts.images) return { kind: 'disabled', reason: `A message takes up to ${REMOTE_MAX_IMAGES} images.` };
-  return { kind: 'disabled', reason: accepts.files ? `A message takes up to ${REMOTE_MAX_FILES} files.` : `Update Switchboard on ${state.computer} to send files.` };
+  return { kind: 'disabled', reason: accepts.files ? `A message takes up to ${REMOTE_MAX_FILES} files.` : `Update Seshboard on ${state.computer} to send files.` };
 }
 
 // ---------------------------------------------------------------------------------------------------------

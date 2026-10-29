@@ -8,7 +8,7 @@ import { useNow } from './SessionList.tsx';
 import { Button } from './ui.tsx';
 
 /** The Remote access page of the docs, on the site the app comes from. */
-const DOCS = 'https://switchboard.struyfconsulting.com/remote-access/';
+const DOCS = 'https://seshboard.app/remote-access/';
 
 type Look = { dot: string; text: string; label: string; word: string };
 
@@ -183,7 +183,7 @@ export const reasonOf = (state: ConnectionState): OfflineReason => (state.kind =
 /**
  * Under the header while the connection is down: one short line ("Can't reach Elio's iMac · Reconnecting…") that opens
  * the Help sheet with the why, and Try again once it stopped trying. One line, so a computer that is away doesn't take
- * the sidebar. The `caution` tone: something outside Switchboard stops it.
+ * the sidebar. The `caution` tone: something outside Seshboard stops it.
  */
 export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }: { state: ConnectionState; computer: string; onHelp: () => void; onRetry: () => void; onConnect: () => void }) {
   if (state.kind === 'connected' || state.kind === 'unpaired') return null;
@@ -228,7 +228,7 @@ export function ConnectionBanner({ state, computer, onHelp, onRetry, onConnect }
 
 /**
  * Under the header while a computer sent a session list this app can't read (`checkRemoteSessions`): it may run an
- * older or newer Switchboard. The list shows what could be read.
+ * older or newer Seshboard. The list shows what could be read.
  */
 export function UnreadableBanner({ problem }: { problem: string | null }) {
   if (!problem) return null;

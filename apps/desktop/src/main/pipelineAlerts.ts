@@ -1,4 +1,4 @@
-import type { PipelineNotice, PipelineRunState } from '@switchboard/protocol/client';
+import type { PipelineNotice, PipelineRunState } from '@seshboard/protocol/client';
 import type { AttentionEvent } from './attention.ts';
 
 /**

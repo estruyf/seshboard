@@ -14,7 +14,7 @@ import {
   type FoundEvent,
   type SeenState,
   type TriggerEventStatus,
-} from '@switchboard/protocol';
+} from '@seshboard/protocol';
 
 interface Row {
   id: string;
@@ -163,7 +163,7 @@ export class TriggerStore {
     return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, SeenState[string]] => entry[1] === 'match' || entry[1] === 'held' || entry[1] === 'released'));
   }
 
-  /** Marks one key of what the trigger saw, without a check (a state label Switchboard took off). */
+  /** Marks one key of what the trigger saw, without a check (a state label Seshboard took off). */
   setSeen(id: string, key: string, state: SeenState[string]): void {
     if (!this.get(id)) return;
     this.statements.setSeen.run(JSON.stringify({ ...this.seen(id), [key]: state }), id);
@@ -172,7 +172,7 @@ export class TriggerStore {
   /**
    * Creates a trigger or changes one. Bypassing permissions is refused (the schema has no such mode). In the project's
    * folder it allows one session at a time. A new trigger, or one whose source changed, looks again before it starts
-   * anything: what matches then is marked as seen. Resuming it here clears the reason Switchboard paused it for.
+   * anything: what matches then is marked as seen. Resuming it here clears the reason Seshboard paused it for.
    */
   save(input: TriggerSave): Trigger {
     const parsed = TriggerSave.parse(input);
@@ -212,7 +212,7 @@ export class TriggerStore {
   }
 
   /**
-   * Pauses (with Switchboard's reason, or null when you paused it) or resumes. Resumed, it looks again first, so what
+   * Pauses (with Seshboard's reason, or null when you paused it) or resumes. Resumed, it looks again first, so what
    * came while it was paused is marked as seen. Null when it is gone.
    */
   setPaused(id: string, paused: boolean, reason: string | null = null): Trigger | null {
@@ -298,7 +298,7 @@ export class TriggerStore {
     return this.event(id)?.event ?? null;
   }
 
-  /** The state label Switchboard put on the event's issue last. */
+  /** The state label Seshboard put on the event's issue last. */
   setLabel(id: string, label: string | null): void {
     this.statements.setLabel.run(label, id);
   }

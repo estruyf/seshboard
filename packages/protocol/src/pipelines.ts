@@ -273,7 +273,7 @@ export function nextStep(run: Pick<PipelineRun, 'step' | 'round' | 'sentBackTo'>
   const name = waitedOn?.name ?? 'The step';
   if (last.outcome === 'error') return { kind: 'stop', reason: `${name} ended with an error.` };
   if (last.outcome === 'stopped') return { kind: 'stop', reason: `${name} was stopped.` };
-  if (last.outcome === 'quit') return { kind: 'stop', reason: 'Paused: Switchboard was closed. The run goes on at the next start.' };
+  if (last.outcome === 'quit') return { kind: 'stop', reason: 'Paused: Seshboard was closed. The run goes on at the next start.' };
   const step = steps[run.step];
   if (!step || step.kind === 'push') return enterStep(steps, run.step + 1, run.autoPush);
   if (run.sentBackTo !== null) {
@@ -429,6 +429,9 @@ export interface RunBriefBlock {
   stub: boolean;
   /** The brief's lines after `run:`. */
   body: string;
+  /** Where the block (its label line too) is in the text, so it is replaced there and nowhere else. */
+  start: number;
+  end: number;
 }
 
 /** The run briefs in a message, and the text without them. */
@@ -444,7 +447,7 @@ export function parseRunBriefs(text: string): { text: string; runs: RunBriefBloc
     if (!id) continue;
     rest += text.slice(from, block.start);
     from = block.end;
-    runs.push({ label: block.label ?? 'Pipeline run', runId: id, stub: lines.every((l) => !l.trim()), body: lines.join('\n').trim() });
+    runs.push({ label: block.label ?? 'Pipeline run', runId: id, stub: lines.every((l) => !l.trim()), body: lines.join('\n').trim(), start: block.start, end: block.end });
   }
   rest += text.slice(from);
   return { text: rest.replace(/\n{3,}/g, '\n\n').trim(), runs };

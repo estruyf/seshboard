@@ -1,5 +1,5 @@
 /**
- * Which files Switchboard previews in its own window, and the size limits of a preview. Shared by the engine (which
+ * Which files Seshboard previews in its own window, and the size limits of a preview. Shared by the engine (which
  * reads them) and the renderer (which decides what a click on a file link does). Plain TypeScript, no `node:path`.
  */
 
