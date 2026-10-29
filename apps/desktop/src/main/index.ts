@@ -5007,6 +5007,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
     const shown = [...document.querySelectorAll('${view} [data-transcript] [data-remember-from="claude"] p')].filter((p) => { const r = p.getBoundingClientRect(); return r.height > 0 && r.top >= area.top + 60 && r.bottom <= area.bottom; });
     const p = shown[shown.length - 1];
     if (!p) return '';
+    // Selecting with the mouse takes the focus off whatever had it (the session's row in the sidebar).
+    document.activeElement?.blur();
     const range = document.createRange();
     range.selectNodeContents(p);
     const selection = window.getSelection();
@@ -5054,7 +5056,13 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   // Quote.
   await js(select);
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar after selecting again');
-  await js(`${toolbar}.querySelector('[data-quote-selection]').click()`);
+  // With the mouse, held as a person holds it, not .click(): a press outside the selectable text used to clear the
+  // selection, and the toolbar went with it before the click landed.
+  const quote = (await js(`(() => { const r = ${toolbar}.querySelector('[data-quote-selection]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: quote.x, y: quote.y });
+  win.webContents.sendInputEvent({ type: 'mouseDown', x: quote.x, y: quote.y, button: 'left', clickCount: 1 });
+  await settle(win);
+  win.webContents.sendInputEvent({ type: 'mouseUp', x: quote.x, y: quote.y, button: 'left', clickCount: 1 });
   const quoted = await waitInPage(win, `document.querySelector('${box}').value !== ''`, 3_000);
   const value = (await js(`document.querySelector('${box}').value`)) as string;
   const focused = (await js(`document.activeElement === document.querySelector('${box}')`)) as boolean;

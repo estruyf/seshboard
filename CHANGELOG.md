@@ -10,6 +10,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
 - **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
 - **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
 - **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
