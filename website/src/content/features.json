@@ -1443,7 +1443,7 @@
     },
     {
       "id": "feature:dock-activity",
-      "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up while a session works, macOS)",
+      "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
       "page": "settings"
     },
     {

@@ -6,7 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
-- **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another, in whichever app icon you picked. With Reduce motion on, they stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
+- **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another and a pulse of light runs along the cables, in whichever app icon you picked. With Reduce motion on, the jacks stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
 - **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
 
 ### Fixed

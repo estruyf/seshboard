@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { DockActivity, FRAME_COUNT, FRAME_MS, FREE_JACKS, jackLevels, paintFrame, STILL_LEVELS, type DockActivityHost } from './dockActivity.ts';
+import { cableHeads, DockActivity, FRAME_COUNT, FRAME_MS, FREE_JACKS, JACK_STEPS, jackLevels, paintFrame, STILL_LEVELS, type DockActivityHost } from './dockActivity.ts';
 
 /** A plain dark tile, opaque, as BGRA. */
 const tile = (size: number) => Buffer.alloc(size * size * 4, 0).fill(Buffer.from([0x10, 0x10, 0x10, 0xff]));
@@ -8,16 +8,28 @@ const pixel = (bitmap: Buffer, size: number, x: number, y: number) => [...bitmap
 const centre = (i: number, size: number) => [Math.round(FREE_JACKS[i]!.x * size), Math.round(FREE_JACKS[i]!.y * size)] as const;
 
 describe('jackLevels', () => {
-  it('lights one jack fully, the two before it fading, and moves on every third frame', () => {
+  it('lights one jack fully, the two before it fading, and moves on every fourth frame', () => {
     const first = jackLevels(0);
     expect(first[0]).toBe(1);
     expect(first[4]).toBeGreaterThan(first[3]!);
     expect(first[3]).toBeGreaterThan(0);
     expect(first[1]).toBe(0);
-    expect(jackLevels(3)[1]).toBe(1);
+    expect(jackLevels(JACK_STEPS)[1]).toBe(1);
     // It goes round.
     expect(jackLevels(FRAME_COUNT)).toEqual(first);
     expect(jackLevels(-FRAME_COUNT)).toEqual(first);
+  });
+});
+
+describe('cableHeads', () => {
+  it('runs each pulse from before its first plug to past its last once a round, the two half a round apart', () => {
+    const heads = Array.from({ length: FRAME_COUNT }, (_, frame) => cableHeads(frame));
+    expect(heads[0]![0]).toBeLessThan(0);
+    expect(Math.max(...heads.map((h) => h[0]!))).toBeGreaterThan(1);
+    // Always forward within a round.
+    for (let f = 1; f < FRAME_COUNT; f++) expect(heads[f]![0]).toBeGreaterThan(heads[f - 1]![0]!);
+    expect(cableHeads(FRAME_COUNT / 2)[0]).toBeCloseTo(heads[0]![1]!);
+    expect(cableHeads(FRAME_COUNT)).toEqual(heads[0]);
   });
 });
 
@@ -42,9 +54,33 @@ describe('paintFrame', () => {
     expect(pixel(base, size, x0, y0)).toEqual([0x10, 0x10, 0x10, 0xff]);
   });
 
+  it('runs a pulse along the cables that brightens their own colour, plug to plug', () => {
+    const size = 128;
+    // A warm tile, like the long cable: the pulse adds the same light to every channel, so the hue stays.
+    const base = Buffer.alloc(size * size * 4, 0).fill(Buffer.from([0x40, 0x70, 0xc0, 0xff]));
+    const at = (x: number, y: number) => [Math.round((x / 1024) * size), Math.round((y / 1024) * size)] as const;
+    const [fx, fy] = at(312, 312);
+    const [tx, ty] = at(712, 512);
+    const off = [0, 0, 0, 0, 0];
+
+    const start = paintFrame(base, size, off, [0, -1]);
+    const lit = pixel(start, size, fx, fy);
+    expect(lit[0]! - 0x40).toBeGreaterThan(50);
+    expect(lit[1]! - 0x70).toBe(lit[0]! - 0x40);
+    expect(lit[2]).toBeGreaterThan(lit[1]!);
+    expect(lit[3]).toBe(0xff);
+    expect(pixel(start, size, tx, ty)).toEqual([0x40, 0x70, 0xc0, 0xff]);
+
+    const end = paintFrame(base, size, off, [1, -1]);
+    expect(pixel(end, size, fx, fy)).toEqual([0x40, 0x70, 0xc0, 0xff]);
+    expect(pixel(end, size, tx, ty)[0]).toBeGreaterThan(0x40 + 50);
+    // No pulse given, no light.
+    expect(paintFrame(base, size, off).equals(base)).toBe(true);
+  });
+
   it('adds no light where the icon is transparent', () => {
     const size = 64;
-    const frame = paintFrame(Buffer.alloc(size * size * 4), size, STILL_LEVELS);
+    const frame = paintFrame(Buffer.alloc(size * size * 4), size, STILL_LEVELS, [0.5, 0.5]);
     expect(frame.every((byte) => byte === 0)).toBe(true);
   });
 });

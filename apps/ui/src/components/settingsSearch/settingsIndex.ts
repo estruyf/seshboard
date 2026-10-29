@@ -46,7 +46,7 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'theme-import', page: 'theme', label: 'Import…', detail: 'Add a theme from a .json file.', keywords: 'theme file json drop', target: '[data-theme-import]' },
     { id: 'theme-folder', page: 'theme', label: 'Open themes folder', detail: 'Where imported themes are kept.', keywords: 'theme files', target: '[data-theme-folder]' },
     { id: 'app-icon', page: 'theme', label: 'App icon', detail: appIconDetail(), keywords: 'icon dock taskbar logo app switcher colourway colorway', target: '[data-app-icon-picker]' },
-    { id: 'dock-activity', page: 'theme', label: DOCK_ACTIVITY_LABEL, detail: DOCK_ACTIVITY_DETAIL, keywords: 'dock icon animation animate working busy running activity progress lights', target: '[data-dock-activity]', os: 'darwin' },
+    { id: 'dock-activity', page: 'theme', label: DOCK_ACTIVITY_LABEL, detail: DOCK_ACTIVITY_DETAIL, keywords: 'dock icon animation animate working busy running activity progress lights cables', target: '[data-dock-activity]', os: 'darwin' },
     {
       id: 'app-icon-remote',
       page: 'theme',
