@@ -29,6 +29,9 @@ describe('shellCommandScript', () => {
     expect(shellCommandScript('win32', 'switchboard', 'C:\\Users\\Jörg\\AppData\\Local\\Programs\\switchboard\\Seshboard.exe', env)).toContain('start "" "%LOCALAPPDATA%\\Programs\\switchboard\\Seshboard.exe" "%dir%"');
     expect(shellCommandScript('win32', 'switchboard', 'D:\\100% apps\\Seshboard.exe', env)).toContain('start "" "D:\\100%% apps\\Seshboard.exe" "%dir%"');
     expect(shellCommandScript('win32', 'switchboard', 'D:\\Seshboard.exe')).toContain('\r\n');
+    // A folder named `R&D` is echoed as text, never run as a command after the `&`.
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe')).toContain('echo seshboard: "%~1" is not a folder 1>&2');
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe').split('\r\n').filter((line) => line.includes('%~1') && !line.includes('"%~1"'))).toEqual([]);
   });
 
   describe.runIf(posix)('run', () => {

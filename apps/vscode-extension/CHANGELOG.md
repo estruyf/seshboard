@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Claude Code's `Read` deny rules now also keep files from Claude when the workspace or home folder has `[`, `]`, `{` or `}` in its name. A crafted exclude glob or deny rule in a repository's settings can no longer make VS Code stop responding.
+
 ## [0.3.0]
 
 - Works with Seshboard on Linux: it starts Seshboard and brings it up there with `xdg-open`.

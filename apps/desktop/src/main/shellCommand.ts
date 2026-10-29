@@ -56,7 +56,8 @@ export function shellCommandScript(platform: string, name: string, target: strin
       `start "" "${exe}" "%dir%"`,
       'exit /b 0',
       ':notfolder',
-      `echo ${name}: %~1 is not a folder 1>&2`,
+      // Quoted: unquoted, `R&D` would echo `R` and run `D`.
+      `echo ${name}: "%~1" is not a folder 1>&2`,
       'exit /b 1',
       ':usage',
       `echo Usage: ${name} [folder]`,

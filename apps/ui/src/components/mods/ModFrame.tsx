@@ -37,7 +37,10 @@ export function ModFrame({
         <span className="min-w-0 truncate">{title ?? plugin}</span>
         {end && <span className="ml-auto flex shrink-0 items-center">{end}</span>}
       </header>
-      <div className={`min-w-0 px-2.5 py-2 ${bodyClassName}`}>{error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}</div>
+      {/* What a mod draws stays in the body: a box it places `absolute` is placed and clipped here, never over the header that names it. */}
+      <div className={`relative isolate min-w-0 overflow-hidden px-2.5 py-2 ${bodyClassName}`} data-mod-frame-body>
+        {error ? <ModError plugin={plugin} error={error} onRetry={onRetry} /> : children}
+      </div>
     </section>
   );
 }

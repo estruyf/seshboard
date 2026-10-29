@@ -558,9 +558,11 @@ export function createEngine(options: EngineOptions): Engine {
     inRepo: (folder) => !!resolver.resolve(folder).gitDir,
     pullRequests: (root) => pullRequestsFor(root, false),
     commits: async (folder, branch, base) => {
-      const from = base ?? (await baseBranch(folder));
+      // The base comes from a transcript (`gh pr create --base …`): one that reads as an option is not used, and
+      // `--end-of-options` keeps git from reading the range as one (`--output=…` would write a file).
+      const from = base && !base.startsWith('-') ? base : await baseBranch(folder);
       const range = from ? [`${from}..${branch}`] : [branch];
-      const out = await git(folder, ['log', '--oneline', '--no-decorate', '--max-count=10', ...range], { timeout: 5_000 });
+      const out = await git(folder, ['log', '--oneline', '--no-decorate', '--max-count=10', '--end-of-options', ...range], { timeout: 5_000 });
       return out.split('\n').map((line) => line.trim()).filter(Boolean);
     },
     lastReply: async (id) => lastTurn(await source.messages(id))?.finalText ?? null,

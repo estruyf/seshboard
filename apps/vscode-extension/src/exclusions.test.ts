@@ -1,14 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { deniedByRead, excludedBy, globToRegExp, readRules } from './exclusions.ts';
+import { deniedByRead, escapeGlob, excludedBy, globMatcher, readRules } from './exclusions.ts';
 
-describe('globToRegExp', () => {
+describe('globMatcher', () => {
+  const matches = (glob: string, path: string, ignoreCase = false) => globMatcher(glob, ignoreCase)(path);
+
   it('matches VS Code globs over whole paths', () => {
-    expect(globToRegExp('**/node_modules').test('node_modules')).toBe(true);
-    expect(globToRegExp('**/node_modules').test('a/b/node_modules')).toBe(true);
-    expect(globToRegExp('**/*.{env,pem}').test('config/prod.pem')).toBe(true);
-    expect(globToRegExp('*.ts').test('src/a.ts')).toBe(false);
-    expect(globToRegExp('secret?.txt').test('secret1.txt')).toBe(true);
-    expect(globToRegExp('[ab].md').test('c.md')).toBe(false);
+    expect(matches('**/node_modules', 'node_modules')).toBe(true);
+    expect(matches('**/node_modules', 'a/b/node_modules')).toBe(true);
+    expect(matches('**/node_modules', 'a/b/node_modules2')).toBe(false);
+    expect(matches('**/*.{env,pem}', 'config/prod.pem')).toBe(true);
+    expect(matches('**/*.{env,pem}', 'config/prod.key')).toBe(false);
+    expect(matches('*.ts', 'src/a.ts')).toBe(false);
+    expect(matches('src/**', 'src/a/b.ts')).toBe(true);
+    expect(matches('secret?.txt', 'secret1.txt')).toBe(true);
+    expect(matches('secret?.txt', 'secret/.txt')).toBe(false);
+    expect(matches('[ab].md', 'c.md')).toBe(false);
+    expect(matches('[a-c].md', 'b.md')).toBe(true);
+    expect(matches('[!ab].md', 'c.md')).toBe(true);
+    expect(matches('a/{b,{c,d}}/e', 'a/d/e')).toBe(true);
+    expect(matches('A/*.TS', 'a/x.ts', true)).toBe(true);
+  });
+
+  it('takes an escaped or unclosed special character as itself', () => {
+    expect(matches(escapeGlob('/w/[x]{y,z}*?'), '/w/[x]{y,z}*?')).toBe(true);
+    expect(matches(escapeGlob('/w/[x]'), '/w/x')).toBe(false);
+    expect(matches('a{b', 'a{b')).toBe(true);
+    expect(matches('a[b', 'a[b')).toBe(true);
+  });
+
+  it('answers at once for globs a regular expression would take minutes on', () => {
+    const started = Date.now();
+    expect(matches(`${'**/'.repeat(40)}x`, `${'a/'.repeat(200)}y`)).toBe(false);
+    expect(matches(`${'*a'.repeat(40)}b`, 'a'.repeat(300))).toBe(false);
+    expect(matches(`${'{a,b}'.repeat(30)}`, 'ab')).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });
 
@@ -45,6 +70,14 @@ describe('Read deny rules', () => {
     expect(winDenied('C:\\data\\.env', ['Read(//c/**/.env)'])).toBe(true);
     expect(winDenied('D:\\data\\.env', ['Read(//**/.env)'])).toBe(true);
     expect(winDenied('C:\\repo\\a.ts', ['Read(./.env)'])).toBe(false);
+  });
+
+  it('takes the folders in front of a pattern as paths, whatever characters their names have', () => {
+    const rules = readRules([{ root: '/w/[x]', json: { permissions: { deny: ['Read(./.env)', 'Read(/secrets/**)', 'Read(~/.aws/**)'] } } }], '/w/[x]', '/home/{me}');
+    expect(deniedByRead('/w/[x]/.env', rules)).toBe(true);
+    expect(deniedByRead('/w/[x]/secrets/key.pem', rules)).toBe(true);
+    expect(deniedByRead('/home/{me}/.aws/credentials', rules)).toBe(true);
+    expect(deniedByRead('/w/x/.env', rules)).toBe(false);
   });
 
   it('denies everything for a bare Read, and ignores other tools and odd entries', () => {

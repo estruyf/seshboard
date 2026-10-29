@@ -15,6 +15,12 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **A repository can't freeze Seshboard with a linked file.** Its `.seshboard.json`, `package.json` or Claude Code settings are read only when they are small, ordinary files. Saving shared settings never copies a file from elsewhere into the repository.
 - **On Windows, a repository's own `git.exe` or `gh.exe` never runs.** Seshboard now always starts the git and GitHub CLI installed on your PATH.
 - **On Windows, a network path in a reply or an HTML preview no longer sends your login.** Seshboard only looks at files on this computer's drives, so a `\\server\share` path can't make it connect to another computer.
+- **A large HTML file previews at once.** A page with many unclosed tags no longer takes minutes to open, an image named many times counts toward the page's limit each time, and the preview's security policy always applies.
+- **Nested Markdown blocks no longer freeze the window.** A Markdown block inside a Markdown block's preview shows as its source.
+- **Large rule files load at once.** A rule or memory file whose frontmatter has a very long list no longer takes seconds to read.
+- **A mod draws only inside its own frame.** A box a mod places freely stays in its band or pane, and never covers the line that names the mod.
+- **On Windows, `seshboard` with a folder name that has `&` in it** no longer runs part of the name as a command when the folder doesn't exist.
+- **A pull request's base branch can't make git write a file.** A base starting with `-` in a session's `gh pr create` is ignored when Seshboard lists the commits of a linked session.
 
 ## [1.2.0] - 2026-10-28
 
