@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 import { RpcError } from '@seshboard/protocol';
+import { readRepoFile } from '../system/repoFile.ts';
 
 /** The project's shared settings, committed with the repository: actions, prompts and the icon. */
 export const SHARED_FILE = '.seshboard.json';
@@ -51,7 +52,7 @@ export function readSharedFile(projectRoot: string): SharedFileRead {
   let mtime = 0;
   try {
     mtime = statSync(file).mtimeMs;
-    raw = JSON.parse(readFileSync(file, 'utf8'));
+    raw = JSON.parse(readRepoFile(file));
   } catch (error) {
     return { file, data: null, error: `${name}: ${(error as Error).message}`, mtime };
   }
@@ -78,7 +79,7 @@ export function writeSharedFile(projectRoot: string, change: (data: Record<strin
   let indent = '  ';
   let finalNewline = true;
   if (read.data) {
-    const text = readFileSync(read.file, 'utf8');
+    const text = readRepoFile(read.file);
     indent = indentOf(text);
     finalNewline = text.endsWith('\n');
   }

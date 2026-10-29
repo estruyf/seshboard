@@ -12,6 +12,7 @@ import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenSto
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -1201,7 +1202,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }

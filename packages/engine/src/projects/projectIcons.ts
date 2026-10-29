@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative } from 'node:path';
 import type { ProjectIcon } from '@seshboard/protocol';
+import { readRepoFile } from '../system/repoFile.ts';
 
 /** Icons travel to the renderer as data URLs, so keep them small. */
 export const MAX_ICON_BYTES = 200_000;
@@ -54,7 +55,7 @@ const WORKSPACE_DIRS = ['apps', 'packages'];
 
 function readJson(path: string): Record<string, unknown> | null {
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    return JSON.parse(readRepoFile(path)) as Record<string, unknown>;
   } catch {
     return null;
   }

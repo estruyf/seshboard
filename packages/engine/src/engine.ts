@@ -154,7 +154,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
-import { CloneService } from './projects/cloneService.ts';
+import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
 import { readPreview, readPreviewImage } from './system/filePreview.ts';
@@ -476,6 +476,11 @@ export function createEngine(options: EngineOptions): Engine {
   const questions = new QuestionsFolder(join(options.dataDir, 'questions'));
   const listProjects = () => projects.list(folderActivity()).filter((p) => !questions.contains(p.root));
   /** A project's own default branch, for any folder in it (its worktrees fold into it); null follows the remote's. */
+  /** Throws TRUST_NEEDED for a folder in a cloned repository whose trust question isn't answered (`CloneService.trustNeeded`). */
+  function assertTrusted(cwd: string): void {
+    const needed = clones.trustNeeded(cwd, resolver.resolve(cwd).root);
+    if (needed) throw trustNeededError(needed);
+  }
   const projectDefaultBranch = (cwd: string) => projects.defaultsOf(resolver.resolve(cwd).root).defaultBranch;
   // Every base branch question (changes, worktrees, branches, pull requests) asks the project first.
   setProjectDefaultBranch(projectDefaultBranch);
@@ -844,6 +849,7 @@ export function createEngine(options: EngineOptions): Engine {
     signIns,
     sdk,
     ephemeral,
+    assertTrusted,
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
     onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
     env: envFor,
@@ -1984,6 +1990,8 @@ export function createEngine(options: EngineOptions): Engine {
     if (params.worktree && !resolver.resolve(params.cwd).gitDir) {
       throw new RpcError('NOT_A_REPO', 'Worktrees need a git repository');
     }
+    // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
+    assertTrusted(params.cwd);
     const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
     const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
     // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
@@ -2203,7 +2211,7 @@ export function createEngine(options: EngineOptions): Engine {
       clone: async (jobId, url, name, onProgress) => {
         cloneListeners.set(jobId, onProgress);
         try {
-          await clones.start(jobId, url, name);
+          await clones.start(jobId, url, name, { askTrust: false });
         } catch (error) {
           cloneListeners.delete(jobId);
           throw error;
@@ -2498,6 +2506,10 @@ export function createEngine(options: EngineOptions): Engine {
     'projects.clonePlan': ({ url, name }) => clones.plan(url, name),
     'projects.clone': async ({ jobId, url, name }) => {
       await clones.start(jobId, url, name);
+      return {};
+    },
+    'projects.trustClone': ({ root }) => {
+      clones.trust(root);
       return {};
     },
     'projects.cancelClone': ({ jobId }) => {

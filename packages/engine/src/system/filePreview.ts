@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@seshboard/protocol';
+import { isLocalAbsolutePath, MAX_PREVIEW_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_PREVIEW_PAGE_IMAGES_BYTES, previewKind, RpcError, type PreviewKind } from '@seshboard/protocol';
 
 /** What `readPreview` returns (the result of `files.read`). */
 export interface FilePreview {
@@ -110,8 +110,17 @@ export async function readPreviewImage(path: string): Promise<PreviewImage> {
   return { mediaType, data: bytes.toString('base64') };
 }
 
-/** The file a local `src` points at, or null for anything else (http, data:, a protocol-relative URL, an anchor). */
-function localImagePath(src: string, baseDir: string): string | null {
+/**
+ * The file a local `src` points at, or null for anything else (http, data:, a protocol-relative URL, an anchor, a
+ * network path). On Windows, looking at `\\server\share\a.png` or `file://server/share/a.png` connects to that
+ * server and sends it the user's Windows login, so only a path on this computer's drives is read.
+ */
+export function localImagePath(src: string, baseDir: string, platform: string = process.platform): string | null {
+  const path = imagePath(src, baseDir);
+  return path && isLocalAbsolutePath(path, platform) ? path : null;
+}
+
+function imagePath(src: string, baseDir: string): string | null {
   const value = src.trim();
   if (!value || value.startsWith('#') || value.startsWith('//')) return null;
   if (/^file:/i.test(value)) {

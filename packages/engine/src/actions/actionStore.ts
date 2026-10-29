@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@seshboard/protocol';
+import { readRepoFile } from '../system/repoFile.ts';
 import type { UserShell } from '../system/shell.ts';
 import { entriesOf, readSharedFile, removeEntry, SHARED_FILE, upsertEntry, writeSharedFile } from './sharedFile.ts';
 
@@ -274,7 +275,7 @@ export function suggestActions(projectRoot: string): ActionSuggestion[] {
   const suggestions: ActionSuggestion[] = [];
   let scripts: Record<string, unknown> = {};
   try {
-    scripts = (JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }).scripts ?? {};
+    scripts = (JSON.parse(readRepoFile(join(projectRoot, 'package.json'))) as { scripts?: Record<string, unknown> }).scripts ?? {};
   } catch {
     // Not a Node project.
   }

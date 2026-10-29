@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { MAX_PREVIEW_BYTES, RpcError } from '@seshboard/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
-import { inlineHtmlImages, readPreview, readPreviewImage, sniffImage, withPreviewCsp } from './filePreview.ts';
+import { inlineHtmlImages, localImagePath, readPreview, readPreviewImage, sniffImage, withPreviewCsp } from './filePreview.ts';
 
 const dirs: string[] = [];
 const temp = () => {
@@ -179,6 +179,14 @@ describe('inlineHtmlImages', () => {
     const out = await inlineHtmlImages('<img src="1.png"><img src="2.png"><img src="3.png"><img src="4.png">', dir);
     expect(out.match(/src="data:/g)).toHaveLength(2);
     expect(out).toContain('<img src="3.png"><img src="4.png">');
+  });
+
+  it('reads only images on this computer, never from a network share', () => {
+    const dir = temp();
+    expect(localImagePath('a.png', dir)).toBe(join(dir, 'a.png'));
+    // On Windows, looking at a network path sends the user's login to that server.
+    for (const src of ['\\\\attacker\\share\\a.png', 'file://attacker/share/a.png', '//attacker/share/a.png']) expect(localImagePath(src, 'C:\\pages', 'win32')).toBeNull();
+    expect(localImagePath('C:\\pages\\a.png', 'C:\\pages', 'win32')).toBe(sep === '\\' ? 'C:\\pages\\a.png' : null);
   });
 
   it('skips an image over 10 MB', async () => {

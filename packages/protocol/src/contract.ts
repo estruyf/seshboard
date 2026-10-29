@@ -288,6 +288,11 @@ export const contract = {
     'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
     /** Stops a clone; the folder it made goes (never one that was there before). `cancelled` follows. */
     'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
+    /**
+     * The trust question for a cloned repository was answered with Start anyway. Until then every start of Claude Code
+     * in it (a session, a resume, a helper) fails with TRUST_NEEDED, with `{ root, brings }` as its details.
+     */
+    'projects.trustClone': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
     // --- Claude profiles (one login per config folder) --------------------------------------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
     /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */

@@ -81,6 +81,12 @@ export interface HostManagerDeps {
   onUsageHint?: (profileId: string) => void;
   /** A session's turn reported where a plan window stands (Claude Code's `rate_limit_event`). */
   onRateLimit?: (profileId: string, sessionId: string, info: { rateLimitType?: string; utilization?: number; resetsAt?: number }) => void;
+  /**
+   * Throws (TRUST_NEEDED) when Claude Code may not start in `cwd` yet: a cloned repository whose trust question isn't
+   * answered (`CloneService.trustNeeded`). Every process started in a folder goes through it, helpers too, as they load
+   * the folder's hooks and MCP servers as a session does.
+   */
+  assertTrusted?: (cwd: string) => void;
   /** Helper processes register in the live registry while they run; the engine hides them. */
   ephemeral?: { add(sessionId: string): void; delete(sessionId: string): void };
   /** A profile's installed plugins, for sessions that aren't running (their own list comes from Claude Code). */
@@ -773,6 +779,7 @@ export class HostManager {
     const settings = this.settings.get(sessionId);
     const model = running?.model ?? settings?.model ?? null;
     const effort = running?.effort ?? settings?.effort ?? null;
+    this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     const helperId = randomUUID();
     this.deps.ephemeral?.add(helperId);
@@ -847,6 +854,7 @@ export class HostManager {
    * so no session is written. It answers control requests (commands, agents, MCP) and is closed after.
    */
   private async withHelper<T>(cwd: string, profileId: string, ask: (query: Query) => Promise<T>, more: { extra?: Partial<Options>; timeoutMs?: number } = {}): Promise<T> {
+    this.deps.assertTrusted?.(cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
     // A prompt that never yields: Claude Code starts, answers the question, and no session is written.
     const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
@@ -957,6 +965,12 @@ export class HostManager {
   async prewarm(cwd: string, profileId: string): Promise<void> {
     const target = this.warm ?? this.warming;
     if (target?.cwd === cwd && target.profileId === profileId) return;
+    try {
+      this.deps.assertTrusted?.(cwd);
+    } catch {
+      // Nothing starts there before the trust question is answered; the session starts cold after it.
+      return;
+    }
     this.discardWarm();
     const generation = this.warmGeneration;
     this.warming = { cwd, profileId };
@@ -1054,6 +1068,7 @@ export class HostManager {
   }
 
   private async spawn(config: Omit<HostConfig, 'env' | 'claudePath' | 'canUseTool'>, warm?: Warm): Promise<SessionHost> {
+    this.deps.assertTrusted?.(config.cwd);
     const [env, claudePath, sdk] = await Promise.all([this.deps.env(config.profileId), this.deps.claudePath(), this.deps.sdk()]);
     // The session id can change (forks), so permission prompts look it up through the host.
     let hostRef: SessionHost | undefined;

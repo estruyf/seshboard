@@ -11,6 +11,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
 - **Importing a memory named "memory" no longer hangs.** A memory whose name became `memory` (a `# Memory` heading, or one in another script) made the import never finish and the app stop responding. It is saved as `memory-2.md` now.
 - **Allow shows what it approves.** On the phone, a permission prompt shows the whole command, every line of it, instead of only the first. A prompt that doesn't fit the one line of a card on Home, or of a notification, opens its session to be answered there. A request too long to show in full says so on the computer and on the phone.
+- **A cloned repository asks before its first session, however you start it.** The question about the hooks and MCP servers a cloned repository brings came only from Start in the clone form. Now nothing of Claude Code runs in the repository until it is answered, also when you start from the palette or another window.
+- **A repository can't freeze Seshboard with a linked file.** Its `.seshboard.json`, `package.json` or Claude Code settings are read only when they are small, ordinary files. Saving shared settings never copies a file from elsewhere into the repository.
+- **On Windows, a repository's own `git.exe` or `gh.exe` never runs.** Seshboard now always starts the git and GitHub CLI installed on your PATH.
+- **On Windows, a network path in a reply or an HTML preview no longer sends your login.** Seshboard only looks at files on this computer's drives, so a `\\server\share` path can't make it connect to another computer.
 
 ## [1.2.0] - 2026-10-28
 

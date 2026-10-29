@@ -3,6 +3,7 @@ import { NewSessionView } from './components/newSession/NewSessionView.tsx';
 import { HomeView } from './components/home/HomeView.tsx';
 import { TooltipLayer } from './components/ui/Tooltip.tsx';
 import { ToastLayer } from './components/ui/Toast.tsx';
+import { RepoTrustDialog } from './components/clone/CloneTrustDialog.tsx';
 import { FocusGateDialog } from './components/focus/FocusGateDialog.tsx';
 import { useSessionShortcuts } from './components/session/useSessionShortcuts.ts';
 import { useOverlayShortcuts } from './components/palette/useOverlayShortcuts.ts';
@@ -297,6 +298,7 @@ export function App() {
       <BackupDialogs />
       <ThemeImportDialogs />
       <FocusGateDialog />
+      <RepoTrustDialog />
       <ClaudeInstallDialog />
       <SessionHud />
       <EngineStalledNotice />
