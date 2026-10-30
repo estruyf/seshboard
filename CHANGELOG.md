@@ -13,6 +13,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Terminal text no longer spreads its letters out.** In a terminal drawn without WebGL, rows drawn while the terminal was hidden could keep an extra space after every letter ("r e a d y  i n  8 5 4  m s"). The terminal now notices and draws them again with normal spacing.
 - **Keep awake keeps Seshboard itself awake on a Mac.** With the display off, macOS could still slow Seshboard down while Keep awake held sleep off, which can drop phones connected through Remote. Keep awake now keeps Seshboard out of App Nap too.
 - **No more ghost agents.** An agent that Claude tried to send a message to after it finished, and that could not be woken up again (for example because its worktree was removed), no longer stays under Active in the Agents panel.
 - **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
