@@ -70,6 +70,7 @@ async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}
       'session.setModel': () => ({}),
       'session.setPermissionMode': () => ({}),
       'options.get': () => ({ models: [], efforts: [], modes: [], profiles: [], defaultProfileId: 'default', projects: [] }),
+      'providers.ready': () => ({ problem: null, models: [] }),
       'usage.get': () => ({ profiles: [] }),
       'usage.tokens': () => ({ breakdown: null }),
       'usage.sessionCost': () => ({ cost: null }),

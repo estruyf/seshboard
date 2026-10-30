@@ -21,6 +21,9 @@ function setup(stored: StoredUpNext[] = []) {
     },
     setModel: async (m) => void calls.push(`model:${m}`),
     setMode: async (m) => void calls.push(`mode:${m}`),
+    commands: async () => [{ name: 'review', description: 'Review the changes', argumentHint: '' }],
+    capabilities: async () => ({ live: true, mcp: [], agents: [], commands: [], plugins: [] }),
+    mcp: async (server, action) => void calls.push(`mcp:${action}:${server}`),
     respond: () => {},
     close: async () => void calls.push('close'),
   };
@@ -31,6 +34,7 @@ function setup(stored: StoredUpNext[] = []) {
     ],
     status: async () => ({ binary: '/c', version: null, signedIn: true, account: null, problem: null }),
     models: async () => [],
+    commands: async () => [{ name: 'init', description: '', argumentHint: '' }],
     start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}`), session),
     dispose: async () => {},
   };
@@ -117,11 +121,14 @@ describe('ProviderHosts Up next', () => {
 
   it('keeps a mode picked while not running for the next resume, and checks it is one the provider has', async () => {
     const { hosts, settings, calls } = setup();
+    expect((await hosts.commands(ID)).map((c) => c.name)).toEqual(['init']);
     await hosts.setPermissionMode(ID, 'plan');
     expect(settings.get(ID)).toEqual({ permissionMode: 'plan' });
     await send(hosts, 'go');
     expect(calls[0]).toBe(`start:${ID}:plan`);
     await expect(hosts.setPermissionMode(ID, 'bypassPermissions')).rejects.toMatchObject({ code: 'INVALID' });
+    // A running session's own commands; before that, a new session's.
+    expect((await hosts.commands(ID)).map((c) => c.name)).toEqual(['review']);
     await hosts.setPermissionMode(ID, 'default');
     expect(calls.at(-1)).toBe('mode:default');
   });

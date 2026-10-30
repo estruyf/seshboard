@@ -315,6 +315,8 @@ export const contract = {
     'providers.status': { params: z.object({ id: OptionalProviderSchema }), result: ProviderStatus },
     /** The models the provider offers this account. */
     'providers.models': { params: z.object({ id: OptionalProviderSchema }), result: z.object({ models: z.array(ModelOption) }) },
+    /** The slash commands a new session with the provider has (New session's `/` list). */
+    'providers.commands': { params: z.object({ id: OptionalProviderSchema }), result: z.object({ commands: z.array(SlashCommand) }) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),

@@ -1,4 +1,4 @@
-import { RpcError, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type SendMode, type SessionHostInfo } from '@seshboard/protocol';
+import { RpcError, type Capabilities, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
 import { HostManager } from '../host/hostManager.ts';
 import type { ProviderHosts } from './providerHosts.ts';
 
@@ -71,6 +71,21 @@ export class RoutedHostManager extends HostManager {
   override async resumeQueue(sessionId: string): Promise<void> {
     const other = this.providerFor(sessionId);
     return other ? other.resumeQueue(sessionId) : super.resumeQueue(sessionId);
+  }
+
+  override async commands(sessionId: string | undefined, cwd: string | undefined, profileId: string): Promise<SlashCommand[]> {
+    const other = sessionId ? this.providerFor(sessionId) : null;
+    return other ? other.commands(sessionId!) : super.commands(sessionId, cwd, profileId);
+  }
+
+  override async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string, reload = false): Promise<Capabilities> {
+    const other = sessionId ? this.providerFor(sessionId) : null;
+    return other ? other.capabilities(sessionId!) : super.capabilities(sessionId, cwd, refresh, profileId, reload);
+  }
+
+  override async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
+    const other = this.providerRunning(sessionId);
+    return other ? other.mcp(sessionId, server, action) : super.mcp(sessionId, server, action);
   }
 
   override upNextLists(): Array<{ sessionId: string; queue: QueuedMessage[] }> {

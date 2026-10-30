@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
-import type { ModelOption, OptionalProvider, ProviderInfo, ProvidersSnapshot, ProviderStatus } from '@seshboard/protocol/client';
+import type { ModelOption, OptionalProvider, ProviderInfo, ProvidersSnapshot, ProviderStatus, SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 interface ProvidersState {
@@ -42,6 +42,8 @@ export interface ProviderReadiness {
   /** Null while it is being asked (it starts the provider's runtime the first time). */
   status: ProviderStatus | null;
   models: ModelOption[];
+  /** Its slash commands, for the message box's `/` list. */
+  commands: SlashCommand[];
   /** Asking failed (not the provider saying it can't run: that is `status.problem`). */
   error: string | null;
 }
@@ -57,17 +59,19 @@ export function useProviderReadiness(id: OptionalProvider | null): ProviderReadi
   useEffect(() => {
     if (!client || !id) return;
     let current = true;
-    setState({ id, readiness: { status: null, models: [], error: null } });
+    setState({ id, readiness: { status: null, models: [], commands: [], error: null } });
     void client.call('providers.status', { id }).then(
       async (status) => {
-        const models = status.problem ? [] : await client.call('providers.models', { id }).then((r) => r.models, () => []);
-        if (current) setState({ id, readiness: { status, models, error: null } });
+        const [models, commands] = status.problem
+          ? [[], []]
+          : await Promise.all([client.call('providers.models', { id }).then((r) => r.models, () => []), client.call('providers.commands', { id }).then((r) => r.commands, () => [])]);
+        if (current) setState({ id, readiness: { status, models, commands, error: null } });
       },
-      (error: Error) => current && setState({ id, readiness: { status: null, models: [], error: error.message } }),
+      (error: Error) => current && setState({ id, readiness: { status: null, models: [], commands: [], error: error.message } }),
     );
     return () => {
       current = false;
     };
   }, [client, id]);
-  return id && state?.id === id ? state.readiness : id ? { status: null, models: [], error: null } : null;
+  return id && state?.id === id ? state.readiness : id ? { status: null, models: [], commands: [], error: null } : null;
 }

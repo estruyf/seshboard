@@ -1,4 +1,4 @@
-import type { ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, StreamDelta } from '@seshboard/protocol';
+import type { Capabilities, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, SlashCommand, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
@@ -70,6 +70,8 @@ export interface DriverEvents {
   permissionDone(requestId: string): void;
   /** How full the context is, and what the session has spent in the provider's own unit (Copilot's premium requests). */
   usage(usage: { contextTokens?: number; contextMax?: number; spent?: { amount: number; unit: string } }): void;
+  /** The session's model changed (by a command, or the provider's Auto picking one). */
+  model(model: string): void;
 }
 
 export interface DriverSessionConfig {
@@ -91,6 +93,15 @@ export interface DriverSession {
   send(text: string, attachments: readonly ImageAttachment[], steer?: boolean): Promise<string>;
   /** Switches to another of the driver's `modes`. */
   setMode(mode: PermissionMode): Promise<void>;
+  /**
+   * The provider's slash commands for this session, for the message box's `/` list. A message that starts with one
+   * runs it (`send`): a command that answers in words without a turn ends with `state('idle')`.
+   */
+  commands(): Promise<SlashCommand[]>;
+  /** What the session can use (Tools): its MCP servers, agents and skills. */
+  capabilities(): Promise<Capabilities>;
+  /** Turns one of its MCP servers on or off, or connects it again. */
+  mcp(server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void>;
   /** Stops the current turn. */
   interrupt(): Promise<void>;
   setModel(model: string | null): Promise<void>;
@@ -107,6 +118,8 @@ export interface ProviderDriver {
   modes: ProviderMode[];
   status(): Promise<DriverStatus>;
   models(): Promise<ModelOption[]>;
+  /** The slash commands a new session has, before one runs here. */
+  commands(): Promise<SlashCommand[]>;
   start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;
   /** Stops the provider's runtime (the app quits). */
   dispose(): Promise<void>;

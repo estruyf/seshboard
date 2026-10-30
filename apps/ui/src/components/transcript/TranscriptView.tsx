@@ -2051,7 +2051,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }
                   meter={foldFooter && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />}
                   actions={
-                    cwd && !otherProvider && (
+                    cwd && !readOnly && (
                       <Button
                         variant="quiet"
                         size="sm"
@@ -2076,7 +2076,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       {activeHost.providerUsage.amount} {activeHost.providerUsage.unit}
                     </span>
                   )}
-                  {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} />}
+                  {/* Compact sends the provider's /compact, as for Claude Code. */}
+                  {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />}
                 </div>
               )}
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}

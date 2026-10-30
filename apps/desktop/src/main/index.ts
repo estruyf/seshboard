@@ -20,7 +20,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -2636,7 +2636,9 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
     }
     if (!(await js(`${view}.querySelector('[data-session-elsewhere]')?.textContent.includes('GitHub Copilot')`))) return 'the box does not say Copilot continues it';
-    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-open-tools], [data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Ask, Tools or Claude Code's plan usage";
+    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Ask or Claude Code's plan usage";
+    // Tools lists Copilot's own MCP servers, agents and skills.
+    if (!(await js(`!!${view}.querySelector('[data-open-tools]')`))) return 'a Copilot session has no Tools';
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await shot(win, 'copilot-session.png');
 
@@ -10517,6 +10519,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: New session runs with GitHub Copilot, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
   // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.

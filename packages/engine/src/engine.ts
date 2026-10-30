@@ -6,6 +6,7 @@ import {
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
   PROVIDER_NAMES,
+  RemotePermissionMode,
   type OptionalProvider,
   isOtherProviderSession,
   otherProviderOf,
@@ -1077,7 +1078,7 @@ export function createEngine(options: EngineOptions): Engine {
   }, 3_000);
   providerLiveTimer.unref?.();
   /** Starts a session with another provider: only the folder, the message and the model apply. */
-  const createProviderSession = async (params: CreateSessionParams & { provider: OptionalProvider }) => {
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'permissionMode'> & { provider: OptionalProvider }) => {
     const folder = statSafe(params.cwd);
     if (!folder?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
     assertTrusted(params.cwd);
@@ -2260,6 +2261,22 @@ export function createEngine(options: EngineOptions): Engine {
       },
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
+      providers: () =>
+        providerSettings.allowedAdapters().flatMap((p) =>
+          p.driver
+            ? [{ id: p.id, name: PROVIDER_NAMES[p.id], modes: p.driver.modes.filter((m): m is typeof m & { value: RemotePermissionMode } => (RemotePermissionMode.options as readonly string[]).includes(m.value)) }]
+            : [],
+        ),
+      providerReady: async (id) => {
+        const driver = providerSettings.allowedAdapters().find((p) => p.id === id)?.driver;
+        if (!driver) return { problem: `${PROVIDER_NAMES[id]} can't start sessions here`, models: [] };
+        const status = await driver.status();
+        if (status.problem) return { problem: status.problem, models: [] };
+        const models = await driver.models().catch(() => []);
+        return { problem: null, models: models.map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })) };
+      },
+      createWithProvider: (root, prompt, provider, model, permissionMode, images) =>
+        createProviderSession({ cwd: root, prompt, attachments: images, model, permissionMode: permissionMode ?? 'default', provider }),
       create: (root, prompt, choice, images) =>
         createSession({
           cwd: root,
@@ -2700,6 +2717,10 @@ export function createEngine(options: EngineOptions): Engine {
       const driver = providerAdapters.find((p) => p.id === id)?.driver;
       if (!driver) return { binary: null, version: null, signedIn: false, account: null, problem: `${PROVIDER_NAMES[id]} sessions can only be read in Seshboard.` };
       return driver.status();
+    },
+    'providers.commands': async ({ id }) => {
+      const driver = providerAdapters.find((p) => p.id === id)?.driver;
+      return { commands: driver ? await driver.commands().catch(() => []) : [] };
     },
     'providers.models': async ({ id }) => {
       const driver = providerAdapters.find((p) => p.id === id)?.driver;

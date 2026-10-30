@@ -1570,7 +1570,8 @@ function LocalNewSession() {
               onTextChange={onPromptChange}
               onAttachmentsChange={setDraftAttachments}
               cwd={cwd}
-              commands={commands}
+              // Another provider's own slash commands: Claude Code's would mean nothing to it.
+              commands={runWith ? (readiness?.commands ?? []) : commands}
               placeholder={question ? 'Ask Claude anything' : savedPromptCount > 0 ? 'What should Claude work on? Type / for saved prompts.' : 'What should Claude work on?'}
               large
               frameColor={projectColor}

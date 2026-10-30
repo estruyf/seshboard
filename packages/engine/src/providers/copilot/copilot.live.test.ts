@@ -31,6 +31,7 @@ describe.skipIf(!cwd)('live GitHub Copilot session', () => {
           permission: (r) => session.respond(r.requestId, { behavior: 'deny', message: 'Not in this test.' }),
           permissionDone: () => {},
           usage: () => {},
+          model: () => {},
         },
       );
       await session.send('Reply with exactly: OK', []);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProvider } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -212,5 +212,61 @@ export function ModelModeChip({ options, session, disabled, onModel, onEffort, o
           document.body,
         )}
     </>
+  );
+}
+
+/** Claude Code, the choice Runs with starts on. */
+export const CLAUDE_CODE = 'claude';
+
+/**
+ * Who runs the new session: Claude Code, or a provider allowed on the computer (GitHub Copilot). Only when there is a
+ * provider to pick.
+ */
+export function ProviderChip({ providers, value, onPick, look }: { providers: readonly RemoteProvider[]; value: string; onPick: (provider: string) => void; look?: Look }) {
+  if (!providers.length) return null;
+  const name = providers.find((p) => p.id === value)?.name ?? 'Claude Code';
+  return (
+    <ChoiceChip
+      label="Runs with"
+      face={name}
+      selected={value}
+      look={look}
+      rowLabel="Runs with"
+      hook="provider"
+      options={[{ value: CLAUDE_CODE, label: 'Claude Code' }, ...providers.map((p) => ({ value: p.id, label: p.name }))]}
+      onPick={onPick}
+    />
+  );
+}
+
+/** Another provider's models (from `providers.ready`), with its own default first. */
+export function ProviderModelChip({ provider, models, value, onPick, look }: { provider: string; models: RemoteOptions['models']; value: string | null; onPick: (model: string | null) => void; look?: Look }) {
+  return (
+    <ChoiceChip
+      label="Model"
+      face={value ? (models.find((m) => m.value === value)?.displayName ?? value) : 'Default model'}
+      selected={value ?? DEFAULT}
+      look={look}
+      hook="model"
+      options={[{ value: DEFAULT, label: 'Default model', description: `What ${provider} picks` }, ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))]}
+      onPick={(picked) => onPick(picked === DEFAULT ? null : picked)}
+    />
+  );
+}
+
+/** Another provider's modes, in its words (Copilot's Autopilot). */
+export function ProviderModeChip({ modes, value, onPick, look }: { modes: RemoteProvider['modes']; value: RemotePermissionMode; onPick: (mode: RemotePermissionMode) => void; look?: Look }) {
+  return (
+    <ChoiceChip<RemotePermissionMode>
+      label="Permission mode"
+      face={modes.find((m) => m.value === value)?.label ?? MODE_SHORT[value]}
+      icon={<span aria-hidden className={`size-2 rounded-full ${MODE_DOT[value]}`} />}
+      selected={value}
+      look={look}
+      rowLabel="Mode"
+      hook="mode"
+      options={modes.map((m) => ({ value: m.value, label: m.label, description: m.description, dot: MODE_DOT[m.value] }))}
+      onPick={onPick}
+    />
   );
 }

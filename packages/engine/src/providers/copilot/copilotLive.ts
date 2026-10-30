@@ -15,7 +15,7 @@ export class CopilotLive {
   /** Premium requests this session has used while it ran here. */
   private spent = 0;
 
-  constructor(private readonly events: Pick<DriverEvents, 'stream' | 'messages' | 'state' | 'usage'>) {}
+  constructor(private readonly events: Pick<DriverEvents, 'stream' | 'messages' | 'state' | 'usage' | 'model'>) {}
 
   handle(event: CopilotEvent): void {
     const data = (event.data ?? {}) as Record<string, unknown>;
@@ -49,6 +49,9 @@ export class CopilotLive {
           this.spent += data.cost;
           this.events.usage({ spent: { amount: Math.round(this.spent * 100) / 100, unit: 'premium requests' } });
         }
+        break;
+      case 'session.model_change':
+        if (str(data.newModel)) this.events.model(str(data.newModel)!);
         break;
       case 'session.idle':
         this.clear();

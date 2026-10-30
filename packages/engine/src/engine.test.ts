@@ -168,7 +168,7 @@ describe('engine over a MessagePort', () => {
       abort: async () => void calls.push('abort'),
       setModel: async (model) => void calls.push(`model:${model}`),
       disconnect: async () => void calls.push('disconnect'),
-      rpc: { mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) } },
+      rpc: { mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) }, commands: { list: async () => ({ commands: [] }), invoke: async () => ({ kind: 'completed' }) }, mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} }, skills: { list: async () => ({ skills: [] }) }, agent: { list: async () => ({ agents: [] }) } },
     };
     const client: CopilotSdkClient = {
       start: async () => {},

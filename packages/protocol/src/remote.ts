@@ -189,6 +189,11 @@ export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 
 /** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
+  /**
+   * Start it with another provider (one of `RemoteOptions.providers`) instead of Claude Code: only `model` and
+   * `permissionMode` apply, both the provider's own.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).optional(),
   /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
   profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
@@ -216,6 +221,14 @@ export type RemoteProfile = z.infer<typeof RemoteProfile>;
  * New session's choices: the models, efforts and profiles, and each project's profile and defaults. A new session
  * takes the project's defaults, then its profile's, then Seshboard's own.
  */
+/** A provider New session can start with (GitHub Copilot): allowed on the computer, with its own modes. */
+export const RemoteProvider = z.object({
+  id: z.enum(OPTIONAL_PROVIDERS),
+  name: z.string(),
+  modes: z.array(z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() })),
+});
+export type RemoteProvider = z.infer<typeof RemoteProvider>;
+
 export const RemoteOptions = z.object({
   models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })),
   efforts: z.array(Effort),
@@ -228,6 +241,11 @@ export const RemoteOptions = z.object({
    * first prompt. Off, a default of Auto starts on the default model. Left out by a Seshboard from before phones knew it.
    */
   auto: z.object({ enabled: z.boolean(), allowed: z.array(AutoTierSchema) }).optional(),
+  /**
+   * The providers besides Claude Code that can start sessions there (`providers.ready` says whether one can now). Left
+   * out by a Seshboard from before providers, and empty when none is allowed.
+   */
+  providers: z.array(RemoteProvider).optional(),
   projects: z.array(
     z.object({
       id: ProjectId,
@@ -436,6 +454,14 @@ export const remoteContract = {
     'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: RemotePermissionMode }), result: z.object({}) },
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
+    /**
+     * Whether a provider can start a session now (installed and signed in with its own CLI, which says how when it
+     * isn't), and its models. Asked when New session picks it: it starts the provider's runtime on the computer.
+     */
+    'providers.ready': {
+      params: z.object({ id: z.enum(OPTIONAL_PROVIDERS) }),
+      result: z.object({ problem: z.string().nullable(), models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })) }),
+    },
     /**
      * Plan usage of every Claude profile, the default first. From the computer's last check when it is less than a
      * minute old; `refresh` checks now. `usage.changed` follows each new check.

@@ -3,6 +3,8 @@ import type { ImageAttachment, ModelOption, PermissionDecision, PermissionMode, 
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { CopilotLive } from './copilotLive.ts';
+import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
+import { copilotCapabilities, type CopilotMcpServer, type CopilotSkill } from './copilotCapabilities.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
 
 /** The subset of the Copilot SDK's `CopilotSession` the driver uses (tests fake it). */
@@ -11,8 +13,19 @@ export interface CopilotSdkSession {
   on(handler: (event: CopilotEvent) => void): () => void;
   send(options: { prompt: string; attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }>; mode?: 'enqueue' | 'immediate' }): Promise<string>;
   abort(): Promise<void>;
-  /** The session's RPC: its agent mode (interactive, plan, autopilot). */
-  readonly rpc: { mode: { set(params: { mode: CopilotAgentMode }): Promise<unknown> } };
+  /** The session's RPC: its agent mode (interactive, plan, autopilot) and its slash commands. */
+  readonly rpc: {
+    mode: { set(params: { mode: CopilotAgentMode }): Promise<unknown> };
+    commands: { list(params: Record<string, never>): Promise<{ commands: CopilotCommand[] }>; invoke(params: { name: string; input?: string }): Promise<Record<string, unknown>> };
+    mcp: {
+      list(): Promise<{ servers: CopilotMcpServer[] }>;
+      enable(params: { serverName: string }): Promise<unknown>;
+      disable(params: { serverName: string }): Promise<unknown>;
+      restartServer(params: { serverName: string }): Promise<unknown>;
+    };
+    skills: { list(): Promise<{ skills: CopilotSkill[] }> };
+    agent: { list(): Promise<{ agents: Array<{ name: string; description?: string; model?: string }> }> };
+  };
   setModel(model: string): Promise<void>;
   disconnect(): Promise<void>;
 }
@@ -37,6 +50,8 @@ export interface CopilotSdkClient {
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
   readonly cliProcess?: { pid?: number } | null;
+  /** The runtime's RPC: the slash commands a new session has. */
+  readonly rpc?: { commands?: { list(): Promise<{ commands: CopilotCommand[] }> } };
 }
 
 /** Makes the client for the user's `copilot` (the real one loads the SDK; tests pass a fake). */
@@ -127,6 +142,11 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
       }
     },
 
+    async commands() {
+      const listed = await (await connect()).rpc?.commands?.list().catch(() => null);
+      return commandList(listed?.commands ?? []);
+    },
+
     async models(): Promise<ModelOption[]> {
       const models = await (await connect()).listModels();
       return models.map((m) => ({ value: m.id, displayName: m.name, description: '', supportsEffort: m.capabilities?.supports?.reasoningEffort === true }));
@@ -164,9 +184,47 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
         }
         pending.clear();
       };
+      /** The session's commands, read once (they change only with plugins and skills). */
+      let commands: Promise<CopilotCommand[]> | undefined;
+      const sessionCommands = () => (commands ??= session.rpc.commands.list({}).then((r) => r.commands, () => []));
+      /** A line in the conversation that isn't Copilot's reply: what you typed, or what a command answered. */
+      const line = (role: 'user' | 'assistant', text: string) => ({
+        type: role,
+        uuid: `copilot-command-${randomUUID()}`,
+        parent_tool_use_id: null,
+        timestamp: new Date().toISOString(),
+        message: { role, content: [{ type: 'text', text }] },
+      });
+      /** Runs one of Copilot's slash commands: a prompt it makes goes as a turn; words it answers show in the conversation. */
+      const runCommand = async (text: string, name: string, input: string): Promise<string> => {
+        const result = await session.rpc.commands.invoke({ name, ...(input ? { input } : {}) });
+        const outcome = commandOutcome(name, result);
+        if (outcome.model) await session.setModel(outcome.model);
+        if (outcome.prompt) return session.send({ prompt: outcome.prompt });
+        events.messages([line('user', text), ...(outcome.note ? [line('assistant', outcome.note)] : [])]);
+        // No turn: the session is ready for the next message.
+        events.state('idle');
+        return 'command';
+      };
       return {
         sessionId: session.sessionId,
+        commands: async () => commandList(await sessionCommands()),
+        async capabilities() {
+          // Each list on its own: one Copilot can't give leaves the others.
+          const [mcp, skills, agents] = await Promise.all([
+            session.rpc.mcp.list().then((r) => r.servers, () => []),
+            session.rpc.skills.list().then((r) => r.skills, () => []),
+            session.rpc.agent.list().then((r) => r.agents, () => []),
+          ]);
+          return copilotCapabilities({ mcp, skills, agents });
+        },
+        async mcp(server, action) {
+          const params = { serverName: server };
+          await (action === 'enable' ? session.rpc.mcp.enable(params) : action === 'disable' ? session.rpc.mcp.disable(params) : session.rpc.mcp.restartServer(params));
+        },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
+          const command = !steer && !attachments.length ? parseCommand(text, await sessionCommands()) : null;
+          if (command) return runCommand(text, command.name, command.input);
           const blobs = attachments.map((a) => ({ type: 'blob' as const, data: a.data, mimeType: a.mediaType, ...(a.name ? { displayName: a.name } : {}) }));
           return session.send({ prompt: text, ...(blobs.length ? { attachments: blobs } : {}), ...(steer ? { mode: 'immediate' as const } : {}) });
         },

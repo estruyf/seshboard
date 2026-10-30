@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   BUILTIN_PROFILE_ID,
   RpcError,
+  type Capabilities,
   type HostState,
   type ImageAttachment,
   type LogLevel,
@@ -12,6 +13,7 @@ import {
   type QueuedMessage,
   type SendMode,
   type SessionHostInfo,
+  type SlashCommand,
   type StreamDelta,
 } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -164,6 +166,26 @@ export class ProviderHosts {
     await host.session.setMode(mode);
     this.deps.settings?.set(sessionId, { permissionMode: mode });
     this.update(host, { permissionMode: mode });
+  }
+
+  /** The provider's slash commands for a session: its own once it runs here, else what a new one has. */
+  async commands(sessionId: string): Promise<SlashCommand[]> {
+    const host = this.hosts.get(sessionId);
+    if (host?.session) return host.session.commands().catch(() => []);
+    return this.adapterOf(this.deps.providerOf(sessionId))?.driver?.commands().catch(() => []) ?? [];
+  }
+
+  /** What a session can use (Tools): its own lists once it runs here; before that, only its commands, read-only. */
+  async capabilities(sessionId: string): Promise<Capabilities> {
+    const host = this.hosts.get(sessionId);
+    if (host?.session) return host.session.capabilities();
+    return { live: false, mcp: [], agents: [], commands: await this.commands(sessionId), plugins: [] };
+  }
+
+  async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
+    const host = this.hosts.get(sessionId);
+    if (!host?.session) throw new RpcError('NOT_RUNNING', 'This session is not running in Seshboard');
+    await host.session.mcp(server, action);
   }
 
   /** Answers a permission request of a provider's session. False when the request isn't one of theirs. */
@@ -385,6 +407,9 @@ export class ProviderHosts {
         }
         if (usage.spent) change.providerUsage = usage.spent;
         this.update(host, change);
+      },
+      model: (model: string) => {
+        if (host.info.model !== model) this.update(host, { model });
       },
     };
   }
