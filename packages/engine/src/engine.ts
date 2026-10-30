@@ -6,6 +6,7 @@ import {
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
   COMPANION_DIR,
+  REMOTE_LOG_FILE,
   contract,
   isSameOrInside,
   RpcError,
@@ -2125,6 +2126,7 @@ export function createEngine(options: EngineOptions): Engine {
       ...(options.remote.appUrl ? { appUrl: options.remote.appUrl } : {}),
       previewApp: options.remote.previewApp ?? false,
       filesDir: join(options.dataDir, 'remote-files'),
+      logFile: join(options.dataDir, REMOTE_LOG_FILE),
       identity: options.remote.identity,
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
@@ -3712,6 +3714,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'remote.revoke': ({ deviceId }) => {
       requireRemote().revoke(deviceId);
+      return {};
+    },
+    'remote.unblock': () => {
+      remote?.unblock();
       return {};
     },
     'remote.rename': ({ deviceId, name }) => {

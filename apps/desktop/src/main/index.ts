@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -1167,6 +1167,13 @@ ipcMain.handle(IpcChannel.saveImage, async (event, request: unknown) => {
 
 ipcMain.on(IpcChannel.showSavedImage, (_event, path: unknown) => {
   if (typeof path === 'string' && savedImages.has(path)) shell.showItemInFolder(path);
+});
+
+// Settings › Remote › Advanced: the engine writes it in the data folder, which is also main's userData.
+ipcMain.on(IpcChannel.showRemoteLog, () => {
+  const file = join(app.getPath('userData'), REMOTE_LOG_FILE);
+  if (existsSync(file)) shell.showItemInFolder(file);
+  else void shell.openPath(app.getPath('userData'));
 });
 
 const readyReports: TimedReport[] = [];
@@ -3745,7 +3752,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-change-connection]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-remote-connection] [role=radio]').length === 4", 3_000))) return 'Change… did not open the four choices';
   if (await js("document.querySelector('[data-remote-advanced-toggle]').getAttribute('aria-expanded') === 'false'")) await click('[data-remote-advanced-toggle]');
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]')", 3_000))) return 'Advanced did not show the port and the security note';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]') && document.querySelector('[data-remote-log] [data-remote-show-log]')", 3_000))) return 'Advanced did not show the port, the security note and Show log';
   await shot(win, 'remote-open.png');
 
   await click('[data-remote-device="smoke-device"] [data-remote-rename]');
@@ -3762,7 +3769,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-remote-enabled]');
   if (!(await waitInPage(win, "document.querySelector('[data-remote-off-card]')", 5_000))) return 'turned off with a paired device, the page did not say Remote is off';
-  return `ok: three steps, status card "${title}", Change… and Advanced opened, device renamed, Revoke asked and Escape cancelled, turned off`;
+  return `ok: three steps, status card "${title}", Change… and Advanced (with Show log) opened, device renamed, Revoke asked and Escape cancelled, turned off`;
 }
 
 /**
@@ -7923,7 +7930,26 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
       return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight + 1, content, scrollHeight: l.scrollHeight, clientHeight: l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
     })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; content: number; scrollHeight: number; clientHeight: number; dockTop: number; listBottom: number; dpr: number };
     if (!docked.outside || !docked.below) return `the closed Archived header is not docked under the list (${JSON.stringify(docked)})`;
-    if (docked.fits && docked.scrolls) return `a list that fits still scrolls (${JSON.stringify(docked)})`;
+    if (docked.fits && docked.scrolls) {
+      // Seen only on Windows runners (#240): say what reaches below the rows (an element, a ::before/::after, a
+      // transform beyond the row's own place, or a row's content taller than the row), so the report names it.
+      const below = (await js(`(() => {
+        const l = ${list}, inner = l.firstElementChild, top = inner.getBoundingClientRect().top, limit = inner.offsetHeight;
+        const name = (el) => el.tagName.toLowerCase() + Object.keys(el.dataset).map((k) => '[' + k + ']').join('') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 6).join('.') : '');
+        const found = [];
+        for (const el of l.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect(), cs = getComputedStyle(el), row = el.closest('[data-list-row]');
+          if (r.bottom - top > limit + 0.5) found.push(name(el) + ' to ' + Math.round(r.bottom - top) + (cs.transform !== 'none' ? ' ' + cs.transform : '') + (row && row !== el ? ' in row ' + row.getAttribute('data-list-row') : ''));
+          for (const p of ['::before', '::after']) {
+            const s = getComputedStyle(el, p);
+            if (s.content !== 'none' && s.content !== 'normal' && r.bottom - top + Math.max(0, parseFloat(s.height) || 0) > limit + 0.5) found.push(name(el) + p + ' ' + s.position + ' ' + s.height + ' bottom ' + s.bottom);
+          }
+        }
+        return { limit, rows: l.querySelectorAll('[data-list-row]').length, found: found.slice(0, 12) };
+      })()`)) as { limit: number; rows: number; found: string[] };
+      await shot(win, 'archived-dock-scrolls.png');
+      return `a list that fits still scrolls (${JSON.stringify(docked)}; below the rows: ${JSON.stringify(below)})`;
+    }
     const sidebarShot = async (name: string) => {
       await settle(win);
       const rect = (await js("(() => { const r = document.querySelector('[data-sidebar-open]').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })()")) as Electron.Rectangle;
@@ -8539,6 +8565,79 @@ async function runTerminalRendererStep(win: BrowserWindow): Promise<string> {
       await waitInPage(win, `${tabs}.length < ${count}`, 3_000);
     }
     // Leave the next steps a closed panel.
+    await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
+  }
+}
+
+/**
+ * Letters keep their normal spacing in a terminal drawn as DOM text (#201). The tab runs without WebGL, prints a
+ * line, hides behind another tab while the zoom changes (xterm sets its rows' spacing up again then, and every
+ * letter measures 0px while hidden), and shows again: its rows' spacing and the line's width must fit its cells.
+ */
+async function runTerminalLetterSpacingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const tabs = "document.querySelectorAll('[data-terminal-panel] [role=tab]')";
+  const zoom = win.webContents.getZoomFactor();
+  let baseline = -1;
+  try {
+    if (!(await js("!!document.querySelector('[data-terminal-panel]')"))) await js("document.querySelector('[data-toggle-terminal]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-terminal-panel] [data-terminal] textarea')`, 5_000))) return 'failed: the panel did not open with a terminal';
+    baseline = (await js(`${tabs}.length`)) as number;
+    // Without WebGL2 the terminal draws its rows as DOM text, the renderer that spaces each letter.
+    await js("window.__smokeGetContext = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return kind === 'webgl2' ? null : window.__smokeGetContext.call(this, kind, ...rest); }; true");
+    await js("document.querySelector('[data-terminal-panel] [data-new-terminal]').click()");
+    if (!(await waitInPage(win, `${tabs}.length === ${baseline + 1}`, 5_000))) return 'failed: the tab did not open';
+    const host = "document.querySelector('[data-terminal-panel] [role=tabpanel]:not(.hidden) [data-terminal]')";
+    if (!(await waitInPage(win, `${host}?.dataset.renderer === 'dom' && ${host}.querySelector('textarea')`, 5_000))) return `failed: the tab draws with "${String(await js(`${host}?.dataset.renderer`))}", not the DOM renderer`;
+    const id = (await js(`${host}.dataset.terminal`)) as string;
+    const terminal = `document.querySelector('[data-terminal=${JSON.stringify(id)}]')`;
+    await js(`${terminal}.querySelector('textarea').focus()`);
+    await win.webContents.insertText('echo "ready in 854 ms"');
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    // The printed line (the command's own row holds the text too, in quotes).
+    const spacing = `(() => {
+      const host = ${terminal};
+      const rows = host?.querySelector('.xterm-rows');
+      if (!rows || !Number(host.dataset.cols)) return null;
+      const row = [...rows.children].find((r) => r.textContent.trim() === 'ready in 854 ms');
+      if (!row) return null;
+      const cell = host.querySelector('.xterm-screen').getBoundingClientRect().width / Number(host.dataset.cols);
+      let width = 0, chars = 0;
+      for (const span of row.querySelectorAll('span')) { if (chars >= 15) break; width += span.getBoundingClientRect().width; chars += span.textContent.length; }
+      return { cell, rows: parseFloat(rows.style.letterSpacing) || 0, ratio: width / (chars * cell), respaced: Number(host.dataset.respaced ?? 0) };
+    })()`;
+    if (!(await waitInPage(win, spacing, 10_000))) return 'failed: the shell did not print the line';
+    const before = (await js(spacing)) as { cell: number; rows: number; ratio: number; respaced: number };
+
+    // Hidden behind another tab, the zoom changes and back.
+    await js("document.querySelector('[data-terminal-panel] [data-new-terminal]').click()");
+    if (!(await waitInPage(win, `${tabs}.length === ${baseline + 2} && !${terminal}.offsetParent`, 5_000))) return 'failed: the second tab did not open over the first';
+    const ratio = (await js('devicePixelRatio')) as number;
+    win.webContents.setZoomFactor(zoom * 1.25);
+    if (!(await waitInPage(win, `devicePixelRatio !== ${ratio}`, 3_000))) return 'failed: the zoom did not change';
+    win.webContents.setZoomFactor(zoom);
+    if (!(await waitInPage(win, `devicePixelRatio === ${ratio}`, 3_000))) return 'failed: the zoom did not change back';
+
+    await js(`${tabs}[${baseline}].click()`);
+    const fits = `(() => { const s = ${spacing}; return !!s && s.rows < s.cell / 2 && Math.abs(s.ratio - 1) < 0.03; })()`;
+    if (!(await waitInPage(win, fits, 5_000))) {
+      const after = (await js(spacing)) as { cell: number; rows: number; ratio: number } | null;
+      return after
+        ? `failed: shown again, the rows are spaced ${after.rows.toFixed(2)}px (a cell is ${after.cell.toFixed(2)}px) and the line is ${after.ratio.toFixed(2)}× its cells`
+        : 'failed: the line is gone after the tab showed again';
+    }
+    const after = (await js(spacing)) as { respaced: number };
+    return `ok: the line fits its cells (${before.ratio.toFixed(2)}× before, the same after hiding through a zoom change; spaced again ${after.respaced - before.respaced} time(s))`;
+  } finally {
+    win.webContents.setZoomFactor(zoom);
+    await js('if (window.__smokeGetContext) { HTMLCanvasElement.prototype.getContext = window.__smokeGetContext; delete window.__smokeGetContext; } true');
+    // Close the tabs this step opened, back to what was there (closing the last one hides the panel).
+    for (let count = (await js(`${tabs}.length`)) as number; baseline >= 0 && count > baseline; count--) {
+      await js("document.querySelector('[data-terminal-panel] [role=tab][aria-selected=true] + [data-terminal-tab-close]')?.click()");
+      await waitInPage(win, `${tabs}.length < ${count}`, 3_000);
+    }
     await js("document.querySelector('[data-terminal-panel]') && document.querySelector('[data-toggle-terminal]')?.click()");
   }
 }
@@ -10231,6 +10330,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('⌘K in the terminal', () => runTerminalClearStep(win));
   await step('terminal layout', () => runTerminalLayoutStep(win));
   await step('terminal renderer: WebGL only for the tab on screen, with more tabs than contexts', () => runTerminalRendererStep(win), { timeoutMs: 60_000 });
+  await step('terminal letters: normal spacing without WebGL after the tab hides through a zoom change', () => runTerminalLetterSpacingStep(win));
   await step("the window's own terminal, outside a session", () => runAppTerminalStep(win));
   await step('a session in its own window: panel buttons, Ask, the terminal key, the palette and shortcuts sheet, a narrow window, Move back, panels going with the session', () => runPopoutStep(win), { timeoutMs: 120_000 });
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));

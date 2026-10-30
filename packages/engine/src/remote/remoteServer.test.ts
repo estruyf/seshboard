@@ -7,7 +7,7 @@ import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket
 import { openCacheDatabase } from '../db/database.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_MAX_FAILURES, type PairingState } from './pairing.ts';
-import { Backoff, clientAddress, CLOSE, decodePath, deviceKind, RemoteServer } from './remoteServer.ts';
+import { Backoff, clientAddress, CLOSE, decodePath, deviceKind, RemoteServer, unknownKey } from './remoteServer.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 
 const cleanups: Array<() => void> = [];
@@ -20,7 +20,7 @@ const noRun = (): never => {
   throw new RpcError('NOT_FOUND', 'No such run');
 };
 
-async function setup(options: { backoff?: Backoff } = {}) {
+async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const identity = generateKeyPair();
@@ -29,6 +29,8 @@ async function setup(options: { backoff?: Backoff } = {}) {
   let onRequest: (state: PairingState) => void = () => {};
   /** The sessions a phone interrupted: what reached a handler. */
   const interrupted: string[] = [];
+  /** What the server logged, without the level. */
+  const logs: string[] = [];
   const pairing = new Pairing((state) => {
     states.push(state);
     if (state.request) onRequest(state);
@@ -41,7 +43,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     computerName: () => "Elio's iMac",
     origins: () => [APP_ORIGIN],
     ...options,
-    log: () => {},
+    log: (_level, message) => void logs.push(message),
     handlers: (device) => ({
       'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
       'projects.list': () => ({ projects: [] }),
@@ -108,7 +110,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     cache.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  return { server, devices, pairing, identity, port, states, interrupted, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
+  return { server, devices, pairing, identity, port, states, interrupted, logs, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
 }
 
 async function pairPhone(env: Awaited<ReturnType<typeof setup>>, name = "Elio's iPhone") {
@@ -212,6 +214,71 @@ describe('Remote server', () => {
     await second.closed;
   });
 
+  it('logs who it refused and why, naming a device that was revoked, and who connected', async () => {
+    const env = await setup();
+    const stranger = generateKeyPair();
+    await handshake(env.port, 'connect', stranger, env.identity.publicKey);
+    const { phone, deviceId } = await pairPhone(env);
+    const connected = await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await client<RemoteContract>(connected.frames, connected.session!).call('hello', { client: { version: '1' } });
+    connected.ws.close();
+    await connected.closed;
+    env.devices.revoke(deviceId);
+    await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await expect(open(env.port, 'https://evil.example')).rejects.toThrow('HTTP 403');
+
+    const lines = env.logs.filter((line) => !line.startsWith('Remote: paired'));
+    expect(lines[0]).toBe(`Remote: refused 127.0.0.1 (a browser at ${APP_ORIGIN}): ${unknownKey(stranger.publicKey, null)}`);
+    expect(lines[0]).toContain('was never paired here');
+    // The successful connection forgets the stranger's failure.
+    expect(lines[1]).toBe('Remote: 127.0.0.1 got in after 1 refused attempt');
+    expect(lines[2]).toBe("Remote: Elio's iPhone connected from 127.0.0.1");
+    expect(lines[3]).toMatch(/^Remote: Elio's iPhone disconnected \(\d+\) after \d+ s$/);
+    expect(lines[4]).toMatch(/: device key .{10}… is Elio's iPhone \(a browser, paired \d{4}-\d\d-\d\d\), revoked \d{4}-\d\d-\d\d \d\d:\d\d UTC$/);
+    expect(lines[5]).toBe('Remote: refused a socket from 127.0.0.1: origin "https://evil.example" isn\'t the remote app\'s');
+  });
+
+  it('blocks an address after refused attempts, lets its paired devices in meanwhile, and Unblock lets everyone in', async () => {
+    let changes = 0;
+    const env = await setup({ onBlocked: () => changes++ });
+    const { phone } = await pairPhone(env);
+    for (let i = 0; i < 3; i++) await handshake(env.port, 'connect', generateKeyPair(), env.identity.publicKey);
+    expect(env.server.blocked()).toMatchObject([{ address: '127.0.0.1', attempts: 3 }]);
+    expect(changes).toBe(1);
+    expect(env.logs).toContain('Remote: 127.0.0.1 waits 1 s before it may try again, after 3 refused attempts in a row');
+
+    // A stranger and a pairing from the waiting address are turned away, without counting, and the log says so once.
+    expect((await handshake(env.port, 'connect', generateKeyPair(), env.identity.publicKey)).code).toBe(CLOSE.unknownDevice);
+    const { secret } = env.pairing.start();
+    expect((await handshake(env.port, 'pair', generateKeyPair(), env.identity.publicKey, pskFromSecret(secret))).code).toBe(CLOSE.tooMany);
+    expect(env.server.blocked()).toMatchObject([{ attempts: 3 }]);
+    expect(env.logs.filter((line) => line.includes("so this one isn't counted"))).toHaveLength(1);
+    // The pairing secret wasn't tried: it still works once the address may pair.
+    expect(env.pairing.state().offer).not.toBeNull();
+
+    // A paired phone behind the same address proves its key and gets in; the others' count stays.
+    const waiting = await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await client<RemoteContract>(waiting.frames, waiting.session!).call('hello', { client: { version: '1' } });
+    expect(env.server.list()).toHaveLength(1);
+    expect(env.logs).toContain("Remote: Elio's iPhone connected from 127.0.0.1, which waits after refused attempts");
+    expect(env.server.blocked()).toMatchObject([{ attempts: 3 }]);
+
+    env.server.unblock();
+    expect(env.server.blocked()).toEqual([]);
+    expect(env.logs.at(-1)).toBe('Remote: unblocked every address (Settings › Remote)');
+    const paired = await pairPhone(env, 'Second phone');
+    expect(env.devices.list().map((d) => d.id)).toContain(paired.deviceId);
+  });
+
+  it('tells a device paired before the Remote key changed to pair again, so it stops', async () => {
+    const env = await setup();
+    const { phone } = await pairPhone(env);
+    // The phone kept the computer's old key: its first message was made for that one.
+    const stale = await handshake(env.port, 'connect', phone, generateKeyPair().publicKey);
+    expect(stale.code).toBe(CLOSE.unknownDevice);
+    expect(env.logs.at(-1)).toMatch(/^Remote: refused 127\.0\.0\.1 \(a browser at https:\/\/app\.example\): its handshake didn't decrypt \(.+\): a device paired before this computer's Remote key changed has to pair again$/);
+  });
+
   it('refuses another origin and anything but a hello, and serves no pages', async () => {
     const env = await setup();
     await expect(open(env.port, 'https://evil.example')).rejects.toThrow('HTTP 403');
@@ -254,8 +321,27 @@ describe('the backoff', () => {
     for (let i = 0; i < 20; i++) backoff.failed('a');
     now += 5 * 60_000 - 1;
     expect(backoff.allowed('a')).toBe(false);
-    backoff.succeeded('a');
+    expect(backoff.succeeded('a')).toBe(23);
     expect(backoff.allowed('a')).toBe(true);
+  });
+
+  it('lists the addresses waiting now, says the first refusal of each wait, and clears', () => {
+    let now = 0;
+    const backoff = new Backoff(() => now);
+    for (let i = 0; i < 2; i++) expect(backoff.failed('a')).toEqual({ count: i + 1, wait: 0 });
+    expect(backoff.blocked()).toEqual([]);
+    expect(backoff.failed('a')).toEqual({ count: 3, wait: 1_000 });
+    expect(backoff.blocked()).toEqual([{ address: 'a', attempts: 3, until: 1_000 }]);
+    expect(backoff.firstRefusal('a')).toBe(true);
+    expect(backoff.firstRefusal('a')).toBe(false);
+    expect(backoff.firstRefusal('b')).toBe(false);
+    now = 1_000;
+    expect(backoff.blocked()).toEqual([]);
+    backoff.failed('a');
+    expect(backoff.firstRefusal('a')).toBe(true);
+    backoff.clear();
+    expect(backoff.allowed('a')).toBe(true);
+    expect(backoff.succeeded('a')).toBe(0);
   });
 });
 

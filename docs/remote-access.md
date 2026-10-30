@@ -67,6 +67,14 @@ Without the desktop app, `node --experimental-transform-types scripts/remote-dem
 
 The backoff's client address is what the tunnel saw: Cloudflare's `CF-Connecting-IP` behind a Cloudflare tunnel (it overwrites it), else the last `X-Forwarded-For` entry (the one the tunnel added). Behind a tunnel every socket comes from `127.0.0.1`.
 
+Behind one network every device has the same address, so a device that keeps failing (a revoked pairing in a second copy of the remote app, a computer paired before this one's Remote key changed) makes its address wait, and the count only goes back to zero when a handshake from the address works. A waiting address still gets its socket, but only a reconnect whose first message shows a paired device's key gets in (the `IK` message proves the key); a pairing is closed with 4429, and anything else is refused as usual without being counted. A paired device that gets in that way doesn't reset the count: it proved its own key, not the others'. Settings › Remote shows the addresses waiting now (`RemoteStatus.blocked`, from `Backoff.blocked`) with **Unblock** (`remote.unblock`), which clears them as a restart did.
+
+A reconnect whose first message doesn't decrypt was made for another engine key: a device paired before this computer's identity changed (the rename to Seshboard made a new one where the old keychain item couldn't be read). The engine closes it with 4403, pair again, which the remote app and Seshboard on another computer stop on; before, 4400 made them retry forever and kept their address waiting. Both clients also treat a 4400 during a reconnect's handshake (from an older engine), or an answer that doesn't decrypt, as 4403.
+
+### The log
+
+Remote writes `remote.log` in the data folder (`remoteLog.ts`, `REMOTE_LOG_FILE`; moved to `remote.log.1` past 1 MB), next to the windows' log: Remote turning on and off, every refused socket with its reason, address, origin and kind of device (a refused key names the device it was paired as, and when it was revoked), each wait starting, the first socket turned away during it, the address getting in again, and each connection and disconnection with its close code. A socket that sends nothing within five seconds is logged but not counted. **Show in Finder** in Settings › Remote › Advanced opens it (`showRemoteLog` in main, a fixed path).
+
 ## The channel
 
 The encryption is done in the app with audited pure-JS primitives (`@noble/curves` X25519, `@noble/ciphers` ChaCha20-Poly1305, `@noble/hashes` SHA-256), shared by the engine and the remote app in `packages/protocol/src/remoteNoise.ts`. It doesn't depend on TLS, so it holds whatever the tunnel does. A test checks both handshakes against the cacophony Noise test vectors byte for byte.
@@ -110,7 +118,7 @@ A link can also be pasted in (`LinkEntry`, `pastedLink`): on the welcome screen,
 
 The engine reads the phone's static key from the first message and refuses an unknown, revoked or expired one before writing anything back (close code 4403: pair again). The phone counts as connected once its first frame decrypts, which proves it holds the device key; the engine checks the key again then, so a phone revoked during its handshake is refused too.
 
-WebSocket close codes: 4400 refused, 4403 unknown device, 4410 pairing closed, 4426 another protocol version.
+WebSocket close codes: 4400 refused, 4403 unknown device (or a key for another engine identity: pair again), 4410 pairing closed, 4426 another protocol version, 4429 a pairing from an address that waits.
 
 ## The code
 
@@ -198,7 +206,7 @@ The page is laid out for daily use: the switch on the title's row, a status card
 
 Seshboard on another computer pairs with Remote as a phone does, and shows its sessions next to the local ones. The engine is the client (`packages/engine/src/remote/computerLink.ts`): the same pairing link (pasted, not scanned), the same `Noise_IKpsk2` and `Noise_IK` handshakes, framing and remote contract, from Node with `ws`. Nothing about what a paired device may do changes: the other computer is one more device in Settings › Remote, limited to `remoteContract`, and **Revoke** cuts it off.
 
-- **One device key per install**, made the first time it pairs, kept like the identity key (`safeStorage`, `remote-device.bin`; `apps/desktop/src/main/remoteIdentity.ts`). `remote_computers` (migration v28) has the other computers' public keys, addresses and the ids they gave this one, never a secret.
+- **One device key per install**, made the first time it pairs, kept like the identity key (`safeStorage`, `remote-device.bin`; `apps/desktop/src/main/remoteIdentity.ts`). `remote_computers` (migration v28) has the other computers' public keys, addresses and the ids they gave this one, never a secret. Entries are kept by the other computer's key, so pairing one again after its Remote key changed would add a second entry; a new pairing replaces the entries at the same address (`sameAddress`, the origin) instead, whose old key would only be refused there.
 - **Origin.** It sends `REMOTE_DESKTOP_ORIGIN`, which the server accepts next to the remote app's. A browser page can't send it, so it doesn't widen what a website can reach; it isn't a lock either (any program can send any `Origin`). The handshake is. The server stores a device paired from that origin with `kind: 'computer'`, for its icon in Settings › Remote.
 - **Connection.** One per paired computer, kept by the engine: a ping every 20 seconds notices a computer that went to sleep, and it reconnects with backoff up to a minute, without giving up. Close code 4403 stops it (`unpaired`).
 - **The windows** reach a computer only through `computers.call`, with `COMPUTER_METHODS`: the remote contract without `hello`, push and `device.visibility`. The other computer validates the params; the results are shown as text (`components/computers/RemoteText.tsx`: no file links, no Run, no images loaded). Its events come as `computers.event`.

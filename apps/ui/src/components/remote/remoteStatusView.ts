@@ -17,7 +17,9 @@ export type StatusAction =
   | { kind: 'change-connection' }
   | { kind: 'retry' }
   | { kind: 'details' }
-  | { kind: 'reconnect' };
+  | { kind: 'reconnect' }
+  | { kind: 'unblock' }
+  | { kind: 'show-log' };
 
 export interface StatusView {
   tone: StatusTone;
@@ -101,6 +103,28 @@ export function remoteStatusView(status: RemoteStatus, now = Date.now()): Status
       address: status.address,
       details: null,
       actions: [{ action: { kind: 'reconnect' }, label: 'Reconnect a paired device', primary: true }],
+    };
+  }
+
+  if (status.blocked.length) {
+    // Before the devices: pairing from that network waits (paired devices still get in), and Unblock is the fix.
+    const minutes = Math.max(1, Math.ceil((Math.max(...status.blocked.map((b) => b.until)) - now) / 60_000));
+    const wait = `${minutes} more ${minutes === 1 ? 'minute' : 'minutes'}`;
+    const [first] = status.blocked;
+    const detail =
+      status.blocked.length === 1 && first
+        ? `${first.address} had ${first.attempts} refused attempts in a row and waits ${wait}. Paired devices still connect; pairing a new one waits.`
+        : `${status.blocked.length} addresses had refused attempts in a row and wait up to ${wait}. Paired devices still connect; pairing a new one waits.`;
+    return {
+      tone: 'caution',
+      title: 'Turning connections away',
+      detail,
+      address: status.address,
+      details: null,
+      actions: [
+        { action: { kind: 'unblock' }, label: 'Unblock', primary: true },
+        { action: { kind: 'show-log' }, label: 'Show log' },
+      ],
     };
   }
 

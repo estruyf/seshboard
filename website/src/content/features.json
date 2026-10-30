@@ -1527,6 +1527,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:remote-log-unblock",
+      "name": "Settings › Remote: Turning connections away with Unblock, and Remote's log (Advanced, Show in Finder)",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-reconnect",
       "name": "Settings › Remote: Reconnect a paired device after the address changed",
       "page": "remote-access"

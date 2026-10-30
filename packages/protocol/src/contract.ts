@@ -1195,6 +1195,8 @@ export const contract = {
     'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
     /** Revoke: the device can't connect any more, and its open connections close at once. */
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Lets addresses that wait after refused handshakes try again now (Settings › Remote, Unblock). */
+    'remote.unblock': { params: z.object({}), result: z.object({}) },
     /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
     'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
     /** The theme the app shows now, resolved, for paired phones that look like this computer (`theme.get` there). */
