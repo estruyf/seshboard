@@ -4,9 +4,42 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ## [Unreleased]
 
+### Added
+
+- **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another and a pulse of light runs along the cables, in whichever app icon you picked. With Reduce motion on, the jacks stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
+- **Keep awake until done.** Turn it on for a session in its **⋯** menu, or with **Keep awake until done** in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike the Keep awake setting, it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop. ([#241](https://github.com/estruyf/seshboard/issues/241))
+- **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.
+
+- **Remote keeps a log, and says when it turns a device away.** Remote now writes who connected, who it refused and why (for example a device you revoked that still tries), and when it makes an address wait, to `remote.log`. Open it from **Settings › Remote › Advanced**. When an address waits after refused attempts, the status card says so, and **Unblock** lets everyone on it in again without restarting Seshboard.
+
 ### Fixed
 
+- **Keep awake keeps Seshboard itself awake on a Mac.** With the display off, macOS could still slow Seshboard down while Keep awake held sleep off, which can drop phones connected through Remote. Keep awake now keeps Seshboard out of App Nap too.
 - **No more ghost agents.** An agent that Claude tried to send a message to after it finished, and that could not be woken up again (for example because its worktree was removed), no longer stays under Active in the Agents panel.
+- **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
+- **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
+- **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
+- **Ask about this session only reads.** Claude could get git to write a file from an Ask by putting the option in quotes. That is refused now, like any other change.
+- **Importing a memory named "memory" no longer hangs.** A memory whose name became `memory` (a `# Memory` heading, or one in another script) made the import never finish and the app stop responding. It is saved as `memory-2.md` now.
+- **Allow shows what it approves.** On the phone, a permission prompt shows the whole command, every line of it, instead of only the first. A prompt that doesn't fit the one line of a card on Home, or of a notification, opens its session to be answered there. A request too long to show in full says so on the computer and on the phone.
+- **A cloned repository asks before its first session, however you start it.** The question about the hooks and MCP servers a cloned repository brings came only from Start in the clone form. Now nothing of Claude Code runs in the repository until it is answered, also when you start from the palette or another window.
+- **A repository can't freeze Seshboard with a linked file.** Its `.seshboard.json`, `package.json` or Claude Code settings are read only when they are small, ordinary files. Saving shared settings never copies a file from elsewhere into the repository.
+- **On Windows, a repository's own `git.exe` or `gh.exe` never runs.** Seshboard now always starts the git and GitHub CLI installed on your PATH.
+- **On Windows, a network path in a reply or an HTML preview no longer sends your login.** Seshboard only looks at files on this computer's drives, so a `\\server\share` path can't make it connect to another computer.
+- **A large HTML file previews at once.** A page with many unclosed tags no longer takes minutes to open, an image named many times counts toward the page's limit each time, and the preview's security policy always applies.
+- **Nested Markdown blocks no longer freeze the window.** A Markdown block inside a Markdown block's preview shows as its source.
+- **Large rule files load at once.** A rule or memory file whose frontmatter has a very long list no longer takes seconds to read.
+- **A mod draws only inside its own frame.** A box a mod places freely stays in its band or pane, and never covers the line that names the mod.
+- **On Windows, `seshboard` with a folder name that has `&` in it** no longer runs part of the name as a command when the folder doesn't exist.
+- **A pull request's base branch can't make git write a file.** A base starting with `-` in a session's `gh pr create` is ignored when Seshboard lists the commits of a linked session.
+- **Approving a shared action approves what you saw.** If the project's `.seshboard.json` changes while the approval dialog is open, nothing is approved and you're asked to check again. A shared prompt that becomes a shell command, or starts running in new worktrees, needs approval again too. Shared actions you approved before ask once more.
+- **Files that are links stay untouched.** A `MEMORY.md` that is a link is no longer written through. Saving shared settings, and copying ignored files such as `.env` into a new worktree, never write through a link the repository holds.
+- **Undo after archiving on a phone works only on that phone.** Another paired phone can't bring the session or run back.
+- **A phone stops getting a session's messages once it leaves its list,** for example when the session is archived.
+- **Pairing a device is tied to its QR code.** A phone that scanned an earlier code, or one shown before you closed the dialog, can't pair with the current one.
+- **On the phone, drafts and Ask answers stay with their computer.** With more than one computer paired, a draft or an answer never shows on another computer's session.
+- **Installing the `seshboard` command on a Mac** writes the commands directly with the administrator's password, instead of copying them from a temporary folder.
+- **Theme colours with long runs of spaces are refused at once,** instead of slowing down a theme import.
 
 ## [1.2.0] - 2026-10-28
 

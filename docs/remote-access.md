@@ -67,6 +67,12 @@ Without the desktop app, `node --experimental-transform-types scripts/remote-dem
 
 The backoff's client address is what the tunnel saw: Cloudflare's `CF-Connecting-IP` behind a Cloudflare tunnel (it overwrites it), else the last `X-Forwarded-For` entry (the one the tunnel added). Behind a tunnel every socket comes from `127.0.0.1`.
 
+Behind one network every device has the same address, so a device that keeps failing (a revoked pairing in a second copy of the remote app, a used pairing link) makes a paired phone on that network wait too, and the count only goes back to zero when a handshake from the address works. Settings › Remote shows the addresses waiting now (`RemoteStatus.blocked`, from `Backoff.blocked`) with **Unblock** (`remote.unblock`), which clears them as a restart did.
+
+### The log
+
+Remote writes `remote.log` in the data folder (`remoteLog.ts`, `REMOTE_LOG_FILE`; moved to `remote.log.1` past 1 MB), next to the windows' log: Remote turning on and off, every refused socket with its reason, address, origin and kind of device (a refused key names the device it was paired as, and when it was revoked), each wait starting, the first socket turned away during it, the address getting in again, and each connection and disconnection with its close code. A socket that sends nothing within five seconds is logged but not counted. **Show in Finder** in Settings › Remote › Advanced opens it (`showRemoteLog` in main, a fixed path).
+
 ## The channel
 
 The encryption is done in the app with audited pure-JS primitives (`@noble/curves` X25519, `@noble/ciphers` ChaCha20-Poly1305, `@noble/hashes` SHA-256), shared by the engine and the remote app in `packages/protocol/src/remoteNoise.ts`. It doesn't depend on TLS, so it holds whatever the tunnel does. A test checks both handshakes against the cacophony Noise test vectors byte for byte.

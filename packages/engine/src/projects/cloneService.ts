@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
-import { cloneFolderProblem, CloneSettings, isLocalAbsolutePath, isSameOrInside, joinPath, parseGithubRepo, pathInside, RpcError, separatorOf, type ClonePlan, type CloneProgress, type GithubRepoRef } from '@seshboard/protocol';
+import { z } from 'zod';
+import { bringsAnything, cloneFolderProblem, CloneSettings, isLocalAbsolutePath, isSameOrInside, joinPath, parseGithubRepo, pathInside, RpcError, separatorOf, type ClonePlan, type CloneProgress, type GithubRepoRef, type RepoBrings } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import { CloneCancelled, cloneCommand, ghSignedIn, readRepoBrings, runClone, targetState, type CloneRun } from '../git/clone.ts';
 import { git } from '../git/gitChanges.ts';
@@ -7,6 +8,18 @@ import type { GhCommand } from '../git/pullRequest.ts';
 
 const SETTINGS_KEY = 'clone.settings';
 const OFF: CloneSettings = { enabled: false, folder: null };
+/** The cloned repositories whose trust question isn't answered yet (see `CloneService.trustNeeded`). */
+const UNTRUSTED_KEY = 'clone.untrusted';
+
+/** A cloned repository Claude Code may not start in yet, and what it brings (for the question). */
+export interface TrustNeeded {
+  root: string;
+  brings: RepoBrings;
+}
+
+/** The error a start in such a repository fails with; the app asks the question from its details and starts again. */
+export const trustNeededError = ({ root, brings }: TrustNeeded): RpcError =>
+  new RpcError('TRUST_NEEDED', 'This repository was cloned with its own hooks, MCP servers or settings that run commands. Answer whether to trust it in Seshboard on the computer first.', { root, brings });
 
 export interface CloneServiceOptions {
   appState: AppStateStore;
@@ -65,6 +78,35 @@ export class CloneService {
     return next;
   }
 
+  private untrusted(): string[] {
+    const saved = z.array(z.string()).safeParse(this.options.appState.get(UNTRUSTED_KEY));
+    return saved.success ? saved.data : [];
+  }
+
+  /**
+   * Whether Claude Code may not start in `cwd` yet: it is in a cloned repository (or `main`, its main checkout, is)
+   * that brings hooks, MCP servers or settings that run something, and the trust question isn't answered. Claude Code
+   * loads a project's settings without the question its CLI asks, so every start goes through this, not only Start
+   * in the clone form: closing the form and starting from the palette would otherwise skip it. A repository that no
+   * longer brings anything is let go.
+   */
+  trustNeeded(cwd: string, main: string = cwd): TrustNeeded | null {
+    const roots = this.untrusted();
+    const root = roots.find((r) => isSameOrInside(cwd, r) || isSameOrInside(main, r));
+    if (!root) return null;
+    const brings = readRepoBrings(root);
+    if (bringsAnything(brings)) return { root, brings };
+    this.trust(root);
+    return null;
+  }
+
+  /** The trust question for a cloned repository was answered with Start anyway. */
+  trust(root: string): void {
+    const roots = this.untrusted();
+    const rest = roots.filter((r) => !(isSameOrInside(r, root) && isSameOrInside(root, r)));
+    if (rest.length !== roots.length) this.options.appState.set(UNTRUSTED_KEY, rest);
+  }
+
   /** The repository a URL names, or INVALID with why. */
   private repoOf(url: string): GithubRepoRef {
     const parsed = parseGithubRepo(url);
@@ -97,8 +139,10 @@ export class CloneService {
   /**
    * Starts a clone and returns at once; it reports through `progress`. A checkout of the same repository already at
    * the target is used as it is (done at once, `reused`).
+   * `askTrust`: whether its first session waits for the trust question (`trustNeeded`). The remote app has no
+   * question to show yet, so a clone from a paired phone, which may run commands on this computer anyway, doesn't.
    */
-  async start(jobId: string, url: string, name: string): Promise<void> {
+  async start(jobId: string, url: string, name: string, { askTrust = true }: { askTrust?: boolean } = {}): Promise<void> {
     const repo = this.repoOf(url);
     const { enabled, folder } = this.settings();
     if (!enabled || !folder) throw new RpcError('CLONE_OFF', 'Clone from GitHub is off. Turn it on in Settings › Projects.');
@@ -114,7 +158,9 @@ export class CloneService {
       const wasProject = this.options.isProject(target);
       if (!wasProject) this.options.addProject(target);
       // Your own project was trusted when you added it; a new one is asked about once, before its first session.
-      report({ state: 'done', phase: 'checkout', percent: 100, root: target, reused, brings: wasProject ? null : readRepoBrings(target) });
+      const brings = wasProject ? null : readRepoBrings(target);
+      if (askTrust && bringsAnything(brings)) this.options.appState.set(UNTRUSTED_KEY, [...this.untrusted().filter((r) => r !== target), target]);
+      report({ state: 'done', phase: 'checkout', percent: 100, root: target, reused, brings });
     };
     if (state === 'cloned') {
       finish(true);

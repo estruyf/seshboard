@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -54,9 +55,23 @@ describe('ActionStore', () => {
   it('trusts a shared command by its exact text', () => {
     const { store, project, cache } = setup();
     writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build' }] }));
-    store.trust(project, 'npm run build');
+    store.trust(project, { type: 'shell', command: 'npm run build', runOnWorktreeCreate: false });
     expect(store.list(project).actions[0]!.trusted).toBe(true);
     writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'build', name: 'Build', command: 'npm run build && curl evil' }] }));
+    expect(store.list(project).actions[0]!.trusted).toBe(false);
+    cache.close();
+  });
+
+  it('asks again when a shared prompt becomes a shell command, or starts running in new worktrees', () => {
+    const { store, project, cache } = setup();
+    const write = (entry: object) => writeFileSync(join(project, '.seshboard.json'), JSON.stringify({ actions: [{ id: 'x', name: 'X', command: 'npm test', ...entry }] }));
+    store.trust(project, { type: 'prompt', command: 'npm test', runOnWorktreeCreate: false });
+    write({ type: 'prompt' });
+    expect(store.list(project).actions[0]!.trusted).toBe(true);
+    write({ type: 'shell' });
+    expect(store.list(project).actions[0]!.trusted).toBe(false);
+    store.trust(project, { type: 'shell', command: 'npm test', runOnWorktreeCreate: false });
+    write({ type: 'shell', runOnWorktreeCreate: true });
     expect(store.list(project).actions[0]!.trusted).toBe(false);
     cache.close();
   });
@@ -155,10 +170,18 @@ describe('expandCommand', () => {
     // PowerShell reads `$` and the backtick inside double quotes, not `\`, so a Windows path goes in as it is.
     expect(expandCommand('cd "${cwd}"', { ...vars, cwd: 'C:\\Users\\me\\wt' }, powershell)).toBe('cd "C:\\Users\\me\\wt"');
     expect(() => expandCommand('echo "${branch}"', { ...vars, branch: 'a$b' }, powershell)).toThrow(expect.objectContaining({ code: 'UNSAFE_VALUE' }));
-    // Single quotes in the action close nothing: the placeholder after them is quoted again.
-    expect(expandCommand("echo '${branch}'", { ...vars, branch: 'a$b' }, posix)).toBe(`echo '${posixQuote('a$b')}'`);
+    // Inside single quotes in the action, the value goes in without quotes of its own, which would close the action's.
+    expect(expandCommand("echo '${branch}'", { ...vars, branch: 'a$b' }, posix)).toBe("echo 'a$b'");
+    expect(expandCommand("echo 'on ${branch}'", vars, posix)).toBe(`echo 'on feat/x'\\''; rm -rf ~ #'`);
+    expect(expandCommand("echo 'on ${branch}'", vars, powershell)).toBe(`echo 'on feat/x''; rm -rf ~ #'`);
     // An escaped quote in the action doesn't open double quotes.
     expect(expandCommand('echo \\"${branch}\\"', { ...vars, branch: 'a$b' }, posix)).toBe(`echo \\"${posixQuote('a$b')}\\"`);
+  });
+  it.skipIf(process.platform === 'win32')('keeps a value inside single quotes from running in /bin/sh', () => {
+    for (const branch of ['x;echo PWNED;#', "x'; echo PWNED; #", '$(echo PWNED)', 'x`echo PWNED`']) {
+      const out = execFileSync('/bin/sh', ['-c', expandCommand("printf %s 'on ${branch}.'", { ...vars, branch }, posix)]).toString();
+      expect(out).toBe(`on ${branch}.`);
+    }
   });
   it('leaves prompt text unquoted', () => {
     expect(expandCommand('Review ${sessionTitle} on ${branch}', vars, null)).toBe(`Review Fix "login" on ${vars.branch}`);

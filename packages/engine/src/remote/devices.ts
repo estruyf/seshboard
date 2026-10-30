@@ -20,6 +20,14 @@ export interface RemoteDevice {
   lastAddress: string | null;
 }
 
+/** Any device ever paired with a key, revoked or not, for the log's line about a refused key. */
+export interface DeviceRecord {
+  name: string;
+  kind: DeviceKind;
+  createdAt: number;
+  revokedAt: number | null;
+}
+
 /** A device that hasn't connected for this long is refused, as if revoked, and leaves the list. */
 export const DEVICE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -82,6 +90,12 @@ export class DeviceStore {
     const row = this.statements.byKey.get(toBase64Url(publicKey)) as unknown as Row | undefined;
     if (!row || row.revoked_at !== null || this.expire(row)) return null;
     return toDevice(row);
+  }
+
+  /** The device a key belonged to, also when revoked (`find` is what lets it in). */
+  lookup(publicKey: Uint8Array): DeviceRecord | null {
+    const row = this.statements.byKey.get(toBase64Url(publicKey)) as unknown as Row | undefined;
+    return row ? { name: row.name, kind: toDevice(row).kind, createdAt: row.created_at, revokedAt: row.revoked_at } : null;
   }
 
   /** It connected now, through `address` (the engine's public address then; null keeps the one it had). */

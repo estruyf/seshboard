@@ -174,6 +174,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       if (change.archived && session) archiveSessions([{ id: sessionId, title: session.title }], apply);
       else apply();
     },
+    setKeepAwake: (on) => call(on ? 'keep the computer awake' : 'stop keeping the computer awake', (c) => c.call('session.keepAwake', { sessionId, on })),
     // Finishing work: the focus limit never stands in the way of compacting.
     compact: () => call('compact the context', (c) => c.call('session.send', { sessionId, text: '/compact', attachments: [], fork: false })),
     copyLastReply: () => {

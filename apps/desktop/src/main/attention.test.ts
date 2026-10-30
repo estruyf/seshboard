@@ -126,6 +126,32 @@ describe('Attention', () => {
     expect(a.onLive([live('cli', 'needs-you')])).toMatchObject([{ kind: 'needs-you', sessionId: 'cli' }]);
   });
 
+  it('says when Claude is working: a Seshboard session starting or running, or a shown Terminal session running', () => {
+    let external = false;
+    const a = new Attention({ external: () => external });
+    expect(a.working()).toBe(false);
+    a.onHost(host('starting'));
+    expect(a.working()).toBe(true);
+    a.onHost(host('running'));
+    expect(a.working()).toBe(true);
+    // Waiting on you is the badge's news, not work.
+    a.onHost(host('needs-you'));
+    expect(a.working()).toBe(false);
+    a.onHost(host('idle'));
+    expect(a.working()).toBe(false);
+
+    a.onLive([live('cli', 'running')]);
+    expect(a.working()).toBe(false);
+    external = true;
+    a.onLive([live('cli', 'running'), live('desk', 'running', 'desktop')]);
+    expect(a.working()).toBe(true);
+    a.onLive([live('cli', 'idle')]);
+    expect(a.working()).toBe(false);
+    a.onLive([live('cli', 'running')]);
+    a.reset();
+    expect(a.working()).toBe(false);
+  });
+
   it('reports project actions that finish', () => {
     const a = new Attention();
     const term = (exitCode: number | null): TerminalInfo => ({ id: 't1', sessionId: 's1', kind: 'action', title: 'Publish', cwd: '/work/app', pid: 1, cols: 80, rows: 24, exitCode, startedAt: 0 });

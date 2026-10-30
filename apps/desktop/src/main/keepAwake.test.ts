@@ -41,6 +41,10 @@ describe('awakeCommand', () => {
     expect(awakeCommand('darwin', 4242)).toEqual({ file: '/usr/bin/caffeinate', args: ['-s', '-w', '4242'] });
   });
 
+  it('holds idle sleep off on battery too for sessions', () => {
+    expect(awakeCommand('darwin', 4242, true)).toEqual({ file: '/usr/bin/caffeinate', args: ['-i', '-w', '4242'] });
+  });
+
   it('has no command on Windows and Linux', () => {
     expect(awakeCommand('win32', 4242)).toBeNull();
     expect(awakeCommand('linux', 4242)).toBeNull();
@@ -89,6 +93,26 @@ describe('KeepAwake on macOS', () => {
     keepAwake.apply(true);
     first.emit('exit');
     expect(keepAwake.active).toBe(true);
+  });
+
+  it('holds the sleep blocker next to caffeinate, against App Nap, and lets both go', () => {
+    const { keepAwake, spawned, blocks } = setup('darwin');
+    keepAwake.apply(true);
+    keepAwake.apply(true);
+    expect(blocks.started).toBe(1);
+    expect(spawned).toHaveLength(1);
+    keepAwake.apply(false);
+    expect(blocks.stopped).toEqual([7]);
+    expect(spawned[0]!.child.killed).toBe(true);
+  });
+
+  it('starts only caffeinate again after it exited, keeping the blocker it has', () => {
+    const { keepAwake, spawned, blocks } = setup('darwin');
+    keepAwake.apply(true);
+    spawned[0]!.child.emit('exit');
+    keepAwake.apply(true);
+    expect(spawned).toHaveLength(2);
+    expect(blocks.started).toBe(1);
   });
 
   it('stops caffeinate on dispose', () => {

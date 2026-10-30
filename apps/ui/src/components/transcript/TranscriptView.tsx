@@ -1,6 +1,6 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -12,6 +12,7 @@ import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenSto
 import { hostAsLive, isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { passFocusGate } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePaletteBus, useSessionRequests, type SessionDigest } from '../../state/paletteBus.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -23,6 +24,7 @@ import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/termi
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
+import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 import { useUpNext } from '../../state/upNextStore.ts';
 import { useLimits } from '../../state/limitsStore.ts';
 import { UsageLimitNotice } from '../session/UsageLimitNotice.tsx';
@@ -455,6 +457,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const running = activeHost?.state === 'running' || activeHost?.state === 'needs-you';
   const showTodos = todos.some((t) => t.status !== 'completed') && (live !== null || activeHost !== null);
   const backgroundTasks = activeHost?.backgroundTasks ?? [];
+  // Keep awake until done: a pill beside the background tasks while it is on (clicking it turns it off).
+  const keepAwake = activeHost?.keepAwake === true;
   const backgroundOpen = openStrip === 'background' && backgroundTasks.length > 0;
   const stopTask = async (taskId: string) => {
     try {
@@ -1201,7 +1205,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(
         { ...restart, prompt: text, attachments, skipGate: ungated },
-        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
+        { createSession: (params) => client.call('session.create', params), gate: passFocusGate, trust: (needed) => trustRepository(client, needed), addProject: async () => {}, keep: useDrafts.getState().keepFirstPrompt, open: select },
       );
       return outcome.kind === 'started' ? undefined : false;
     }
@@ -1812,7 +1816,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <div className={`shrink-0 border-t border-border bg-bg ${terminalMaximized ? 'hidden' : ''}`}>
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
             <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-1.5 @max-[860px]:px-4">
-              {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0) && (
+              {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0 || keepAwake) && (
                 <div className="grid gap-1.5">
                   {/* The project's actions on the left; Claude's task list and its background tasks on the right, as small pills. The task list opens below them. */}
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -1833,6 +1837,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                             Tasks {todos.filter((t) => t.status === 'completed').length} of {todos.length}
                           </span>
                           <ChevronDown size={11} className={`transition-transform ${todosOpen ? 'rotate-180' : ''}`} aria-hidden />
+                        </Pill>
+                      )}
+                      {keepAwake && (
+                        <Pill
+                          tone="muted"
+                          icon={<Coffee size={12} aria-hidden />}
+                          onClick={() => void client?.call('session.keepAwake', { sessionId, on: false }).catch((error: Error) => toast(`Couldn't change Keep awake: ${error.message}`))}
+                          aria-label="Stop keeping awake"
+                          data-tooltip={`${keepAwakeUntilDoneDetail()} Click to stop.`}
+                          data-keep-awake-pill
+                        >
+                          Awake until done
                         </Pill>
                       )}
                       {backgroundTasks.length > 0 && (

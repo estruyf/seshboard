@@ -1,6 +1,7 @@
-import { readFileSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { readRepoFile } from '../system/repoFile.ts';
 
 export interface ProjectLocation {
   /** Main repository root (worktrees fold into it), or the cwd itself outside git. */
@@ -21,7 +22,7 @@ const CLAUDE_WORKTREE = /^(.*?)[\\/]\.claude[\\/]worktrees[\\/]([^\\/]+)/;
 
 function readGitFile(dotGit: string, dir: string): string | null {
   try {
-    const match = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'));
+    const match = /^gitdir:\s*(.+)$/m.exec(readRepoFile(dotGit, 64 * 1024));
     if (!match) return null;
     const target = match[1]!.trim();
     return isAbsolute(target) ? target : resolve(dir, target);
@@ -66,7 +67,7 @@ function locate(cwd: string, home: string): ProjectLocation {
 
 function readBranch(gitDir: string): string | null {
   try {
-    const head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim();
+    const head = readRepoFile(join(gitDir, 'HEAD'), 64 * 1024).trim();
     const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
     if (ref) return ref[1]!;
     return /^[0-9a-f]{7,}$/.test(head) ? head.slice(0, 7) : null;

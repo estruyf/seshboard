@@ -24,7 +24,7 @@ export interface PaletteSession {
   projectRoot: string | null;
   isWorktree: boolean;
   /** Running in this app (its model, effort and mode can change); null otherwise. */
-  host: { state: HostState; contextTokens: number | null; supportsEffort: boolean } | null;
+  host: { state: HostState; contextTokens: number | null; supportsEffort: boolean; keepAwake?: boolean } | null;
   /** Claude is working or waiting for you here, so it can be stopped. */
   running: boolean;
   /** What it is waiting for. */

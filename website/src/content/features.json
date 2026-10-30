@@ -1442,6 +1442,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:dock-activity",
+      "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
@@ -1519,6 +1524,11 @@
     {
       "id": "feature:remote-rename-device",
       "name": "Settings › Remote: rename a paired device",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:remote-log-unblock",
+      "name": "Settings › Remote: Turning connections away with Unblock, and Remote's log (Advanced, Show in Finder)",
       "page": "remote-access"
     },
     {
@@ -3782,6 +3792,11 @@
       "page": "vscode-companion"
     },
     {
+      "id": "feature:vscode-new-session",
+      "name": "Pick the session or start a new one from VS Code",
+      "page": "vscode-companion"
+    },
+    {
       "id": "feature:vscode-send-context",
       "name": "Send context from VS Code",
       "page": "vscode-companion"
@@ -4375,6 +4390,21 @@
       "id": "feature:keep-awake",
       "name": "Settings: General, Keep awake",
       "page": "settings"
+    },
+    {
+      "id": "feature:keep-awake-until-done",
+      "name": "Keep awake until done (a session's ⋯ menu and the pill above the message box)",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-on",
+      "name": "Keep awake until done",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:keep-awake-off",
+      "name": "Stop keeping awake",
+      "page": "sessions/conversation"
     },
     {
       "id": "palette:run-pipeline",

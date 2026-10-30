@@ -20,7 +20,9 @@ export interface Oklch {
 }
 
 const NUM = String.raw`[+-]?(?:\d+(?:\.\d*)?|\.\d+)`;
-const SEP = String.raw`\s*[,\s]\s*`;
+// A comma with spaces around it, or spaces alone. Not `\s*[,\s]\s*`, where three parts can take the same spaces and a
+// long run of them takes a regular expression very long to refuse.
+const SEP = String.raw`(?:\s*,\s*|\s+)`;
 const ALPHA = String.raw`(?:\s*[,/]\s*(${NUM}%?))?`;
 const DEG = '(?:deg|DEG)?';
 // No `i` flag, so the same sources work as a JSON Schema `pattern` (which has no flags).

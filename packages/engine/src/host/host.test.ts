@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { ModelOption, PermissionRequest, QueuedMessage, SessionHostInfo, StreamDelta } from '@seshboard/protocol';
+import { RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
@@ -263,6 +263,7 @@ function setup(
     readOnly?: HostManagerDeps['readOnly'];
     planApproved?: HostManagerDeps['planApproved'];
     autoAnswer?: HostManagerDeps['autoAnswer'];
+    assertTrusted?: HostManagerDeps['assertTrusted'];
   } = {},
 ) {
   const upNextEvents: Array<{ sessionId: string; queue: QueuedMessage[] }> = [];
@@ -333,6 +334,7 @@ function setup(
     readOnly: opts.readOnly,
     planApproved: opts.planApproved,
     autoAnswer: opts.autoAnswer,
+    assertTrusted: opts.assertTrusted,
     upNext: opts.upNext,
     onUpNext: (sessionId, queue) => upNextEvents.push({ sessionId, queue }),
     onModels: (m) => models.push(m),
@@ -532,12 +534,22 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('says when a prompt is too long to show in full', async () => {
+    const t = setup();
+    await t.manager.create({ ...base, cwd: '/w', prompt: `bash:${'x'.repeat(25_000)}` });
+    await until(() => t.permissions.length === 1);
+    expect(t.permissions[0]!.truncated).toBe(true);
+    expect((t.permissions[0]!.input as { command: string }).command).toHaveLength(20_000);
+    t.manager.closeAll();
+  });
+
   it('brokers permission prompts and applies "always allow"', async () => {
     const t = setup();
     const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'bash:npm test' });
     await until(() => t.permissions.length === 1);
     const request = t.permissions[0]!;
     expect(request).toMatchObject({ sessionId: id, toolName: 'Bash', toolUseId: 'tool-1', input: { command: 'npm test' } });
+    expect(request.truncated).toBeUndefined();
     expect(request.alwaysLabel).toBe('Allow Bash(npm test:*) in this project (just you)');
     expect(t.manager.list().permissions).toHaveLength(1);
     t.manager.respond(request.requestId, { behavior: 'allow', always: true });
@@ -1025,6 +1037,26 @@ describe('HostManager', () => {
     // A second session still works.
     const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
     await until(() => lastState(t.infos, other) === 'idle');
+    t.manager.closeAll();
+  });
+
+  it('starts nothing in a cloned repository whose trust question is not answered: no session, helper or pre-warm', async () => {
+    const t = setup({
+      cwds: { old: '/clone/app' },
+      assertTrusted: (cwd) => {
+        if (cwd.startsWith('/clone')) throw new RpcError('TRUST_NEEDED', 'Answer whether to trust it first.');
+      },
+    });
+    await expect(t.manager.create({ ...base, cwd: '/clone/app', prompt: 'hello' })).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    await expect(t.manager.send({ sessionId: 'old', text: 'hello', attachments: [], fork: false })).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    await expect(t.manager.capabilities(undefined, '/clone/app', true, 'default')).rejects.toMatchObject({ code: 'TRUST_NEEDED' });
+    expect(await t.manager.commands(undefined, '/clone/app', 'default')).toEqual([]);
+    await t.manager.prewarm('/clone/app', 'default');
+    expect(t.queries).toHaveLength(0);
+    expect(t.warmups).toHaveLength(0);
+    // Elsewhere everything starts as before.
+    const id = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
     t.manager.closeAll();
   });
 

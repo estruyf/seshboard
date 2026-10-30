@@ -27,16 +27,26 @@ export interface PushPayload {
 
 /**
  * A tool prompt can be answered from the notification (Deny, Allow); a question or a plan needs its session, where
- * there is room to read it.
+ * there is room to read it. So does a tool prompt whose line doesn't show all of what it asks (a command over more
+ * than one line, or too long for it): Allow would approve what the notification left out.
  */
-export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName'>): { requestId: string; answers: boolean } {
-  return { requestId: request.requestId, answers: request.toolName !== 'AskUserQuestion' && request.toolName !== 'ExitPlanMode' };
+export function promptAnswers(request: Pick<PermissionRequest, 'requestId' | 'toolName' | 'input' | 'truncated'>): { requestId: string; answers: boolean } {
+  if (request.toolName === 'AskUserQuestion' || request.toolName === 'ExitPlanMode' || request.truncated) return { requestId: request.requestId, answers: false };
+  const line = toolLine(request);
+  return { requestId: request.requestId, answers: short(line) === line.trim() };
 }
 
 const short = (text: string, max = 120) => {
   const line = text.split('\n')[0]!.trim();
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 };
+
+/** "Allow Bash: npm test", in full. */
+function toolLine(request: Pick<PermissionRequest, 'toolName' | 'input'>): string {
+  const input = (request.input ?? {}) as Record<string, unknown>;
+  const subject = ['command', 'file_path', 'notebook_path', 'url', 'pattern', 'query'].map((key) => input[key]).find((value): value is string => typeof value === 'string' && value.trim() !== '');
+  return subject ? `Allow ${request.toolName}: ${subject}` : `Allow ${request.toolName}?`;
+}
 
 /** What a prompt asks, in one line. */
 export function needsYouLine(request: Pick<PermissionRequest, 'toolName' | 'input'>): string {
@@ -46,8 +56,7 @@ export function needsYouLine(request: Pick<PermissionRequest, 'toolName' | 'inpu
     return typeof first === 'string' ? short(`Question: ${first}`) : 'Claude has a question';
   }
   if (request.toolName === 'ExitPlanMode') return 'Claude has a plan. Ready to start?';
-  const subject = ['command', 'file_path', 'notebook_path', 'url', 'pattern', 'query'].map((key) => input[key]).find((value): value is string => typeof value === 'string' && value.trim() !== '');
-  return short(subject ? `Allow ${request.toolName}: ${subject}` : `Allow ${request.toolName}?`);
+  return short(toolLine(request));
 }
 
 /** A finished turn in one line, from its catch-up when there is one: the tests, and how long it takes to review. */

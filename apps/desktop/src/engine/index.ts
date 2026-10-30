@@ -75,6 +75,8 @@ const engine = createEngine({
   // The smoke test points the Claude Code check at a mock registry and must never run an update.
   claudeUpdates: { allowUpdate: process.env.SESHBOARD_NO_CLAUDE_UPDATE !== '1' },
   onLog: (entry) => console.error(`[engine] ${entry.level}: ${entry.message}`),
+  // Keep awake until done: main holds sleep off while a session does.
+  onKeepAwake: (on) => process.parentPort.postMessage({ type: 'keep-awake', on }),
   demoUsage: demoUsage(),
   // The smoke test and the screenshots: Auto model picks without calling a model.
   stubRouter: process.env.SESHBOARD_STUB_ROUTER === '1',

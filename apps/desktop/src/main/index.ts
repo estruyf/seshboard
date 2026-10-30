@@ -5,14 +5,15 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, type MenuItemConstructorOptions } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
+import { DockActivity } from './dockActivity.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
@@ -194,6 +195,25 @@ const appIcon = new AppIcon({
   exists: existsSync,
 });
 /**
+ * Settings › Theme › App icon › Show when Claude is working: the Dock's icon lights its jacks in turn while a session
+ * works (macOS only; the Notifier says when). Frames are drawn from the colourway's own Dock file.
+ */
+const dockActivity = new DockActivity<NativeImage>({
+  file: () => appIcon.dockFile(),
+  bitmap: (file, size) => {
+    const image = nativeImage.createFromPath(file);
+    return image.isEmpty() ? undefined : image.resize({ width: size, height: size, quality: 'best' }).toBitmap();
+  },
+  image: (bitmap, size) => nativeImage.createFromBitmap(bitmap, { width: size, height: size }),
+  show: (image) => app.dock?.setIcon(image),
+  restore: () => appIcon.restore(),
+  reducedMotion: () => systemPreferences.getAnimationSettings().prefersReducedMotion,
+  every: (ms, tick) => {
+    const timer = setInterval(guarded('dock activity', tick), ms);
+    return () => clearInterval(timer);
+  },
+});
+/**
  * Settings › General › Keep awake: `caffeinate` on macOS, Electron's sleep blocker elsewhere. Applied on `ready` and on
  * every change; let go on quit.
  */
@@ -204,6 +224,17 @@ const keepAwake = new KeepAwake({
   blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
 });
 ipcMain.handle(IpcChannel.keepAwakeStatus, () => keepAwake.active);
+/**
+ * Keep awake until done (#241): held while the engine says a session works with the flag on, on battery too, since it
+ * lets go by itself. Apart from the setting, so each starts and stops on its own.
+ */
+const sessionsAwake = new KeepAwake({
+  platform: process.platform,
+  pid: process.pid,
+  onBattery: true,
+  spawn: (file, args) => spawn(file, args, { stdio: 'ignore' }),
+  blocker: { start: () => powerSaveBlocker.start('prevent-app-suspension'), stop: (id) => powerSaveBlocker.stop(id) },
+});
 
 /** A new window's icon option: the colourway's, where the bundle's isn't the one chosen. */
 const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
@@ -214,7 +245,11 @@ const windowIcon = (): Electron.BrowserWindowConstructorOptions => {
 /** Applies a change from any window or the menu bar, and tells every window. */
 function updatePreferences(patch: unknown): void {
   const next = preferences.update(patch);
-  if (next.appIcon !== appIcon.key) appIcon.apply(next.appIcon);
+  if (next.appIcon !== appIcon.key) {
+    appIcon.apply(next.appIcon);
+    dockActivity.iconChanged();
+  }
+  dockActivity.setEnabled(next.dockActivity);
   keepAwake.apply(next.keepAwake);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
@@ -472,7 +507,12 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; on?: unknown } | null;
+  // Keep awake until done: a session with the flag on works, or the last one finished.
+  if (request?.type === 'keep-awake') {
+    sessionsAwake.apply(request.on === true);
+    return undefined;
+  }
   // Remote's keys, only asked for once Remote is on or another computer is paired (so the keychain is left alone otherwise).
   if (request?.type === 'remote-identity' && typeof request.id === 'number') {
     try {
@@ -1127,6 +1167,13 @@ ipcMain.handle(IpcChannel.saveImage, async (event, request: unknown) => {
 
 ipcMain.on(IpcChannel.showSavedImage, (_event, path: unknown) => {
   if (typeof path === 'string' && savedImages.has(path)) shell.showItemInFolder(path);
+});
+
+// Settings › Remote › Advanced: the engine writes it in the data folder, which is also main's userData.
+ipcMain.on(IpcChannel.showRemoteLog, () => {
+  const file = join(app.getPath('userData'), REMOTE_LOG_FILE);
+  if (existsSync(file)) shell.showItemInFolder(file);
+  else void shell.openPath(app.getPath('userData'));
 });
 
 const readyReports: TimedReport[] = [];
@@ -3705,7 +3752,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-change-connection]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-remote-connection] [role=radio]').length === 4", 3_000))) return 'Change… did not open the four choices';
   if (await js("document.querySelector('[data-remote-advanced-toggle]').getAttribute('aria-expanded') === 'false'")) await click('[data-remote-advanced-toggle]');
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]')", 3_000))) return 'Advanced did not show the port and the security note';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]') && document.querySelector('[data-remote-log] [data-remote-show-log]')", 3_000))) return 'Advanced did not show the port, the security note and Show log';
   await shot(win, 'remote-open.png');
 
   await click('[data-remote-device="smoke-device"] [data-remote-rename]');
@@ -3722,7 +3769,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-remote-enabled]');
   if (!(await waitInPage(win, "document.querySelector('[data-remote-off-card]')", 5_000))) return 'turned off with a paired device, the page did not say Remote is off';
-  return `ok: three steps, status card "${title}", Change… and Advanced opened, device renamed, Revoke asked and Escape cancelled, turned off`;
+  return `ok: three steps, status card "${title}", Change… and Advanced (with Show log) opened, device renamed, Revoke asked and Escape cancelled, turned off`;
 }
 
 /**
@@ -4192,6 +4239,43 @@ async function runThemeStep(win: BrowserWindow): Promise<string> {
  * Settings › Theme › App icon: pick Signal yellow (checked, saved, applied in main), the keys, both modes, the saved
  * file as the next launch reads it, then Reset to Graphite.
  */
+/**
+ * Settings › Theme › App icon › Show when Claude is working: on by default on macOS, where it animates the Dock's icon
+ * (held here, as nothing works in the demo) and stops when turned off; no switch elsewhere. Leaves it on.
+ */
+async function runDockActivityStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const switchIs = (on: boolean) => waitInPage(win, `document.querySelector('[data-dock-activity][role="switch"]')?.getAttribute('aria-checked') === '${on}'`, 2_000);
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="theme"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-app-icon-picker]')", 3_000))) return 'failed: Settings › Theme has no App icon';
+  if (process.platform !== 'darwin') {
+    const shown = await js("Boolean(document.querySelector('[data-dock-activity]'))");
+    await click('[data-close-settings]');
+    return shown ? 'failed: the switch shows without a Dock' : 'ok (no Dock here, no switch)';
+  }
+  if (!(await switchIs(true)) || !preferences.get().dockActivity) return 'failed: Show when Claude is working is not on by default';
+
+  // Reduce motion shows one still frame instead of the animation.
+  const still = systemPreferences.getAnimationSettings().prefersReducedMotion;
+  const before = dockActivity.shown;
+  dockActivity.hold(true);
+  try {
+    if (!(await until(() => dockActivity.showing && dockActivity.shown >= before + (still ? 1 : 4), 3_000))) return `failed: the Dock showed ${dockActivity.shown - before} frames`;
+    await click('[data-dock-activity]');
+    if (!(await switchIs(false)) || !(await until(() => !preferences.get().dockActivity && !dockActivity.showing, 2_000))) return 'failed: turning it off did not stop the animation';
+    await click('[data-dock-activity]');
+    if (!(await switchIs(true)) || !(await until(() => preferences.get().dockActivity && dockActivity.showing, 2_000))) return 'failed: turning it on again did not start it';
+  } finally {
+    dockActivity.hold(false);
+  }
+  if (dockActivity.showing) return 'failed: still animating with nothing working';
+  await click('[data-close-settings]');
+  return `ok (${still ? 'a still frame, Reduce motion is on' : 'animated'}, off and on again, the icon put back)`;
+}
+
 async function runAppIconStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
   const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
@@ -5007,6 +5091,8 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
     const shown = [...document.querySelectorAll('${view} [data-transcript] [data-remember-from="claude"] p')].filter((p) => { const r = p.getBoundingClientRect(); return r.height > 0 && r.top >= area.top + 60 && r.bottom <= area.bottom; });
     const p = shown[shown.length - 1];
     if (!p) return '';
+    // Selecting with the mouse takes the focus off whatever had it (the session's row in the sidebar).
+    document.activeElement?.blur();
     const range = document.createRange();
     range.selectNodeContents(p);
     const selection = window.getSelection();
@@ -5054,7 +5140,13 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   // Quote.
   await js(select);
   if (!(await waitInPage(win, toolbar, 3_000))) return done('no toolbar after selecting again');
-  await js(`${toolbar}.querySelector('[data-quote-selection]').click()`);
+  // With the mouse, held as a person holds it, not .click(): a press outside the selectable text used to clear the
+  // selection, and the toolbar went with it before the click landed.
+  const quote = (await js(`(() => { const r = ${toolbar}.querySelector('[data-quote-selection]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: quote.x, y: quote.y });
+  win.webContents.sendInputEvent({ type: 'mouseDown', x: quote.x, y: quote.y, button: 'left', clickCount: 1 });
+  await settle(win);
+  win.webContents.sendInputEvent({ type: 'mouseUp', x: quote.x, y: quote.y, button: 'left', clickCount: 1 });
   const quoted = await waitInPage(win, `document.querySelector('${box}').value !== ''`, 3_000);
   const value = (await js(`document.querySelector('${box}').value`)) as string;
   const focused = (await js(`document.activeElement === document.querySelector('${box}')`)) as boolean;
@@ -7200,6 +7292,58 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
     host('running', false);
     if (!(await waitInPage(win, `!document.querySelector('[data-streaming][data-compacting]')`, 3_000))) return 'it kept saying it is compacting after the compact ended';
     return 'ok: a compacting session said Compacting the conversation, still did after switching to another session and back, and stopped when the compact ended';
+  } finally {
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
+ * Keep awake until done (#241), on a stand-in session: the ⋯ menu turns it on and the pill above the message box
+ * shows it, main holds sleep off while the session works, the pill turns it off, and once the session is done the flag
+ * goes by itself (after the engine's short grace period with `SESHBOARD_STUB_QUEUE`).
+ */
+async function runKeepAwakeSessionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-keep-awake-')));
+  const standIn = `smoke-keep-awake-${randomUUID()}`;
+  const host = (state: 'running' | 'idle' | 'closed', outcome?: 'clean') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(outcome ? { outcome } : {}) });
+  const view = `[data-current-session="${standIn}"]`;
+  const pill = `!!document.querySelector('${view} [data-keep-awake-pill]')`;
+  /** The ⋯ menu's Keep awake until done, picked. */
+  const pick = async (): Promise<string | null> => {
+    await js(`document.querySelector('${view} [data-more-menu]')?.click()`);
+    if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-keep-awake-session]:not([aria-disabled=true])')", 2_000))) return 'the ⋯ menu has no Keep awake until done to pick';
+    await js("document.querySelector('[role=menu] [data-keep-awake-session]').click()");
+    return null;
+  };
+  try {
+    if (!smokeSessionId) return 'no session to switch back to';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 5_000))) return 'the stand-in session did not open';
+    const first = await pick();
+    if (first) return first;
+    if (!(await waitInPage(win, pill, 3_000))) return 'no Awake until done pill after turning it on';
+    if (!(await until(() => sessionsAwake.active, 3_000))) return 'sleep was not held off while the session works';
+    await shot(win, 'keep-awake-session.png');
+    await js(`document.querySelector('${view} [data-keep-awake-pill]').click()`);
+    if (!(await waitInPage(win, `!${pill}`, 3_000))) return 'the pill did not turn it off';
+    if (!(await until(() => !sessionsAwake.active, 3_000))) return 'sleep stayed held off after turning it off';
+    const again = await pick();
+    if (again) return again;
+    if (!(await until(() => sessionsAwake.active, 3_000))) return 'turning it on again did not hold sleep off';
+    host('idle', 'clean');
+    if (!(await until(() => !sessionsAwake.active, 5_000))) return 'sleep stayed held off after the session was done';
+    if (!(await waitInPage(win, `!${pill}`, 3_000))) return 'the pill stayed after the session was done';
+    return 'ok: the ⋯ menu turned Keep awake until done on, sleep was held off while the session worked, the pill turned it off, and it went by itself once the session was done';
   } finally {
     host('closed');
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
@@ -10064,6 +10208,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
@@ -10126,6 +10271,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.
   await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 150_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
+  await step('settings › theme › app icon: Show when Claude is working animates the Dock and stops when off', () => runDockActivityStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
   await step('Claude Code mods: band, pane, status, toast, press, Show mods off', () => runModsStep(win), { timeoutMs: 120_000 });
   rendering = (await js(
@@ -10155,6 +10301,7 @@ app.whenReady().then(() => {
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
+  dockActivity.setEnabled(preferences.get().dockActivity);
   keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
@@ -10169,6 +10316,8 @@ app.whenReady().then(() => {
     appVersion: app.getVersion(),
     onRequest: handleEngineRequest,
     onRestarted: () => {
+      // The sessions ended with the engine that ran them.
+      sessionsAwake.apply(false);
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.engineRestarted);
       notifier.connect();
     },
@@ -10195,6 +10344,8 @@ app.whenReady().then(() => {
     cachePrefs: () => ({ ...preferences.get(), locale: app.getLocale() }),
     sounds,
     notificationIcon: () => appIcon.windowIcon(),
+    // Only the Dock has an icon to animate: Windows and Linux show the window's.
+    ...(process.platform === 'darwin' ? { working: (working: boolean) => dockActivity.setWorking(working) } : {}),
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();
@@ -10266,4 +10417,7 @@ app.on('before-quit', () => {
   engine?.stop();
 });
 
-app.on('will-quit', () => keepAwake.dispose());
+app.on('will-quit', () => {
+  keepAwake.dispose();
+  sessionsAwake.dispose();
+});

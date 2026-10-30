@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { PermissionDecision, RemoteSession } from '@seshboard/protocol/remote-client';
 import type { ListedPrompt } from '../lib/everywhere.ts';
 import { age } from '../lib/groups.ts';
-import { DECLINED, promptKind, promptLine, promptSubject, promptTag } from '../lib/prompts.ts';
+import { DECLINED, promptFitsLine, promptKind, promptLine, promptSubject, promptTag } from '../lib/prompts.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
 import { Button, ComputerTag } from './ui.tsx';
@@ -29,7 +29,9 @@ export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, o
     else onAnswered(result);
   };
 
-  if (kind !== 'tool') {
+  // A tool prompt whose one line can't show all of it opens its session to be answered there, where it all shows.
+  if (kind !== 'tool' || !promptFitsLine(prompt)) {
+    const line = kind === 'tool' ? promptSubject(prompt) : promptLine(prompt);
     return (
       <button type="button" onClick={onOpen} className="flex min-h-14 w-full items-center gap-3 rounded-xl border-2 border-warn bg-card px-3 py-2 text-left hover:bg-border/30" data-remote-prompt-card={prompt.requestId}>
         <span className="min-w-0 flex-1">
@@ -41,7 +43,7 @@ export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, o
             </span>
           </span>
           <span className="block truncate text-body font-semibold">{title}</span>
-          {promptLine(prompt) && <span className="block truncate text-ui text-muted">{promptLine(prompt)}</span>}
+          {line && <span className="block truncate text-ui text-muted">{line}</span>}
         </span>
         <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
       </button>
@@ -61,7 +63,7 @@ export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, o
       <button type="button" onClick={onOpen} className="-my-0.5 truncate text-left text-body font-semibold">
         {title}
       </button>
-      <code className="block truncate rounded-lg bg-code px-2.5 py-2 font-mono text-ui">{promptSubject(prompt)}</code>
+      <code className="block rounded-lg bg-code px-2.5 py-2 font-mono text-ui break-words whitespace-pre-wrap">{promptSubject(prompt)}</code>
       <div className="grid grid-cols-3 gap-2 pt-1">
         <Button variant="danger" disabled={busy || !client} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} data-remote-deny>
           Deny

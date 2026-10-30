@@ -123,6 +123,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
   const sentImages: RemoteImage[][] = [];
+  /** The sessions phones follow now (a watch's `stop` takes it out). */
+  const watching = new Set<string>();
   const answered: string[] = [];
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
@@ -166,6 +168,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appUrl: `${APP_ORIGIN}/remote/`,
     previewApp: options.previewApp ?? false,
     filesDir: join(dir, 'remote-files'),
+    logFile: join(dir, 'remote.log'),
     identity: async () => identity,
     sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)].map((s) => (options.archived?.has(s.id) ? { ...s, archivedAt: Date.now() } : s)), live: [], hosts: options.hosts ?? [], permissions }),
     archiveAfterDays: () => 7,
@@ -184,7 +187,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       defaultId: 'default',
     }),
     readTranscript: async () => ['a', 'b', 'c'].map(message),
-    watchTranscript: () => () => {},
+    watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
     send: async (_id, text, _mode, images) => (sent.push(text), sentImages.push(images), { messageUuid: 'm1', queued: false }),
     dequeue: (sessionId, id) => void calls.push(`dequeue ${sessionId} ${id}`),
     sendQueuedNow: async (sessionId, id) => void calls.push(`send now ${sessionId} ${id}`),
@@ -278,7 +281,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -319,6 +322,23 @@ describe('Remote hub', () => {
     await hub.configure({ enabled: false });
     expect(hub.status()).toMatchObject({ address: null, tunnel: { state: 'off' } });
     expect(() => hub.startPairing()).toThrow('not reachable');
+  });
+
+  it('writes Remote\'s log to its file, and says when an address waits until Unblock', async () => {
+    const { hub, dir, on, port } = await setup({ tools: false });
+    await on({ tunnel: 'custom', customUrl: 'https://remote.example.com' });
+    for (let i = 0; i < 3; i++) await handshake(port, 'connect', generateKeyPair(), generateKeyPair().publicKey);
+    await until(() => hub.status().blocked.length === 1);
+    expect(hub.status().blocked).toMatchObject([{ address: '127.0.0.1', attempts: 3 }]);
+    hub.unblock();
+    expect(hub.status().blocked).toEqual([]);
+    await hub.configure({ enabled: false });
+    const log = readFileSync(join(dir, 'remote.log'), 'utf8');
+    expect(log).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z info Remote: listening on 127\.0\.0\.1:\d+, version 1\.2\.3$/m);
+    expect(log).toContain('info Remote: your tunnel forwards https://remote.example.com here');
+    expect(log).toContain('warn Remote: 127.0.0.1 waits 1 s before it may try again, after 3 refused attempts in a row');
+    expect(log).toContain('info Remote: unblocked every address (Settings › Remote)');
+    expect(log).toMatch(/info Remote: turned off\n$/);
   });
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
@@ -535,6 +555,9 @@ describe('Remote hub', () => {
     // Gone from the list: nothing but Undo may touch it.
     await expect(remote.call('session.markRead', { sessionId: SESSION })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await expect(remote.call('session.setFlags', { sessionId: SESSION, archived: false, pinned: true })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Only the phone that archived it: another paired phone may not bring it back.
+    const other = await pair(hub, port);
+    await expect(other.remote.call('session.setFlags', { sessionId: SESSION, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await remote.call('session.setFlags', { sessionId: SESSION, archived: false });
     expect(calls.at(-1)).toBe(`flags ${SESSION} {"archived":false}`);
     // Once only.
@@ -542,6 +565,18 @@ describe('Remote hub', () => {
     // A session the phone never archived stays out of reach.
     archived.add(HIDDEN);
     await expect(remote.call('session.setFlags', { sessionId: HIDDEN, archived: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('stops following a session once it leaves the list, so nothing more of it reaches the phone', async () => {
+    const archived = new Set<string>();
+    const { hub, port, on, watching } = await setup({ archived });
+    await on();
+    const { remote } = await pair(hub, port);
+    await remote.call('transcript.watch', { sessionId: SESSION });
+    expect(watching.has(SESSION)).toBe(true);
+    archived.add(SESSION);
+    hub.sessionsChanged();
+    await until(() => !watching.has(SESSION));
   });
 
   it('lists what a session runs in the background, and stops only a task it lists', async () => {

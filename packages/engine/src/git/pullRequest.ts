@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PR_BODY_LIMIT, type PrDraft, type PrError, type PrTemplate, type WorktreePullRequest, type WorktreeStatus } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 
 /**
@@ -32,6 +33,9 @@ export interface RunResult {
  * matter. `input` goes to its stdin (the description: never on the command line or in a URL).
  */
 export function runGh(gh: GhCommand, args: string[], options: { cwd: string; env: Record<string, string>; input?: string; timeout?: number }): Promise<RunResult> {
+  const env = { ...process.env, ...ghEnv(options.env) };
+  const file = programPath(gh.file, env);
+  if (!file) return Promise.resolve({ code: null, stdout: '', stderr: `${gh.file} isn’t installed, or isn’t on the PATH.`, missing: true });
   return new Promise((resolvePromise) => {
     let stdout = '';
     let stderr = '';
@@ -42,7 +46,7 @@ export function runGh(gh: GhCommand, args: string[], options: { cwd: string; env
       clearTimeout(timer);
       resolvePromise(result);
     };
-    const child = spawn(gh.file, [...gh.args, ...args], { cwd: options.cwd, env: { ...process.env, ...ghEnv(options.env) }, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(file, [...gh.args, ...args], { cwd: options.cwd, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     const timer = setTimeout(() => {
       child.kill();
       done({ code: null, stdout, stderr: `${stderr}\ngh took too long and was stopped.`.trim(), missing: false });

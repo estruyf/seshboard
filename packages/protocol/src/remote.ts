@@ -104,6 +104,8 @@ export const RemotePrompt = z.object({
   sessionId: z.string(),
   toolName: z.string(),
   input: z.json(),
+  /** `input` is shorter than what Claude sent: Allow approves all of it, so the card says so. */
+  truncated: z.boolean().optional(),
   title: z.string().nullable(),
   description: z.string().nullable(),
   /** What "Always allow" would do; null when not offered. */
@@ -303,7 +305,7 @@ export const RemoteCloneProgress = CloneProgress.omit({ root: true }).extend({ p
 export type RemoteCloneProgress = z.infer<typeof RemoteCloneProgress>;
 
 /** One mode of the computer's theme, every token worked out (`--sb-*` names without the prefix). Colours only. */
-const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80).regex(new RegExp(COLOR_PATTERN)));
+const RemoteThemeTokens = z.partialRecord(z.enum(THEME_TOKENS), z.string().max(80, { abort: true }).regex(new RegExp(COLOR_PATTERN)));
 
 /**
  * The theme in use on the computer, resolved there (what it leaves out generated from its canvas and accent), so the
@@ -675,6 +677,11 @@ export const RemoteStatus = z.object({
   /** Paired devices: phones, browsers on a computer, and Seshboard on other computers. */
   devices: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['phone', 'browser', 'computer']).default('phone'), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
   connections: z.array(z.object({ deviceId: z.string(), name: z.string(), since: z.number() })),
+  /**
+   * Addresses that wait after refused handshakes (a revoked device, a used pairing link), until `until`; `attempts` failed
+   * in a row. Behind one network every device shares its address, so a paired phone can wait too. Unblock clears them.
+   */
+  blocked: z.array(z.object({ address: z.string(), attempts: z.number(), until: z.number() })).default([]),
   /**
    * The tunnel came back with a new address that no paired device has used yet: a quick tunnel restarted (Cloudflare,
    * or ngrok without a domain). Settings › Remote then offers Reconnect a paired device. Never for an address that

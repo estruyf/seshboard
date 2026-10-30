@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, bringsAnything, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -11,6 +11,7 @@ import { filterBranches } from '../worktree/branchMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
+import { trustRepository } from '../../state/repoTrust.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
@@ -40,7 +41,6 @@ import { StartButton } from './StartButton.tsx';
 import { RunOnSwitch } from './RunOnSwitch.tsx';
 import { RemoteNewSession } from '../computers/RemoteNewSession.tsx';
 import { ClonePanel } from '../clone/ClonePanel.tsx';
-import { useTrustQuestion } from '../clone/CloneTrustDialog.tsx';
 import { CloneCancelled, useCloneJob, type CloneResult } from '../clone/useCloneJob.ts';
 import { canClone, planLine } from '../clone/cloneModel.ts';
 import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
@@ -221,7 +221,6 @@ function LocalNewSession() {
   const [cloneSoon, setCloneSoon] = useState(false);
   /** The folder picked before the clone form opened, to go back to when it closes without a clone. */
   const beforeClone = useRef<string | null>(null);
-  const trust = useTrustQuestion();
   const focus = useFocus();
   const atLimit = focus.limit !== null && focus.count >= focus.limit;
   /** Strict at the limit: Start waits (⌘↵ still asks, with the queue offered), Add to queue stays in Start's menu. */
@@ -963,7 +962,8 @@ function LocalNewSession() {
    * Returns false when nothing started and the prompt should stay.
    */
   const create = async (text: string, attachments: ImageAttachment[], parts: SentParts | undefined, { fromLink = false, skipGate = false, worktree = useWorktree } = {}): Promise<void | false> => {
-    // With the clone form open, Start waits for the clone, then asks once about what the repository brings.
+    // With the clone form open, Start waits for the clone. The engine asks once about what the repository brings,
+    // whichever way its first session starts (TRUST_NEEDED, answered in `startNewSession`).
     let cloned: CloneResult | null = null;
     if (cloneForm && !fromLink) {
       try {
@@ -974,7 +974,6 @@ function LocalNewSession() {
       }
       if (!cloned.root) throw new Error('The clone has no folder here');
       onCloned(cloned);
-      if (bringsAnything(cloned.brings) && !(await trust.ask(cloned.root, cloned.brings))) return false;
     }
     const folder = cloned?.root ?? cwd;
     if (!client || !folder) throw new Error('Choose a folder first');
@@ -1002,6 +1001,7 @@ function LocalNewSession() {
       {
         createSession: (params) => client.call('session.create', params),
         gate: passFocusGate,
+        trust: (needed) => trustRepository(client, needed),
         addProject: (path) => client.call('projects.add', { path }).then(reloadProjects),
         keep: useDrafts.getState().keepFirstPrompt,
         open: (sessionId) => {
@@ -1271,7 +1271,6 @@ function LocalNewSession() {
             onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
           />
           )}
-          {trust.dialog}
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 

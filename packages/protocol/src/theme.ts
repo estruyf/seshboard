@@ -11,7 +11,8 @@ const colorRe = new RegExp(COLOR_PATTERN);
 /** A colour value; everything else (url(), var(), color-mix(), named colours, `;`, `}`) is refused. */
 const Color = z
   .string()
-  .max(80)
+  // `abort`: a longer value is refused before the pattern looks at it.
+  .max(80, { abort: true })
   .regex(colorRe, { error: COLOR_HINT })
   .meta({ description: 'A colour: #rgb, #rrggbb, #rrggbbaa, rgb(), hsl() or oklch().' });
 

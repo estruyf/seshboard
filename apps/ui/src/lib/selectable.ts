@@ -5,3 +5,6 @@
  * on a button never starts a selection.
  */
 export const SELECTABLE = ".select-text, [role='alert'], [role='status'], pre, code";
+
+/** Controls that act on the selection (the selection toolbar): pressing them keeps it, so main.tsx leaves it alone. */
+export const KEEPS_SELECTION = '[data-keeps-selection]';

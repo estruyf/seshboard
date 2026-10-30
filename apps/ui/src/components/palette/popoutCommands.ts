@@ -122,6 +122,8 @@ const PLANS: Record<string, Plan> = {
   fork: 'here',
   rewind: 'here',
   compact: 'here',
+  'keep-awake-on': 'here',
+  'keep-awake-off': 'here',
   'change-model': 'here',
   'change-effort': 'here',
   'change-mode': 'here',

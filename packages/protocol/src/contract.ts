@@ -288,6 +288,11 @@ export const contract = {
     'projects.clone': { params: z.object({ jobId: z.string().min(1).max(100), url: z.string().max(2_000), name: z.string().min(1).max(255) }), result: z.object({}) },
     /** Stops a clone; the folder it made goes (never one that was there before). `cancelled` follows. */
     'projects.cancelClone': { params: z.object({ jobId: z.string().min(1).max(100) }), result: z.object({}) },
+    /**
+     * The trust question for a cloned repository was answered with Start anyway. Until then every start of Claude Code
+     * in it (a session, a resume, a helper) fails with TRUST_NEEDED, with `{ root, brings }` as its details.
+     */
+    'projects.trustClone': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
     // --- Claude profiles (one login per config folder) --------------------------------------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
     /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
@@ -441,6 +446,11 @@ export const contract = {
     'session.interrupt': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Stops one of the session's background tasks (a shell command, subagent or workflow); Claude is told it was stopped. */
     'session.stopTask': { params: z.object({ sessionId: SessionId, taskId: z.string() }), result: z.object({}) },
+    /**
+     * Keep awake until done (#241): holds sleep off until the session is done, its background tasks included, then
+     * turns itself off. Only for a session running here; the host's `keepAwake` reports it.
+     */
+    'session.keepAwake': { params: z.object({ sessionId: SessionId, on: z.boolean() }), result: z.object({}) },
     /**
      * The end of what a background command printed, from the output file Claude Code named in the transcript (the
      * engine reads only task output files). `missing`: no such file, yet or any more.
@@ -643,8 +653,14 @@ export const contract = {
     },
     /** Deletes one of your actions, or with `shared` takes it out of the project's .seshboard.json. */
     'actions.delete': { params: z.object({ projectRoot: AbsolutePath.nullable(), id: z.string(), shared: z.boolean().optional() }), result: z.object({}) },
-    /** Approves a shared action's exact command (an edited command needs approval again), or an imported action of yours. */
-    'actions.trust': { params: z.object({ projectRoot: AbsolutePath, id: z.string() }), result: z.object({}) },
+    /**
+     * Approves a shared action's exact command, kind and Run in new worktrees (a change to any needs approval again), or
+     * an imported action of yours, as `seen` in the dialog: CHANGED when it is no longer that (its file changed meanwhile).
+     */
+    'actions.trust': {
+      params: z.object({ projectRoot: AbsolutePath, id: z.string(), seen: z.object({ type: z.enum(['shell', 'prompt']), command: z.string(), runOnWorktreeCreate: z.boolean() }) }),
+      result: z.object({}),
+    },
     /** Starter actions for a project (package.json scripts, git, gh). */
     'actions.suggest': { params: z.object({ projectRoot: AbsolutePath }), result: z.object({ suggestions: z.array(ActionSuggestion) }) },
     /** Runs an action for a session: shell actions open a terminal tab, prompt actions message the session. */
@@ -1179,6 +1195,8 @@ export const contract = {
     'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
     /** Revoke: the device can't connect any more, and its open connections close at once. */
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Lets addresses that wait after refused handshakes try again now (Settings › Remote, Unblock). */
+    'remote.unblock': { params: z.object({}), result: z.object({}) },
     /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
     'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
     /** The theme the app shows now, resolved, for paired phones that look like this computer (`theme.get` there). */

@@ -43,6 +43,23 @@ export class AppIcon {
     else for (const win of this.host.windows()) if (!win.isDestroyed()) win.setIcon(file);
   }
 
+  /** The colourway's 1024px Dock file on macOS, which the working animation draws its frames from. */
+  dockFile(): string | undefined {
+    return this.host.platform === 'darwin' ? this.#file() : undefined;
+  }
+
+  /**
+   * The colourway in the Dock again, after the working animation drew over it. Graphite included: the Dock no longer
+   * shows the bundle's icon once something else was set.
+   */
+  restore(): void {
+    if (this.host.platform !== 'darwin') return;
+    const file = this.#file();
+    if (!file) return;
+    this.#changed = true;
+    this.host.dock?.setIcon(file);
+  }
+
   /**
    * The `icon` for a new window, and for notifications (Windows and Linux): the colourway's tile, or undefined where
    * the bundle's own icon is right (macOS always takes the bundle's for both).

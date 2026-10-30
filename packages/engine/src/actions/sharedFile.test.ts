@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -31,5 +31,18 @@ describe('the shared file by its name before the rename', () => {
     writeFileSync(join(root, '.seshboard.json'), '{}');
     expect(sharedFilePath(root)).toBe(join(root, '.seshboard.json'));
     expect(['.seshboard.json', '.switchboard.json', 'package.json'].map(isSharedFileName)).toEqual([true, true, false]);
+  });
+});
+
+describe('a shared file that is a link', () => {
+  it.runIf(process.platform !== 'win32')('is not read, and not written over, so a private file never ends up in the repository', () => {
+    const root = mkdtempSync(join(tmpdir(), 'seshboard-shared-'));
+    const secret = join(mkdtempSync(join(tmpdir(), 'seshboard-private-')), 'private.json');
+    writeFileSync(secret, '{"token":"x"}');
+    symlinkSync(secret, join(root, '.seshboard.json'));
+    expect(readSharedFile(root)).toMatchObject({ data: null, error: '.seshboard.json: is a link, which Seshboard doesn’t follow' });
+    expect(() => writeSharedFile(root, (data) => ({ ...data, actions: [] }))).toThrow(/can't be read/);
+    expect(lstatSync(join(root, '.seshboard.json')).isSymbolicLink()).toBe(true);
+    expect(readFileSync(secret, 'utf8')).toBe('{"token":"x"}');
   });
 });

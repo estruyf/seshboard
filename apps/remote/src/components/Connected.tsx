@@ -169,7 +169,7 @@ export function Connected({
     history.replaceState(route, '');
     location.reload();
   };
-  useAskSync(client);
+  useAskSync(client, id);
 
   // What is on screen is on this computer: the app opens there next time.
   useEffect(() => {
@@ -578,6 +578,7 @@ export function Connected({
       <RunView
         key={`${id}:${route.sessionId}`}
         client={client}
+        computerId={id}
         runId={route.sessionId}
         sessions={sessions}
         banner={wide ? null : banner}
@@ -590,6 +591,7 @@ export function Connected({
       <SessionView
         key={`${id}:${route.sessionId}`}
         client={client}
+        computerId={id}
         features={features}
         sessionId={route.sessionId}
         sessions={sessions}

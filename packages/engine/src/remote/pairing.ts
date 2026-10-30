@@ -42,6 +42,7 @@ export class Pairing {
   private locked = false;
   private offerTimer: ReturnType<typeof setTimeout> | undefined;
   private waiting: Waiting | null = null;
+  private current = 0;
 
   constructor(
     private readonly onChange: (state: PairingState) => void,
@@ -66,6 +67,14 @@ export class Pairing {
     this.clear(true);
   }
 
+  /**
+   * Which invitation is open: a new QR code or a cancel moves it on. A pairing connection keeps the one it was made
+   * under, so a connection from an earlier QR code can't claim a later one, nor ask after a cancel.
+   */
+  get generation(): number {
+    return this.current;
+  }
+
   /** The pre-shared key a pairing handshake must use now, or null when pairing is closed. */
   psk(): Uint8Array | null {
     if (!this.secret || this.locked || this.now() >= this.expiresAt) return null;
@@ -88,8 +97,8 @@ export class Pairing {
    * A phone proved it has the secret: it is used up now, whatever happens next. False when someone else used it
    * first (then this phone is refused).
    */
-  claim(): boolean {
-    if (!this.psk()) return false;
+  claim(generation: number): boolean {
+    if (generation !== this.current || !this.psk()) return false;
     this.secret = null;
     clearTimeout(this.offerTimer);
     this.changed();
@@ -133,6 +142,7 @@ export class Pairing {
   }
 
   private clear(notify: boolean): void {
+    this.current++;
     clearTimeout(this.offerTimer);
     const had = this.secret !== null || this.waiting !== null || this.locked;
     this.secret = null;

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { commandFolders, folderFromArgv, installShellCommand, readShellCommand, removeShellCommand, shellCommandDir, shellCommandFile, shellCommandPlan, shellCommandScript, windowsPathScript } from './shellCommand.ts';
+import { commandFolders, folderFromArgv, installShellCommand, privilegedInstall, readShellCommand, removeShellCommand, shellCommandDir, shellCommandFile, shellCommandPlan, shellCommandScript, windowsPathScript } from './shellCommand.ts';
 
 const posix = process.platform !== 'win32';
 
@@ -29,6 +29,9 @@ describe('shellCommandScript', () => {
     expect(shellCommandScript('win32', 'switchboard', 'C:\\Users\\Jörg\\AppData\\Local\\Programs\\switchboard\\Seshboard.exe', env)).toContain('start "" "%LOCALAPPDATA%\\Programs\\switchboard\\Seshboard.exe" "%dir%"');
     expect(shellCommandScript('win32', 'switchboard', 'D:\\100% apps\\Seshboard.exe', env)).toContain('start "" "D:\\100%% apps\\Seshboard.exe" "%dir%"');
     expect(shellCommandScript('win32', 'switchboard', 'D:\\Seshboard.exe')).toContain('\r\n');
+    // A folder named `R&D` is echoed as text, never run as a command after the `&`.
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe')).toContain('echo seshboard: "%~1" is not a folder 1>&2');
+    expect(shellCommandScript('win32', 'seshboard', 'D:\\Seshboard.exe').split('\r\n').filter((line) => line.includes('%~1') && !line.includes('"%~1"'))).toEqual([]);
   });
 
   describe.runIf(posix)('run', () => {
@@ -157,6 +160,20 @@ describe.runIf(posix)('install and remove', () => {
     const plan = shellCommandPlan('linux', dir, '/opt/Seshboard/seshboard');
     await installShellCommand(plan, false);
     expect((await readShellCommand(plan, async () => false)).status).toBe('outdated');
+  });
+});
+
+describe.runIf(posix)('privilegedInstall', () => {
+  it('writes each script from the command itself, byte for byte, executable', () => {
+    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'sb-admin-'))), 'bin');
+    const script = shellCommandScript('darwin', 'seshboard', "/Applications/It's Seshboard.app");
+    const files = [{ file: join(dir, 'seshboard'), script }, { file: join(dir, 'sesh'), script: "a 'quoted' %s \\n line\n" }];
+    execFileSync('/bin/sh', ['-c', privilegedInstall(dir, files)]);
+    for (const entry of files) {
+      expect(readFileSync(entry.file, 'utf8')).toBe(entry.script);
+      expect(statSync(entry.file).mode & 0o777).toBe(0o755);
+    }
+    expect(privilegedInstall(dir, files)).not.toContain('/bin/cp');
   });
 });
 

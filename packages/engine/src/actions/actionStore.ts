@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { ProjectAction, RpcError, type ActionSuggestion, type ListedAction } from '@seshboard/protocol';
+import { readRepoFile } from '../system/repoFile.ts';
 import type { UserShell } from '../system/shell.ts';
 import { entriesOf, readSharedFile, removeEntry, SHARED_FILE, upsertEntry, writeSharedFile } from './sharedFile.ts';
 
@@ -15,7 +16,13 @@ export const slugify = (name: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'action';
 
-const hash = (command: string) => createHash('sha256').update(command).digest('hex');
+/**
+ * What approving a shared action covers: its command, and whether it runs in a shell (not sent as a prompt) and by
+ * itself in a new worktree. A repository that changes any of them is asked about again: a prompt you saved must not
+ * become a shell command already approved.
+ */
+const trustKey = (action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>) =>
+  createHash('sha256').update(`${action.type}\0${action.runOnWorktreeCreate ? 1 : 0}\0${action.command}`).digest('hex');
 
 /** Where an action's keys go in the shared file: these first, then anything else it had. */
 const ENTRY_ORDER = ['id', 'name', 'icon', 'type', 'command', 'cwd', 'confirm', 'shortcut', 'runOnWorktreeCreate', 'sendOutput'] as const;
@@ -49,7 +56,8 @@ export interface ActionVariables {
  * Where no quoting is safe for every program (Windows, `shell.unsafe`), a value the action uses that holds a
  * dangerous character is refused instead (`UNSAFE_VALUE`). A value written inside double quotes in the action is
  * inserted as it is, since the quotes already keep it one argument, and a character the shell still reads there
- * (`$`, a backtick, …) is refused. Unknown variables are left as they are.
+ * (`$`, a backtick, …) is refused. A value written inside single quotes is quoted without its own outer quotes, so
+ * they don't close the action's and leave the value bare. Unknown variables are left as they are.
  */
 export function expandCommand(command: string, vars: ActionVariables, shell: Pick<UserShell, 'kind' | 'quote' | 'unsafe'> | null): string {
   return command.replace(/\$\{(\w+)\}/g, (match, name: string, offset: number) => {
@@ -58,11 +66,14 @@ export function expandCommand(command: string, vars: ActionVariables, shell: Pic
     if (!shell) return value;
     const unsafe = shell.unsafe(value);
     if (unsafe !== null) throw new RpcError('UNSAFE_VALUE', `\${${name}} contains ${describeCharacter(unsafe)}, which Windows can't pass safely to every program. Leave \${${name}} out of this action, or change the ${VARIABLE_NOUNS[name] ?? 'value'}.`);
-    if (insideDoubleQuotes(command, offset)) {
+    const open = openQuoteAt(command, offset);
+    if (open === '"') {
       const read = DOUBLE_QUOTE_READS[shell.kind].exec(value)?.[0];
       if (read) throw new RpcError('UNSAFE_VALUE', `\${${name}} is in double quotes in this action, and the shell reads "${read}" inside them. Take the quotes off \${${name}}, or change the ${VARIABLE_NOUNS[name] ?? 'value'}.`);
       return value;
     }
+    // `quote` wraps the value in single quotes with the ones inside it escaped; the action's own quotes stand in for the outer pair.
+    if (open === "'") return shell.quote(value).slice(1, -1);
     return shell.quote(value);
   });
 }
@@ -74,11 +85,10 @@ const DOUBLE_QUOTE_READS: Record<UserShell['kind'], RegExp> = {
 };
 
 /**
- * Whether the action leaves the shell inside double quotes at `index`. Single quotes hold `"` literally and the
- * other way round; a backslash (or backtick, for PowerShell) escapes the next character outside single quotes. A
- * placeholder this can't place inside double quotes is quoted, which is safe in any case.
+ * The quote the action leaves open at `index`, or null outside quotes. Single quotes hold `"` literally and the
+ * other way round; a backslash (or backtick, for PowerShell) escapes the next character outside single quotes.
  */
-function insideDoubleQuotes(command: string, index: number): boolean {
+function openQuoteAt(command: string, index: number): '"' | "'" | null {
   let open: '"' | "'" | null = null;
   for (let i = 0; i < index; i++) {
     const char = command[i];
@@ -96,7 +106,7 @@ function insideDoubleQuotes(command: string, index: number): boolean {
       open = char;
     }
   }
-  return open === '"';
+  return open;
 }
 
 /** What each variable is, for the message when its value is refused. */
@@ -193,12 +203,12 @@ export class ActionStore {
     return { actions, file: read.file, errors };
   }
 
-  isTrusted(projectRoot: string, command: string): boolean {
-    return this.statements.trusted.get(projectRoot, hash(command)) !== undefined;
+  isTrusted(projectRoot: string, action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>): boolean {
+    return this.statements.trusted.get(projectRoot, trustKey(action)) !== undefined;
   }
 
-  trust(projectRoot: string, command: string): void {
-    this.statements.trust.run(projectRoot, hash(command), Date.now());
+  trust(projectRoot: string, action: Pick<ProjectAction, 'type' | 'command' | 'runOnWorktreeCreate'>): void {
+    this.statements.trust.run(projectRoot, trustKey(action), Date.now());
   }
 
   /** Yours for this project win over shared, which win over your global ones (matched by id). */
@@ -206,7 +216,7 @@ export class ActionStore {
     const shared = this.shared(projectRoot);
     const merged = new Map<string, ListedAction>();
     for (const entry of this.own(null)) merged.set(entry.action.id, { ...entry.action, scope: 'global', trusted: ActionStore.trustedOwn(entry) });
-    for (const action of shared.actions) merged.set(action.id, { ...action, scope: 'shared', trusted: this.isTrusted(projectRoot, action.command) });
+    for (const action of shared.actions) merged.set(action.id, { ...action, scope: 'shared', trusted: this.isTrusted(projectRoot, action) });
     for (const entry of this.own(projectRoot)) merged.set(entry.action.id, { ...entry.action, scope: 'project', trusted: ActionStore.trustedOwn(entry) });
     return { actions: [...merged.values()], sharedFile: shared.file, errors: shared.errors };
   }
@@ -243,7 +253,7 @@ export class ActionStore {
       const renamed = previousId && previousId !== action.id ? renameEntry(data, previousId, action.id) : data;
       return upsertEntry(renamed, 'actions', sharedEntry(action), ENTRY_ORDER, sharedId);
     });
-    this.trust(projectRoot, action.command);
+    this.trust(projectRoot, action);
   }
 
   /** Takes an action out of the project's .seshboard.json. */
@@ -271,7 +281,7 @@ export function suggestActions(projectRoot: string): ActionSuggestion[] {
   const suggestions: ActionSuggestion[] = [];
   let scripts: Record<string, unknown> = {};
   try {
-    scripts = (JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }).scripts ?? {};
+    scripts = (JSON.parse(readRepoFile(join(projectRoot, 'package.json'))) as { scripts?: Record<string, unknown> }).scripts ?? {};
   } catch {
     // Not a Node project.
   }

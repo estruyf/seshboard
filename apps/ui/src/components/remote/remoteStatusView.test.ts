@@ -16,6 +16,7 @@ function status(change: Partial<RemoteStatus> = {}, settings: Partial<RemoteStat
     problem: null,
     devices: [],
     connections: [],
+    blocked: [],
     addressChanged: false,
     pairing: { offer: null, request: null, locked: false },
     ...change,
@@ -112,5 +113,25 @@ describe('the connection row and names', () => {
 
   it('joins names', () => {
     expect([[], ['A'], ['A', 'B'], ['A', 'B', 'C']].map(joinNames)).toEqual(['', 'A', 'A and B', 'A, B and 1 more']);
+  });
+
+  it('says an address is turned away, with Unblock, before who is connected', () => {
+    const blocked = [{ address: '203.0.113.4', attempts: 12, until: NOW + 4.5 * 60_000 }];
+    const view = remoteStatusView(status({ blocked, connections: [{ deviceId: 'a', name: 'Mysterious', since: 1 }] }), NOW);
+    expect(view).toMatchObject({
+      tone: 'caution',
+      title: 'Turning connections away',
+      detail: '203.0.113.4 had 12 refused attempts in a row and waits 5 more minutes. Devices on that network wait too.',
+      address: 'https://quiet-river.trycloudflare.com',
+    });
+    expect(labels(view)).toEqual(['Unblock', 'Show log']);
+  });
+
+  it('counts the addresses when more than one waits, and says a minute at least', () => {
+    const blocked = [
+      { address: '203.0.113.4', attempts: 4, until: NOW + 2_000 },
+      { address: '198.51.100.7', attempts: 3, until: NOW + 1_000 },
+    ];
+    expect(remoteStatusView(status({ blocked }), NOW)?.detail).toBe('2 addresses had refused attempts in a row and wait up to 1 more minute. Devices on those networks wait too.');
   });
 });

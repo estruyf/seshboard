@@ -68,6 +68,7 @@ import { checkAttachments, promptWithFiles, pruneRemoteFiles, saveRemoteFiles } 
 import { Pairing } from './pairing.ts';
 import { RemoteServer } from './remoteServer.ts';
 import { nextFreePort } from './freePort.ts';
+import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
@@ -166,6 +167,8 @@ export interface RemoteHubOptions {
   previewApp?: boolean;
   /** Where files sent with a message are kept (`remoteFiles.ts`). */
   filesDir: string;
+  /** Remote's log on disk (`remoteLog.ts`), next to the windows' log; none without it (tests). */
+  logFile?: string;
   /**
    * Remote's identity key, which main keeps in the system's keychain. Asked for only once Remote is on, so the
    * keychain is never touched for people who don't use it; null when the keychain can't be used.
@@ -315,17 +318,33 @@ export class RemoteHub {
   /** Messages sent from a phone, by session, for the label (kept while the engine runs). */
   private readonly sentFrom = new Map<string, Map<string, string>>();
   /**
-   * Sessions a phone archived, and when: it may take that back (Undo) for a while, although an archived session has
-   * left its list and nothing else may touch it.
+   * Sessions and runs a phone archived, by which phone and when: that phone may take it back (Undo) for a while,
+   * although an archived session has left its list and nothing else may touch it. Another phone may not.
    */
-  private readonly archivedFromPhone = new Map<string, number>();
+  private readonly archivedFromPhone = new Map<string, { deviceId: string; at: number }>();
+
+  /** Whether `device` may unarchive `id` without seeing it in its list: it archived it a moment ago. */
+  private mayUndoArchive(id: string, device: RemoteDevice): boolean {
+    const archived = this.archivedFromPhone.get(id);
+    return archived !== undefined && archived.deviceId === device.id && Date.now() - archived.at < UNDO_ARCHIVE_MS;
+  }
   private applying: Promise<void> = Promise.resolve();
   /** Settings › Theme › App icon's colourway for phones, from main (`setAppIcon`). */
   private appIcon: string = DEFAULT_APP_ICON;
   /** The theme the app shows (`remote.setTheme`), for phones that look like this computer. */
   private theme: RemoteTheme | null;
 
+  /** Every Remote log line: to the app's windows, and to `remote.log` when the engine keeps one. */
+  private readonly log: RemoteHubOptions['log'];
+  /** When the next address stops waiting, so Settings › Remote stops saying it's blocked. */
+  private blockTimer: ReturnType<typeof setTimeout> | undefined;
+
   constructor(private readonly options: RemoteHubOptions) {
+    const file = options.logFile ? new RemoteLog(options.logFile) : null;
+    this.log = (level, message) => {
+      options.log(level, message);
+      file?.write(level, message);
+    };
     this.devices = new DeviceStore(options.db);
     this.pairing = new Pairing(() => this.statusChanged());
     const saved = RemoteSettings.safeParse(options.appState.get(SETTINGS_KEY));
@@ -346,9 +365,10 @@ export class RemoteHub {
       origins: () => [...remoteAppOrigins(this.appUrl, this.previewApp), REMOTE_DESKTOP_ORIGIN],
       address: () => this.address,
       cloudflare: () => this.settings.tunnel === 'cloudflare',
-      log: options.log,
+      log: this.log,
       handlers: (device) => this.handlers(device),
       onConnections: () => this.statusChanged(),
+      onBlocked: () => this.blockedChanged(),
     });
   }
 
@@ -370,6 +390,7 @@ export class RemoteHub {
       problem: this.problem,
       devices: this.devices.list(),
       connections: this.server.list(),
+      blocked: this.server.blocked(),
       addressChanged: this.addressChanged(),
       pairing: this.pairing.state(),
     };
@@ -421,6 +442,24 @@ export class RemoteHub {
     this.statusChanged();
   }
 
+  /** Unblock in Settings › Remote: addresses waiting after refused attempts may try again now, as after a restart. */
+  unblock(): void {
+    this.server.unblock();
+    this.blockedChanged();
+  }
+
+  /** An address started or stopped waiting: Settings › Remote says so, and again when the wait is over. */
+  private blockedChanged(): void {
+    clearTimeout(this.blockTimer);
+    this.blockTimer = undefined;
+    this.statusChanged();
+    const blocked = this.server.blocked();
+    if (!blocked.length) return;
+    const next = Math.min(...blocked.map((b) => b.until));
+    this.blockTimer = setTimeout(() => this.blockedChanged(), Math.max(0, next - Date.now()) + 50);
+    this.blockTimer.unref?.();
+  }
+
   revoke(deviceId: string): void {
     this.devices.revoke(deviceId);
     this.setPush(deviceId, null);
@@ -434,6 +473,14 @@ export class RemoteHub {
     this.changeTimer = setTimeout(() => {
       this.changeTimer = undefined;
       const snapshot = this.list();
+      // A session that left the list (archived, out of scope) is no longer a phone's to follow: its watch ends, so
+      // nothing more of it is sent.
+      const listed = new Set(snapshot.sessions.map((s) => s.id));
+      for (const [phone, watch] of this.watches) {
+        if (listed.has(watch.sessionId)) continue;
+        watch.stop();
+        this.watches.delete(phone);
+      }
       const json = JSON.stringify(snapshot);
       if (json === this.lastSessions) return;
       this.lastSessions = json;
@@ -535,6 +582,7 @@ export class RemoteHub {
     for (const timer of this.finishing.values()) clearTimeout(timer);
     this.finishing.clear();
     clearTimeout(this.changeTimer);
+    clearTimeout(this.blockTimer);
     this.pairing.cancel();
     this.stopListening();
   }
@@ -548,16 +596,20 @@ export class RemoteHub {
       this.generation++;
       this.tunnel?.stop();
     }
-    this.applying = this.applying.then(() => this.applyNow()).catch((error) => this.options.log('error', `Remote: ${(error as Error).message}`));
+    this.applying = this.applying.then(() => this.applyNow()).catch((error) => this.log('error', `Remote: ${(error as Error).message}`));
     return this.applying;
   }
 
   private async applyNow(): Promise<void> {
     const generation = ++this.generation;
     const { enabled, port } = this.settings;
+    const wasListening = this.server.listening;
     this.stopListening();
     this.problem = null;
-    if (!enabled) return this.statusChanged();
+    if (!enabled) {
+      if (wasListening) this.log('info', 'Remote: turned off');
+      return this.statusChanged();
+    }
     if (!this.identity) {
       const secret = await this.options.identity().catch(() => null);
       if (!secret) {
@@ -571,8 +623,10 @@ export class RemoteHub {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       this.problem = code === 'EADDRINUSE' ? { kind: 'port-in-use', port, suggestedPort: await nextFreePort(port) } : { kind: 'failed', message: (error as Error).message };
+      this.log('warn', `Remote: can't listen on 127.0.0.1:${port}: ${(error as Error).message}`);
       return this.statusChanged();
     }
+    this.log('info', `Remote: listening on 127.0.0.1:${port}, version ${this.options.appVersion}`);
     if (generation === this.generation) await this.startTunnel(generation);
   }
 
@@ -588,6 +642,7 @@ export class RemoteHub {
       // Your own tunnel or proxy: Seshboard only needs to know the address it forwards from.
       this.address = customUrl;
       this.tunnelState = customUrl ? { state: 'running', message: null } : { state: 'failed', message: 'Add the address that forwards to Remote.' };
+      if (customUrl) this.log('info', `Remote: your tunnel forwards ${customUrl} here`);
       return this.statusChanged();
     }
     const binary = (this.options.findTool ?? ((t: TunnelTool) => findTool(t)))(tool);
@@ -607,13 +662,13 @@ export class RemoteHub {
       this.address = address;
       this.retries = 0;
       this.tunnelState = { state: 'running', message: null };
-      this.options.log('info', `Remote: the ${tool} tunnel is running`);
+      this.log('info', `Remote: the ${tool} tunnel is running`);
       tunnel.onExit((message) => this.tunnelStopped(generation, message));
     } catch (error) {
       if (generation !== this.generation) return;
       this.tunnel = null;
       this.tunnelState = { state: 'failed', message: (error as Error).message };
-      this.options.log('warn', `Remote: the ${tool} tunnel didn't start: ${(error as Error).message}`);
+      this.log('warn', `Remote: the ${tool} tunnel didn't start: ${(error as Error).message}`);
     }
     this.statusChanged();
   }
@@ -624,7 +679,7 @@ export class RemoteHub {
     this.tunnel = null;
     this.address = null;
     this.tunnelState = { state: 'failed', message };
-    this.options.log('warn', `Remote: the tunnel stopped: ${message}`);
+    this.log('warn', `Remote: the tunnel stopped: ${message}`);
     this.statusChanged();
     const waits = this.options.retryMs ?? RETRY_MS;
     const wait = waits[Math.min(this.retries++, waits.length - 1)]!;
@@ -707,9 +762,9 @@ export class RemoteHub {
       void sendPush(target.subscription, body, { keys: target.vapid ?? this.vapid(), subject: new URL(this.appUrl).origin, urgent: payload.kind === 'needs-you', topic, ...(this.options.pushFetch ? { fetch: this.options.pushFetch } : {}) }).then(
         (result) => {
           if (result === 'gone') this.setPush(target.deviceId, null);
-          if (result === 'failed') this.options.log('warn', `Remote: a push service refused a notification`);
+          if (result === 'failed') this.log('warn', `Remote: a push service refused a notification`);
         },
-        (error: Error) => this.options.log('warn', `Remote: couldn't reach the push service: ${error.message}`),
+        (error: Error) => this.log('warn', `Remote: couldn't reach the push service: ${error.message}`),
       );
     }
   }
@@ -912,13 +967,13 @@ export class RemoteHub {
           profileId: profile,
           choices,
         });
-        this.options.log('info', `Remote: ${device.name} ran the pipeline ${state.run.pipeline.name}`);
+        this.log('info', `Remote: ${device.name} ran the pipeline ${state.run.pipeline.name}`);
         return { state: this.toRemote(state) };
       },
       'runs.continue': async ({ runId, message }) => {
         const before = this.checkRun(runId);
         const state = await this.requirePipelines().act('continue', runId, message ?? null);
-        if (before.run.waitingFor === 'push') this.options.log('info', `Remote: ${device.name} pushed the run ${runId}`);
+        if (before.run.waitingFor === 'push') this.log('info', `Remote: ${device.name} pushed the run ${runId}`);
         return { state: this.toRemote(state) };
       },
       'runs.retryStep': async ({ runId }) => {
@@ -939,10 +994,10 @@ export class RemoteHub {
       },
       'runs.archive': async ({ runId, archived }) => {
         // As for a session: an archived run row leaves the list, and the phone that archived it may take that back.
-        const undo = !archived && Date.now() - (this.archivedFromPhone.get(runId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = !archived && this.mayUndoArchive(runId, device);
         if (!undo) this.checkRun(runId);
         await this.requirePipelines().archive(runId, archived);
-        if (archived) this.archivedFromPhone.set(runId, Date.now());
+        if (archived) this.archivedFromPhone.set(runId, { deviceId: device.id, at: Date.now() });
         else this.archivedFromPhone.delete(runId);
         this.sessionsChanged();
         return {};
@@ -988,9 +1043,9 @@ export class RemoteHub {
         return {};
       },
       'session.setFlags': ({ sessionId, pinned, archived }) => {
-        const undo = archived === false && pinned === undefined && Date.now() - (this.archivedFromPhone.get(sessionId) ?? -Infinity) < UNDO_ARCHIVE_MS;
+        const undo = archived === false && pinned === undefined && this.mayUndoArchive(sessionId, device);
         if (!undo) this.checkSession(sessionId);
-        if (archived === true) this.archivedFromPhone.set(sessionId, Date.now());
+        if (archived === true) this.archivedFromPhone.set(sessionId, { deviceId: device.id, at: Date.now() });
         else if (archived === false) this.archivedFromPhone.delete(sessionId);
         this.options.setFlags(sessionId, { ...(pinned !== undefined ? { pinned } : {}), ...(archived !== undefined ? { archived } : {}) });
         this.sessionsChanged();
@@ -1117,7 +1172,7 @@ export class RemoteHub {
       'changes.commit': async ({ sessionId, message }) => {
         this.checkSession(sessionId);
         const result = await this.options.commit(sessionId, message);
-        if (result.ok) this.options.log('info', `Remote: ${device.name} committed ${result.sha.slice(0, 7)} in session ${sessionId}`);
+        if (result.ok) this.log('info', `Remote: ${device.name} committed ${result.sha.slice(0, 7)} in session ${sessionId}`);
         return result;
       },
     };

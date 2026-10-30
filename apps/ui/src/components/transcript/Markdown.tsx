@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock.tsx';
@@ -30,26 +30,7 @@ export const markdownComponents: Components = {
   },
   // Fenced blocks render through CodeBlock (highlighted when idle); `pre` is just a pass-through.
   pre: ({ children }) => <>{children}</>,
-  code: ({ className, children }) => {
-    const text = String(children ?? '');
-    const language = /language-([\w+#-]+)/.exec(className ?? '')?.[1];
-    if (language || text.includes('\n')) {
-      const code = text.replace(/\n$/, '');
-      // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
-      return <CodeBlock code={code} language={language} preview={language && MARKDOWN.has(language.toLowerCase()) ? <Block text={code} /> : undefined} />;
-    }
-    // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
-    const code = <code className="rounded bg-border/60 px-1 py-px font-mono text-[0.9em] [overflow-wrap:anywhere]">{children}</code>;
-    // A file path (`src/a.ts:12`) becomes a link to open it in the editor, once the engine finds it.
-    const fileRef = parseFileRef(text);
-    return fileRef ? (
-      <FileLink fileRef={fileRef} fallback={code}>
-        {code}
-      </FileLink>
-    ) : (
-      code
-    );
-  },
+  code: (props) => renderCode(props, true),
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
       <table className="border-collapse text-ui [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left">
@@ -58,6 +39,28 @@ export const markdownComponents: Components = {
     </div>
   ),
 };
+
+/** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
+function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
+  const text = String(children ?? '');
+  const language = /language-([\w+#-]+)/.exec(className ?? '')?.[1];
+  if (language || text.includes('\n')) {
+    const code = text.replace(/\n$/, '');
+    // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
+    return <CodeBlock code={code} language={language} preview={previews && language && MARKDOWN.has(language.toLowerCase()) ? <PreviewBlock text={code} /> : undefined} />;
+  }
+  // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
+  const code = <code className="rounded bg-border/60 px-1 py-px font-mono text-[0.9em] [overflow-wrap:anywhere]">{children}</code>;
+  // A file path (`src/a.ts:12`) becomes a link to open it in the editor, once the engine finds it.
+  const fileRef = parseFileRef(text);
+  return fileRef ? (
+    <FileLink fileRef={fileRef} fallback={code}>
+      {code}
+    </FileLink>
+  ) : (
+    code
+  );
+}
 
 /** The prose styles of an answer, also for another computer's (`components/computers/RemoteText.tsx`). */
 export const PROSE =
@@ -74,6 +77,20 @@ export const READING_PROSE =
 export type MarkdownVariant = 'chat' | 'reading';
 
 const proseOf = (variant: MarkdownVariant) => (variant === 'reading' ? READING_PROSE : PROSE);
+
+/**
+ * A Markdown block's preview. Its own Markdown blocks show as source: previews inside previews would parse the text
+ * once more for each level, and a reply nesting thousands (```` ```md ```` in ```` ````md ````…) would freeze the window.
+ */
+const previewComponents: Components = { ...markdownComponents, code: (props) => renderCode(props, false) };
+
+const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={previewComponents}>
+      {text}
+    </ReactMarkdown>
+  );
+});
 
 const Block = memo(function Block({ text }: { text: string }) {
   return (

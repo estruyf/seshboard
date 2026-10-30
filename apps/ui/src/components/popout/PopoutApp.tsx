@@ -24,6 +24,7 @@ import { useSessionsSync } from '../../state/useSessionsSync.ts';
 import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
 import { ArchiveDraftDialog } from '../drafts/ArchiveDraftDialog.tsx';
 import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
+import { RepoTrustDialog } from '../clone/CloneTrustDialog.tsx';
 import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
 import { CommandPalette } from '../palette/CommandPalette.tsx';
 import { FilePreviewDialog } from '../filePreview/FilePreviewDialog.tsx';
@@ -107,6 +108,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       <AddContextDialogHost />
       {/* Starting, resuming or forking from here can hit the focus limit; archiving can hold an unsent message. */}
       <FocusGateDialog />
+      <RepoTrustDialog />
       <ArchiveDraftDialog />
       <EngineStalledNotice />
       <ToastLayer />

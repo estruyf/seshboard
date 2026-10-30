@@ -27,6 +27,9 @@ export * from "./appIcons.ts";
 /** `window.postMessage` tag the preload uses to hand the engine port to the page. */
 export const ENGINE_PORT_MESSAGE = "seshboard:engine-port";
 
+/** Remote's log in the app's data folder (the engine's `remoteLog.ts`): connections, refusals and blocks. */
+export const REMOTE_LOG_FILE = "remote.log";
+
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
   requestEnginePort: "seshboard:request-engine-port",
@@ -42,6 +45,7 @@ export const IpcChannel = {
   chooseMemoryExport: "seshboard:choose-memory-export",
   saveImage: "seshboard:save-image",
   showSavedImage: "seshboard:show-saved-image",
+  showRemoteLog: "seshboard:show-remote-log",
   focusSession: "seshboard:focus-session",
   selectSession: "seshboard:select-session",
   quitRequested: "seshboard:quit-requested",
@@ -336,6 +340,11 @@ export interface Preferences {
   appIcon: AppIconKey;
   /** Settings › Theme › App icon: "Use it on your phone too", the remote app's icon and its browser tab. Off is Graphite there. */
   appIconOnRemote: boolean;
+  /**
+   * Settings › Theme › App icon: "Show when Claude is working" (macOS). On, the empty jacks of the Dock's icon light
+   * up in turn while a session works. On by default.
+   */
+  dockActivity: boolean;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -432,6 +441,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   themeId: DEFAULT_THEME_ID,
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
+  dockActivity: true,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
@@ -612,6 +622,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isThemeId(raw.themeId)) out.themeId = raw.themeId;
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
+  if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -837,6 +848,8 @@ export interface SeshboardBridge {
   saveImage(request: SaveImageRequest): Promise<string | null>;
   /** Shows an image saved with `saveImage` in Finder (only those, never any other path). */
   showSavedImage(path: string): void;
+  /** Shows Remote's log (`REMOTE_LOG_FILE` in the data folder) in Finder, or the folder before there is one. */
+  showRemoteLog(): void;
   /** The path on disk of a dropped file or folder; empty for files that aren't on disk (made in the page, pasted). */
   getPathForFile(file: File): string;
   /** ⌘Q was pressed: show the quit prompt. Pressing ⌘Q again while it's open quits without it. */

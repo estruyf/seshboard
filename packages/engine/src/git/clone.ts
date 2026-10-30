@@ -1,7 +1,9 @@
 import { execFile, spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSameOrInside, repoLabel, type ClonePhase, type GithubRepoRef, type RepoBrings, type RepoHook } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
+import { readRepoFile } from '../system/repoFile.ts';
 import { githubRepos } from './remotes.ts';
 import { firstUsefulLine, ghEnv, runGh, type GhCommand } from './pullRequest.ts';
 
@@ -69,6 +71,8 @@ function stopTree(pid: number | undefined): void {
   }
 }
 
+const missingProgram = (file: string) => `${file === 'git' ? 'git' : 'gh'} isn’t installed, or isn’t on the PATH.`;
+
 export interface CloneRun {
   /** Resolves when the clone is done; rejects with what to say when it failed or was cancelled (`cancelled` set). */
   done: Promise<void>;
@@ -98,10 +102,14 @@ export function runClone(options: {
   const { repo, target, parent, command, env } = options;
   const existedBefore = existsSync(target);
   let cancelled = false;
-  const child = spawn(command.file, command.args, {
+  // Nothing may wait for a password: git fails instead, and says so.
+  const childEnv = { ...process.env, ...ghEnv(env), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', LC_ALL: 'C' };
+  // A program by its full path, never one in the Clone into folder (see `programPath`).
+  const file = programPath(command.file, childEnv);
+  if (!file) return { done: Promise.reject(new Error(missingProgram(command.file))), cancel: () => {} };
+  const child = spawn(file, command.args, {
     cwd: parent,
-    // Nothing may wait for a password: git fails instead, and says so.
-    env: { ...process.env, ...ghEnv(env), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', LC_ALL: 'C' },
+    env: childEnv,
     shell: false,
     windowsHide: true,
     // Its own process group, so Cancel stops git too when gh started it.
@@ -140,7 +148,7 @@ export function runClone(options: {
   const done = new Promise<void>((resolve, reject) => {
     child.on('error', (error: NodeJS.ErrnoException) => {
       cleanUp();
-      reject(new Error(error.code === 'ENOENT' ? `${command.file === 'git' ? 'git' : 'gh'} isn’t installed, or isn’t on the PATH.` : error.message));
+      reject(new Error(error.code === 'ENOENT' ? missingProgram(command.file) : error.message));
     });
     child.on('close', (code) => {
       report(true);
@@ -235,10 +243,10 @@ export function repoBringsFrom(files: { settings: unknown[]; mcp: unknown }): Re
   return { hooks, mcpServers, allow, plugins, settings };
 }
 
-/** A JSON file's contents, or null when it is missing or isn't JSON. */
+/** A JSON file's contents, or null when it is missing, isn't JSON or isn't a small regular file (`readRepoFile`). */
 function readJson(path: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, 'utf8'));
+    return JSON.parse(readRepoFile(path));
   } catch {
     return null;
   }

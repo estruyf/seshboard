@@ -3,6 +3,7 @@ import { existsSync, statSync, type Dirent } from 'node:fs';
 import { lstat, readdir } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { isSameOrInside, type WorktreeEntry, type WorktreeList, type WorktreePullRequest, type WorktreeRemoveItem, type WorktreeRemoveResult } from '@seshboard/protocol';
+import { programPath } from '../system/program.ts';
 import { baseBranch, git, GitError } from './gitChanges.ts';
 import { defaultGh, ghEnv, type GhCommand } from './pullRequest.ts';
 
@@ -184,8 +185,11 @@ export async function listWorktrees(root: string, options: { sessions?: readonly
 
 /** Runs a command; resolves with stdout, or null when it can't run (not installed, signed out, offline). */
 function run(command: string, args: string[], cwd: string, env: Record<string, string>, timeout: number): Promise<string | null> {
+  const fullEnv = { ...process.env, ...env };
+  const file = programPath(command, fullEnv);
+  if (!file) return Promise.resolve(null);
   return new Promise((resolvePromise) => {
-    execFile(command, args, { cwd, env: { ...process.env, ...env }, timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => resolvePromise(error ? null : stdout));
+    execFile(file, args, { cwd, env: fullEnv, timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => resolvePromise(error ? null : stdout));
   });
 }
 

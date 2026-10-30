@@ -7,7 +7,7 @@ import { generateKeyPair, pairingCode, pskFromSecret, RpcError, type FrameSocket
 import { openCacheDatabase } from '../db/database.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, PAIRING_MAX_FAILURES, type PairingState } from './pairing.ts';
-import { Backoff, clientAddress, CLOSE, decodePath, deviceKind, RemoteServer } from './remoteServer.ts';
+import { Backoff, clientAddress, CLOSE, decodePath, deviceKind, RemoteServer, unknownKey } from './remoteServer.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 
 const cleanups: Array<() => void> = [];
@@ -20,13 +20,17 @@ const noRun = (): never => {
   throw new RpcError('NOT_FOUND', 'No such run');
 };
 
-async function setup(options: { backoff?: Backoff } = {}) {
+async function setup(options: { backoff?: Backoff; onBlocked?: () => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-'));
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const identity = generateKeyPair();
   const devices = new DeviceStore(cache.db);
   const states: PairingState[] = [];
   let onRequest: (state: PairingState) => void = () => {};
+  /** The sessions a phone interrupted: what reached a handler. */
+  const interrupted: string[] = [];
+  /** What the server logged, without the level. */
+  const logs: string[] = [];
   const pairing = new Pairing((state) => {
     states.push(state);
     if (state.request) onRequest(state);
@@ -39,7 +43,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     computerName: () => "Elio's iMac",
     origins: () => [APP_ORIGIN],
     ...options,
-    log: () => {},
+    log: (_level, message) => void logs.push(message),
     handlers: (device) => ({
       'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
       'projects.list': () => ({ projects: [] }),
@@ -53,7 +57,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
       'limits.get': () => ({ limit: null }),
       'limits.resume': () => ({}),
       'limits.arm': () => ({}),
-      'session.interrupt': () => ({}),
+      'session.interrupt': ({ sessionId }) => (interrupted.push(sessionId), {}),
       'session.stopTask': () => ({}),
       'session.respond': () => ({}),
       'session.create': () => {
@@ -106,7 +110,7 @@ async function setup(options: { backoff?: Backoff } = {}) {
     cache.close();
     rmSync(dir, { recursive: true, force: true });
   });
-  return { server, devices, pairing, identity, port, states, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
+  return { server, devices, pairing, identity, port, states, interrupted, logs, allowNext: (allow: boolean, seen?: (code: string) => void) => (onRequest = (state) => (seen?.(state.request!.code), pairing.decide(state.request!.id, allow))) };
 }
 
 async function pairPhone(env: Awaited<ReturnType<typeof setup>>, name = "Elio's iPhone") {
@@ -156,9 +160,11 @@ describe('Remote server', () => {
     const connecting = await handshake(env.port, 'connect', phone, env.identity.publicKey);
     env.devices.revoke(deviceId);
     env.server.disconnect(deviceId);
-    void client<RemoteContract>(connecting.frames, connecting.session!).call('hello', { client: { version: '1' } }).catch(() => {});
+    // Its first message is a request that does something: it must not run.
+    void client<RemoteContract>(connecting.frames, connecting.session!).call('session.interrupt', { sessionId: '00000000-0000-4000-8000-000000000001' }).catch(() => {});
     expect(await connecting.closed).toBe(CLOSE.unknownDevice);
     expect(env.server.list()).toEqual([]);
+    expect(env.interrupted).toEqual([]);
   });
 
   it('keeps a phone that is denied, or too slow, out', async () => {
@@ -208,6 +214,51 @@ describe('Remote server', () => {
     await second.closed;
   });
 
+  it('logs who it refused and why, naming a device that was revoked, and who connected', async () => {
+    const env = await setup();
+    const stranger = generateKeyPair();
+    await handshake(env.port, 'connect', stranger, env.identity.publicKey);
+    const { phone, deviceId } = await pairPhone(env);
+    const connected = await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await client<RemoteContract>(connected.frames, connected.session!).call('hello', { client: { version: '1' } });
+    connected.ws.close();
+    await connected.closed;
+    env.devices.revoke(deviceId);
+    await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await expect(open(env.port, 'https://evil.example')).rejects.toThrow('HTTP 403');
+
+    const lines = env.logs.filter((line) => !line.startsWith('Remote: paired'));
+    expect(lines[0]).toBe(`Remote: refused 127.0.0.1 (a browser at ${APP_ORIGIN}): ${unknownKey(stranger.publicKey, null)}`);
+    expect(lines[0]).toContain('was never paired here');
+    // The successful connection forgets the stranger's failure.
+    expect(lines[1]).toBe('Remote: 127.0.0.1 got in after 1 refused attempt');
+    expect(lines[2]).toBe("Remote: Elio's iPhone connected from 127.0.0.1");
+    expect(lines[3]).toMatch(/^Remote: Elio's iPhone disconnected \(\d+\) after \d+ s$/);
+    expect(lines[4]).toMatch(/: device key .{10}… is Elio's iPhone \(a browser, paired \d{4}-\d\d-\d\d\), revoked \d{4}-\d\d-\d\d \d\d:\d\d UTC$/);
+    expect(lines[5]).toBe('Remote: refused a socket from 127.0.0.1: origin "https://evil.example" isn\'t the remote app\'s');
+  });
+
+  it('blocks an address after refused attempts, says so once while it waits, and Unblock lets it in', async () => {
+    let changes = 0;
+    const env = await setup({ onBlocked: () => changes++ });
+    const { phone } = await pairPhone(env);
+    for (let i = 0; i < 3; i++) await handshake(env.port, 'connect', generateKeyPair(), env.identity.publicKey);
+    expect(env.server.blocked()).toMatchObject([{ address: '127.0.0.1', attempts: 3 }]);
+    expect(changes).toBe(1);
+    expect(env.logs).toContain('Remote: 127.0.0.1 waits 1 s before it may try again, after 3 refused attempts in a row');
+    // A paired phone on the same network waits too: that is what Unblock is for.
+    await expect(open(env.port)).rejects.toThrow('HTTP 429');
+    await expect(open(env.port)).rejects.toThrow('HTTP 429');
+    expect(env.logs.filter((line) => line.startsWith('Remote: turned away 127.0.0.1'))).toHaveLength(1);
+
+    env.server.unblock();
+    expect(env.server.blocked()).toEqual([]);
+    expect(env.logs.at(-1)).toBe('Remote: unblocked every address (Settings › Remote)');
+    const connected = await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await client<RemoteContract>(connected.frames, connected.session!).call('hello', { client: { version: '1' } });
+    expect(env.server.list()).toHaveLength(1);
+  });
+
   it('refuses another origin and anything but a hello, and serves no pages', async () => {
     const env = await setup();
     await expect(open(env.port, 'https://evil.example')).rejects.toThrow('HTTP 403');
@@ -250,8 +301,27 @@ describe('the backoff', () => {
     for (let i = 0; i < 20; i++) backoff.failed('a');
     now += 5 * 60_000 - 1;
     expect(backoff.allowed('a')).toBe(false);
-    backoff.succeeded('a');
+    expect(backoff.succeeded('a')).toBe(23);
     expect(backoff.allowed('a')).toBe(true);
+  });
+
+  it('lists the addresses waiting now, says the first refusal of each wait, and clears', () => {
+    let now = 0;
+    const backoff = new Backoff(() => now);
+    for (let i = 0; i < 2; i++) expect(backoff.failed('a')).toEqual({ count: i + 1, wait: 0 });
+    expect(backoff.blocked()).toEqual([]);
+    expect(backoff.failed('a')).toEqual({ count: 3, wait: 1_000 });
+    expect(backoff.blocked()).toEqual([{ address: 'a', attempts: 3, until: 1_000 }]);
+    expect(backoff.firstRefusal('a')).toBe(true);
+    expect(backoff.firstRefusal('a')).toBe(false);
+    expect(backoff.firstRefusal('b')).toBe(false);
+    now = 1_000;
+    expect(backoff.blocked()).toEqual([]);
+    backoff.failed('a');
+    expect(backoff.firstRefusal('a')).toBe(true);
+    backoff.clear();
+    expect(backoff.allowed('a')).toBe(true);
+    expect(backoff.succeeded('a')).toBe(0);
   });
 });
 
