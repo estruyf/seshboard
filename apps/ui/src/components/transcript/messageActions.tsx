@@ -26,8 +26,8 @@ export interface MessageActions {
   read?(turnKey: string): void;
   /** The replies that can be read, by the key of the turn's last reply: the turn they belong to and a word count. */
   readable?: ReadonlyMap<string, ReadableReply>;
-  /** Another provider's session (Copilot), shown read-only: no fork, edit or rewind. */
-  readOnly?: boolean;
+  /** Claude Code's fork, edit and rewind are offered: false in another provider's session (Copilot). Missing: true. */
+  claudeActions?: boolean;
 }
 
 /** A turn's last reply, as the Read button needs it. */
@@ -112,7 +112,7 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
       className={`flex items-center gap-0.5 ${placement}`}
       data-message-actions
     >
-      {actions && !actions.readOnly && kind === 'user' && (
+      {actions && actions.claudeActions !== false && kind === 'user' && (
         <>
           <Action title="Undo file changes since this message" onClick={() => actions.rewind(uuid)}>
             <Undo2 size={13} />
@@ -124,7 +124,7 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
           )}
         </>
       )}
-      {actions && !actions.readOnly && kind === 'text' && (
+      {actions && actions.claudeActions !== false && kind === 'text' && (
         <Action title="Fork from here (a new session with the conversation up to this message)" onClick={() => actions.fork(uuid)}>
           <GitFork size={13} />
         </Action>

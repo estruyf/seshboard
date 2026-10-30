@@ -1458,7 +1458,7 @@
     },
     {
       "id": "feature:copilot-sessions",
-      "name": "GitHub Copilot sessions in the sidebar, read-only (allowed in Settings: Providers; badge on the row, copy the resume command)",
+      "name": "GitHub Copilot sessions: allowed in Settings: Providers, started from New session (Runs with), continued from the message box, with the Copilot mark on the row; signed in with Copilot CLI's own login",
       "page": "settings"
     },
     {

@@ -1,4 +1,4 @@
-import { isReadOnlySession } from '@seshboard/protocol/client';
+import { isOtherProviderSession } from '@seshboard/protocol/client';
 import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
@@ -223,7 +223,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       ? [{ label: 'Project', hint: projectName, submenu: [{ title: projectName, detail: data.projectRoot }, ...projectEntries], data: { 'data-session-project-menu': true } }]
       : [];
     // Another provider's session (Copilot) is only shown: it can't be renamed, deleted or run a pipeline from.
-    const readOnly = !!data.summary && isReadOnlySession(data.summary);
+    const readOnly = !!data.summary && isOtherProviderSession(data.summary);
     setMenu({
       ...at,
       label: `Session “${data.title}”`,

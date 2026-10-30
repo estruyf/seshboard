@@ -52,7 +52,7 @@ export const SessionSummary = z.object({
    * from (#179). Kept in Seshboard's database; Claude Code doesn't know about it.
    */
   parentId: z.string().nullable().optional(),
-  /** The agent that ran it (missing: Claude Code). Other providers' sessions are read-only (`isReadOnlySession`). */
+  /** The agent that ran it (missing: Claude Code). Other providers' sessions are read-only (`isOtherProviderSession`). */
   provider: z.enum(SESSION_PROVIDERS).optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;

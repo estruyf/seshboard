@@ -190,6 +190,7 @@ export class ProviderHosts {
         // Claude profiles don't apply: the provider's own login runs it.
         profileId: BUILTIN_PROFILE_ID,
         backgroundTasks: [],
+        provider,
       },
     };
   }

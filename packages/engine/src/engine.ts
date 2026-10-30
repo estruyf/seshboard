@@ -7,7 +7,7 @@ import {
   BUILTIN_PROFILE_ID,
   PROVIDER_NAMES,
   type OptionalProvider,
-  isReadOnlySession,
+  isOtherProviderSession,
   otherProviderOf,
   COMPANION_DIR,
   REMOTE_LOG_FILE,
@@ -2154,7 +2154,7 @@ export function createEngine(options: EngineOptions): Engine {
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       // Another provider's sessions (Copilot) take no context from the editor: Seshboard can't send to them.
-      sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isReadOnlySession(s)), live: liveList(), ...hosts.list() }),
+      sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)), live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
       respond: async (requestId, decision, acceptEdits) => {
@@ -2348,7 +2348,7 @@ export function createEngine(options: EngineOptions): Engine {
   const retentionCandidatesNow = () =>
     retentionCandidates({
       // Another provider's sessions are only read: never deleted, by hand or by the clean-up.
-      summaries: sessions.snapshot().sessions.filter((s) => !isReadOnlySession(s)),
+      summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)),
       live: liveList(),
       ...hosts.list(),
       drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),

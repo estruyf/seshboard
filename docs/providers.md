@@ -1,12 +1,12 @@
 # Providers
 
-Seshboard drives Claude Code. **Providers** are the other agents whose sessions it can show: GitHub Copilot CLI first ([#199](https://github.com/estruyf/seshboard/issues/199)). A provider is off until the user allows it in **Settings › Providers**; nothing of it is read before then. Its sessions follow Claude Code's rule in the sidebar: those started outside Seshboard show when the sidebar shows sessions from other apps (**Settings › Sidebar**). They are **read-only** for now: they show up with the provider's mark on the row and in the header, in search, catch-up and on the phone, and their transcript opens like any other, but Seshboard can't send to them, fork, rewind, rename or delete them.
+Seshboard drives Claude Code. **Providers** are the other agents it works with: GitHub Copilot CLI first ([#199](https://github.com/estruyf/seshboard/issues/199)). A provider is off until the user allows it in **Settings › Providers**; nothing of it is read or run before then. Its sessions follow Claude Code's rule in the sidebar: those started outside Seshboard show when the sidebar shows sessions from other apps (**Settings › Sidebar**). They show up with the provider's mark on the row and in the header, in search, catch-up and on the phone, and their transcript opens like any other. A provider with a **driver** (Copilot has one) can also start sessions from New session and continue them from the message box; one without is read-only. Claude Code's own actions (fork, rewind, Ask, rename, delete, plan usage) never apply to them. **Signing in is the provider's own**: Seshboard never handles its credentials.
 
 ## How it fits together
 
 | Piece | Where | What it does |
 |---|---|---|
-| Ids and names | `packages/protocol/src/providerConstants.ts` | `SESSION_PROVIDERS`, `OPTIONAL_PROVIDERS`, `PROVIDER_NAMES`, and `otherProviderOf` / `isReadOnlySession` for a `SessionSummary` (whose `provider` is missing for Claude Code's). |
+| Ids and names | `packages/protocol/src/providerConstants.ts` | `SESSION_PROVIDERS`, `OPTIONAL_PROVIDERS`, `PROVIDER_NAMES`, and `otherProviderOf` / `isOtherProviderSession` for a `SessionSummary` (whose `provider` is missing for Claude Code's). |
 | The adapter | `packages/engine/src/providers/provider.ts` | `ProviderAdapter`: the provider's folder, how its files map to sessions (`ProviderFiles`), its `SessionSource`, and the command that resumes a session in its own CLI. |
 | The registry | `packages/engine/src/providers/registry.ts` | `createProviders()`: every adapter, in the order Settings lists them. |
 | Allowed or not | `providers/providerSettings.ts` | The `providers.allowed` app state key (carried by settings export and import), and the `providers.list` snapshot. |
@@ -50,6 +50,7 @@ Copilot's driver (`copilot/copilotDriver.ts`):
 
 **Hosts:** `ProviderHosts` (`providers/providerHosts.ts`) runs drivers' sessions next to `HostManager`, which stays Claude Code's. Each reports what a Claude Code host does through the same handlers (`hostEvents` in `engine.ts`): `session.host` info, streams, live messages, permission cards and turn ends, so the transcript, catch-up, pipelines and notifications treat both alike. The engine routes `session.create` (with `provider`), `send` (resuming a session started elsewhere), `interrupt`, `setModel`, `respond` and `close` for a provider's sessions to it; Claude Code's own actions (fork, rewind, Ask, rename, delete) still refuse them. `providers.status` and `providers.models` ask the driver. The driver runs `copilot` with `COPILOT_HOME` set to the folder Seshboard reads, so what it writes is what the sidebar shows.
 
-Next, each its own change:
-1. **New session and the message box:** a provider picker (Claude Code the default; only allowed providers with a driver), the provider's models, and its status (install or sign in with its CLI) where it can't run.
-2. **Parity, as far as the provider allows:** a session open in Copilot CLI in a terminal (its `inuse.<pid>.lock`), permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.
+**The UI:** New session's chip row starts with **Runs with** when an allowed provider can start sessions (`useStartableProviders`); picking it leaves only that provider's models (`providers.models`), greys out the worktree and branch choices, and blocks Start with the provider's own message until `providers.status` says it can run (`useProviderReadiness`). `createParamsFor` sends only the folder, the message, the model and `provider`. A provider's session gets the message box with `ProviderSessionControls` (its model, switchable while it runs here) and none of Claude Code's chips, Ask, Tools, Send now or plan usage; `ReadOnlyNotice` is left for providers without a driver. Host info carries `provider`, so a session started a moment ago is known before it is indexed.
+
+Next:
+- **Parity, as far as the provider allows:** a session open in Copilot CLI in a terminal (its `inuse.<pid>.lock`), permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.

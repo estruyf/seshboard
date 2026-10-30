@@ -1,7 +1,8 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { ClaudeProfile, Effort, PermissionMode } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type SessionProvider } from '@seshboard/protocol/client';
+import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -14,6 +15,7 @@ import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFam
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
 export interface ChipNames {
+  provider?: string;
   profile: string;
   model: string;
   effort: string;
@@ -23,8 +25,16 @@ export interface ChipNames {
 const NEW_SESSION_NAMES: ChipNames = { profile: 'profile', model: 'model', effort: 'effort', mode: 'mode' };
 
 export interface ComposerChipRowProps {
-  /** The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings. */
-  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string };
+  /**
+   * Who runs the session: Claude Code or an allowed provider (GitHub Copilot). Shown when there is a choice, or when
+   * it isn't Claude Code; without `onChange` it can't change (a session keeps its provider).
+   */
+  provider?: { value: SessionProvider; choices: readonly SessionProvider[]; onChange?(provider: SessionProvider): void } | null;
+  /**
+   * The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and
+   * links to Settings. Null for another provider's session, which uses that provider's own login.
+   */
+  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string } | null;
   /**
    * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
@@ -32,7 +42,8 @@ export interface ComposerChipRowProps {
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
   /** Null when the model has no effort setting. */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
-  mode: { value: PermissionMode; onChange(mode: PermissionMode): void };
+  /** Null for another provider's session (Claude Code's permission modes don't apply). */
+  mode: { value: PermissionMode; onChange(mode: PermissionMode): void } | null;
   disabled?: boolean;
   names?: ChipNames;
   /**
@@ -71,12 +82,12 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
+export function ComposerChipRow({ provider, profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
-  const current = profiles.find((p) => p.id === profile.value);
-  const fixed = !profile.onChange;
+  const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
+  const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
-  const modes = [...new Set([...MODE_CHOICES, mode.value])];
+  const modes = mode ? [...new Set([...MODE_CHOICES, mode.value])] : [];
   const [level, setLevel] = useState<FooterLevel>(0);
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -96,11 +107,41 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
-  const modeDot = MODE_DOT[mode.value] ?? 'bg-faint';
+  const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
-  if (profiles.length > 1) {
+  if (provider && (provider.choices.length > 1 || provider.value !== 'claude')) {
+    const Icon = provider.value === 'claude' ? null : PROVIDER_ICONS[provider.value];
+    const name = PROVIDER_NAMES[provider.value];
+    chips.push({
+      key: 'provider',
+      face: () => (
+        <>
+          {Icon && <Icon size={13} aria-hidden />}
+          <span>{name}</span>
+        </>
+      ),
+      menu: (face) => (
+        <ChoiceMenu
+          name={names.provider ?? 'provider'}
+          value={provider.value}
+          onChange={(value) => provider.onChange?.(value)}
+          disabled={disabled}
+          label={`Runs with ${name}`}
+          title={`Runs with ${name}${provider.onChange ? '' : '. A session keeps who runs it.'}`}
+          heading="Runs with"
+          placement="up"
+          choices={provider.choices.map((p) => ({ value: p, label: PROVIDER_NAMES[p], disabled: !provider.onChange && p !== provider.value }))}
+          actions={[{ label: 'Manage providers…', onSelect: () => useSessions.getState().openSettings('providers'), data: { 'data-manage-providers': true } }]}
+          width={240}
+        >
+          {face}
+        </ChoiceMenu>
+      ),
+    });
+  }
+  if (profile && profiles.length > 1) {
     const profileName = current?.name ?? 'Profile';
     chips.push({
       key: 'profile',
@@ -207,7 +248,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       ),
     });
   }
-  chips.push({
+  if (mode) chips.push({
     key: 'mode',
     face: (l) => (
       <>

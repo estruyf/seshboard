@@ -1,6 +1,7 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, PROVIDER_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { useProviderReadiness, useStartableProviders } from '../../state/providersStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -148,6 +149,16 @@ function LocalNewSession() {
   const [savedNote, setSavedNote] = useState<string | null>(null);
   /** A profile chosen for this session only (null: the project's, else the default). */
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
+  // Who runs the session: Claude Code, or an allowed provider that can start sessions (GitHub Copilot), with its model.
+  const [providerChoice, setProviderChoice] = useState<SessionProvider>('claude');
+  const [providerModel, setProviderModel] = useState('');
+  const startableProviders = useStartableProviders();
+  const runWith: OptionalProvider | null = providerChoice !== 'claude' && startableProviders.some((p) => p.id === providerChoice) ? providerChoice : null;
+  const readiness = useProviderReadiness(runWith);
+  /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
+  /** Who works in the folder, in the copy around the box. */
+  const agent = runWith ? PROVIDER_NAMES[runWith] : 'Claude';
+  const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
   /** The steps line's Change: opens the Run as menu. */
@@ -701,8 +712,9 @@ function LocalNewSession() {
     };
   }, [client, cwd, profileId, commandsVersion]);
   useEffect(() => {
-    if (client && cwd && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId, effort: d.effort || null });
-  }, [client, cwd, d.workspace, d.branch, d.effort, profileId]);
+    // Claude Code is warmed up only when it is what starts.
+    if (client && cwd && !runWith && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId, effort: d.effort || null });
+  }, [client, cwd, d.workspace, d.branch, d.effort, profileId, runWith]);
 
   const persist = (folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { cwd: folder } });
 
@@ -1001,6 +1013,7 @@ function LocalNewSession() {
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
         github: fresh ? undefined : githubStart(worktree),
+        provider: runWith ? { id: runWith, model: providerModel || null } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1058,37 +1071,52 @@ function LocalNewSession() {
   // The same chip row as in a session.
   const controls = (
     <ComposerChipRow
-      profile={{
-        value: profileId,
-        onChange: (id) => setProfileOverride(id),
-        labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
-      }}
-      model={{
-        value: shownModel,
-        label: modelLabel(models, shownModel),
-        onChange: (model) => update({ model }),
-        choices: modelChoices(models, autoModel, <AutoWand />),
-      }}
-      effort={{ value: d.effort, onChange: (effort) => update({ effort }) }}
-      mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
-      pipeline={runAs ? boxChoiceUse(runAs) : null}
+      provider={startableProviders.length ? { value: runWith ?? 'claude', choices: ['claude', ...startableProviders.map((p) => p.id)], onChange: setProviderChoice } : null}
+      // Another provider has its own login and options: only its models.
+      profile={
+        runWith
+          ? null
+          : {
+              value: profileId,
+              onChange: (id) => setProfileOverride(id),
+              labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
+            }
+      }
+      model={
+        runWith
+          ? {
+              value: providerModel,
+              label: providerModel ? (readiness?.models.find((m) => m.value === providerModel)?.displayName ?? providerModel) : 'Default model',
+              onChange: setProviderModel,
+              choices: [{ value: '', label: 'Default model', description: `What ${PROVIDER_NAMES[runWith]} picks` }, ...(readiness?.models ?? []).map((m) => ({ value: m.value, label: m.displayName }))],
+            }
+          : {
+              value: shownModel,
+              label: modelLabel(models, shownModel),
+              onChange: (model) => update({ model }),
+              choices: modelChoices(models, autoModel, <AutoWand />),
+            }
+      }
+      effort={runWith ? null : { value: d.effort, onChange: (effort) => update({ effort }) }}
+      mode={runWith ? null : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
+      pipeline={runAs && !runWith ? boxChoiceUse(runAs) : null}
     />
   );
 
   const folderProblem = !cwd
     ? cloning
       ? cloneJob.plan
-        ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
+        ? `${agent} works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
         : 'Paste a GitHub repository to clone.'
       : linkNoFolder
-      ? "The link doesn't say which project. Pick where Claude should work."
+      ? `The link doesn't say which project. Pick where ${agent} should work.`
       : linkRepo
       ? linkRepo.state === 'looking'
         ? `Looking for a checkout of ${linkRepo.repo}…`
-        : `None of your folders is a checkout of ${linkRepo.repo}. Pick where Claude should work.`
+        : `None of your folders is a checkout of ${linkRepo.repo}. Pick where ${agent} should work.`
       : folders.length
-      ? 'Pick where Claude should work.'
-      : 'Pick where Claude should work. Folders you add as projects are listed here.'
+      ? `Pick where ${agent} should work.`
+      : `Pick where ${agent} should work. Folders you add as projects are listed here.`
     : !inspection
       ? inspectError
         ? `Couldn't check this folder: ${inspectError}`
@@ -1366,7 +1394,7 @@ function LocalNewSession() {
                     /
                   </span>
                   <span className="min-w-0 truncate px-1.5 text-ui text-muted" data-tooltip={cwd} data-route-question-note>
-                    No project or git. Claude works in a scratch folder.
+                    No project or git. {agent} works in a scratch folder.
                   </span>
                 </>
               ) : (
@@ -1387,9 +1415,11 @@ function LocalNewSession() {
                   </span>
                   <ChoiceMenu
                     name="workspace"
-                    value={useWorktree ? 'worktree' : 'current'}
+                    value={useWorktree && !runWith ? 'worktree' : 'current'}
                     onChange={(workspace) => update({ workspace })}
-                    title={routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
+                    // Worktrees and branches are Claude Code's options: another provider works in the folder as it is.
+                    disabled={!!runWith}
+                    title={runWith ? `${PROVIDER_NAMES[runWith]} works in the folder as it is` : routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
                     heading={githubPr ? `Work on #${githubPr.number} in` : 'Where'}
                     chevron
                     width={githubPr ? 340 : 300}
@@ -1456,6 +1486,7 @@ function LocalNewSession() {
                   ) : useWorktree ? (
                     <ChoiceMenu
                       name="base"
+                      disabled={!!runWith}
                       value={d.baseRef}
                       onChange={(baseRef) => update({ baseRef })}
                       title="The branch the new worktree starts from"
@@ -1481,6 +1512,7 @@ function LocalNewSession() {
                   ) : gitBranches.branches.length > 0 ? (
                     <ChoiceMenu
                       name="branch"
+                      disabled={!!runWith}
                       value={checkoutBranch ?? gitBranches.current ?? ''}
                       onChange={(b) => update({ branch: b === gitBranches.current ? '' : b })}
                       title="Check out a branch before the session starts. Git keeps uncommitted changes, or refuses when they conflict."
@@ -1546,7 +1578,7 @@ function LocalNewSession() {
               onContextChange={setDraftContext}
               controls={controls}
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
-              disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
+              disabledReason={!client ? 'Connecting to the engine…' : providerBlocked ? providerBlocked : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => {
                 // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
                 if (scheduleFirst && !question && !fromLater && !runAs) {
@@ -1554,13 +1586,13 @@ function LocalNewSession() {
                   return false;
                 }
                 // A pipeline picked in Run as: Enter runs it, with the text as its task.
-                if (runAs) return runPipelineWith(runAs.id, text, attachments);
+                if (runAs && !runWith) return runPipelineWith(runAs.id, text, attachments);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <>
-                  {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
+                  {canPipeline && !question && !fromSchedule && !runWith && projectPipelines.length > 0 && (
                     <RunAsChip pipelines={projectPipelines} value={runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending} />
                   )}
                   <StartButton
@@ -1609,7 +1641,8 @@ function LocalNewSession() {
           <div className="@container -mt-2 flex min-h-5 items-center justify-between gap-4 px-2 text-meta text-muted" data-tray-footer>
             <span className="flex min-w-0 items-center">{notice}</span>
             <span className="min-w-0 shrink-0">
-              <UsageBand tray profileId={profileId} />
+              {/* Claude Code's plan usage, for its profile: not what another provider runs on. */}
+              {!runWith && <UsageBand tray profileId={profileId} />}
             </span>
           </div>
 

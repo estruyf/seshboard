@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
-import type { OptionalProvider, ProviderInfo, ProvidersSnapshot } from '@seshboard/protocol/client';
+import type { ModelOption, OptionalProvider, ProviderInfo, ProvidersSnapshot, ProviderStatus } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 interface ProvidersState {
@@ -29,4 +29,45 @@ export function useProvidersSync(): void {
     void client.call('providers.list', {}).then((snapshot) => useProviders.getState().set(snapshot), () => {});
     return off;
   }, [client]);
+}
+
+/** The providers besides Claude Code that can start sessions here: allowed, with a driver. */
+export function useStartableProviders(): ProviderInfo[] {
+  // The list, not a filtered copy, from the store: a new array on every read would re-render without end.
+  const providers = useProviders((s) => s.providers);
+  return useMemo(() => providers.filter((p) => p.allowed && p.canStart), [providers]);
+}
+
+export interface ProviderReadiness {
+  /** Null while it is being asked (it starts the provider's runtime the first time). */
+  status: ProviderStatus | null;
+  models: ModelOption[];
+  /** Asking failed (not the provider saying it can't run: that is `status.problem`). */
+  error: string | null;
+}
+
+/**
+ * Whether a provider can run a session here (installed, signed in with its own CLI) and its models, asked when it is
+ * picked. Null provider: Claude Code, nothing to ask.
+ */
+export function useProviderReadiness(id: OptionalProvider | null): ProviderReadiness | null {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [state, setState] = useState<{ id: OptionalProvider; readiness: ProviderReadiness } | null>(null);
+  useEffect(() => {
+    if (!client || !id) return;
+    let current = true;
+    setState({ id, readiness: { status: null, models: [], error: null } });
+    void client.call('providers.status', { id }).then(
+      async (status) => {
+        const models = status.problem ? [] : await client.call('providers.models', { id }).then((r) => r.models, () => []);
+        if (current) setState({ id, readiness: { status, models, error: null } });
+      },
+      (error: Error) => current && setState({ id, readiness: { status: null, models: [], error: error.message } }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, id]);
+  return id && state?.id === id ? state.readiness : id ? { status: null, models: [], error: null } : null;
 }

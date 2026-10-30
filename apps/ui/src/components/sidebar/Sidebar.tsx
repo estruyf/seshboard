@@ -2,7 +2,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
-import { isReadOnlySession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
+import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
@@ -401,7 +401,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isReadOnlySession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {

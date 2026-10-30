@@ -2593,10 +2593,11 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
  * menu's order, and a short window scrolls the menu without the bottom block overlapping Connect. Read-only.
  */
 /**
- * Settings › Providers (#199): allowing GitHub Copilot lists its sessions in the sidebar with a mark, one opens
- * read-only (a note with the resume command where the message box would be), and hiding Copilot takes them out again.
- * Read-only: nothing is written to Copilot's folder. The demo home has one Copilot session; a computer without
- * Copilot skips the step.
+ * Settings › Providers (#199): allowing GitHub Copilot lists its sessions in the sidebar with a mark; one opens with a
+ * message box for Copilot (none of Claude Code's chips, Ask or plan usage), and New session can pick Copilot, which
+ * leaves only its model and waits for Copilot to say it can run (installed, signed in with its own login). Nothing is
+ * sent or started: that would reach a real Copilot. Hiding Copilot takes its sessions out again. The demo home has one
+ * Copilot session; a computer without Copilot sessions skips the step.
  */
 async function runProvidersStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -2627,27 +2628,55 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
     await js("document.querySelector('[data-close-settings]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000);
+    // Copilot can run sessions here: the message box is there for it, with Copilot's words and none of Claude Code's chips.
+    // Nothing is sent: that would reach a real Copilot.
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
     await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
-    if (!(await waitInPage(win, "document.querySelector('[data-read-only-session=\"copilot\"]')", 10_000))) return 'the Copilot session did not open read-only';
-    if (await js("!!document.querySelector('[data-read-only-session]')?.closest('[data-current-session]')?.querySelector('[data-composer]')")) return 'a read-only session shows a message box';
-    if (await js("!!document.querySelector('[data-current-session] [data-toggle-ask]')")) return 'a read-only session offers Ask about this session';
-    if (!(await js("document.querySelector('[data-read-only-session] [data-copy-resume-command]') !== null && document.querySelector('[data-read-only-session]').textContent.includes('copilot --resume=')"))) return 'the note has no resume command';
-    if (!(await waitInPage(win, "document.querySelectorAll('[data-message-actions]').length > 0 || document.querySelectorAll('[data-tool]').length > 0", 5_000))) return 'the Copilot transcript showed nothing';
+    if (!(await waitInPage(win, `${view}?.querySelector('[data-composer]')?.placeholder === 'Message GitHub Copilot'`, 10_000))) {
+      return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
+    }
+    if (!(await js(`${view}.querySelector('[data-session-elsewhere]')?.textContent.includes('GitHub Copilot')`))) return 'the box does not say Copilot continues it';
+    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-open-tools], [data-session-footer]')`)) return "a Copilot session shows Ask, Tools or Claude Code's plan usage";
+    if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await shot(win, 'copilot-session.png');
-    return 'ok: Copilot allowed, its session listed with a mark and opened read-only';
+
+    // New session: Runs with GitHub Copilot leaves only its model, and Start waits until Copilot says it can run.
+    const nsv = '[data-new-session-view]';
+    /** Picks a value in a chip's menu (`ChoiceMenu`): the pill, then the menu's item. */
+    const pick = async (name: string, value: string) => {
+      await js(`document.querySelector('${nsv} [data-${name}-select]')?.click()`);
+      const item = `document.querySelector('[data-menu="${name}"] [data-choice="${value}"]')`;
+      if (!(await waitInPage(win, item, 3_000))) return false;
+      await js(`${item}.click()`);
+      return waitInPage(win, `document.querySelector('${nsv} [data-${name}-select]')?.dataset.value === '${value}'`, 3_000);
+    };
+    await js("document.querySelector('[data-new-session]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('${nsv} [data-provider-select]')`, 5_000))) return 'New session offers no provider';
+    if (!(await pick('provider', 'copilot'))) return 'GitHub Copilot could not be picked in New session';
+    if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-chip="mode"], ${nsv} [data-chip="effort"], ${nsv} [data-chip="profile"]') && !!document.querySelector('${nsv} [data-chip="model"]')`, 3_000))) {
+      return "New session with Copilot still shows Claude Code's chips";
+    }
+    // Copilot answers whether it is installed and signed in: on a computer without it (CI), Start says how to install it.
+    await waitInPage(win, `!(document.querySelector('${nsv} [data-composer]')?.placeholder ?? '').startsWith('Checking')`, 15_000);
+    const ready = (await js(`document.querySelector('${nsv} [data-composer]')?.placeholder ?? ''`)) as string;
+    await shot(win, 'new-session-copilot.png');
+    if (!(await pick('provider', 'claude'))) return 'Claude Code could not be picked again';
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip="mode"]')`, 3_000))) return "Claude Code's chips did not come back";
+    const copilotState = /Install|Sign in|copilot/i.test(ready) ? `Start waits: "${ready}"` : 'Copilot ready to start';
+    return `ok: Copilot allowed, its session listed with a mark and a message box for Copilot; New session with Copilot (${copilotState})`;
   } finally {
     // Back as it was: hidden again unless it was on before the step, and the sidebar's scope as it was.
     if (!scopeWasAll) {
-      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
       await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]')", 3_000);
-      await js("document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]').click()");
-      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}.click()`);
+      await js("document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]')?.click()");
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
     }
     if (!wasOn) {
-      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
       await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"providers\"]')", 3_000);
-      await js("document.querySelector('[data-settings] [data-settings-section=\"providers\"]').click()");
-      if (await waitInPage(win, `${toggle}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${toggle}.click()`);
+      await js("document.querySelector('[data-settings] [data-settings-section=\"providers\"]')?.click()");
+      if (await waitInPage(win, `${toggle}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${toggle}?.click()`);
       await waitInPage(win, `!${markedRow}`, 10_000);
       await js("document.querySelector('[data-close-settings]')?.click()");
     }
@@ -10416,7 +10445,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
-  await step('providers: Copilot allowed in Settings, its session listed with a mark and opened read-only, hidden again', () => runProvidersStep(win));
+  await step('providers: Copilot allowed in Settings, its session listed with a mark and a message box for Copilot, Copilot in New session (never started), hidden again', () => runProvidersStep(win));
   await step('queue', () => runQueueStep(win));
   await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));

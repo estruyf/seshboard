@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GateOutcome } from '../../state/focusGate.ts';
 import type { Choices } from './choices.ts';
-import { branchBlocked, checkoutBranchFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
+import { branchBlocked, checkoutBranchFor, createParamsFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
 
 const CHOICES: Choices = { model: 'opus', permissionMode: 'acceptEdits', effort: 'high', workspace: 'current', baseRef: 'fresh', branch: '' };
 const START: NewSessionStart = { cwd: '/work/app', prompt: 'Fix the login redirect', choices: CHOICES, worktree: false, currentBranch: 'main', profileId: 'default' };
@@ -33,6 +33,16 @@ describe('sessionCreateParams', () => {
       profileId: 'default',
     });
     expect(sessionCreateParams({ ...START, choices: { ...CHOICES, model: '', effort: '' } })).toMatchObject({ model: null, effort: null });
+  });
+
+  it('starts another provider with only the folder, the message and its model', () => {
+    expect(createParamsFor({ ...START, worktree: true, provider: { id: 'copilot', model: 'gpt-5-mini' } })).toEqual({
+      cwd: '/work/app',
+      prompt: 'Fix the login redirect',
+      attachments: [],
+      model: 'gpt-5-mini',
+      provider: 'copilot',
+    });
   });
 
   it('gives a worktree a made-up name unless it was named', () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import { isBranchName } from './githubRepo.ts';
 import { UsageLimitHit } from './usageLimit.ts';
 import { isWorktreeBase, type WorktreeBase } from './worktreeBase.ts';
@@ -131,6 +132,8 @@ export const SessionHostInfo = z.object({
    * included. The flag goes by itself once it is. Missing: off.
    */
   keepAwake: z.boolean().optional(),
+  /** Another provider runs it (GitHub Copilot), through its driver; missing: Claude Code. */
+  provider: z.enum(OPTIONAL_PROVIDERS).optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 

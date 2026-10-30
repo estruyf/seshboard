@@ -21,7 +21,7 @@ export const otherProviderOf = (session: { provider?: SessionProvider | null | u
 };
 
 /**
- * Sessions of other providers are read-only for now: Seshboard shows their transcript, but can't send to them, fork,
- * rewind or delete them.
+ * Another provider's session: Claude Code's own actions (fork, rewind, Ask, rename, delete, the clean-up) don't apply.
+ * Sending does when the provider can start sessions (`ProviderInfo.canStart`); otherwise it is read-only.
  */
-export const isReadOnlySession = (session: { provider?: SessionProvider | null | undefined }): boolean => otherProviderOf(session) !== null;
+export const isOtherProviderSession = (session: { provider?: SessionProvider | null | undefined }): boolean => otherProviderOf(session) !== null;
