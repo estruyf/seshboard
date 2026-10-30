@@ -21,6 +21,7 @@ import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
+import { GlobalModelSettings } from './general/GlobalModelSettings.tsx';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
@@ -467,6 +468,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>
+            <GlobalModelSettings />
             <Toggle
               label="Use Claude in Chrome"
               detail="Sessions get the browser tools of the Claude in Chrome extension, which needs to be installed in Chrome. Applies to sessions you start or resume after you change it."

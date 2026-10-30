@@ -516,7 +516,11 @@ export const contract = {
       result: z.object({}),
     },
     /** Starts a Claude Code process for a folder ahead of time so the first message answers faster. */
-    'session.prewarm': { params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null) }), result: z.object({}) },
+    'session.prewarm': {
+      // The effort the new session will start with: Claude Code reads it only at startup.
+      params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null), effort: Effort.nullable().default(null) }),
+      result: z.object({}),
+    },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
      * Plan usage (5-hour and weekly limits) from Claude Code's /usage report. Cached for a minute;

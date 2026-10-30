@@ -164,6 +164,8 @@ interface Pending {
 interface Warm {
   cwd: string;
   profileId: string;
+  /** The effort it started with: Claude Code reads it only at startup. */
+  effort: Effort | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process. */
@@ -958,13 +960,16 @@ export class HostManager {
 
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
-  /** The folder and profile a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string } | undefined;
+  /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
+  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
 
-  /** Starts a Claude Code process for `cwd` so a new session there answers about a second faster. */
-  async prewarm(cwd: string, profileId: string): Promise<void> {
+  /**
+   * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
+   * the new session will start with (its project's, profile's or the global one), since it can't change afterwards.
+   */
+  async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId) return;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -973,7 +978,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId };
+    this.warming = { cwd, profileId, effort };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -994,7 +999,7 @@ export class HostManager {
         mode: 'new',
         model: null,
         permissionMode: 'default',
-        effort: null,
+        effort,
         worktree: null,
         chrome: this.chrome,
         env,
@@ -1006,7 +1011,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1045,10 +1050,10 @@ export class HostManager {
     return host;
   }
 
-  /** A warm process is only usable for a plain new session in the same folder (effort and worktree are fixed at startup). */
+  /** A warm process is only usable for a plain new session in the same folder with the same effort (effort and worktree are fixed at startup). */
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
-    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || params.effort) return undefined;
+    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);

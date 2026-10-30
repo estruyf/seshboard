@@ -124,6 +124,26 @@ describe('newSessionMode preference', () => {
   });
 });
 
+describe('global model and effort preferences', () => {
+  it("leaves both to Claude Code by default", () => {
+    expect(DEFAULT_PREFERENCES.newSessionModel).toBe('');
+    expect(DEFAULT_PREFERENCES.newSessionEffort).toBe('');
+  });
+
+  it('keeps any short model id, trimmed, and drops the rest', () => {
+    for (const model of ['', 'opus', 'auto', 'claude-sonnet-5-5[1m]']) expect(sanitizePreferences({ newSessionModel: model })).toEqual({ newSessionModel: model });
+    expect(sanitizePreferences({ newSessionModel: ' opus ' })).toEqual({ newSessionModel: 'opus' });
+    expect(sanitizePreferences({ newSessionModel: 'x'.repeat(201) })).toEqual({});
+    expect(sanitizePreferences({ newSessionModel: null })).toEqual({});
+  });
+
+  it('keeps the effort levels and empty, and drops anything else', () => {
+    for (const effort of ['', 'low', 'medium', 'high', 'xhigh', 'max']) expect(sanitizePreferences({ newSessionEffort: effort })).toEqual({ newSessionEffort: effort });
+    expect(sanitizePreferences({ newSessionEffort: 'extreme' })).toEqual({});
+    expect(sanitizePreferences({ newSessionEffort: 3 })).toEqual({});
+  });
+});
+
 describe('mark as read preference', () => {
   it('marks an opened session read after 3 seconds by default', () => {
     expect(DEFAULT_PREFERENCES.markReadAfter).toEqual({ enabled: true, seconds: 3 });

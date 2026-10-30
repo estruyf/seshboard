@@ -75,6 +75,8 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   startupView: 'On startup',
   projectOrder: 'Project order',
   newSessionMode: 'Global permission mode',
+  newSessionModel: 'Global model',
+  newSessionEffort: 'Global effort',
   chrome: 'Use Claude in Chrome',
   keepAwake: 'Keep this computer awake',
   autoUpdate: 'Automatic updates',
@@ -176,7 +178,10 @@ const showValue = (value: unknown) =>
           ? value.enabled
             ? `on, picks ${listOf(value.allowed.map(tierLabel))}, ${value.lean}`
             : 'off'
-          : String(value);
+          : // The global model and effort: empty leaves it to Claude Code.
+            value === ''
+            ? "Claude Code's default"
+            : String(value);
 
 /** A stored icon as it travels in a file; an image that is gone or unreadable falls back to the detected icon. */
 function exportIcon(icon: StoredIcon | null): ExportedIcon | null {

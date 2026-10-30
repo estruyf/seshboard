@@ -72,7 +72,7 @@ import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
-import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The app's theme, kept so a phone that connects before a window opened gets it too. */
@@ -219,6 +219,8 @@ export interface RemoteHubOptions {
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
   /** Settings › General › Global permission mode: what a session starts in where its profile and project set none. */
   globalPermissionMode(): PermissionMode;
+  /** Settings › General › Global model and Global effort: what a session starts with where its profile and project set none. */
+  globalModel(): GlobalModel;
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   /**
@@ -835,7 +837,7 @@ export class RemoteHub {
    * remote branch, or a name that isn't one.
    */
   private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
-    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode());
+    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode(), this.options.globalModel());
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
@@ -1072,17 +1074,22 @@ export class RemoteHub {
       'options.get': () => {
         const { profiles, defaultId } = this.options.profiles();
         const globalMode = this.options.globalPermissionMode();
+        const globalModel = this.options.globalModel();
         return {
           models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
           efforts: [...Effort.options],
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
-          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode) })),
+          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, globalModel) })),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
-            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null),
+            // What the project skips its profile's for comes in as the global value (an empty global model still falls to the profile's on the phone).
+            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null, {
+              model: p.defaults.globalModel ? globalModel.model : null,
+              effort: p.defaults.globalEffort ? globalModel.effort : null,
+            }),
           })),
         };
       },

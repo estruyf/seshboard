@@ -273,6 +273,8 @@ function sendEngineSettings(prefs: Preferences): void {
   // Settings › General › Global permission mode: a phone's new session starts in it where its profile and project set
   // none. Remember last counts as Ask before edits there: the mode picked last is kept in the window.
   engine?.sendStanding({ type: 'permissionMode', mode: prefs.newSessionMode === 'remember' ? 'default' : prefs.newSessionMode });
+  // Settings › General › Global model and Global effort: the same, for the model and effort (empty: Claude Code's own).
+  engine?.sendStanding({ type: 'globalModel', model: prefs.newSessionModel, effort: prefs.newSessionEffort });
   // Settings › Mods › Show mods: sessions attach or detach their mods without a restart.
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
@@ -2724,6 +2726,60 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings › General › Global model and Global effort: both lead with Claude Code's default, and an effort set there is
+ * what New session's effort chip starts on, where the project and its profile set none (else theirs wins). Runs before
+ * any step types in New session, as the permission mode's. Starts no session; only the throwaway profile's preferences
+ * change, and they are put back, with the session that was open.
+ */
+async function runGlobalModelStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const chip = "document.querySelector('[data-new-session-view] [data-effort-select]')";
+  const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
+  /** New session opened afresh (from Home, so it mounts again): the effort its chip starts on, empty for the default. */
+  const freshEffort = async () => {
+    await js("document.querySelector('[data-go-home]')?.click()");
+    await waitInPage(win, `!${chip}`, 2_000);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+    if (!(await waitInPage(win, chip, 5_000))) return null;
+    await settle(win);
+    return (await js(`${chip}.dataset.value ?? ''`)) as string;
+  };
+  /** Sets the global effort in Settings › General; `model` also checks the model menu offers Claude Code's default. */
+  const setEffort = async (effort: string, model = false) => {
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings-section=\"general\"]')", 3_000))) return 'Settings did not open';
+    await js("document.querySelector('[data-settings-section=\"general\"]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-new-session-effort]') && document.querySelector('[data-new-session-model]')", 2_000))) return 'Settings › General has no Global model and Global effort';
+    if (model && !(await chooseOption(win, '[data-new-session-model]', ''))) return "the Global model menu has no Claude Code's default";
+    if (!(await chooseOption(win, '[data-new-session-effort]', effort))) return `could not pick ${effort || 'the default'} as the Global effort`;
+    if (effort) await shot(win, 'settings-global-model.png');
+    await js("document.querySelector('[data-close-settings]').click()");
+    return (await until(() => preferences.get().newSessionEffort === effort)) ? null : `the Global effort was not saved as ${effort || 'empty'}`;
+  };
+
+  const { newSessionModel, newSessionEffort } = preferences.get();
+  if (newSessionModel !== '' || newSessionEffort !== '') return `the preferences started as ${newSessionModel || 'empty'} and ${newSessionEffort || 'empty'}, not Claude Code's defaults`;
+  const base = await freshEffort();
+  if (base === null) return 'New session has no effort chip';
+  // An effort the project or its profile sets wins over the global one.
+  const inherited = base !== '';
+  const global = base === 'max' ? 'low' : 'max';
+  const setFailed = await setEffort(global, true);
+  if (setFailed) return setFailed;
+  const withGlobal = await freshEffort();
+  if (withGlobal !== (inherited ? base : global)) return `with ${global} set, New session's effort chip starts on ${withGlobal || 'the default'}, not ${inherited ? base : global}`;
+  const resetFailed = await setEffort('');
+  if (resetFailed) return resetFailed;
+  const again = await freshEffort();
+  if (again !== base) return `back on Claude Code's default, the chip starts on ${again || 'the default'}, not ${base || 'the default'}`;
+  if (open) {
+    openSession(open);
+    if (!(await waitInPage(win, `document.querySelector('[data-current-session="${open}"]') && document.querySelector('[data-transcript-item]')`, 5_000))) return 'could not go back to the session that was open';
+  }
+  return `ok: ${global} from Settings is what New session starts on${inherited ? ` (${base} from the project wins)` : ''}, and empty is Claude Code's default again`;
+}
+
+/**
  * The focus limit: turning it on in Settings › Focus shows the counter in the sidebar footer, in both
  * themes, with its list of the sessions that count; turning it off hides it again. Only preferences in
  * the throwaway profile change: no session is started and nothing is saved for later.
@@ -2967,6 +3023,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   if (!(await waitInPage(win, page('[data-default-mode]'), 3_000))) return 'closing Settings did not go back to the project';
   if (!(await chooseOption(win, `${pageSelector} [data-default-mode]`, ''))) return 'could not put the permission mode back on Profile default';
+  // The model can skip its profile's for the global one too, and go back to following the profile.
+  if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, 'global'))) return 'could not pick Global default for the model';
+  if (!(await waitInPage(win, `${page('[data-default-model]')}?.dataset.value === 'global'`, 2_000))) return 'the model did not stay on Global default';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, ''))) return 'could not put the model back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });
@@ -10240,6 +10300,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('newest session with messages rendered', () => openSmokeSession(win), { always: true });
   await step('transcript opens at the end', () => checkTranscriptEnd(win));
   await step('permission mode for new sessions: global mode, Remember last and a fixed mode', () => runNewSessionModeStep(win));
+  await step('global model and effort for new sessions', () => runGlobalModelStep(win));
   await step('tool calls summarised', async () => {
     const activity = await runActivityStep(win);
     if (!activity) return 'failed: no groups';

@@ -2962,6 +2962,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:new-session-model-effort",
+      "name": "Global model and Global effort: what new sessions start with where the profile and project set none, or Claude Code's default",
+      "page": "settings"
+    },
+    {
       "id": "feature:project-permission-default",
       "name": "Project Settings › Permissions: Profile default or Global default, each with a Change link to where it is set",
       "page": "projects/settings"

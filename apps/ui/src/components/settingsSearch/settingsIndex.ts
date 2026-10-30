@@ -4,7 +4,7 @@ import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
-import { GLOBAL_MODE_DETAIL } from '../../lib/modes.ts';
+import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -29,6 +29,22 @@ export function settingsIndex(): SettingEntry[] {
       detail: GLOBAL_MODE_DETAIL,
       keywords: 'new session default ask first before edits accept edits plan auto mode permissions profile project remember last',
       target: '[data-new-session-mode]',
+    },
+    {
+      id: 'new-session-model',
+      page: 'general',
+      label: 'Global model',
+      detail: GLOBAL_MODEL_DETAIL,
+      keywords: 'new session default model opus sonnet haiku auto claude code profile project',
+      target: '[data-new-session-model]',
+    },
+    {
+      id: 'new-session-effort',
+      page: 'general',
+      label: 'Global effort',
+      detail: GLOBAL_EFFORT_DETAIL,
+      keywords: 'new session default effort thinking reasoning low medium high extra max claude code profile project',
+      target: '[data-new-session-effort]',
     },
     {
       id: 'chrome',

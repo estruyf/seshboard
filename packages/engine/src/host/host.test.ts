@@ -1070,6 +1070,21 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('adopts a pre-warmed process only for a new session with the effort it started with', async () => {
+    const t = setup();
+    await t.manager.prewarm('/work/app', 'default', 'high');
+    expect(t.warmups[0]!.options).toMatchObject({ effort: 'high' });
+    // Asking again with the same effort keeps it; a session with another effort starts cold.
+    await t.manager.prewarm('/work/app', 'default', 'high');
+    expect(t.warmups).toHaveLength(1);
+    const cold = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', effort: 'low' });
+    expect(cold).not.toBe(t.warmups[0]!.options.sessionId);
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', effort: 'high' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, warm) === 'idle');
+    t.manager.closeAll();
+  });
+
   it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
     const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
     await t.manager.prewarm('/work/app', 'default');

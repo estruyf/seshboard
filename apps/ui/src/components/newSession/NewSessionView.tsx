@@ -78,7 +78,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
+import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
 /**
@@ -115,12 +115,16 @@ function LocalNewSession() {
   const autoModel = usePreferences((s) => s.prefs.autoModel);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
+  const newSessionModel = usePreferences((s) => s.prefs.newSessionModel);
+  const newSessionEffort = usePreferences((s) => s.prefs.newSessionEffort);
+  /** The model and effort Settings › General sets, where the project and profile set none. */
+  const globals = globalChoices({ newSessionModel, newSessionEffort });
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
   // Before a folder is picked, the mode is already the one Settings sets.
-  const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode));
+  const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode, globals));
   /** The permission mode last picked here or in the palette, for Settings › General › Permission mode › Remember last. */
   const [lastMode, setLastMode] = useState<PermissionMode>(INITIAL_CHOICES.permissionMode);
   const [loaded, setLoaded] = useState(false);
@@ -248,7 +252,7 @@ function LocalNewSession() {
   const defaultsKey = JSON.stringify(sessionDefaults);
   /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults, with the mode Settings says (a link's never skips permission prompts). */
   const firstChoices = (): Choices =>
-    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(INITIAL_CHOICES, sessionDefaults, newSessionMode) : newSessionChoices(sessionDefaults, newSessionMode, lastMode);
+    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(globals, sessionDefaults, newSessionMode) : newSessionChoices(sessionDefaults, newSessionMode, lastMode, globals);
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -649,7 +653,7 @@ function LocalNewSession() {
     if (!loaded || touchedFor.current === cwd) return;
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, cwd, defaultsKey, newSessionMode, lastMode, autostarting, question, questionChoices]);
+  }, [loaded, cwd, defaultsKey, newSessionMode, newSessionModel, newSessionEffort, lastMode, autostarting, question, questionChoices]);
 
   // Inspect the folder (git? branch?), load its branches, and pre-warm Claude Code there.
   useEffect(() => {
@@ -697,8 +701,8 @@ function LocalNewSession() {
     };
   }, [client, cwd, profileId, commandsVersion]);
   useEffect(() => {
-    if (client && cwd && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId });
-  }, [client, cwd, d.workspace, d.branch, profileId]);
+    if (client && cwd && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId, effort: d.effort || null });
+  }, [client, cwd, d.workspace, d.branch, d.effort, profileId]);
 
   const persist = (folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { cwd: folder } });
 

@@ -1,4 +1,4 @@
-import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
+import { inheritedDefault, inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -12,7 +12,7 @@ export interface Choices {
 }
 
 /**
- * The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository,
+ * The global defaults: what a field starts with where no project or profile decides. Branches belong to a repository,
  * so they never become global: not the one to check out, and not the one a worktree starts from.
  */
 export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fresh' | 'head' };
@@ -21,6 +21,14 @@ export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fr
 export const DEFAULTS_KEY = 'newSession.defaults';
 
 export const INITIAL_CHOICES: GlobalChoices = { model: '', permissionMode: 'default', effort: '', workspace: 'current', baseRef: 'fresh' };
+
+/**
+ * The global defaults set in Settings › General: its model and effort (empty leaves them to Claude Code). The permission
+ * mode goes through `globalMode`, which also knows Remember last.
+ */
+export function globalChoices(prefs: Pick<Preferences, 'newSessionModel' | 'newSessionEffort'>): GlobalChoices {
+  return { ...INITIAL_CHOICES, model: prefs.newSessionModel, effort: prefs.newSessionEffort };
+}
 
 const FIELDS = ['model', 'permissionMode', 'effort', 'workspace', 'baseRef', 'branch'] as const;
 
@@ -51,20 +59,23 @@ export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults 
   return defaults?.permissionMode ?? globalMode(setting, last);
 }
 
-/** What New session and the palette's prompt start with: the project's and profile's defaults, and the global permission mode. */
-export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode): Choices {
-  return { ...startingChoices(INITIAL_CHOICES, defaults), permissionMode: startingMode(setting, defaults, last) };
+/**
+ * What New session and the palette's prompt start with: the project's and profile's defaults, else the global ones
+ * (`globals`, see `globalChoices`) and the global permission mode.
+ */
+export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode, globals: GlobalChoices = INITIAL_CHOICES): Choices {
+  return { ...startingChoices(globals, defaults), permissionMode: startingMode(setting, defaults, last) };
 }
 
 /**
  * The defaults a new session starts from: the project's own, and its profile's where the project sets
- * nothing. Null when neither has any, so every field follows the global defaults.
+ * nothing and doesn't skip it for the global one. Null when neither has any, so every field follows the global defaults.
  */
 export function layeredDefaults(project: ProjectDefaults | null | undefined, profile: ProfileDefaults | null | undefined): ProjectDefaults | null {
   if (!profile || Object.values(profile).every((v) => v === null)) return project ?? null;
   return {
-    model: project?.model ?? profile.model,
-    effort: project?.effort ?? profile.effort,
+    model: inheritedDefault('model', project, profile),
+    effort: inheritedDefault('effort', project, profile),
     permissionMode: inheritedPermissionMode(project, profile),
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,
