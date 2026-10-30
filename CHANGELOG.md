@@ -6,6 +6,19 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Another computer's sessions work like your own.** In a session from another computer:
+  - **Quote** text you select, or right-click a message to quote it. The quote goes into that session's message box.
+  - **Read** under a finished reply opens reading mode, with **Reply with quote** and **Ask about this**. ⌘⌥R (Ctrl+Alt+R on Windows and Linux) reads the last reply.
+  - The catch-up shows over the conversation.
+  - **Changes** lists what isn't committed there, with each file's diff, and **Commit** commits it there. It doesn't push.
+  - **Ask about this session** asks Claude on that computer.
+  - Click a step to see its diff or what it ran, and its output.
+  - Find in the conversation with ⌘F, and **Jump to latest** when you scroll up.
+  - **Mark as read**, **Mark as unread** and **Copy last reply** are in the ⋯ menu.
+  - **Run a pipeline** is in the ⋯ menu. A run's steps sit under the session in the sidebar, and its card has Continue, Run this step again, Skip, Stop and Push.
+  - New session there has **Queue for later**.
+  - You get notifications when one of its sessions needs you or finishes. A click opens the session.
+- **Quote in the remote app.** On your phone, **Quote** under a reply puts it in the message box as a quote. Select text in the conversation or in **Read**, and tap the **Quote** pill under it to quote only that.
 - **See in the Dock when Claude is working (macOS).** While a session works, the empty jacks in Seshboard's Dock icon light up one after another and a pulse of light runs along the cables, in whichever app icon you picked. With Reduce motion on, the jacks stay lit instead. Turn it off in **Settings › Theme › App icon › Show when Claude is working**.
 - **Keep awake until done.** Turn it on for a session in its **⋯** menu, or with **Keep awake until done** in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike the Keep awake setting, it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop. ([#241](https://github.com/estruyf/seshboard/issues/241))
 - **Pick the session from VS Code, or start a new one.** The VS Code companion now asks where to add a selection or a file instead of adding it to the session you have open: that session is first, so Enter still adds to it, then **New session** and the workspace's other sessions. **Seshboard: New Session** in VS Code opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open. To add straight to the open session as before, turn on `seshboard.addToOpenSession` in VS Code.

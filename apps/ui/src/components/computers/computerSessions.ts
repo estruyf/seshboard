@@ -60,6 +60,8 @@ export interface RemoteTool {
   input: unknown;
   /** Its result said it failed. */
   failed: boolean;
+  /** What it gave back, as that computer sent it (`truncated`: cut short there); null while it runs. */
+  result: { text: string; isError: boolean; truncated: boolean } | null;
 }
 
 /** What the conversation shows, in order: your prompts, Claude Code's own lines, Claude's text, and each run of tool calls as one item. */
@@ -76,8 +78,8 @@ export type RemoteItem =
  * message, so tool results can say which calls failed.
  */
 export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
-  const failed = new Set<string>();
-  for (const m of messages) for (const b of m.blocks) if (b.type === 'tool_result' && b.isError) failed.add(b.toolUseId);
+  const results = new Map<string, NonNullable<RemoteTool['result']>>();
+  for (const m of messages) for (const b of m.blocks) if (b.type === 'tool_result') results.set(b.toolUseId, { text: b.text, isError: b.isError, truncated: b.truncated });
   const items: RemoteItem[] = [];
   for (const message of visibleMessages(messages)) {
     if (message.role === 'user') {
@@ -94,7 +96,8 @@ export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
       if (block.type === 'text') {
         if (block.text.trim()) items.push({ kind: 'text', key: `${message.uuid}:${index}`, text: block.text });
       } else if (block.type === 'tool_use') {
-        const tool = { id: block.id, name: block.name, input: block.input, failed: failed.has(block.id) };
+        const result = results.get(block.id) ?? null;
+        const tool = { id: block.id, name: block.name, input: block.input, failed: result?.isError === true, result };
         const last = items.at(-1);
         if (last?.kind === 'tools') last.tools.push(tool);
         else items.push({ kind: 'tools', key: `${message.uuid}:${index}`, tools: [tool] });
@@ -105,6 +108,27 @@ export function remoteItems(messages: readonly RemoteMessage[]): RemoteItem[] {
 }
 
 const EDITS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+
+/** One line of an edit's diff: taken away (`-`) or added (`+`). */
+export interface RemoteDiffLine {
+  kind: '+' | '-';
+  text: string;
+}
+
+/**
+ * The lines an edit takes away and adds, from its input (the old text, then the new one, for each edit), for the
+ * opened step. Null for a call that is not an edit, or whose input doesn't say.
+ */
+export function remoteEditLines(name: string, input: unknown): RemoteDiffLine[] | null {
+  const value = (input ?? {}) as Record<string, unknown>;
+  const lines = (kind: '+' | '-', text: unknown): RemoteDiffLine[] => (typeof text === 'string' && text.length > 0 ? text.split('\n').map((line) => ({ kind, text: line })) : []);
+  const edit = (old: unknown, next: unknown) => [...lines('-', old), ...lines('+', next)];
+  if (name === 'Write') return typeof value.content === 'string' ? lines('+', value.content) : null;
+  if (name === 'MultiEdit' && Array.isArray(value.edits)) return (value.edits as Array<Record<string, unknown> | null>).flatMap((e) => edit(e?.old_string, e?.new_string));
+  if (name === 'Edit' && (typeof value.old_string === 'string' || typeof value.new_string === 'string')) return edit(value.old_string, value.new_string);
+  if (name === 'NotebookEdit' && typeof value.new_source === 'string') return lines('+', value.new_source);
+  return null;
+}
 
 const lineCount = (text: unknown): number => (typeof text === 'string' && text.length > 0 ? text.split('\n').length : 0);
 

@@ -32,6 +32,7 @@ export const COMPUTER_METHODS = [
   'session.ask',
   'session.askThreads',
   'session.markRead',
+  'session.markUnread',
   'session.setFlags',
   'session.setModel',
   'session.setEffort',
@@ -51,5 +52,13 @@ export const COMPUTER_METHODS = [
   'projects.clonePlan',
   'projects.clone',
   'projects.cancelClone',
+  'pipelines.list',
+  'pipelines.run',
+  'runs.continue',
+  'runs.retryStep',
+  'runs.anotherRound',
+  'runs.skipStep',
+  'runs.stop',
+  'runs.pushPreview',
 ] as const satisfies ReadonlyArray<MethodName<RemoteContract>>;
 export type ComputerMethod = (typeof COMPUTER_METHODS)[number];

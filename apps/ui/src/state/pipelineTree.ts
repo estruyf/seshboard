@@ -66,7 +66,7 @@ export function sidebarForest(rows: readonly SessionRowData[], runs: Iterable<Pi
   for (const { run, steps } of all) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
   const nodes = [...rows, ...runRows.map(runRowData)].map((row) => ({
     id: row.id,
-    parentId: row.summary ? (row.summary.parentId ?? null) : (stepParent.get(row.id) ?? null),
+    parentId: row.summary ? (row.summary.parentId ?? null) : (row.remote?.parentRowId ?? stepParent.get(row.id) ?? null),
     status: toTreeStatus(rowStatus(row)),
     createdAt: row.summary?.createdAt ?? null,
     row,

@@ -20,7 +20,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -3948,11 +3948,164 @@ async function runConnectedDevicesStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Quote and Read in another computer's session (part of `runOtherComputerStep`, on its finished session): right-click
+ * Claude's reply for Quote message, select a paragraph for Quote over it (neither offers Remember this: the memories
+ * are on that computer), and Read opens reading mode, where Reply with quote closes it with the quote in that
+ * session's message box (no Ask about this). Nothing is sent, and the box is emptied after each quote. Returns what
+ * went wrong, or null.
+ */
+async function remoteQuoteAndRead(win: BrowserWindow, row: string): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const finished = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Add rate limits to the webhooks'))`;
+  if (!(await js(`Boolean(${finished})`))) return 'the finished session of the other computer is not in the sidebar';
+  await js(`${finished}.click()`);
+  const view = '[data-remote-session="a0000000-0000-4000-8000-000000000005"]';
+  const box = `${view} [data-computer-composer]`;
+  const reply = `${view} [data-remember-from="claude"]`;
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-read]') && document.querySelector('${box}')`, 10_000))) return 'the finished remote session has no Read under its reply';
+  const quoted = async (what: string): Promise<string | null> => {
+    const ok = await waitInPage(win, `document.querySelector('${box}')?.value.includes('> ')`, 3_000);
+    const value = (await js(`document.querySelector('${box}')?.value ?? ''`)) as string;
+    await setFieldValue(win, box, '');
+    return ok ? null : `${what} left the remote message box without a quote (${JSON.stringify(value.slice(0, 60))})`;
+  };
+  /** Selects the first paragraph in `selector` with some text, as a mouse would end it. Scrolled to first: a scroll hides the toolbar. */
+  const select = async (selector: string) => {
+    const paragraph = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((el) => el.textContent.trim().length > 20)`;
+    await js(`${paragraph}?.scrollIntoView({ block: 'center' })`);
+    await settle(win);
+    return js(`(() => {
+      const p = ${paragraph};
+      if (!p) return '';
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return selection.toString().trim();
+    })()`) as Promise<string>;
+  };
+  try {
+    await js(`(() => {
+      const el = [...document.querySelectorAll('${reply}')].at(-1);
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.top + 10 }));
+    })()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-quote-menu]')", 3_000))) return 'right-click on a remote reply has no Quote message';
+    if (await js("Boolean(document.querySelector('[data-remember-menu]'))")) return 'right-click on a remote reply offers Remember this';
+    await js("document.querySelector('[data-quote-menu]').click()");
+    const fromMenu = await quoted('Quote message');
+    if (fromMenu) return fromMenu;
+
+    if (!(await select(`${reply} p`))) return 'a remote reply has no paragraph to select';
+    const toolbar = "document.querySelector('[data-remember-selection] [data-quote-selection]')";
+    if (!(await waitInPage(win, toolbar, 3_000))) return 'no Quote over a selection in a remote reply';
+    if (await js("Boolean(document.querySelector('[data-remember-selection] [data-remember-button]'))")) return 'the toolbar over a remote reply offers Remember this';
+    await js(`${toolbar}.click()`);
+    const fromSelection = await quoted('Quote over a selection');
+    if (fromSelection) return fromSelection;
+
+    await js(`document.querySelector('${view} [data-remote-read]').click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-mode] [data-read-text] h2')", 3_000))) return 'Read on a remote reply did not open reading mode';
+    await js("document.querySelector('[data-read-tools-toggle]')?.click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-read-mode] [data-read-tool-block] li')", 3_000))) return 'Show in reading mode lists no tool calls of the remote reply';
+    if (!(await select('[data-read-text] p'))) return 'reading mode shows no paragraph of the remote reply to select';
+    const popover = "document.querySelector('[data-read-selection][data-side]')";
+    if (!(await waitInPage(win, popover, 3_000))) return 'no popover over the selection in reading mode on a remote reply';
+    if (!(await js(`Boolean(${popover}.querySelector('[data-read-ask]'))`))) return 'reading mode on a remote reply has no Ask about this';
+    await js(`${popover}.querySelector('[data-read-quote]').click()`);
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]')", 3_000))) return 'Reply with quote did not close reading mode on a remote reply';
+    return await quoted('Reply with quote');
+  } finally {
+    await js('window.getSelection().removeAllRanges()');
+    if ((await js("Boolean(document.querySelector('[data-read-mode]'))")) as boolean) pressKey(win, 'Escape');
+    await setFieldValue(win, box, '').catch(() => {});
+  }
+}
+
+/**
+ * What another computer's finished session offers here (part of `runOtherComputerStep`, after `remoteQuoteAndRead`,
+ * which leaves it open): its catch-up, Changes with a file's diff and a commit its hook turns down (the demo refuses a
+ * message with "fail", so nothing is committed), Ask with an answer from there, a tool call opened, Find (⌘F), Jump
+ * to latest, and the ⋯ menu's Mark as unread, Run a pipeline and Copy last reply. Then the session a pipeline run
+ * started from shows the run with Push. Returns what went wrong, or null.
+ */
+async function remoteSessionExtras(win: BrowserWindow, row: string): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const view = '[data-remote-session="a0000000-0000-4000-8000-000000000005"]';
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-catchup-slot]')`, 5_000))) return 'the finished remote session shows no catch-up';
+
+  // Changes: the files there, a diff, and a commit the hook turns down.
+  await click(`${view} [data-remote-changes]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-changes-panel] [data-remote-changed-file]')`, 5_000))) return 'Changes on a remote session lists no files';
+  await click(`${view} [data-remote-changes-panel] [data-remote-file-toggle]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-file-diff] [data-share-line]')`, 5_000))) return 'a changed file on the other computer opened no diff';
+  await shot(win, 'computers-changes.png');
+  await setFieldValue(win, `${view} [data-remote-commit-message]`, 'Smoke: fail on purpose');
+  await click(`${view} [data-remote-commit]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-commit-failed]')?.innerText.includes('pre-commit')`, 5_000))) return 'a commit the hook turned down shows no output';
+  await setFieldValue(win, `${view} [data-remote-commit-message]`, '');
+  await click(`${view} [data-remote-changes-close]`);
+
+  // Ask: a question, answered there, in the panel on the right.
+  await click(`${view} [data-toggle-ask]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-ask-panel] [data-ask-field]')`, 3_000))) return 'Ask on a remote session opened no panel';
+  if (await js(`Boolean(document.querySelector('${view} [data-remote-changes-panel]'))`)) return 'Ask and Changes are open at once';
+  await setFieldValue(win, `${view} [data-ask-field]`, 'What changed so far?');
+  await click(`${view} [data-ask-send]`);
+  if (!(await waitInPage(win, `(document.querySelector('${view} [data-ask-answer]')?.innerText.length ?? 0) > 20`, 10_000))) return 'Ask got no answer from the other computer';
+  await click(`${view} [data-ask-close]`);
+
+  // A tool call opens with what it was given and what it gave back.
+  await js(`[...document.querySelectorAll('${view} [data-remote-tools] > button')].at(-1)?.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-tool-step]')`, 3_000))) return 'a run of tool calls did not open';
+  await js(`[...document.querySelectorAll('${view} [data-remote-tool-step]')].at(-1).click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-tool-detail]')`, 3_000))) return 'a tool call on the other computer did not open';
+
+  // Find (⌘F): a word from the reply, counted and highlighted; Escape closes.
+  await js(`document.querySelector('${view} [data-transcript]').focus?.()`);
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F', modifiers: [MOD_MODIFIER] });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'F', modifiers: [MOD_MODIFIER] });
+  if (!(await waitInPage(win, `document.activeElement?.matches('${view} [data-find-input]')`, 3_000))) return '⌘F did not open find in a remote session';
+  await setFieldValue(win, `${view} [data-find-input]`, 'webhook');
+  if (!(await waitInPage(win, "/^\\d+ of \\d+$/.test(document.querySelector('[data-find-count]')?.innerText ?? '') && CSS.highlights.get('find')?.size > 0", 3_000))) return 'find counted or highlighted nothing in a remote session';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-find-bar]')`, 3_000))) return 'Escape did not close find in a remote session';
+
+  // Jump to latest, from the top of the conversation.
+  await js(`(() => { const el = document.querySelector('${view} [data-transcript]'); el.scrollTop = 0; el.dispatchEvent(new Event('scroll')); })()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-jump-to-latest]')`, 3_000))) return 'no Jump to latest when scrolled up in a remote session';
+  await click(`${view} [data-jump-to-latest]`);
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-jump-to-latest]')`, 3_000))) return 'Jump to latest did not go to the end';
+
+  // The ⋯ menu.
+  await click(`${view} [data-remote-more]`);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-remote-copy-last-reply]')", 3_000))) return 'the remote session’s ⋯ menu has no Copy last reply';
+  const entries = (await js("({ unread: !!document.querySelector('[role=menu] [data-mark-unread], [role=menu] [data-mark-read]'), pipelines: !!document.querySelector('[role=menu] [data-remote-pipelines-menu]') })")) as { unread: boolean; pipelines: boolean };
+  pressKey(win, 'Escape');
+  if (!entries.unread) return 'the remote session’s ⋯ menu has no Mark as read or unread';
+  if (!entries.pipelines) return 'the remote session’s ⋯ menu has no Run a pipeline';
+
+  // The session a run started from: the run with its steps, waiting at Push (never pushed here).
+  const parent = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Add a usage cost toggle'))`;
+  if (!(await js(`Boolean(${parent})`))) return 'the session a pipeline run started from is not in the sidebar';
+  await js(`${parent}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-remote-run] [data-remote-run-push]')", 5_000))) return 'the remote run shows no Push while it waits there';
+  if (!(await js("document.querySelectorAll('[data-remote-session] [data-remote-run] [data-remote-run-step]').length >= 3"))) return 'the remote run does not list its steps';
+  await shot(win, 'computers-run.png');
+  return null;
+}
+
+/**
  * Other computers in the same app: pairs with the second computer the smoke script starts (scripts/remote-demo.ts, the
  * real Remote hub over made-up sessions, in a throwaway folder), through the link field in Settings › Remote. Then its
  * sessions are in the sidebar with the computer's chip and the Computers strip; one opens in the session view with the
  * violet line and "on Smoke Mac", its terminal button disabled with the reason; a background task there stops from
- * its pill; and New session with Run on set to it starts a session there, which opens here. Run on goes back to this
+ * its pill; Quote and Read work on its finished session (`remoteQuoteAndRead`); and New session with Run on set to it
+ * starts a session there, which opens here. Run on goes back to this
  * computer and the computer is removed again.
  */
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
@@ -4025,6 +4178,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-session] [data-background-tasks] [data-stop-task]');
   if (!(await waitInPage(win, "!document.querySelector('[data-remote-session] [data-status-background]')", 5_000))) return 'Stop did not stop the background task on the other computer';
 
+  // 3c. Quote and Read, on its finished session: nothing is sent, and the message box is emptied again each time.
+  const quoted = await remoteQuoteAndRead(win, row);
+  if (quoted) return quoted;
+  const extras = await remoteSessionExtras(win, row);
+  if (extras) return extras;
+
   // 4. New session with Run on set to it starts a session there, which opens here.
   await click('[data-new-session]');
   if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
@@ -4045,6 +4204,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (await js("Boolean(document.querySelector('[data-remote-new-session] [data-project-list] [data-remote-badge]'))")) return 'the projects on the other computer still have the monitor badge';
   await click(tideline);
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'New session on the other computer did not pick tideline';
+  // Queue for later is beside Start, and waits for a message as Start does.
+  if (!(await js("document.querySelector('[data-remote-new-session] [data-remote-queue-later]')?.disabled === true"))) return 'New session on the other computer has no Queue for later, or it works without a message';
   // On the current checkout, the branch checked out there shows, and another one can be picked to check out first.
   const routeBranch = "document.querySelector('[data-remote-new-session] [data-route-branch]')?.innerText";
   if (!(await waitInPage(win, `${routeBranch} === 'main'`, 5_000))) return `the route shows no branch on the other computer (${await js(routeBranch)})`;
@@ -10418,6 +10579,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
