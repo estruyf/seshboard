@@ -27,6 +27,9 @@ export * from "./appIcons.ts";
 /** `window.postMessage` tag the preload uses to hand the engine port to the page. */
 export const ENGINE_PORT_MESSAGE = "seshboard:engine-port";
 
+/** Remote's log in the app's data folder (the engine's `remoteLog.ts`): connections, refusals and blocks. */
+export const REMOTE_LOG_FILE = "remote.log";
+
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
   requestEnginePort: "seshboard:request-engine-port",
@@ -42,6 +45,7 @@ export const IpcChannel = {
   chooseMemoryExport: "seshboard:choose-memory-export",
   saveImage: "seshboard:save-image",
   showSavedImage: "seshboard:show-saved-image",
+  showRemoteLog: "seshboard:show-remote-log",
   focusSession: "seshboard:focus-session",
   selectSession: "seshboard:select-session",
   quitRequested: "seshboard:quit-requested",
@@ -844,6 +848,8 @@ export interface SeshboardBridge {
   saveImage(request: SaveImageRequest): Promise<string | null>;
   /** Shows an image saved with `saveImage` in Finder (only those, never any other path). */
   showSavedImage(path: string): void;
+  /** Shows Remote's log (`REMOTE_LOG_FILE` in the data folder) in Finder, or the folder before there is one. */
+  showRemoteLog(): void;
   /** The path on disk of a dropped file or folder; empty for files that aren't on disk (made in the page, pasted). */
   getPathForFile(file: File): string;
   /** ⌘Q was pressed: show the quit prompt. Pressing ⌘Q again while it's open quits without it. */

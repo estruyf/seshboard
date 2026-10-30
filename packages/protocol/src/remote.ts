@@ -678,6 +678,11 @@ export const RemoteStatus = z.object({
   devices: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['phone', 'browser', 'computer']).default('phone'), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
   connections: z.array(z.object({ deviceId: z.string(), name: z.string(), since: z.number() })),
   /**
+   * Addresses that wait after refused handshakes (a revoked device, a used pairing link), until `until`; `attempts` failed
+   * in a row. Behind one network every device shares its address, so a paired phone can wait too. Unblock clears them.
+   */
+  blocked: z.array(z.object({ address: z.string(), attempts: z.number(), until: z.number() })).default([]),
+  /**
    * The tunnel came back with a new address that no paired device has used yet: a quick tunnel restarted (Cloudflare,
    * or ngrok without a domain). Settings › Remote then offers Reconnect a paired device. Never for an address that
    * stays the same (your own, ngrok with a domain, Tailscale).

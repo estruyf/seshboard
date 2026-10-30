@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -1167,6 +1167,13 @@ ipcMain.handle(IpcChannel.saveImage, async (event, request: unknown) => {
 
 ipcMain.on(IpcChannel.showSavedImage, (_event, path: unknown) => {
   if (typeof path === 'string' && savedImages.has(path)) shell.showItemInFolder(path);
+});
+
+// Settings › Remote › Advanced: the engine writes it in the data folder, which is also main's userData.
+ipcMain.on(IpcChannel.showRemoteLog, () => {
+  const file = join(app.getPath('userData'), REMOTE_LOG_FILE);
+  if (existsSync(file)) shell.showItemInFolder(file);
+  else void shell.openPath(app.getPath('userData'));
 });
 
 const readyReports: TimedReport[] = [];
@@ -3745,7 +3752,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
   await click('[data-remote-change-connection]');
   if (!(await waitInPage(win, "document.querySelectorAll('[data-remote-connection] [role=radio]').length === 4", 3_000))) return 'Change… did not open the four choices';
   if (await js("document.querySelector('[data-remote-advanced-toggle]').getAttribute('aria-expanded') === 'false'")) await click('[data-remote-advanced-toggle]');
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]')", 3_000))) return 'Advanced did not show the port and the security note';
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-port-input]') && document.querySelector('[data-remote-security]') && document.querySelector('[data-remote-log] [data-remote-show-log]')", 3_000))) return 'Advanced did not show the port, the security note and Show log';
   await shot(win, 'remote-open.png');
 
   await click('[data-remote-device="smoke-device"] [data-remote-rename]');
@@ -3762,7 +3769,7 @@ async function runRemoteSettingsStep(win: BrowserWindow): Promise<string> {
 
   await click('[data-remote-enabled]');
   if (!(await waitInPage(win, "document.querySelector('[data-remote-off-card]')", 5_000))) return 'turned off with a paired device, the page did not say Remote is off';
-  return `ok: three steps, status card "${title}", Change… and Advanced opened, device renamed, Revoke asked and Escape cancelled, turned off`;
+  return `ok: three steps, status card "${title}", Change… and Advanced (with Show log) opened, device renamed, Revoke asked and Escape cancelled, turned off`;
 }
 
 /**

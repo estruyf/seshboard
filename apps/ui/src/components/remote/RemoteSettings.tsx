@@ -1,6 +1,8 @@
 import { Check, ChevronRight, Copy, ExternalLink, Globe, Laptop, Pencil, ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { RemoteSettings as Settings, RemoteStatus, RemoteTunnel } from '@seshboard/protocol/client';
+import { REMOTE_LOG_FILE } from '@seshboard/protocol/bridge';
+import { fileManagerName } from '../../lib/platform.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ComputersSettings } from '../computers/ComputersSettings.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -105,6 +107,11 @@ export function RemoteSettings() {
         return configure({});
       case 'details':
         return;
+      case 'unblock':
+        setError(null);
+        return void client?.call('remote.unblock', {}).catch((e: Error) => setError(e.message));
+      case 'show-log':
+        return window.seshboard?.showRemoteLog();
     }
   };
 
@@ -490,7 +497,7 @@ function Advanced({
       <button type="button" aria-expanded={open} aria-controls={panelId} onClick={() => onToggle(!open)} className="flex items-center gap-1.5 justify-self-start rounded text-ui font-medium hover:text-text" data-remote-advanced-toggle>
         <ChevronRight size={14} aria-hidden className={`transition-transform ${open ? 'rotate-90' : ''}`} />
         Advanced
-        <span className="font-normal text-muted">port, security</span>
+        <span className="font-normal text-muted">port, security, log</span>
       </button>
       {open && (
         <div id={panelId} className="grid gap-4 rounded-lg border border-border bg-card px-4 py-3.5">
@@ -504,6 +511,14 @@ function Advanced({
             </p>
           </div>
           <SecurityNote />
+          <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3.5" data-remote-log>
+            <p className="min-w-0 flex-1 text-meta text-muted">
+              Remote logs connections and refused attempts in <code className="select-text font-mono text-text">{REMOTE_LOG_FILE}</code>.
+            </p>
+            <Button size="sm" onClick={() => window.seshboard?.showRemoteLog()} data-remote-show-log>
+              Show in {fileManagerName()}
+            </Button>
+          </div>
           {reconnect && (
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3.5">
               <p className="min-w-0 flex-1 text-meta text-muted">A quick tunnel gets a new address each time it starts. Paired devices pick it up from a link.</p>
