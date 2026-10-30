@@ -238,7 +238,7 @@ describe('Remote server', () => {
     expect(lines[5]).toBe('Remote: refused a socket from 127.0.0.1: origin "https://evil.example" isn\'t the remote app\'s');
   });
 
-  it('blocks an address after refused attempts, says so once while it waits, and Unblock lets it in', async () => {
+  it('blocks an address after refused attempts, lets its paired devices in meanwhile, and Unblock lets everyone in', async () => {
     let changes = 0;
     const env = await setup({ onBlocked: () => changes++ });
     const { phone } = await pairPhone(env);
@@ -246,17 +246,37 @@ describe('Remote server', () => {
     expect(env.server.blocked()).toMatchObject([{ address: '127.0.0.1', attempts: 3 }]);
     expect(changes).toBe(1);
     expect(env.logs).toContain('Remote: 127.0.0.1 waits 1 s before it may try again, after 3 refused attempts in a row');
-    // A paired phone on the same network waits too: that is what Unblock is for.
-    await expect(open(env.port)).rejects.toThrow('HTTP 429');
-    await expect(open(env.port)).rejects.toThrow('HTTP 429');
-    expect(env.logs.filter((line) => line.startsWith('Remote: turned away 127.0.0.1'))).toHaveLength(1);
+
+    // A stranger and a pairing from the waiting address are turned away, without counting, and the log says so once.
+    expect((await handshake(env.port, 'connect', generateKeyPair(), env.identity.publicKey)).code).toBe(CLOSE.unknownDevice);
+    const { secret } = env.pairing.start();
+    expect((await handshake(env.port, 'pair', generateKeyPair(), env.identity.publicKey, pskFromSecret(secret))).code).toBe(CLOSE.tooMany);
+    expect(env.server.blocked()).toMatchObject([{ attempts: 3 }]);
+    expect(env.logs.filter((line) => line.includes("so this one isn't counted"))).toHaveLength(1);
+    // The pairing secret wasn't tried: it still works once the address may pair.
+    expect(env.pairing.state().offer).not.toBeNull();
+
+    // A paired phone behind the same address proves its key and gets in; the others' count stays.
+    const waiting = await handshake(env.port, 'connect', phone, env.identity.publicKey);
+    await client<RemoteContract>(waiting.frames, waiting.session!).call('hello', { client: { version: '1' } });
+    expect(env.server.list()).toHaveLength(1);
+    expect(env.logs).toContain("Remote: Elio's iPhone connected from 127.0.0.1, which waits after refused attempts");
+    expect(env.server.blocked()).toMatchObject([{ attempts: 3 }]);
 
     env.server.unblock();
     expect(env.server.blocked()).toEqual([]);
     expect(env.logs.at(-1)).toBe('Remote: unblocked every address (Settings › Remote)');
-    const connected = await handshake(env.port, 'connect', phone, env.identity.publicKey);
-    await client<RemoteContract>(connected.frames, connected.session!).call('hello', { client: { version: '1' } });
-    expect(env.server.list()).toHaveLength(1);
+    const paired = await pairPhone(env, 'Second phone');
+    expect(env.devices.list().map((d) => d.id)).toContain(paired.deviceId);
+  });
+
+  it('tells a device paired before the Remote key changed to pair again, so it stops', async () => {
+    const env = await setup();
+    const { phone } = await pairPhone(env);
+    // The phone kept the computer's old key: its first message was made for that one.
+    const stale = await handshake(env.port, 'connect', phone, generateKeyPair().publicKey);
+    expect(stale.code).toBe(CLOSE.unknownDevice);
+    expect(env.logs.at(-1)).toMatch(/^Remote: refused 127\.0\.0\.1 \(a browser at https:\/\/app\.example\): its handshake didn't decrypt \(.+\): a device paired before this computer's Remote key changed has to pair again$/);
   });
 
   it('refuses another origin and anything but a hello, and serves no pages', async () => {

@@ -110,6 +110,16 @@ export class ComputerHub {
         this.pairingAbort = null;
         const computer = this.store.add({ name: new URL(link.address).hostname, enginePublicKey: link.enginePublicKey, address: link.address, deviceId });
         this.options.log('info', `Other computers: paired with ${link.address}`);
+        // Pairings are kept by the other computer's key, so pairing it again after its Remote key changed (the rename to
+        // Seshboard made a new one) added a second entry. The old one dialed the old key forever, which there counts
+        // against this network's address. The same address with another key is that computer: it replaces the old one.
+        for (const earlier of this.store.list()) {
+          if (earlier.id === computer.id || !sameAddress(earlier.address, link.address)) continue;
+          this.links.get(earlier.id)?.link.stop();
+          this.links.delete(earlier.id);
+          this.store.remove(earlier.id);
+          this.options.log('info', `Other computers: replaced the earlier pairing with ${earlier.address}, made for its old key`);
+        }
         this.links.get(computer.id)?.link.stop();
         this.links.delete(computer.id);
         this.pairing = null;
@@ -247,6 +257,15 @@ interface LinkEntry {
   listProblem: string | null;
 }
 
+/** Two addresses of one computer's Remote: the same origin (`https://mac.example.com` and `…/`). */
+export function sameAddress(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return a === b;
+  }
+}
+
 /** Why a paired computer can't be reached, in a sentence that says what to do. */
 export function offlineMessage(failure: LinkFailure, name: string): string {
   switch (failure.kind) {
@@ -260,6 +279,7 @@ export function offlineMessage(failure: LinkFailure, name: string): string {
       return `${name}’s address answered with an error (HTTP ${failure.status}). Check its tunnel.`;
     case 'closed':
       if (failure.code === CLOSE.version) return `${name} runs another version of Remote. Update Seshboard on both computers.`;
+      if (failure.code === CLOSE.tooMany) return `${name} turns this network away for a few minutes after refused attempts. Seshboard tries again shortly.`;
       return `${name} closed the connection.`;
     case 'dropped':
       return `Lost the connection to ${name}.`;
@@ -276,6 +296,7 @@ export function pairingMessage(error: unknown): string {
     const { failure } = error;
     if (failure.kind === 'closed' && failure.code === CLOSE.pairingClosed) return 'This link was used or has expired. On the other computer, click Pair a phone again and copy a new link.';
     if (failure.kind === 'closed' && failure.code === CLOSE.refused) return 'The other computer refused the link. Copy a new one.';
+    if (failure.kind === 'closed' && failure.code === CLOSE.tooMany) return 'The other computer turns this network away for a few minutes after refused attempts. Click Unblock in Settings › Remote there, or try again later.';
     if (failure.kind === 'http' && failure.status === 403) return 'The other computer refused the connection. Update Seshboard there.';
     return 'Can’t reach the other computer. Check that Remote is on there, and that its link is new.';
   }
