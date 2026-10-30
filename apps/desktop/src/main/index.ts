@@ -7930,7 +7930,26 @@ async function runArchivedDockStep(win: BrowserWindow): Promise<string> {
       return { outside: !l.contains(d), below: dr.top >= lr.bottom - 1, fits: content <= l.clientHeight, scrolls: l.scrollHeight > l.clientHeight + 1, content, scrollHeight: l.scrollHeight, clientHeight: l.clientHeight, dockTop: dr.top, listBottom: lr.bottom, dpr: devicePixelRatio };
     })()`)) as { outside: boolean; below: boolean; fits: boolean; scrolls: boolean; content: number; scrollHeight: number; clientHeight: number; dockTop: number; listBottom: number; dpr: number };
     if (!docked.outside || !docked.below) return `the closed Archived header is not docked under the list (${JSON.stringify(docked)})`;
-    if (docked.fits && docked.scrolls) return `a list that fits still scrolls (${JSON.stringify(docked)})`;
+    if (docked.fits && docked.scrolls) {
+      // Seen only on Windows runners (#240): say what reaches below the rows (an element, a ::before/::after, a
+      // transform beyond the row's own place, or a row's content taller than the row), so the report names it.
+      const below = (await js(`(() => {
+        const l = ${list}, inner = l.firstElementChild, top = inner.getBoundingClientRect().top, limit = inner.offsetHeight;
+        const name = (el) => el.tagName.toLowerCase() + Object.keys(el.dataset).map((k) => '[' + k + ']').join('') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 6).join('.') : '');
+        const found = [];
+        for (const el of l.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect(), cs = getComputedStyle(el), row = el.closest('[data-list-row]');
+          if (r.bottom - top > limit + 0.5) found.push(name(el) + ' to ' + Math.round(r.bottom - top) + (cs.transform !== 'none' ? ' ' + cs.transform : '') + (row && row !== el ? ' in row ' + row.getAttribute('data-list-row') : ''));
+          for (const p of ['::before', '::after']) {
+            const s = getComputedStyle(el, p);
+            if (s.content !== 'none' && s.content !== 'normal' && r.bottom - top + Math.max(0, parseFloat(s.height) || 0) > limit + 0.5) found.push(name(el) + p + ' ' + s.position + ' ' + s.height + ' bottom ' + s.bottom);
+          }
+        }
+        return { limit, rows: l.querySelectorAll('[data-list-row]').length, found: found.slice(0, 12) };
+      })()`)) as { limit: number; rows: number; found: string[] };
+      await shot(win, 'archived-dock-scrolls.png');
+      return `a list that fits still scrolls (${JSON.stringify(docked)}; below the rows: ${JSON.stringify(below)})`;
+    }
     const sidebarShot = async (name: string) => {
       await settle(win);
       const rect = (await js("(() => { const r = document.querySelector('[data-sidebar-open]').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })()")) as Electron.Rectangle;
