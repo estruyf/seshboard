@@ -253,12 +253,20 @@ export interface SessionChoice {
   checkoutBranch: string | null;
 }
 
-export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }, globalMode: PermissionMode = 'default'): SessionChoice {
+/** Settings › General › Global model and Global effort: null leaves them to Claude Code. */
+export interface GlobalModel {
+  model: string | null;
+  effort: Effort | null;
+}
+
+export const NO_GLOBAL_MODEL: GlobalModel = { model: null, effort: null };
+
+export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }, globalMode: PermissionMode = 'default', globals: GlobalModel = NO_GLOBAL_MODEL): SessionChoice {
   const workspace = project.workspace ?? profile.defaults.workspace;
   return {
     profileId: profile.id,
-    model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model),
-    effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort),
+    model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model ?? globals.model),
+    effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort ?? globals.effort),
     permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
@@ -268,11 +276,12 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
 
 /**
  * A project's or a profile's defaults as a phone gets them. The phone takes the project's mode, else the profile's, so
- * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's.
+ * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's. The
+ * global model and effort (`globals`) come in the same way, under a profile; a project's unset ones fall to its profile.
  */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { globalPermissionMode?: boolean }, globalMode: PermissionMode | null) => ({
-  model: defaults.model,
-  effort: defaults.effort,
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { globalPermissionMode?: boolean }, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
+  model: defaults.model ?? globals.model,
+  effort: defaults.effort ?? globals.effort,
   permissionMode: defaults.permissionMode ?? globalMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
 });

@@ -13,7 +13,7 @@ import { jumpToSetting } from '../settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from '../settingsSearch/settingsIndex.ts';
 
 const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60 disabled:opacity-50';
-/** The value an unset field shows; unset fields use the profile's defaults, else the choices last made in the New session view. */
+/** The value an unset field shows; unset fields use the profile's defaults, else the global ones in Settings › General. */
 const UNSET = '';
 /** A project's permission mode that skips its profile's and follows the global one (`globalPermissionMode`). */
 const GLOBAL = 'global';
@@ -54,7 +54,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /**
  * A project's or a profile's defaults for new sessions. An unset field leaves it to the level under it: a
  * project's to its profile's (`profile`, named in the option when it sets that field), and both to the
- * choices last made in the New session view. Without a `root` (a profile) there is no branch to pick.
+ * global defaults in Settings › General. Without a `root` (a profile) there is no branch to pick.
  * Every change saves at once.
  */
 export function ProjectDefaultsEditor({
@@ -79,6 +79,8 @@ export function ProjectDefaultsEditor({
   const models = useHosts((s) => s.models);
   const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
   const globalMode = globalModeLabel(usePreferences((s) => s.prefs.newSessionMode));
+  const globalModel = usePreferences((s) => s.prefs.newSessionModel);
+  const globalEffort = usePreferences((s) => s.prefs.newSessionEffort);
   const [branches, setBranches] = useState<{ current: string | null; branches: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
@@ -106,8 +108,10 @@ export function ProjectDefaultsEditor({
     onSave(latest.current);
   };
   const nullable = <T extends string>(value: string) => (value === UNSET ? null : (value as T));
-  // What an unset field falls back to: "Profile default (Opus)" when the profile sets it, else the global default.
-  const inherit = (label: string, value: string | null | undefined, shown?: string) => (value ? `Profile ${label} (${shown ?? value})` : `Global ${label}`);
+  // What an unset field falls back to: "Profile default (Opus)" when the profile sets it, else the global default,
+  // named when Settings › General sets one (`global`).
+  const inherit = (label: string, value: string | null | undefined, shown?: string, global?: string) =>
+    value ? `Profile ${label} (${shown ?? value})` : global ? `Global ${label} (${global})` : `Global ${label}`;
   const baseLabel = { fresh: 'from origin', head: 'from HEAD' } as const;
   const branchOptions = defaults.branch && !branches.branches.includes(defaults.branch) ? [defaults.branch, ...branches.branches] : branches.branches;
   // A project's worktrees can start from any of its branches; a profile has no repository, so only origin or HEAD.
@@ -140,7 +144,7 @@ export function ProjectDefaultsEditor({
           value={defaults.model ?? UNSET}
           onChange={(value) => set({ model: nullable(value) })}
           options={[
-            { value: UNSET, label: inherit('default', profile?.model, profile?.model ? modelLabel(models, profile.model) : undefined) },
+            { value: UNSET, label: inherit('default', profile?.model, profile?.model ? modelLabel(models, profile.model) : undefined, globalModel ? modelLabel(models, globalModel) : undefined) },
             // Auto stays listed while it is the saved choice, also with Auto off (the note says what happens then).
             ...(autoEnabled || defaults.model === AUTO_MODEL ? [{ value: AUTO_MODEL, label: autoEnabled ? 'Auto' : 'Auto (off)' }] : []),
             ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
@@ -153,7 +157,7 @@ export function ProjectDefaultsEditor({
           className={field}
           value={defaults.effort ?? UNSET}
           onChange={(value) => set({ effort: nullable<Effort>(value) })}
-          options={[{ value: UNSET, label: inherit('effort', profile?.effort, profile?.effort ? EFFORT_LABEL[profile.effort] : undefined) }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
+          options={[{ value: UNSET, label: inherit('effort', profile?.effort, profile?.effort ? EFFORT_LABEL[profile.effort] : undefined, globalEffort ? EFFORT_LABEL[globalEffort] : undefined) }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
           dataAttrs={{ 'data-default-effort': true }}
         />
       </Row>

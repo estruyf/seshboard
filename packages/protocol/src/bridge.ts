@@ -172,6 +172,11 @@ export type ProjectOrder = "recent" | "yours";
  */
 export type NewSessionMode = "remember" | "default" | "acceptEdits" | "plan" | "auto";
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["remember", "default", "acceptEdits", "plan", "auto"];
+/** The global effort (Settings › General): one of Claude Code's effort levels, or `""` for Claude Code's own default. */
+export type NewSessionEffort = "" | "low" | "medium" | "high" | "xhigh" | "max";
+export const NEW_SESSION_EFFORTS: readonly NewSessionEffort[] = ["", "low", "medium", "high", "xhigh", "max"];
+/** Longest model id the global model keeps, as project defaults allow. */
+const NEW_SESSION_MODEL_MAX = 200;
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
@@ -310,6 +315,13 @@ export interface Preferences {
   /** The global permission mode: what new sessions start in where the profile and the project set none (Settings › General). */
   newSessionMode: NewSessionMode;
   /**
+   * The global model (Settings › General): what new sessions start on where the profile and the project set none.
+   * A model Claude Code lists, `auto`, or `""` for Claude Code's own default (its `settings.json` or environment).
+   */
+  newSessionModel: string;
+  /** The global effort (Settings › General): as the model, `""` leaves it to Claude Code. */
+  newSessionEffort: NewSessionEffort;
+  /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
    * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
    * ask for it. Off by default: not everyone has the extension.
@@ -430,6 +442,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   startupView: "home",
   projectOrder: "recent",
   newSessionMode: "default",
+  newSessionModel: "",
+  newSessionEffort: "",
   chrome: false,
   keepAwake: false,
   autoUpdate: true,
@@ -596,6 +610,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.projectOrder = raw.projectOrder;
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
+  // Models come from Claude Code at runtime, so any short id is kept; one it no longer lists is shown as it is.
+  if (typeof raw.newSessionModel === "string" && raw.newSessionModel.length <= NEW_SESSION_MODEL_MAX)
+    out.newSessionModel = raw.newSessionModel.trim();
+  if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
+    out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;

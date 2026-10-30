@@ -37,7 +37,7 @@ import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub, remoteAppOrigins, type RemoteFromDevice, type RemotePipelines } from './remoteHub.ts';
-import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
 
@@ -209,6 +209,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
     globalPermissionMode: () => 'default',
+    globalModel: () => ({ model: null, effort: null }),
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -1143,6 +1144,19 @@ describe('what a phone sees', () => {
     expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
     expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');
     expect(sessionChoice({}, { ...NO_DEFAULTS, globalPermissionMode: true }, work, 'auto').permissionMode).toBe('auto');
+    // The global model and effort where neither sets one; what the phone picks still wins, Default model included.
+    const globals = { model: 'haiku', effort: 'max' as const };
+    expect(sessionChoice({}, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(sessionChoice({}, NO_DEFAULTS, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
+    expect(sessionChoice({ model: null, effort: null }, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: null, effort: null });
+  });
+
+  it("shows a phone the global model and effort under a profile, and leaves a project's unset ones to its profile", () => {
+    const globals = { model: 'haiku', effort: 'max' as const };
+    const unset = { model: null, effort: null, permissionMode: null, workspace: null };
+    expect(remoteDefaults(unset, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(remoteDefaults({ ...unset, model: 'opus' }, 'default', globals)).toMatchObject({ model: 'opus', effort: 'max' });
+    expect(remoteDefaults(unset, null)).toMatchObject({ model: null, effort: null });
   });
 });
 

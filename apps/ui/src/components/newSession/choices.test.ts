@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
+import { globalChoices, globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
@@ -119,6 +119,26 @@ describe('the permission mode for new sessions', () => {
 
   it('never reaches a session a link starts', () => {
     expect(linkStartingChoices(INITIAL_CHOICES, null, 'remember').permissionMode).toBe('default');
+  });
+});
+
+describe('the global model and effort', () => {
+  const project = (model: string | null, effort: ProjectDefaults['effort']): ProjectDefaults => ({ model, effort, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null });
+  const globals = globalChoices({ newSessionModel: 'opus', newSessionEffort: 'high' });
+
+  it('come from Settings, empty leaving them to Claude Code', () => {
+    expect(globals).toEqual({ ...INITIAL_CHOICES, model: 'opus', effort: 'high' });
+    expect(globalChoices({ newSessionModel: '', newSessionEffort: '' })).toEqual(INITIAL_CHOICES);
+  });
+
+  it("start a new session where neither project nor profile sets one", () => {
+    expect(newSessionChoices(null, 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'high' });
+    expect(newSessionChoices(project('haiku', null), 'default', 'default', globals)).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(newSessionChoices(layeredDefaults(null, { model: null, effort: 'low', permissionMode: null, workspace: null, baseRef: null }), 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'low' });
+  });
+
+  it('start a session a link starts too', () => {
+    expect(linkStartingChoices(globals, null, 'default')).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'default' });
   });
 });
 

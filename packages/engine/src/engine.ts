@@ -156,6 +156,7 @@ import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
+import { NO_GLOBAL_MODEL, type GlobalModel } from './remote/remoteView.ts';
 import { CloneService, trustNeededError } from './projects/cloneService.ts';
 import { ComputerHub } from './remote/computerHub.ts';
 import { FileIndex } from './system/files.ts';
@@ -327,6 +328,8 @@ export interface Engine {
   setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Settings › General › Global permission mode, from main: what a phone's new session starts in where its profile and project set none. */
   setGlobalPermissionMode(mode: PermissionMode): void;
+  /** Settings › General › Global model and Global effort, from main: what a phone's new session starts with where its profile and project set none. */
+  setGlobalModel(globals: GlobalModel): void;
   /**
    * Settings › Focus, from main: the focus limit (null when off) and whether terminal and IDE sessions count. A
    * queued item that starts by itself never asks at the limit; it waits for a free slot.
@@ -814,6 +817,7 @@ export function createEngine(options: EngineOptions): Engine {
   /** Main sends Settings › Conversation › "Resume after a usage limit resets" when the engine starts and after each change. */
   let resumeAtLimit: ResumeAtLimit = 'ask';
   let globalPermissionMode: PermissionMode = 'default';
+  let globalModel: GlobalModel = NO_GLOBAL_MODEL;
   const limits = new UsageLimits({
     store: new LimitStore(cache.db),
     // A session that is already working again (you sent something yourself) needs no nudge.
@@ -2192,6 +2196,8 @@ export function createEngine(options: EngineOptions): Engine {
       models: () => hosts.listModels(),
       autoModel: () => ({ enabled: autoModel.enabled, allowed: [...autoModel.allowed] }),
       globalPermissionMode: () => globalPermissionMode,
+      // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
+      globalModel: () => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model }),
       usage: (profileId, refresh) => usageFor(profileId).get(refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
@@ -2834,10 +2840,10 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.mcp(sessionId, server, action);
       return {};
     },
-    'session.prewarm': ({ cwd, profileId }) => {
+    'session.prewarm': ({ cwd, profileId, effort }) => {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);
-      if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
+      if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile, effort).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
       return {};
     },
     'models.list': () => ({ models: hosts.listModels() }),
@@ -3836,6 +3842,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setGlobalPermissionMode: (mode) => {
       globalPermissionMode = mode;
+    },
+    setGlobalModel: (globals) => {
+      globalModel = globals;
     },
     smokeQueueHost: standInHost,
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {

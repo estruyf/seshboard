@@ -178,6 +178,15 @@ process.parentPort.on('message', (event) => {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
     return;
   }
+  // Settings › General › Global model and Global effort, for sessions started from a phone.
+  if (data?.type === 'globalModel') {
+    const { model, effort } = data as { model?: unknown; effort?: unknown };
+    engine.setGlobalModel({
+      model: typeof model === 'string' && model ? model : null,
+      effort: effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max' ? effort : null,
+    });
+    return;
+  }
   // Settings › General › Global permission mode, for sessions started from a phone.
   if (data?.type === 'permissionMode') {
     const mode = (data as { mode?: unknown }).mode;
