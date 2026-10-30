@@ -15,6 +15,7 @@ import { Menu, type MenuEntry } from '../Menu.tsx';
 import { terminalPrompt } from './terminalPrompt.ts';
 import { releaseWebglContexts } from './releaseWebgl.ts';
 import { terminalFontFamily, type DetectedFont } from './terminalFont.ts';
+import { lettersSpread } from './letterSpacing.ts';
 import { mayUseWebgl, NO_LOSSES, recordLoss } from './webglPolicy.ts';
 
 /** Fallbacks after the user's own terminal font: system monospace, then common Nerd Fonts for prompt glyphs. */
@@ -42,6 +43,16 @@ function terminalTheme(): ITheme {
     ...{ black, red, green, yellow, blue, magenta, cyan, white },
     ...{ brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite },
   };
+}
+
+/**
+ * Measures the letters again and draws every row. `refresh` alone draws with the widths xterm kept, and the DOM
+ * renderer keeps its rows' default spacing until the font, its size or the pixel ratio changes: this is the reset
+ * xterm runs for a new font size. It is private in xterm 6.0; 6.1 measures letters without the DOM and needs none of it.
+ */
+function measureAgain(term: Terminal) {
+  (term as unknown as { _core?: { _renderService?: { handleCharSizeChanged?(): void } } })._core?._renderService?.handleCharSizeChanged?.();
+  term.refresh(0, term.rows - 1);
 }
 
 /**
@@ -81,6 +92,9 @@ export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; 
     term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')));
     term.open(host);
     host.dataset.renderer = 'dom';
+    // For the smoke test, which checks a row's width against its cells.
+    host.dataset.cols = String(term.cols);
+    const resized = term.onResize(({ cols }) => (host.dataset.cols = String(cols)));
 
     // WebGL only while the terminal is on screen. Every tab stays mounted, and each WebGL context counts against
     // Chromium's limit of 16 live ones: past it the oldest is dropped and that terminal would stay on the slower DOM
@@ -211,10 +225,46 @@ export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; 
         loadWebgl();
         term.refresh(0, term.rows - 1);
       }
+      checkSpacing();
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => void client.call('terminal.resize', { id, cols: term.cols, rows: term.rows }).catch(() => {}), 80);
     });
     observer.observe(host);
+
+    // The redraw above needs the size observer to see the terminal hide and show. xterm 6.0 also draws a hidden
+    // terminal's rows on a blur, a scroll or a renderer swap, and keeps the rows' default spacing from when it was
+    // set up hidden (xterm.js #6208). So look at the spacing itself: after each draw, and whenever the terminal comes
+    // into view. Rows spaced from 0px letters are measured and drawn again. `data-respaced` counts it, to tell when it happened.
+    let spacingFrame = 0;
+    let spacingTimer: ReturnType<typeof setTimeout> | undefined;
+    let respacedAt = 0;
+    const respaceIfSpread = () => {
+      spacingFrame = 0;
+      if (webgl || !host.offsetParent) return;
+      const rows = host.querySelector<HTMLElement>('.xterm-rows');
+      const screen = host.querySelector('.xterm-screen');
+      if (!rows || !screen || !term.cols) return;
+      const spacings = [rows.style.letterSpacing, ...[...rows.querySelectorAll<HTMLElement>('span')].map((span) => span.style.letterSpacing)];
+      if (!lettersSpread(screen.getBoundingClientRect().width / term.cols, spacings)) return;
+      // Once a second at most, so letters that still measure 0px can't keep it redrawing.
+      const wait = respacedAt + 1000 - Date.now();
+      if (wait > 0) {
+        clearTimeout(spacingTimer);
+        spacingTimer = setTimeout(checkSpacing, wait);
+        return;
+      }
+      respacedAt = Date.now();
+      measureAgain(term);
+      host.dataset.respaced = String(Number(host.dataset.respaced ?? 0) + 1);
+    };
+    function checkSpacing() {
+      spacingFrame ||= requestAnimationFrame(respaceIfSpread);
+    }
+    const rendered = term.onRender(checkSpacing);
+    const inView = new IntersectionObserver((entries) => {
+      if (entries.at(-1)?.isIntersecting) checkSpacing();
+    });
+    inView.observe(host);
 
     // A new theme (or an edit to its file) recolours open terminals.
     const offTheme = useThemes.subscribe((state, previous) => {
@@ -224,7 +274,12 @@ export function XTerm({ id, sessionId, active, exited, onClose }: { id: string; 
     return () => {
       disposed = true;
       clearTimeout(resizeTimer);
+      clearTimeout(spacingTimer);
+      cancelAnimationFrame(spacingFrame);
       observer.disconnect();
+      inView.disconnect();
+      rendered.dispose();
+      resized.dispose();
       offTheme();
       input.dispose();
       offData();
