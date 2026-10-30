@@ -167,7 +167,7 @@ describe('providers in the session index', () => {
 
     await index.refresh();
     expect(index.snapshot().sessions.map((s) => s.id)).toEqual([CLAUDE_ID]);
-    expect(settings.snapshot().providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', allowed: false, found: true, folder: copilotDir, resumeCommand: 'copilot --resume={sessionId}' }]);
+    expect(settings.snapshot().providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', allowed: false, found: true, folder: copilotDir, resumeCommand: 'copilot --resume={sessionId}', canStart: true }]);
 
     settings.setAllowed('copilot', true);
     await index.rootsChanged();

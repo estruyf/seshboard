@@ -48,8 +48,8 @@ Copilot's driver (`copilot/copilotDriver.ts`):
 - Events: `copilotLive.ts`. Permission requests and answers: `copilotPermissions.ts` (shell → Bash, write → Edit with its diff, read → Read, url → WebFetch, MCP → `mcp__server__tool`; Always allow is Copilot's approve for the session).
 - Tests fake the SDK (`CreateCopilotClient`). The live test is opt-in and costs one small request: `SESHBOARD_LIVE_COPILOT_CWD=/path/to/throwaway/repo npx vitest run copilot.live`.
 
+**Hosts:** `ProviderHosts` (`providers/providerHosts.ts`) runs drivers' sessions next to `HostManager`, which stays Claude Code's. Each reports what a Claude Code host does through the same handlers (`hostEvents` in `engine.ts`): `session.host` info, streams, live messages, permission cards and turn ends, so the transcript, catch-up, pipelines and notifications treat both alike. The engine routes `session.create` (with `provider`), `send` (resuming a session started elsewhere), `interrupt`, `setModel`, `respond` and `close` for a provider's sessions to it; Claude Code's own actions (fork, rewind, Ask, rename, delete) still refuse them. `providers.status` and `providers.models` ask the driver. The driver runs `copilot` with `COPILOT_HOME` set to the folder Seshboard reads, so what it writes is what the sidebar shows.
+
 Next, each its own change:
-1. **Hosts:** `HostManager` runs a provider's session through its driver, behind the same `SessionHostInfo`, stream, message and permission events as a Claude Code host; sessions it started are owned (`owned_sessions`) and no longer read-only.
-2. **New session:** a provider picker (Claude Code the default; only allowed providers with a driver), the provider's models, and its status (install or sign in with its CLI) where it can't run.
-3. **Continue a session started elsewhere:** sending to a Copilot session resumes it here, as for Claude Code.
-4. **Parity, as far as the provider allows:** permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.
+1. **New session and the message box:** a provider picker (Claude Code the default; only allowed providers with a driver), the provider's models, and its status (install or sign in with its CLI) where it can't run.
+2. **Parity, as far as the provider allows:** a session open in Copilot CLI in a terminal (its `inuse.<pid>.lock`), permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.

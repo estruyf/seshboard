@@ -46,7 +46,7 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
-import { OptionalProviderSchema, ProvidersSnapshot } from './providers.ts';
+import { OptionalProviderSchema, ProvidersSnapshot, ProviderStatus } from './providers.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
@@ -311,6 +311,10 @@ export const contract = {
     'providers.list': { params: z.object({}), result: ProvidersSnapshot },
     /** Allows a provider (its sessions show up in the sidebar) or hides it again. */
     'providers.setAllowed': { params: z.object({ id: OptionalProviderSchema, allowed: z.boolean() }), result: ProvidersSnapshot },
+    /** Whether the provider's CLI is installed and signed in (it starts its runtime to ask). */
+    'providers.status': { params: z.object({ id: OptionalProviderSchema }), result: ProviderStatus },
+    /** The models the provider offers this account. */
+    'providers.models': { params: z.object({ id: OptionalProviderSchema }), result: z.object({ models: z.array(ModelOption) }) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),
@@ -386,6 +390,11 @@ export const contract = {
          * session from a fork's pull request Seshboard can't push to (`readOnly`), push and Create pull request are off.
          */
         github: GithubOrigin.optional(),
+        /**
+         * Start it with another provider (GitHub Copilot) instead of Claude Code. Claude Code's own options (profile,
+         * effort, permission mode, worktree, Auto) don't apply to it.
+         */
+        provider: OptionalProviderSchema.nullable().default(null),
       }),
       result: z.object({ sessionId: z.string() }),
     },

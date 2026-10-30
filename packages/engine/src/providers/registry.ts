@@ -9,11 +9,11 @@ export interface ProviderOptions {
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** Another folder for a provider's sessions (tests, the demo home). */
   folders?: Partial<Record<ProviderAdapter['id'], string>>;
-  /** A fake Copilot SDK (tests). */
-  copilotClient?: CreateCopilotClient;
+  /** A fake Copilot SDK and `copilot` (tests). */
+  copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; version: string | null } | null> };
 }
 
 /** Every provider Seshboard supports besides Claude Code, in the order Settings › Providers lists them. */
-export function createProviders({ env, home, shellEnv, folders = {}, copilotClient }: ProviderOptions): ProviderAdapter[] {
-  return [copilotProvider({ env, home, shellEnv, ...(folders.copilot ? { folder: folders.copilot } : {}), ...(copilotClient ? { createClient: copilotClient } : {}) })];
+export function createProviders({ env, home, shellEnv, folders = {}, copilot = {} }: ProviderOptions): ProviderAdapter[] {
+  return [copilotProvider({ env, home, shellEnv, ...(folders.copilot ? { folder: folders.copilot } : {}), ...copilot })];
 }

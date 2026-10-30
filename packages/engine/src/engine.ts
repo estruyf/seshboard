@@ -8,6 +8,7 @@ import {
   PROVIDER_NAMES,
   type OptionalProvider,
   isReadOnlySession,
+  otherProviderOf,
   COMPANION_DIR,
   REMOTE_LOG_FILE,
   contract,
@@ -121,7 +122,7 @@ import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
-import { HostManager, type SdkRuntime } from './host/hostManager.ts';
+import { HostManager, type HostManagerDeps, type SdkRuntime } from './host/hostManager.ts';
 import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
@@ -148,7 +149,8 @@ import { AccountWatcher } from './profiles/accountWatcher.ts';
 import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
 import { ProviderSettings } from './providers/providerSettings.ts';
-import { createProviders } from './providers/registry.ts';
+import { createProviders, type ProviderOptions } from './providers/registry.ts';
+import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
 import { findClaude } from './system/claudeBinary.ts';
@@ -202,6 +204,8 @@ export interface EngineOptions {
   sessionSource?: SessionSource;
   /** Other folders for providers' sessions (tests). Each defaults to the provider's own (`~/.copilot/session-state`). */
   providerFolders?: Partial<Record<OptionalProvider, string>>;
+  /** A fake Copilot SDK and `copilot` (tests). Defaults to the SDK and the user's own `copilot`. */
+  copilot?: ProviderOptions['copilot'];
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -473,12 +477,12 @@ export function createEngine(options: EngineOptions): Engine {
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, read-only, once allowed in Settings › Providers -------------------------------
-  const providerAdapters = createProviders({ env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, folders: options.providerFolders ?? {} });
+  const providerAdapters = createProviders({ env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, folders: options.providerFolders ?? {}, ...(options.copilot ? { copilot: options.copilot } : {}) });
   const providerSettings = new ProviderSettings(appState, providerAdapters);
   const source = new ProviderSources(claudeSource, () => providerSettings.allowedAdapters().map((p) => ({ provider: p.id, source: p.source })));
   /** Another provider's session (read-only): Claude Code's actions on it are refused. */
   const assertClaudeSession = (sessionId: string, action: string) => {
-    const provider = sessions.get(sessionId)?.provider ?? source.providerOf(sessionId);
+    const provider = sessions.get(sessionId)?.provider ?? source.providerOf(sessionId) ?? (providerHosts.has(sessionId) ? 'other' : undefined);
     if (provider && provider !== 'claude') throw new RpcError('READ_ONLY_SESSION', `${action} is only available for Claude Code sessions`);
   };
   const resolver = createProjectResolver();
@@ -890,32 +894,11 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** A host as the windows see it: with its Keep awake flag. */
   const withAwake = (info: HostInfo): HostInfo => (awake.has(info.sessionId) ? { ...info, keepAwake: true } : info);
-  const hosts = new HostManager({
-    limits,
-    signIns,
-    sdk,
-    ephemeral,
-    assertTrusted,
-    assertClaudeSession: (sessionId, action) => assertClaudeSession(sessionId, action),
-    onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
-    onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
-    env: envFor,
-    claudePath: async () => (await claude)?.path,
-    isOpenElsewhere: (id) => !hosts.has(id) && liveList().some((l) => l.sessionId === id),
-    stopLeftover: (id) => {
-      const leftover = liveList().find((l) => l.sessionId === id && l.leftover);
-      if (!leftover) return false;
-      log('info', `Stopping the Claude Code process (pid ${leftover.pid}) an earlier run left holding session ${id}`);
-      try {
-        process.kill(leftover.pid, 'SIGTERM');
-      } catch {
-        // Already gone.
-      }
-      return true;
-    },
-    refreshLive: scanLive,
-    sessionCwd: (id) => sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
-    sessionProfile,
+  /**
+   * What hosts report, the same for Claude Code's (`HostManager`) and other providers' (`ProviderHosts`): the windows,
+   * the transcript, catch-up, pipelines, triggers and the queue treat both alike.
+   */
+  const hostEvents: Required<Pick<HostManagerDeps, 'onInfo' | 'onStream' | 'onMessages' | 'onClosed' | 'onPermission' | 'onPermissionResolved' | 'onTurnEnd' | 'onCreated' | 'onContinued'>> = {
     onInfo: (info) => {
       if (info.state === 'idle') transcripts.settled(info.sessionId);
       awake.update(info.sessionId, info);
@@ -966,6 +949,34 @@ export function createEngine(options: EngineOptions): Engine {
       markContinued.run(id, Date.now());
       sessions.republish(id);
     },
+  };
+  const hosts = new HostManager({
+    limits,
+    signIns,
+    sdk,
+    ephemeral,
+    assertTrusted,
+    assertClaudeSession: (sessionId, action) => assertClaudeSession(sessionId, action),
+    onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
+    onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    isOpenElsewhere: (id) => !hosts.has(id) && liveList().some((l) => l.sessionId === id),
+    stopLeftover: (id) => {
+      const leftover = liveList().find((l) => l.sessionId === id && l.leftover);
+      if (!leftover) return false;
+      log('info', `Stopping the Claude Code process (pid ${leftover.pid}) an earlier run left holding session ${id}`);
+      try {
+        process.kill(leftover.pid, 'SIGTERM');
+      } catch {
+        // Already gone.
+      }
+      return true;
+    },
+    refreshLive: scanLive,
+    sessionCwd: (id) => sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null,
+    sessionProfile,
+    ...hostEvents,
     installedPlugins: (profileId) => installedPlugins(profiles.runtime(profileId).configDir),
     // Mods draw only in this app's windows: none of these reach paired phones or the companion.
     mods: {
@@ -1015,6 +1026,26 @@ export function createEngine(options: EngineOptions): Engine {
     },
     log,
   });
+  /** Other providers' sessions (GitHub Copilot), run through their drivers, reporting like Claude Code's hosts. */
+  const providerHosts = new ProviderHosts({
+    providers: () => providerSettings.allowedAdapters(),
+    providerOf: (id) => {
+      const summary = sessions.get(id);
+      return (summary && otherProviderOf(summary)) ?? source.providerOf(id);
+    },
+    sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
+    ...hostEvents,
+    log,
+  });
+  /** Starts a session with another provider: only the folder, the message and the model apply. */
+  const createProviderSession = async (params: CreateSessionParams & { provider: OptionalProvider }) => {
+    const folder = statSafe(params.cwd);
+    if (!folder?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
+    assertTrusted(params.cwd);
+    const sessionId = await providerHosts.create({ provider: params.provider, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model: params.model });
+    void sessions.refresh();
+    return { sessionId };
+  };
   recordHostProcesses = () => hostProcesses.record(liveList(), (id) => hosts.has(id));
   recordHostProcesses();
 
@@ -2029,7 +2060,9 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
-  const createSession = async (params: Parameters<Handlers<Contract>['session.create']>[0]) => {
+  type CreateSessionParams = Omit<Parameters<Handlers<Contract>['session.create']>[0], 'provider'> & { provider?: OptionalProvider | null };
+  const createSession = async (params: CreateSessionParams) => {
+    if (params.provider) return createProviderSession({ ...params, provider: params.provider });
     if (questions.contains(params.cwd)) {
       // A quick question has no checkout to branch from or switch.
       if (params.worktree || params.checkoutBranch || params.checkoutPullRequest) throw new RpcError('INVALID', 'Quick questions have no git options');
@@ -2624,6 +2657,20 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'providers.list': () => providerSettings.snapshot(),
+    'providers.status': async ({ id }) => {
+      const driver = providerAdapters.find((p) => p.id === id)?.driver;
+      if (!driver) return { binary: null, version: null, signedIn: false, account: null, problem: `${PROVIDER_NAMES[id]} sessions can only be read in Seshboard.` };
+      return driver.status();
+    },
+    'providers.models': async ({ id }) => {
+      const driver = providerAdapters.find((p) => p.id === id)?.driver;
+      if (!driver) return { models: [] };
+      try {
+        return { models: await driver.models() };
+      } catch (error) {
+        throw new RpcError('PROVIDER_FAILED', (error as Error).message);
+      }
+    },
     'providers.setAllowed': ({ id, allowed }) => {
       if (providerSettings.setAllowed(id, allowed)) {
         log('info', `${allowed ? 'Allowed' : 'Hid'} the sessions of ${PROVIDER_NAMES[id]}`);
@@ -2698,10 +2745,17 @@ export function createEngine(options: EngineOptions): Engine {
 
     'hosts.list': () => {
       const list = hosts.list();
-      return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake) };
+      const others = providerHosts.list();
+      return { hosts: [...list.hosts, ...others.hosts, ...smokeHosts.values()].map(withAwake), permissions: [...list.permissions, ...others.permissions] };
     },
     'session.create': createSession,
     'session.send': async (params) => {
+      // Another provider's session that can run here: its driver resumes it (Up next and Send now are Claude Code's).
+      if (providerHosts.handles(params.sessionId)) {
+        const sent = await providerHosts.send(params);
+        sessions.wake(params.sessionId);
+        return sent;
+      }
       assertClaudeSession(params.sessionId, 'Sending');
       // Send now stops the turn first: its end is yours, not news.
       if (params.mode === 'now') catchUp.interrupt(params.sessionId);
@@ -2779,6 +2833,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.interrupt': async ({ sessionId }) => {
       catchUp.interrupt(sessionId);
+      if (providerHosts.has(sessionId)) {
+        await providerHosts.interrupt(sessionId);
+        return {};
+      }
       await hosts.interrupt(sessionId);
       return {};
     },
@@ -2811,10 +2869,15 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.askThreads': ({ sessionId }) => asker.list(sessionId),
     'session.setModel': async ({ sessionId, model }) => {
+      if (providerHosts.has(sessionId)) {
+        await providerHosts.setModel(sessionId, model);
+        return {};
+      }
       await hosts.setModel(sessionId, model);
       return {};
     },
     'session.close': ({ sessionId }) => {
+      if (providerHosts.has(sessionId)) void providerHosts.close(sessionId);
       hosts.close(sessionId);
       return {};
     },
@@ -2863,7 +2926,7 @@ export function createEngine(options: EngineOptions): Engine {
       return { mods: listMods(runtimes.map((p, i) => ({ profileId: p.id, configDir: p.configDir, env: envs[i]! }))) };
     },
     'session.respond': ({ requestId, decision }) => {
-      hosts.respond(requestId, decision);
+      if (!providerHosts.respond(requestId, decision)) hosts.respond(requestId, decision);
       return {};
     },
     'session.commands': async ({ sessionId, cwd, profileId }) => ({
@@ -3970,6 +4033,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (demoTriggersFile) unwatchFile(demoTriggersFile);
       if (demoPipelinesFile) unwatchFile(demoPipelinesFile);
       hosts.closeAll();
+      void providerHosts.closeAll();
       awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

@@ -18,8 +18,26 @@ export const ProviderInfo = z.object({
   folder: z.string(),
   /** The command that continues one of its sessions in its own CLI, with `{sessionId}` where the id goes. */
   resumeCommand: z.string(),
+  /** Seshboard can start and continue its sessions (else they are read-only). */
+  canStart: z.boolean(),
 });
 export type ProviderInfo = z.infer<typeof ProviderInfo>;
 
 export const ProvidersSnapshot = z.object({ providers: z.array(ProviderInfo) });
 export type ProvidersSnapshot = z.infer<typeof ProvidersSnapshot>;
+
+/**
+ * Whether a provider's CLI can run sessions here. Signing in is the provider's own: Seshboard only says how, in
+ * `problem`, and never handles a credential.
+ */
+export const ProviderStatus = z.object({
+  /** Its CLI (null: not installed). */
+  binary: z.string().nullable(),
+  version: z.string().nullable(),
+  signedIn: z.boolean(),
+  /** Who it is signed in as, in the provider's words. */
+  account: z.string().nullable(),
+  /** What to do before it can run (install it, sign in with its CLI); null when it can. */
+  problem: z.string().nullable(),
+});
+export type ProviderStatus = z.infer<typeof ProviderStatus>;

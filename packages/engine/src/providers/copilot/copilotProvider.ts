@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ProviderAdapter } from '../provider.ts';
 import { findCopilot } from './copilotBinary.ts';
 import { copilotDriver, type CreateCopilotClient } from './copilotDriver.ts';
@@ -15,13 +15,15 @@ interface CopilotProviderOptions {
   shellEnv?: () => Promise<Record<string, string | undefined>>;
   folder?: string;
   createClient?: CreateCopilotClient;
+  /** Where `copilot` is (tests); found on PATH and in the usual places otherwise. */
+  binary?: () => Promise<{ path: string; version: string | null } | null>;
 }
 
 /**
  * GitHub Copilot CLI: one folder per session under `<COPILOT_HOME>/session-state`, read from disk, and run through
  * the Copilot SDK with the user's own `copilot` and its own login.
  */
-export function copilotProvider({ env, home, shellEnv = async () => env, folder, createClient }: CopilotProviderOptions): ProviderAdapter {
+export function copilotProvider({ env, home, shellEnv = async () => env, folder, createClient, binary }: CopilotProviderOptions): ProviderAdapter {
   const dir = folder ?? copilotSessionsDir(copilotHome(env, home));
   const eventsOf = (id: string) => join(dir, id, EVENTS_FILE);
   return {
@@ -31,8 +33,9 @@ export function copilotProvider({ env, home, shellEnv = async () => env, folder,
     resumeCommand: 'copilot --resume={sessionId}',
     driver: copilotDriver({
       // Looked up each time until found: installing Copilot CLI works without restarting Seshboard.
-      binary: async () => findCopilot(await shellEnv(), home),
-      env: shellEnv,
+      binary: binary ?? (async () => findCopilot(await shellEnv(), home)),
+      // The same Copilot home as the folder read here, so what it writes is what the sidebar reads.
+      env: async () => ({ ...(await shellEnv()), COPILOT_HOME: dirname(dir) }),
       ...(createClient ? { createClient } : {}),
     }),
     files: {
