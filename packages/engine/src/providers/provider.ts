@@ -1,4 +1,4 @@
-import type { ImageAttachment, ModelOption, OptionalProvider, PermissionDecision, PermissionRequest, StreamDelta } from '@seshboard/protocol';
+import type { ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
@@ -32,6 +32,13 @@ export interface ProviderAdapter {
   resumeCommand: string;
   /** Starts and steers its sessions. Optional: a provider without one is read-only. */
   driver?: ProviderDriver;
+  /** The session is open in the provider's own app right now (not through Seshboard), so it can't be resumed here. */
+  inUse?(sessionId: string): boolean;
+  /**
+   * The sessions among `sessionIds` open in the provider's own app right now, and how they are: the sidebar shows them
+   * working or waiting, as it does Claude Code sessions in a terminal.
+   */
+  live?(sessionIds: readonly string[]): Array<{ sessionId: string; pid: number; status: LiveStatus; updatedAt: number | null }>;
 }
 
 /**
@@ -61,6 +68,8 @@ export interface DriverEvents {
   permission(request: Omit<PermissionRequest, 'sessionId'>): void;
   /** A request was answered or dropped (the turn was stopped). */
   permissionDone(requestId: string): void;
+  /** How full the context is, and what the session has spent in the provider's own unit (Copilot's premium requests). */
+  usage(usage: { contextTokens?: number; contextMax?: number; spent?: { amount: number; unit: string } }): void;
 }
 
 export interface DriverSessionConfig {
@@ -68,13 +77,20 @@ export interface DriverSessionConfig {
   /** Resume this session; a new one when missing. */
   resume?: string;
   model: string | null;
+  /** One of the driver's `modes`. */
+  permissionMode: PermissionMode;
 }
 
 /** One running session of a provider. */
 export interface DriverSession {
   readonly sessionId: string;
-  /** Sends a message; resolves once the provider took it. Returns the message's id. */
-  send(text: string, attachments: readonly ImageAttachment[]): Promise<string>;
+  /**
+   * Sends a message; resolves once the provider took it. Returns the message's id. `steer` hands it to the turn under
+   * way at its next step instead of after it.
+   */
+  send(text: string, attachments: readonly ImageAttachment[], steer?: boolean): Promise<string>;
+  /** Switches to another of the driver's `modes`. */
+  setMode(mode: PermissionMode): Promise<void>;
   /** Stops the current turn. */
   interrupt(): Promise<void>;
   setModel(model: string | null): Promise<void>;
@@ -84,6 +100,11 @@ export interface DriverSession {
 }
 
 export interface ProviderDriver {
+  /**
+   * Seshboard's permission modes this provider has, with what each means for it (its own words where it differs from
+   * Claude Code's). The message box offers these; the first is the default.
+   */
+  modes: ProviderMode[];
   status(): Promise<DriverStatus>;
   models(): Promise<ModelOption[]>;
   start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;

@@ -12,8 +12,10 @@ const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 export class CopilotLive {
   private readonly converter = new CopilotConverter();
   private streaming = false;
+  /** Premium requests this session has used while it ran here. */
+  private spent = 0;
 
-  constructor(private readonly events: Pick<DriverEvents, 'stream' | 'messages' | 'state'>) {}
+  constructor(private readonly events: Pick<DriverEvents, 'stream' | 'messages' | 'state' | 'usage'>) {}
 
   handle(event: CopilotEvent): void {
     const data = (event.data ?? {}) as Record<string, unknown>;
@@ -34,6 +36,20 @@ export class CopilotLive {
         if (!sub && name && !isHiddenTool(name)) this.delta('tool', claudeTool(name, data.arguments).name);
         break;
       }
+      case 'session.usage_info': {
+        // How full the context is: what the next request sends, of what the model takes.
+        const tokens = data.currentTokens;
+        const limit = data.tokenLimit;
+        if (typeof tokens === 'number' && typeof limit === 'number' && limit > 0) this.events.usage({ contextTokens: tokens, contextMax: limit });
+        break;
+      }
+      case 'assistant.usage':
+        // Each model call's cost, in premium requests (a cheaper model costs a fraction of one).
+        if (typeof data.cost === 'number') {
+          this.spent += data.cost;
+          this.events.usage({ spent: { amount: Math.round(this.spent * 100) / 100, unit: 'premium requests' } });
+        }
+        break;
       case 'session.idle':
         this.clear();
         this.events.state('idle');

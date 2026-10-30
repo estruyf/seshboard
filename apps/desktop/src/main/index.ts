@@ -2636,7 +2636,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
     }
     if (!(await js(`${view}.querySelector('[data-session-elsewhere]')?.textContent.includes('GitHub Copilot')`))) return 'the box does not say Copilot continues it';
-    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-open-tools], [data-session-footer]')`)) return "a Copilot session shows Ask, Tools or Claude Code's plan usage";
+    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-open-tools], [data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Ask, Tools or Claude Code's plan usage";
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await shot(win, 'copilot-session.png');
 
@@ -2653,15 +2653,20 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-new-session]')?.click()");
     if (!(await waitInPage(win, `document.querySelector('${nsv} [data-provider-select]')`, 5_000))) return 'New session offers no provider';
     if (!(await pick('provider', 'copilot'))) return 'GitHub Copilot could not be picked in New session';
-    if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-chip="mode"], ${nsv} [data-chip="effort"], ${nsv} [data-chip="profile"]') && !!document.querySelector('${nsv} [data-chip="model"]')`, 3_000))) {
+    if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-chip="effort"], ${nsv} [data-chip="profile"]') && !!document.querySelector('${nsv} [data-chip="model"]')`, 3_000))) {
       return "New session with Copilot still shows Claude Code's chips";
     }
+    // Copilot's own modes, in its words: Autopilot for Auto.
+    await js(`document.querySelector('${nsv} [data-mode-select]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('[data-menu="mode"] [data-choice="auto"]')?.textContent.includes('Autopilot')`, 3_000))) return 'the mode menu with Copilot has no Autopilot';
+    await js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+    await waitInPage(win, `!document.querySelector('[data-menu="mode"]')`, 2_000);
     // Copilot answers whether it is installed and signed in: on a computer without it (CI), Start says how to install it.
     await waitInPage(win, `!(document.querySelector('${nsv} [data-composer]')?.placeholder ?? '').startsWith('Checking')`, 15_000);
     const ready = (await js(`document.querySelector('${nsv} [data-composer]')?.placeholder ?? ''`)) as string;
     await shot(win, 'new-session-copilot.png');
     if (!(await pick('provider', 'claude'))) return 'Claude Code could not be picked again';
-    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip="mode"]')`, 3_000))) return "Claude Code's chips did not come back";
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip="effort"]')`, 3_000))) return "Claude Code's chips did not come back";
     const copilotState = /Install|Sign in|copilot/i.test(ready) ? `Start waits: "${ready}"` : 'Copilot ready to start';
     return `ok: Copilot allowed, its session listed with a mark and a message box for Copilot; New session with Copilot (${copilotState})`;
   } finally {

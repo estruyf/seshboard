@@ -36,7 +36,7 @@ Read through the agent's own API where it has one that only reads. Parse its fil
 - **Left out of the transcript:** `report_intent` (Copilot's own status line) and the steps of subagents (events with a `parentToolCallId`), as Claude Code's subagents are left out of the main conversation.
 - **Resume:** `copilot --resume=<id>`.
 
-## Driving sessions (in progress)
+## Driving sessions
 
 A provider can have a **`driver`** (`ProviderDriver` in `provider.ts`): it starts or resumes a session in a folder, sends messages, stops a turn, switches models and answers permission requests. What a running session reports goes through `DriverEvents`, in the shapes Claude Code's sessions use (`HostEvents`): stream deltas, complete `RawSessionMessage`s (from the same converter as the reader, so the live transcript and the file agree), the turn's state, and permission requests for the permission card.
 
@@ -46,11 +46,22 @@ Copilot's driver (`copilot/copilotDriver.ts`):
 - One headless `copilot` runtime for all sessions, started on first use and stopped with the engine.
 - Sessions it starts are recorded by Copilot with `client_name: seshboard`, which the reader reads as started in Seshboard (origin `app`).
 - Events: `copilotLive.ts`. Permission requests and answers: `copilotPermissions.ts` (shell → Bash, write → Edit with its diff, read → Read, url → WebFetch, MCP → `mcp__server__tool`; Always allow is Copilot's approve for the session).
-- Tests fake the SDK (`CreateCopilotClient`). The live test is opt-in and costs one small request: `SESHBOARD_LIVE_COPILOT_CWD=/path/to/throwaway/repo npx vitest run copilot.live`.
+- **Modes** (`COPILOT_MODES`): Seshboard's Ask before edits, Accept edits, Plan mode and Auto mode (shown as **Autopilot**), mapped to Copilot's agent modes (interactive, plan, autopilot) through `session.rpc.mode.set`. Accept edits and Autopilot approve Copilot's file reads and writes in Seshboard (`approvesItself`); commands still ask.
+- **Steering:** a message sent with `steer` goes to Copilot with `mode: 'immediate'`.
+- **Usage:** `session.usage_info` gives the context (`currentTokens` of `tokenLimit`), `assistant.usage` each call's `cost` in premium requests, summed for the session.
+- **Not written to disk:** `session.idle` and the other ephemeral events. On disk, a turn that ends on a reply without tool calls is the end of the work (`liveStatusOf`).
+- **Permission requests** come to the handler without their id: Seshboard gives each one its own.
+- Tests fake the SDK (`CreateCopilotClient`). The live tests are opt-in and cost a few small requests: `SESHBOARD_LIVE_COPILOT_CWD=/path/to/throwaway/repo npx vitest run copilot.live providerHosts.live` (`SESHBOARD_LIVE_COPILOT_MODEL` picks the model).
 
 **Hosts:** `ProviderHosts` (`providers/providerHosts.ts`) runs drivers' sessions next to `HostManager`, which stays Claude Code's. Each reports what a Claude Code host does through the same handlers (`hostEvents` in `engine.ts`): `session.host` info, streams, live messages, permission cards and turn ends, so the transcript, catch-up, pipelines and notifications treat both alike. The engine routes `session.create` (with `provider`), `send` (resuming a session started elsewhere), `interrupt`, `setModel`, `respond` and `close` for a provider's sessions to it; Claude Code's own actions (fork, rewind, Ask, rename, delete) still refuse them. `providers.status` and `providers.models` ask the driver. The driver runs `copilot` with `COPILOT_HOME` set to the folder Seshboard reads, so what it writes is what the sidebar shows.
 
 **The UI:** New session's chip row starts with **Runs with** when an allowed provider can start sessions (`useStartableProviders`); picking it leaves only that provider's models (`providers.models`), greys out the worktree and branch choices, and blocks Start with the provider's own message until `providers.status` says it can run (`useProviderReadiness`). `createParamsFor` sends only the folder, the message, the model and `provider`. A provider's session gets the message box with `ProviderSessionControls` (its model, switchable while it runs here) and none of Claude Code's chips, Ask, Tools, Send now or plan usage; `ReadOnlyNotice` is left for providers without a driver. Host info carries `provider`, so a session started a moment ago is known before it is indexed.
 
-Next:
-- **Parity, as far as the provider allows:** a session open in Copilot CLI in a terminal (its `inuse.<pid>.lock`), permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.
+**Routing:** `RoutedHostManager` (`providers/routedHosts.ts`) is the engine's `hosts`: Claude Code's `HostManager`, with the session-level methods (send, interrupt, respond, mode, model, Up next, list, close) routed to `ProviderHosts` for a provider's sessions. Every way to a session (the message box, the phone, Up next, schedules, usage limits, project actions, pipelines) goes through them, so each reaches a provider's sessions without knowing about providers. `HostManager.startHost` still refuses a provider's session, in case anything goes around them.
+
+**Parity:**
+- **Modes:** the driver's `modes` (`ProviderInfo.modes`) are what the mode chip, New session and ⇧Tab offer, in the provider's words. A mode picked while the session isn't running is kept (`sessionSettings`, shared with Claude Code's) for the next resume, as is the model.
+- **Up next:** `ProviderHosts` keeps a queue like `SessionHost`'s, in the same `UpNextStore`: queued messages go one per turn, `steer` joins the turn, Send now stops it and goes first, Stop or a failed turn holds the queue, and a restart brings it back held.
+- **Usage:** host info carries the context (`contextTokens`, `contextMax`) for the context meter, and `providerUsage` (Copilot's premium requests) for the footer. Claude Code's plan usage and limits don't apply.
+- **Open in its own app:** `ProviderAdapter.inUse` and `live`. Copilot marks a session it has open with `inuse.<pid>.lock`; Seshboard's own `copilot` holds one too, so only an alive process that isn't Seshboard's counts (`copilotInUse.ts`). The engine polls `live` for sessions active in the last day and adds them to the live list, so the sidebar shows them working or waiting; sending to one is refused (`SESSION_BUSY_ELSEWHERE`) until its own app lets go.
+- **The phone:** `RemoteSession.provider` hides Claude Code's model, effort and mode chips and Ask about this session; sending, Stop, permission cards and Up next work through the routing. Starting a provider's session from the phone's New session is not there yet.

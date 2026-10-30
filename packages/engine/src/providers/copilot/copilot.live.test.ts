@@ -22,7 +22,7 @@ describe.skipIf(!cwd)('live GitHub Copilot session', () => {
       let idle: () => void = () => {};
       const done = new Promise<void>((resolve) => (idle = resolve));
       const session = await driver.start(
-        { cwd: cwd!, model: process.env.SESHBOARD_LIVE_COPILOT_MODEL ?? null },
+        { cwd: cwd!, model: process.env.SESHBOARD_LIVE_COPILOT_MODEL ?? null, permissionMode: 'default' },
         {
           stream: () => {},
           messages: (m) => messages.push(...m),
@@ -30,6 +30,7 @@ describe.skipIf(!cwd)('live GitHub Copilot session', () => {
           // Nothing to allow: the prompt needs no tools.
           permission: (r) => session.respond(r.requestId, { behavior: 'deny', message: 'Not in this test.' }),
           permissionDone: () => {},
+          usage: () => {},
         },
       );
       await session.send('Reply with exactly: OK', []);

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import type { ProviderAdapter } from '../provider.ts';
 import { findCopilot } from './copilotBinary.ts';
 import { copilotDriver, type CreateCopilotClient } from './copilotDriver.ts';
+import { isAlive, lockPids, openSessions } from './copilotInUse.ts';
 import { copilotHome, copilotSessionsDir, copilotSessionSource, EVENTS_FILE, SESSION_ID } from './copilotSource.ts';
 
 /** A file in a session's folder that changes what the sidebar shows: its events, or its title and folder. */
@@ -26,18 +27,23 @@ interface CopilotProviderOptions {
 export function copilotProvider({ env, home, shellEnv = async () => env, folder, createClient, binary }: CopilotProviderOptions): ProviderAdapter {
   const dir = folder ?? copilotSessionsDir(copilotHome(env, home));
   const eventsOf = (id: string) => join(dir, id, EVENTS_FILE);
+  const driver = copilotDriver({
+    // Looked up each time until found: installing Copilot CLI works without restarting Seshboard.
+    binary: binary ?? (async () => findCopilot(await shellEnv(), home)),
+    // The same Copilot home as the folder read here, so what it writes is what the sidebar reads.
+    env: async () => ({ ...(await shellEnv()), COPILOT_HOME: dirname(dir) }),
+    ...(createClient ? { createClient } : {}),
+  });
+  /** Seshboard's own `copilot`: its locks don't mean the session is open elsewhere. */
+  const own = () => new Set([driver.runtimePid()].filter((pid): pid is number => pid !== null));
   return {
     id: 'copilot',
     folder: dir,
     source: copilotSessionSource(dir),
     resumeCommand: 'copilot --resume={sessionId}',
-    driver: copilotDriver({
-      // Looked up each time until found: installing Copilot CLI works without restarting Seshboard.
-      binary: binary ?? (async () => findCopilot(await shellEnv(), home)),
-      // The same Copilot home as the folder read here, so what it writes is what the sidebar reads.
-      env: async () => ({ ...(await shellEnv()), COPILOT_HOME: dirname(dir) }),
-      ...(createClient ? { createClient } : {}),
-    }),
+    driver,
+    inUse: (sessionId) => SESSION_ID.test(sessionId) && lockPids(join(dir, sessionId)).some((pid) => !own().has(pid) && isAlive(pid)),
+    live: (sessionIds) => openSessions(dir, sessionIds.filter((id) => SESSION_ID.test(id)), own()),
     files: {
       sessionOf(relativePath) {
         const match = SESSION_FILE.exec(relativePath);

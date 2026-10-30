@@ -46,7 +46,7 @@ export class ProviderSettings {
   snapshot(): ProvidersSnapshot {
     const allowed = this.allowed();
     return {
-      providers: this.providers.map(({ id, folder, resumeCommand, driver }) => ({ id, name: PROVIDER_NAMES[id], allowed: allowed.includes(id), found: existsSync(folder), folder, resumeCommand, canStart: !!driver })),
+      providers: this.providers.map(({ id, folder, resumeCommand, driver }) => ({ id, name: PROVIDER_NAMES[id], allowed: allowed.includes(id), found: existsSync(folder), folder, resumeCommand, canStart: !!driver, modes: driver?.modes ?? [] })),
     };
   }
 }

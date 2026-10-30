@@ -1,10 +1,15 @@
 import { z } from 'zod';
+import { PermissionMode } from './host.ts';
 import { OPTIONAL_PROVIDERS, SESSION_PROVIDERS } from './providerConstants.ts';
 
 export * from './providerConstants.ts';
 
 export const SessionProviderSchema = z.enum(SESSION_PROVIDERS);
 export const OptionalProviderSchema = z.enum(OPTIONAL_PROVIDERS);
+
+/** One of Seshboard's permission modes as a provider has it, in its words ("Autopilot" for Copilot's `auto`). */
+export const ProviderMode = z.object({ value: PermissionMode, label: z.string(), description: z.string() });
+export type ProviderMode = z.infer<typeof ProviderMode>;
 
 /** One provider in Settings › Providers. */
 export const ProviderInfo = z.object({
@@ -20,6 +25,8 @@ export const ProviderInfo = z.object({
   resumeCommand: z.string(),
   /** Seshboard can start and continue its sessions (else they are read-only). */
   canStart: z.boolean(),
+  /** The permission modes its sessions can run in (empty when it can't start sessions); the first is the default. */
+  modes: z.array(ProviderMode),
 });
 export type ProviderInfo = z.infer<typeof ProviderInfo>;
 

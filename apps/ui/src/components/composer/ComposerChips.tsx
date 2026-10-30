@@ -1,7 +1,7 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type SessionProvider } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode, type SessionProvider } from '@seshboard/protocol/client';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -42,8 +42,11 @@ export interface ComposerChipRowProps {
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
   /** Null when the model has no effort setting. */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
-  /** Null for another provider's session (Claude Code's permission modes don't apply). */
-  mode: { value: PermissionMode; onChange(mode: PermissionMode): void } | null;
+  /**
+   * The permission mode. `choices`: the modes another provider has, in its words (Copilot's Autopilot); without them,
+   * Claude Code's. Null when there is no mode to pick.
+   */
+  mode: { value: PermissionMode; onChange(mode: PermissionMode): void; choices?: readonly ProviderMode[] } | null;
   disabled?: boolean;
   names?: ChipNames;
   /**
@@ -87,7 +90,9 @@ export function ComposerChipRow({ provider, profile, model, effort, mode, disabl
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
-  const modes = mode ? [...new Set([...MODE_CHOICES, mode.value])] : [];
+  const modes = mode ? [...new Set([...(mode.choices ? mode.choices.map((c) => c.value) : MODE_CHOICES), mode.value])] : [];
+  const modeChoice = (m: PermissionMode) => mode?.choices?.find((c) => c.value === m);
+  const modeShort = mode ? (modeChoice(mode.value)?.label ?? MODE_SHORT[mode.value]) : '';
   const [level, setLevel] = useState<FooterLevel>(0);
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -253,7 +258,7 @@ export function ComposerChipRow({ provider, profile, model, effort, mode, disabl
     face: (l) => (
       <>
         <Dot className={modeDot} />
-        {chipShape(l).modeLabel && <span>{MODE_SHORT[mode.value]}</span>}
+        {chipShape(l).modeLabel && <span>{modeShort}</span>}
       </>
     ),
     menu: (face) => (
@@ -262,11 +267,11 @@ export function ComposerChipRow({ provider, profile, model, effort, mode, disabl
         value={mode.value}
         onChange={mode.onChange}
         disabled={disabled}
-        label={`Permission mode: ${MODE_SHORT[mode.value]}`}
-        title={withNote(`Permission mode: ${MODE_SHORT[mode.value]} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
+        label={`Permission mode: ${modeShort}`}
+        title={withNote(`Permission mode: ${modeShort} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
         heading="Permissions"
         placement="up"
-        choices={modes.map((m) => ({ value: m, label: MODE_LABEL[m], description: MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
+        choices={modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
         width={280}
       >
         {face}

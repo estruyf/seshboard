@@ -1336,8 +1336,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       : null;
   const checkTranscript = () => usePaletteBus.getState().showDialog({ kind: 'transcript-diagnosis', sessionId, title: summary ? title : null });
   // While Claude works here, Enter queues or steers (Settings › Conversation); Send now stops the current turn first.
-  // Send now and Up next are Claude Code's: another provider takes a message while it works in its own way.
-  const canSendNow = running && Boolean(activeHost) && !otherProvider;
+  const canSendNow = running && Boolean(activeHost);
   const whileWorking = usePreferences((p) => p.prefs.whileWorking);
   const otherMode: SendMode = whileWorking === 'queue' ? 'steer' : 'queue';
   // A pipeline run's parent: what you write there links the run, so Claude gets its brief first (#179).
@@ -1919,7 +1918,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {/* Mods' bands: under Seshboard's own cards, above Up next. */}
               <ModBands sessionId={sessionId} profileId={profileId} working={running} />
-              {openElsewhere && (
+              {openElsewhere && otherProvider && (
+                // Another provider's session can't be forked: it continues here once its own app lets go of it.
+                <Notice role="note" data-open-elsewhere>
+                  This session is open in {PROVIDER_NAMES[otherProvider]} right now. Close it there to continue it here.
+                </Notice>
+              )}
+              {openElsewhere && !otherProvider && (
                 <Notice role="note" data-open-elsewhere>
                   This session is open in {ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'} right now. Sending here starts a{' '}
                   <strong className="font-medium text-text">fork</strong>: a new session that continues from this conversation, leaving the original untouched.
@@ -1976,13 +1981,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={otherProvider ? (running ? `${agentName} is working. Your message goes when it is ready for it.` : `Message ${agentName}`) : replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
-                  submitLabel={openElsewhere ? 'Fork and send' : undefined}
+                  placeholder={otherProvider && !running ? `Message ${agentName}` : replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message ${agentName}. It goes in Up next until ${agentName} finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message ${agentName}. ${agentName} reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops ${agentName} and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
+                  submitLabel={openElsewhere && !otherProvider ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
-                  disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+                  disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : otherProvider && openElsewhere ? `Open in ${PROVIDER_NAMES[otherProvider]} right now` : null}
                   runningHint={
                     canSendNow
-                      ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
+                      ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : `Messages go to ${agentName} now`} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
                   onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
@@ -2014,7 +2019,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     return true;
                   }}
                   onCycleMode={
-                    activeHost && !otherProvider ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
+                    activeHost && otherProvider && otherInfo?.modes.length
+                      ? () => {
+                          // The provider's own modes, in its order.
+                          const modes = otherInfo.modes.map((m) => m.value);
+                          const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
+                          void client?.call('session.setPermissionMode', { sessionId, mode: next });
+                        }
+                      : activeHost && !otherProvider ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
                   }
                   controls={
                     otherProvider ? (
@@ -2055,6 +2067,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }
                 />
               </div>
+              )}
+              {/* Another provider's session: how full its context is, and what it has spent in the provider's unit. */}
+              {!foldFooter && otherProvider && !readOnly && (contextLive || activeHost?.providerUsage) && (
+                <div className="flex min-h-6 items-center justify-end gap-3 px-1 text-meta text-muted" data-session-footer data-provider-footer>
+                  {activeHost?.providerUsage && (
+                    <span className="tabular-nums" data-provider-usage>
+                      {activeHost.providerUsage.amount} {activeHost.providerUsage.unit}
+                    </span>
+                  )}
+                  {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} />}
+                </div>
               )}
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}
               {!foldFooter && !otherProvider && (

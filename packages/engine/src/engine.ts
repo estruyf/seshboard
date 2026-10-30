@@ -122,7 +122,7 @@ import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
-import { HostManager, type HostManagerDeps, type SdkRuntime } from './host/hostManager.ts';
+import type { HostManagerDeps, SdkRuntime } from './host/hostManager.ts';
 import { HostProcesses } from './host/hostProcesses.ts';
 import { LinkService } from './links/linkService.ts';
 import { expandMessage, GithubExpander } from './links/githubExpand.ts';
@@ -151,6 +151,7 @@ import { MultiProfileSource } from './profiles/profileSources.ts';
 import { ProviderSettings } from './providers/providerSettings.ts';
 import { createProviders, type ProviderOptions } from './providers/registry.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
+import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
 import { findClaude } from './system/claudeBinary.ts';
@@ -628,8 +629,12 @@ export function createEngine(options: EngineOptions): Engine {
   const hostProcesses = new HostProcesses(join(options.dataDir, 'host-processes.json'));
   /** Records the hosts' processes after each registry change (set up with the hosts, below). */
   let recordHostProcesses: (() => void) | undefined;
-  const liveList = (): LiveSession[] =>
-    [...registries.values()].flatMap((r) => r.list().map((l) => (hostProcesses.isLeftover(l) ? { ...l, leftover: true } : l)));
+  /** Other providers' sessions open in their own app (Copilot CLI in a terminal): polled, as they have no registry. */
+  let providerLive: LiveSession[] = [];
+  const liveList = (): LiveSession[] => [
+    ...[...registries.values()].flatMap((r) => r.list().map((l) => (hostProcesses.isLeftover(l) ? { ...l, leftover: true } : l))),
+    ...providerLive,
+  ];
   const scanLive = () => registries.forEach((r) => r.scan());
   /** One registry per profile folder; started ones follow profiles being added and removed. */
   const syncRegistries = (start: boolean) => {
@@ -950,7 +955,9 @@ export function createEngine(options: EngineOptions): Engine {
       sessions.republish(id);
     },
   };
-  const hosts = new HostManager({
+  /** What each session last ran with: Claude Code's and other providers' alike. */
+  const sessionSettings = createSessionSettingsStore(cache.db);
+  const hosts = new RoutedHostManager({
     limits,
     signIns,
     sdk,
@@ -996,7 +1003,7 @@ export function createEngine(options: EngineOptions): Engine {
       focus: (event) => broadcast('mods.focus', event),
       ask: (ask) => broadcast('mods.promptAsk', ask),
     },
-    sessionSettings: createSessionSettingsStore(cache.db),
+    sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     links: {
@@ -1034,15 +1041,47 @@ export function createEngine(options: EngineOptions): Engine {
       return (summary && otherProviderOf(summary)) ?? source.providerOf(id);
     },
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
+    openElsewhere: (provider, id) => providerAdapters.find((p) => p.id === provider)?.inUse?.(id) ?? false,
+    settings: sessionSettings,
+    upNext,
+    onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
     ...hostEvents,
     log,
   });
+  // Every way to a session goes through `hosts`: a provider's sessions are routed to their own hosts from here on.
+  hosts.providers = providerHosts;
+  /** Only sessions active lately are looked at: one open in a terminal writes as it works. */
+  const PROVIDER_LIVE_WINDOW_MS = 24 * 60 * 60_000;
+  const scanProviderLive = () => {
+    const since = Date.now() - PROVIDER_LIVE_WINDOW_MS;
+    const next = providerSettings.allowedAdapters().flatMap((adapter) => {
+      if (!adapter.live) return [];
+      const recent = new Map(sessions.snapshot().sessions.filter((s) => s.provider === adapter.id && s.updatedAt >= since).map((s) => [s.id, s]));
+      return adapter.live([...recent.keys()]).map((open): LiveSession => {
+        const summary = recent.get(open.sessionId)!;
+        return { sessionId: open.sessionId, pid: open.pid, cwd: summary.cwd, projectRoot: summary.projectRoot, status: open.status, rawStatus: open.status, name: null, origin: summary.origin, startedAt: null, updatedAt: open.updatedAt, profileId: summary.profileId };
+      });
+    });
+    if (JSON.stringify(next) === JSON.stringify(providerLive)) return;
+    providerLive = next;
+    broadcast('sessions.live', { live: liveList() });
+    void autoStarter?.check();
+    runner?.check();
+  };
+  const providerLiveTimer = setInterval(() => {
+    try {
+      scanProviderLive();
+    } catch (error) {
+      log('warn', `Provider sessions: ${(error as Error).message}`);
+    }
+  }, 3_000);
+  providerLiveTimer.unref?.();
   /** Starts a session with another provider: only the folder, the message and the model apply. */
   const createProviderSession = async (params: CreateSessionParams & { provider: OptionalProvider }) => {
     const folder = statSafe(params.cwd);
     if (!folder?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
     assertTrusted(params.cwd);
-    const sessionId = await providerHosts.create({ provider: params.provider, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model: params.model });
+    const sessionId = await providerHosts.create({ provider: params.provider, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model: params.model, permissionMode: params.permissionMode });
     void sessions.refresh();
     return { sessionId };
   };
@@ -2745,18 +2784,12 @@ export function createEngine(options: EngineOptions): Engine {
 
     'hosts.list': () => {
       const list = hosts.list();
-      const others = providerHosts.list();
-      return { hosts: [...list.hosts, ...others.hosts, ...smokeHosts.values()].map(withAwake), permissions: [...list.permissions, ...others.permissions] };
+      return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake) };
     },
     'session.create': createSession,
     'session.send': async (params) => {
-      // Another provider's session that can run here: its driver resumes it (Up next and Send now are Claude Code's).
-      if (providerHosts.handles(params.sessionId)) {
-        const sent = await providerHosts.send(params);
-        sessions.wake(params.sessionId);
-        return sent;
-      }
-      assertClaudeSession(params.sessionId, 'Sending');
+      // Another provider's session that can run here goes to its driver (`RoutedHostManager`); one that can't is refused.
+      if (!providerHosts.handles(params.sessionId)) assertClaudeSession(params.sessionId, 'Sending');
       // Send now stops the turn first: its end is yours, not news.
       if (params.mode === 'now') catchUp.interrupt(params.sessionId);
       const sent = await hosts.send(params);
@@ -2833,10 +2866,6 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.interrupt': async ({ sessionId }) => {
       catchUp.interrupt(sessionId);
-      if (providerHosts.has(sessionId)) {
-        await providerHosts.interrupt(sessionId);
-        return {};
-      }
       await hosts.interrupt(sessionId);
       return {};
     },
@@ -2869,15 +2898,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.askThreads': ({ sessionId }) => asker.list(sessionId),
     'session.setModel': async ({ sessionId, model }) => {
-      if (providerHosts.has(sessionId)) {
-        await providerHosts.setModel(sessionId, model);
-        return {};
-      }
       await hosts.setModel(sessionId, model);
       return {};
     },
     'session.close': ({ sessionId }) => {
-      if (providerHosts.has(sessionId)) void providerHosts.close(sessionId);
       hosts.close(sessionId);
       return {};
     },
@@ -2926,7 +2950,7 @@ export function createEngine(options: EngineOptions): Engine {
       return { mods: listMods(runtimes.map((p, i) => ({ profileId: p.id, configDir: p.configDir, env: envs[i]! }))) };
     },
     'session.respond': ({ requestId, decision }) => {
-      if (!providerHosts.respond(requestId, decision)) hosts.respond(requestId, decision);
+      hosts.respond(requestId, decision);
       return {};
     },
     'session.commands': async ({ sessionId, cwd, profileId }) => ({
@@ -4008,6 +4032,7 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
       for (const provider of providerAdapters) void provider.driver?.dispose().catch(() => {});
       clones.close();
@@ -4033,7 +4058,6 @@ export function createEngine(options: EngineOptions): Engine {
       if (demoTriggersFile) unwatchFile(demoTriggersFile);
       if (demoPipelinesFile) unwatchFile(demoPipelinesFile);
       hosts.closeAll();
-      void providerHosts.closeAll();
       awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();

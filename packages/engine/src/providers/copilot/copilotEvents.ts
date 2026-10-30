@@ -81,11 +81,14 @@ export function claudeTool(name: string, args: unknown): { name: string; input: 
   }
 }
 
+/** Copilot's note after a shell command's output, for the model: not part of the output. */
+const SHELL_FOOTER = /\n?<shellId: [^>]*>\s*$/;
+
 /** A tool's output as text: what Copilot showed, else what the model got, else the error. */
 function resultText(data: Record<string, unknown>): string {
   const result = obj(data.result);
   const error = obj(data.error);
-  return str(result.detailedContent) ?? str(result.content) ?? str(error.message) ?? '';
+  return (str(result.detailedContent) ?? str(result.content) ?? str(error.message) ?? '').replace(SHELL_FOOTER, '');
 }
 
 /**

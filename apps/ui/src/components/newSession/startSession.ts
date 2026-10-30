@@ -39,7 +39,7 @@ export interface NewSessionStart {
    * Start it with another provider (GitHub Copilot) on this model (null: the provider's default). Claude Code's own
    * choices (profile, effort, permission mode, worktree, branch, Auto) don't apply.
    */
-  provider?: { id: OptionalProvider; model: string | null } | null;
+  provider?: { id: OptionalProvider; model: string | null; permissionMode?: PermissionMode } | null;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -78,7 +78,7 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
 }
 
 /** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
-export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; provider: OptionalProvider };
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; provider: OptionalProvider };
 
 export interface ClaudeSessionCreateParams {
   cwd: string;
@@ -139,7 +139,8 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
 /** What `session.create` gets for this start: Claude Code's options, or another provider's few. */
 export function createParamsFor(start: NewSessionStart): SessionCreateParams {
   if (!start.provider) return sessionCreateParams(start);
-  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model: start.provider.model, provider: start.provider.id };
+  const { id, model, permissionMode } = start.provider;
+  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model, ...(permissionMode ? { permissionMode } : {}), provider: id };
 }
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */

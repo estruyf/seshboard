@@ -134,6 +134,8 @@ export const SessionHostInfo = z.object({
   keepAwake: z.boolean().optional(),
   /** Another provider runs it (GitHub Copilot), through its driver; missing: Claude Code. */
   provider: z.enum(OPTIONAL_PROVIDERS).optional(),
+  /** What another provider's session has spent, in that provider's unit (Copilot's premium requests). */
+  providerUsage: z.object({ amount: z.number(), unit: z.string() }).optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 

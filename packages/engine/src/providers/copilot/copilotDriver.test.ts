@@ -19,6 +19,7 @@ function fakeSdk(auth = { isAuthenticated: true, statusMessage: 'octocat (via gh
     abort: async () => void calls.push('abort'),
     setModel: async (model) => void calls.push(`model:${model}`),
     disconnect: async () => void calls.push('disconnect'),
+    rpc: { mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) } },
   };
   const client: CopilotSdkClient = {
     start: async () => void calls.push('start'),
@@ -34,13 +35,14 @@ function fakeSdk(auth = { isAuthenticated: true, statusMessage: 'octocat (via gh
 }
 
 function recorder() {
-  const log = { stream: [] as Array<Omit<StreamDelta, 'sessionId'>>, messages: [] as RawSessionMessage[], states: [] as string[], permissions: [] as Array<Omit<PermissionRequest, 'sessionId'>>, done: [] as string[] };
+  const log = { stream: [] as Array<Omit<StreamDelta, 'sessionId'>>, messages: [] as RawSessionMessage[], states: [] as string[], permissions: [] as Array<Omit<PermissionRequest, 'sessionId'>>, done: [] as string[], usage: [] as unknown[] };
   const events: DriverEvents = {
     stream: (d) => log.stream.push(d),
     messages: (m) => log.messages.push(...m),
     state: (s, e) => log.states.push(e ? `${s}:${e}` : s),
     permission: (r) => log.permissions.push(r),
     permissionDone: (id) => log.done.push(id),
+    usage: (u) => log.usage.push(u),
   };
   return { log, events };
 }
@@ -53,7 +55,7 @@ describe('copilotDriver', () => {
     const sdk = fakeSdk();
     const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
     const { log, events } = recorder();
-    const session = await driver.start({ cwd: '/work/demo', model: 'gpt-5-mini' }, events);
+    const session = await driver.start({ cwd: '/work/demo', model: 'gpt-5-mini', permissionMode: 'default' }, events);
     expect(sdk.created).toEqual([{ cliPath: '/usr/local/bin/copilot', env: { PATH: '/usr/bin' } }]);
     expect(sdk.options()).toMatchObject({ workingDirectory: '/work/demo', model: 'gpt-5-mini', streaming: true, clientName: SESHBOARD_CLIENT });
     // No token anywhere: copilot signs in on its own.
@@ -82,7 +84,7 @@ describe('copilotDriver', () => {
     const sdk = fakeSdk();
     const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
     const { log, events } = recorder();
-    const session = await driver.start({ cwd: '/work/demo', model: null, resume: 'abc' }, events);
+    const session = await driver.start({ cwd: '/work/demo', model: null, resume: 'abc', permissionMode: 'default' }, events);
     expect(sdk.calls).toContain('resume:abc');
     const answer = sdk.options().onPermissionRequest({ requestId: 'p2', kind: 'write', fileName: '/work/demo/a.ts', diff: '+x' }, { sessionId: 'abc' });
     await session.interrupt();
@@ -99,7 +101,7 @@ describe('copilotDriver', () => {
   it('says how to install or sign in, and never asks for a credential', async () => {
     const missing = copilotDriver({ binary: async () => null, env, createClient: fakeSdk().createClient });
     expect(await missing.status()).toMatchObject({ binary: null, signedIn: false, problem: expect.stringMatching(/Install GitHub Copilot CLI/) });
-    await expect(missing.start({ cwd: '/w', model: null }, recorder().events)).rejects.toThrow(/Install/);
+    await expect(missing.start({ cwd: '/w', model: null, permissionMode: 'default' }, recorder().events)).rejects.toThrow(/Install/);
 
     const signedOut = copilotDriver({ binary, env, createClient: fakeSdk({ isAuthenticated: false, statusMessage: 'Not signed in' }).createClient });
     expect(await signedOut.status()).toMatchObject({ signedIn: false, problem: expect.stringMatching(/run `copilot` in a terminal and use \/login/) });
@@ -107,6 +109,31 @@ describe('copilotDriver', () => {
     const ok = copilotDriver({ binary, env, createClient: fakeSdk().createClient });
     expect(await ok.status()).toEqual({ binary: '/usr/local/bin/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });
     expect(await ok.models()).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true }]);
+  });
+
+  it('runs in Copilot\'s agent modes, approves edits itself where the mode says so, and reports usage', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    const { log, events } = recorder();
+    const session = await driver.start({ cwd: '/w', model: null, permissionMode: 'plan' }, events);
+    // Plan mode is set before the first message.
+    expect(sdk.calls).toContain('mode:plan');
+    await session.setMode('acceptEdits');
+    expect(sdk.calls).toContain('mode:interactive');
+    // Accept edits: a file write is approved without a card; a command still asks.
+    await expect(sdk.options().onPermissionRequest({ kind: 'write', fileName: '/w/a.ts' }, { sessionId: 's' })).resolves.toEqual({ kind: 'approve-once' });
+    void sdk.options().onPermissionRequest({ kind: 'shell', fullCommandText: 'rm -rf x' }, { sessionId: 's' });
+    expect(log.permissions.map((p) => p.toolName)).toEqual(['Bash']);
+    await session.setMode('auto');
+    expect(sdk.calls).toContain('mode:autopilot');
+    await session.send('Steer', [], true);
+    expect(sdk.calls).toContain('send:Steer:0');
+
+    sdk.emit({ type: 'session.usage_info', data: { currentTokens: 13_289, tokenLimit: 128_000 } });
+    sdk.emit({ type: 'assistant.usage', data: { cost: 0.33 } });
+    sdk.emit({ type: 'assistant.usage', data: { cost: 0.33 } });
+    expect(log.usage).toEqual([{ contextTokens: 13_289, contextMax: 128_000 }, { spent: { amount: 0.33, unit: 'premium requests' } }, { spent: { amount: 0.66, unit: 'premium requests' } }]);
+    expect(driver.modes.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
   });
 });
 

@@ -13,6 +13,7 @@ import { removeDir } from '../../util/removeDir.ts';
 import { ProviderSettings } from '../providerSettings.ts';
 import { ProviderSources } from '../providerSources.ts';
 import { claudeTool, copilotMessages, userText, type CopilotEvent } from './copilotEvents.ts';
+import { lockPids, liveStatusOf, openSessions } from './copilotInUse.ts';
 import { copilotProvider } from './copilotProvider.ts';
 import { copilotSessionSource } from './copilotSource.ts';
 
@@ -167,7 +168,7 @@ describe('providers in the session index', () => {
 
     await index.refresh();
     expect(index.snapshot().sessions.map((s) => s.id)).toEqual([CLAUDE_ID]);
-    expect(settings.snapshot().providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', allowed: false, found: true, folder: copilotDir, resumeCommand: 'copilot --resume={sessionId}', canStart: true }]);
+    expect(settings.snapshot().providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', allowed: false, found: true, folder: copilotDir, resumeCommand: 'copilot --resume={sessionId}', canStart: true, modes: expect.any(Array) }]);
 
     settings.setAllowed('copilot', true);
     await index.rootsChanged();
@@ -209,5 +210,31 @@ describe('copilotProvider', () => {
   it('reads $COPILOT_HOME, else ~/.copilot', () => {
     expect(copilotProvider({ env: { COPILOT_HOME: '/c' }, home: '/h' }).folder).toBe(join('/c', 'session-state'));
     expect(copilotProvider({ env: {}, home: '/h' }).folder).toBe(join('/h', '.copilot', 'session-state'));
+  });
+});
+
+describe('a session open in Copilot CLI', () => {
+  it('reads working, waiting and idle from its last events', () => {
+    const at = (type: string, data: Record<string, unknown> = {}): CopilotEvent => ({ type, data });
+    expect(liveStatusOf([at('user.message'), at('assistant.turn_start')])).toBe('running');
+    expect(liveStatusOf([at('assistant.turn_start'), at('permission.requested', { requestId: 'p' })])).toBe('needs-you');
+    expect(liveStatusOf([at('assistant.turn_start'), at('permission.requested', { requestId: 'p' }), at('permission.completed', { requestId: 'p' })])).toBe('running');
+    expect(liveStatusOf([at('assistant.turn_start'), at('session.idle')])).toBe('idle');
+    // As on disk, where going idle isn't written: a turn that ends on a reply with tool calls goes on; one without ends.
+    expect(liveStatusOf([at('assistant.turn_start'), at('assistant.message', { toolRequests: [{ toolCallId: 't' }] }), at('assistant.turn_end')])).toBe('running');
+    expect(liveStatusOf([at('assistant.turn_start'), at('assistant.message', { content: 'Done.' }), at('assistant.turn_end'), at('hook.start')])).toBe('idle');
+  });
+
+  it('counts a lock only when its process is alive and not Seshboard\'s own copilot', () => {
+    const dir = tempDir();
+    writeSession(dir, ID, [...EVENTS.slice(0, 4), { type: 'assistant.turn_start', data: {} }]);
+    writeFileSync(join(dir, ID, 'inuse.111.lock'), '');
+    writeFileSync(join(dir, ID, 'inuse.222.lock'), '');
+    const alive = (pid: number) => pid !== 222;
+    // 111 is ours, 222 is gone: nobody else has it.
+    expect(openSessions(dir, [ID], new Set([111]), alive)).toEqual([]);
+    writeFileSync(join(dir, ID, 'inuse.333.lock'), '');
+    expect(openSessions(dir, [ID], new Set([111]), alive)).toEqual([{ sessionId: ID, pid: 333, status: 'running', updatedAt: expect.any(Number) }]);
+    expect(lockPids(join(dir, ID)).sort()).toEqual([111, 222, 333]);
   });
 });

@@ -152,9 +152,13 @@ function LocalNewSession() {
   // Who runs the session: Claude Code, or an allowed provider that can start sessions (GitHub Copilot), with its model.
   const [providerChoice, setProviderChoice] = useState<SessionProvider>('claude');
   const [providerModel, setProviderModel] = useState('');
+  const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
   const startableProviders = useStartableProviders();
   const runWith: OptionalProvider | null = providerChoice !== 'claude' && startableProviders.some((p) => p.id === providerChoice) ? providerChoice : null;
   const readiness = useProviderReadiness(runWith);
+  /** The provider's own modes (Copilot's Autopilot), and the one picked: its first until you pick another. */
+  const runWithModes = startableProviders.find((p) => p.id === runWith)?.modes ?? [];
+  const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
   /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
   /** Who works in the folder, in the copy around the box. */
   const agent = runWith ? PROVIDER_NAMES[runWith] : 'Claude';
@@ -1013,7 +1017,7 @@ function LocalNewSession() {
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
         github: fresh ? undefined : githubStart(worktree),
-        provider: runWith ? { id: runWith, model: providerModel || null } : null,
+        provider: runWith ? { id: runWith, model: providerModel || null, permissionMode: runWithMode } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1098,7 +1102,7 @@ function LocalNewSession() {
             }
       }
       effort={runWith ? null : { value: d.effort, onChange: (effort) => update({ effort }) }}
-      mode={runWith ? null : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
+      mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: setProviderMode, choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
       pipeline={runAs && !runWith ? boxChoiceUse(runAs) : null}
     />
   );

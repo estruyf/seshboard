@@ -1,15 +1,17 @@
 import type { ModelOption, OptionalProvider, SessionHostInfo } from '@seshboard/protocol/client';
 import { PROVIDER_NAMES } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useProvider } from '../../state/providersStore.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 
 /**
- * The chips under the message box in another provider's session (GitHub Copilot): who runs it, and its model, which
- * can change while it runs here. Claude Code's profile, effort and permission mode don't apply.
+ * The chips under the message box in another provider's session (GitHub Copilot): who runs it, its model and its mode
+ * (the provider's own modes), which change while it runs here. Claude Code's profile and effort don't apply.
  */
 export function ProviderSessionControls({ provider, sessionId, host, models }: { provider: OptionalProvider; sessionId: string; host: SessionHostInfo | null; models: ModelOption[] }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
+  const modes = useProvider(provider)?.modes ?? [];
   if (!host) {
     return (
       <span className="min-w-0 truncate px-1.5 text-meta text-muted" data-session-elsewhere>
@@ -29,7 +31,7 @@ export function ProviderSessionControls({ provider, sessionId, host, models }: {
         choices: [{ value: '', label: 'Default model', description: `What ${PROVIDER_NAMES[provider]} picks` }, ...models.map((m) => ({ value: m.value, label: m.displayName }))],
       }}
       effort={null}
-      mode={null}
+      mode={modes.length ? { value: host.permissionMode, onChange: (mode) => void client?.call('session.setPermissionMode', { sessionId, mode }), choices: modes } : null}
     />
   );
 }

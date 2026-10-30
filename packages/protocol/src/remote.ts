@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
@@ -51,6 +52,11 @@ export const RemoteSession = z.object({
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
+  /**
+   * Another provider runs it (GitHub Copilot): Claude Code's model, effort and mode chips and Ask about this session
+   * don't apply. Null or left out: Claude Code.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
