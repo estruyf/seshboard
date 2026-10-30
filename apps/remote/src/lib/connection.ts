@@ -24,7 +24,7 @@ import { reconnectDelay, type Paired } from './link.ts';
 import { MAX_ATTEMPTS, OPEN_TIMEOUT_MS, offlineReason, type OfflineReason } from './offline.ts';
 
 /** Close codes the engine uses (packages/engine/src/remote/remoteServer.ts). */
-const CLOSE = { unknownDevice: 4403, pairingClosed: 4410, refused: 4400, version: 4426 } as const;
+const CLOSE = { unknownDevice: 4403, pairingClosed: 4410, refused: 4400, tooMany: 4429, version: 4426 } as const;
 
 export const APP_VERSION = '1';
 
@@ -87,19 +87,23 @@ function openSocket(address: string): Promise<OpenSocket> {
   });
 }
 
-/** Opens a socket and runs the handshake; rejects with the engine's close code when it refuses. */
+/**
+ * Opens a socket and runs the handshake; rejects with the engine's close code when it refuses. A reconnect refused
+ * before the answer (4400 from an older Seshboard) or whose answer doesn't decrypt was made for the computer's old key
+ * (its Remote key changed): that is "pair again" (4403), not a reason to keep trying.
+ */
 async function handshake(address: string, mode: HandshakeMode, device: KeyPair, enginePublicKey: Uint8Array, psk?: Uint8Array): Promise<OpenSocket & { session: NoiseSession }> {
   const socket = await openSocket(address);
   const noise = initiatorHandshake({ mode, staticKey: device, remoteStatic: enginePublicKey, ...(psk ? { psk } : {}) });
   socket.ws.send(new Uint8Array(helloFrame(mode, noise.writeMessage1())));
   const answer = await Promise.race([socket.first, socket.closed]);
-  if (typeof answer === 'number') throw new RefusedError(answer);
+  if (typeof answer === 'number') throw new RefusedError(mode === 'connect' && answer === CLOSE.refused ? CLOSE.unknownDevice : answer);
   try {
     return { ...socket, session: noise.readMessage2(answer).session };
   } catch {
     // The answer doesn't decrypt: this is not the computer from the QR code (or not its pairing secret).
     socket.ws.close();
-    throw new RefusedError(CLOSE.refused);
+    throw new RefusedError(mode === 'connect' ? CLOSE.unknownDevice : CLOSE.refused);
   }
 }
 
@@ -112,7 +116,9 @@ export class RefusedError extends Error {
           ? 'This QR code was used or has expired. Click Pair a device on your computer again.'
           : code === CLOSE.version
             ? 'Seshboard on your computer and this page are different versions. Update Seshboard.'
-            : 'Your computer refused the connection.',
+            : code === CLOSE.tooMany
+              ? 'Your computer turns this network away for a few minutes after refused attempts. Click Unblock in Settings › Remote there, or try again later.'
+              : 'Your computer refused the connection.',
     );
   }
 }

@@ -121,7 +121,7 @@ describe('the connection row and names', () => {
     expect(view).toMatchObject({
       tone: 'caution',
       title: 'Turning connections away',
-      detail: '203.0.113.4 had 12 refused attempts in a row and waits 5 more minutes. Devices on that network wait too.',
+      detail: '203.0.113.4 had 12 refused attempts in a row and waits 5 more minutes. Paired devices still connect; pairing a new one waits.',
       address: 'https://quiet-river.trycloudflare.com',
     });
     expect(labels(view)).toEqual(['Unblock', 'Show log']);
@@ -132,6 +132,6 @@ describe('the connection row and names', () => {
       { address: '203.0.113.4', attempts: 4, until: NOW + 2_000 },
       { address: '198.51.100.7', attempts: 3, until: NOW + 1_000 },
     ];
-    expect(remoteStatusView(status({ blocked }), NOW)?.detail).toBe('2 addresses had refused attempts in a row and wait up to 1 more minute. Devices on those networks wait too.');
+    expect(remoteStatusView(status({ blocked }), NOW)?.detail).toBe('2 addresses had refused attempts in a row and wait up to 1 more minute. Paired devices still connect; pairing a new one waits.');
   });
 });

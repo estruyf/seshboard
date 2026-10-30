@@ -13,6 +13,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A computer with an old pairing no longer locks your phone out.** A Seshboard on another computer that was paired before this Mac's Remote key changed (the move to Seshboard made a new one) kept trying every minute, and after a few tries Remote turned away everything on that network, your phone too. It is now told to pair again and stops, and paired devices always get in, even while Remote turns a network away. Pairing a new device from that network still waits, or use **Unblock**. Pairing a computer again in **Settings › Other computers** now replaces its old entry instead of adding a second one.
 - **Keep awake keeps Seshboard itself awake on a Mac.** With the display off, macOS could still slow Seshboard down while Keep awake held sleep off, which can drop phones connected through Remote. Keep awake now keeps Seshboard out of App Nap too.
 - **No more ghost agents.** An agent that Claude tried to send a message to after it finished, and that could not be woken up again (for example because its worktree was removed), no longer stays under Active in the Agents panel.
 - **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
