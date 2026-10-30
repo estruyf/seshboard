@@ -107,14 +107,14 @@ export function remoteStatusView(status: RemoteStatus, now = Date.now()): Status
   }
 
   if (status.blocked.length) {
-    // Before the devices: a paired phone behind the same network waits too, and Unblock is the fix.
+    // Before the devices: pairing from that network waits (paired devices still get in), and Unblock is the fix.
     const minutes = Math.max(1, Math.ceil((Math.max(...status.blocked.map((b) => b.until)) - now) / 60_000));
     const wait = `${minutes} more ${minutes === 1 ? 'minute' : 'minutes'}`;
     const [first] = status.blocked;
     const detail =
       status.blocked.length === 1 && first
-        ? `${first.address} had ${first.attempts} refused attempts in a row and waits ${wait}. Devices on that network wait too.`
-        : `${status.blocked.length} addresses had refused attempts in a row and wait up to ${wait}. Devices on those networks wait too.`;
+        ? `${first.address} had ${first.attempts} refused attempts in a row and waits ${wait}. Paired devices still connect; pairing a new one waits.`
+        : `${status.blocked.length} addresses had refused attempts in a row and wait up to ${wait}. Paired devices still connect; pairing a new one waits.`;
     return {
       tone: 'caution',
       title: 'Turning connections away',

@@ -49,6 +49,8 @@ interface Caller {
   origin: string;
   /** What pairs, from the origin and user agent: only a label in Settings › Remote, never what lets it in. */
   kind: DeviceKind;
+  /** The address waits after refused attempts: only a paired device's reconnect gets in, and nothing is counted. */
+  waiting: boolean;
 }
 
 /** Every remote request but `hello`, which the server answers; `device` is the phone that asks. */
@@ -95,7 +97,7 @@ export const CLOSE = { unknownDevice: 4403, pairingClosed: 4410, refused: 4400, 
 
 /**
  * Failed handshakes per address: after three, each new attempt waits twice as long (up to five minutes), so nobody
- * can try keys or pairing secrets quickly.
+ * can try keys or pairing secrets quickly. A paired device's reconnect gets in while its address waits.
  */
 export class Backoff {
   /** `refused`: a socket was turned away during this wait already (the log says so once per wait). */
@@ -248,20 +250,24 @@ export class RemoteServer {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
     }
-    if (!this.backoff.allowed(address)) {
-      // Phones retry while they wait: once per wait is enough to see it.
-      if (this.backoff.firstRefusal(address)) this.options.log('warn', `Remote: turned away ${address}: it waits after refused attempts (Unblock in Settings › Remote lets it in)`);
-      socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
-      return;
-    }
+    // An address that waits still gets its socket: a paired device behind it (a phone on the same Wi-Fi as something
+    // that keeps failing) proves its key in its first message and gets in. Only that: see `accept` and `connect`.
+    const waiting = !this.backoff.allowed(address);
     this.sockets.handleUpgrade(request, socket, head, (ws) => {
       this.origins.set(ws, origin);
-      this.accept(ws, { address, origin, kind: deviceKind(origin, request.headers['user-agent']) });
+      this.accept(ws, { address, origin, kind: deviceKind(origin, request.headers['user-agent']), waiting });
     });
   }
 
-  /** Counts a failed handshake from `from.address`, and logs why, and when the address has to wait now. */
+  /**
+   * Counts a failed handshake from `from.address`, and logs why, and when the address has to wait now. While it waits
+   * already, nothing is counted (as the 429 it used to get) and the log says so once per wait.
+   */
   private refuse(from: Caller, why: string): void {
+    if (from.waiting) {
+      if (this.backoff.firstRefusal(from.address)) this.options.log('warn', `Remote: refused ${from.address} (a ${from.kind} at ${from.origin}): ${why}. It waits after refused attempts, so this one isn't counted; paired devices still get in (Unblock in Settings › Remote lets everyone in)`);
+      return;
+    }
     const { count, wait } = this.backoff.failed(from.address);
     this.options.log('warn', `Remote: refused ${from.address} (a ${from.kind} at ${from.origin}): ${why}`);
     if (wait === 0) return;
@@ -297,6 +303,11 @@ export class RemoteServer {
         else this.refuse(from, `its first frame isn't a Remote hello (${hello.reason})`);
         return ws.close(hello.reason === 'version' ? CLOSE.version : CLOSE.refused);
       }
+      if (hello.mode === 'pair' && from.waiting) {
+        // A pairing proves nothing until its secret is used up: it waits with its address (Unblock, or a few minutes).
+        this.refuse(from, 'it wants to pair while its address waits');
+        return ws.close(CLOSE.tooMany);
+      }
       if (hello.mode === 'pair') this.pair(ws, from, hello.message1);
       else this.connect(ws, from, hello.message1);
     });
@@ -310,6 +321,13 @@ export class RemoteServer {
     let phoneKey: Uint8Array;
     try {
       phoneKey = handshake.readMessage1(message1).remoteStatic;
+    } catch (error) {
+      // Made for another key than this computer's: a device paired before Remote's key changed (or not a Remote client
+      // at all). "Pair again" (4403) stops it; the remote app and Seshboard on another computer retry anything else.
+      this.refuse(from, `its handshake didn't decrypt (${(error as Error).message}): a device paired before this computer's Remote key changed has to pair again`);
+      return ws.close(CLOSE.unknownDevice);
+    }
+    try {
       device = this.options.devices.find(phoneKey);
       if (!device) {
         this.refuse(from, unknownKey(phoneKey, this.options.devices.lookup(phoneKey)));
@@ -333,8 +351,9 @@ export class RemoteServer {
           ws.close(CLOSE.unknownDevice);
           return false;
         }
-        this.succeeded(address);
-        this.options.log('info', `Remote: ${known.name} connected from ${address}`);
+        // While the address waits, its count stays: this device proved its own key, not the others' behind it.
+        if (!from.waiting) this.succeeded(address);
+        this.options.log('info', `Remote: ${known.name} connected from ${address}${from.waiting ? ', which waits after refused attempts' : ''}`);
         this.options.devices.touch(known.id, this.options.address?.() ?? null);
         this.pending.delete(ws);
         this.connections.set(ws, { deviceId: known.id, name: known.name, since: Date.now(), rpc });
