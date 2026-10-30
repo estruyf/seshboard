@@ -6,7 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { openCacheDatabase } from '../db/database.ts';
 import { migrations } from '../db/migrations.ts';
 import { canSymlink } from '../util/canSymlink.ts';
-import { detectIconPath, MAX_ICON_BYTES } from './projectIcons.ts';
+import { detectIconPath, iconDataUrl, MAX_ICON_BYTES } from './projectIcons.ts';
+import { decodePng, encodePng } from './pngShrink.ts';
 import { folderKey, ProjectRegistry } from './projectRegistry.ts';
 
 const dirs: string[] = [];
@@ -16,9 +17,20 @@ const tempDir = () => {
   dirs.push(dir);
   return dir;
 };
-const file = (path: string, content = '<svg/>') => {
+const file = (path: string, content: string | Buffer = '<svg/>') => {
   mkdirSync(join(path, '..'), { recursive: true });
   writeFileSync(path, content);
+};
+/** A 1024-pixel PNG of noise, too large to send as it is (an app icon, as Xcode and Swift packages keep them). */
+const bigPng = () => {
+  const data = new Uint8Array(1024 * 1024 * 4).map(() => Math.floor(Math.random() * 256));
+  const bytes = encodePng({ width: 1024, height: 1024, data });
+  expect(bytes.length).toBeGreaterThan(MAX_ICON_BYTES);
+  return bytes;
+};
+const iconSize = (icon: ReturnType<typeof iconDataUrl>) => {
+  const image = icon?.kind === 'image' ? decodePng(Buffer.from(icon.dataUrl.split(',')[1]!, 'base64')) : null;
+  return image ? [image.width, image.height] : null;
 };
 
 describe('detectIconPath', () => {
@@ -61,6 +73,14 @@ describe('detectIconPath', () => {
     file(join(root, 'logo.svg'), 'x'.repeat(MAX_ICON_BYTES + 1));
     expect(detectIconPath(root)).toBeNull();
   });
+
+  it('finds a large app icon and scales it down', () => {
+    const root = tempDir();
+    file(join(root, 'Resources', 'AppIcon.png'), bigPng());
+    const path = detectIconPath(root);
+    expect(path?.toLowerCase()).toBe(join(root, 'Resources', 'AppIcon.png').toLowerCase());
+    expect(iconSize(iconDataUrl(path!))).toEqual([128, 128]);
+  });
 });
 
 describe('ProjectRegistry', () => {
@@ -85,6 +105,14 @@ describe('ProjectRegistry', () => {
     registry.setIcon(withIcon, { kind: 'file', path: custom });
     rmSync(custom);
     expect(byRoot()[withIcon]).toMatchObject({ iconSource: 'custom', icon: { kind: 'image', dataUrl: expect.stringMatching(/^data:image\/png/) } });
+    // A large PNG is scaled down; another large image is turned away with the reason.
+    const big = join(tempDir(), 'AppIcon.png');
+    file(big, bigPng());
+    registry.setIcon(withIcon, { kind: 'file', path: big });
+    expect(iconSize(byRoot()[withIcon]!.icon)).toEqual([128, 128]);
+    const photo = join(tempDir(), 'photo.jpg');
+    file(photo, Buffer.alloc(MAX_ICON_BYTES + 1, 1));
+    expect(() => registry.setIcon(withIcon, { kind: 'file', path: photo })).toThrow(/200 KB or smaller, or a PNG/);
     registry.setIcon(withIcon, { kind: 'none' });
     expect(byRoot()[withIcon]).toMatchObject({ icon: null });
     registry.setIcon(withIcon, { kind: 'auto' });

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { isLocalAbsolutePath, ProjectDefaults, RpcError, type ProjectIcon, type ProjectIconChoice, type ProjectInfo } from '@seshboard/protocol';
-import { detectIconPath, iconDataUrl, MAX_ICON_BYTES } from './projectIcons.ts';
+import { detectIconPath, fitIcon, iconDataUrl, MAX_ICON_BYTES, MAX_PNG_BYTES } from './projectIcons.ts';
 
 /** A custom icon as stored: a file is Seshboard's own copy, in the icon folder. */
 export type StoredIcon = { kind: 'emoji'; value: string } | { kind: 'file'; path: string } | { kind: 'none' };
@@ -202,9 +202,9 @@ export class ProjectRegistry {
       case 'file': {
         const stat = statSync(choice.path, { throwIfNoEntry: false });
         if (!stat?.isFile()) throw new RpcError('NOT_FOUND', `Not a file: ${choice.path}`);
-        if (stat.size > MAX_ICON_BYTES) throw new RpcError('TOO_LARGE', 'Icons must be 200 KB or smaller');
+        if (stat.size > MAX_PNG_BYTES) throw new RpcError('TOO_LARGE', 'Icons must be 200 KB or smaller');
         // Copy it in, so the icon survives the original being moved or deleted.
-        stored = this.storeIcon(root, extname(choice.path), (target) => copyFileSync(choice.path, target));
+        stored = this.storeIcon(root, extname(choice.path), readFileSync(choice.path));
         break;
       }
     }
@@ -213,16 +213,18 @@ export class ProjectRegistry {
 
   /** Sets a custom icon from image bytes (from a settings file). */
   setIconImage(root: string, ext: string, data: Buffer): void {
-    if (data.length > MAX_ICON_BYTES) throw new RpcError('TOO_LARGE', 'Icons must be 200 KB or smaller');
-    const stored = this.storeIcon(root, ext, (target) => writeFileSync(target, data));
+    const stored = this.storeIcon(root, ext, data);
     this.statements.upsertIcon.run(root, JSON.stringify(stored));
   }
 
-  private storeIcon(root: string, ext: string, write: (target: string) => void): StoredIcon {
+  /** Keeps a copy of the image in the icon folder, a large PNG scaled down to icon size. */
+  private storeIcon(root: string, ext: string, data: Buffer): StoredIcon {
+    const icon = fitIcon(ext, data);
+    if (!icon && data.length > MAX_ICON_BYTES) throw new RpcError('TOO_LARGE', ext.toLowerCase() === '.png' ? "This PNG can't be read to scale it down" : 'Icons must be 200 KB or smaller, or a PNG');
+    if (!icon) throw new RpcError('UNSUPPORTED', 'Use an SVG, PNG, ICO, JPEG, WebP or GIF image');
     mkdirSync(this.iconDir, { recursive: true });
     const target = join(this.iconDir, `${createHash('sha1').update(root).digest('hex').slice(0, 16)}${ext.toLowerCase()}`);
-    write(target);
-    if (!iconDataUrl(target)) throw new RpcError('UNSUPPORTED', 'Use an SVG, PNG, ICO, JPEG, WebP or GIF image');
+    writeFileSync(target, icon);
     return { kind: 'file', path: target };
   }
 

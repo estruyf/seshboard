@@ -9,6 +9,7 @@ import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useClone, useCloneEnabled } from '../../state/cloneStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { toast } from '../../state/toastStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
@@ -38,7 +39,8 @@ export function useProjectActions() {
     setIcon,
     chooseImage: async (root: string) => {
       const path = await window.seshboard?.pickImage(root);
-      if (path) await setIcon(root, { kind: 'file', path });
+      // A picture that can't be used (an unreadable or very large image) says why instead of doing nothing.
+      if (path) await setIcon(root, { kind: 'file', path }).catch((error: unknown) => toast(`Couldn't use that image: ${error instanceof Error ? error.message : String(error)}`, { tone: 'error' }));
     },
     add: async (path: string) => {
       if (!client) throw new Error('Not connected to the engine');

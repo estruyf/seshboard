@@ -12,6 +12,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Large app icons work as project icons.** A PNG over 200 KB, such as a 1024-pixel app icon, is now scaled down instead of turned away, both when you pick it with **Choose image…** and when Seshboard finds it in the folder. It also finds `Resources/AppIcon.png`, where Swift and Xcode projects keep theirs. An image that can't be used now says why instead of doing nothing.
 - **Quote over selected text works again.** Clicking Quote (or Remember this…, or Reply with quote in reading mode) on the toolbar over a selection closed the toolbar and did nothing. It now puts the selection in the message box.
 - **A branch name can't run a command in a project action.** A `${branch}` (or another value) written inside single quotes in an action now stays text, whatever the name holds.
 - **Revoke cuts a phone off at once.** A phone revoked while it was still connecting can no longer get one last request through.
