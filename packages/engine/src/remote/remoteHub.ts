@@ -1085,7 +1085,11 @@ export class RemoteHub {
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
-            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null),
+            // What the project skips its profile's for comes in as the global value (an empty global model still falls to the profile's on the phone).
+            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null, {
+              model: p.defaults.globalModel ? globalModel.model : null,
+              effort: p.defaults.globalEffort ? globalModel.effort : null,
+            }),
           })),
         };
       },

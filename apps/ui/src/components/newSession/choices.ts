@@ -1,4 +1,4 @@
-import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
+import { inheritedDefault, inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -69,13 +69,13 @@ export function newSessionChoices(defaults: ProjectDefaults | null | undefined, 
 
 /**
  * The defaults a new session starts from: the project's own, and its profile's where the project sets
- * nothing. Null when neither has any, so every field follows the global defaults.
+ * nothing and doesn't skip it for the global one. Null when neither has any, so every field follows the global defaults.
  */
 export function layeredDefaults(project: ProjectDefaults | null | undefined, profile: ProfileDefaults | null | undefined): ProjectDefaults | null {
   if (!profile || Object.values(profile).every((v) => v === null)) return project ?? null;
   return {
-    model: project?.model ?? profile.model,
-    effort: project?.effort ?? profile.effort,
+    model: inheritedDefault('model', project, profile),
+    effort: inheritedDefault('effort', project, profile),
     permissionMode: inheritedPermissionMode(project, profile),
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,

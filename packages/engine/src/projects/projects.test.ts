@@ -204,6 +204,8 @@ describe('project list', () => {
     // Global default for the permission mode is kept; without it the field stays out.
     registry.setDefaults(root, { ...unset, globalPermissionMode: true });
     expect(project().defaults).toEqual({ ...unset, globalPermissionMode: true });
+    registry.setDefaults(root, { ...unset, globalModel: true, globalEffort: true });
+    expect(project().defaults).toEqual({ ...unset, globalModel: true, globalEffort: true });
     registry.setDefaults(root, unset);
     expect(project().defaults).not.toHaveProperty('globalPermissionMode');
     expect(project().defaults).toEqual(unset);

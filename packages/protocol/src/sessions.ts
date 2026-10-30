@@ -73,11 +73,15 @@ export type ProjectIconChoice = z.infer<typeof ProjectIconChoice>;
 
 /**
  * What a new session in a project starts with. Null fields fall back to the profile's defaults,
- * then to the global ones (the choices last used in the New session view, and Settings' global permission mode).
+ * then to the global ones in Settings › General. A project can skip its profile's model, effort or permission mode.
  */
 export const ProjectDefaults = z.object({
   model: z.string().max(200).nullable().default(null),
+  /** With no `model`: skip the profile's model and start on the global one (see `inheritedDefault`). */
+  globalModel: z.boolean().optional(),
   effort: Effort.nullable().default(null),
+  /** With no `effort`: skip the profile's effort and start with the global one (see `inheritedDefault`). */
+  globalEffort: z.boolean().optional(),
   permissionMode: PermissionMode.nullable().default(null),
   /** With no `permissionMode`: skip the profile's mode and start in the global one (see `inheritedPermissionMode`). */
   globalPermissionMode: z.boolean().optional(),
@@ -98,7 +102,7 @@ export type ProjectDefaults = z.infer<typeof ProjectDefaults>;
  * What a new session with a Claude profile starts with, where its project sets nothing. Null fields
  * fall back to the global defaults. No branch, no default branch and no branch to start a worktree from: branches belong to a repository.
  */
-export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalPermissionMode: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
+export const ProfileDefaults = ProjectDefaults.omit({ branch: true, defaultBranch: true, globalModel: true, globalEffort: true, globalPermissionMode: true }).extend({ baseRef: z.enum(['fresh', 'head']).nullable().default(null) });
 export type ProfileDefaults = z.infer<typeof ProfileDefaults>;
 
 export const ProjectInfo = z.object({

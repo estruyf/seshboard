@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
   listedInMainList,
@@ -265,8 +266,8 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
   const workspace = project.workspace ?? profile.defaults.workspace;
   return {
     profileId: profile.id,
-    model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model ?? globals.model),
-    effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort ?? globals.effort),
+    model: options.model !== undefined ? options.model : (inheritedDefault('model', project, profile.defaults) ?? globals.model),
+    effort: options.effort !== undefined ? options.effort : (inheritedDefault('effort', project, profile.defaults) ?? globals.effort),
     permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
@@ -277,9 +278,9 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
 /**
  * A project's or a profile's defaults as a phone gets them. The phone takes the project's mode, else the profile's, so
  * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's. The
- * global model and effort (`globals`) come in the same way, under a profile; a project's unset ones fall to its profile.
+ * global model and effort (`globals`) come in the same way; a project's unset ones fall to its profile.
  */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { globalPermissionMode?: boolean }, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
   model: defaults.model ?? globals.model,
   effort: defaults.effort ?? globals.effort,
   permissionMode: defaults.permissionMode ?? globalMode,

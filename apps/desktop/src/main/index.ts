@@ -3023,6 +3023,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await click('[data-close-settings]');
   if (!(await waitInPage(win, page('[data-default-mode]'), 3_000))) return 'closing Settings did not go back to the project';
   if (!(await chooseOption(win, `${pageSelector} [data-default-mode]`, ''))) return 'could not put the permission mode back on Profile default';
+  // The model can skip its profile's for the global one too, and go back to following the profile.
+  if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, 'global'))) return 'could not pick Global default for the model';
+  if (!(await waitInPage(win, `${page('[data-default-model]')}?.dataset.value === 'global'`, 2_000))) return 'the model did not stay on Global default';
+  if (!(await chooseOption(win, `${pageSelector} [data-default-model]`, ''))) return 'could not put the model back on Profile default';
 
   // The page's other tabs, read-only: Overview, Sessions, and the worktrees of a real repository.
   const pageResult = await smokeRun.step('project page and worktrees', () => runProjectPageStep(win, root), { cleanup: false });

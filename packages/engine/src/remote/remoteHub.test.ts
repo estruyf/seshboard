@@ -1149,6 +1149,10 @@ describe('what a phone sees', () => {
     expect(sessionChoice({}, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
     expect(sessionChoice({}, NO_DEFAULTS, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
     expect(sessionChoice({ model: null, effort: null }, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: null, effort: null });
+    // A project that skips its profile's model or effort gets the global one.
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalEffort: true }, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'max' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work)).toMatchObject({ model: null });
   });
 
   it("shows a phone the global model and effort under a profile, and leaves a project's unset ones to its profile", () => {

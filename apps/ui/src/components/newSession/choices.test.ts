@@ -137,6 +137,15 @@ describe('the global model and effort', () => {
     expect(newSessionChoices(layeredDefaults(null, { model: null, effort: 'low', permissionMode: null, workspace: null, baseRef: null }), 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'low' });
   });
 
+  it("start a new session in a project that skips its profile's", () => {
+    const profile = { model: 'sonnet', effort: 'low' as const, permissionMode: null, workspace: null, baseRef: null };
+    expect(newSessionChoices(layeredDefaults(project(null, null), profile), 'default', 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'low' });
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalModel: true }, profile), 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'low' });
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalEffort: true }, profile), 'default', 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
+    // Skipping to an empty global value leaves it to Claude Code, not to the profile.
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalModel: true }, profile), 'default', 'default')).toMatchObject({ model: '' });
+  });
+
   it('start a session a link starts too', () => {
     expect(linkStartingChoices(globals, null, 'default')).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'default' });
   });
