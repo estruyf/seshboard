@@ -15,7 +15,7 @@ A fast macOS desktop control surface for Claude Code: start sessions, see what's
 - **Keyboard-first.** A command palette, quick session switching, and shortcuts for approve, deny, and interrupt.
 
 **Non-goals (v1)**
-- Support for other agents (Codex, Cursor and so on). That's t3code's job.
+- Driving other agents (Codex, Cursor and so on) the way Seshboard drives Claude Code. That's t3code's job. **Providers (#199)** are the exception, read-only for now: Seshboard lists another agent's sessions (GitHub Copilot CLI first) once you allow it in Settings › Providers, and shows their transcripts. Starting and steering them is a later phase, so the provider model leaves room for it.
 - A mobile app or a web UI. The desktop app is the product; the one exception is **Remote** (below).
 
 **Remote (in progress, #93).** Follow and steer sessions from a paired phone's browser, from anywhere: the session list, the live transcript, sending a prompt, answering a permission prompt, stopping a turn, starting a session in a known project. The engine listens on `127.0.0.1` behind a tunnel (Cloudflare, Tailscale, ngrok or your own), and the phone app is served from Seshboard's site. Pairing needs you at the computer, and every connection is a Noise handshake with the key from the QR code, encrypted end to end through the tunnel. Phase 2: Cloudflare Access in front of a named tunnel (the engine serving the remote app on that hostname) and push notifications. Design, threat model and phase 2: [docs/remote-access.md](docs/remote-access.md).

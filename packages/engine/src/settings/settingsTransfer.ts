@@ -55,6 +55,7 @@ export const CHOICE_KEYS: Record<string, string> = {
   'newSession.defaults': 'New session defaults',
   'claudeUpdate.enabled': 'Check for Claude Code updates',
   [PERSONAL_DIR_KEY]: 'Personal memory folder',
+  'providers.allowed': 'Providers',
 };
 
 /** Internal bookkeeping that has no label and no line in an import: sanitizing never returns it, the default carries it. */

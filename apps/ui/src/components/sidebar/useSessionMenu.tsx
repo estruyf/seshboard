@@ -1,3 +1,4 @@
+import { isReadOnlySession } from '@seshboard/protocol/client';
 import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
@@ -221,11 +222,13 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     const projectMenu: MenuEntry[] = projectEntries.length
       ? [{ label: 'Project', hint: projectName, submenu: [{ title: projectName, detail: data.projectRoot }, ...projectEntries], data: { 'data-session-project-menu': true } }]
       : [];
+    // Another provider's session (Copilot) is only shown: it can't be renamed, deleted or run a pipeline from.
+    const readOnly = !!data.summary && isReadOnlySession(data.summary);
     setMenu({
       ...at,
       label: `Session “${data.title}”`,
       entries: [
-        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary, data: { 'data-rename-session': true } },
+        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || readOnly, data: { 'data-rename-session': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
@@ -240,7 +243,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
         // A run row (#179) has no conversation to be the parent of another run.
-        ...(isRunRowId(data.id) ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
+        ...(isRunRowId(data.id) || readOnly ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
         { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
@@ -248,7 +251,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         ...(projectMenu.length ? [...projectMenu, 'separator' as const] : []),
         tree !== null
           ? { label: 'Delete…', hint: '⌘⌫', danger: true, onSelect: () => askDeleteTree(data.id, data.title), data: { 'data-delete-tree': true } }
-          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
+          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary || readOnly, onSelect: () => setDeleting([data]) },
       ],
     });
     // The memories it wrote, once read: added under Project while the menu is still this session's.

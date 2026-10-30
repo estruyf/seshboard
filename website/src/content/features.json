@@ -632,6 +632,11 @@
       "page": "settings"
     },
     {
+      "id": "palette:settings-providers",
+      "name": "settings-providers",
+      "page": "settings"
+    },
+    {
       "id": "palette:settings-vscode",
       "name": "settings-vscode",
       "page": "settings"
@@ -1444,6 +1449,16 @@
     {
       "id": "feature:dock-activity",
       "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
+      "page": "settings"
+    },
+    {
+      "id": "settings:providers",
+      "name": "Settings: Providers",
+      "page": "settings"
+    },
+    {
+      "id": "feature:copilot-sessions",
+      "name": "GitHub Copilot sessions in the sidebar, read-only (allowed in Settings: Providers; badge on the row, copy the resume command)",
       "page": "settings"
     },
     {

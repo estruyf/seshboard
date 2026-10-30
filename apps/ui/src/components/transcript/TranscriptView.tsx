@@ -2,7 +2,7 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { otherProviderOf, pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -112,6 +112,8 @@ import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
+import { ProviderMark } from '../providers/ProviderMark.tsx';
+import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
@@ -358,6 +360,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const summary = useSessions((s) => s.sessions.get(sessionId) ?? null);
+  /** Another provider's session (Copilot): Seshboard shows it, but can't send to it, fork or rewind it. */
+  const otherProvider = summary ? otherProviderOf(summary) : null;
+  const readOnly = otherProvider !== null;
   const registryLive = useSessions((s) => s.live.get(sessionId) ?? null);
   const select = useSessions((s) => s.select);
   const host = useHosts((s) => s.hosts.get(sessionId));
@@ -1132,13 +1137,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
       canEdit: (uuid) => previous.has(uuid),
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
-      runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
+      runAndSend: cwd && !readOnly ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
       savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
       read: (turnKey) => useReadMode.getState().openReply(sessionId, turnKey),
       readable,
+      readOnly,
     };
-  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable, readOnly]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1369,8 +1375,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
         {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
         <div className={`min-w-24 flex-1 @max-[560px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
-          <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
-            {title}
+          <h1 className="flex min-w-0 items-center gap-1.5 text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
+            <ProviderMark session={summary} size={14} className="text-muted" />
+            <span className="truncate">{title}</span>
           </h1>
           {/* Status · project · branch. In a narrow pane: the dot and the branch. */}
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
@@ -1442,19 +1449,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
+            // Ask forks the session in Claude Code, which another provider's session isn't.
+            ...(readOnly && !ask.open
+              ? []
+              : [
             {
               value: 'ask' as const,
               label: 'Ask',
               icon: <MessageCircleQuestion size={14} aria-hidden />,
               iconOnly: true,
               // An answer came in while the panel was closed.
-              dot: ask.ready && !ask.open ? 'link' : false,
+              dot: ask.ready && !ask.open ? ('link' as const) : false,
               tooltip: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ' · An answer is ready' : ''}`,
               ariaLabel: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ', an answer is ready' : ''}`,
               front: askFront,
               expanded: ask.open && askFront !== false,
               data: { 'data-toggle-ask': true },
             },
+                ]),
             // Only a session that has started agents has this; the panel stays reachable while it is open.
             ...(agents.length > 0 || agentsState.open
               ? [
@@ -1937,6 +1949,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <StepStopNotice sessionId={sessionId} />
+              {otherProvider ? (
+                <ReadOnlyNotice provider={otherProvider} sessionId={sessionId} />
+              ) : (
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
@@ -2029,8 +2044,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }
                 />
               </div>
+              )}
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}
-              {!foldFooter && (
+              {!foldFooter && !readOnly && (
                 <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer>
                   {/* Its own container: the bars hide when this row is short of room, not when the pane is narrow. */}
                   <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">

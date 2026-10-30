@@ -145,6 +145,13 @@ describe('buildSessionList', () => {
     expect(inScope(row('cli'), 'switchboard')).toBe(false);
   });
 
+  it('lists another provider\'s sessions started elsewhere only under all sessions', () => {
+    const copilot = row('copilot');
+    copilot.summary = { provider: 'copilot' } as NonNullable<typeof copilot.summary>;
+    expect(inScope(copilot, 'switchboard')).toBe(false);
+    expect(inScope(copilot, 'all')).toBe(true);
+  });
+
   it('filters by project and by search', () => {
     expect(ids(buildSessionList(rows, { search: '', project: '/p/b', now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['newest']);
     const found = buildSessionList(rows, { search: 'LOGIN', project: null, now: NOW, archiveAfterDays: DAYS });

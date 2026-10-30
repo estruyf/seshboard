@@ -32,7 +32,10 @@ export function rowStatus(row: SessionRowData): RowStatus {
   return null;
 }
 
-/** Whether the sidebar (and the palette) list a session under the chosen scope. */
+/**
+ * Whether the sidebar (and the palette) list a session under the chosen scope. Another provider's sessions follow the
+ * same rule as Claude Code's: started elsewhere, they show only under all sessions.
+ */
 export const inScope = (row: SessionRowData, scope: SessionScope) => scope === 'all' || row.inApp;
 
 /**

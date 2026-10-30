@@ -83,6 +83,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: extra.path ?? '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
+    // Never the machine's own ~/.copilot.
+    providerFolders: { copilot: join(dataDir, 'copilot', 'session-state') },
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
@@ -118,6 +120,35 @@ describe('engine over a MessagePort', () => {
     expect(info.versions.sqlite).toMatch(/^\d+\.\d+/);
     expect(info.shell.resolved).toBe(false);
     expect(info.claude).toBeNull();
+  });
+
+  it('shows an allowed provider\'s sessions read-only', async () => {
+    const { client, dataDir } = connect();
+    const id = '44444444-4444-4444-8444-444444444444';
+    const folder = join(dataDir, 'copilot', 'session-state', id);
+    mkdirSync(folder, { recursive: true });
+    const events = [
+      { type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: PARSER } } },
+      { type: 'user.message', id: 'e2', timestamp: '2026-10-30T10:00:01.000Z', data: { content: 'Fix the parser' } },
+      { type: 'assistant.message', id: 'e3', timestamp: '2026-10-30T10:00:02.000Z', data: { content: 'Done.' } },
+    ];
+    writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+
+    const before = await client.call('providers.list', {});
+    expect(before.providers).toEqual([expect.objectContaining({ id: 'copilot', allowed: false, found: true })]);
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+
+    const after = await client.call('providers.setAllowed', { id: 'copilot', allowed: true });
+    expect(after.providers[0]!.allowed).toBe(true);
+    await client.call('sessions.refresh', {});
+    const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
+    expect(listed).toMatchObject({ provider: 'copilot', title: 'Fix the parser', cwd: PARSER });
+
+    await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    await expect(client.call('session.delete', { sessionId: id })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    expect(existsSync(join(folder, 'events.jsonl'))).toBe(true);
   });
 
   it('persists app state', async () => {

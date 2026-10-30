@@ -46,6 +46,7 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
+import { OptionalProviderSchema, ProvidersSnapshot } from './providers.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
@@ -306,6 +307,10 @@ export const contract = {
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
     /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
     'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
+    // --- Providers: agents besides Claude Code whose sessions show up (read-only) -----------
+    'providers.list': { params: z.object({}), result: ProvidersSnapshot },
+    /** Allows a provider (its sessions show up in the sidebar) or hides it again. */
+    'providers.setAllowed': { params: z.object({ id: OptionalProviderSchema, allowed: z.boolean() }), result: ProvidersSnapshot },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),
@@ -1485,6 +1490,7 @@ export const contract = {
     'usage.tokens': z.object({ profileIds: z.array(z.string()), scan: UsageScan.nullable() }),
     /** Full list whenever profiles are added, changed or removed, or the default changes. */
     'profiles.changed': ProfilesSnapshot,
+    'providers.changed': ProvidersSnapshot,
     /** Full list whenever terminals start, exit or close. */
     'terminals.changed': z.object({ terminals: z.array(TerminalInfo) }),
     'claudeUpdate.changed': ClaudeUpdateState,

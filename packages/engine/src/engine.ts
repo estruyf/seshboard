@@ -5,6 +5,9 @@ import { basename, dirname, join } from 'node:path';
 import {
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
+  PROVIDER_NAMES,
+  type OptionalProvider,
+  isReadOnlySession,
   COMPANION_DIR,
   REMOTE_LOG_FILE,
   contract,
@@ -144,6 +147,9 @@ import { ConfigDirLane } from './profiles/configDirLane.ts';
 import { AccountWatcher } from './profiles/accountWatcher.ts';
 import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
+import { ProviderSettings } from './providers/providerSettings.ts';
+import { createProviders } from './providers/registry.ts';
+import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
 import { findClaude } from './system/claudeBinary.ts';
 import { ClaudeUpdater, type ClaudeUpdaterOptions } from './system/claudeUpdater.ts';
@@ -194,6 +200,8 @@ export interface EngineOptions {
   onKeepAwake?: (on: boolean) => void;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
+  /** Other folders for providers' sessions (tests). Each defaults to the provider's own (`~/.copilot/session-state`). */
+  providerFolders?: Partial<Record<OptionalProvider, string>>;
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -463,7 +471,15 @@ export function createEngine(options: EngineOptions): Engine {
     if (!found) sdkSources.set(key, (found = sdkSessionSource((fn) => lane.run(profile.envDir, fn))));
     return found;
   };
-  const source = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
+  const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
+  // --- Providers: other agents' sessions, read-only, once allowed in Settings › Providers -------------------------------
+  const providerSettings = new ProviderSettings(appState, createProviders({ env: process.env, home: homedir(), folders: options.providerFolders ?? {} }));
+  const source = new ProviderSources(claudeSource, () => providerSettings.allowedAdapters().map((p) => ({ provider: p.id, source: p.source })));
+  /** Another provider's session (read-only): Claude Code's actions on it are refused. */
+  const assertClaudeSession = (sessionId: string, action: string) => {
+    const provider = sessions.get(sessionId)?.provider ?? source.providerOf(sessionId);
+    if (provider && provider !== 'claude') throw new RpcError('READ_ONLY_SESSION', `${action} is only available for Claude Code sessions`);
+  };
   const resolver = createProjectResolver();
   const transcripts = new TranscriptHub(source, log);
   const owned = new Set(
@@ -532,7 +548,11 @@ export function createEngine(options: EngineOptions): Engine {
     parentOf: (id) => runStore.parentOf(id),
     db: cache.db,
     source,
-    projectsDirs: () => profiles.runtimes().map((profile) => ({ profileId: profile.id, dir: join(profile.configDir, 'projects') })),
+    projectsDirs: () => [
+      ...profiles.runtimes().map((profile) => ({ profileId: profile.id, dir: join(profile.configDir, 'projects') })),
+      // Allowed providers' folders: their sessions carry the built-in profile, which they don't use.
+      ...providerSettings.allowedAdapters().map((p) => ({ profileId: BUILTIN_PROFILE_ID, dir: p.folder, provider: p.files })),
+    ],
     resolver,
     log,
     onChange: (change) => {
@@ -875,6 +895,7 @@ export function createEngine(options: EngineOptions): Engine {
     sdk,
     ephemeral,
     assertTrusted,
+    assertClaudeSession: (sessionId, action) => assertClaudeSession(sessionId, action),
     onUsageHint: (profileId) => usageMonitors.get(profileId)?.nudge(),
     onRateLimit: (profileId, sessionId, info) => insights.recordRateLimit(profileId, sessionId, info),
     env: envFor,
@@ -2098,7 +2119,8 @@ export function createEngine(options: EngineOptions): Engine {
       ...(options.companion.legacyDataDir ? { legacyInfoDir: join(options.companion.legacyDataDir, COMPANION_DIR) } : {}),
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
-      sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
+      // Another provider's sessions (Copilot) take no context from the editor: Seshboard can't send to them.
+      sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isReadOnlySession(s)), live: liveList(), ...hosts.list() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
       respond: async (requestId, decision, acceptEdits) => {
@@ -2291,7 +2313,8 @@ export function createEngine(options: EngineOptions): Engine {
   /** Every indexed session with what the archive and keep rules need, now. */
   const retentionCandidatesNow = () =>
     retentionCandidates({
-      summaries: sessions.snapshot().sessions,
+      // Another provider's sessions are only read: never deleted, by hand or by the clean-up.
+      summaries: sessions.snapshot().sessions.filter((s) => !isReadOnlySession(s)),
       live: liveList(),
       ...hosts.list(),
       drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
@@ -2315,6 +2338,7 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Moves one session's transcript and subagent transcripts to the Trash and forgets it. */
   const deleteSession = async (sessionId: string) => {
+    assertClaudeSession(sessionId, 'Deleting');
     const toTrash = sessionTrash();
     if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
       throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
@@ -2514,6 +2538,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.rename': async ({ sessionId, title }) => {
+      assertClaudeSession(sessionId, 'Renaming');
       if (!source.rename) throw new RpcError('UNSUPPORTED', 'Renaming is not available');
       if (!sessions.pathFor(sessionId)) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
       // One line, like the titles Claude Code makes itself.
@@ -2597,6 +2622,16 @@ export function createEngine(options: EngineOptions): Engine {
       profiles.setDefaults(id, defaults);
       return {};
     },
+    'providers.list': () => providerSettings.snapshot(),
+    'providers.setAllowed': ({ id, allowed }) => {
+      if (providerSettings.setAllowed(id, allowed)) {
+        log('info', `${allowed ? 'Allowed' : 'Hid'} the sessions of ${PROVIDER_NAMES[id]}`);
+        // Its folder is watched and scanned now, or its sessions drop out of the list.
+        void sessions.rootsChanged();
+        broadcast('providers.changed', providerSettings.snapshot());
+      }
+      return providerSettings.snapshot();
+    },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
       projects.setDefaults(root, defaults);
@@ -2666,6 +2701,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.create': createSession,
     'session.send': async (params) => {
+      assertClaudeSession(params.sessionId, 'Sending');
       // Send now stops the turn first: its end is yours, not news.
       if (params.mode === 'now') catchUp.interrupt(params.sessionId);
       const sent = await hosts.send(params);
@@ -2723,6 +2759,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.forkAt': async ({ sessionId, messageUuid }) => {
+      assertClaudeSession(sessionId, 'Forking');
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
       try {
@@ -2735,7 +2772,10 @@ export function createEngine(options: EngineOptions): Engine {
       await sessions.refresh();
       return { sessionId: forked };
     },
-    'session.rewind': ({ sessionId, messageUuid, dryRun }) => hosts.rewind(sessionId, messageUuid, dryRun),
+    'session.rewind': ({ sessionId, messageUuid, dryRun }) => {
+      assertClaudeSession(sessionId, 'Rewinding');
+      return hosts.rewind(sessionId, messageUuid, dryRun);
+    },
     'session.interrupt': async ({ sessionId }) => {
       catchUp.interrupt(sessionId);
       await hosts.interrupt(sessionId);
@@ -2764,7 +2804,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.context': ({ sessionId }) => hosts.context(sessionId),
     // Answered beside whatever the session does: never through session.send, so never in its turn or Up next.
-    'session.ask': ({ sessionId, threadId, question, replaces }) => asker.ask(sessionId, question, threadId, replaces),
+    'session.ask': ({ sessionId, threadId, question, replaces }) => {
+      assertClaudeSession(sessionId, 'Ask about this session');
+      return asker.ask(sessionId, question, threadId, replaces);
+    },
     'session.askThreads': ({ sessionId }) => asker.list(sessionId),
     'session.setModel': async ({ sessionId, model }) => {
       await hosts.setModel(sessionId, model);
@@ -2779,6 +2822,7 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'session.continueInEditor': async ({ sessionId, editorId }) => {
+      assertClaudeSession(sessionId, 'Continue in an editor');
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
       }
@@ -3487,6 +3531,7 @@ export function createEngine(options: EngineOptions): Engine {
       return { results };
     },
     'terminal.open': async (params) => {
+      if (params.kind === 'claude' && params.sessionId) assertClaudeSession(params.sessionId, 'Resuming in the terminal');
       if (params.kind === 'claude' && params.sessionId && !params.fork) {
         if (hosts.has(params.sessionId)) {
           throw new RpcError('SESSION_RUNNING_HERE', 'This session is running in Seshboard. Stop it there first, or open a fork in the terminal.');
@@ -3777,6 +3822,9 @@ export function createEngine(options: EngineOptions): Engine {
       for (const { id } of cache.db.prepare('SELECT id FROM owned_sessions').all() as Array<{ id: string }>) owned.add(id);
       for (const { id } of cache.db.prepare('SELECT id FROM continued_sessions').all() as Array<{ id: string }>) continued.add(id);
       sessions.reloadFlags();
+      // The allowed providers may have changed: their folders are read (or no longer) from now on.
+      void sessions.rootsChanged();
+      broadcast('providers.changed', providerSettings.snapshot());
       schedulesBroadcast();
       scheduler.rearm();
       triggersBroadcast();

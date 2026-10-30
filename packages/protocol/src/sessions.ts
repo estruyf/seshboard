@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
+import { SESSION_PROVIDERS } from './providerConstants.ts';
 
 /** Where a session was started, derived from Claude Code's `entrypoint`. */
 export const SessionOrigin = z.enum(['cli', 'desktop', 'ide', 'sdk', 'app', 'unknown']);
@@ -51,6 +52,8 @@ export const SessionSummary = z.object({
    * from (#179). Kept in Seshboard's database; Claude Code doesn't know about it.
    */
   parentId: z.string().nullable().optional(),
+  /** The agent that ran it (missing: Claude Code). Other providers' sessions are read-only (`isReadOnlySession`). */
+  provider: z.enum(SESSION_PROVIDERS).optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;
 

@@ -59,6 +59,7 @@ import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
 import { ThemeImportDialogs } from './components/theme/ThemeImport.tsx';
 import { useProfilesSync } from './state/profilesStore.ts';
+import { useProvidersSync } from './state/providersStore.ts';
 import { useProjects, useProjectsSync } from './state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
@@ -208,6 +209,7 @@ export function App() {
   useProjectsSync();
   useCloneSync();
   useProfilesSync();
+  useProvidersSync();
   useTerminalsSync();
   useUpdatesSync();
   useClaudeUpdateSync();

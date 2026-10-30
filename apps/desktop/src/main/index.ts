@@ -2592,6 +2592,68 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
  * a line at the bottom. ↓ skips the headers, Pipelines opens its page, search keeps the groups with its results in the
  * menu's order, and a short window scrolls the menu without the bottom block overlapping Connect. Read-only.
  */
+/**
+ * Settings › Providers (#199): allowing GitHub Copilot lists its sessions in the sidebar with a mark, one opens
+ * read-only (a note with the resume command where the message box would be), and hiding Copilot takes them out again.
+ * Read-only: nothing is written to Copilot's folder. The demo home has one Copilot session; a computer without
+ * Copilot skips the step.
+ */
+async function runProvidersStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const toggle = "document.querySelector('[data-settings-page=\"providers\"] [data-provider-copilot]')";
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"copilot\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+  // Copilot sessions started outside Seshboard follow Claude Code's rule: only with sessions from other apps shown.
+  if (!(await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]')", 3_000))) return 'no Sidebar page in Settings';
+  await js("document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]').click()");
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"providers\"]')", 3_000))) return 'no Providers page in Settings';
+  await js("document.querySelector('[data-settings] [data-settings-section=\"providers\"]').click()");
+  if (!(await waitInPage(win, `${toggle}`, 5_000))) return 'Providers did not list GitHub Copilot';
+  if (!(await js("document.querySelector('[data-provider-claude]')?.getAttribute('aria-checked') === 'true'"))) return 'Claude Code is not shown as always on';
+  const wasOn = (await js(`${toggle}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!wasOn && (await js(`${toggle}.disabled`))) {
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    return process.env.SESHBOARD_SMOKE_DEMO ? 'the demo home has a Copilot session, but Providers did not find it' : 'ok: skipped, no Copilot sessions on this computer';
+  }
+  try {
+    if (!wasOn) await js(`${toggle}.click()`);
+    if (!(await waitInPage(win, `${toggle}.getAttribute('aria-checked') === 'true'`, 3_000))) return 'the Copilot switch did not turn on';
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Copilot session showed in the sidebar after allowing it';
+    await shot(win, 'providers-settings.png');
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000);
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-only-session=\"copilot\"]')", 10_000))) return 'the Copilot session did not open read-only';
+    if (await js("!!document.querySelector('[data-read-only-session]')?.closest('[data-current-session]')?.querySelector('[data-composer]')")) return 'a read-only session shows a message box';
+    if (await js("!!document.querySelector('[data-current-session] [data-toggle-ask]')")) return 'a read-only session offers Ask about this session';
+    if (!(await js("document.querySelector('[data-read-only-session] [data-copy-resume-command]') !== null && document.querySelector('[data-read-only-session]').textContent.includes('copilot --resume=')"))) return 'the note has no resume command';
+    if (!(await waitInPage(win, "document.querySelectorAll('[data-message-actions]').length > 0 || document.querySelectorAll('[data-tool]').length > 0", 5_000))) return 'the Copilot transcript showed nothing';
+    await shot(win, 'copilot-session.png');
+    return 'ok: Copilot allowed, its session listed with a mark and opened read-only';
+  } finally {
+    // Back as it was: hidden again unless it was on before the step, and the sidebar's scope as it was.
+    if (!scopeWasAll) {
+      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+      await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]')", 3_000);
+      await js("document.querySelector('[data-settings] [data-settings-section=\"sidebar\"]').click()");
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}.click()`);
+    }
+    if (!wasOn) {
+      await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]').click()");
+      await waitInPage(win, "document.querySelector('[data-settings] [data-settings-section=\"providers\"]')", 3_000);
+      await js("document.querySelector('[data-settings] [data-settings-section=\"providers\"]').click()");
+      if (await waitInPage(win, `${toggle}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${toggle}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+      await js("document.querySelector('[data-close-settings]')?.click()");
+    }
+  }
+}
+
 async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const key = (keyCode: string) => {
@@ -2619,7 +2681,7 @@ async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
   if (bottom.pages.join(',') !== 'backup,diagnostics,about') return `the bottom block holds ${bottom.pages.join(', ')}`;
   if (bottom.border !== '1px') return `the bottom block's top border is ${bottom.border}`;
   const pageCount = layout.reduce((n, g) => n + g.pages.length, 0);
-  if (pageCount !== 19) return `the menu lists ${pageCount} pages, not 19`;
+  if (pageCount !== 20) return `the menu lists ${pageCount} pages, not 20`;
 
   // ↓ from the last page of App lands on Conversation: the Claude header is skipped.
   await js(`document.querySelector('${nav} [data-settings-section="focus"]').focus()`);
@@ -10354,6 +10416,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('new session from an issue (⌥↩) and a pull request (palette), fork caution, not started', () => runGithubNewSessionStep(win), { timeoutMs: 45_000 });
   await step('link with an issue and autostart=1 fills in New session and never starts; another repository is refused', () => runGithubLinkStep(win), { timeoutMs: 45_000 });
   await step('VS Code companion', () => runCompanionStep(win));
+  await step('providers: Copilot allowed in Settings, its session listed with a mark and opened read-only, hidden again', () => runProvidersStep(win));
   await step('queue', () => runQueueStep(win));
   await step('pipelines: run, @ links, a round 2, another round, done', () => runPipelineStep(win));
   await step('run as: a pipeline picked in New session, Run pipeline with its steps, ⌘↵ runs it, back to One session', () => runRunAsStep(win));
