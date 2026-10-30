@@ -55,7 +55,8 @@ export const useChangesLayout = create<ChangesLayout>()((set) => ({
   toggleExpanded: (expanded) => set((s) => ({ expanded: expanded ?? !s.expanded })),
 }));
 
-const STATUS: Record<ChangedFile['status'], { letter: string; tone: string; label: string }> = {
+/** How a changed file shows: its letter, colour and name (also in `RemoteChangesPanel`). */
+export const STATUS: Record<ChangedFile['status'], { letter: string; tone: string; label: string }> = {
   added: { letter: 'A', tone: 'text-ok', label: 'Added' },
   untracked: { letter: 'U', tone: 'text-ok', label: 'New, not tracked yet' },
   modified: { letter: 'M', tone: 'text-accent-ink', label: 'Modified' },

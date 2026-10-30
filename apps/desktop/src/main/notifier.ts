@@ -1,6 +1,7 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@seshboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { createRpcClient, promptLabel, type ComputersStatus, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RemoteSessions, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { RemoteAttention } from './remoteAttention.ts';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
@@ -67,6 +68,9 @@ export class Notifier {
   private steps = new Set<string>();
   /** Reminds you before a large session's cache lapses (Settings › Usage). */
   private readonly cache: CacheReminder;
+  /** The sessions of paired computers, and their names, for their notifications. */
+  private remote = new RemoteAttention();
+  private computerNames = new Map<string, string>();
 
   constructor(private readonly options: NotifierOptions) {
     this.attention = new Attention({ external: options.showAllSessions });
@@ -149,6 +153,18 @@ export class Notifier {
       this.steps = stepSessions(this.runs.values());
     }, () => {});
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
+    // Other computers' sessions: their lists come as events; a computer that goes away starts over when it is back.
+    this.remote = new RemoteAttention();
+    const computers = (status: ComputersStatus) => {
+      this.computerNames = new Map(status.computers.map((c) => [c.id, c.name]));
+      for (const computer of status.computers) if (computer.state !== 'connected') this.remote.forget(computer.id);
+    };
+    client.on('computers.changed', computers);
+    void client.call('computers.status', {}).then(computers, () => {});
+    client.on('computers.event', ({ computerId, name, payload }) => {
+      if (name !== 'sessions.changed') return;
+      this.handle(this.remote.onList({ id: computerId, name: this.computerNames.get(computerId) ?? 'another computer' }, payload as unknown as RemoteSessions));
+    });
 
     // Seed state silently: only changes from here on deserve a notification.
     void Promise.all([client.call('sessions.list', {}), client.call('hosts.list', {}), client.call('terminal.list', {})])
