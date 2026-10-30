@@ -35,3 +35,21 @@ Read through the agent's own API where it has one that only reads. Parse its fil
 - **Origin:** `client_name` `github/cli` is the CLI, `vscode` an editor; anything else is unknown.
 - **Left out of the transcript:** `report_intent` (Copilot's own status line) and the steps of subagents (events with a `parentToolCallId`), as Claude Code's subagents are left out of the main conversation.
 - **Resume:** `copilot --resume=<id>`.
+
+## Driving sessions (in progress)
+
+A provider can have a **`driver`** (`ProviderDriver` in `provider.ts`): it starts or resumes a session in a folder, sends messages, stops a turn, switches models and answers permission requests. What a running session reports goes through `DriverEvents`, in the shapes Claude Code's sessions use (`HostEvents`): stream deltas, complete `RawSessionMessage`s (from the same converter as the reader, so the live transcript and the file agree), the turn's state, and permission requests for the permission card.
+
+**Signing in is the provider's own.** Seshboard never asks for, stores or passes a credential. Copilot's driver runs the user's own `copilot` (found like `claude`, `copilotBinary.ts`) through the Copilot SDK, with no token, so `copilot` uses its own login (`/login` in Copilot CLI, or the GitHub CLI's). When it isn't signed in, `status()` says how to sign in with Copilot CLI. The SDK's bundled runtime and `koffi` (only used to host that runtime in-process) are not shipped (`electron-builder.yml`).
+
+Copilot's driver (`copilot/copilotDriver.ts`):
+- One headless `copilot` runtime for all sessions, started on first use and stopped with the engine.
+- Sessions it starts are recorded by Copilot with `client_name: seshboard`, which the reader reads as started in Seshboard (origin `app`).
+- Events: `copilotLive.ts`. Permission requests and answers: `copilotPermissions.ts` (shell → Bash, write → Edit with its diff, read → Read, url → WebFetch, MCP → `mcp__server__tool`; Always allow is Copilot's approve for the session).
+- Tests fake the SDK (`CreateCopilotClient`). The live test is opt-in and costs one small request: `SESHBOARD_LIVE_COPILOT_CWD=/path/to/throwaway/repo npx vitest run copilot.live`.
+
+Next, each its own change:
+1. **Hosts:** `HostManager` runs a provider's session through its driver, behind the same `SessionHostInfo`, stream, message and permission events as a Claude Code host; sessions it started are owned (`owned_sessions`) and no longer read-only.
+2. **New session:** a provider picker (Claude Code the default; only allowed providers with a driver), the provider's models, and its status (install or sign in with its CLI) where it can't run.
+3. **Continue a session started elsewhere:** sending to a Copilot session resumes it here, as for Claude Code.
+4. **Parity, as far as the provider allows:** permission modes (Copilot's interactive, plan and autopilot), usage, Up next, the phone.

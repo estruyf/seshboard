@@ -473,7 +473,8 @@ export function createEngine(options: EngineOptions): Engine {
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, read-only, once allowed in Settings › Providers -------------------------------
-  const providerSettings = new ProviderSettings(appState, createProviders({ env: process.env, home: homedir(), folders: options.providerFolders ?? {} }));
+  const providerAdapters = createProviders({ env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, folders: options.providerFolders ?? {} });
+  const providerSettings = new ProviderSettings(appState, providerAdapters);
   const source = new ProviderSources(claudeSource, () => providerSettings.allowedAdapters().map((p) => ({ provider: p.id, source: p.source })));
   /** Another provider's session (read-only): Claude Code's actions on it are refused. */
   const assertClaudeSession = (sessionId: string, action: string) => {
@@ -3944,6 +3945,8 @@ export function createEngine(options: EngineOptions): Engine {
     deleteArchivedNow: runCleanup,
     close() {
       clearInterval(dailyCleanup);
+      // Providers' runtimes (a headless `copilot`) stop with the engine.
+      for (const provider of providerAdapters) void provider.driver?.dispose().catch(() => {});
       clones.close();
       clearTimeout(settingTimer);
       companion?.stop();

@@ -42,6 +42,7 @@ export function userText(content: string): string {
 
 /** Copilot's tools that only report to Copilot's own UI, not work done: left out of the transcript. */
 const HIDDEN_TOOLS = new Set(['report_intent']);
+export const isHiddenTool = (name: string) => HIDDEN_TOOLS.has(name);
 
 /**
  * Copilot's tools with a Claude Code counterpart, renamed (and their input reshaped) so the transcript shows them with
@@ -88,24 +89,27 @@ function resultText(data: Record<string, unknown>): string {
 }
 
 /**
- * Turns a Copilot session's events into the messages Seshboard reads from Claude Code's transcripts, so the
- * transcript view, search, catch-up and the phone show it the same way. User prompts and replies become text, tool
- * requests `tool_use` blocks, and tool results `tool_result` blocks. Subagents' own steps (events with a
- * `parentToolCallId`) are left out, like a Claude Code subagent's are from the main conversation.
+ * Turns Copilot events into the messages Seshboard reads from Claude Code's transcripts, one event at a time: the same
+ * for a session read from disk and one running here. User prompts and replies become text, tool requests `tool_use`
+ * blocks, and tool results `tool_result` blocks. Subagents' own steps (events with a `parentToolCallId`) are left
+ * out, like a Claude Code subagent's are from the main conversation.
  */
-export function copilotMessages(events: readonly CopilotEvent[]): RawSessionMessage[] {
-  const messages: RawSessionMessage[] = [];
-  const hidden = new Set<string>();
-  events.forEach((event, index) => {
+export class CopilotConverter {
+  /** Calls of hidden tools, whose results are left out too. */
+  private readonly hidden = new Set<string>();
+  private count = 0;
+
+  /** The messages one event makes (none for most). */
+  push(event: CopilotEvent): RawSessionMessage[] {
+    const index = this.count++;
     const data = obj(event.data);
     const uuid = event.id ?? `copilot-${index}`;
     const base = { uuid, parent_tool_use_id: null, ...(event.timestamp ? { timestamp: event.timestamp } : {}) };
-    if (str(data.parentToolCallId)) return;
+    if (str(data.parentToolCallId)) return [];
     switch (event.type) {
       case 'user.message': {
         const text = userText(str(data.content) ?? '');
-        if (text) messages.push({ ...base, type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } });
-        return;
+        return text ? [{ ...base, type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } }] : [];
       }
       case 'assistant.message': {
         const content: unknown[] = [];
@@ -117,28 +121,31 @@ export function copilotMessages(events: readonly CopilotEvent[]): RawSessionMess
           const r = obj(request);
           const id = str(r.toolCallId) ?? '';
           const name = str(r.name) ?? 'unknown';
-          if (HIDDEN_TOOLS.has(name)) {
-            hidden.add(id);
+          if (isHiddenTool(name)) {
+            this.hidden.add(id);
             continue;
           }
           const tool = claudeTool(name, r.arguments);
           content.push({ type: 'tool_use', id, name: tool.name, input: tool.input });
         }
-        if (content.length) messages.push({ ...base, type: 'assistant', message: { role: 'assistant', model: str(data.model) ?? undefined, content } });
-        return;
+        return content.length ? [{ ...base, type: 'assistant', message: { role: 'assistant', model: str(data.model) ?? undefined, content } }] : [];
       }
       case 'tool.execution_complete': {
         const id = str(data.toolCallId) ?? '';
-        if (hidden.has(id)) return;
+        if (this.hidden.has(id)) return [];
         const content = [{ type: 'tool_result', tool_use_id: id, is_error: data.success === false, content: resultText(data) }];
-        messages.push({ ...base, type: 'user', message: { role: 'user', content } });
-        return;
+        return [{ ...base, type: 'user', message: { role: 'user', content } }];
       }
       default:
-        return;
+        return [];
     }
-  });
-  return messages;
+  }
+}
+
+/** A whole session's events as transcript messages (`CopilotConverter`). */
+export function copilotMessages(events: readonly CopilotEvent[]): RawSessionMessage[] {
+  const converter = new CopilotConverter();
+  return events.flatMap((event) => converter.push(event));
 }
 
 /** Events that mean the session did something, for its last activity (not a resume or a shutdown). */

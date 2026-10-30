@@ -1,13 +1,27 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProviderAdapter } from '../provider.ts';
+import { findCopilot } from './copilotBinary.ts';
+import { copilotDriver, type CreateCopilotClient } from './copilotDriver.ts';
 import { copilotHome, copilotSessionsDir, copilotSessionSource, EVENTS_FILE, SESSION_ID } from './copilotSource.ts';
 
 /** A file in a session's folder that changes what the sidebar shows: its events, or its title and folder. */
 const SESSION_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[\\/](?:events\.jsonl|workspace\.yaml)$/i;
 
-/** GitHub Copilot CLI: one folder per session under `<COPILOT_HOME>/session-state`, read-only. */
-export function copilotProvider({ env, home, folder }: { env: NodeJS.ProcessEnv; home: string; folder?: string }): ProviderAdapter {
+interface CopilotProviderOptions {
+  env: NodeJS.ProcessEnv;
+  home: string;
+  /** The login shell's environment, for finding and running `copilot`. Without it, the process's own. */
+  shellEnv?: () => Promise<Record<string, string | undefined>>;
+  folder?: string;
+  createClient?: CreateCopilotClient;
+}
+
+/**
+ * GitHub Copilot CLI: one folder per session under `<COPILOT_HOME>/session-state`, read from disk, and run through
+ * the Copilot SDK with the user's own `copilot` and its own login.
+ */
+export function copilotProvider({ env, home, shellEnv = async () => env, folder, createClient }: CopilotProviderOptions): ProviderAdapter {
   const dir = folder ?? copilotSessionsDir(copilotHome(env, home));
   const eventsOf = (id: string) => join(dir, id, EVENTS_FILE);
   return {
@@ -15,6 +29,12 @@ export function copilotProvider({ env, home, folder }: { env: NodeJS.ProcessEnv;
     folder: dir,
     source: copilotSessionSource(dir),
     resumeCommand: 'copilot --resume={sessionId}',
+    driver: copilotDriver({
+      // Looked up each time until found: installing Copilot CLI works without restarting Seshboard.
+      binary: async () => findCopilot(await shellEnv(), home),
+      env: shellEnv,
+      ...(createClient ? { createClient } : {}),
+    }),
     files: {
       sessionOf(relativePath) {
         const match = SESSION_FILE.exec(relativePath);

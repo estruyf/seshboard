@@ -29,6 +29,8 @@ const TAIL_BYTES = 64 * 1024;
 function originOf(client: string | undefined): SessionOrigin {
   if (client === 'github/cli') return 'cli';
   if (client === 'vscode') return 'ide';
+  // Started from Seshboard (`SESHBOARD_CLIENT` in copilotDriver.ts).
+  if (client === 'seshboard') return 'app';
   return 'unknown';
 }
 

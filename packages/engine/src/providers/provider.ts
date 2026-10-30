@@ -1,5 +1,6 @@
-import type { OptionalProvider } from '@seshboard/protocol';
+import type { ImageAttachment, ModelOption, OptionalProvider, PermissionDecision, PermissionRequest, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
+import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /** How a provider keeps its sessions on disk, as far as the session index needs to know. */
 export interface ProviderFiles {
@@ -17,8 +18,8 @@ export interface ProviderFiles {
  * its id and name in `@seshboard/protocol`'s `providerConstants.ts`, and one line in `registry.ts`; the session index,
  * the sidebar, search, the transcript view and Settings › Providers take it from there (docs/providers.md).
  *
- * Providers are read-only for now: `source` lists and reads sessions, and nothing else of Seshboard's (sending,
- * forking, deleting) reaches them. Starting and steering sessions will be a further, optional part of this interface.
+ * `source` lists and reads sessions. `driver`, when a provider has one, starts and steers them; without it the
+ * provider's sessions are read-only.
  */
 export interface ProviderAdapter {
   id: OptionalProvider;
@@ -29,4 +30,63 @@ export interface ProviderAdapter {
   source: SessionSource;
   /** The command that continues a session in the provider's own CLI, with `{sessionId}` where the id goes. */
   resumeCommand: string;
+  /** Starts and steers its sessions. Optional: a provider without one is read-only. */
+  driver?: ProviderDriver;
+}
+
+/**
+ * Whether the provider's CLI can run sessions here. Signing in is the provider's own business: Seshboard never asks
+ * for, stores or passes a credential, and only says how to sign in with the provider's CLI.
+ */
+export interface DriverStatus {
+  /** Its CLI was found (the path, else null). */
+  binary: string | null;
+  version: string | null;
+  signedIn: boolean;
+  /** Who it is signed in as, in the provider's words (`estruyf (via gh)`). */
+  account: string | null;
+  /** What to do when it can't run: install it, or sign in with its CLI. Null when it can. */
+  problem: string | null;
+}
+
+/** What a running session tells Seshboard, in the shapes Claude Code's sessions use (`HostEvents`). */
+export interface DriverEvents {
+  /** Text, thinking or a tool name as it streams; `clear` when a complete message replaces it. */
+  stream(delta: Omit<StreamDelta, 'sessionId'>): void;
+  /** Complete messages, as the session's reader will read them from disk later. */
+  messages(messages: RawSessionMessage[]): void;
+  /** The turn started, ended, or failed (with the provider's message). */
+  state(state: 'running' | 'idle' | 'error', error?: string): void;
+  /** The provider asks before a tool runs; `respond` on the session answers it. */
+  permission(request: Omit<PermissionRequest, 'sessionId'>): void;
+  /** A request was answered or dropped (the turn was stopped). */
+  permissionDone(requestId: string): void;
+}
+
+export interface DriverSessionConfig {
+  cwd: string;
+  /** Resume this session; a new one when missing. */
+  resume?: string;
+  model: string | null;
+}
+
+/** One running session of a provider. */
+export interface DriverSession {
+  readonly sessionId: string;
+  /** Sends a message; resolves once the provider took it. Returns the message's id. */
+  send(text: string, attachments: readonly ImageAttachment[]): Promise<string>;
+  /** Stops the current turn. */
+  interrupt(): Promise<void>;
+  setModel(model: string | null): Promise<void>;
+  respond(requestId: string, decision: PermissionDecision): void;
+  /** Lets go of the session (it stays on disk, to resume later). */
+  close(): Promise<void>;
+}
+
+export interface ProviderDriver {
+  status(): Promise<DriverStatus>;
+  models(): Promise<ModelOption[]>;
+  start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;
+  /** Stops the provider's runtime (the app quits). */
+  dispose(): Promise<void>;
 }
