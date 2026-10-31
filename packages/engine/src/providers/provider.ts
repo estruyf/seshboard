@@ -16,13 +16,17 @@ export interface ProviderFiles {
 /**
  * Everything Seshboard knows about one agent besides Claude Code. Adding a provider is one module that returns this,
  * its id and name in `@seshboard/protocol`'s `providerConstants.ts`, and one line in `registry.ts`; the session index,
- * the sidebar, search, the transcript view and Settings › Providers take it from there (docs/providers.md).
+ * the sidebar, search, the transcript view and Settings › Profiles take it from there (docs/providers.md).
  *
  * `source` lists and reads sessions. `driver`, when a provider has one, starts and steers them; without it the
  * provider's sessions are read-only.
  */
 export interface ProviderAdapter {
   id: OptionalProvider;
+  /** The profile it is (Settings › Profiles): one adapter per profile, each with its own folder, runtime and login. */
+  profileId: string;
+  /** The profile's config folder (`COPILOT_HOME`), which its CLI runs with. */
+  home: string;
   /** The folder its sessions are in. Watched once the provider is allowed; Seshboard never creates or writes it. */
   folder: string;
   files: ProviderFiles;
@@ -30,6 +34,8 @@ export interface ProviderAdapter {
   source: SessionSource;
   /** The command that continues a session in the provider's own CLI, with `{sessionId}` where the id goes. */
   resumeCommand: string;
+  /** The command that signs in with the provider's own CLI, run in a terminal with the profile's environment. */
+  signInCommand?: string;
   /** Starts and steers its sessions. Optional: a provider without one is read-only. */
   driver?: ProviderDriver;
   /** The session is open in the provider's own app right now (not through Seshboard), so it can't be resumed here. */

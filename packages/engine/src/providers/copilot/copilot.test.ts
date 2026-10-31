@@ -10,12 +10,12 @@ import { openCacheDatabase } from '../../db/database.ts';
 import { MultiProfileSource } from '../../profiles/profileSources.ts';
 import { SessionIndex } from '../../sessions/sessionIndex.ts';
 import { removeDir } from '../../util/removeDir.ts';
-import { ProviderSettings } from '../providerSettings.ts';
+import { ProviderProfiles } from '../providerProfiles.ts';
 import { ProviderSources } from '../providerSources.ts';
 import { claudeTool, copilotMessages, userText, type CopilotEvent } from './copilotEvents.ts';
 import { lockPids, liveStatusOf, openSessions } from './copilotInUse.ts';
 import { copilotProvider } from './copilotProvider.ts';
-import { copilotSessionSource } from './copilotSource.ts';
+import { copilotHome, copilotSessionSource } from './copilotSource.ts';
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -133,7 +133,7 @@ describe('copilotSessionSource', () => {
 });
 
 describe('providers in the session index', () => {
-  it('shows Copilot sessions only once allowed, and reads them through Copilot', async () => {
+  it('shows a Copilot profile\'s sessions, under that profile, and reads them through Copilot', async () => {
     const root = tempDir();
     const copilotDir = join(root, 'session-state');
     writeSession(copilotDir, ID, EVENTS, 'name: Create test.json\ncwd: /work/demo\n');
@@ -144,10 +144,11 @@ describe('providers in the session index', () => {
       info: async (id) => (id === CLAUDE_ID ? { sessionId: CLAUDE_ID, summary: 'A Claude session', lastModified: 1000, cwd: '/work/demo' } : undefined),
       messages: async () => [],
     };
-    const state = new Map<string, unknown>();
-    const settings = new ProviderSettings({ get: (k) => state.get(k), set: (k, v) => state.set(k, v) }, [copilotProvider({ env: {}, home: root, folder: copilotDir })]);
+    // The profiles Settings › Profiles has: none of Copilot's at first.
+    let copilotProfiles: Array<{ id: string; provider: 'copilot'; home: string }> = [];
+    const providers = new ProviderProfiles(() => copilotProfiles, (p) => copilotProvider({ profileId: p.id, copilotHome: p.home, userHome: root }));
     const source = new ProviderSources(new MultiProfileSource(() => [{ profileId: 'default', source: claude }]), () =>
-      settings.allowedAdapters().map((p) => ({ provider: p.id, source: p.source })),
+      providers.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
     );
     const db = openCacheDatabase(join(root, 'cache.sqlite'));
     const changes: SessionsChanged[] = [];
@@ -157,7 +158,7 @@ describe('providers in the session index', () => {
       source,
       projectsDirs: () => [
         { profileId: 'default', dir: projectsDir },
-        ...settings.allowedAdapters().map((p) => ({ profileId: 'default', dir: p.folder, provider: p.files })),
+        ...providers.adapters().map((p) => ({ profileId: p.profileId, dir: p.folder, provider: p.files })),
       ],
       resolver: createProjectResolver('/nonexistent-home'),
       log: () => {},
@@ -168,18 +169,18 @@ describe('providers in the session index', () => {
 
     await index.refresh();
     expect(index.snapshot().sessions.map((s) => s.id)).toEqual([CLAUDE_ID]);
-    expect(settings.snapshot().providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', allowed: false, found: true, folder: copilotDir, resumeCommand: 'copilot --resume={sessionId}', canStart: true, modes: expect.any(Array) }]);
 
-    settings.setAllowed('copilot', true);
+    copilotProfiles = [{ id: 'work-copilot', provider: 'copilot', home: root }];
     await index.rootsChanged();
     const copilotSummary = index.get(ID);
-    expect(copilotSummary).toMatchObject({ provider: 'copilot', title: 'Create test.json', updatedAt: Date.parse('2026-06-26T16:10:49.000Z') });
+    expect(copilotSummary).toMatchObject({ provider: 'copilot', profileId: 'work-copilot', title: 'Create test.json', updatedAt: Date.parse('2026-06-26T16:10:49.000Z') });
     expect(index.get(CLAUDE_ID)?.provider).toBeUndefined();
     expect(source.providerOf(ID)).toBe('copilot');
+    expect(source.profileOf(ID)).toBe('work-copilot');
     expect((await source.messages(ID)).length).toBe(4);
     await expect(source.fork(ID, 'e3')).rejects.toThrow(/only available for Claude Code/);
 
-    settings.setAllowed('copilot', false);
+    copilotProfiles = [];
     await index.rootsChanged();
     expect(index.get(ID)).toBeNull();
     expect(changes.at(-1)?.removed).toEqual([ID]);
@@ -198,9 +199,10 @@ describe('copilotSessionSource without a prompt', () => {
 
 describe('copilotProvider', () => {
   it('maps the files the watcher reports to their session', () => {
-    const dir = tempDir();
+    const home = tempDir();
+    const dir = join(home, 'session-state');
     writeSession(dir, ID, EVENTS);
-    const { files } = copilotProvider({ env: {}, home: dir, folder: dir });
+    const { files } = copilotProvider({ profileId: 'p', copilotHome: home, userHome: home });
     expect(files.sessionOf(`${ID}/events.jsonl`)).toEqual({ sessionId: ID, file: join(dir, ID, 'events.jsonl') });
     expect(files.sessionOf(`${ID}\\workspace.yaml`)).toEqual({ sessionId: ID, file: join(dir, ID, 'events.jsonl') });
     expect(files.sessionOf(`${ID}/checkpoints/1.md`)).toBeNull();
@@ -208,8 +210,9 @@ describe('copilotProvider', () => {
   });
 
   it('reads $COPILOT_HOME, else ~/.copilot', () => {
-    expect(copilotProvider({ env: { COPILOT_HOME: '/c' }, home: '/h' }).folder).toBe(join('/c', 'session-state'));
-    expect(copilotProvider({ env: {}, home: '/h' }).folder).toBe(join('/h', '.copilot', 'session-state'));
+    expect(copilotHome({ COPILOT_HOME: '/c' }, '/h')).toBe('/c');
+    expect(copilotHome({}, '/h')).toBe(join('/h', '.copilot'));
+    expect(copilotProvider({ profileId: 'p', copilotHome: '/c', userHome: '/h' }).folder).toBe(join('/c', 'session-state'));
   });
 });
 

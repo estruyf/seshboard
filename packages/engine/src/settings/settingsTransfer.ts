@@ -55,7 +55,6 @@ export const CHOICE_KEYS: Record<string, string> = {
   'newSession.defaults': 'New session defaults',
   'claudeUpdate.enabled': 'Check for Claude Code updates',
   [PERSONAL_DIR_KEY]: 'Personal memory folder',
-  'providers.allowed': 'Providers',
 };
 
 /** Internal bookkeeping that has no label and no line in an import: sanitizing never returns it, the default carries it. */
@@ -213,7 +212,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
     const entries = stores.profiles.exportEntries();
     const dirOf = (id: string) => entries.find((e) => e.id === id)?.dir ?? null;
     file.profiles = {
-      list: entries.map(({ dir, name, color, defaults }) => ({ dir, name, color, defaults: Object.values(defaults).some((v) => v !== null) ? defaults : null })),
+      list: entries.map(({ dir, name, color, defaults, provider }) => ({ dir, provider, name, color, defaults: Object.values(defaults).some((v) => v !== null) ? defaults : null })),
       default: dirOf(stores.profiles.defaultId()),
       links: stores.profiles.links().map(({ root, profileId }) => ({ path: root, profile: dirOf(profileId) })),
     };
@@ -449,7 +448,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       if (id === null) {
         note('profiles', entry.name, 'add', dir === null ? null : relocatedNote(entry.dir!, dir));
         writes.push(() => {
-          const added = stores.profiles.add(entry.name, entry.color, dir!);
+          const added = stores.profiles.add(entry.name, entry.color, dir!, entry.provider);
           if (usefulDefaults) stores.profiles.setDefaults(added, usefulDefaults);
         });
         continue;

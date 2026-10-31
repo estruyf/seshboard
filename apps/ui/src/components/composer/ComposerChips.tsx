@@ -1,7 +1,7 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode, type SessionProvider } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -15,7 +15,6 @@ import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFam
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
 export interface ChipNames {
-  provider?: string;
   profile: string;
   model: string;
   effort: string;
@@ -26,13 +25,8 @@ const NEW_SESSION_NAMES: ChipNames = { profile: 'profile', model: 'model', effor
 
 export interface ComposerChipRowProps {
   /**
-   * Who runs the session: Claude Code or an allowed provider (GitHub Copilot). Shown when there is a choice, or when
-   * it isn't Claude Code; without `onChange` it can't change (a session keeps its provider).
-   */
-  provider?: { value: SessionProvider; choices: readonly SessionProvider[]; onChange?(provider: SessionProvider): void } | null;
-  /**
-   * The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and
-   * links to Settings. Null for another provider's session, which uses that provider's own login.
+   * The profile, which also says who runs it: a profile of another provider (GitHub Copilot) shows that provider's mark.
+   * Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings.
    */
   profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string } | null;
   /**
@@ -85,7 +79,7 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ provider, profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
+export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
@@ -116,60 +110,35 @@ export function ComposerChipRow({ provider, profile, model, effort, mode, disabl
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
-  if (provider && (provider.choices.length > 1 || provider.value !== 'claude')) {
-    const Icon = provider.value === 'claude' ? null : PROVIDER_ICONS[provider.value];
-    const name = PROVIDER_NAMES[provider.value];
-    chips.push({
-      key: 'provider',
-      face: () => (
-        <>
-          {Icon && <Icon size={13} aria-hidden />}
-          <span>{name}</span>
-        </>
-      ),
-      menu: (face) => (
-        <ChoiceMenu
-          name={names.provider ?? 'provider'}
-          value={provider.value}
-          onChange={(value) => provider.onChange?.(value)}
-          disabled={disabled}
-          label={`Runs with ${name}`}
-          title={`Runs with ${name}${provider.onChange ? '' : '. A session keeps who runs it.'}`}
-          heading="Runs with"
-          placement="up"
-          choices={provider.choices.map((p) => ({ value: p, label: PROVIDER_NAMES[p], disabled: !provider.onChange && p !== provider.value }))}
-          actions={[{ label: 'Manage providers…', onSelect: () => useSessions.getState().openSettings('providers'), data: { 'data-manage-providers': true } }]}
-          width={240}
-        >
-          {face}
-        </ChoiceMenu>
-      ),
-    });
-  }
   if (profile && profiles.length > 1) {
     const profileName = current?.name ?? 'Profile';
     chips.push({
       key: 'profile',
-      face: (l) => (
-        <>
-          <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
-          {chipShape(l).profileName && <span>{profileName}</span>}
-        </>
-      ),
+      face: (l) => {
+        const Icon = current && current.provider !== 'claude' ? PROVIDER_ICONS[current.provider] : null;
+        return (
+          <>
+            <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
+            {Icon && <Icon size={13} aria-hidden data-chip-provider={current!.provider} />}
+            {chipShape(l).profileName && <span>{profileName}</span>}
+          </>
+        );
+      },
       menu: (face) => (
         <ChoiceMenu
           name={names.profile}
           value={profile.value}
           onChange={(id) => profile.onChange?.(id)}
           disabled={disabled && !fixed}
-          label={`Claude profile: ${profileName}`}
-          title={`Claude profile: ${profileName}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
+          label={`Profile: ${profileName}${current && current.provider !== 'claude' ? ` (${PROVIDER_NAMES[current.provider]})` : ''}`}
+          title={`Profile: ${profileName}${current && current.provider !== 'claude' ? `, runs with ${PROVIDER_NAMES[current.provider]}` : ''}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
           heading="Profile"
           placement="up"
           choices={profiles.map((p) => ({
             value: p.id,
             label: profile.labelFor?.(p) ?? p.name,
-            description: p.account?.email ?? undefined,
+            // Another provider's profile says who runs it; a Claude Code one, its account.
+            description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],
             disabled: fixed && p.id !== profile.value,
           }))}

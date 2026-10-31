@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SESSION_PROVIDERS } from './providerConstants.ts';
 import { AbsolutePath, AnyAbsolutePath } from './absolutePath.ts';
 import { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT } from './backupConstants.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
@@ -38,6 +39,8 @@ export type ExportedProject = z.infer<typeof ExportedProject>;
  */
 export const ExportedProfile = z.object({
   dir: AnyAbsolutePath.nullable().default(null),
+  /** Who runs its sessions; files from before providers have none, and are Claude Code's. */
+  provider: z.enum(SESSION_PROVIDERS).catch('claude').default('claude'),
   name: z.string().trim().min(1).max(60),
   color: z.enum(PROFILE_COLORS).catch('gray'),
   /** Read field by field on import, like a project's defaults. */

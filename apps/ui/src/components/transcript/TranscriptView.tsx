@@ -371,8 +371,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
    */
   const otherProvider = (summary ? otherProviderOf(summary) : null) ?? host?.provider ?? null;
   const otherInfo = useProvider(otherProvider);
-  const readOnly = otherProvider !== null && !(otherInfo?.allowed && otherInfo.canStart);
-  const otherReadiness = useProviderReadiness(otherProvider && !readOnly ? otherProvider : null);
+  const readOnly = otherProvider !== null && !otherInfo?.canStart;
+  // The provider profile that runs it: its own login, models and commands.
+  const otherProfileId = otherProvider ? (host?.profileId ?? summary?.profileId ?? null) : null;
+  const otherReadiness = useProviderReadiness(!readOnly ? otherProfileId : null);
   const agentName = otherProvider ? PROVIDER_NAMES[otherProvider] : 'Claude';
   const savedModel = useSavedSettings((s) => s.bySession[sessionId]?.model);
   const permissionMap = useHosts((s) => s.permissions);
@@ -2030,7 +2032,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   }
                   controls={
                     otherProvider ? (
-                      <ProviderSessionControls provider={otherProvider} sessionId={sessionId} host={activeHost} models={otherReadiness?.models ?? []} />
+                      <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherReadiness?.models ?? []} />
                     ) : activeHost ? (
                       <SessionControls host={activeHost} />
                     ) : !restart && (!registryLive || leftover) ? (

@@ -275,9 +275,9 @@ export function runPhoneStartStep(): Promise<string> {
 }
 
 /**
- * New session with another provider (#199): Runs with › GitHub Copilot (the demo computer allows it) leaves Copilot's
- * models and modes (Autopilot) in Options, the box asks Copilot, Start gets ready with a task, and Reset goes back to
- * Claude Code. Nothing is started.
+ * New session with a provider profile (#199): picking the demo computer's Copilot profile in Options leaves Copilot's
+ * models and modes (Autopilot), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
+ * project's Claude Code profile. Nothing is started.
  */
 export function runPhoneProviderStep(): Promise<string> {
   return onPhone(async (js, win) => {
@@ -285,7 +285,7 @@ export function runPhoneProviderStep(): Promise<string> {
     if (failed) return failed;
     const sheet = '[data-remote-sheet="options"]';
     await js("document.querySelector('[data-remote-new-options]').click()");
-    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="provider"]')`, 3_000))) return 'the Options sheet has no Runs with row';
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"]')`, 3_000))) return 'the Options sheet has no Profile row';
     /** Picks an option in one of the sheet's rows by the start of its text. */
     const pick = async (row: string, text: string): Promise<string | null> => {
       await js(`document.querySelector('${sheet} [data-remote-choice="${row}"]').click()`);
@@ -294,10 +294,10 @@ export function runPhoneProviderStep(): Promise<string> {
       await js(`${option}.click()`);
       return (await waitInPage(win, `!document.querySelector('[data-remote-sheet="choice-${row}"]')`, 3_000)) ? null : `the ${row} list did not close`;
     };
-    const picked = await pick('provider', 'GitHub Copilot');
+    const picked = await pick('profile', 'Copilot');
     if (picked) return picked;
     const rows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
-    if (rows !== 'provider,model,mode') return `with Copilot, Options has ${rows}`;
+    if (rows !== 'profile,model,mode') return `with the Copilot profile, Options has ${rows}`;
     const mode = await pick('mode', 'Autopilot');
     if (mode) return mode;
     await js("document.querySelector('[data-remote-sheet-done]').click()");
@@ -314,6 +314,6 @@ export function runPhoneProviderStep(): Promise<string> {
     await js(`document.querySelector('${sheet} [data-remote-options-reset]').click()`);
     if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"], ${sheet} [data-remote-choice="effort"]')`, 3_000))) return "Reset didn't bring Claude Code's options back";
     await js("document.querySelector('[data-remote-sheet-done]').click()");
-    return `ok: Runs with GitHub Copilot left its models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task, Reset back to Claude Code`;
+    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task, Reset back to Claude Code`;
   });
 }

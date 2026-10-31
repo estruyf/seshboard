@@ -461,15 +461,6 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'pipelines-tree', page: 'pipelines', label: 'The tree it makes', detail: 'Each step is a sub-session under the session you run it from.', keywords: 'pipeline tree sub-sessions parent preview', target: '[data-pipeline-tree]', fallback: '[data-pipelines-settings]' },
 
     // VS Code
-    // Providers
-    {
-      id: 'provider-copilot',
-      page: 'providers',
-      label: 'GitHub Copilot',
-      detail: 'Read GitHub Copilot CLI sessions in Seshboard.',
-      keywords: 'providers agents copilot github codex other agent cli sessions read only allow',
-      target: '[data-provider-copilot]',
-    },
     {
       id: 'companion',
       page: 'vscode',

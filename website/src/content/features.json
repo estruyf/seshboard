@@ -632,11 +632,6 @@
       "page": "settings"
     },
     {
-      "id": "palette:settings-providers",
-      "name": "settings-providers",
-      "page": "settings"
-    },
-    {
       "id": "palette:settings-vscode",
       "name": "settings-vscode",
       "page": "settings"
@@ -1452,13 +1447,8 @@
       "page": "settings"
     },
     {
-      "id": "settings:providers",
-      "name": "Settings: Providers",
-      "page": "settings"
-    },
-    {
       "id": "feature:copilot-sessions",
-      "name": "GitHub Copilot sessions: allowed in Settings: Providers, started from New session (Runs with), continued from the message box, with the Copilot mark on the row; signed in with Copilot CLI's own login",
+      "name": "GitHub Copilot sessions: a Copilot profile in Settings: Profiles (provider, folder, Sign in), started from New session with that profile, continued from the message box, with the Copilot mark on the row; signed in with Copilot CLI's own login",
       "page": "settings"
     },
     {

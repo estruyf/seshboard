@@ -1,6 +1,6 @@
 /**
- * The agents Seshboard reads sessions from. Claude Code is always on; the others stay hidden until allowed in
- * Settings › Providers. Kept free of zod for the renderer.
+ * The agents Seshboard reads sessions from. Claude Code is always on; the others stay hidden until a profile of theirs
+ * is added in Settings › Profiles. Kept free of zod for the renderer.
  */
 export const SESSION_PROVIDERS = ['claude', 'copilot'] as const;
 export type SessionProvider = (typeof SESSION_PROVIDERS)[number];

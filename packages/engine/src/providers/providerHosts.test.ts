@@ -38,14 +38,14 @@ function setup(stored: StoredUpNext[] = []) {
     start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}`), session),
     dispose: async () => {},
   };
-  const adapter = { id: 'copilot', driver } as unknown as ProviderAdapter;
+  const adapter = { id: 'copilot', profileId: 'work-copilot', home: '/c', driver } as unknown as ProviderAdapter;
   const saved = new Map<string, StoredUpNext[]>([[ID, stored]]);
   const settings = new Map<string, { model?: string | null; permissionMode?: PermissionMode }>();
   const infos: SessionHostInfo[] = [];
   const turns: TurnOutcome[] = [];
   const hosts = new ProviderHosts({
     providers: () => [adapter],
-    providerOf: () => 'copilot',
+    profileOf: () => 'work-copilot',
     sessionCwd: () => '/w',
     settings: { get: (id) => settings.get(id) ?? null, set: (id, c) => settings.set(id, { ...settings.get(id), ...c }) },
     upNext: { list: (id) => saved.get(id) ?? [], save: (id, m) => saved.set(id, [...m]) },
@@ -68,7 +68,7 @@ const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'no
 describe('ProviderHosts Up next', () => {
   it('queues while a turn runs, sends the next when it ends, and steers or stops it on request', async () => {
     const { hosts, calls, saved, last, turn, turns } = setup();
-    await hosts.create({ provider: 'copilot', cwd: '/w', prompt: 'first', attachments: [], model: null, permissionMode: 'plan' });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'first', attachments: [], model: null, permissionMode: 'plan' });
     expect(calls).toEqual(['start:new:plan', 'send:first']);
     turn.start();
     expect((await send(hosts, 'second')).queued).toBe(true);
@@ -94,7 +94,7 @@ describe('ProviderHosts Up next', () => {
 
   it('holds Up next after Stop until resumed, and edits and reorders it', async () => {
     const { hosts, calls, last, turn } = setup();
-    await hosts.create({ provider: 'copilot', cwd: '/w', prompt: 'first', attachments: [], model: null });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'first', attachments: [], model: null });
     turn.start();
     await send(hosts, 'a');
     await send(hosts, 'b');

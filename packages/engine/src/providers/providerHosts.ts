@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  BUILTIN_PROFILE_ID,
   RpcError,
   type Capabilities,
   type HostState,
@@ -24,12 +23,12 @@ import type { DriverSession, ProviderAdapter } from './provider.ts';
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
   providers(): ProviderAdapter[];
-  /** The provider of a session listed by one (to resume it). */
-  providerOf(sessionId: string): OptionalProvider | undefined;
+  /** The provider profile a session belongs to (to resume it with that profile's login). */
+  profileOf(sessionId: string): string | undefined;
   /** The folder a session ran in. */
   sessionCwd(sessionId: string): string | null;
   /** The session is open in the provider's own app right now (Copilot CLI in a terminal): resuming it here would clash. */
-  openElsewhere?(provider: OptionalProvider, sessionId: string): boolean;
+  openElsewhere?(adapter: ProviderAdapter, sessionId: string): boolean;
   /** What each session last ran with (its mode and model), so a resume picks up where it left off. */
   settings?: { get(sessionId: string): { model?: string | null; permissionMode?: PermissionMode | null } | null | undefined; set(sessionId: string, change: { model?: string | null; permissionMode?: PermissionMode }): void };
   /** Where Up next is kept, the same store as Claude Code's sessions, so it outlives the session and the app. */
@@ -49,7 +48,8 @@ export interface ProviderHostsDeps {
 }
 
 interface Host {
-  provider: OptionalProvider;
+  /** The provider profile running it. */
+  adapter: ProviderAdapter;
   session: DriverSession | null;
   info: SessionHostInfo;
   permissions: Map<string, PermissionRequest>;
@@ -81,7 +81,7 @@ export class ProviderHosts {
 
   /** Whether a session belongs to a provider that can run it here (running or not). */
   handles(sessionId: string): boolean {
-    return this.hosts.has(sessionId) || this.adapterOf(this.deps.providerOf(sessionId)) !== undefined;
+    return this.hosts.has(sessionId) || this.adapterOf(this.deps.profileOf(sessionId)) !== undefined;
   }
 
   list(): { hosts: SessionHostInfo[]; permissions: PermissionRequest[] } {
@@ -95,12 +95,12 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { provider: OptionalProvider; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode }): Promise<string> {
-    const adapter = this.adapterOf(params.provider);
-    if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This provider is not allowed, or cannot start sessions');
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode }): Promise<string> {
+    const adapter = this.adapterOf(params.profileId);
+    if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
-    const host = this.newHost('', params.provider, params.cwd, params.model, permissionMode, 'starting');
+    const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting');
     let session: DriverSession;
     try {
       session = await adapter.driver.start({ cwd: params.cwd, model: params.model, permissionMode }, this.eventsFor(host));
@@ -161,7 +161,7 @@ export class ProviderHosts {
       this.deps.settings?.set(sessionId, { permissionMode: mode });
       return;
     }
-    const adapter = this.adapterOf(host.provider);
+    const adapter = host.adapter;
     if (!adapter?.driver?.modes.some((m) => m.value === mode)) throw new RpcError('INVALID', 'This provider has no such mode');
     await host.session.setMode(mode);
     this.deps.settings?.set(sessionId, { permissionMode: mode });
@@ -172,7 +172,7 @@ export class ProviderHosts {
   async commands(sessionId: string): Promise<SlashCommand[]> {
     const host = this.hosts.get(sessionId);
     if (host?.session) return host.session.commands().catch(() => []);
-    return this.adapterOf(this.deps.providerOf(sessionId))?.driver?.commands().catch(() => []) ?? [];
+    return this.adapterOf(this.deps.profileOf(sessionId))?.driver?.commands().catch(() => []) ?? [];
   }
 
   /** What a session can use (Tools): its own lists once it runs here; before that, only its commands, read-only. */
@@ -248,10 +248,9 @@ export class ProviderHosts {
   }
 
   private async resume(sessionId: string): Promise<Host> {
-    const provider = this.deps.providerOf(sessionId);
-    const adapter = this.adapterOf(provider);
-    if (!provider || !adapter?.driver) throw new RpcError('READ_ONLY_SESSION', 'Sending is only available for Claude Code sessions');
-    if (this.deps.openElsewhere?.(provider, sessionId)) {
+    const adapter = this.adapterOf(this.deps.profileOf(sessionId));
+    if (!adapter?.driver) throw new RpcError('READ_ONLY_SESSION', 'Sending is only available for Claude Code sessions');
+    if (this.deps.openElsewhere?.(adapter, sessionId)) {
       throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in its own app right now. Close it there first.');
     }
     const cwd = this.deps.sessionCwd(sessionId);
@@ -259,7 +258,7 @@ export class ProviderHosts {
     const saved = this.deps.settings?.get(sessionId);
     const model = saved?.model ?? null;
     const permissionMode = this.modeFor(adapter, saved?.permissionMode);
-    const host = this.track(sessionId, provider, cwd, model, permissionMode, 'starting');
+    const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting');
     try {
       host.session = await adapter.driver.start({ cwd, model, permissionMode, resume: sessionId }, this.eventsFor(host));
     } catch (error) {
@@ -319,16 +318,16 @@ export class ProviderHosts {
   }
 
   /** A host that is reported from now on. */
-  private track(sessionId: string, provider: OptionalProvider, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
-    const host = this.newHost(sessionId, provider, cwd, model, permissionMode, state);
+  private track(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
+    const host = this.newHost(sessionId, adapter, cwd, model, permissionMode, state);
     this.hosts.set(sessionId, host);
     this.deps.onInfo(host.info);
     return host;
   }
 
-  private newHost(sessionId: string, provider: OptionalProvider, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
+  private newHost(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
     return {
-      provider,
+      adapter,
       session: null,
       permissions: new Map(),
       inTurn: false,
@@ -350,10 +349,10 @@ export class ProviderHosts {
         promptedAt: null,
         queue: [],
         queueHold: null,
-        // Claude profiles don't apply: the provider's own login runs it.
-        profileId: BUILTIN_PROFILE_ID,
+        // The provider profile whose login runs it.
+        profileId: adapter.profileId,
         backgroundTasks: [],
-        provider,
+        provider: adapter.id,
       },
     };
   }
@@ -419,7 +418,7 @@ export class ProviderHosts {
     this.deps.onInfo(host.info);
   }
 
-  private adapterOf(provider: OptionalProvider | undefined): ProviderAdapter | undefined {
-    return provider ? this.deps.providers().find((p) => p.id === provider && p.driver) : undefined;
+  private adapterOf(profileId: string | undefined): ProviderAdapter | undefined {
+    return profileId ? this.deps.providers().find((p) => p.profileId === profileId && p.driver) : undefined;
   }
 }

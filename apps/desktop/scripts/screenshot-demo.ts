@@ -577,8 +577,8 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
 }
 
 /**
- * A GitHub Copilot CLI session on acme-store (Settings › Providers, #199), as Copilot writes it to
- * `~/.copilot/session-state/<id>/`: shown only once Copilot is allowed. Returns its id.
+ * A GitHub Copilot CLI session on acme-store (#199), as Copilot writes it to `~/.copilot/session-state/<id>/`: shown
+ * only once a Copilot profile is added in Settings › Profiles. Returns its id.
  */
 function writeCopilotDemo(home: string, cwd: string, at: number): string {
   const id = randomUUID();

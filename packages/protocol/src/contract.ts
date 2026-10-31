@@ -46,7 +46,7 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
-import { OptionalProviderSchema, ProvidersSnapshot, ProviderStatus } from './providers.ts';
+import { ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
@@ -294,11 +294,14 @@ export const contract = {
      * in it (a session, a resume, a helper) fails with TRUST_NEEDED, with `{ root, brings }` as its details.
      */
     'projects.trustClone': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
-    // --- Claude profiles (one login per config folder) --------------------------------------
+    // --- Profiles (one login per config folder, of Claude Code or another provider) -----------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
-    /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
+    /**
+     * Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`,
+     * or for GitHub Copilot `COPILOT_HOME=<folder> copilot login`.
+     */
     'profiles.add': {
-      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath }),
+      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath, provider: SessionProviderSchema.default('claude') }),
       result: z.object({ id: z.string() }),
     },
     'profiles.update': { params: z.object({ id: ProfileId, name: ProfileName.optional(), color: ProfileColor.optional() }), result: z.object({}) },
@@ -307,16 +310,16 @@ export const contract = {
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
     /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
     'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
-    // --- Providers: agents besides Claude Code whose sessions show up (read-only) -----------
+    // --- Providers: agents besides Claude Code that a profile can use -------------------------
     'providers.list': { params: z.object({}), result: ProvidersSnapshot },
-    /** Allows a provider (its sessions show up in the sidebar) or hides it again. */
-    'providers.setAllowed': { params: z.object({ id: OptionalProviderSchema, allowed: z.boolean() }), result: ProvidersSnapshot },
-    /** Whether the provider's CLI is installed and signed in (it starts its runtime to ask). */
-    'providers.status': { params: z.object({ id: OptionalProviderSchema }), result: ProviderStatus },
-    /** The models the provider offers this account. */
-    'providers.models': { params: z.object({ id: OptionalProviderSchema }), result: z.object({ models: z.array(ModelOption) }) },
-    /** The slash commands a new session with the provider has (New session's `/` list). */
-    'providers.commands': { params: z.object({ id: OptionalProviderSchema }), result: z.object({ commands: z.array(SlashCommand) }) },
+    /** Whether a provider profile's CLI is installed and signed in there (it starts the profile's runtime to ask). */
+    'providers.status': { params: z.object({ profileId: ProfileId }), result: ProviderStatus },
+    /** The models a provider profile's account offers. */
+    'providers.models': { params: z.object({ profileId: ProfileId }), result: z.object({ models: z.array(ModelOption) }) },
+    /** The slash commands a new session with a provider profile has (New session's `/` list). */
+    'providers.commands': { params: z.object({ profileId: ProfileId }), result: z.object({ commands: z.array(SlashCommand) }) },
+    /** Opens a terminal that signs a provider profile in with its own CLI (`copilot login`), in its folder. */
+    'providers.signIn': { params: z.object({ profileId: ProfileId }), result: TerminalInfo },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),
@@ -392,11 +395,6 @@ export const contract = {
          * session from a fork's pull request Seshboard can't push to (`readOnly`), push and Create pull request are off.
          */
         github: GithubOrigin.optional(),
-        /**
-         * Start it with another provider (GitHub Copilot) instead of Claude Code. Claude Code's own options (profile,
-         * effort, permission mode, worktree, Auto) don't apply to it.
-         */
-        provider: OptionalProviderSchema.nullable().default(null),
       }),
       result: z.object({ sessionId: z.string() }),
     },
@@ -1501,7 +1499,6 @@ export const contract = {
     'usage.tokens': z.object({ profileIds: z.array(z.string()), scan: UsageScan.nullable() }),
     /** Full list whenever profiles are added, changed or removed, or the default changes. */
     'profiles.changed': ProfilesSnapshot,
-    'providers.changed': ProvidersSnapshot,
     /** Full list whenever terminals start, exit or close. */
     'terminals.changed': z.object({ terminals: z.array(TerminalInfo) }),
     'claudeUpdate.changed': ClaudeUpdateState,

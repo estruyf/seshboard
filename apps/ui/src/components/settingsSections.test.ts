@@ -13,7 +13,7 @@ describe('navGroups', () => {
       ['app', ['general', 'theme', 'sidebar', 'notifications', 'focus']],
       ['claude', ['conversation', 'profiles', 'usage', 'memory']],
       ['work', ['projects', 'sessions', 'prompts', 'pipelines']],
-      ['connect', ['providers', 'vscode', 'remote', 'mods']],
+      ['connect', ['vscode', 'remote', 'mods']],
       ['bottom', ['backup', 'diagnostics', 'about']],
     ]);
   });

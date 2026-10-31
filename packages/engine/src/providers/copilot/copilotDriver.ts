@@ -100,7 +100,7 @@ export interface CopilotDriverOptions {
 }
 
 const INSTALL = 'Install GitHub Copilot CLI to start Copilot sessions here.';
-const SIGN_IN = 'Sign in to GitHub Copilot CLI: run `copilot` in a terminal and use /login. Seshboard uses that login.';
+const SIGN_IN = 'Not signed in to GitHub Copilot CLI. Use Sign in on this profile in Settings › Profiles, or run `copilot login`. Seshboard uses that login.';
 
 /**
  * Starts and steers GitHub Copilot sessions through the Copilot SDK, with one headless `copilot` runtime for all of

@@ -1,12 +1,14 @@
 import { Check, ChevronRight, Copy, FolderOpen, LogIn, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { expandHome, isAbsolutePath, PROFILE_COLORS, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults } from '@seshboard/protocol/client';
+import { expandHome, isAbsolutePath, PROFILE_COLORS, PROVIDER_NAMES, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults, type SessionProvider } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
-import { openTerminal } from '../../state/terminalsStore.ts';
+import { useProviders } from '../../state/providersStore.ts';
+import { openTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { describeDefaults, ProjectDefaultsEditor } from '../projects/ProjectDefaultsEditor.tsx';
 import { APP_TERMINAL } from '../terminal/appTerminal.ts';
@@ -34,6 +36,75 @@ export const loginCommand = (profile: Pick<ClaudeProfile, 'configDir' | 'builtin
  * in there. The engine sets the folder, so nothing is typed or quoted for the shell.
  */
 const signInHere = (client: EngineClient, profileId: string) => openTerminal(client, APP_TERMINAL, null, 'claude', false, profileId);
+
+/**
+ * Signs a provider profile in with its own CLI (`copilot login`), in the window's own terminal, with the profile's
+ * folder: Seshboard never sees the credential.
+ */
+async function signInProvider(client: EngineClient, profileId: string): Promise<void> {
+  const info = await client.call('providers.signIn', { profileId });
+  const terminals = useTerminals.getState();
+  terminals.togglePanel(APP_TERMINAL, true);
+  terminals.setActive(APP_TERMINAL, info.id);
+}
+
+/**
+ * Who a provider profile is signed in as, from its own CLI (`providers.status`, which starts its runtime), and Sign in
+ * when it isn't.
+ */
+function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [status, setStatus] = useState<{ account: string | null; problem: string | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    if (!client) return;
+    let current = true;
+    setStatus(null);
+    void client.call('providers.status', { profileId: profile.id }).then(
+      (s) => current && setStatus({ account: s.account, problem: s.problem }),
+      (e: Error) => current && setStatus({ account: null, problem: e.message }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, profile.id, version]);
+  const name = PROVIDER_NAMES[profile.provider];
+  if (!status) return <p className="text-ui text-muted">Asking {name}…</p>;
+  if (!status.problem) {
+    return (
+      <p className="text-ui text-muted" data-profile-account={profile.id}>
+        Signed in as <span className="text-text">{status.account ?? `a ${name} account`}</span>
+      </p>
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-ui text-muted">
+      <p className="min-w-0 flex-1" data-profile-problem={profile.id}>
+        {status.problem}
+      </p>
+      <Button variant="secondary" className="shrink-0" onClick={() => setVersion((v) => v + 1)}>
+        Check again
+      </Button>
+      <Button
+        variant="primary"
+        icon={<LogIn size={13} aria-hidden />}
+        className="shrink-0"
+        disabled={!client}
+        onClick={() => client && void signInProvider(client, profile.id).catch((e: Error) => setError(e.message))}
+        data-profile-sign-in={profile.id}
+      >
+        Sign in
+      </Button>
+      {error && (
+        <p role="alert" className="w-full text-ui text-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const COLOR_NAME: Record<ProfileColor, string> = {
   yellow: 'Yellow',
@@ -184,12 +255,14 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           />
         )}
       </div>
-      <p className="truncate text-ui text-muted" data-tooltip={profile.configDir}>
-        {tildify(profile.configDir, home)}
+      <p className="truncate text-ui text-muted" data-tooltip={profile.configDir} data-profile-provider={profile.provider}>
+        <span className="text-text">{PROVIDER_NAMES[profile.provider]}</span> · {tildify(profile.configDir, home)}
         {profile.builtin && <span> · Claude Code’s own folder</span>}
         {!profile.exists && <span className="text-warn"> · folder not found</span>}
       </p>
-      {profile.account ? (
+      {profile.provider !== 'claude' ? (
+        <ProviderAccount profile={profile} />
+      ) : profile.account ? (
         <p className="text-ui text-muted">
           Signed in as <span className="text-text">{profile.account.email ?? 'a claude.ai account'}</span>
           {profile.account.organization && <> · {profile.account.organization}</>}
@@ -217,7 +290,8 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           <CopyCommand command={loginCommand(profile)} block />
         </div>
       )}
-      <ProfileDefaultsSection profile={profile} onError={setError} />
+      {/* Claude Code's models, efforts and worktrees: another provider's sessions pick theirs in New session. */}
+      {profile.provider === 'claude' && <ProfileDefaultsSection profile={profile} onError={setError} />}
       {error && (
         <p role="alert" className="text-ui text-error">
           {error}
@@ -230,13 +304,21 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
 function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
+  const catalog = useProviders((s) => s.providers);
+  const profiles = useProfiles((s) => s.profiles);
+  const [provider, setProvider] = useState<SessionProvider>('claude');
   const [name, setName] = useState('Work');
   const [color, setColor] = useState<ProfileColor>('blue');
   const [folder, setFolder] = useState<string | null>(null);
   const [signIn, setSignIn] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const suggested = home ? `${home}${separatorOf(home)}.claude-${slug(name)}` : '';
+  const providerName = PROVIDER_NAMES[provider];
+  // Another provider's own folder first (`~/.copilot`), while no profile uses it; then a folder of its own per profile.
+  const ownFolder = catalog.find((p) => p.id === provider)?.defaultFolder ?? null;
+  const ownTaken = profiles.some((p) => p.configDir === ownFolder);
+  const suggested =
+    provider !== 'claude' && ownFolder && !ownTaken ? ownFolder : home ? `${home}${separatorOf(home)}.${provider === 'claude' ? 'claude' : provider}-${slug(name)}` : '';
   const path = expandHome((folder ?? suggested).trim(), home);
   // Say why Add profile is unavailable instead of leaving a dimmed button to puzzle over.
   const problem = !name.trim() ? 'Give the profile a name.' : !path ? 'Choose a config folder.' : !isAbsolutePath(path) ? 'Use a full path to the folder, or one that starts with ~.' : null;
@@ -246,12 +328,17 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
     setBusy(true);
     setError(null);
     try {
-      const { id } = await client.call('profiles.add', { name: name.trim(), color, configDir: path });
+      const { id } = await client.call('profiles.add', { name: name.trim(), color, configDir: path, provider });
       onDone();
       if (!signIn) return;
       // An existing folder may have its login already.
-      const { profiles } = await client.call('profiles.list', {});
-      if (!profiles.find((p) => p.id === id)?.account) await signInHere(client, id);
+      if (provider !== 'claude') {
+        const status = await client.call('providers.status', { profileId: id });
+        if (status.problem) await signInProvider(client, id);
+        return;
+      }
+      const listed = await client.call('profiles.list', {});
+      if (!listed.profiles.find((p) => p.id === id)?.account) await signInHere(client, id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -268,6 +355,20 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
       }}
       data-add-profile-form
     >
+      {catalog.length > 0 && (
+        <SegmentedControl<SessionProvider>
+          mode="radio"
+          label="Runs with"
+          value={provider}
+          onChange={(next) => {
+            setProvider(next);
+            // Each provider suggests its own folder.
+            setFolder(null);
+          }}
+          segments={[{ value: 'claude', label: PROVIDER_NAMES.claude, data: { 'data-new-profile-provider': 'claude' } }, ...catalog.map((p) => ({ value: p.id, label: p.name, data: { 'data-new-profile-provider': p.id } }))]}
+          className="w-fit"
+        />
+      )}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <input className={`${field} w-40`} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Name" aria-label="Name" autoFocus data-new-profile-name />
         <ColorPicker value={color} onChange={setColor} />
@@ -277,7 +378,7 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
           className={`${field} min-w-0 flex-1 font-mono`}
           value={folder ?? suggested}
           onChange={(e) => setFolder(e.target.value)}
-          placeholder="Config folder, e.g. ~/.claude-work"
+          placeholder={provider === 'claude' ? 'Config folder, e.g. ~/.claude-work' : `Config folder, e.g. ~/.${provider}`}
           aria-label="Config folder"
           spellCheck={false}
           data-new-profile-folder
@@ -286,12 +387,19 @@ function AddProfileForm({ home, onDone }: { home: string | null; onDone(): void 
           Choose…
         </Button>
       </div>
-      <p className="text-ui text-muted">
-        Claude Code keeps a separate login, settings, plugins and sessions in each folder. A new folder is created. Use an existing one (for example where you already
-        run <code className="font-mono">CLAUDE_CONFIG_DIR=… claude</code>) to see its sessions.
-      </p>
+      {provider === 'claude' ? (
+        <p className="text-ui text-muted">
+          Claude Code keeps a separate login, settings, plugins and sessions in each folder. A new folder is created. Use an existing one (for example where you already
+          run <code className="font-mono">CLAUDE_CONFIG_DIR=… claude</code>) to see its sessions.
+        </p>
+      ) : (
+        <p className="text-ui text-muted" data-new-profile-provider-note>
+          {providerName} keeps its login, settings and sessions in this folder (<code className="font-mono">COPILOT_HOME</code>). Use its own folder to see the sessions
+          you already have, or a new one for another account. Seshboard runs your own Copilot CLI with it, and never sees the login.
+        </p>
+      )}
       <Checkbox checked={signIn} onChange={setSignIn} className="w-fit text-ui text-text" dataAttrs={{ 'data-new-profile-sign-in': true }}>
-        Sign in now: open Claude Code with this profile in Seshboard’s terminal
+        {provider === 'claude' ? 'Sign in now: open Claude Code with this profile in Seshboard’s terminal' : `Sign in now if needed: run ${providerName}’s sign in in Seshboard’s terminal`}
       </Checkbox>
       {error && (
         <p role="alert" className="text-ui text-error">
@@ -369,7 +477,7 @@ function SetupGuide() {
   );
 }
 
-/** Settings → Claude profiles: one Claude Code login per config folder, and which one is the default. */
+/** Settings → Profiles: one login per config folder, of Claude Code or another provider, and which one is the default. */
 export function ProfilesSettings() {
   const profiles = useProfiles((s) => s.profiles);
   const connection = useEngineConnection();
@@ -380,7 +488,7 @@ export function ProfilesSettings() {
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" data-profiles>
-      <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" aria-label="Claude profiles">
+      <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" aria-label="Profiles">
         {profiles.map((profile) => (
           <ProfileRow key={profile.id} profile={profile} home={home} onRemove={() => setRemoving(profile)} />
         ))}

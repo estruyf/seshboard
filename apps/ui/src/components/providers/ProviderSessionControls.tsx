@@ -5,10 +5,10 @@ import { useProvider } from '../../state/providersStore.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 
 /**
- * The chips under the message box in another provider's session (GitHub Copilot): who runs it, its model and its mode
- * (the provider's own modes), which change while it runs here. Claude Code's profile and effort don't apply.
+ * The chips under the message box in another provider's session (GitHub Copilot): its profile (which says who runs it),
+ * its model and its mode (the provider's own modes), which change while it runs here. Claude Code's effort doesn't apply.
  */
-export function ProviderSessionControls({ provider, sessionId, host, models }: { provider: OptionalProvider; sessionId: string; host: SessionHostInfo | null; models: ModelOption[] }) {
+export function ProviderSessionControls({ provider, profileId, sessionId, host, models }: { provider: OptionalProvider; profileId: string | null; sessionId: string; host: SessionHostInfo | null; models: ModelOption[] }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const modes = useProvider(provider)?.modes ?? [];
@@ -22,8 +22,8 @@ export function ProviderSessionControls({ provider, sessionId, host, models }: {
   const value = host.model ?? '';
   return (
     <ComposerChipRow
-      provider={{ value: provider, choices: [provider] }}
-      profile={null}
+      // A session keeps its profile.
+      profile={profileId ? { value: profileId } : null}
       model={{
         value,
         label: value ? (models.find((m) => m.value === value)?.displayName ?? value) : 'Default model',

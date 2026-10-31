@@ -190,11 +190,9 @@ export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 /** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
   /**
-   * Start it with another provider (one of `RemoteOptions.providers`) instead of Claude Code: only `model` and
-   * `permissionMode` apply, both the provider's own.
+   * The profile to run with, for this session only; left out: the project's, else the default. A profile of another
+   * provider (GitHub Copilot) starts it with that provider: only `model` and `permissionMode` apply, both its own.
    */
-  provider: z.enum(OPTIONAL_PROVIDERS).optional(),
-  /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
   profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
   effort: Effort.nullable().optional(),
@@ -213,22 +211,26 @@ export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
-/** A Claude profile (login) as a phone knows it: its name and colour, never its folder or account. */
-export const RemoteProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor, defaults: RemoteDefaults });
+/** A provider's own mode for one of Seshboard's (Copilot's Autopilot for `auto`). */
+export const RemoteProviderMode = z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() });
+
+/**
+ * A profile (login) as a phone knows it: its name and colour, never its folder or account. A profile of another
+ * provider (GitHub Copilot) says so, with that provider's own modes; left out: Claude Code's.
+ */
+export const RemoteProfile = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: ProfileColor,
+  defaults: RemoteDefaults,
+  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode) }).optional(),
+});
 export type RemoteProfile = z.infer<typeof RemoteProfile>;
 
 /**
  * New session's choices: the models, efforts and profiles, and each project's profile and defaults. A new session
  * takes the project's defaults, then its profile's, then Seshboard's own.
  */
-/** A provider New session can start with (GitHub Copilot): allowed on the computer, with its own modes. */
-export const RemoteProvider = z.object({
-  id: z.enum(OPTIONAL_PROVIDERS),
-  name: z.string(),
-  modes: z.array(z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() })),
-});
-export type RemoteProvider = z.infer<typeof RemoteProvider>;
-
 export const RemoteOptions = z.object({
   models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })),
   efforts: z.array(Effort),
@@ -241,11 +243,6 @@ export const RemoteOptions = z.object({
    * first prompt. Off, a default of Auto starts on the default model. Left out by a Seshboard from before phones knew it.
    */
   auto: z.object({ enabled: z.boolean(), allowed: z.array(AutoTierSchema) }).optional(),
-  /**
-   * The providers besides Claude Code that can start sessions there (`providers.ready` says whether one can now). Left
-   * out by a Seshboard from before providers, and empty when none is allowed.
-   */
-  providers: z.array(RemoteProvider).optional(),
   projects: z.array(
     z.object({
       id: ProjectId,
@@ -455,11 +452,12 @@ export const remoteContract = {
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
     /**
-     * Whether a provider can start a session now (installed and signed in with its own CLI, which says how when it
-     * isn't), and its models. Asked when New session picks it: it starts the provider's runtime on the computer.
+     * Whether a provider profile (one `options.get` lists with a `provider`) can start a session now (installed and
+     * signed in with its own CLI, which says how when it isn't), and its models. Asked when New session picks it: it
+     * starts the profile's runtime on the computer.
      */
     'providers.ready': {
-      params: z.object({ id: z.enum(OPTIONAL_PROVIDERS) }),
+      params: z.object({ profileId: ProfileId }),
       result: z.object({ problem: z.string().nullable(), models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })) }),
     },
     /**

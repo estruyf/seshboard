@@ -11,16 +11,15 @@ export const OptionalProviderSchema = z.enum(OPTIONAL_PROVIDERS);
 export const ProviderMode = z.object({ value: PermissionMode, label: z.string(), description: z.string() });
 export type ProviderMode = z.infer<typeof ProviderMode>;
 
-/** One provider in Settings › Providers. */
+/**
+ * A provider besides Claude Code that a profile can use (Settings › Profiles, Add profile): what it is, not whether it is
+ * used. A profile of it is what reads and runs its sessions.
+ */
 export const ProviderInfo = z.object({
   id: OptionalProviderSchema,
   name: z.string(),
-  /** Its sessions show up in the sidebar. Off until the user allows it. */
-  allowed: z.boolean(),
-  /** Its data folder exists on this computer (the provider was used here). */
-  found: z.boolean(),
-  /** Where its sessions are read from (`~/.copilot/session-state`). */
-  folder: z.string(),
+  /** Its own config folder on this computer (`~/.copilot`, or `$COPILOT_HOME`), offered for a new profile. */
+  defaultFolder: z.string(),
   /** The command that continues one of its sessions in its own CLI, with `{sessionId}` where the id goes. */
   resumeCommand: z.string(),
   /** Seshboard can start and continue its sessions (else they are read-only). */

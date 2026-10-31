@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteProvider, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -13,7 +13,7 @@ import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
-import { BranchChip, CLAUDE_CODE, EffortChip, ModeChip, ModelChip, ProfileChip, ProviderChip, ProviderModeChip, ProviderModelChip, WorkspaceChip } from './OptionChips.tsx';
+import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, ProviderModeChip, ProviderModelChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd, RoundButton } from './ui.tsx';
@@ -78,12 +78,11 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   /** The project's pipelines (`REMOTE_FEATURE_PIPELINES`), and the one Run as picked: Start runs it with the prompt as its task. */
   const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
   const [runAs, setRunAs] = useState<string | null>(null);
-  /** Runs with: Claude Code, or a provider the computer allows (GitHub Copilot), with its own model and mode. */
-  const [runWith, setRunWith] = useState<string>(CLAUDE_CODE);
+  /** A provider profile's (GitHub Copilot's) own model and mode, picked for this session. */
   const [providerModel, setProviderModel] = useState<string | null>(null);
   const [providerMode, setProviderMode] = useState<RemotePermissionMode | null>(null);
-  /** Whether the provider picked can start a session there, and its models (null while it is asked). */
-  const [providerReady, setProviderReady] = useState<{ provider: string; problem: string | null; models: RemoteOptions['models'] } | null>(null);
+  /** Whether the provider profile picked can start a session there, and its models (null while it is asked). */
+  const [providerReady, setProviderReady] = useState<{ profileId: string; problem: string | null; models: RemoteOptions['models'] } | null>(null);
   const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
   const wide = useWide();
@@ -111,24 +110,10 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setChanges({});
     setError(null);
     setListOpen(false);
-    setRunWith(CLAUDE_CODE);
     setProviderModel(null);
     setProviderMode(null);
   }, [computer]);
 
-  // Picking a provider asks the computer whether it can run a session now (it starts the provider there).
-  useEffect(() => {
-    setProviderReady(null);
-    if (!client || runWith === CLAUDE_CODE) return;
-    let current = true;
-    void client.call('providers.ready', { id: runWith as RemoteProvider['id'] }).then(
-      (result) => current && setProviderReady({ provider: runWith, ...result }),
-      (e: Error) => current && setProviderReady({ provider: runWith, problem: e.message, models: [] }),
-    );
-    return () => {
-      current = false;
-    };
-  }, [client, runWith]);
 
   useEffect(() => {
     if (!client) return;
@@ -212,11 +197,26 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
   const checkout = checkoutBranch(branch, branches, choice.worktree);
   const withBranch = checkout ? { checkoutBranch: checkout } : {};
-  const provider = runWith === CLAUDE_CODE ? null : (options?.providers?.find((p) => p.id === runWith) ?? null);
+  // The profile picks who runs it: a profile of another provider (GitHub Copilot) leaves only that provider's options.
+  const provider = (options ? profilesOf(options).find((p) => p.id === choice.profileId)?.provider : undefined) ?? null;
+  const providerProfileId = provider ? choice.profileId : null;
   const providerModeNow = provider ? (providerMode && provider.modes.some((m) => m.value === providerMode) ? providerMode : (provider.modes[0]?.value ?? 'default')) : null;
   /** Why the provider can't start a session now (its own words), or that it is being asked. */
-  const providerBlocked = provider ? (providerReady?.provider === provider.id ? providerReady.problem : `Checking ${provider.name}…`) : null;
-  const providerModels = providerReady?.provider === provider?.id ? (providerReady?.models ?? []) : [];
+  const providerBlocked = provider ? (providerReady?.profileId === providerProfileId ? providerReady!.problem : `Checking ${provider.name}…`) : null;
+  const providerModels = providerReady && providerReady.profileId === providerProfileId ? providerReady.models : [];
+  // Picking a provider profile asks the computer whether it can run a session now (it starts the provider there).
+  useEffect(() => {
+    setProviderReady(null);
+    if (!client || !providerProfileId) return;
+    let current = true;
+    void client.call('providers.ready', { profileId: providerProfileId }).then(
+      (result) => current && setProviderReady({ profileId: providerProfileId, ...result }),
+      (e: Error) => current && setProviderReady({ profileId: providerProfileId, problem: e.message, models: [] }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, providerProfileId]);
   const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading && !providerBlocked);
   // A pipeline's steps are Claude Code's: none with another provider.
   const pipeline = provider ? null : (pipelines.find((p) => p.id === runAs) ?? null);
@@ -245,7 +245,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
       const { sessionId } = await client!.call(
         'session.create',
         provider
-          ? { projectId: projectId!, prompt: prompt.trim(), ...files, provider: provider.id, model: providerModel, permissionMode: providerModeNow! }
+          ? { projectId: projectId!, prompt: prompt.trim(), ...files, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow! }
           : { projectId: projectId!, prompt: prompt.trim(), ...files, ...changedFrom(choice, defaults, baseProfile), ...withBranch },
       );
       rememberProject(computer, projectId!);
@@ -307,21 +307,19 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
           pipeline: pipeline?.name ?? null,
         })
       : null;
-  const changedAny = Object.keys(changes).length > 0 || branch !== null || runAs !== null || runWith !== CLAUDE_CODE;
+  const changedAny = Object.keys(changes).length > 0 || branch !== null || runAs !== null;
   const resetOptions = () => {
     setChanges({});
     setBranch(null);
     setRunAs(null);
-    setRunWith(CLAUDE_CODE);
     setProviderModel(null);
     setProviderMode(null);
   };
-  const providers = options?.providers ?? [];
   /** The choices for this session, the same on a wide screen (chips) and a phone (rows in Options). */
   const choiceRows = (look: 'chip' | 'row') =>
-    provider ? (
+    provider && options && picked ? (
       <>
-        <ProviderChip providers={providers} value={runWith} onPick={setRunWith} look={look} />
+        <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look={look} />
         <ProviderModelChip provider={provider.name} models={providerModels} value={providerModel} onPick={setProviderModel} look={look} />
         <ProviderModeChip modes={provider.modes} value={providerModeNow!} onPick={setProviderMode} look={look} />
       </>
@@ -329,7 +327,6 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
       options &&
       picked && (
         <>
-          <ProviderChip providers={providers} value={runWith} onPick={setRunWith} look={look} />
           {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look={look} />}
           <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look={look} />
           <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look={look} />

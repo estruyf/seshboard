@@ -60,9 +60,7 @@ import {
   withRunStub,
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
-  type OptionalProvider,
-  type RemotePermissionMode,
-  type RemoteProvider,
+  type RemoteProfile,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -205,12 +203,10 @@ export interface RemoteHubOptions {
   respond(requestId: string, decision: PermissionDecision): void;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
-  /** The providers besides Claude Code that can start sessions (allowed, with a driver). Without it, none. */
-  providers?(): RemoteProvider[];
-  /** Whether a provider can start a session now, and its models. */
-  providerReady?(id: OptionalProvider): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
-  /** A new session in `root` with another provider, on its model and mode (null: its defaults). */
-  createWithProvider?(root: string, prompt: string, provider: OptionalProvider, model: string | null, permissionMode: RemotePermissionMode | null, images: RemoteImage[]): Promise<{ sessionId: string }>;
+  /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
+  providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
+  /** Whether a provider profile can start a session now, and its models. */
+  providerReady?(profileId: string): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
   /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
   branches(root: string): Promise<RemoteBranches>;
   /** Puts a prompt in the queue (Later) for `root`. */
@@ -941,20 +937,14 @@ export class RemoteHub {
         this.options.onFromDevice?.({ sessionId: prompt.sessionId, messageUuid: null, requestId, device: device.name, deviceId: device.id, answer: { toolName: prompt.toolName, allowed: decision.behavior === 'allow' } });
         return {};
       },
-      'session.create': async ({ projectId, prompt, images, files, provider, ...options }) => {
+      'session.create': async ({ projectId, prompt, images, files, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
-        let created: { sessionId: string };
-        if (provider) {
-          // Only a provider the phone was offered, in one of its own modes; Claude Code's choices don't apply to it.
-          const offered = this.options.providers?.().find((p) => p.id === provider);
-          if (!offered || !this.options.createWithProvider) throw new RpcError('NOT_FOUND', 'That provider is not allowed on this computer');
-          if (options.permissionMode && !offered.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${offered.name} has no such mode`);
-          created = await this.options.createWithProvider(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), provider, options.model ?? null, options.permissionMode ?? null, images);
-        } else {
-          const choice = await this.choiceFor(project, options);
-          created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
-        }
+        // A provider profile (GitHub Copilot) runs in its own modes: one it doesn't have is refused, not passed on.
+        const provider = options.profileId ? this.options.providerOfProfile?.(options.profileId) : null;
+        if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
+        const choice = await this.choiceFor(project, options);
+        const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
@@ -1089,9 +1079,9 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
-      'providers.ready': async ({ id }) => {
-        if (!this.options.providers?.().some((p) => p.id === id) || !this.options.providerReady) throw new RpcError('NOT_FOUND', 'That provider is not allowed on this computer');
-        return this.options.providerReady(id);
+      'providers.ready': async ({ profileId }) => {
+        if (!this.options.providerOfProfile?.(profileId) || !this.options.providerReady) throw new RpcError('NOT_FOUND', 'That is not a provider profile on this computer');
+        return this.options.providerReady(profileId);
       },
       'options.get': () => {
         const { profiles, defaultId } = this.options.profiles();
@@ -1101,10 +1091,12 @@ export class RemoteHub {
           models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
           efforts: [...Effort.options],
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
-          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, globalModel) })),
+          profiles: profiles.map((p) => {
+            const provider = this.options.providerOfProfile?.(p.id) ?? null;
+            return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, globalModel), ...(provider ? { provider } : {}) };
+          }),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),
-          providers: this.options.providers?.() ?? [],
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,

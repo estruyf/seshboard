@@ -149,8 +149,9 @@ import { ConfigDirLane } from './profiles/configDirLane.ts';
 import { AccountWatcher } from './profiles/accountWatcher.ts';
 import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
-import { ProviderSettings } from './providers/providerSettings.ts';
-import { createProviders, type ProviderOptions } from './providers/registry.ts';
+import { copilotHome } from './providers/copilot/copilotSource.ts';
+import { ProviderProfiles } from './providers/providerProfiles.ts';
+import { createProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
@@ -204,8 +205,6 @@ export interface EngineOptions {
   onKeepAwake?: (on: boolean) => void;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
-  /** Other folders for providers' sessions (tests). Each defaults to the provider's own (`~/.copilot/session-state`). */
-  providerFolders?: Partial<Record<OptionalProvider, string>>;
   /** A fake Copilot SDK and `copilot` (tests). Defaults to the SDK and the user's own `copilot`. */
   copilot?: ProviderOptions['copilot'];
   /** Start watching ~/.claude immediately. Defaults to true. */
@@ -478,10 +477,24 @@ export function createEngine(options: EngineOptions): Engine {
     return found;
   };
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
-  // --- Providers: other agents' sessions, read-only, once allowed in Settings › Providers -------------------------------
-  const providerAdapters = createProviders({ env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, folders: options.providerFolders ?? {}, ...(options.copilot ? { copilot: options.copilot } : {}) });
-  const providerSettings = new ProviderSettings(appState, providerAdapters);
-  const source = new ProviderSources(claudeSource, () => providerSettings.allowedAdapters().map((p) => ({ provider: p.id, source: p.source })));
+  // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
+  // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
+  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, ...(options.copilot ? { copilot: options.copilot } : {}) };
+  const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
+  // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
+  const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
+  const allowedBefore = appState.get(ALLOWED_PROVIDERS_KEY);
+  if (Array.isArray(allowedBefore) && allowedBefore.includes('copilot')) {
+    if (!profiles.providerProfiles().some((p) => p.provider === 'copilot')) {
+      try {
+        profiles.add(PROVIDER_NAMES.copilot, 'purple', copilotHome(process.env, homedir()), 'copilot');
+      } catch (error) {
+        log('warn', `Couldn't make the GitHub Copilot profile: ${(error as Error).message}`);
+      }
+    }
+    appState.set(ALLOWED_PROVIDERS_KEY, []);
+  }
+  const source = new ProviderSources(claudeSource, () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })));
   /** Another provider's session (read-only): Claude Code's actions on it are refused. */
   const assertClaudeSession = (sessionId: string, action: string) => {
     const provider = sessions.get(sessionId)?.provider ?? source.providerOf(sessionId) ?? (providerHosts.has(sessionId) ? 'other' : undefined);
@@ -558,7 +571,7 @@ export function createEngine(options: EngineOptions): Engine {
     projectsDirs: () => [
       ...profiles.runtimes().map((profile) => ({ profileId: profile.id, dir: join(profile.configDir, 'projects') })),
       // Allowed providers' folders: their sessions carry the built-in profile, which they don't use.
-      ...providerSettings.allowedAdapters().map((p) => ({ profileId: BUILTIN_PROFILE_ID, dir: p.folder, provider: p.files })),
+      ...providerProfiles.adapters().map((p) => ({ profileId: p.profileId, dir: p.folder, provider: p.files })),
     ],
     resolver,
     log,
@@ -1036,13 +1049,14 @@ export function createEngine(options: EngineOptions): Engine {
   });
   /** Other providers' sessions (GitHub Copilot), run through their drivers, reporting like Claude Code's hosts. */
   const providerHosts = new ProviderHosts({
-    providers: () => providerSettings.allowedAdapters(),
-    providerOf: (id) => {
+    providers: () => providerProfiles.adapters(),
+    profileOf: (id) => {
       const summary = sessions.get(id);
-      return (summary && otherProviderOf(summary)) ?? source.providerOf(id);
+      // A provider session's summary carries its profile; one not indexed yet is known by the source that listed it.
+      return (summary && otherProviderOf(summary) ? summary.profileId : undefined) ?? source.profileOf(id);
     },
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
-    openElsewhere: (provider, id) => providerAdapters.find((p) => p.id === provider)?.inUse?.(id) ?? false,
+    openElsewhere: (adapter, id) => adapter.inUse?.(id) ?? false,
     settings: sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
@@ -1055,7 +1069,7 @@ export function createEngine(options: EngineOptions): Engine {
   const PROVIDER_LIVE_WINDOW_MS = 24 * 60 * 60_000;
   const scanProviderLive = () => {
     const since = Date.now() - PROVIDER_LIVE_WINDOW_MS;
-    const next = providerSettings.allowedAdapters().flatMap((adapter) => {
+    const next = providerProfiles.adapters().flatMap((adapter) => {
       if (!adapter.live) return [];
       const recent = new Map(sessions.snapshot().sessions.filter((s) => s.provider === adapter.id && s.updatedAt >= since).map((s) => [s.id, s]));
       return adapter.live([...recent.keys()]).map((open): LiveSession => {
@@ -1078,11 +1092,15 @@ export function createEngine(options: EngineOptions): Engine {
   }, 3_000);
   providerLiveTimer.unref?.();
   /** Starts a session with another provider: only the folder, the message and the model apply. */
-  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'permissionMode'> & { provider: OptionalProvider }) => {
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'permissionMode'> & { profileId: string }) => {
     const folder = statSafe(params.cwd);
     if (!folder?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
     assertTrusted(params.cwd);
-    const sessionId = await providerHosts.create({ provider: params.provider, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model: params.model, permissionMode: params.permissionMode });
+    // A model or mode from Claude Code's defaults (a project's, a schedule's) is left out when the provider has no such one.
+    const driver = providerProfiles.adapter(params.profileId)?.driver;
+    const models = params.model && driver ? await driver.models().catch(() => []) : [];
+    const model = params.model && models.some((m) => m.value === params.model) ? params.model : null;
+    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, permissionMode: params.permissionMode });
     void sessions.refresh();
     return { sessionId };
   };
@@ -2043,6 +2061,9 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** A terminal for a session gets its profile's config folder, so `claude` in it uses the same login. */
   const profileEnv = (profileId: string): Record<string, string> => {
+    // A provider profile's terminal runs its CLI with the profile's own folder and login.
+    const provider = providerProfiles.adapter(profileId);
+    if (provider) return provider.id === 'copilot' ? { COPILOT_HOME: provider.home } : {};
     const { envDir } = profiles.runtime(profileId);
     return envDir ? { CLAUDE_CONFIG_DIR: envDir } : {};
   };
@@ -2100,9 +2121,11 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
-  type CreateSessionParams = Omit<Parameters<Handlers<Contract>['session.create']>[0], 'provider'> & { provider?: OptionalProvider | null };
+  type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
   const createSession = async (params: CreateSessionParams) => {
-    if (params.provider) return createProviderSession({ ...params, provider: params.provider });
+    // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
+    const chosen = params.profileId ?? (statSafe(params.cwd)?.isDirectory() ? folderProfile(params.cwd) : null);
+    if (chosen && profiles.has(chosen) && profiles.providerOf(chosen) !== 'claude') return createProviderSession({ ...params, profileId: chosen });
     if (questions.contains(params.cwd)) {
       // A quick question has no checkout to branch from or switch.
       if (params.worktree || params.checkoutBranch || params.checkoutPullRequest) throw new RpcError('INVALID', 'Quick questions have no git options');
@@ -2261,22 +2284,21 @@ export function createEngine(options: EngineOptions): Engine {
       },
       stopTask: (sessionId, taskId) => hosts.stopTask(sessionId, taskId),
       respond: (requestId, decision) => hosts.respond(requestId, decision),
-      providers: () =>
-        providerSettings.allowedAdapters().flatMap((p) =>
-          p.driver
-            ? [{ id: p.id, name: PROVIDER_NAMES[p.id], modes: p.driver.modes.filter((m): m is typeof m & { value: RemotePermissionMode } => (RemotePermissionMode.options as readonly string[]).includes(m.value)) }]
-            : [],
-        ),
-      providerReady: async (id) => {
-        const driver = providerSettings.allowedAdapters().find((p) => p.id === id)?.driver;
-        if (!driver) return { problem: `${PROVIDER_NAMES[id]} can't start sessions here`, models: [] };
+      providerOfProfile: (profileId) => {
+        const adapter = providerProfiles.adapter(profileId);
+        if (!adapter?.driver) return null;
+        // The phone's modes are Claude Code's four: a provider's mode beyond them isn't offered there.
+        const modes = adapter.driver.modes.filter((m): m is typeof m & { value: RemotePermissionMode } => (RemotePermissionMode.options as readonly string[]).includes(m.value));
+        return { id: adapter.id, name: PROVIDER_NAMES[adapter.id], modes };
+      },
+      providerReady: async (profileId) => {
+        const driver = providerProfiles.adapter(profileId)?.driver;
+        if (!driver) return { problem: "This profile can't start sessions here", models: [] };
         const status = await driver.status();
         if (status.problem) return { problem: status.problem, models: [] };
         const models = await driver.models().catch(() => []);
         return { problem: null, models: models.map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })) };
       },
-      createWithProvider: (root, prompt, provider, model, permissionMode, images) =>
-        createProviderSession({ cwd: root, prompt, attachments: images, model, permissionMode: permissionMode ?? 'default', provider }),
       create: (root, prompt, choice, images) =>
         createSession({
           cwd: root,
@@ -2691,9 +2713,9 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'profiles.list': () => profiles.snapshot(),
-    'profiles.add': ({ name, color, configDir }) => {
-      const id = profiles.add(name, color, configDir);
-      log('info', `Added Claude profile "${name}" (${configDir})`);
+    'profiles.add': ({ name, color, configDir, provider }) => {
+      const id = profiles.add(name, color, configDir, provider);
+      log('info', `Added ${PROVIDER_NAMES[provider]} profile "${name}" (${configDir})`);
       return { id };
     },
     'profiles.update': ({ id, name, color }) => {
@@ -2712,18 +2734,18 @@ export function createEngine(options: EngineOptions): Engine {
       profiles.setDefaults(id, defaults);
       return {};
     },
-    'providers.list': () => providerSettings.snapshot(),
-    'providers.status': async ({ id }) => {
-      const driver = providerAdapters.find((p) => p.id === id)?.driver;
-      if (!driver) return { binary: null, version: null, signedIn: false, account: null, problem: `${PROVIDER_NAMES[id]} sessions can only be read in Seshboard.` };
+    'providers.list': () => ({ providers: providerCatalog(providerOptions) }),
+    'providers.status': async ({ profileId }) => {
+      const driver = providerProfiles.adapter(profileId)?.driver;
+      if (!driver) return { binary: null, version: null, signedIn: false, account: null, problem: 'This profile is not one of a provider that can start sessions.' };
       return driver.status();
     },
-    'providers.commands': async ({ id }) => {
-      const driver = providerAdapters.find((p) => p.id === id)?.driver;
+    'providers.commands': async ({ profileId }) => {
+      const driver = providerProfiles.adapter(profileId)?.driver;
       return { commands: driver ? await driver.commands().catch(() => []) : [] };
     },
-    'providers.models': async ({ id }) => {
-      const driver = providerAdapters.find((p) => p.id === id)?.driver;
+    'providers.models': async ({ profileId }) => {
+      const driver = providerProfiles.adapter(profileId)?.driver;
       if (!driver) return { models: [] };
       try {
         return { models: await driver.models() };
@@ -2731,14 +2753,16 @@ export function createEngine(options: EngineOptions): Engine {
         throw new RpcError('PROVIDER_FAILED', (error as Error).message);
       }
     },
-    'providers.setAllowed': ({ id, allowed }) => {
-      if (providerSettings.setAllowed(id, allowed)) {
-        log('info', `${allowed ? 'Allowed' : 'Hid'} the sessions of ${PROVIDER_NAMES[id]}`);
-        // Its folder is watched and scanned now, or its sessions drop out of the list.
-        void sessions.rootsChanged();
-        broadcast('providers.changed', providerSettings.snapshot());
+    'providers.signIn': async ({ profileId }) => {
+      const adapter = providerProfiles.adapter(profileId);
+      if (!adapter?.signInCommand) throw new RpcError('NOT_FOUND', 'This profile has no sign in of its own');
+      try {
+        // The provider's own sign in, in its own CLI, with the profile's folder: Seshboard never sees the credential.
+        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        return await terminals.open({ sessionId: null, cwd: homedir(), kind: 'action', command: adapter.signInCommand, title: `Sign in to ${PROVIDER_NAMES[adapter.id]}`, cols: 100, rows: 20, fork: false, env });
+      } catch (error) {
+        throw new RpcError('TERMINAL_FAILED', (error as Error).message);
       }
-      return providerSettings.snapshot();
     },
     'projects.setDefaults': ({ root, defaults }) => {
       questions.assertNotProject(root);
@@ -3933,7 +3957,6 @@ export function createEngine(options: EngineOptions): Engine {
       sessions.reloadFlags();
       // The allowed providers may have changed: their folders are read (or no longer) from now on.
       void sessions.rootsChanged();
-      broadcast('providers.changed', providerSettings.snapshot());
       schedulesBroadcast();
       scheduler.rearm();
       triggersBroadcast();
@@ -4055,7 +4078,7 @@ export function createEngine(options: EngineOptions): Engine {
       clearInterval(dailyCleanup);
       clearInterval(providerLiveTimer);
       // Providers' runtimes (a headless `copilot`) stop with the engine.
-      for (const provider of providerAdapters) void provider.driver?.dispose().catch(() => {});
+      providerProfiles.dispose();
       clones.close();
       clearTimeout(settingTimer);
       companion?.stop();

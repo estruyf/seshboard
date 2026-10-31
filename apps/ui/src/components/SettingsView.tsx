@@ -26,7 +26,6 @@ import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
 import { ProfilesSettings } from './profiles/ProfilesSettings.tsx';
-import { ProvidersSettings } from './providers/ProvidersSettings.tsx';
 import { ThemeSettings } from './theme/ThemeSettings.tsx';
 import { LargeContextSettings, UsageSettings } from './usage/UsageSettings.tsx';
 import { AboutSettings, SettingsVersion } from './updates/AboutSettings.tsx';
@@ -243,7 +242,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop, your editor and the providers you allow. Off shows only sessions you started or continued in Seshboard."
+            detail="Also list sessions from Terminal, Claude desktop, your editor and GitHub Copilot. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
@@ -396,8 +395,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'profiles':
       return (
         <Section
-          title="Claude profiles"
-          description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
+          title="Profiles"
+          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code or GitHub Copilot with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>
@@ -515,12 +514,6 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             <CloneSettings />
           </Section>
         </>
-      );
-    case 'providers':
-      return (
-        <Section title="Providers" description="Agents besides Claude Code whose sessions Seshboard can show. Each stays hidden until you allow it. Their sessions are read-only: you read them here and continue them in their own app.">
-          <ProvidersSettings />
-        </Section>
       );
     case 'vscode':
       return (

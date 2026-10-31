@@ -108,7 +108,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
+async function setup(options: { copilotProfile?: boolean; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -127,7 +127,6 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   const watching = new Set<string>();
   const answered: string[] = [];
   const created: Array<{ root: string; prompt: string; model: string | null; choice?: SessionChoice; images?: RemoteImage[] }> = [];
-  const createdWith: Array<{ root: string; prompt: string; provider: string; model: string | null; permissionMode: string | null; images: RemoteImage[] }> = [];
   const queued: Array<{ root: string; prompt: string; choice: SessionChoice }> = [];
   const calls: string[] = [];
   /** How each session stands with its usage limit. */
@@ -184,6 +183,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       profiles: [
         { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, account: 'a'.repeat(64) },
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
+        // A GitHub Copilot profile, for the tests that ask for one.
+        ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
       ],
       defaultId: 'default',
     }),
@@ -200,9 +201,9 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
-    providers: () => [{ id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }] }],
+    // The Copilot profile is GitHub Copilot's, with its own modes.
+    providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
-    createWithProvider: async (root, prompt, provider, model, permissionMode, images) => (createdWith.push({ root, prompt, provider, model, permissionMode, images }), { sessionId: 'copilot-new' }),
     branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
@@ -286,7 +287,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, dir, port, on, watching, sent, sentImages, answered, created, createdWith, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -438,18 +439,20 @@ describe('Remote hub', () => {
     expect(link).toMatchObject({ kind: 'connect', address: 'https://quiet-river.trycloudflare.com' });
   });
 
-  it('starts a session with an allowed provider, in its own modes and models', async () => {
-    const { hub, port, on, created, createdWith } = await setup();
+  it('starts a session with a provider profile, in its own modes and models', async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true });
     await on();
     const { remote } = await pair(hub, port);
     const options = await remote.call('options.get', {});
-    expect(options.providers).toEqual([{ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })] }]);
-    expect(await remote.call('providers.ready', { id: 'copilot' })).toEqual({ problem: null, models: [expect.objectContaining({ value: 'gpt-5-mini' })] });
-    expect(await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test', provider: 'copilot', model: 'gpt-5-mini', permissionMode: 'auto' })).toEqual({ sessionId: 'copilot-new' });
-    expect(createdWith).toEqual([{ root: ROOT, prompt: 'add a test', provider: 'copilot', model: 'gpt-5-mini', permissionMode: 'auto', images: [] }]);
-    expect(created).toEqual([]);
+    expect(options.profiles.find((p) => p.id === 'copilot')?.provider).toEqual({ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })] });
+    expect(options.profiles.find((p) => p.id === 'work')?.provider).toBeUndefined();
+    expect(await remote.call('providers.ready', { profileId: 'copilot' })).toEqual({ problem: null, models: [expect.objectContaining({ value: 'gpt-5-mini' })] });
+    await expect(remote.call('providers.ready', { profileId: 'work' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // The profile decides: the engine starts Copilot for it (`createSession`).
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test', profileId: 'copilot', model: 'gpt-5-mini', permissionMode: 'auto' });
+    expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
     // A mode the provider doesn't have is refused, not passed on.
-    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', provider: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 
   it('says which device sent a prompt, answered or started a session, by its id', async () => {

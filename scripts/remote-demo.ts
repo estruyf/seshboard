@@ -40,6 +40,8 @@ const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace
 const PROFILES = [
   { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS, account: accountTag({ email: 'demo@example.com', organization: null }) },
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
+  // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
+  { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -667,19 +669,20 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
-  // GitHub Copilot, allowed on this made-up computer: its modes, two models, and its sessions start like the others.
-  providers: () => [
-    {
-      id: 'copilot',
-      name: 'GitHub Copilot',
-      modes: [
-        { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
-        { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
-        { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
-        { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
-      ],
-    },
-  ],
+  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  providerOfProfile: (profileId) =>
+    profileId === 'copilot'
+      ? {
+          id: 'copilot',
+          name: 'GitHub Copilot',
+          modes: [
+            { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
+            { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
+            { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
+            { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
+          ],
+        }
+      : null,
   providerReady: async () => ({
     problem: null,
     models: [
@@ -687,12 +690,6 @@ const hub: RemoteHub = new RemoteHub({
       { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
     ],
   }),
-  createWithProvider: async (root, prompt) => {
-    const id = crypto.randomUUID();
-    SESSIONS.unshift({ id, title: prompt.split('\n')[0]!.slice(0, 80), root, branch: 'main', minutesAgo: 0, state: 'running' });
-    setTimeout(() => hub.sessionsChanged(), 0);
-    return { sessionId: id };
-  },
   branches: async () => ({ current: 'main', branches: ['main', 'feat/onboarding', 'fix/login-redirect'], checkedOutElsewhere: [] }),
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),

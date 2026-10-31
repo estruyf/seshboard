@@ -1,7 +1,7 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, PROVIDER_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
-import { useProviderReadiness, useStartableProviders } from '../../state/providersStore.ts';
+import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -149,20 +149,9 @@ function LocalNewSession() {
   const [savedNote, setSavedNote] = useState<string | null>(null);
   /** A profile chosen for this session only (null: the project's, else the default). */
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
-  // Who runs the session: Claude Code, or an allowed provider that can start sessions (GitHub Copilot), with its model.
-  const [providerChoice, setProviderChoice] = useState<SessionProvider>('claude');
+  // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session.
   const [providerModel, setProviderModel] = useState('');
   const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
-  const startableProviders = useStartableProviders();
-  const runWith: OptionalProvider | null = providerChoice !== 'claude' && startableProviders.some((p) => p.id === providerChoice) ? providerChoice : null;
-  const readiness = useProviderReadiness(runWith);
-  /** The provider's own modes (Copilot's Autopilot), and the one picked: its first until you pick another. */
-  const runWithModes = startableProviders.find((p) => p.id === runWith)?.modes ?? [];
-  const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
-  /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
-  /** Who works in the folder, in the copy around the box. */
-  const agent = runWith ? PROVIDER_NAMES[runWith] : 'Claude';
-  const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
   /** The steps line's Change: opens the Run as menu. */
@@ -262,6 +251,18 @@ function LocalNewSession() {
   const isProject = project?.added ?? false;
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
+  // Who runs the session follows from its profile: Claude Code, or another provider's (GitHub Copilot) with its own login.
+  const chosenProvider = profiles.find((p) => p.id === profileId)?.provider ?? 'claude';
+  const runWith: OptionalProvider | null = chosenProvider === 'claude' ? null : chosenProvider;
+  const runWithInfo = useProvider(runWith);
+  const readiness = useProviderReadiness(runWith ? profileId : null);
+  /** The provider's own modes (Copilot's Autopilot), and the one picked: its first until you pick another. */
+  const runWithModes = runWithInfo?.modes ?? [];
+  const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
+  /** Who works in the folder, in the copy around the box. */
+  const agent = runWith ? PROVIDER_NAMES[runWith] : 'Claude';
+  /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
+  const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
   /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const defaultsKey = JSON.stringify(sessionDefaults);
@@ -1017,7 +1018,7 @@ function LocalNewSession() {
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
         github: fresh ? undefined : githubStart(worktree),
-        provider: runWith ? { id: runWith, model: providerModel || null, permissionMode: runWithMode } : null,
+        provider: runWith ? { model: providerModel || null, permissionMode: runWithMode } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1075,17 +1076,12 @@ function LocalNewSession() {
   // The same chip row as in a session.
   const controls = (
     <ComposerChipRow
-      provider={startableProviders.length ? { value: runWith ?? 'claude', choices: ['claude', ...startableProviders.map((p) => p.id)], onChange: setProviderChoice } : null}
-      // Another provider has its own login and options: only its models.
-      profile={
-        runWith
-          ? null
-          : {
-              value: profileId,
-              onChange: (id) => setProfileOverride(id),
-              labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
-            }
-      }
+      // The profile picks who runs it too: one of another provider (GitHub Copilot) leaves only that provider's options.
+      profile={{
+        value: profileId,
+        onChange: (id) => setProfileOverride(id),
+        labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
+      }}
       model={
         runWith
           ? {

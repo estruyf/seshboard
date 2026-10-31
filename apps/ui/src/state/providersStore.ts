@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import type { ModelOption, OptionalProvider, ProviderInfo, ProvidersSnapshot, ProviderStatus, SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 
 interface ProvidersState {
-  /** The providers besides Claude Code, as the engine's registry lists them (Settings › Providers). */
+  /** The providers besides Claude Code that a profile can use: what each is (its modes, its resume command, its folder). */
   providers: ProviderInfo[];
   set(snapshot: ProvidersSnapshot): void;
 }
@@ -19,27 +19,18 @@ export const useProvider = (id: OptionalProvider | null) => useProviders((s) => 
 /** The command that continues a session in its provider's CLI, from the provider's template. */
 export const resumeCommandFor = (provider: Pick<ProviderInfo, 'resumeCommand'>, sessionId: string) => provider.resumeCommand.replaceAll('{sessionId}', sessionId);
 
-/** Loads the providers once per connection and follows changes. */
+/** Loads the providers once per connection: what they are doesn't change while the app runs. */
 export function useProvidersSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
     if (!client) return;
-    const off = client.on('providers.changed', (snapshot) => useProviders.getState().set(snapshot));
     void client.call('providers.list', {}).then((snapshot) => useProviders.getState().set(snapshot), () => {});
-    return off;
   }, [client]);
 }
 
-/** The providers besides Claude Code that can start sessions here: allowed, with a driver. */
-export function useStartableProviders(): ProviderInfo[] {
-  // The list, not a filtered copy, from the store: a new array on every read would re-render without end.
-  const providers = useProviders((s) => s.providers);
-  return useMemo(() => providers.filter((p) => p.allowed && p.canStart), [providers]);
-}
-
 export interface ProviderReadiness {
-  /** Null while it is being asked (it starts the provider's runtime the first time). */
+  /** Null while it is being asked (it starts the profile's runtime the first time). */
   status: ProviderStatus | null;
   models: ModelOption[];
   /** Its slash commands, for the message box's `/` list. */
@@ -49,29 +40,29 @@ export interface ProviderReadiness {
 }
 
 /**
- * Whether a provider can run a session here (installed, signed in with its own CLI) and its models, asked when it is
- * picked. Null provider: Claude Code, nothing to ask.
+ * Whether a provider profile can run a session here (installed, signed in with its own CLI) and its models and
+ * commands, asked when it is picked. Null profile: Claude Code's, nothing to ask.
  */
-export function useProviderReadiness(id: OptionalProvider | null): ProviderReadiness | null {
+export function useProviderReadiness(profileId: string | null): ProviderReadiness | null {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const [state, setState] = useState<{ id: OptionalProvider; readiness: ProviderReadiness } | null>(null);
+  const [state, setState] = useState<{ profileId: string; readiness: ProviderReadiness } | null>(null);
   useEffect(() => {
-    if (!client || !id) return;
+    if (!client || !profileId) return;
     let current = true;
-    setState({ id, readiness: { status: null, models: [], commands: [], error: null } });
-    void client.call('providers.status', { id }).then(
+    setState({ profileId, readiness: { status: null, models: [], commands: [], error: null } });
+    void client.call('providers.status', { profileId }).then(
       async (status) => {
         const [models, commands] = status.problem
           ? [[], []]
-          : await Promise.all([client.call('providers.models', { id }).then((r) => r.models, () => []), client.call('providers.commands', { id }).then((r) => r.commands, () => [])]);
-        if (current) setState({ id, readiness: { status, models, commands, error: null } });
+          : await Promise.all([client.call('providers.models', { profileId }).then((r) => r.models, () => []), client.call('providers.commands', { profileId }).then((r) => r.commands, () => [])]);
+        if (current) setState({ profileId, readiness: { status, models, commands, error: null } });
       },
-      (error: Error) => current && setState({ id, readiness: { status: null, models: [], commands: [], error: error.message } }),
+      (error: Error) => current && setState({ profileId, readiness: { status: null, models: [], commands: [], error: error.message } }),
     );
     return () => {
       current = false;
     };
-  }, [client, id]);
-  return id && state?.id === id ? state.readiness : id ? { status: null, models: [], commands: [], error: null } : null;
+  }, [client, profileId]);
+  return profileId && state?.profileId === profileId ? state.readiness : profileId ? { status: null, models: [], commands: [], error: null } : null;
 }

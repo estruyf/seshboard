@@ -1,4 +1,4 @@
-import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type OptionalProvider, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
@@ -36,10 +36,10 @@ export interface NewSessionStart {
    */
   github?: { origin: GithubOrigin; worktreeFrom?: WorktreeBranchBase; checkoutPullRequest?: { number: number; repo: string } };
   /**
-   * Start it with another provider (GitHub Copilot) on this model (null: the provider's default). Claude Code's own
-   * choices (profile, effort, permission mode, worktree, branch, Auto) don't apply.
+   * `profileId` is another provider's profile (GitHub Copilot): it starts on this model (null: the provider's default)
+   * and mode. Claude Code's own choices (effort, worktree, branch, Auto) don't apply.
    */
-  provider?: { id: OptionalProvider; model: string | null; permissionMode?: PermissionMode } | null;
+  provider?: { model: string | null; permissionMode?: PermissionMode } | null;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -78,7 +78,7 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
 }
 
 /** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
-export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; provider: OptionalProvider };
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string };
 
 export interface ClaudeSessionCreateParams {
   cwd: string;
@@ -139,8 +139,8 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
 /** What `session.create` gets for this start: Claude Code's options, or another provider's few. */
 export function createParamsFor(start: NewSessionStart): SessionCreateParams {
   if (!start.provider) return sessionCreateParams(start);
-  const { id, model, permissionMode } = start.provider;
-  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model, ...(permissionMode ? { permissionMode } : {}), provider: id };
+  const { model, permissionMode } = start.provider;
+  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model, ...(permissionMode ? { permissionMode } : {}), profileId: start.profileId };
 }
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */

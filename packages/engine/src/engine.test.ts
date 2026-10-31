@@ -85,8 +85,6 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: extra.path ?? '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
-    // Never the machine's own ~/.copilot.
-    providerFolders: { copilot: join(dataDir, 'copilot', 'session-state') },
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
@@ -126,10 +124,12 @@ describe('engine over a MessagePort', () => {
     expect(info.claude).toBeNull();
   });
 
-  it('shows an allowed provider\'s sessions read-only', async () => {
+  it('shows a Copilot profile\'s sessions under that profile, and refuses Claude Code\'s own actions on them', async () => {
     const { client, dataDir } = connect();
     const id = '44444444-4444-4444-8444-444444444444';
-    const folder = join(dataDir, 'copilot', 'session-state', id);
+    // A Copilot profile's folder in the test's own folder, never the machine's ~/.copilot.
+    const copilotHome = join(dataDir, 'copilot');
+    const folder = join(copilotHome, 'session-state', id);
     mkdirSync(folder, { recursive: true });
     const events = [
       { type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: PARSER } } },
@@ -138,16 +138,16 @@ describe('engine over a MessagePort', () => {
     ];
     writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
-    const before = await client.call('providers.list', {});
-    expect(before.providers).toEqual([expect.objectContaining({ id: 'copilot', allowed: false, found: true })]);
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true })]);
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
 
-    const after = await client.call('providers.setAllowed', { id: 'copilot', allowed: true });
-    expect(after.providers[0]!.allowed).toBe(true);
+    // Adding a Copilot profile is what makes its sessions show up.
+    const { id: profileId } = await client.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    expect((await client.call('profiles.list', {})).profiles.find((p) => p.id === profileId)).toMatchObject({ provider: 'copilot', account: null });
     await client.call('sessions.refresh', {});
     const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
-    expect(listed).toMatchObject({ provider: 'copilot', title: 'Fix the parser', cwd: PARSER });
+    expect(listed).toMatchObject({ provider: 'copilot', profileId, title: 'Fix the parser', cwd: PARSER });
 
     // Copilot can run sessions, but isn't installed here: sending says so.
     await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
@@ -182,12 +182,12 @@ describe('engine over a MessagePort', () => {
     const hostStates: string[] = [];
     rpc.on('session.host', (info) => info.sessionId === COPILOT_ID && hostStates.push(info.state));
 
-    await expect(rpc.call('session.create', { cwd: dataDir, prompt: 'Hi', provider: 'copilot' })).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' });
-    expect((await rpc.call('providers.setAllowed', { id: 'copilot', allowed: true })).providers[0]!.canStart).toBe(true);
-    expect(await rpc.call('providers.status', { id: 'copilot' })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });
-    expect((await rpc.call('providers.models', { id: 'copilot' })).models.map((m) => m.value)).toEqual(['gpt-5-mini']);
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+    expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });
+    expect((await rpc.call('providers.models', { profileId })).models.map((m) => m.value)).toEqual(['gpt-5-mini']);
 
-    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', provider: 'copilot', model: 'gpt-5-mini' });
+    // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model.
+    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini' });
     expect(sessionId).toBe(COPILOT_ID);
     expect(options).toMatchObject({ workingDirectory: dataDir, model: 'gpt-5-mini', clientName: 'seshboard' });
     expect(calls).toEqual(['send:Add a test']);

@@ -120,7 +120,7 @@ describe('copilotDriver', () => {
     await expect(missing.start({ cwd: '/w', model: null, permissionMode: 'default' }, recorder().events)).rejects.toThrow(/Install/);
 
     const signedOut = copilotDriver({ binary, env, createClient: fakeSdk({ isAuthenticated: false, statusMessage: 'Not signed in' }).createClient });
-    expect(await signedOut.status()).toMatchObject({ signedIn: false, problem: expect.stringMatching(/run `copilot` in a terminal and use \/login/) });
+    expect(await signedOut.status()).toMatchObject({ signedIn: false, problem: expect.stringMatching(/Sign in on this profile in Settings › Profiles, or run `copilot login`/) });
 
     const ok = copilotDriver({ binary, env, createClient: fakeSdk().createClient });
     expect(await ok.status()).toEqual({ binary: '/usr/local/bin/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });

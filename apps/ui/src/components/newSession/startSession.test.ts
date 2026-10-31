@@ -35,13 +35,14 @@ describe('sessionCreateParams', () => {
     expect(sessionCreateParams({ ...START, choices: { ...CHOICES, model: '', effort: '' } })).toMatchObject({ model: null, effort: null });
   });
 
-  it('starts another provider with only the folder, the message and its model', () => {
-    expect(createParamsFor({ ...START, worktree: true, provider: { id: 'copilot', model: 'gpt-5-mini' } })).toEqual({
+  it('starts a provider profile with only the folder, the message, its model and mode', () => {
+    expect(createParamsFor({ ...START, profileId: 'copilot', worktree: true, provider: { model: 'gpt-5-mini', permissionMode: 'auto' } })).toEqual({
       cwd: '/work/app',
       prompt: 'Fix the login redirect',
       attachments: [],
       model: 'gpt-5-mini',
-      provider: 'copilot',
+      permissionMode: 'auto',
+      profileId: 'copilot',
     });
   });
 

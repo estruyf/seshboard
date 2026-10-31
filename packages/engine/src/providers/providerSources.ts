@@ -5,20 +5,23 @@ import type { MultiProfileSource } from '../profiles/profileSources.ts';
 
 export interface ProviderSource {
   provider: OptionalProvider;
+  /** The provider profile whose folder it reads. */
+  profileId: string;
   source: SessionSource;
 }
 
 /**
- * Claude Code's sessions (every profile) and those of the providers the user allowed, as one source. A session is read
- * through the provider it was listed by; one not seen yet is looked up in Claude Code first. Other providers' sessions
- * are read-only: forking, renaming and subagents stay Claude Code's.
+ * Claude Code's sessions (every Claude profile) and those of the provider profiles (GitHub Copilot), as one source. A
+ * session is read through the profile it was listed by; one not seen yet is looked up in Claude Code first. Other
+ * providers' sessions are read-only here: forking, renaming and subagents stay Claude Code's.
  */
 export class ProviderSources implements SessionSource {
-  private readonly owners = new Map<string, OptionalProvider>();
+  /** Session id → the provider profile that listed it. */
+  private readonly owners = new Map<string, string>();
 
   constructor(
     private readonly claude: MultiProfileSource,
-    /** The allowed providers, read on every call (allowing one takes effect on the next scan). */
+    /** The provider profiles, read on every call (adding one takes effect on the next scan). */
     private readonly others: () => ProviderSource[],
   ) {}
 
@@ -27,28 +30,33 @@ export class ProviderSources implements SessionSource {
     return this.claude.ownerOf(sessionId);
   }
 
-  /** The provider of a session listed by another provider; undefined for Claude Code's (and unknown ones). */
+  /** The provider profile a session was listed by; undefined for Claude Code's (and unknown ones). */
+  profileOf(sessionId: string): string | undefined {
+    const profileId = this.owners.get(sessionId);
+    return profileId && this.others().some((o) => o.profileId === profileId) ? profileId : undefined;
+  }
+
+  /** The provider of a session listed by a provider profile; undefined for Claude Code's. */
   providerOf(sessionId: string): OptionalProvider | undefined {
-    const provider = this.owners.get(sessionId);
-    return provider && this.others().some((o) => o.provider === provider) ? provider : undefined;
+    return this.sourceOf(sessionId)?.provider;
   }
 
   async list(): Promise<RawSessionInfo[]> {
     const others = this.others();
     const [claude, ...rest] = await Promise.all([
       this.claude.list(),
-      // One provider's folder that can't be read leaves its sessions out, not Claude Code's.
+      // One profile's folder that can't be read leaves its sessions out, not Claude Code's.
       ...others.map(({ source }) => source.list().catch(() => [] as RawSessionInfo[])),
     ]);
     const seen = new Set(claude!.map((i) => i.sessionId));
     const all = [...claude!];
     rest.forEach((infos, index) => {
-      const { provider } = others[index]!;
+      const { provider, profileId } = others[index]!;
       for (const info of infos) {
         if (seen.has(info.sessionId)) continue;
         seen.add(info.sessionId);
-        this.owners.set(info.sessionId, provider);
-        all.push({ ...info, provider });
+        this.owners.set(info.sessionId, profileId);
+        all.push({ ...info, provider, profileId });
       }
     });
     return all;
@@ -58,15 +66,15 @@ export class ProviderSources implements SessionSource {
     const other = this.sourceOf(sessionId);
     if (other) {
       const info = await other.source.info(sessionId);
-      return info && { ...info, provider: other.provider };
+      return info && { ...info, provider: other.provider, profileId: other.profileId };
     }
     const info = await this.claude.info(sessionId);
     if (info) return info;
-    for (const { provider, source } of this.others()) {
+    for (const { provider, profileId, source } of this.others()) {
       const found = await source.info(sessionId).catch(() => undefined);
       if (found) {
-        this.owners.set(sessionId, provider);
-        return { ...found, provider };
+        this.owners.set(sessionId, profileId);
+        return { ...found, provider, profileId };
       }
     }
     return undefined;
@@ -92,7 +100,7 @@ export class ProviderSources implements SessionSource {
   }
 
   private sourceOf(sessionId: string): ProviderSource | undefined {
-    const provider = this.owners.get(sessionId);
-    return provider ? this.others().find((o) => o.provider === provider) : undefined;
+    const profileId = this.owners.get(sessionId);
+    return profileId ? this.others().find((o) => o.profileId === profileId) : undefined;
   }
 }

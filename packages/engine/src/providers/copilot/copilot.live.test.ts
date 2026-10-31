@@ -7,12 +7,13 @@ import { homedir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import { copilotProvider } from './copilotProvider.ts';
+import { copilotHome } from './copilotSource.ts';
 
 const cwd = process.env.SESHBOARD_LIVE_COPILOT_CWD;
 
 describe.skipIf(!cwd)('live GitHub Copilot session', () => {
   it('is signed in with its own login, runs a turn and reads it back from disk', async () => {
-    const provider = copilotProvider({ env: process.env, home: homedir() });
+    const provider = copilotProvider({ profileId: 'live', copilotHome: copilotHome(process.env, homedir()), userHome: homedir() });
     const driver = provider.driver!;
     try {
       const status = await driver.status();
