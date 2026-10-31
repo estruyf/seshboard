@@ -39,6 +39,11 @@ export interface StartButtonInput {
   canPipeline?: boolean;
   /** The pipeline the Run as chip picked: Start runs it with the prompt as its task. Null: one session. */
   runAs?: { id: string; name: string } | null;
+  /**
+   * Another provider runs it (a GitHub Copilot profile), which has no queue, schedules, triggers or worktrees yet: those
+   * items stay in the menu, off, with this as their reason ("Not with GitHub Copilot yet").
+   */
+  notWith?: string | null;
 }
 
 export interface StartMenuItem {
@@ -80,18 +85,21 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
   const canStartHere = canStart && !input.branchBlocked;
   const canQueue = !blocked && !sending && hasText;
   const verb = input.question ? 'Ask' : 'Start';
+  const off = input.notWith ?? null;
+  /** An item another provider can't do yet: off, saying so. */
+  const unless = (disabled: boolean) => (off ? { disabled: true, reason: off } : { disabled });
   const items: StartMenuItem[] = [
     { action: 'start', label: input.question ? 'Ask' : 'Start session', shortcut: 'new-session.start', disabled: !canStartHere },
-    { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', disabled: !canQueue },
+    { action: 'queue', label: 'Add to queue', shortcut: 'new-session.queue', ...unless(!canQueue) },
   ];
   // A schedule keeps the prompt with its choices, like a queued item, and runs it at set times (#173).
-  if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', disabled: !canQueue });
+  if (input.canSchedule && !input.question) items.push({ action: 'schedule', label: input.editingSchedule ? 'Save schedule' : 'Schedule…', ...unless(!canQueue) });
   // A trigger starts it when there is work: a CI failure, an issue for you (#180).
-  if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', disabled: !canQueue });
-  if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', disabled: !canStart });
+  if (input.canTrigger && !input.question && !input.editingSchedule) items.push({ action: 'trigger', label: 'Start when…', ...unless(!canQueue) });
+  if (input.canWorktree && !input.worktree && !input.question) items.push({ action: 'start-worktree', label: 'Start in a new worktree', ...unless(!canStart) });
   // A pipeline runs with the prompt as its task, in a worktree of its own: the branch and the focus limit don't stop it
   // (#179). Start when… makes a trigger that starts it (#185); a queued item or a schedule is one session.
-  const runAs = input.canPipeline && !input.question && !input.editingSchedule ? (input.runAs ?? null) : null;
+  const runAs = input.canPipeline && !input.question && !input.editingSchedule && !off ? (input.runAs ?? null) : null;
   if (runAs) {
     const one: StartMenuItem = { action: 'start-one', label: 'Start one session', disabled: !canStartHere };
     const rest = items.slice(1);
@@ -106,7 +114,7 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
       items: [one, ...rest],
     };
   }
-  if (input.scheduleFirst && input.canSchedule && !input.question) {
+  if (input.scheduleFirst && input.canSchedule && !input.question && !off) {
     const schedule = items.find((item) => item.action === 'schedule')!;
     return {
       main: 'schedule',
@@ -119,7 +127,7 @@ export function startButtonState(input: StartButtonInput): StartButtonState {
       items: [schedule, ...items.filter((item) => item !== schedule)],
     };
   }
-  if (input.queueFirst && !input.question) {
+  if (input.queueFirst && !input.question && !off) {
     return {
       main: 'queue',
       shortcut: 'new-session.queue',

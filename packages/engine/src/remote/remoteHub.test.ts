@@ -202,7 +202,7 @@ async function setup(options: { copilotProfile?: boolean; identity?: Uint8Array 
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
     // The Copilot profile is GitHub Copilot's, with its own modes.
-    providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }] } : null),
+    providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
     providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
     branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
@@ -444,7 +444,7 @@ describe('Remote hub', () => {
     await on();
     const { remote } = await pair(hub, port);
     const options = await remote.call('options.get', {});
-    expect(options.profiles.find((p) => p.id === 'copilot')?.provider).toEqual({ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })] });
+    expect(options.profiles.find((p) => p.id === 'copilot')?.provider).toEqual({ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })], supports: [] });
     expect(options.profiles.find((p) => p.id === 'work')?.provider).toBeUndefined();
     expect(await remote.call('providers.ready', { profileId: 'copilot' })).toEqual({ problem: null, models: [expect.objectContaining({ value: 'gpt-5-mini' })] });
     await expect(remote.call('providers.ready', { profileId: 'work' })).rejects.toMatchObject({ code: 'NOT_FOUND' });

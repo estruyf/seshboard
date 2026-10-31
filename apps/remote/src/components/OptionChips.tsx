@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile } from '@seshboard/protocol/remote-client';
@@ -30,7 +31,13 @@ export function ProfileChip({ options, projectId, value, onPick, look }: { optio
     <ChoiceChip
       label="Claude profile"
       face={current?.name ?? 'Profile'}
-      icon={<span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />}
+      icon={
+        <span className="flex items-center gap-1">
+          <span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />
+          {/* A profile of another provider shows whose it is (the phone has one: GitHub Copilot). */}
+          {current?.provider && <CopilotIcon size={14} aria-label={current.provider.name} role="img" data-remote-profile-provider={current.provider.id} />}
+        </span>
+      }
       selected={value}
       look={look}
       rowLabel="Profile"

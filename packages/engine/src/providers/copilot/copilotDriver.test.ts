@@ -3,13 +3,13 @@ import type { PermissionRequest, StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { DriverEvents } from '../provider.ts';
 import { copilotCandidates, parseCopilotVersion } from './copilotBinary.ts';
-import { copilotDriver, SESHBOARD_CLIENT, type CopilotSdkClient, type CopilotSdkSession, type CopilotSessionOptions, type CreateCopilotClient } from './copilotDriver.ts';
+import { copilotDriver, premiumQuota, SESHBOARD_CLIENT, type CopilotSdkClient, type CopilotSdkSession, type CopilotSessionOptions, type CreateCopilotClient } from './copilotDriver.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { commandList, commandOutcome, parseCommand } from './copilotCommands.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
 
 /** A Copilot SDK that plays back events as the real one would, and records what it was asked. */
-function fakeSdk(auth = { isAuthenticated: true, statusMessage: 'octocat (via gh)' }) {
+function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login?: string } = { isAuthenticated: true, statusMessage: 'octocat (via gh)', login: 'octocat' }) {
   const calls: string[] = [];
   let handler: ((event: CopilotEvent) => void) | undefined;
   let options: CopilotSessionOptions | undefined;
@@ -123,8 +123,19 @@ describe('copilotDriver', () => {
     expect(await signedOut.status()).toMatchObject({ signedIn: false, problem: expect.stringMatching(/Sign in on this profile in Settings › Profiles, or run `copilot login`/) });
 
     const ok = copilotDriver({ binary, env, createClient: fakeSdk().createClient });
-    expect(await ok.status()).toEqual({ binary: '/usr/local/bin/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });
+    expect(await ok.status()).toEqual({ binary: '/usr/local/bin/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: 'octocat', problem: null });
     expect(await ok.models()).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true }]);
+  });
+
+  it("reads the account's premium requests from Copilot, unlimited as no entitlement", () => {
+    expect(premiumQuota({ premium_interactions: { isUnlimitedEntitlement: false, entitlementRequests: 1500, usedRequests: 212, remainingPercentage: 85.87, resetDate: '2026-12-01' } })).toEqual({
+      used: 212,
+      entitlement: 1500,
+      percentUsed: expect.closeTo(14.13, 2),
+      resetsAt: '2026-12-01',
+    });
+    expect(premiumQuota({ premium_interactions: { isUnlimitedEntitlement: true, entitlementRequests: -1, usedRequests: 40, remainingPercentage: 100 } })).toEqual({ used: 40, entitlement: null, percentUsed: 0, resetsAt: null });
+    expect(premiumQuota({ chat: { isUnlimitedEntitlement: true, entitlementRequests: -1, usedRequests: 0, remainingPercentage: 100 } })).toBeNull();
   });
 
   it('runs in Copilot\'s agent modes, approves edits itself where the mode says so, and reports usage', async () => {

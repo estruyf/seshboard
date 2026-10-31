@@ -176,4 +176,16 @@ describe('Schedule a session', () => {
     // A quick question can't be scheduled: Ask stays.
     expect(startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: true, canSchedule: true, scheduleFirst: true }).main).toBe('start');
   });
+
+  it("keeps the queue, schedules, triggers and worktrees off for another provider, saying why", () => {
+    const state = startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: true, worktree: false, question: false, canSchedule: true, canTrigger: true, scheduleFirst: true, notWith: 'Not with GitHub Copilot yet' });
+    expect(state.main).toBe('start');
+    expect(state.disabled).toBe(false);
+    expect(state.items.filter((i) => i.action !== 'start').map((i) => [i.action, i.disabled, i.reason])).toEqual([
+      ['queue', true, 'Not with GitHub Copilot yet'],
+      ['schedule', true, 'Not with GitHub Copilot yet'],
+      ['trigger', true, 'Not with GitHub Copilot yet'],
+      ['start-worktree', true, 'Not with GitHub Copilot yet'],
+    ]);
+  });
 });

@@ -408,6 +408,8 @@ export interface Preferences {
    * text until gh works.
    */
   githubHintSeen: string[];
+  /** Settings › Profiles: providers whose "found on this Mac" offer was put away with Not now (`copilot`). */
+  providerOffersDismissed: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
@@ -471,6 +473,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   showMods: true,
   hiddenMods: [],
   githubHintSeen: [],
+  providerOffersDismissed: [],
   sidebarSort: "recent",
   quickActions: true,
   quickActionsShow: "all",
@@ -669,6 +672,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (Array.isArray(raw.providerOffersDismissed))
+    out.providerOffersDismissed = [...new Set(raw.providerOffersDismissed.filter((p): p is string => typeof p === "string" && /^[a-z][a-z0-9-]{0,39}$/.test(p)))].slice(0, 20);
   if (Array.isArray(raw.githubHintSeen))
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))

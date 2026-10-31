@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -194,7 +194,12 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const baseProfile = projectProfile(options, projectId);
   const defaults = defaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: Choice = { ...defaults, ...changes };
-  const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
+  /** Switching to another provider's profile turned something off: the notice, with Back. */
+  const [switched, setSwitched] = useState<{ back: string; text: string } | null>(null);
+  const change = (next: Partial<Choice>) => {
+    setSwitched(null);
+    setChanges((current) => ({ ...current, ...next }));
+  };
   const checkout = checkoutBranch(branch, branches, choice.worktree);
   const withBranch = checkout ? { checkoutBranch: checkout } : {};
   // The profile picks who runs it: a profile of another provider (GitHub Copilot) leaves only that provider's options.
@@ -315,11 +320,43 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setProviderModel(null);
     setProviderMode(null);
   };
+  /**
+   * Another profile for this session. One of another provider (GitHub Copilot) says what it turned off that was on (a
+   * worktree, a branch, a pipeline), with the way back, as on the computer.
+   */
+  const pickProfile = (profileId: string) => {
+    const to = options ? profilesOf(options).find((p) => p.id === profileId)?.provider : undefined;
+    const losses = !provider && to ? switchLosses({ worktree: choice.worktree, branch: choice.worktree ? null : branch, pipeline: runAs, later: false, schedule: false }, to.id, to.supports) : [];
+    const text = to ? switchNotice(losses, to.id) : null;
+    setChanges((current) => ({ ...current, profileId }));
+    setSwitched(text ? { back: choice.profileId, text } : null);
+  };
+  const backName = switched && options ? (profilesOf(options).find((p) => p.id === switched.back)?.name ?? 'the profile before') : null;
+  const switchNoticeLine = (
+    <div role="status" aria-live="polite" className="empty:hidden">
+      {switched && (
+        <p className="rounded-md bg-accent/10 px-2 py-1 text-meta text-text" data-provider-switch-notice>
+          {switched.text}{' '}
+          <button
+            type="button"
+            className="text-link underline-offset-2 hover:underline"
+            onClick={() => {
+              setChanges((current) => ({ ...current, profileId: switched.back }));
+              setSwitched(null);
+            }}
+            data-provider-switch-back
+          >
+            Back to {backName}
+          </button>
+        </p>
+      )}
+    </div>
+  );
   /** The choices for this session, the same on a wide screen (chips) and a phone (rows in Options). */
   const choiceRows = (look: 'chip' | 'row') =>
     provider && options && picked ? (
       <>
-        <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look={look} />
+        <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
         <ProviderModelChip provider={provider.name} models={providerModels} value={providerModel} onPick={setProviderModel} look={look} />
         <ProviderModeChip modes={provider.modes} value={providerModeNow!} onPick={setProviderMode} look={look} />
       </>
@@ -328,7 +365,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
       picked && (
         <>
           {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look={look} />}
-          <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look={look} />
+          <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
           <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look={look} />
           {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} look={look} />}
           <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} look={look} />
@@ -532,6 +569,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                     <ChevronDown aria-hidden className="size-4 text-faint" />
                   </span>
                 </button>
+                {switchNoticeLine}
                 {provider ? (
                   <p className="px-1 text-meta text-faint" data-remote-provider-note>
                     {providerBlocked ?? `${provider.name} works in ${picked.name}'s folder as it is.`}
@@ -548,6 +586,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
                   {choiceRows('chip')}
                 </div>
+                {switchNoticeLine}
                 {provider ? (
                   <p className="text-meta text-faint" data-remote-provider-note>
                     {providerBlocked ?? `${provider.name} works in ${picked.name}'s folder as it is.`}

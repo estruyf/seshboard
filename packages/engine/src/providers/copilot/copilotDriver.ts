@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode } from '@seshboard/protocol';
+import type { ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode, ProviderQuota } from '@seshboard/protocol';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { CopilotLive } from './copilotLive.ts';
@@ -50,8 +50,29 @@ export interface CopilotSdkClient {
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
   readonly cliProcess?: { pid?: number } | null;
-  /** The runtime's RPC: the slash commands a new session has. */
-  readonly rpc?: { commands?: { list(): Promise<{ commands: CopilotCommand[] }> } };
+  /** The runtime's RPC: the slash commands a new session has, and the account's premium requests. */
+  readonly rpc?: {
+    commands?: { list(): Promise<{ commands: CopilotCommand[] }> };
+    account?: { getQuota(params: Record<string, never>): Promise<{ quotaSnapshots: Record<string, CopilotQuotaSnapshot | undefined> }> };
+  };
+}
+
+/** One of the account's quotas, as the SDK's `account.getQuota` has it. */
+export interface CopilotQuotaSnapshot {
+  isUnlimitedEntitlement: boolean;
+  entitlementRequests: number;
+  usedRequests: number;
+  remainingPercentage: number;
+  resetDate?: string;
+}
+
+/** The premium requests of a quota answer, in Seshboard's shape; null when Copilot says nothing about them. */
+export function premiumQuota(snapshots: Record<string, CopilotQuotaSnapshot | undefined>): ProviderQuota | null {
+  const premium = snapshots.premium_interactions;
+  if (!premium) return null;
+  const unlimited = premium.isUnlimitedEntitlement || premium.entitlementRequests < 0;
+  const percentUsed = unlimited ? 0 : Math.min(100, Math.max(0, 100 - premium.remainingPercentage));
+  return { used: Math.max(0, premium.usedRequests), entitlement: unlimited ? null : premium.entitlementRequests, percentUsed, resetsAt: premium.resetDate ?? null };
 }
 
 /** Makes the client for the user's `copilot` (the real one loads the SDK; tests pass a fake). */
@@ -133,13 +154,20 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
     runtimePid: () => started?.cliProcess?.pid ?? null,
     async status(): Promise<DriverStatus> {
       const binary = await options.binary();
-      if (!binary) return { binary: null, version: null, signedIn: false, account: null, problem: INSTALL };
+      if (!binary) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
       try {
         const auth = await (await connect()).getAuthStatus();
-        return { binary: binary.path, version: binary.version, signedIn: auth.isAuthenticated, account: auth.statusMessage ?? auth.login ?? null, problem: auth.isAuthenticated ? null : SIGN_IN };
+        const login = auth.isAuthenticated ? (auth.login ?? null) : null;
+        return { binary: binary.path, version: binary.version, signedIn: auth.isAuthenticated, account: auth.statusMessage ?? auth.login ?? null, login, problem: auth.isAuthenticated ? null : SIGN_IN };
       } catch (error) {
-        return { binary: binary.path, version: binary.version, signedIn: false, account: null, problem: (error as Error).message };
+        return { binary: binary.path, version: binary.version, signedIn: false, account: null, login: null, problem: (error as Error).message };
       }
+    },
+
+    async quota(): Promise<ProviderQuota | null> {
+      const account = (await connect()).rpc?.account;
+      if (!account) return null;
+      return premiumQuota((await account.getQuota({})).quotaSnapshots);
     },
 
     async commands() {

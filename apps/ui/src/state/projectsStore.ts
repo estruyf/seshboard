@@ -28,6 +28,8 @@ interface ProjectsState {
   newSessionIn: string | null;
   /** ...and start in a new worktree there (a session header's "New worktree…"). */
   newSessionWorktree: boolean;
+  /** A profile New session should pick for one session when it opens (Copilot is ready's Start a Copilot session). */
+  newSessionProfile: string | null;
   setProjects(projects: ProjectInfo[]): void;
   setQuestionsDir(dir: string): void;
   setFilter(root: string | null): void;
@@ -35,6 +37,7 @@ interface ProjectsState {
   reload(): void;
   showAdd(open: boolean): void;
   startIn(root: string | null, options?: { worktree?: boolean }): void;
+  startWith(profileId: string | null): void;
 }
 
 export const useProjects = create<ProjectsState>()((set) => ({
@@ -48,6 +51,7 @@ export const useProjects = create<ProjectsState>()((set) => ({
   adding: false,
   newSessionIn: null,
   newSessionWorktree: false,
+  newSessionProfile: null,
   setProjects: (listed) => set((s) => ({ listed, projects: withQuestions(listed, s.questionsDir), loaded: true })),
   setQuestionsDir: (questionsDir) => set((s) => ({ questionsDir, projects: withQuestions(s.listed, questionsDir) })),
   setFilter: (filter) => set({ filter }),
@@ -55,6 +59,7 @@ export const useProjects = create<ProjectsState>()((set) => ({
   reload: () => set((s) => ({ version: s.version + 1 })),
   showAdd: (adding) => set({ adding }),
   startIn: (newSessionIn, options = {}) => set({ newSessionIn, newSessionWorktree: options.worktree ?? false }),
+  startWith: (newSessionProfile) => set({ newSessionProfile }),
 }));
 
 /**

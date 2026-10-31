@@ -82,6 +82,7 @@ import {
   PipelineRunState,
   projectPrBase,
   type PipelineNotice,
+  type ProviderDetection,
 } from '@seshboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -151,7 +152,7 @@ import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
-import { createProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
+import { createProvider, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
@@ -205,7 +206,7 @@ export interface EngineOptions {
   onKeepAwake?: (on: boolean) => void;
   /** Where the built-in profile's sessions are read from. Defaults to the Claude Agent SDK (tests pass a fake). */
   sessionSource?: SessionSource;
-  /** A fake Copilot SDK and `copilot` (tests). Defaults to the SDK and the user's own `copilot`. */
+  /** A fake Copilot SDK and `copilot` (tests, and the demo's `demoCopilot`). Defaults to the SDK and the user's own `copilot`. */
   copilot?: ProviderOptions['copilot'];
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
@@ -495,6 +496,16 @@ export function createEngine(options: EngineOptions): Engine {
     appState.set(ALLOWED_PROVIDERS_KEY, []);
   }
   const source = new ProviderSources(claudeSource, () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })));
+  /** What `providers.detect` found, asked once per run (it starts each provider's CLI for a moment); Check again asks again. */
+  let detected: Promise<ProviderDetection[]> | null = null;
+  const detectProviders = (refresh: boolean) => {
+    if (refresh || !detected) {
+      detected = Promise.all(providerCatalog(providerOptions).map((info) => detectProvider(info, providerOptions)));
+      // A failure is not kept: the next ask tries again.
+      detected.catch(() => (detected = null));
+    }
+    return detected;
+  };
   /** Another provider's session (read-only): Claude Code's actions on it are refused. */
   const assertClaudeSession = (sessionId: string, action: string) => {
     const provider = sessions.get(sessionId)?.provider ?? source.providerOf(sessionId) ?? (providerHosts.has(sessionId) ? 'other' : undefined);
@@ -2289,7 +2300,8 @@ export function createEngine(options: EngineOptions): Engine {
         if (!adapter?.driver) return null;
         // The phone's modes are Claude Code's four: a provider's mode beyond them isn't offered there.
         const modes = adapter.driver.modes.filter((m): m is typeof m & { value: RemotePermissionMode } => (RemotePermissionMode.options as readonly string[]).includes(m.value));
-        return { id: adapter.id, name: PROVIDER_NAMES[adapter.id], modes };
+        const supports = providerCatalog(providerOptions).find((p) => p.id === adapter.id)?.supports ?? [];
+        return { id: adapter.id, name: PROVIDER_NAMES[adapter.id], modes, supports };
       },
       providerReady: async (profileId) => {
         const driver = providerProfiles.adapter(profileId)?.driver;
@@ -2737,8 +2749,27 @@ export function createEngine(options: EngineOptions): Engine {
     'providers.list': () => ({ providers: providerCatalog(providerOptions) }),
     'providers.status': async ({ profileId }) => {
       const driver = providerProfiles.adapter(profileId)?.driver;
-      if (!driver) return { binary: null, version: null, signedIn: false, account: null, problem: 'This profile is not one of a provider that can start sessions.' };
+      if (!driver) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
       return driver.status();
+    },
+    'providers.detect': async ({ refresh }) => ({ providers: await detectProviders(refresh) }),
+    'providers.openInCli': async ({ sessionId }) => {
+      const profileId = sessions.get(sessionId)?.profileId ?? source.profileOf(sessionId);
+      const adapter = profileId ? providerProfiles.adapter(profileId) : undefined;
+      if (!adapter) throw new RpcError('NOT_FOUND', 'That is not a session of a provider profile');
+      if (providerHosts.has(sessionId)) throw new RpcError('SESSION_RUNNING_HERE', `Stop it here first: ${PROVIDER_NAMES[adapter.id]} can't run it in two places`);
+      const cwd = sessionCwd(sessionId) ?? homedir();
+      try {
+        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const command = adapter.resumeCommand.replaceAll('{sessionId}', sessionId);
+        return await terminals.open({ sessionId, cwd, kind: 'action', command, title: `${PROVIDER_NAMES[adapter.id]} CLI`, cols: 100, rows: 20, fork: false, env });
+      } catch (error) {
+        throw new RpcError('TERMINAL_FAILED', (error as Error).message);
+      }
+    },
+    'providers.quota': async ({ profileId }) => {
+      const driver = providerProfiles.adapter(profileId)?.driver;
+      return { quota: driver?.quota ? await driver.quota().catch(() => null) : null };
     },
     'providers.commands': async ({ profileId }) => {
       const driver = providerProfiles.adapter(profileId)?.driver;

@@ -9,6 +9,9 @@ import { copilotSessionsDir, copilotSessionSource, EVENTS_FILE, SESSION_ID } fro
 /** Continues a session in Copilot CLI. */
 export const COPILOT_RESUME = 'copilot --resume={sessionId}';
 
+/** Installs Copilot CLI (GitHub's own instructions; it needs Node). */
+export const COPILOT_INSTALL = 'npm install -g @github/copilot';
+
 /** A file in a session's folder that changes what the sidebar shows: its events, or its title and folder. */
 const SESSION_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[\\/](?:events\.jsonl|workspace\.yaml)$/i;
 

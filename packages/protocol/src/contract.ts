@@ -46,7 +46,7 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
-import { ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
+import { ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
@@ -320,6 +320,18 @@ export const contract = {
     'providers.commands': { params: z.object({ profileId: ProfileId }), result: z.object({ commands: z.array(SlashCommand) }) },
     /** Opens a terminal that signs a provider profile in with its own CLI (`copilot login`), in its folder. */
     'providers.signIn': { params: z.object({ profileId: ProfileId }), result: TerminalInfo },
+    /**
+     * Each provider's CLI on this computer, without a profile: installed, its own folder and sessions, signed in. Asked
+     * once and kept; `refresh` asks again (Check again).
+     */
+    'providers.detect': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ providers: z.array(ProviderDetection) }) },
+    /**
+     * Opens another provider's session in its own CLI (`copilot --resume=…`), in the session's terminal, with its
+     * profile's folder. Refused while Seshboard runs it.
+     */
+    'providers.openInCli': { params: z.object({ sessionId: SessionId }), result: TerminalInfo },
+    /** A provider profile's premium requests this period; null when the provider doesn't say. */
+    'providers.quota': { params: z.object({ profileId: ProfileId }), result: z.object({ quota: ProviderQuota.nullable() }) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),

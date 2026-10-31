@@ -11,6 +11,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
@@ -112,6 +113,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
   if (profile && profiles.length > 1) {
     const profileName = current?.name ?? 'Profile';
+    const mixed = new Set(profiles.map((p) => p.provider)).size > 1;
     chips.push({
       key: 'profile',
       face: (l) => {
@@ -134,15 +136,21 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           title={`Profile: ${profileName}${current && current.provider !== 'claude' ? `, runs with ${PROVIDER_NAMES[current.provider]}` : ''}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
           heading="Profile"
           placement="up"
-          choices={profiles.map((p) => ({
+          choices={byTool(profiles).map((p) => ({
             value: p.id,
             label: profile.labelFor?.(p) ?? p.name,
             // Another provider's profile says who runs it; a Claude Code one, its account.
             description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],
             disabled: fixed && p.id !== profile.value,
+            // Headers by tool, only once profiles use more than one.
+            ...(mixed ? { group: PROVIDER_NAMES[p.provider] } : {}),
           }))}
-          actions={fixed ? [{ label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }] : undefined}
+          actions={[
+            fixed
+              ? { label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }
+              : { label: 'Add profile…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-add-profile-from-menu': true } },
+          ]}
           width={260}
         >
           {face}

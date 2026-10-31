@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
+import { OPTIONAL_PROVIDERS, PROVIDER_FEATURES } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
@@ -223,7 +223,7 @@ export const RemoteProfile = z.object({
   name: z.string(),
   color: ProfileColor,
   defaults: RemoteDefaults,
-  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode) }).optional(),
+  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode), /** Claude Code's features it has too; a computer from before says none. */ supports: z.array(z.enum(PROVIDER_FEATURES)).default([]) }).optional(),
 });
 export type RemoteProfile = z.infer<typeof RemoteProfile>;
 

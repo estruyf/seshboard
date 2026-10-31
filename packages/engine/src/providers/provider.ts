@@ -1,4 +1,4 @@
-import type { Capabilities, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, SlashCommand, StreamDelta } from '@seshboard/protocol';
+import type { Capabilities, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, SlashCommand, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
@@ -58,6 +58,8 @@ export interface DriverStatus {
   signedIn: boolean;
   /** Who it is signed in as, in the provider's words (`estruyf (via gh)`). */
   account: string | null;
+  /** The account's login name (`estruyf`), when the provider says it. */
+  login: string | null;
   /** What to do when it can't run: install it, or sign in with its CLI. Null when it can. */
   problem: string | null;
 }
@@ -123,6 +125,8 @@ export interface ProviderDriver {
    */
   modes: ProviderMode[];
   status(): Promise<DriverStatus>;
+  /** The account's premium requests this period (Copilot's), when the provider has them. */
+  quota?(): Promise<ProviderQuota | null>;
   models(): Promise<ModelOption[]>;
   /** The slash commands a new session has, before one runs here. */
   commands(): Promise<SlashCommand[]>;

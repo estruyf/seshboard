@@ -681,6 +681,7 @@ const hub: RemoteHub = new RemoteHub({
             { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
             { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
           ],
+          supports: [],
         }
       : null,
   providerReady: async () => ({

@@ -183,7 +183,9 @@ describe('engine over a MessagePort', () => {
     rpc.on('session.host', (info) => info.sessionId === COPILOT_ID && hostStates.push(info.state));
 
     const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
-    expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', problem: null });
+    expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: null, problem: null });
+    // A Copilot without the quota call says nothing about premium requests, rather than failing.
+    expect(await rpc.call('providers.quota', { profileId })).toEqual({ quota: null });
     expect((await rpc.call('providers.models', { profileId })).models.map((m) => m.value)).toEqual(['gpt-5-mini']);
 
     // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model.

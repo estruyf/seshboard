@@ -32,7 +32,7 @@ function setup(stored: StoredUpNext[] = []) {
       { value: 'default', label: 'Ask', description: '' },
       { value: 'plan', label: 'Plan', description: '' },
     ],
-    status: async () => ({ binary: '/c', version: null, signedIn: true, account: null, problem: null }),
+    status: async () => ({ binary: '/c', version: null, signedIn: true, account: null, login: null, problem: null }),
     models: async () => [],
     commands: async () => [{ name: 'init', description: '', argumentHint: '' }],
     start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}`), session),

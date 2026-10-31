@@ -20,7 +20,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { popOut, popoutSession, showInMain } from '../../state/popoutsStore.ts';
 import { currentPlatform } from '../../lib/platform.ts';
-import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -113,6 +113,8 @@ import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { ProviderMark } from '../providers/ProviderMark.tsx';
+import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
@@ -1346,6 +1348,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
   const runPlaceholder = useRunPlaceholder(sessionId);
   const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
+  /** The last reply, for another provider's ⋯ › Copy the last reply. */
+  const lastReply = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.kind === 'text' && !item.subagent) return item.text;
+    }
+    return null;
+  }, [items]);
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
@@ -1386,13 +1396,22 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
         <div className={`min-w-24 flex-1 @max-[560px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
           <h1 className="flex min-w-0 items-center gap-1.5 text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
-            <ProviderMark session={summary} size={14} className="text-muted" />
             <span className="truncate">{title}</span>
           </h1>
           {/* Status · project · branch. In a narrow pane: the dot and the branch. */}
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
             {/* A pipeline step's parent, before its state: the way back to the run. */}
             <StepCrumb sessionId={sessionId} />
+            {/* Another provider's session says whose it is first. */}
+            {otherProvider && (
+              <>
+                <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider}>
+                  <ProviderMark session={{ provider: otherProvider }} size={12} />
+                  <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider]}</span>
+                </span>
+                <Sep />
+              </>
+            )}
             <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
               {live ? <StatusDot live={live} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
               <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
@@ -1575,6 +1594,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
+          provider={
+            otherProvider && !readOnly
+              ? {
+                  id: otherProvider,
+                  supports: otherInfo?.supports ?? [],
+                  onCompact: compact ?? null,
+                  onTools: () => useOverlay.getState().show('tools'),
+                  lastReply,
+                  onOpenCli: activeHost || !client ? null : () => void openInProviderCli(client, sessionId).catch((e: Error) => setActionError(e.message)),
+                  onArchive: () => archiveSessions([{ id: sessionId, title }], () => void client?.call('sessions.setFlags', { sessionId, archived: true }).catch((e: Error) => setActionError(e.message))),
+                }
+              : null
+          }
         />
         {!inPopout ? (
           <Button
@@ -2071,15 +2103,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               </div>
               )}
               {/* Another provider's session: how full its context is, and what it has spent in the provider's unit. */}
-              {!foldFooter && otherProvider && !readOnly && (contextLive || activeHost?.providerUsage) && (
+              {!foldFooter && otherProvider && !readOnly && (contextLive || otherProfileId) && (
                 <div className="flex min-h-6 items-center justify-end gap-3 px-1 text-meta text-muted" data-session-footer data-provider-footer>
-                  {activeHost?.providerUsage && (
-                    <span className="tabular-nums" data-provider-usage>
-                      {activeHost.providerUsage.amount} {activeHost.providerUsage.unit}
-                    </span>
-                  )}
                   {/* Compact sends the provider's /compact, as for Claude Code. */}
                   {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />}
+                  {/* The account's premium requests this period, where Claude Code's plan usage goes. */}
+                  {otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} footer />}
                 </div>
               )}
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}

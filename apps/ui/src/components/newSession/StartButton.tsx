@@ -44,6 +44,9 @@ export function StartButton({
   const entries: MenuEntry[] = state.items.map(entryOf);
   // Starting is blocked but queueing isn't (the focus limit): the menu says why.
   if (state.disabled && !state.menuDisabled && state.reason) entries.push({ note: state.reason });
+  // Items another provider can't do yet: one line says so ("Not with GitHub Copilot yet").
+  const itemReason = state.items.find((item) => item.reason)?.reason;
+  if (itemReason) entries.push({ note: itemReason });
   return (
     <SplitButton
       onClick={() => onAction(state.main)}
