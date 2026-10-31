@@ -13,6 +13,7 @@ export * from './branches.ts';
 export * from './capabilities.ts';
 export * from './usage.ts';
 export * from './profiles.ts';
+export * from './providers.ts';
 export * from './claudeUpdate.ts';
 export * from './backup.ts';
 export * from './later.ts';

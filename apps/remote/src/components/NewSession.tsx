@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, KeyboardOff, ListTree, Search, SlidersHorizontal, X } from 'lucide-react';
-import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, type RemoteBranches, type RemoteOptions, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, keptRunAs, pipelineMeta, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsLabel, runAsOrder, runAsSteps, switchLosses, switchNotice, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RemoteSession } from '@seshboard/protocol/remote-client';
 import { checkoutBranch } from '../lib/branches.ts';
 import { lastPipeline, rememberPipeline } from '../lib/runs.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -8,12 +8,12 @@ import { clearDraft, loadDraft, saveDraft, type DraftKey } from '../lib/drafts.t
 import { projectStatus, recentProjects, suggestedProject, type TileTone } from '../lib/groups.ts';
 import { useFinePointer, useWide } from '../lib/media.ts';
 import { autoOn, changedFrom, defaultChoice, EFFORT_LABEL, MODE_SHORT, modelLabel, profilesOf, projectProfile, takesEffort, type Choice } from '../lib/options.ts';
-import { optionsSummary, startState, type SummaryPart } from '../lib/newOptions.ts';
+import { optionsSummary, providerSummary, startState, type SummaryPart } from '../lib/newOptions.ts';
 import { lastProject, rememberProject, rememberRunOn } from '../lib/storage.ts';
 import type { ConnectionState } from '../lib/connection.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
 import type { Client } from './Connected.tsx';
-import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, WorkspaceChip } from './OptionChips.tsx';
+import { BranchChip, EffortChip, ModeChip, ModelChip, ProfileChip, ProviderModeChip, ProviderModelChip, WorkspaceChip } from './OptionChips.tsx';
 import { Sheet } from './Sheet.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, Kbd, RoundButton } from './ui.tsx';
@@ -78,6 +78,11 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   /** The project's pipelines (`REMOTE_FEATURE_PIPELINES`), and the one Run as picked: Start runs it with the prompt as its task. */
   const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
   const [runAs, setRunAs] = useState<string | null>(null);
+  /** A provider profile's (GitHub Copilot's) own model and mode, picked for this session. */
+  const [providerModel, setProviderModel] = useState<string | null>(null);
+  const [providerMode, setProviderMode] = useState<RemotePermissionMode | null>(null);
+  /** Whether the provider profile picked can start a session there, and its models (null while it is asked). */
+  const [providerReady, setProviderReady] = useState<{ profileId: string; problem: string | null; models: RemoteOptions['models'] } | null>(null);
   const attachments = useAttachments({ features, newSession: true, onError: setError });
   const fine = useFinePointer();
   const wide = useWide();
@@ -105,7 +110,10 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setChanges({});
     setError(null);
     setListOpen(false);
+    setProviderModel(null);
+    setProviderMode(null);
   }, [computer]);
+
 
   useEffect(() => {
     if (!client) return;
@@ -186,11 +194,37 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const baseProfile = projectProfile(options, projectId);
   const defaults = defaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: Choice = { ...defaults, ...changes };
-  const change = (next: Partial<Choice>) => setChanges((current) => ({ ...current, ...next }));
+  /** Switching to another provider's profile turned something off: the notice, with Back. */
+  const [switched, setSwitched] = useState<{ back: string; text: string } | null>(null);
+  const change = (next: Partial<Choice>) => {
+    setSwitched(null);
+    setChanges((current) => ({ ...current, ...next }));
+  };
   const checkout = checkoutBranch(branch, branches, choice.worktree);
   const withBranch = checkout ? { checkoutBranch: checkout } : {};
-  const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading);
-  const pipeline = pipelines.find((p) => p.id === runAs) ?? null;
+  // The profile picks who runs it: a profile of another provider (GitHub Copilot) leaves only that provider's options.
+  const provider = (options ? profilesOf(options).find((p) => p.id === choice.profileId)?.provider : undefined) ?? null;
+  const providerProfileId = provider ? choice.profileId : null;
+  const providerModeNow = provider ? (providerMode && provider.modes.some((m) => m.value === providerMode) ? providerMode : (provider.modes[0]?.value ?? 'default')) : null;
+  /** Why the provider can't start a session now (its own words), or that it is being asked. */
+  const providerBlocked = provider ? (providerReady?.profileId === providerProfileId ? providerReady!.problem : `Checking ${provider.name}…`) : null;
+  const providerModels = providerReady && providerReady.profileId === providerProfileId ? providerReady.models : [];
+  // Picking a provider profile asks the computer whether it can run a session now (it starts the provider there).
+  useEffect(() => {
+    setProviderReady(null);
+    if (!client || !providerProfileId) return;
+    let current = true;
+    void client.call('providers.ready', { profileId: providerProfileId }).then(
+      (result) => current && setProviderReady({ profileId: providerProfileId, ...result }),
+      (e: Error) => current && setProviderReady({ profileId: providerProfileId, problem: e.message, models: [] }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, providerProfileId]);
+  const ready = Boolean(client && projectId && prompt.trim() && !busy && !attachments.reading && !providerBlocked);
+  // A pipeline's steps are Claude Code's: none with another provider.
+  const pipeline = provider ? null : (pipelines.find((p) => p.id === runAs) ?? null);
   /** Run as a pipeline: the prompt is its task, and the box's choices go to the steps that don't set their own. */
   const startRun = async (picked: RemotePipeline) => {
     const { worktree: _worktree, ...choices } = changedFrom(choice, defaults, baseProfile);
@@ -211,7 +245,14 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
         onStarted(computer, runId);
         return;
       }
-      const { sessionId } = await client!.call('session.create', { projectId: projectId!, prompt: prompt.trim(), ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}), ...changedFrom(choice, defaults, baseProfile), ...withBranch });
+      const files = { ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}) };
+      // Another provider takes only its model and mode; Claude Code the choices that differ from the project's defaults.
+      const { sessionId } = await client!.call(
+        'session.create',
+        provider
+          ? { projectId: projectId!, prompt: prompt.trim(), ...files, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow! }
+          : { projectId: projectId!, prompt: prompt.trim(), ...files, ...changedFrom(choice, defaults, baseProfile), ...withBranch },
+      );
       rememberProject(computer, projectId!);
       if (runOn) rememberRunOn(computer);
       clearDraft(DRAFT);
@@ -248,10 +289,16 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   const projectBusy = Boolean(projectId && sessions.some((s) => s.projectId === projectId && s.status === 'working'));
   const phone = !wide;
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const startable = startState({ connected: Boolean(client), project: Boolean(projectId), text: prompt, busy, reading: attachments.reading });
+  const startable = startState({ connected: Boolean(client), project: Boolean(projectId), text: prompt, busy, reading: attachments.reading, blocked: providerBlocked });
   const branchShown = checkout ?? branches?.current ?? null;
   const summary =
-    options && picked
+    options && picked && provider
+      ? providerSummary({
+          provider: provider.name,
+          model: providerModel ? (providerModels.find((m) => m.value === providerModel)?.displayName ?? providerModel) : 'Default model',
+          mode: provider.modes.find((m) => m.value === providerModeNow)?.label ?? MODE_SHORT[providerModeNow!],
+        })
+      : options && picked
       ? optionsSummary({
           choice,
           defaults,
@@ -270,7 +317,64 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
     setChanges({});
     setBranch(null);
     setRunAs(null);
+    setProviderModel(null);
+    setProviderMode(null);
   };
+  /**
+   * Another profile for this session. One of another provider (GitHub Copilot) says what it turned off that was on (a
+   * worktree, a branch, a pipeline), with the way back, as on the computer.
+   */
+  const pickProfile = (profileId: string) => {
+    const to = options ? profilesOf(options).find((p) => p.id === profileId)?.provider : undefined;
+    const losses = !provider && to ? switchLosses({ worktree: choice.worktree, branch: choice.worktree ? null : branch, pipeline: runAs, later: false, schedule: false }, to.id, to.supports) : [];
+    const text = to ? switchNotice(losses, to.id) : null;
+    setChanges((current) => ({ ...current, profileId }));
+    setSwitched(text ? { back: choice.profileId, text } : null);
+  };
+  const backName = switched && options ? (profilesOf(options).find((p) => p.id === switched.back)?.name ?? 'the profile before') : null;
+  const switchNoticeLine = (
+    <div role="status" aria-live="polite" className="empty:hidden">
+      {switched && (
+        <p className="rounded-md bg-accent/10 px-2 py-1 text-meta text-text" data-provider-switch-notice>
+          {switched.text}{' '}
+          <button
+            type="button"
+            className="text-link underline-offset-2 hover:underline"
+            onClick={() => {
+              setChanges((current) => ({ ...current, profileId: switched.back }));
+              setSwitched(null);
+            }}
+            data-provider-switch-back
+          >
+            Back to {backName}
+          </button>
+        </p>
+      )}
+    </div>
+  );
+  /** The choices for this session, the same on a wide screen (chips) and a phone (rows in Options). */
+  const choiceRows = (look: 'chip' | 'row') =>
+    provider && options && picked ? (
+      <>
+        <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
+        <ProviderModelChip provider={provider.name} models={providerModels} value={providerModel} onPick={setProviderModel} look={look} />
+        <ProviderModeChip modes={provider.modes} value={providerModeNow!} onPick={setProviderMode} look={look} />
+      </>
+    ) : (
+      options &&
+      picked && (
+        <>
+          {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look={look} />}
+          <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
+          <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look={look} />
+          {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} look={look} />}
+          <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} look={look} />
+          {/* A run makes its own worktree for its steps. */}
+          {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} look={look} />}
+          {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} look={look} />}
+        </>
+      )
+    );
   const startLabel = pipeline ? (busy ? 'Starting the run…' : 'Run pipeline') : 'Start session';
 
   return (
@@ -436,8 +540,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                   }
                 }}
                 rows={4}
-                placeholder="What should Claude do?"
-                aria-label="What should Claude do?"
+                placeholder={`What should ${provider?.name ?? 'Claude'} do?`}
+                aria-label={`What should ${provider?.name ?? 'Claude'} do?`}
                 data-remote-new-prompt
                 className="min-h-24 w-full resize-none bg-transparent py-1 text-body text-text outline-none [field-sizing:content] placeholder:text-faint"
               />
@@ -465,22 +569,29 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
                     <ChevronDown aria-hidden className="size-4 text-faint" />
                   </span>
                 </button>
-                {pipeline ? <RunAsSteps pipeline={pipeline} boxModel={choice.model} /> : <p className="px-1 text-meta text-faint">From {picked.name}'s defaults. Changes here are for this session only.</p>}
+                {switchNoticeLine}
+                {provider ? (
+                  <p className="px-1 text-meta text-faint" data-remote-provider-note>
+                    {providerBlocked ?? `${provider.name} works in ${picked.name}'s folder as it is.`}
+                  </p>
+                ) : pipeline ? (
+                  <RunAsSteps pipeline={pipeline} boxModel={choice.model} />
+                ) : (
+                  <p className="px-1 text-meta text-faint">From {picked.name}'s defaults. Changes here are for this session only.</p>
+                )}
               </div>
             )}
             {!phone && options && picked && !typing && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choices for this session">
-                  {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} />}
-                  <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} />
-                  <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} />
-                  {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
-                  <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
-                  {/* A run makes its own worktree for its steps. */}
-                  {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} />}
-                  {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} />}
+                  {choiceRows('chip')}
                 </div>
-                {pipeline ? (
+                {switchNoticeLine}
+                {provider ? (
+                  <p className="text-meta text-faint" data-remote-provider-note>
+                    {providerBlocked ?? `${provider.name} works in ${picked.name}'s folder as it is.`}
+                  </p>
+                ) : pipeline ? (
                   <RunAsSteps pipeline={pipeline} boxModel={choice.model} />
                 ) : (
                   <p className="text-meta text-faint">
@@ -504,7 +615,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               <KeyboardOff aria-hidden />
             </RoundButton>
           )}
-          {projectBusy && !pipeline && (
+          {/* The queue starts Claude Code sessions: not with another provider. */}
+          {projectBusy && !pipeline && !provider && (
             <button type="button" onClick={() => void queue()} onMouseDown={keepFocus} disabled={!startable.ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="pointer-events-auto inline-flex min-h-12 items-center rounded-full border border-edge bg-card px-5 text-body text-text shadow-[var(--sb-overlay-shadow)] disabled:opacity-60" data-remote-queue>
               Queue for later
             </button>
@@ -528,15 +640,7 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
       )}
       {phone && optionsOpen && options && picked && (
         <Sheet title="Options" onClose={() => setOptionsOpen(false)} done hook="options">
-          <div className="-mx-4 flex flex-col divide-y divide-border border-y border-border">
-            {pipelines.length > 0 && <RunAsChip pipelines={runAsOrder(pipelines, lastPipeline(computer, picked.id))} value={runAs} onPick={setRunAs} look="row" />}
-            <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={(profileId) => change({ profileId })} look="row" />
-            <ModelChip options={options} value={choice.model} offerAuto={autoOn(options) && !pipeline} onPick={(model) => change({ model })} look="row" />
-            {takesEffort(options.models, choice.model) && <EffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} look="row" />}
-            <ModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} look="row" />
-            {!pipeline && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} look="row" />}
-            {!pipeline && !choice.worktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} look="row" />}
-          </div>
+          <div className="-mx-4 flex flex-col divide-y divide-border border-y border-border">{choiceRows('row')}</div>
           <button type="button" onClick={resetOptions} disabled={!changedAny} className="mt-3 min-h-11 text-left text-ui text-accent-ink disabled:text-faint" data-remote-options-reset>
             Reset to {picked.name}'s defaults
           </button>
@@ -564,7 +668,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
               'Pick a project first.'
             ) : null}
           </span>
-          {projectBusy && !pipeline && (
+          {/* The queue starts Claude Code sessions: not with another provider. */}
+          {projectBusy && !pipeline && !provider && (
             <Button onClick={() => void queue()} onMouseDown={keepFocus} disabled={!ready || attachments.items.length > 0} title={attachments.items.length ? 'Attachments go with a session that starts now' : undefined} className="flex-1 sm:flex-none" data-remote-queue>
               Queue for later
             </Button>

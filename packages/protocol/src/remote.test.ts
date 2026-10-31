@@ -25,6 +25,7 @@ describe('the remote contracts', () => {
       'projects.clone',
       'projects.clonePlan',
       'projects.list',
+      'providers.ready',
       'push.key',
       'push.subscribe',
       'push.unsubscribe',

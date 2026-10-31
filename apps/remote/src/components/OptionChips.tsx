@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
-import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession } from '@seshboard/protocol/remote-client';
+import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
 import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
@@ -30,12 +31,19 @@ export function ProfileChip({ options, projectId, value, onPick, look }: { optio
     <ChoiceChip
       label="Claude profile"
       face={current?.name ?? 'Profile'}
-      icon={<span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />}
+      icon={
+        <span className="flex items-center gap-1">
+          <span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />
+          {/* A profile of another provider shows whose it is (the phone has one: GitHub Copilot). */}
+          {current?.provider && <CopilotIcon size={14} aria-label={current.provider.name} role="img" data-remote-profile-provider={current.provider.id} />}
+        </span>
+      }
       selected={value}
       look={look}
       rowLabel="Profile"
       hook="profile"
-      options={profiles.map((p) => ({ value: p.id, label: p.id === base ? `${p.name} (${own ? 'project' : 'default'})` : p.name, dot: PROFILE_DOT[p.color] }))}
+      // A profile of another provider (GitHub Copilot) says who runs it.
+      options={profiles.map((p) => ({ value: p.id, label: p.id === base ? `${p.name} (${own ? 'project' : 'default'})` : p.name, dot: PROFILE_DOT[p.color], ...(p.provider ? { description: `Runs with ${p.provider.name}` } : {}) }))}
       onPick={onPick}
     />
   );
@@ -212,5 +220,37 @@ export function ModelModeChip({ options, session, disabled, onModel, onEffort, o
           document.body,
         )}
     </>
+  );
+}
+
+/** Another provider's models (from `providers.ready`), with its own default first. */
+export function ProviderModelChip({ provider, models, value, onPick, look }: { provider: string; models: RemoteOptions['models']; value: string | null; onPick: (model: string | null) => void; look?: Look }) {
+  return (
+    <ChoiceChip
+      label="Model"
+      face={value ? (models.find((m) => m.value === value)?.displayName ?? value) : 'Default model'}
+      selected={value ?? DEFAULT}
+      look={look}
+      hook="model"
+      options={[{ value: DEFAULT, label: 'Default model', description: `What ${provider} picks` }, ...models.map((m) => ({ value: m.value, label: m.displayName, description: m.description }))]}
+      onPick={(picked) => onPick(picked === DEFAULT ? null : picked)}
+    />
+  );
+}
+
+/** Another provider's modes, in its words (Copilot's Autopilot). */
+export function ProviderModeChip({ modes, value, onPick, look }: { modes: NonNullable<RemoteProfile['provider']>['modes']; value: RemotePermissionMode; onPick: (mode: RemotePermissionMode) => void; look?: Look }) {
+  return (
+    <ChoiceChip<RemotePermissionMode>
+      label="Permission mode"
+      face={modes.find((m) => m.value === value)?.label ?? MODE_SHORT[value]}
+      icon={<span aria-hidden className={`size-2 rounded-full ${MODE_DOT[value]}`} />}
+      selected={value}
+      look={look}
+      rowLabel="Mode"
+      hook="mode"
+      options={modes.map((m) => ({ value: m.value, label: m.label, description: m.description, dot: MODE_DOT[m.value] }))}
+      onPick={onPick}
+    />
   );
 }

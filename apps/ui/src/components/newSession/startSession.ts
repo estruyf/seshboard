@@ -35,6 +35,11 @@ export interface NewSessionStart {
    * from its branch (`worktreeFrom`), or Current checkout checks it out first (`checkoutPullRequest`).
    */
   github?: { origin: GithubOrigin; worktreeFrom?: WorktreeBranchBase; checkoutPullRequest?: { number: number; repo: string } };
+  /**
+   * `profileId` is another provider's profile (GitHub Copilot): it starts on this model (null: the provider's default)
+   * and mode. Claude Code's own choices (effort, worktree, branch, Auto) don't apply.
+   */
+  provider?: { model: string | null; permissionMode?: PermissionMode } | null;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -72,7 +77,10 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
   };
 }
 
-export interface SessionCreateParams {
+/** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string };
+
+export interface ClaudeSessionCreateParams {
   cwd: string;
   prompt: string;
   attachments: ImageAttachment[];
@@ -107,7 +115,7 @@ export function branchBlocked(checkoutBranch: string | null, checkedOutElsewhere
 }
 
 /** What `session.create` gets: a worktree with a made-up name unless you named it. */
-export function sessionCreateParams(start: NewSessionStart): SessionCreateParams {
+export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreateParams {
   const { choices, github } = start;
   // A pull request: its own branch, in a new worktree or checked out here; never another branch as well.
   const fromPr = github && (github.worktreeFrom || github.checkoutPullRequest);
@@ -126,6 +134,13 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
   };
+}
+
+/** What `session.create` gets for this start: Claude Code's options, or another provider's few. */
+export function createParamsFor(start: NewSessionStart): SessionCreateParams {
+  if (!start.provider) return sessionCreateParams(start);
+  const { model, permissionMode } = start.provider;
+  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model, ...(permissionMode ? { permissionMode } : {}), profileId: start.profileId };
 }
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */
@@ -147,7 +162,7 @@ export async function startNewSession(start: NewSessionStart, deps: StartDeps): 
     if (outcome === 'stop') return { kind: 'stopped' };
     if (outcome === 'saved') return { kind: 'saved' };
   }
-  const params = sessionCreateParams(start);
+  const params = createParamsFor(start);
   let created: { sessionId: string };
   try {
     created = await deps.createSession(params);

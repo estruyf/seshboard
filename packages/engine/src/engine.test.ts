@@ -5,7 +5,9 @@ import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
-import { createEngine } from './engine.ts';
+import { createEngine, type EngineOptions } from './engine.ts';
+import type { CopilotSdkClient, CopilotSdkSession, CopilotSessionOptions } from './providers/copilot/copilotDriver.ts';
+import type { CopilotEvent } from './providers/copilot/copilotEvents.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { git } from './git/gitChanges.ts';
@@ -69,7 +71,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -86,6 +88,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
+    // Never the machine's own `copilot`: without a fake, Copilot CLI isn't installed.
+    copilot: extra.copilot ?? { binary: async () => null },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -118,6 +122,96 @@ describe('engine over a MessagePort', () => {
     expect(info.versions.sqlite).toMatch(/^\d+\.\d+/);
     expect(info.shell.resolved).toBe(false);
     expect(info.claude).toBeNull();
+  });
+
+  it('shows a Copilot profile\'s sessions under that profile, and refuses Claude Code\'s own actions on them', async () => {
+    const { client, dataDir } = connect();
+    const id = '44444444-4444-4444-8444-444444444444';
+    // A Copilot profile's folder in the test's own folder, never the machine's ~/.copilot.
+    const copilotHome = join(dataDir, 'copilot');
+    const folder = join(copilotHome, 'session-state', id);
+    mkdirSync(folder, { recursive: true });
+    const events = [
+      { type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: PARSER } } },
+      { type: 'user.message', id: 'e2', timestamp: '2026-10-30T10:00:01.000Z', data: { content: 'Fix the parser' } },
+      { type: 'assistant.message', id: 'e3', timestamp: '2026-10-30T10:00:02.000Z', data: { content: 'Done.' } },
+    ];
+    writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true })]);
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+
+    // Adding a Copilot profile is what makes its sessions show up.
+    const { id: profileId } = await client.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    expect((await client.call('profiles.list', {})).profiles.find((p) => p.id === profileId)).toMatchObject({ provider: 'copilot', account: null });
+    await client.call('sessions.refresh', {});
+    const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
+    expect(listed).toMatchObject({ provider: 'copilot', profileId, title: 'Fix the parser', cwd: PARSER });
+
+    // Copilot can run sessions, but isn't installed here: sending says so.
+    await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    await expect(client.call('session.delete', { sessionId: id })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    expect(existsSync(join(folder, 'events.jsonl'))).toBe(true);
+  });
+
+  it('starts and steers a Copilot session through its driver, with Copilot\'s own login', async () => {
+    const COPILOT_ID = '55555555-5555-4555-8555-555555555555';
+    const calls: string[] = [];
+    let emit: (event: CopilotEvent) => void = () => {};
+    let options: CopilotSessionOptions | undefined;
+    const session: CopilotSdkSession = {
+      sessionId: COPILOT_ID,
+      on: (handler) => ((emit = handler), () => {}),
+      send: async ({ prompt }) => (calls.push(`send:${prompt}`), 'm1'),
+      abort: async () => void calls.push('abort'),
+      setModel: async (model) => void calls.push(`model:${model}`),
+      disconnect: async () => void calls.push('disconnect'),
+      rpc: { mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) }, commands: { list: async () => ({ commands: [] }), invoke: async () => ({ kind: 'completed' }) }, mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} }, skills: { list: async () => ({ skills: [] }) }, agent: { list: async () => ({ agents: [] }) } },
+    };
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true, statusMessage: 'octocat (via gh)' }),
+      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini' }],
+      createSession: async (o) => ((options = o), session),
+      resumeSession: async (_id, o) => ((options = o), session),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const hostStates: string[] = [];
+    rpc.on('session.host', (info) => info.sessionId === COPILOT_ID && hostStates.push(info.state));
+
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+    expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: null, problem: null });
+    // A Copilot without the quota call says nothing about premium requests, rather than failing.
+    expect(await rpc.call('providers.quota', { profileId })).toEqual({ quota: null });
+    expect((await rpc.call('providers.models', { profileId })).models.map((m) => m.value)).toEqual(['gpt-5-mini']);
+
+    // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model.
+    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini' });
+    expect(sessionId).toBe(COPILOT_ID);
+    expect(options).toMatchObject({ workingDirectory: dataDir, model: 'gpt-5-mini', clientName: 'seshboard' });
+    expect(calls).toEqual(['send:Add a test']);
+
+    emit({ type: 'assistant.turn_start', data: {} });
+    const answer = options!.onPermissionRequest({ requestId: 'p1', kind: 'shell', fullCommandText: 'npm test' }, { sessionId: COPILOT_ID });
+    const listed = await rpc.call('hosts.list', {});
+    expect(listed.hosts.find((h) => h.sessionId === COPILOT_ID)?.state).toBe('needs-you');
+    expect(listed.permissions).toEqual([expect.objectContaining({ requestId: 'p1', sessionId: COPILOT_ID, toolName: 'Bash' })]);
+    await rpc.call('session.respond', { requestId: 'p1', decision: { behavior: 'allow' } });
+    await expect(answer).resolves.toEqual({ kind: 'approve-once' });
+    emit({ type: 'assistant.message', id: 'a1', data: { content: 'Done.' } });
+    emit({ type: 'session.idle', data: {} });
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.state).toBe('idle');
+
+    await rpc.call('session.send', { sessionId: COPILOT_ID, text: 'And another', attachments: [], fork: false });
+    await rpc.call('session.interrupt', { sessionId: COPILOT_ID });
+    await rpc.call('session.setModel', { sessionId: COPILOT_ID, model: null });
+    expect(calls).toEqual(['send:Add a test', 'send:And another', 'abort', 'model:auto']);
+    // Claude Code's own features still refuse it.
+    await expect(rpc.call('session.forkAt', { sessionId: COPILOT_ID, messageUuid: 'a1' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    expect(hostStates).toEqual(expect.arrayContaining(['running', 'needs-you', 'idle']));
   });
 
   it('persists app state', async () => {

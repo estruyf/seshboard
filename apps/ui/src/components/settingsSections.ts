@@ -30,7 +30,7 @@ export const SETTINGS_SECTIONS: readonly SettingsPage[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, group: 'app' },
   { id: 'focus', label: 'Focus', icon: Target, group: 'app' },
   { id: 'conversation', label: 'Conversation', icon: MessageSquare, group: 'claude' },
-  { id: 'profiles', label: 'Claude profiles', icon: Users, group: 'claude' },
+  { id: 'profiles', label: 'Profiles', icon: Users, group: 'claude' },
   { id: 'usage', label: 'Usage', icon: Gauge, group: 'claude' },
   { id: 'memory', label: 'Memory', icon: Brain, group: 'claude' },
   { id: 'projects', label: 'Projects', icon: FolderGit2, group: 'work' },

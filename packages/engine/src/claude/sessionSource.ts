@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { earlierParts, joinParts, readTranscriptEntries, type TranscriptEntry } from './compactedHistory.ts';
+import type { SessionOrigin, SessionProvider } from '@seshboard/protocol';
 import type { RawSessionMessage } from './transcript.ts';
 
 /** The subset of the SDK's SDKSessionInfo we use. */
@@ -17,9 +18,16 @@ export interface RawSessionInfo {
   createdAt?: number;
   /** The Claude profile whose config folder holds the session (set by the multi-profile source). */
   profileId?: string;
+  /** Set for another provider's session (Copilot): its source derived everything, so the index reads no Claude files. */
+  provider?: Exclude<SessionProvider, 'claude'>;
+  /** Where another provider's session was started (Claude Code's comes from the transcript's `entrypoint`). */
+  origin?: SessionOrigin;
 }
 
-/** Reads Claude Code sessions. The SDK implementation is the only one that touches transcript formats. */
+/**
+ * Reads sessions. For Claude Code the SDK implementation is the only one that touches transcript formats; other
+ * providers have their own (`providers/`).
+ */
 export interface SessionSource {
   list(): Promise<RawSessionInfo[]>;
   info(sessionId: string): Promise<RawSessionInfo | undefined>;

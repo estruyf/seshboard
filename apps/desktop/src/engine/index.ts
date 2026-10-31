@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { createEngine, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -84,6 +84,8 @@ const engine = createEngine({
   stubCatchUp: process.env.SESHBOARD_STUB_CATCHUP === '1',
   // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
   stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
+  // The smoke test and the screenshots: a made-up Copilot CLI, signed in, that never starts a session.
+  ...(process.env.SESHBOARD_STUB_COPILOT === '1' ? { copilot: demoCopilot() } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });

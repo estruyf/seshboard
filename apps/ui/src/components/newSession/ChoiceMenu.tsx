@@ -17,6 +17,8 @@ export interface Choice<T extends string> {
   icon?: ReactNode;
   /** A line after this choice (Auto, before Default model and the models). */
   separatorAfter?: boolean;
+  /** A small header before the first choice of each group (profiles by the tool that runs them). */
+  group?: string;
 }
 
 /** A plain command under the choices, after a divider ("Save as project default"). */
@@ -197,8 +199,13 @@ export function ChoiceMenu<T extends string>({
               className={`mx-2 mb-1 w-[calc(100%-1rem)] rounded-md border border-border bg-bg px-2 py-1 text-ui text-text outline-none placeholder:text-faint focus:border-accent-ink ${mono ? 'font-mono' : ''}`}
             />
           )}
-          {listed.map((choice) => (
+          {listed.map((choice, index) => (
             <Fragment key={choice.value}>
+              {choice.group && choice.group !== listed[index - 1]?.group && (
+                <p role="presentation" className={`px-3 pb-0.5 text-meta text-faint ${index > 0 ? 'mt-1 border-t border-edge pt-1.5' : 'pt-0.5'}`} data-choice-group={choice.group}>
+                  {choice.group}
+                </p>
+              )}
               <button
                 type="button"
                 role="menuitemradio"

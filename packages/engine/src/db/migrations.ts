@@ -769,4 +769,10 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE pipeline_runs ADD COLUMN unattended INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // v42: Profiles of other providers (#199): a profile's config folder and login can be GitHub Copilot's
+  // (`COPILOT_HOME`). Every profile from before is Claude Code's. A user choice: keep it.
+  `
+  ALTER TABLE claude_profiles ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';
+  `,
 ];

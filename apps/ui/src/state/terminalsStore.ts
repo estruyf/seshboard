@@ -145,6 +145,17 @@ export async function openTerminal(client: EngineClient, owner: string, cwd: str
   }
 }
 
+/**
+ * Another provider's session in its own CLI (`copilot --resume=…`), in the session's terminal panel, with its profile's
+ * folder. The engine refuses while Seshboard runs it.
+ */
+export async function openInProviderCli(client: EngineClient, sessionId: string): Promise<void> {
+  const info = await client.call('providers.openInCli', { sessionId });
+  const state = useTerminals.getState();
+  state.togglePanel(sessionId, true);
+  state.setActive(sessionId, info.id);
+}
+
 /** The shell tab each session's code blocks run in, so runs share one tab instead of opening a new one every time. */
 const runTabs = new Map<string, string>();
 

@@ -22,7 +22,7 @@ const DAY = 24 * HOUR;
 export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
-  sessions: { hero: string; working: string; needsYou: string };
+  sessions: { hero: string; working: string; needsYou: string; copilot: string };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
@@ -566,13 +566,44 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
   live(needsYou.id, payments, 'waiting_for_permission', now - 14 * MINUTE, workConfigDir);
 
   written['Speed up the checkout page'] = { id: reading.id, configDir };
+  const copilot = writeCopilotDemo(home, acme, now - 3 * HOUR);
 
   return {
     home,
-    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id },
+    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
+}
+
+/**
+ * A GitHub Copilot CLI session on acme-store (#199), as Copilot writes it to `~/.copilot/session-state/<id>/`: shown
+ * only once a Copilot profile is added in Settings › Profiles. Returns its id.
+ */
+function writeCopilotDemo(home: string, cwd: string, at: number): string {
+  const id = randomUUID();
+  const dir = join(home, '.copilot', 'session-state', id);
+  mkdirSync(dir, { recursive: true });
+  const time = (offset: number) => new Date(at + offset * 1000).toISOString();
+  const file = join(cwd, 'src', 'cart', 'total.ts');
+  const events = [
+    { type: 'session.start', data: { sessionId: id, startTime: time(0), selectedModel: 'gpt-5.3-codex', context: { cwd, gitRoot: cwd, branch: 'main' } } },
+    { type: 'user.message', data: { content: 'Round the cart total to whole cents' } },
+    { type: 'assistant.message', data: { model: 'gpt-5.3-codex', content: "I'll look at how the total is computed.", toolRequests: [{ toolCallId: 'call_view', name: 'view', arguments: { path: file } }] } },
+    { type: 'tool.execution_complete', data: { toolCallId: 'call_view', success: true, result: { content: '1. export function cartTotal(lines) {\n2.   return lines.reduce((sum, l) => sum + l.price * l.quantity, 0);\n3. }' } } },
+    {
+      type: 'assistant.message',
+      data: { model: 'gpt-5.3-codex', content: '', toolRequests: [{ toolCallId: 'call_edit', name: 'edit', arguments: { path: file, old_str: 'return lines.reduce(', new_str: 'return Math.round(lines.reduce(' } }] },
+    },
+    { type: 'tool.execution_complete', data: { toolCallId: 'call_edit', success: true, result: { content: 'File edited.' } } },
+    { type: 'assistant.message', data: { model: 'gpt-5.3-codex', content: 'The total is now rounded to whole cents.', toolRequests: [] } },
+  ].map((event, i) => ({ ...event, id: randomUUID(), timestamp: time(i * 4) }));
+  writeFileSync(join(dir, 'events.jsonl'), `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
+  writeFileSync(
+    join(dir, 'workspace.yaml'),
+    [`id: ${id}`, `cwd: ${cwd}`, `git_root: ${cwd}`, 'branch: main', 'client_name: github/cli', 'name: Round the cart total', `created_at: ${time(0)}`, `updated_at: ${time(30)}`, ''].join('\n'),
+  );
+  return id;
 }
 
 // ---------------------------------------------------------------------------------------------------------

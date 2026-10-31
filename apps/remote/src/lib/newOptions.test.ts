@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { optionsSummary, startState, type SummaryInput } from './newOptions.ts';
+import { optionsSummary, providerSummary, startState, type SummaryInput } from './newOptions.ts';
 import type { Choice } from './options.ts';
 
 const defaults: Choice = { profileId: 'default', model: null, effort: null, permissionMode: 'auto', worktree: false };
@@ -63,5 +63,17 @@ describe('Start', () => {
     expect(startState({ ...ready, project: false }).reason).toBe('Pick a project first');
     expect(startState({ ...ready, reading: true }).reason).toBe('Reading the attachments…');
     expect(startState({ ...ready, busy: true }).ready).toBe(false);
+  });
+});
+
+describe('another provider', () => {
+  it('sums up who runs it, its model and its mode, in the folder as it is', () => {
+    expect(providerSummary({ provider: 'GitHub Copilot', model: 'GPT-5 mini', mode: 'Autopilot' }).label).toBe('GitHub Copilot · GPT-5 mini · Autopilot, This folder · one session');
+  });
+
+  it('waits with the provider\'s own reason', () => {
+    const ready = { connected: true, project: true, text: 'Fix it', busy: false, reading: false };
+    expect(startState({ ...ready, blocked: 'Sign in to GitHub Copilot CLI' })).toEqual({ ready: false, reason: 'Sign in to GitHub Copilot CLI' });
+    expect(startState({ ...ready, blocked: null })).toEqual({ ready: true, reason: null });
   });
 });

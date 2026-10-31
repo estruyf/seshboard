@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_PROVIDERS, PROVIDER_FEATURES } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
@@ -51,6 +52,11 @@ export const RemoteSession = z.object({
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
+  /**
+   * Another provider runs it (GitHub Copilot): Claude Code's model, effort and mode chips and Ask about this session
+   * don't apply. Null or left out: Claude Code.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
@@ -183,7 +189,10 @@ export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 
 /** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
-  /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
+  /**
+   * The profile to run with, for this session only; left out: the project's, else the default. A profile of another
+   * provider (GitHub Copilot) starts it with that provider: only `model` and `permissionMode` apply, both its own.
+   */
   profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
   effort: Effort.nullable().optional(),
@@ -202,8 +211,20 @@ export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
-/** A Claude profile (login) as a phone knows it: its name and colour, never its folder or account. */
-export const RemoteProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor, defaults: RemoteDefaults });
+/** A provider's own mode for one of Seshboard's (Copilot's Autopilot for `auto`). */
+export const RemoteProviderMode = z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() });
+
+/**
+ * A profile (login) as a phone knows it: its name and colour, never its folder or account. A profile of another
+ * provider (GitHub Copilot) says so, with that provider's own modes; left out: Claude Code's.
+ */
+export const RemoteProfile = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: ProfileColor,
+  defaults: RemoteDefaults,
+  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode), /** Claude Code's features it has too; a computer from before says none. */ supports: z.array(z.enum(PROVIDER_FEATURES)).default([]) }).optional(),
+});
 export type RemoteProfile = z.infer<typeof RemoteProfile>;
 
 /**
@@ -430,6 +451,15 @@ export const remoteContract = {
     'session.setPermissionMode': { params: z.object({ sessionId: SessionId, mode: RemotePermissionMode }), result: z.object({}) },
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
+    /**
+     * Whether a provider profile (one `options.get` lists with a `provider`) can start a session now (installed and
+     * signed in with its own CLI, which says how when it isn't), and its models. Asked when New session picks it: it
+     * starts the profile's runtime on the computer.
+     */
+    'providers.ready': {
+      params: z.object({ profileId: ProfileId }),
+      result: z.object({ problem: z.string().nullable(), models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })) }),
+    },
     /**
      * Plan usage of every Claude profile, the default first. From the computer's last check when it is less than a
      * minute old; `refresh` checks now. `usage.changed` follows each new check.

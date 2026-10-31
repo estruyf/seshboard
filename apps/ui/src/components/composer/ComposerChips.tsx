@@ -1,7 +1,8 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { ClaudeProfile, Effort, PermissionMode } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
+import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -10,6 +11,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
@@ -23,8 +25,11 @@ export interface ChipNames {
 const NEW_SESSION_NAMES: ChipNames = { profile: 'profile', model: 'model', effort: 'effort', mode: 'mode' };
 
 export interface ComposerChipRowProps {
-  /** The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings. */
-  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string };
+  /**
+   * The profile, which also says who runs it: a profile of another provider (GitHub Copilot) shows that provider's mark.
+   * Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings.
+   */
+  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string } | null;
   /**
    * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
@@ -32,7 +37,11 @@ export interface ComposerChipRowProps {
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
   /** Null when the model has no effort setting. */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
-  mode: { value: PermissionMode; onChange(mode: PermissionMode): void };
+  /**
+   * The permission mode. `choices`: the modes another provider has, in its words (Copilot's Autopilot); without them,
+   * Claude Code's. Null when there is no mode to pick.
+   */
+  mode: { value: PermissionMode; onChange(mode: PermissionMode): void; choices?: readonly ProviderMode[] } | null;
   disabled?: boolean;
   names?: ChipNames;
   /**
@@ -73,10 +82,12 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  */
 export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
-  const current = profiles.find((p) => p.id === profile.value);
-  const fixed = !profile.onChange;
+  const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
+  const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
-  const modes = [...new Set([...MODE_CHOICES, mode.value])];
+  const modes = mode ? [...new Set([...(mode.choices ? mode.choices.map((c) => c.value) : MODE_CHOICES), mode.value])] : [];
+  const modeChoice = (m: PermissionMode) => mode?.choices?.find((c) => c.value === m);
+  const modeShort = mode ? (modeChoice(mode.value)?.label ?? MODE_SHORT[mode.value]) : '';
   const [level, setLevel] = useState<FooterLevel>(0);
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -96,38 +107,50 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
-  const modeDot = MODE_DOT[mode.value] ?? 'bg-faint';
+  const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
-  if (profiles.length > 1) {
+  if (profile && profiles.length > 1) {
     const profileName = current?.name ?? 'Profile';
+    const mixed = new Set(profiles.map((p) => p.provider)).size > 1;
     chips.push({
       key: 'profile',
-      face: (l) => (
-        <>
-          <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
-          {chipShape(l).profileName && <span>{profileName}</span>}
-        </>
-      ),
+      face: (l) => {
+        const Icon = current && current.provider !== 'claude' ? PROVIDER_ICONS[current.provider] : null;
+        return (
+          <>
+            <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
+            {Icon && <Icon size={13} aria-hidden data-chip-provider={current!.provider} />}
+            {chipShape(l).profileName && <span>{profileName}</span>}
+          </>
+        );
+      },
       menu: (face) => (
         <ChoiceMenu
           name={names.profile}
           value={profile.value}
           onChange={(id) => profile.onChange?.(id)}
           disabled={disabled && !fixed}
-          label={`Claude profile: ${profileName}`}
-          title={`Claude profile: ${profileName}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
+          label={`Profile: ${profileName}${current && current.provider !== 'claude' ? ` (${PROVIDER_NAMES[current.provider]})` : ''}`}
+          title={`Profile: ${profileName}${current && current.provider !== 'claude' ? `, runs with ${PROVIDER_NAMES[current.provider]}` : ''}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
           heading="Profile"
           placement="up"
-          choices={profiles.map((p) => ({
+          choices={byTool(profiles).map((p) => ({
             value: p.id,
             label: profile.labelFor?.(p) ?? p.name,
-            description: p.account?.email ?? undefined,
+            // Another provider's profile says who runs it; a Claude Code one, its account.
+            description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],
             disabled: fixed && p.id !== profile.value,
+            // Headers by tool, only once profiles use more than one.
+            ...(mixed ? { group: PROVIDER_NAMES[p.provider] } : {}),
           }))}
-          actions={fixed ? [{ label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }] : undefined}
+          actions={[
+            fixed
+              ? { label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }
+              : { label: 'Add profile…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-add-profile-from-menu': true } },
+          ]}
           width={260}
         >
           {face}
@@ -207,12 +230,12 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       ),
     });
   }
-  chips.push({
+  if (mode) chips.push({
     key: 'mode',
     face: (l) => (
       <>
         <Dot className={modeDot} />
-        {chipShape(l).modeLabel && <span>{MODE_SHORT[mode.value]}</span>}
+        {chipShape(l).modeLabel && <span>{modeShort}</span>}
       </>
     ),
     menu: (face) => (
@@ -221,11 +244,11 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         value={mode.value}
         onChange={mode.onChange}
         disabled={disabled}
-        label={`Permission mode: ${MODE_SHORT[mode.value]}`}
-        title={withNote(`Permission mode: ${MODE_SHORT[mode.value]} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
+        label={`Permission mode: ${modeShort}`}
+        title={withNote(`Permission mode: ${modeShort} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
         heading="Permissions"
         placement="up"
-        choices={modes.map((m) => ({ value: m, label: MODE_LABEL[m], description: MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
+        choices={modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
         width={280}
       >
         {face}

@@ -46,6 +46,7 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
+import { ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
 import { ClaudeUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
@@ -293,11 +294,14 @@ export const contract = {
      * in it (a session, a resume, a helper) fails with TRUST_NEEDED, with `{ root, brings }` as its details.
      */
     'projects.trustClone': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
-    // --- Claude profiles (one login per config folder) --------------------------------------
+    // --- Profiles (one login per config folder, of Claude Code or another provider) -----------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
-    /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
+    /**
+     * Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`,
+     * or for GitHub Copilot `COPILOT_HOME=<folder> copilot login`.
+     */
     'profiles.add': {
-      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath }),
+      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath, provider: SessionProviderSchema.default('claude') }),
       result: z.object({ id: z.string() }),
     },
     'profiles.update': { params: z.object({ id: ProfileId, name: ProfileName.optional(), color: ProfileColor.optional() }), result: z.object({}) },
@@ -306,6 +310,28 @@ export const contract = {
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
     /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
     'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
+    // --- Providers: agents besides Claude Code that a profile can use -------------------------
+    'providers.list': { params: z.object({}), result: ProvidersSnapshot },
+    /** Whether a provider profile's CLI is installed and signed in there (it starts the profile's runtime to ask). */
+    'providers.status': { params: z.object({ profileId: ProfileId }), result: ProviderStatus },
+    /** The models a provider profile's account offers. */
+    'providers.models': { params: z.object({ profileId: ProfileId }), result: z.object({ models: z.array(ModelOption) }) },
+    /** The slash commands a new session with a provider profile has (New session's `/` list). */
+    'providers.commands': { params: z.object({ profileId: ProfileId }), result: z.object({ commands: z.array(SlashCommand) }) },
+    /** Opens a terminal that signs a provider profile in with its own CLI (`copilot login`), in its folder. */
+    'providers.signIn': { params: z.object({ profileId: ProfileId }), result: TerminalInfo },
+    /**
+     * Each provider's CLI on this computer, without a profile: installed, its own folder and sessions, signed in. Asked
+     * once and kept; `refresh` asks again (Check again).
+     */
+    'providers.detect': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ providers: z.array(ProviderDetection) }) },
+    /**
+     * Opens another provider's session in its own CLI (`copilot --resume=…`), in the session's terminal, with its
+     * profile's folder. Refused while Seshboard runs it.
+     */
+    'providers.openInCli': { params: z.object({ sessionId: SessionId }), result: TerminalInfo },
+    /** A provider profile's premium requests this period; null when the provider doesn't say. */
+    'providers.quota': { params: z.object({ profileId: ProfileId }), result: z.object({ quota: ProviderQuota.nullable() }) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),

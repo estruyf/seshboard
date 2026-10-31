@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
 import type { ThemeFile, ThemeModeFile } from '@seshboard/protocol/theme-format';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
+import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 
@@ -39,6 +40,8 @@ const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace
 const PROFILES = [
   { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS, account: accountTag({ email: 'demo@example.com', organization: null }) },
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
+  // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
+  { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -666,6 +669,28 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
+  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  providerOfProfile: (profileId) =>
+    profileId === 'copilot'
+      ? {
+          id: 'copilot',
+          name: 'GitHub Copilot',
+          modes: [
+            { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
+            { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
+            { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
+            { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
+          ],
+          supports: [],
+        }
+      : null,
+  providerReady: async () => ({
+    problem: null,
+    models: [
+      { value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false },
+      { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
+    ],
+  }),
   branches: async () => ({ current: 'main', branches: ['main', 'feat/onboarding', 'fix/login-redirect'], checkedOutElsewhere: [] }),
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),
@@ -679,6 +704,8 @@ const hub: RemoteHub = new RemoteHub({
   setPermissionMode: async (sessionId, mode) => void modes.set(sessionId, mode),
   autoModel: () => ({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'] }),
   globalPermissionMode: () => 'default',
+  // No global model or effort set on this made-up computer: sessions start on Claude Code's defaults.
+  globalModel: () => NO_GLOBAL_MODEL,
   // No demo session is at a usage limit.
   limit: () => null,
   models: () => [
