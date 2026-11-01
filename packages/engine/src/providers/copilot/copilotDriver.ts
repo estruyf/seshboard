@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode, ProviderQuota } from '@seshboard/protocol';
+import type { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode, ProviderQuota, RewindResult } from '@seshboard/protocol';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
+import { backgroundTasks, cannotRewind, effortsOf, rewindOutcome, rewindPreview, rewindProblem, type CopilotTask } from './copilotActions.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { CopilotLive } from './copilotLive.ts';
 import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
@@ -25,17 +26,31 @@ export interface CopilotSdkSession {
     };
     skills: { list(): Promise<{ skills: CopilotSkill[] }> };
     agent: { list(): Promise<{ agents: Array<{ name: string; description?: string; model?: string }> }> };
+    /** Its name, as Copilot CLI shows it too. */
+    name: { set(params: { name: string }): Promise<unknown> };
+    /** Rewinding to before one of your messages, restoring the files Copilot changed since (with file-change tracking). */
+    history: {
+      listRewindPoints(): Promise<{ fileChangeTrackingEnabled: boolean; unavailableReason?: string; points: Array<{ eventId: string }> }>;
+      previewRewind(params: { eventId: string }): Promise<{ available: boolean; reason?: string; files: Array<{ path: string; linesAdded: number; linesRemoved: number }> }>;
+      rewind(params: { eventId: string; mode: 'conversation' | 'conversation-and-files' }): Promise<{ outcome: string; restoredFiles: string[]; error?: string }>;
+    };
+    /** Its shell commands and agents, the ones running in the background among them. */
+    tasks: { list(): Promise<{ tasks: CopilotTask[] }>; cancel(params: { id: string }): Promise<{ cancelled: boolean }> };
   };
-  setModel(model: string): Promise<void>;
+  setModel(model: string, options?: { reasoningEffort?: Effort }): Promise<void>;
   disconnect(): Promise<void>;
 }
+
 
 type PermissionAnswer = ReturnType<typeof toCopilotDecision> | { kind: 'user-not-available' };
 
 export interface CopilotSessionOptions {
   workingDirectory: string;
   model?: string;
+  reasoningEffort?: Effort;
   streaming: boolean;
+  /** Copilot keeps what each turn changed in files, which Rewind restores. */
+  enableFileChangeTracking?: boolean;
   clientName: string;
   onPermissionRequest(request: Record<string, unknown>, invocation: { sessionId: string }): Promise<PermissionAnswer>;
 }
@@ -45,15 +60,23 @@ export interface CopilotSdkClient {
   start(): Promise<void>;
   stop(): Promise<unknown>;
   getAuthStatus(): Promise<{ isAuthenticated: boolean; login?: string; statusMessage?: string }>;
-  listModels(): Promise<Array<{ id: string; name: string; capabilities?: { supports?: { reasoningEffort?: boolean } } }>>;
+  listModels(): Promise<Array<{ id: string; name: string; capabilities?: { supports?: { reasoningEffort?: boolean } }; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }>>;
   createSession(options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
   readonly cliProcess?: { pid?: number } | null;
-  /** The runtime's RPC: the slash commands a new session has, and the account's premium requests. */
+  /**
+   * The runtime's RPC: the slash commands a new session has, the account's premium requests, and the sessions on disk
+   * (forking one, reading its events without resuming it, which are open in another process).
+   */
   readonly rpc?: {
     commands?: { list(): Promise<{ commands: CopilotCommand[] }> };
     account?: { getQuota(params: Record<string, never>): Promise<{ quotaSnapshots: Record<string, CopilotQuotaSnapshot | undefined> }> };
+    sessions?: {
+      fork(params: { sessionId: string; toEventId?: string; name?: string }): Promise<{ sessionId: string }>;
+      readPersistedEvents(params: { sessionId: string; cursor?: string; max?: number }): Promise<{ events: CopilotEvent[]; cursor: string; hasMore: boolean; cursorStatus: string }>;
+      checkInUse(params: { sessionIds: string[] }): Promise<{ inUse: string[] }>;
+    };
   };
 }
 
@@ -120,6 +143,26 @@ export interface CopilotDriverOptions {
   createClient?: CreateCopilotClient;
 }
 
+/** Copilot's driver, with what the Copilot adapter uses besides `ProviderDriver`: the runtime's sessions on disk. */
+export interface CopilotDriver extends ProviderDriver {
+  /** The headless `copilot`'s process id, once it runs (its locks on sessions are Seshboard's own). */
+  runtimePid(): number | null;
+  /** A session's events, read through the runtime without resuming it. Null while the runtime isn't running: it isn't started just to read. */
+  readEvents(sessionId: string): Promise<CopilotEvent[] | null>;
+  /** Which of `sessionIds` another process has open (Copilot CLI in a terminal). Null while the runtime isn't running. */
+  inUse(sessionIds: readonly string[]): Promise<Set<string> | null>;
+  /** A new session with `sessionId`'s events before `toEventId` (all of them when null). Returns its id. */
+  fork(sessionId: string, toEventId: string | null): Promise<string>;
+  /** Renames a session that isn't running here: resumed for the change, then let go. */
+  renameSession(sessionId: string, cwd: string, title: string): Promise<void>;
+}
+
+/** Copilot takes names of 1 to 100 characters. */
+const sessionName = (title: string) => title.trim().slice(0, 100);
+
+/** Pages of a persisted read; a session larger than this many is read from its file instead. */
+const MAX_PAGES = 500;
+
 const INSTALL = 'Install GitHub Copilot CLI to start Copilot sessions here.';
 const SIGN_IN = 'Not signed in to GitHub Copilot CLI. Use Sign in on this profile in Settings › Profiles, or run `copilot login`. Seshboard uses that login.';
 
@@ -128,7 +171,7 @@ const SIGN_IN = 'Not signed in to GitHub Copilot CLI. Use Sign in on this profil
  * them (started on first use). Events become Claude Code's shapes (`CopilotLive`), permission requests the permission
  * card's (`copilotPermissions.ts`).
  */
-export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & { runtimePid(): number | null } {
+export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
   const create = options.createClient ?? sdkCopilotClient;
   let client: Promise<CopilotSdkClient> | undefined;
   /** The started client, once it is (for its process id). */
@@ -177,18 +220,71 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
 
     async models(): Promise<ModelOption[]> {
       const models = await (await connect()).listModels();
-      return models.map((m) => ({ value: m.id, displayName: m.name, description: '', supportsEffort: m.capabilities?.supports?.reasoningEffort === true }));
+      return models.map((m) => {
+        const efforts = effortsOf(m.supportedReasoningEfforts);
+        return { value: m.id, displayName: m.name, description: '', supportsEffort: m.capabilities?.supports?.reasoningEffort === true, ...(efforts ? { efforts } : {}) };
+      });
+    },
+
+    async readEvents(sessionId) {
+      const sessions = started?.rpc?.sessions;
+      if (!sessions) return null;
+      const events: CopilotEvent[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const read = await sessions.readPersistedEvents({ sessionId, max: 1000, ...(cursor ? { cursor } : {}) });
+        // An expired cursor is a read that didn't finish: the file has it whole.
+        if (read.cursorStatus !== 'ok') throw new Error(`Copilot couldn't read session ${sessionId} (${read.cursorStatus})`);
+        events.push(...read.events);
+        if (!read.hasMore) return events;
+        cursor = read.cursor;
+      }
+      throw new Error(`Session ${sessionId} has more events than Seshboard reads through Copilot`);
+    },
+
+    async inUse(sessionIds) {
+      const sessions = started?.rpc?.sessions;
+      if (!sessions) return null;
+      if (!sessionIds.length) return new Set();
+      // Locks of Copilot's own runtime (Seshboard's) don't count: it answers for the other processes.
+      return new Set((await sessions.checkInUse({ sessionIds: [...sessionIds] })).inUse);
+    },
+
+    async fork(sessionId, toEventId) {
+      const sessions = (await connect()).rpc?.sessions;
+      if (!sessions) throw new Error("This version of Copilot CLI can't fork sessions");
+      return (await sessions.fork({ sessionId, ...(toEventId ? { toEventId } : {}) })).sessionId;
+    },
+
+    async renameSession(sessionId, cwd, title) {
+      const session = await (await connect()).resumeSession(sessionId, {
+        workingDirectory: cwd,
+        streaming: false,
+        clientName: SESHBOARD_CLIENT,
+        // Nothing runs: it is only resumed to be renamed.
+        onPermissionRequest: async () => ({ kind: 'user-not-available' }),
+      });
+      try {
+        await session.rpc.name.set({ name: sessionName(title) });
+      } finally {
+        await session.disconnect().catch(() => {});
+      }
     },
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       const sdk = await connect();
       const pending = new Map<string, (answer: PermissionAnswer) => void>();
       let mode = config.permissionMode;
+      /** The model it runs on (null: Copilot's `auto` before it picks one), which an effort change keeps. */
+      let model = config.model;
       const sessionOptions: CopilotSessionOptions = {
         workingDirectory: config.cwd,
         ...(config.model ? { model: config.model } : {}),
+        ...(config.model && config.effort ? { reasoningEffort: config.effort } : {}),
         streaming: true,
         clientName: SESHBOARD_CLIENT,
+        // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
+        enableFileChangeTracking: true,
         onPermissionRequest: (request) =>
           approvesItself(mode, request)
             ? Promise.resolve<PermissionAnswer>({ kind: 'approve-once' })
@@ -203,7 +299,21 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
       // Copilot starts interactive: another mode is set before the first message.
       if (agentModeOf(mode) !== 'interactive') await session.rpc.mode.set({ mode: agentModeOf(mode) });
       const live = new CopilotLive(events);
-      const off = session.on((event) => live.handle(event));
+      /** Reads the session's tasks again: the background ones show in the pill and the panel. */
+      const refreshTasks = () => {
+        if (!events.tasks) return;
+        void session.rpc.tasks.list().then(
+          (r) => events.tasks?.(backgroundTasks(r.tasks)),
+          () => {},
+        );
+      };
+      const off = session.on((event) => {
+        live.handle(event);
+        // A command, or Auto picking one: the model shown is the one an effort applies to.
+        if (event.type === 'session.model_change' && typeof event.data?.newModel === 'string') model = event.data.newModel;
+        // Copilot only says that its tasks changed; a turn's end settles the ones it waited for.
+        if (event.type === 'session.background_tasks_changed' || event.type === 'session.idle') refreshTasks();
+      });
       /** Answers every open request as nobody being there (a stopped turn, a closed session). */
       const dropAll = () => {
         for (const [requestId, resolve] of pending) {
@@ -264,9 +374,31 @@ export function copilotDriver(options: CopilotDriverOptions): ProviderDriver & {
           dropAll();
           await session.abort();
         },
-        async setModel(model: string | null) {
-          // Copilot's own default is `auto`.
-          await session.setModel(model ?? 'auto');
+        async setModel(next: string | null) {
+          // Copilot's own default is `auto`. The effort goes back to the model's default.
+          await session.setModel(next ?? 'auto');
+          model = next;
+        },
+        async setEffort(effort: Effort | null) {
+          if (!model) throw new Error("Copilot's Auto model has no effort setting. Pick a model first.");
+          // No effort: the model's own default level, which Copilot doesn't go back to by itself.
+          const level = effort ?? effortsOf([(await sdk.listModels()).find((m) => m.id === model)?.defaultReasoningEffort ?? ''])?.[0];
+          await session.setModel(model, level ? { reasoningEffort: level } : undefined);
+        },
+        async rename(title: string) {
+          await session.rpc.name.set({ name: sessionName(title) });
+        },
+        async rewind(messageId: string, dryRun: boolean): Promise<RewindResult> {
+          const { points, unavailableReason } = await session.rpc.history.listRewindPoints();
+          if (unavailableReason) return cannotRewind(rewindProblem(unavailableReason));
+          if (!points.some((p) => p.eventId === messageId)) return cannotRewind("Copilot can't rewind to this message.");
+          if (dryRun) return rewindPreview(await session.rpc.history.previewRewind({ eventId: messageId }));
+          return rewindOutcome(await session.rpc.history.rewind({ eventId: messageId, mode: 'conversation-and-files' }));
+        },
+        async stopTask(taskId: string) {
+          const { cancelled } = await session.rpc.tasks.cancel({ id: taskId });
+          if (!cancelled) throw new Error('Copilot could not stop that task');
+          refreshTasks();
         },
         respond(requestId: string, decision: PermissionDecision) {
           const resolve = pending.get(requestId);

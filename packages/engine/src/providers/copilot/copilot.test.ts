@@ -14,6 +14,7 @@ import { ProviderProfiles } from '../providerProfiles.ts';
 import { ProviderSources } from '../providerSources.ts';
 import { claudeTool, copilotMessages, userText, type CopilotEvent } from './copilotEvents.ts';
 import { lockPids, liveStatusOf, openSessions } from './copilotInUse.ts';
+import type { CopilotSdkClient } from './copilotDriver.ts';
 import { copilotProvider } from './copilotProvider.ts';
 import { copilotHome, copilotSessionSource } from './copilotSource.ts';
 
@@ -146,7 +147,8 @@ describe('providers in the session index', () => {
     };
     // The profiles Settings › Profiles has: none of Copilot's at first.
     let copilotProfiles: Array<{ id: string; provider: 'copilot'; home: string }> = [];
-    const providers = new ProviderProfiles(() => copilotProfiles, (p) => copilotProvider({ profileId: p.id, copilotHome: p.home, userHome: root }));
+    // No `copilot` here: a test never starts the machine's own Copilot CLI.
+    const providers = new ProviderProfiles(() => copilotProfiles, (p) => copilotProvider({ profileId: p.id, copilotHome: p.home, userHome: root, binary: async () => null }));
     const source = new ProviderSources(new MultiProfileSource(() => [{ profileId: 'default', source: claude }]), () =>
       providers.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
     );
@@ -178,7 +180,9 @@ describe('providers in the session index', () => {
     expect(source.providerOf(ID)).toBe('copilot');
     expect(source.profileOf(ID)).toBe('work-copilot');
     expect((await source.messages(ID)).length).toBe(4);
-    await expect(source.fork(ID, 'e3')).rejects.toThrow(/only available for Claude Code/);
+    // Forking goes through Copilot, which isn't installed here.
+    await expect(source.fork(ID, 'e3')).rejects.toThrow(/Install GitHub Copilot CLI/);
+    await expect(source.rename!(ID, 'New name')).rejects.toThrow(/Install GitHub Copilot CLI/);
 
     copilotProfiles = [];
     await index.rootsChanged();
@@ -207,6 +211,49 @@ describe('copilotProvider', () => {
     expect(files.sessionOf(`${ID}\\workspace.yaml`)).toEqual({ sessionId: ID, file: join(dir, ID, 'events.jsonl') });
     expect(files.sessionOf(`${ID}/checkpoints/1.md`)).toBeNull();
     expect([...files.files().keys()]).toEqual([ID]);
+  });
+
+  it("reads through Copilot's API once its runtime runs, and the files before that", async () => {
+    const home = tempDir();
+    const dir = join(home, 'session-state');
+    writeSession(dir, ID, EVENTS);
+    const OTHER = '0f0f0f0f-0000-4000-8000-000000000002';
+    writeSession(dir, OTHER, EVENTS);
+    const asked: string[] = [];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: () => Promise.reject(new Error('not here')),
+      resumeSession: () => Promise.reject(new Error('not here')),
+      // Copilot's own process: its lock never means open elsewhere.
+      cliProcess: { pid: process.pid },
+      rpc: {
+        sessions: {
+          fork: () => Promise.reject(new Error('not here')),
+          readPersistedEvents: async ({ sessionId }) => (asked.push(sessionId), { events: [EVENTS[2]!], cursor: 'c', hasMore: false, cursorStatus: 'ok' }),
+          checkInUse: async ({ sessionIds }) => ({ inUse: sessionIds.filter((id) => id === OTHER) }),
+        },
+      },
+    };
+    const adapter = copilotProvider({ profileId: 'p', copilotHome: home, userHome: home, createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) });
+    // Not running yet: the file, whole, and nothing open (no locks).
+    const fromFile = (await adapter.source.messages(ID)).length;
+    expect(fromFile).toBeGreaterThan(1);
+    expect(await adapter.inUse!(OTHER)).toBe(false);
+    expect(asked).toEqual([]);
+
+    await adapter.driver!.status();
+    expect(await adapter.source.messages(ID)).toHaveLength(1);
+    expect(asked).toEqual([ID]);
+    expect(await adapter.inUse!(OTHER)).toBe(true);
+    expect(await adapter.inUse!(ID)).toBe(false);
+    // Open in Copilot CLI: its status from the events on disk, its process from a lock when there is one.
+    expect(await adapter.live!([ID, OTHER])).toEqual([{ sessionId: OTHER, pid: 0, status: 'idle', updatedAt: expect.any(Number) }]);
+    expect(adapter.trashPaths!(ID)).toEqual([join(dir, ID)]);
+    expect(adapter.trashPaths!('../etc')).toEqual([]);
+    await adapter.driver!.dispose();
   });
 
   it('reads $COPILOT_HOME, else ~/.copilot', () => {

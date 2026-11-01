@@ -12,8 +12,8 @@ export interface ProviderSource {
 
 /**
  * Claude Code's sessions (every Claude profile) and those of the provider profiles (GitHub Copilot), as one source. A
- * session is read through the profile it was listed by; one not seen yet is looked up in Claude Code first. Other
- * providers' sessions are read-only here: forking, renaming and subagents stay Claude Code's.
+ * session is read through the profile it was listed by; one not seen yet is looked up in Claude Code first. Forking
+ * and renaming go to the provider's own source when it has them; subagents stay Claude Code's.
  */
 export class ProviderSources implements SessionSource {
   /** Session id → the provider profile that listed it. */
@@ -89,13 +89,17 @@ export class ProviderSources implements SessionSource {
     return this.sourceOf(sessionId) ? Promise.resolve([]) : this.claude.subagentMessages(sessionId, agentId);
   }
 
+  /** Forks through the session's own provider (Copilot's `sessions.fork`), when it can. */
   fork(sessionId: string, upToMessageId: string): Promise<string> {
-    if (this.sourceOf(sessionId)) return Promise.reject(new Error('Forking is only available for Claude Code sessions'));
+    const other = this.sourceOf(sessionId);
+    if (other) return other.source.fork ? other.source.fork(sessionId, upToMessageId) : Promise.reject(new Error('Forking is not available for this provider'));
     return this.claude.fork(sessionId, upToMessageId);
   }
 
+  /** Renames through the session's own provider, when it can. */
   rename(sessionId: string, title: string): Promise<void> {
-    if (this.sourceOf(sessionId)) return Promise.reject(new Error('Renaming is only available for Claude Code sessions'));
+    const other = this.sourceOf(sessionId);
+    if (other) return other.source.rename ? other.source.rename(sessionId, title) : Promise.reject(new Error('Renaming is not available for this provider'));
     return this.claude.rename(sessionId, title);
   }
 

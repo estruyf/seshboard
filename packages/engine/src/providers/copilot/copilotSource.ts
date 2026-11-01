@@ -57,14 +57,23 @@ const time = (value: string | undefined | null): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+export interface CopilotSourceOptions {
+  /**
+   * Reads a session's events through Copilot's own API (`sessions.readPersistedEvents`), which doesn't resume it. Null
+   * when it can't right now (its runtime isn't running): the file is read instead.
+   */
+  readEvents?(sessionId: string): Promise<CopilotEvent[] | null>;
+}
+
 /**
  * Reads GitHub Copilot CLI's sessions, read-only, from `<COPILOT_HOME>/session-state/<id>/`: `workspace.yaml` for the
- * title, folder and branch, `events.jsonl` for the conversation. The Copilot SDK can list sessions, but only reads one
- * by resuming it in a runtime (which writes to it, and clashes with a terminal that has it open), so the files are
- * read directly. Both are undocumented: a field that's missing or changed leaves the session with less, never an error.
- * Only sessions with an `events.jsonl` and a prompt are listed (the Copilot desktop app keeps others there too).
+ * title, folder and branch, `events.jsonl` for the conversation. A conversation is read through Copilot's own API when
+ * its runtime runs (`readEvents`), so a change to Copilot's file needs no change here; the file is read otherwise, and
+ * for the list (the SDK lists sessions without their titles). Both files are undocumented: a field that's missing or
+ * changed leaves the session with less, never an error. Only sessions with an `events.jsonl` and a prompt are listed
+ * (the Copilot desktop app keeps others there too).
  */
-export function copilotSessionSource(sessionsDir: string): SessionSource & { eventsPath(sessionId: string): string } {
+export function copilotSessionSource(sessionsDir: string, options: CopilotSourceOptions = {}): SessionSource & { eventsPath(sessionId: string): string; events(sessionId: string): Promise<CopilotEvent[]> } {
   // Reading heads and tails is the cost of a scan: kept per session until its events change.
   const cache = new Map<string, { mtime: number; size: number; yamlMtime: number; info: RawSessionInfo }>();
   const eventsPath = (id: string) => join(sessionsDir, id, EVENTS_FILE);
@@ -121,8 +130,24 @@ export function copilotSessionSource(sessionsDir: string): SessionSource & { eve
     return result;
   };
 
+  /** A session's events: through Copilot when it can, else from the file. */
+  const events = async (sessionId: string): Promise<CopilotEvent[]> => {
+    if (!SESSION_ID.test(sessionId)) return [];
+    const read = await options.readEvents?.(sessionId).catch(() => null);
+    if (read) return read;
+    let text: string;
+    try {
+      text = await readFile(eventsPath(sessionId), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    return parseEvents(text);
+  };
+
   return {
     eventsPath,
+    events,
     async list() {
       let names: string[];
       try {
@@ -137,15 +162,7 @@ export function copilotSessionSource(sessionsDir: string): SessionSource & { eve
     },
     info,
     async messages(sessionId: string): Promise<RawSessionMessage[]> {
-      if (!SESSION_ID.test(sessionId)) return [];
-      let text: string;
-      try {
-        text = await readFile(eventsPath(sessionId), 'utf8');
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-        throw error;
-      }
-      return copilotMessages(parseEvents(text));
+      return copilotMessages(await events(sessionId));
     },
   };
 }

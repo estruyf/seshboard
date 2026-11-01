@@ -1,4 +1,3 @@
-import { isOtherProviderSession } from '@seshboard/protocol/client';
 import { startLinkedSession } from '../newSession/linkedSession.ts';
 import { restoreFrom, trashName } from '../../lib/platform.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
@@ -6,7 +5,10 @@ import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
+import { useProviders } from '../../state/providersStore.ts';
+import { sessionCan } from '../../state/sessionFeatures.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { agentNameOf } from './rowLabel.ts';
 import { archivesOnMiddleClick, isActive, rowStatus } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
@@ -71,8 +73,16 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const projects = useProjects((s) => s.projects);
   const pipelines = usePipelines((s) => s.pipelines);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
-  const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
-  const [renaming, setRenaming] = useState<SessionRowData | null>(null);
+  const providers = useProviders((s) => s.providers);
+  const [deleting, setDeletingRows] = useState<SessionRowData[] | null>(null);
+  const [renaming, setRenamingRow] = useState<SessionRowData | null>(null);
+  /** Asks to delete the ones that can be (another provider's only when it can delete them), from any trigger. */
+  const setDeleting = (targets: SessionRowData[] | null) => {
+    const can = targets?.filter((t) => sessionCan(t.summary, 'delete', providers)) ?? [];
+    setDeletingRows(can.length ? can : null);
+  };
+  /** Renames one that can be renamed (another provider's when it can). */
+  const setRenaming = (target: SessionRowData | null) => setRenamingRow(target && sessionCan(target.summary, 'rename', providers) ? target : null);
   /** Archive on a session that works or waits for you: asks to stop it first. */
   const [stopping, setStopping] = useState<{ data: SessionRowData; then?: () => void } | null>(null);
 
@@ -222,13 +232,15 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     const projectMenu: MenuEntry[] = projectEntries.length
       ? [{ label: 'Project', hint: projectName, submenu: [{ title: projectName, detail: data.projectRoot }, ...projectEntries], data: { 'data-session-project-menu': true } }]
       : [];
-    // Another provider's session (Copilot) is only shown: it can't be renamed, deleted or run a pipeline from.
-    const readOnly = !!data.summary && isOtherProviderSession(data.summary);
+    // Another provider's session (Copilot): renamed and deleted when its provider can, never run a pipeline from (yet).
+    const canRename = sessionCan(data.summary, 'rename', providers);
+    const canDelete = sessionCan(data.summary, 'delete', providers);
+    const canPipeline = sessionCan(data.summary, 'pipeline', providers);
     setMenu({
       ...at,
       label: `Session “${data.title}”`,
       entries: [
-        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || readOnly, data: { 'data-rename-session': true } },
+        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || !canRename, data: { 'data-rename-session': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
@@ -243,7 +255,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
         // A run row (#179) has no conversation to be the parent of another run.
-        ...(isRunRowId(data.id) || readOnly ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
+        ...(isRunRowId(data.id) || !canPipeline ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
         { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
@@ -251,7 +263,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         ...(projectMenu.length ? [...projectMenu, 'separator' as const] : []),
         tree !== null
           ? { label: 'Delete…', hint: '⌘⌫', danger: true, onSelect: () => askDeleteTree(data.id, data.title), data: { 'data-delete-tree': true } }
-          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary || readOnly, onSelect: () => setDeleting([data]) },
+          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary || !canDelete, onSelect: () => setDeleting([data]), data: { 'data-delete-session': true } },
       ],
     });
     // The memories it wrote, once read: added under Project while the menu is still this session's.
@@ -282,14 +294,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           blockedReason={
             deleting.some((target) => target.live && !isActiveHost(hosts.get(target.id)))
               ? deleting.length === 1
-                ? 'This session is open in another Claude Code window. Close it there first.'
-                : 'Some of these sessions are open in another Claude Code window. Close them there first.'
+                ? `This session is open in ${openWhere(deleting)}. Close it there first.`
+                : `Some of these sessions are open in ${openWhere(deleting)}. Close them there first.`
               : null
           }
           body={
             <>
               {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the {trashName()}, so you can
-              restore them {restoreFrom()}. Files Claude changed in your project are not touched.
+              restore them {restoreFrom()}. {changedBy(deleting)} in your project are not touched.
               {deleting.some((target) => isActiveHost(hosts.get(target.id))) &&
                 (deleting.length === 1 ? ' It is running in Seshboard and will be stopped first.' : ' Sessions running in Seshboard will be stopped first.')}
             </>
@@ -325,6 +337,24 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, requestDelete: setDeleting, requestRename: setRenaming, overlays };
 }
+
+/** The one agent of the sessions to delete (Claude, GitHub Copilot), or null for a mix. */
+function oneAgent(targets: readonly SessionRowData[]): string | null {
+  const agents = new Set(targets.map((t) => agentNameOf(t.summary)));
+  return agents.size === 1 ? [...agents][0]! : null;
+}
+
+/** Where the sessions to delete are open: Claude Code's other windows, or another provider's CLI. */
+const openWhere = (targets: readonly SessionRowData[]) => {
+  const agent = oneAgent(targets);
+  return !agent || agent === 'Claude' ? 'another Claude Code window' : `${agent} CLI`;
+};
+
+/** "Files Claude changed", "Files GitHub Copilot changed", or "Files changed" for a mix. */
+const changedBy = (targets: readonly SessionRowData[]) => {
+  const agent = oneAgent(targets);
+  return agent ? `Files ${agent} changed` : 'Files changed';
+};
 
 /** Waits until a session in Seshboard has stopped working (or a few seconds pass), so archiving comes after its last activity. */
 function untilStopped(sessionId: string, timeoutMs = 5_000): Promise<void> {

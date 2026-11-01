@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
+import { isConfigDir, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
 
 // In this platform's form (C:Usersme.claude on Windows): the guard only takes normalised absolute paths.
 const config = resolve('/Users/me/.claude');
@@ -21,6 +21,36 @@ function canSymlink(): boolean {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+describe('isTrashableCopilotSession', () => {
+  it("allows a session's folder in Copilot's session-state, and nothing else", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'trash-copilot-')));
+    try {
+      const sessions = join(home, 'session-state');
+      mkdirSync(join(sessions, id), { recursive: true });
+      writeFileSync(join(sessions, id, 'events.jsonl'), '');
+      expect(isTrashableCopilotSession(join(sessions, id), home)).toBe(true);
+      // Not the folder itself, a file in a session, another folder name, or a session that isn't there.
+      expect(isTrashableCopilotSession(sessions, home)).toBe(false);
+      expect(isTrashableCopilotSession(join(sessions, id, 'events.jsonl'), home)).toBe(false);
+      mkdirSync(join(sessions, 'settings'));
+      expect(isTrashableCopilotSession(join(sessions, 'settings'), home)).toBe(false);
+      expect(isTrashableCopilotSession(join(sessions, '22222222-2222-4333-8444-555555555555'), home)).toBe(false);
+      // Not one in another folder, or a path that isn't normalised.
+      mkdirSync(join(home, 'other', id), { recursive: true });
+      expect(isTrashableCopilotSession(join(home, 'other', id), home)).toBe(false);
+      expect(isTrashableCopilotSession(`${sessions}${sep}..${sep}session-state${sep}${id}`, home)).toBe(false);
+      if (canSymlink()) {
+        // A link named like a session goes to whatever it points at: refused.
+        const link = '33333333-2222-4333-8444-555555555555';
+        symlinkSync(join(home, 'other'), join(sessions, link));
+        expect(isTrashableCopilotSession(join(sessions, link), home)).toBe(false);
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('isTrashableSessionPath', () => {
   it('allows a transcript and its subagent folder inside the projects folder', () => {

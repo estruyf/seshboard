@@ -35,8 +35,11 @@ export interface ComposerChipRowProps {
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
    */
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
-  /** Null when the model has no effort setting. */
-  effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
+  /**
+   * Null when the model has no effort setting. `levels`: the ones the model takes (another provider's model says);
+   * every level otherwise. `defaultDescription`: what Default means, in its provider's words.
+   */
+  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
   /**
    * The permission mode. `choices`: the modes another provider has, in its words (Copilot's Autopilot); without them,
    * Claude Code's. Null when there is no mode to pick.
@@ -222,7 +225,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
           heading="Effort"
           placement="up"
-          choices={[{ value: '' as const, label: 'Default', description: 'What Claude Code would pick' }, ...EFFORTS.map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
+          choices={[{ value: '' as const, label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
           width={200}
         >
           {face}

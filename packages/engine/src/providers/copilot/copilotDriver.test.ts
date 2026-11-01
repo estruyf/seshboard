@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { PermissionRequest, StreamDelta } from '@seshboard/protocol';
+import type { BackgroundTask, PermissionRequest, StreamDelta } from '@seshboard/protocol';
+import { vi } from 'vitest';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { DriverEvents } from '../provider.ts';
 import { copilotCandidates, parseCopilotVersion } from './copilotBinary.ts';
 import { copilotDriver, premiumQuota, SESHBOARD_CLIENT, type CopilotSdkClient, type CopilotSdkSession, type CopilotSessionOptions, type CreateCopilotClient } from './copilotDriver.ts';
+import type { CopilotTask } from './copilotActions.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { commandList, commandOutcome, parseCommand } from './copilotCommands.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
@@ -18,7 +20,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
     on: (h) => ((handler = h), () => (handler = undefined)),
     send: async ({ prompt, attachments }) => (calls.push(`send:${prompt}:${attachments?.length ?? 0}`), 'm1'),
     abort: async () => void calls.push('abort'),
-    setModel: async (model) => void calls.push(`model:${model}`),
+    setModel: async (model, o) => void calls.push(`model:${model}${o?.reasoningEffort ? `:${o.reasoningEffort}` : ''}`),
     disconnect: async () => void calls.push('disconnect'),
     rpc: {
       mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
@@ -34,23 +36,47 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
       },
       skills: { list: async () => ({ skills: [{ name: 'deploy', description: 'Ship it', source: 'project' }, { name: 'github-pr-media', source: 'builtin' }] }) },
       agent: { list: async () => ({ agents: [{ name: 'reviewer', description: 'Reviews code' }] }) },
+      name: { set: async ({ name }) => void calls.push(`name:${name}`) },
+      history: {
+        listRewindPoints: async () => rewind.points,
+        previewRewind: async ({ eventId }) => (calls.push(`preview:${eventId}`), { available: true, files: [{ path: '/work/demo/a.ts', linesAdded: 2, linesRemoved: 5 }] }),
+        rewind: async ({ eventId, mode }) => (calls.push(`rewind:${eventId}:${mode}`), rewind.outcome),
+      },
+      tasks: {
+        list: async () => ({ tasks: tasks.list }),
+        cancel: async ({ id }) => (calls.push(`cancel:${id}`), { cancelled: true }),
+      },
     },
   };
+  const rewind: { points: { fileChangeTrackingEnabled: boolean; unavailableReason?: string; points: Array<{ eventId: string }> }; outcome: { outcome: string; restoredFiles: string[]; error?: string } } = {
+    points: { fileChangeTrackingEnabled: true, points: [{ eventId: 'u1' }] },
+    outcome: { outcome: 'success', restoredFiles: ['/work/demo/a.ts'] },
+  };
+  const tasks: { list: CopilotTask[] } = { list: [] };
+  const pages: Array<{ events: CopilotEvent[]; cursor: string; hasMore: boolean; cursorStatus: string }> = [];
+  const reads: Array<string | undefined> = [];
   const client: CopilotSdkClient = {
     start: async () => void calls.push('start'),
     stop: async () => void calls.push('stop'),
     getAuthStatus: async () => auth,
-    listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } } }],
+    listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high', 'turbo'], defaultReasoningEffort: 'medium' }],
     createSession: async (o) => ((options = o), calls.push(`create:${o.workingDirectory}:${o.model ?? '-'}`), session),
     resumeSession: async (id, o) => ((options = o), calls.push(`resume:${id}`), session),
+    rpc: {
+      sessions: {
+        fork: async ({ sessionId, toEventId }) => (calls.push(`fork:${sessionId}:${toEventId ?? '-'}`), { sessionId: 'f0' }),
+        readPersistedEvents: async ({ cursor }) => (reads.push(cursor), pages.shift()!),
+        checkInUse: async ({ sessionIds }) => ({ inUse: sessionIds.filter((id) => id.startsWith('busy')) }),
+      },
+    },
   };
   const created: Array<{ cliPath: string }> = [];
   const createClient: CreateCopilotClient = async (o) => (created.push(o), client);
-  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options! };
+  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options!, rewind, tasks, pages, reads };
 }
 
 function recorder() {
-  const log = { stream: [] as Array<Omit<StreamDelta, 'sessionId'>>, messages: [] as RawSessionMessage[], states: [] as string[], permissions: [] as Array<Omit<PermissionRequest, 'sessionId'>>, done: [] as string[], usage: [] as unknown[], models: [] as string[] };
+  const log = { stream: [] as Array<Omit<StreamDelta, 'sessionId'>>, messages: [] as RawSessionMessage[], states: [] as string[], permissions: [] as Array<Omit<PermissionRequest, 'sessionId'>>, done: [] as string[], usage: [] as unknown[], models: [] as string[], tasks: [] as BackgroundTask[][] };
   const events: DriverEvents = {
     stream: (d) => log.stream.push(d),
     messages: (m) => log.messages.push(...m),
@@ -59,6 +85,7 @@ function recorder() {
     permissionDone: (id) => log.done.push(id),
     usage: (u) => log.usage.push(u),
     model: (m) => log.models.push(m),
+    tasks: (t) => log.tasks.push(t),
   };
   return { log, events };
 }
@@ -124,7 +151,7 @@ describe('copilotDriver', () => {
 
     const ok = copilotDriver({ binary, env, createClient: fakeSdk().createClient });
     expect(await ok.status()).toEqual({ binary: '/usr/local/bin/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: 'octocat', problem: null });
-    expect(await ok.models()).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true }]);
+    expect(await ok.models()).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low', 'medium', 'high'] }]);
   });
 
   it("reads the account's premium requests from Copilot, unlimited as no entitlement", () => {
@@ -161,6 +188,102 @@ describe('copilotDriver', () => {
     sdk.emit({ type: 'assistant.usage', data: { cost: 0.33 } });
     expect(log.usage).toEqual([{ contextTokens: 13_289, contextMax: 128_000 }, { spent: { amount: 0.33, unit: 'premium requests' } }, { spent: { amount: 0.66, unit: 'premium requests' } }]);
     expect(driver.modes.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
+  });
+});
+
+describe('Copilot session actions', () => {
+  it('starts with file-change tracking and the effort, and sets effort on the model it runs', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    // The levels Seshboard knows, of the ones the model says.
+    expect(await driver.models()).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low', 'medium', 'high'] }]);
+    const session = await driver.start({ cwd: '/w', model: 'gpt-5-mini', effort: 'high', permissionMode: 'default' }, recorder().events);
+    expect(sdk.options()).toMatchObject({ model: 'gpt-5-mini', reasoningEffort: 'high', enableFileChangeTracking: true });
+    await session.setEffort!('low');
+    // Back to the default: the model's own level, which Copilot doesn't go back to by itself.
+    await session.setEffort!(null);
+    expect(sdk.calls.filter((c) => c.startsWith('model:'))).toEqual(['model:gpt-5-mini:low', 'model:gpt-5-mini:medium']);
+  });
+
+  it('applies effort to the model Auto picked, and refuses it before one is picked', async () => {
+    const sdk = fakeSdk();
+    const session = await copilotDriver({ binary, env, createClient: sdk.createClient }).start({ cwd: '/w', model: null, effort: 'high', permissionMode: 'default' }, recorder().events);
+    // No effort without a model: Copilot's Auto has none.
+    expect(sdk.options().reasoningEffort).toBeUndefined();
+    await expect(session.setEffort!('high')).rejects.toThrow(/Auto model has no effort/);
+    sdk.emit({ type: 'session.model_change', data: { newModel: 'gpt-5-mini' } });
+    await session.setEffort!('high');
+    expect(sdk.calls).toContain('model:gpt-5-mini:high');
+  });
+
+  it('renames a running session, and one that is not running by resuming it just for that', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    const session = await driver.start({ cwd: '/w', model: null, permissionMode: 'default' }, recorder().events);
+    await session.rename!('  Fix the parser  ');
+    await driver.renameSession('abc', '/work/other', 'x'.repeat(120));
+    expect(sdk.calls).toEqual(expect.arrayContaining(['name:Fix the parser', 'resume:abc', `name:${'x'.repeat(100)}`]));
+    // Let go again once renamed.
+    expect(sdk.calls.at(-1)).toBe('disconnect');
+    expect(sdk.options()).toMatchObject({ workingDirectory: '/work/other', clientName: SESHBOARD_CLIENT });
+  });
+
+  it('rewinds to one of your messages with its files, and says why when it cannot', async () => {
+    const sdk = fakeSdk();
+    const session = await copilotDriver({ binary, env, createClient: sdk.createClient }).start({ cwd: '/w', model: null, permissionMode: 'default' }, recorder().events);
+    expect(await session.rewind!('u1', true)).toEqual({ canRewind: true, error: null, files: ['/work/demo/a.ts'], insertions: 2, deletions: 5 });
+    expect(await session.rewind!('u1', false)).toEqual({ canRewind: true, error: null, files: ['/work/demo/a.ts'], insertions: 0, deletions: 0 });
+    expect(sdk.calls).toEqual(expect.arrayContaining(['preview:u1', 'rewind:u1:conversation-and-files']));
+    // Not one of Copilot's rewind points (a steering message).
+    expect(await session.rewind!('a1', true)).toMatchObject({ canRewind: false, error: "Copilot can't rewind to this message." });
+    sdk.rewind.outcome = { outcome: 'files-rolled-back', restoredFiles: [], error: 'EACCES' };
+    expect(await session.rewind!('u1', false)).toMatchObject({ canRewind: false, error: "Couldn't restore the files, so nothing changed." });
+    sdk.rewind.points = { fileChangeTrackingEnabled: false, unavailableReason: 'file-change-tracking-disabled', points: [] };
+    expect(await session.rewind!('u1', true)).toMatchObject({ canRewind: false, error: expect.stringMatching(/didn't keep this session's file changes/) });
+  });
+
+  it('reports background tasks when Copilot says they changed, and stops one', async () => {
+    const sdk = fakeSdk();
+    const { log, events } = recorder();
+    const session = await copilotDriver({ binary, env, createClient: sdk.createClient }).start({ cwd: '/w', model: null, permissionMode: 'default' }, events);
+    sdk.tasks.list = [
+      { type: 'shell', id: 's1', description: '', command: 'npm run dev', status: 'running', startedAt: '2026-10-30T10:00:00.000Z', attachmentMode: 'detached' },
+      // One the turn waits for, and one that finished: not background work.
+      { type: 'shell', id: 's2', description: 'npm test', status: 'running', startedAt: '2026-10-30T10:00:00.000Z', attachmentMode: 'attached' },
+      { type: 'agent', id: 'g1', description: 'Review', status: 'completed', startedAt: '2026-10-30T10:00:00.000Z', executionMode: 'background' },
+      { type: 'agent', id: 'g2', description: 'Explore the repo', status: 'running', startedAt: '2026-10-30T10:01:00.000Z', executionMode: 'background' },
+    ];
+    sdk.emit({ type: 'session.background_tasks_changed', data: {} });
+    await vi.waitFor(() =>
+      expect(log.tasks.at(-1)).toEqual([
+        { taskId: 's1', type: 'local_bash', description: 'npm run dev', startedAt: Date.parse('2026-10-30T10:00:00.000Z') },
+        { taskId: 'g2', type: 'local_agent', description: 'Explore the repo', startedAt: Date.parse('2026-10-30T10:01:00.000Z') },
+      ]),
+    );
+    sdk.tasks.list = [];
+    await session.stopTask!('s1');
+    expect(sdk.calls).toContain('cancel:s1');
+    await vi.waitFor(() => expect(log.tasks.at(-1)).toEqual([]));
+  });
+
+  it('reads events and open sessions through the runtime only once it runs, and forks', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    // Not started just to read: the caller reads the file instead.
+    expect(await driver.readEvents('abc')).toBeNull();
+    expect(await driver.inUse(['abc'])).toBeNull();
+    // Forking starts it.
+    expect(await driver.fork('abc', 'u2')).toBe('f0');
+    await driver.fork('abc', null);
+    expect(sdk.calls).toEqual(expect.arrayContaining(['fork:abc:u2', 'fork:abc:-']));
+
+    sdk.pages.push({ events: [{ type: 'user.message', id: 'u1' }], cursor: 'c1', hasMore: true, cursorStatus: 'ok' }, { events: [{ type: 'assistant.message', id: 'a1' }], cursor: 'c2', hasMore: false, cursorStatus: 'ok' });
+    expect((await driver.readEvents('abc'))?.map((e) => e.id)).toEqual(['u1', 'a1']);
+    expect(sdk.reads).toEqual([undefined, 'c1']);
+    // A read that couldn't finish is an error, not half a session.
+    sdk.pages.push({ events: [], cursor: 'c3', hasMore: false, cursorStatus: 'expired' });
+    await expect(driver.readEvents('abc')).rejects.toThrow(/expired/);
+    expect(await driver.inUse(['abc', 'busy-1'])).toEqual(new Set(['busy-1']));
   });
 });
 

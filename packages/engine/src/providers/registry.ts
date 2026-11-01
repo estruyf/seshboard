@@ -30,8 +30,9 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       canStart: true,
       modes: COPILOT_MODES,
       installCommand: COPILOT_INSTALL,
-      // None of Claude Code's own features yet: fork, rewind, Ask, worktrees, pipelines, Later and schedules.
-      supports: [],
+      // Through Copilot's own APIs (fork, rewind, rename) and its folder (delete, to the Trash). Not yet: Ask, worktrees,
+      // branches, pipelines, Later and schedules.
+      supports: ['fork', 'rewind', 'rename', 'delete', 'effort'],
     },
   ];
 }

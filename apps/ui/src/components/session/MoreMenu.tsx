@@ -33,9 +33,11 @@ export interface ProviderMenu {
   /** Null while Seshboard runs it: it can't run in two places. */
   onOpenCli: (() => void) | null;
   onArchive: () => void;
+  /** Rename… (its provider renames it too); null leaves it out. */
+  onRename?: (() => void) | null;
 }
 
-/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Open in its CLI and Archive. */
+/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Rename (when it can), Open in its CLI and Archive. */
 export function providerEntries(provider: ProviderMenu): MenuEntry[] {
   const short = PROVIDER_SHORT_NAMES[provider.id];
   const line = claudeOnlyLine(provider.supports);
@@ -49,6 +51,7 @@ export function providerEntries(provider: ProviderMenu): MenuEntry[] {
       onSelect: () => void (provider.lastReply && navigator.clipboard.writeText(provider.lastReply).then(() => toast('Copied the last reply'), () => {})),
       data: { 'data-copy-last-reply': true },
     },
+    ...(provider.onRename ? [{ label: 'Rename…', icon: <Pencil size={13} />, onSelect: provider.onRename, data: { 'data-rename-session': true } } satisfies MenuEntry] : []),
     {
       label: `Open in ${short} CLI`,
       icon: <SquareTerminal size={13} />,
@@ -243,7 +246,7 @@ export function MoreMenu({
     },
   );
 
-  const shownEntries = provider ? providerEntries(provider) : entries;
+  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null }) : entries;
   const label = provider ? 'More: compact, tools, copy, open in the CLI, archive' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (

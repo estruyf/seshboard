@@ -209,6 +209,8 @@ export const ModelOption = z.object({
   displayName: z.string(),
   description: z.string(),
   supportsEffort: z.boolean(),
+  /** The effort levels it takes, when it says (GitHub Copilot's models); every level otherwise. */
+  efforts: z.array(Effort).optional(),
 });
 export type ModelOption = z.infer<typeof ModelOption>;
 

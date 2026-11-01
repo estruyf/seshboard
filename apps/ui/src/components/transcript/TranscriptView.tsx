@@ -2,7 +2,7 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -360,6 +360,9 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
+/** One empty list, so a session without a provider keeps the same one between renders. */
+const NO_FEATURES: readonly ProviderFeature[] = [];
+
 export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -373,6 +376,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
    */
   const otherProvider = (summary ? otherProviderOf(summary) : null) ?? host?.provider ?? null;
   const otherInfo = useProvider(otherProvider);
+  /** Claude Code's own features its provider has too (fork, rewind, rename, delete, effort). */
+  const supports = otherInfo?.supports ?? NO_FEATURES;
   const readOnly = otherProvider !== null && !otherInfo?.canStart;
   // The provider profile that runs it: its own login, models and commands.
   const otherProfileId = otherProvider ? (host?.profileId ?? summary?.profileId ?? null) : null;
@@ -1106,10 +1111,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
   // Fork, edit and rewind from a message.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [rewinding, setRewinding] = useState<{ uuid: string; preview: RewindResult | null; error: string | null } | null>(null);
+  const [rewinding, setRewinding] = useState<{ uuid: string; text: string; preview: RewindResult | null; error: string | null } | null>(null);
+  /** Another provider's rewind (Copilot's) takes the conversation back too, so it goes ahead with no file to restore. */
+  const rewindsConversation = otherProvider !== null;
   // The undo dialog opens while it is still checking, before its confirm button exists: give the
   // button focus when it appears, so Enter confirms as in every other confirmation.
-  const rewindReady = Boolean(rewinding && !rewinding.error && rewinding.preview?.canRewind && rewinding.preview.files.length > 0);
+  const rewindReady = Boolean(rewinding && !rewinding.error && rewinding.preview?.canRewind && (rewindsConversation || rewinding.preview.files.length > 0));
   useEffect(() => {
     if (!rewindReady) return;
     const frame = requestAnimationFrame(() => {
@@ -1140,8 +1147,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           select(r.sessionId);
         }, fail);
       },
-      rewind: (uuid) => {
-        setRewinding({ uuid, preview: null, error: null });
+      rewind: (uuid, text) => {
+        setRewinding({ uuid, text, preview: null, error: null });
         client.call('session.rewind', { sessionId, messageUuid: uuid, dryRun: true }).then(
           (preview) => setRewinding((r) => (r?.uuid === uuid ? { ...r, preview } : r)),
           (error: Error) => setRewinding((r) => (r?.uuid === uuid ? { ...r, error: error.message } : r)),
@@ -1154,9 +1161,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
       read: (turnKey) => useReadMode.getState().openReply(sessionId, turnKey),
       readable,
-      claudeActions: otherProvider === null,
+      // Another provider's session: only what its provider has, and only when Seshboard can run it.
+      canFork: otherProvider === null || (!readOnly && supports.includes('fork')),
+      canRewind: otherProvider === null || (!readOnly && supports.includes('rewind')),
+      rewindsConversation,
     };
-  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable, readOnly, otherProvider]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable, readOnly, otherProvider, supports, rewindsConversation]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1205,7 +1215,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   useSessionRequests(active, (request) => {
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
     else if (request.kind === 'ask') void openAsk(client, sessionId);
-    else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
+    else if (request.kind === 'rewind' && request.arg) {
+      const uuid = request.arg;
+      const prompt = items.find((item) => item.kind === 'user' && messageUuid(item.key) === uuid);
+      messageActions?.rewind(uuid, prompt?.kind === 'user' ? prompt.text : '');
+    }
     else if (request.kind === 'prompt-previous') stepPrompt(-1);
     else if (request.kind === 'prompt-next') stepPrompt(1);
     else if (request.kind === 'retry') void retry();
@@ -1821,16 +1835,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
             <ConfirmDialog
-              title="Undo file changes since this message?"
+              title={rewindsConversation ? 'Rewind to before this message?' : 'Undo file changes since this message?'}
               danger
-              confirmLabel="Undo changes"
+              confirmLabel={rewindsConversation ? 'Rewind' : 'Undo changes'}
               blockedReason={
                 rewinding.error ??
                 (!rewinding.preview
                   ? 'Checking what changed…'
                   : !rewinding.preview.canRewind
                     ? (rewinding.preview.error ?? 'Claude Code has no checkpoint for this message.')
-                    : rewinding.preview.files.length === 0
+                    : rewinding.preview.files.length === 0 && !rewindsConversation
                       ? 'Nothing to undo: no files changed after this message.'
                       : null)
               }
@@ -1838,7 +1852,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               blockedTone={!rewinding.error && (!rewinding.preview || (rewinding.preview.canRewind && rewinding.preview.files.length === 0)) ? 'info' : 'error'}
               body={
                 <>
-                  <p>Files go back to how they were before this message. The conversation stays as it is.</p>
+                  <p>
+                    {rewindsConversation
+                      ? `The conversation goes back to before this message, and the message goes back in the box. ${rewinding.preview && rewinding.preview.files.length === 0 ? 'No files changed after it.' : `Files ${agentName} changed go back to how they were.`}`
+                      : 'Files go back to how they were before this message. The conversation stays as it is.'}
+                  </p>
                   {rewinding.preview && rewinding.preview.files.length > 0 && (
                     <>
                       <ul className="mt-2 max-h-40 overflow-y-auto font-mono text-meta text-text" data-rewind-files>
@@ -1858,6 +1876,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               onConfirm={async () => {
                 const result = await client!.call('session.rewind', { sessionId, messageUuid: rewinding.uuid, dryRun: false });
                 if (!result.canRewind) throw new Error(result.error ?? 'Could not undo the changes');
+                // The message left the conversation: it waits in the box, to send again or change.
+                if (rewindsConversation && rewinding.text) useDrafts.getState().requestQuote(sessionId, rewinding.text, { plain: true });
               }}
               onClose={() => setRewinding(null)}
             />

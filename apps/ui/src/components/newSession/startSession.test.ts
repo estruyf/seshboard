@@ -35,6 +35,11 @@ describe('sessionCreateParams', () => {
     expect(sessionCreateParams({ ...START, choices: { ...CHOICES, model: '', effort: '' } })).toMatchObject({ model: null, effort: null });
   });
 
+  it('sends a provider\'s effort only with a model picked (its Auto has none)', () => {
+    expect(createParamsFor({ ...START, profileId: 'copilot', provider: { model: 'gpt-5-mini', effort: 'high' } })).toMatchObject({ model: 'gpt-5-mini', effort: 'high' });
+    expect(createParamsFor({ ...START, profileId: 'copilot', provider: { model: null, effort: 'high' } })).not.toHaveProperty('effort');
+  });
+
   it('starts a provider profile with only the folder, the message, its model and mode', () => {
     expect(createParamsFor({ ...START, profileId: 'copilot', worktree: true, provider: { model: 'gpt-5-mini', permissionMode: 'auto' } })).toEqual({
       cwd: '/work/app',

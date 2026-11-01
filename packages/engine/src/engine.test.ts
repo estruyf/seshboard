@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions } from './engine.ts';
@@ -124,8 +124,9 @@ describe('engine over a MessagePort', () => {
     expect(info.claude).toBeNull();
   });
 
-  it('shows a Copilot profile\'s sessions under that profile, and refuses Claude Code\'s own actions on them', async () => {
-    const { client, dataDir } = connect();
+  it('shows a Copilot profile\'s sessions under that profile, refuses Claude Code\'s own actions, and deletes them to the Trash', async () => {
+    const trashed: string[][] = [];
+    const { client, dataDir } = connect({ trashed });
     const id = '44444444-4444-4444-8444-444444444444';
     // A Copilot profile's folder in the test's own folder, never the machine's ~/.copilot.
     const copilotHome = join(dataDir, 'copilot');
@@ -149,11 +150,17 @@ describe('engine over a MessagePort', () => {
     const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
     expect(listed).toMatchObject({ provider: 'copilot', profileId, title: 'Fix the parser', cwd: PARSER });
 
-    // Copilot can run sessions, but isn't installed here: sending says so.
+    // Copilot can run sessions, but isn't installed here: sending, forking and renaming (all through Copilot) say so.
     await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
-    await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
-    await expect(client.call('session.delete', { sessionId: id })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
-    expect(existsSync(join(folder, 'events.jsonl'))).toBe(true);
+    await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    await expect(client.call('session.rename', { sessionId: id, title: 'Parser fix' })).rejects.toMatchObject({ code: 'RENAME_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    // Ask about this session stays Claude Code's.
+    await expect(client.call('session.ask', { sessionId: id, question: 'What changed?' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+
+    // Delete moves the session's whole folder to the Trash, named with its Copilot home for main's check.
+    await client.call('session.delete', { sessionId: id });
+    expect(trashed).toEqual([[folder]]);
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
   });
 
   it('starts and steers a Copilot session through its driver, with Copilot\'s own login', async () => {
@@ -166,15 +173,31 @@ describe('engine over a MessagePort', () => {
       on: (handler) => ((emit = handler), () => {}),
       send: async ({ prompt }) => (calls.push(`send:${prompt}`), 'm1'),
       abort: async () => void calls.push('abort'),
-      setModel: async (model) => void calls.push(`model:${model}`),
+      setModel: async (model, o) => void calls.push(`model:${model}${o?.reasoningEffort ? `:${o.reasoningEffort}` : ''}`),
       disconnect: async () => void calls.push('disconnect'),
-      rpc: { mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) }, commands: { list: async () => ({ commands: [] }), invoke: async () => ({ kind: 'completed' }) }, mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} }, skills: { list: async () => ({ skills: [] }) }, agent: { list: async () => ({ agents: [] }) } },
+      rpc: {
+        mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
+        commands: { list: async () => ({ commands: [] }), invoke: async () => ({ kind: 'completed' }) },
+        mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+        skills: { list: async () => ({ skills: [] }) },
+        agent: { list: async () => ({ agents: [] }) },
+        name: { set: async ({ name }) => void calls.push(`name:${name}`) },
+        history: {
+          listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [{ eventId: 'u1' }] }),
+          previewRewind: async () => ({ available: true, files: [{ path: join(PARSER, 'a.ts'), linesAdded: 3, linesRemoved: 1 }] }),
+          rewind: async ({ eventId, mode }) => (calls.push(`rewind:${eventId}:${mode}`), { outcome: 'success', restoredFiles: [join(PARSER, 'a.ts')] }),
+        },
+        tasks: {
+          list: async () => ({ tasks: [{ type: 'shell', id: 't1', description: 'Dev server', status: 'running', startedAt: '2026-10-30T10:00:00.000Z', attachmentMode: 'detached' }] }),
+          cancel: async ({ id }) => (calls.push(`cancel:${id}`), { cancelled: true }),
+        },
+      },
     };
     const client: CopilotSdkClient = {
       start: async () => {},
       stop: async () => {},
       getAuthStatus: async () => ({ isAuthenticated: true, statusMessage: 'octocat (via gh)' }),
-      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini' }],
+      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }],
       createSession: async (o) => ((options = o), session),
       resumeSession: async (_id, o) => ((options = o), session),
     };
@@ -186,12 +209,13 @@ describe('engine over a MessagePort', () => {
     expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: null, problem: null });
     // A Copilot without the quota call says nothing about premium requests, rather than failing.
     expect(await rpc.call('providers.quota', { profileId })).toEqual({ quota: null });
-    expect((await rpc.call('providers.models', { profileId })).models.map((m) => m.value)).toEqual(['gpt-5-mini']);
+    expect((await rpc.call('providers.models', { profileId })).models).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low', 'medium', 'high'] }]);
 
-    // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model.
-    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini' });
+    // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model and an effort it takes.
+    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', effort: 'high' });
     expect(sessionId).toBe(COPILOT_ID);
-    expect(options).toMatchObject({ workingDirectory: dataDir, model: 'gpt-5-mini', clientName: 'seshboard' });
+    expect(options).toMatchObject({ workingDirectory: dataDir, model: 'gpt-5-mini', reasoningEffort: 'high', clientName: 'seshboard', enableFileChangeTracking: true });
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.effort).toBe('high');
     expect(calls).toEqual(['send:Add a test']);
 
     emit({ type: 'assistant.turn_start', data: {} });
@@ -205,13 +229,70 @@ describe('engine over a MessagePort', () => {
     emit({ type: 'session.idle', data: {} });
     expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.state).toBe('idle');
 
+    // Effort, rename, background tasks and rewind go through the running session.
+    await rpc.call('session.setEffort', { sessionId: COPILOT_ID, effort: 'low' });
+    await rpc.call('session.rename', { sessionId: COPILOT_ID, title: '  Parser\n fix ' });
+    emit({ type: 'session.background_tasks_changed', data: {} });
+    await vi.waitFor(async () => expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.backgroundTasks).toEqual([{ taskId: 't1', type: 'local_bash', description: 'Dev server', startedAt: Date.parse('2026-10-30T10:00:00.000Z') }]));
+    await rpc.call('session.stopTask', { sessionId: COPILOT_ID, taskId: 't1' });
+    expect(await rpc.call('session.rewind', { sessionId: COPILOT_ID, messageUuid: 'u1', dryRun: true })).toEqual({ canRewind: true, error: null, files: [join(PARSER, 'a.ts')], insertions: 3, deletions: 1 });
+    expect(await rpc.call('session.rewind', { sessionId: COPILOT_ID, messageUuid: 'u1', dryRun: false })).toMatchObject({ canRewind: true, files: [join(PARSER, 'a.ts')] });
+    expect(calls.slice(1)).toEqual(['model:gpt-5-mini:low', 'name:Parser fix', 'cancel:t1', 'rewind:u1:conversation-and-files']);
+
     await rpc.call('session.send', { sessionId: COPILOT_ID, text: 'And another', attachments: [], fork: false });
     await rpc.call('session.interrupt', { sessionId: COPILOT_ID });
     await rpc.call('session.setModel', { sessionId: COPILOT_ID, model: null });
-    expect(calls).toEqual(['send:Add a test', 'send:And another', 'abort', 'model:auto']);
-    // Claude Code's own features still refuse it.
-    await expect(rpc.call('session.forkAt', { sessionId: COPILOT_ID, messageUuid: 'a1' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    expect(calls.slice(-3)).toEqual(['send:And another', 'abort', 'model:auto']);
+    // Another model starts on its own effort; Copilot's Auto has none to set.
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.effort).toBeNull();
+    await expect(rpc.call('session.setEffort', { sessionId: COPILOT_ID, effort: 'high' })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Auto model has no effort/) });
+    // Ask about this session stays Claude Code's.
+    await expect(rpc.call('session.ask', { sessionId: COPILOT_ID, question: 'What changed?' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
     expect(hostStates).toEqual(expect.arrayContaining(['running', 'needs-you', 'idle']));
+  });
+
+  it('forks a Copilot session through Copilot, just after the message (and its tools\' results)', async () => {
+    const id = '66666666-6666-4666-8666-666666666666';
+    const forks: Array<{ sessionId: string; toEventId?: string }> = [];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: () => Promise.reject(new Error('not here')),
+      resumeSession: () => Promise.reject(new Error('not here')),
+      rpc: {
+        sessions: {
+          fork: async (params) => (forks.push(params), { sessionId: '77777777-7777-4777-8777-777777777777' }),
+          // Once the first fork started the runtime, the events are asked of it: a failed read falls back to the file.
+          readPersistedEvents: () => Promise.reject(new Error('expired')),
+          checkInUse: async () => ({ inUse: [] }),
+        },
+      },
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    mkdirSync(join(copilotHome, 'session-state', id), { recursive: true });
+    const events = [
+      { type: 'session.start', id: 'e1', data: { context: { cwd: PARSER } } },
+      { type: 'user.message', id: 'u1', data: { content: 'Fix the parser' } },
+      { type: 'assistant.message', id: 'a1', data: { content: 'Running the tests.', toolRequests: [{ toolCallId: 't1', name: 'bash', arguments: { command: 'npm test' } }] } },
+      { type: 'tool.execution_start', id: 'x1', data: { toolCallId: 't1' } },
+      { type: 'tool.execution_complete', id: 'r1', data: { toolCallId: 't1', success: true, result: { content: 'ok' } } },
+      { type: 'user.message', id: 'u2', data: { content: 'Now the docs' } },
+    ];
+    writeFileSync(join(copilotHome, 'session-state', id, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    await rpc.call('sessions.refresh', {});
+
+    // Fork from the reply: it keeps the reply's tool result, and ends before the next message.
+    expect(await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'a1' })).toEqual({ sessionId: '77777777-7777-4777-8777-777777777777' });
+    // Edit and resend forks at the message before your prompt: the fork ends just before it.
+    await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'r1' });
+    // The last message: the fork keeps everything.
+    await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'u2' });
+    expect(forks).toEqual([{ sessionId: id, toEventId: 'u2' }, { sessionId: id, toEventId: 'u2' }, { sessionId: id }]);
+    await expect(rpc.call('session.forkAt', { sessionId: id, messageUuid: 'nope' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/not in this session/) });
   });
 
   it('persists app state', async () => {

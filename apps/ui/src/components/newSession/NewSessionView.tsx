@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
 import { askWhat, offersProjectProfile, switchNoticeFor, type SwitchNoticeState } from './providerSwitch.ts';
@@ -162,6 +162,8 @@ function LocalNewSession() {
   const pinnedProfile = useRef<string | null>(null);
   // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session.
   const [providerModel, setProviderModel] = useState('');
+  /** The effort for the provider's model, when it takes one ('' is the model's own). */
+  const [providerEffort, setProviderEffort] = useState<Effort | ''>('');
   const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
@@ -270,6 +272,10 @@ function LocalNewSession() {
   /** The provider's own modes (Copilot's Autopilot), and the one picked: its first until you pick another. */
   const runWithModes = runWithInfo?.modes ?? [];
   const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
+  /** The provider's model, when it takes an effort and its provider has the setting (its Auto never does). */
+  const providerEffortModel = providerModel && runWithInfo?.supports.includes('effort') ? readiness?.models.find((m) => m.value === providerModel && m.supportsEffort) : undefined;
+  /** The effort picked, when the model takes it (one it doesn't have is left out). */
+  const providerEffortShown: Effort | '' = providerEffortModel && providerEffort && (providerEffortModel.efforts ?? [providerEffort]).includes(providerEffort) ? providerEffort : '';
   /** Who works in the folder, in the copy around the box. */
   const agent = runWith ? PROVIDER_SHORT_NAMES[runWith] : 'Claude';
   const catalog = useProviders((s) => s.providers);
@@ -1044,7 +1050,7 @@ function LocalNewSession() {
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
         github: fresh ? undefined : githubStart(worktree),
-        provider: runWith ? { model: providerModel || null, permissionMode: runWithMode } : null,
+        provider: runWith ? { model: providerModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1150,7 +1156,8 @@ function LocalNewSession() {
           ? {
               value: providerModel,
               label: providerModel ? (readiness?.models.find((m) => m.value === providerModel)?.displayName ?? providerModel) : 'Default model',
-              onChange: (model) => (setProviderModel(model), setSwitched(null)),
+              // Another model starts on its own effort.
+              onChange: (model) => (setProviderModel(model), setProviderEffort(''), setSwitched(null)),
               choices: [{ value: '', label: 'Default model', description: `What ${PROVIDER_NAMES[runWith]} picks` }, ...(readiness?.models ?? []).map((m) => ({ value: m.value, label: m.displayName }))],
             }
           : {
@@ -1160,7 +1167,13 @@ function LocalNewSession() {
               choices: modelChoices(models, autoModel, <AutoWand />),
             }
       }
-      effort={runWith ? null : { value: d.effort, onChange: (effort) => update({ effort }) }}
+      effort={
+        runWith
+          ? providerEffortModel
+            ? { value: providerEffortShown, onChange: setProviderEffort, ...(providerEffortModel.efforts ? { levels: providerEffortModel.efforts } : {}), defaultDescription: 'The model’s own level' }
+            : null
+          : { value: d.effort, onChange: (effort) => update({ effort }) }
+      }
       mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (setProviderMode(mode), setSwitched(null)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
       pipeline={runAs && !runWith ? boxChoiceUse(runAs) : null}
     />

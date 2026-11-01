@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PermissionMode, SessionHostInfo } from '@seshboard/protocol';
+import type { Effort, PermissionMode, SessionHostInfo } from '@seshboard/protocol';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import type { StoredUpNext } from '../host/upNextStore.ts';
 import type { DriverEvents, DriverSession, ProviderAdapter, ProviderDriver } from './provider.ts';
@@ -24,6 +24,10 @@ function setup(stored: StoredUpNext[] = []) {
     commands: async () => [{ name: 'review', description: 'Review the changes', argumentHint: '' }],
     capabilities: async () => ({ live: true, mcp: [], agents: [], commands: [], plugins: [] }),
     mcp: async (server, action) => void calls.push(`mcp:${action}:${server}`),
+    setEffort: async (e) => void calls.push(`effort:${e}`),
+    rename: async (title) => void calls.push(`rename:${title}`),
+    rewind: async (id, dryRun) => (calls.push(`rewind:${id}:${dryRun}`), { canRewind: true, error: null, files: [], insertions: 0, deletions: 0 }),
+    stopTask: async (id) => void calls.push(`stop:${id}`),
     respond: () => {},
     close: async () => void calls.push('close'),
   };
@@ -35,18 +39,20 @@ function setup(stored: StoredUpNext[] = []) {
     status: async () => ({ binary: '/c', version: null, signedIn: true, account: null, login: null, problem: null }),
     models: async () => [],
     commands: async () => [{ name: 'init', description: '', argumentHint: '' }],
-    start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}`), session),
+    start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}${config.effort ? `:${config.effort}` : ''}`), session),
     dispose: async () => {},
   };
   const adapter = { id: 'copilot', profileId: 'work-copilot', home: '/c', driver } as unknown as ProviderAdapter;
   const saved = new Map<string, StoredUpNext[]>([[ID, stored]]);
-  const settings = new Map<string, { model?: string | null; permissionMode?: PermissionMode }>();
+  const settings = new Map<string, { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode }>();
+  let busyElsewhere = false;
   const infos: SessionHostInfo[] = [];
   const turns: TurnOutcome[] = [];
   const hosts = new ProviderHosts({
     providers: () => [adapter],
     profileOf: () => 'work-copilot',
     sessionCwd: () => '/w',
+    openElsewhere: async () => busyElsewhere,
     settings: { get: (id) => settings.get(id) ?? null, set: (id, c) => settings.set(id, { ...settings.get(id), ...c }) },
     upNext: { list: (id) => saved.get(id) ?? [], save: (id, m) => saved.set(id, [...m]) },
     onInfo: (info) => infos.push(info),
@@ -60,10 +66,67 @@ function setup(stored: StoredUpNext[] = []) {
   });
   const last = () => infos.at(-1)!;
   const turn = { start: () => events!.state('running'), end: () => events!.state('idle') };
-  return { hosts, calls, saved, settings, last, turn, turns };
+  return { hosts, calls, saved, settings, last, turn, turns, events: () => events!, elsewhere: (on: boolean) => (busyElsewhere = on) };
 }
 
 const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'now') => hosts.send({ sessionId: ID, text, attachments: [], ...(mode ? { mode } : {}) });
+
+describe('ProviderHosts session actions', () => {
+  it('keeps the effort while it is not running and resumes with it; another model drops it', async () => {
+    const { hosts, calls, settings, last } = setup();
+    settings.set(ID, { model: 'gpt-5-mini' });
+    await hosts.setEffort(ID, 'high');
+    expect(calls).toEqual([]);
+    await send(hosts, 'go on');
+    expect(calls[0]).toBe(`start:${ID}:default:high`);
+    expect(last().effort).toBe('high');
+    await hosts.setEffort(ID, 'low');
+    expect(calls.at(-1)).toBe('effort:low');
+    await hosts.setModel(ID, 'gpt-5');
+    expect(last().effort).toBeNull();
+    expect(settings.get(ID)).toMatchObject({ model: 'gpt-5', effort: null });
+  });
+
+  it('starts without an effort when no model is picked (the provider\'s Auto has none)', async () => {
+    const { hosts, calls } = setup();
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'hi', attachments: [], model: null, effort: 'high' });
+    expect(calls[0]).toBe('start:new:default');
+  });
+
+  it('renames a running session through it, and leaves a stopped one to the source', async () => {
+    const { hosts, calls } = setup();
+    expect(await hosts.rename(ID, 'New name')).toBe(false);
+    await send(hosts, 'hi');
+    expect(await hosts.rename(ID, 'New name')).toBe(true);
+    expect(calls.at(-1)).toBe('rename:New name');
+  });
+
+  it('rewinds once the turn is over, resuming the session first, and not while it is open elsewhere', async () => {
+    const { hosts, calls, turn, elsewhere } = setup();
+    elsewhere(true);
+    await expect(hosts.rewind(ID, 'u1', true)).rejects.toMatchObject({ code: 'SESSION_BUSY_ELSEWHERE' });
+    elsewhere(false);
+    expect(await hosts.rewind(ID, 'u1', true)).toMatchObject({ canRewind: true });
+    expect(calls).toEqual([`start:${ID}:default`, 'rewind:u1:true']);
+    await send(hosts, 'more');
+    turn.start();
+    expect(await hosts.rewind(ID, 'u1', false)).toMatchObject({ canRewind: false, error: 'Wait until it finishes, then rewind.' });
+    turn.end();
+    await hosts.rewind(ID, 'u1', false);
+    expect(calls.at(-1)).toBe('rewind:u1:false');
+  });
+
+  it('shows its background tasks and stops one', async () => {
+    const { hosts, calls, last, events } = setup();
+    await expect(hosts.stopTask(ID, 't1')).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+    await send(hosts, 'hi');
+    const task = { taskId: 't1', type: 'local_bash', description: 'npm run dev', startedAt: 1 };
+    events().tasks!([task]);
+    expect(last().backgroundTasks).toEqual([task]);
+    await hosts.stopTask(ID, 't1');
+    expect(calls.at(-1)).toBe('stop:t1');
+  });
+});
 
 describe('ProviderHosts Up next', () => {
   it('queues while a turn runs, sends the next when it ends, and steers or stops it on request', async () => {

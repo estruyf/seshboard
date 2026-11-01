@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
   RpcError,
+  type BackgroundTask,
   type Capabilities,
+  type Effort,
   type HostState,
   type ImageAttachment,
   type LogLevel,
@@ -10,6 +12,7 @@ import {
   type PermissionMode,
   type PermissionRequest,
   type QueuedMessage,
+  type RewindResult,
   type SendMode,
   type SessionHostInfo,
   type SlashCommand,
@@ -28,9 +31,12 @@ export interface ProviderHostsDeps {
   /** The folder a session ran in. */
   sessionCwd(sessionId: string): string | null;
   /** The session is open in the provider's own app right now (Copilot CLI in a terminal): resuming it here would clash. */
-  openElsewhere?(adapter: ProviderAdapter, sessionId: string): boolean;
-  /** What each session last ran with (its mode and model), so a resume picks up where it left off. */
-  settings?: { get(sessionId: string): { model?: string | null; permissionMode?: PermissionMode | null } | null | undefined; set(sessionId: string, change: { model?: string | null; permissionMode?: PermissionMode }): void };
+  openElsewhere?(adapter: ProviderAdapter, sessionId: string): Promise<boolean>;
+  /** What each session last ran with (its mode, model and effort), so a resume picks up where it left off. */
+  settings?: {
+    get(sessionId: string): { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode | null } | null | undefined;
+    set(sessionId: string, change: { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode }): void;
+  };
   /** Where Up next is kept, the same store as Claude Code's sessions, so it outlives the session and the app. */
   upNext?: { list(sessionId: string): StoredUpNext[]; save(sessionId: string, messages: readonly StoredUpNext[]): void };
   onUpNext?(sessionId: string, queue: QueuedMessage[]): void;
@@ -66,7 +72,8 @@ interface Host {
  * Code's. Each session reports what a Claude Code host does (`session.host` info, streamed text, live messages,
  * permission requests, turn ends, Up next), so the transcript, the sidebar, catch-up, the phone and notifications treat
  * them alike. Messages sent while a turn runs wait in Up next, steer the turn, or stop it (Send now), as for Claude
- * Code. Claude Code's own features (profiles, plan usage, mods, rewind, worktrees) don't apply.
+ * Code. Effort, renaming, rewinding and background tasks go through the driver's session when it has them. Claude
+ * Code's own features (plan usage, mods, worktrees) don't apply.
  */
 export class ProviderHosts {
   private readonly hosts = new Map<string, Host>();
@@ -77,6 +84,11 @@ export class ProviderHosts {
 
   has(sessionId: string): boolean {
     return this.hosts.has(sessionId);
+  }
+
+  /** The provider profile running a session here (it may not be indexed yet). */
+  profileOf(sessionId: string): string | undefined {
+    return this.hosts.get(sessionId)?.adapter.profileId;
   }
 
   /** Whether a session belongs to a provider that can run it here (running or not). */
@@ -95,22 +107,24 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode }): Promise<string> {
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode }): Promise<string> {
     const adapter = this.adapterOf(params.profileId);
     if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
+    // An effort only goes with a model picked (the provider's Auto has none).
+    const effort = params.model ? (params.effort ?? null) : null;
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
-    const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting');
+    const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting', effort);
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, permissionMode }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
     host.session = session;
     host.info = { ...host.info, sessionId: session.sessionId };
     this.hosts.set(session.sessionId, host);
-    this.deps.settings?.set(session.sessionId, { model: params.model, permissionMode });
+    this.deps.settings?.set(session.sessionId, { model: params.model, effort, permissionMode });
     this.deps.onCreated(session.sessionId);
     this.deps.onInfo(host.info);
     await this.deliver(host, params.prompt, params.attachments);
@@ -150,8 +164,53 @@ export class ProviderHosts {
     const host = this.hosts.get(sessionId);
     if (!host?.session) throw new RpcError('NOT_RUNNING', 'This session is not running in Seshboard');
     await host.session.setModel(model);
-    this.deps.settings?.set(sessionId, { model });
-    this.update(host, { model });
+    // Another model starts on its own default effort.
+    this.deps.settings?.set(sessionId, { model, effort: null });
+    this.update(host, { model, effort: null });
+  }
+
+  /** Sets the effort of a session's model; while it isn't running, the next resume starts with it. */
+  async setEffort(sessionId: string, effort: Effort | null): Promise<void> {
+    const host = this.hosts.get(sessionId);
+    if (host?.session) {
+      if (!host.session.setEffort) throw new RpcError('UNSUPPORTED', 'This provider has no effort setting');
+      await host.session.setEffort(effort).catch((error: Error) => {
+        throw new RpcError('PROVIDER_FAILED', error.message);
+      });
+      this.update(host, { effort });
+    }
+    this.deps.settings?.set(sessionId, { effort });
+  }
+
+  /** Renames a session running here, through it. False when it isn't running here (the provider's source renames it). */
+  async rename(sessionId: string, title: string): Promise<boolean> {
+    const session = this.hosts.get(sessionId)?.session;
+    if (!session) return false;
+    if (!session.rename) throw new RpcError('UNSUPPORTED', 'Renaming is not available for this provider');
+    await session.rename(title);
+    return true;
+  }
+
+  /**
+   * Goes back to before one of your messages: the conversation from there is dropped and the files the provider changed
+   * since are restored (`dryRun` says what would change). Resumes the session here first when it isn't running.
+   */
+  async rewind(sessionId: string, messageId: string, dryRun: boolean): Promise<RewindResult> {
+    const host = this.hosts.get(sessionId) ?? (await this.resume(sessionId));
+    if (!host.session?.rewind) throw new RpcError('UNSUPPORTED', 'Rewinding is not available for this provider');
+    if (host.inTurn) return { canRewind: false, error: 'Wait until it finishes, then rewind.', files: [], insertions: 0, deletions: 0 };
+    try {
+      return await host.session.rewind(messageId, dryRun);
+    } catch (error) {
+      throw new RpcError('REWIND_FAILED', (error as Error).message);
+    }
+  }
+
+  /** Stops one of a session's background tasks. */
+  async stopTask(sessionId: string, taskId: string): Promise<void> {
+    const session = this.hosts.get(sessionId)?.session;
+    if (!session?.stopTask) throw new RpcError('NOT_RUNNING', 'This session is not running in Seshboard');
+    await session.stopTask(taskId);
   }
 
   async setPermissionMode(sessionId: string, mode: PermissionMode): Promise<void> {
@@ -250,17 +309,18 @@ export class ProviderHosts {
   private async resume(sessionId: string): Promise<Host> {
     const adapter = this.adapterOf(this.deps.profileOf(sessionId));
     if (!adapter?.driver) throw new RpcError('READ_ONLY_SESSION', 'Sending is only available for Claude Code sessions');
-    if (this.deps.openElsewhere?.(adapter, sessionId)) {
+    if (await this.deps.openElsewhere?.(adapter, sessionId)) {
       throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in its own app right now. Close it there first.');
     }
     const cwd = this.deps.sessionCwd(sessionId);
     if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
     const saved = this.deps.settings?.get(sessionId);
     const model = saved?.model ?? null;
+    const effort = model ? (saved?.effort ?? null) : null;
     const permissionMode = this.modeFor(adapter, saved?.permissionMode);
-    const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting');
+    const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     try {
-      host.session = await adapter.driver.start({ cwd, model, permissionMode, resume: sessionId }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });
@@ -318,14 +378,14 @@ export class ProviderHosts {
   }
 
   /** A host that is reported from now on. */
-  private track(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
-    const host = this.newHost(sessionId, adapter, cwd, model, permissionMode, state);
+  private track(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState, effort: Effort | null = null): Host {
+    const host = this.newHost(sessionId, adapter, cwd, model, permissionMode, state, effort);
     this.hosts.set(sessionId, host);
     this.deps.onInfo(host.info);
     return host;
   }
 
-  private newHost(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState): Host {
+  private newHost(sessionId: string, adapter: ProviderAdapter, cwd: string, model: string | null, permissionMode: PermissionMode, state: HostState, effort: Effort | null = null): Host {
     return {
       adapter,
       session: null,
@@ -339,7 +399,7 @@ export class ProviderHosts {
         state,
         model,
         permissionMode,
-        effort: null,
+        effort,
         costUsd: 0,
         contextPercent: null,
         contextTokens: null,
@@ -409,6 +469,9 @@ export class ProviderHosts {
       },
       model: (model: string) => {
         if (host.info.model !== model) this.update(host, { model });
+      },
+      tasks: (tasks: BackgroundTask[]) => {
+        if (JSON.stringify(tasks) !== JSON.stringify(host.info.backgroundTasks)) this.update(host, { backgroundTasks: tasks });
       },
     };
   }

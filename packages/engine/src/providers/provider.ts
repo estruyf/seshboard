@@ -1,4 +1,4 @@
-import type { Capabilities, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, SlashCommand, StreamDelta } from '@seshboard/protocol';
+import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
@@ -30,7 +30,10 @@ export interface ProviderAdapter {
   /** The folder its sessions are in. Watched once the provider is allowed; Seshboard never creates or writes it. */
   folder: string;
   files: ProviderFiles;
-  /** Lists and reads its sessions, as Claude Code's transcript messages (`RawSessionMessage`). */
+  /**
+   * Lists and reads its sessions, as Claude Code's transcript messages (`RawSessionMessage`). With `fork` and `rename`,
+   * its sessions can be forked (Fork, Edit and resend) and renamed while they don't run here.
+   */
   source: SessionSource;
   /** The command that continues a session in the provider's own CLI, with `{sessionId}` where the id goes. */
   resumeCommand: string;
@@ -39,12 +42,17 @@ export interface ProviderAdapter {
   /** Starts and steers its sessions. Optional: a provider without one is read-only. */
   driver?: ProviderDriver;
   /** The session is open in the provider's own app right now (not through Seshboard), so it can't be resumed here. */
-  inUse?(sessionId: string): boolean;
+  inUse?(sessionId: string): Promise<boolean>;
   /**
    * The sessions among `sessionIds` open in the provider's own app right now, and how they are: the sidebar shows them
    * working or waiting, as it does Claude Code sessions in a terminal.
    */
-  live?(sessionIds: readonly string[]): Array<{ sessionId: string; pid: number; status: LiveStatus; updatedAt: number | null }>;
+  live?(sessionIds: readonly string[]): Promise<Array<{ sessionId: string; pid: number; status: LiveStatus; updatedAt: number | null }>>;
+  /**
+   * What Delete moves to the Trash for a session (its folder in the provider's), all inside `folder`. Without it, its
+   * sessions can't be deleted here.
+   */
+  trashPaths?(sessionId: string): string[];
 }
 
 /**
@@ -80,6 +88,8 @@ export interface DriverEvents {
   usage(usage: { contextTokens?: number; contextMax?: number; spent?: { amount: number; unit: string } }): void;
   /** The session's model changed (by a command, or the provider's Auto picking one). */
   model(model: string): void;
+  /** The work it keeps running in the background now (shell commands, agents), for the pill and the panel. */
+  tasks?(tasks: BackgroundTask[]): void;
 }
 
 export interface DriverSessionConfig {
@@ -87,6 +97,8 @@ export interface DriverSessionConfig {
   /** Resume this session; a new one when missing. */
   resume?: string;
   model: string | null;
+  /** For a model that takes it (`ModelOption.supportsEffort`); the provider's default otherwise. */
+  effort?: Effort | null;
   /** One of the driver's `modes`. */
   permissionMode: PermissionMode;
 }
@@ -113,6 +125,17 @@ export interface DriverSession {
   /** Stops the current turn. */
   interrupt(): Promise<void>;
   setModel(model: string | null): Promise<void>;
+  /** Sets the reasoning effort of its model (null: the model's default). */
+  setEffort?(effort: Effort | null): Promise<void>;
+  /** Renames it, in the provider's own list too. */
+  rename?(title: string): Promise<void>;
+  /**
+   * Goes back to before one of your messages (`messageId`): the conversation from there is dropped and the files the
+   * provider changed since are restored. `dryRun` says what would change. Refused while a turn runs.
+   */
+  rewind?(messageId: string, dryRun: boolean): Promise<RewindResult>;
+  /** Stops one of its background tasks (`DriverEvents.tasks`). */
+  stopTask?(taskId: string): Promise<void>;
   respond(requestId: string, decision: PermissionDecision): void;
   /** Lets go of the session (it stays on disk, to resume later). */
   close(): Promise<void>;

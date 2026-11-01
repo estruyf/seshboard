@@ -33,7 +33,7 @@ import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
@@ -509,7 +509,7 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; on?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
@@ -529,6 +529,7 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
   // Always answer: the engine waits for a reply to every trash request.
   try {
     if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
+    if (typeof request.copilotHome === 'string') return await trashCopilotForEngine(request.id, request.paths, request.copilotHome);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -546,6 +547,17 @@ async function trashForEngine(id: number, requested: unknown[], requestedRoot: u
   if (refused.length > 0 || paths.length !== requested.length) {
     const where = repoRoot ? `the repository ${repoRoot}` : "Claude Code's projects folder";
     return { type: 'trash-result', id, error: `Refusing to move files outside ${where}: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves a GitHub Copilot session's folder to the Trash after checking it is one, in the profile's `COPILOT_HOME`. */
+async function trashCopilotForEngine(id: number, requested: unknown[], copilotHome: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableCopilotSession(p, copilotHome));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Copilot's sessions folder: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -2740,13 +2752,24 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,
-      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !document.querySelector('[data-rename-session]') && (document.querySelector('[data-menu-note]')?.textContent ?? '').includes('work with Claude Code only, for now')",
+      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && (document.querySelector('[data-menu-note]')?.textContent ?? '').includes('Ask about this session works with Claude Code only, for now')",
       3_000,
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Archive and the Claude Code only line, no Rename)";
-    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; its session has Copilot's ⋯ menu`;
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Archive and the line that Ask is Claude Code only)";
+    // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
+    // picked: the demo's Copilot can't run them.
+    const toolbar = (await js(
+      `(() => { const labels = [...${view}.querySelectorAll('[data-message-actions] button')].map((b) => b.getAttribute('aria-label') ?? ''); return { fork: labels.some((l) => l.startsWith('Fork from here')), rewind: labels.includes('Rewind to before this message') }; })()`,
+    )) as { fork: boolean; rewind: boolean };
+    if (!toolbar.fork || !toolbar.rewind) return `the Copilot transcript has no ${toolbar.fork ? 'Rewind on your message' : 'Fork on its replies'}`;
+    await js(`(() => { const row = document.querySelector('[data-session-id="${id}"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+    const rowMenu = await waitInPage(win, `(() => { const rename = document.querySelector('[role="menu"] [data-rename-session]'); const remove = document.querySelector('[role="menu"] [data-delete-session]'); return !!rename && !!remove && !rename.disabled && !remove.disabled; })()`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[role="menu"]')`, 2_000);
+    if (!rowMenu) return "the Copilot session's row menu has no Rename… or Delete session… to pick";
+    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
     // profile again), and the sidebar's scope.
