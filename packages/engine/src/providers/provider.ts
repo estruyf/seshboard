@@ -79,8 +79,11 @@ export interface DriverStatus {
 export interface DriverEvents {
   /** Text, thinking or a tool name as it streams; `clear` when a complete message replaces it. */
   stream(delta: Omit<StreamDelta, 'sessionId'>): void;
-  /** Complete messages, as the session's reader will read them from disk later. */
-  messages(messages: RawSessionMessage[]): void;
+  /**
+   * Complete messages, as the session's reader will read them from disk later. `keep`: the provider doesn't write
+   * these to its file (a slash command's answer): Seshboard keeps them and puts them back when it reads the session.
+   */
+  messages(messages: RawSessionMessage[], options?: { keep?: boolean }): void;
   /** The turn started, ended, or failed (with the provider's message). */
   state(state: 'running' | 'idle' | 'error', error?: string): void;
   /** The provider asks before a tool runs; `respond` on the session answers it. */

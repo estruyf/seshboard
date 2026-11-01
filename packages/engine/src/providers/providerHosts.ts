@@ -38,6 +38,8 @@ export interface ProviderHostsDeps {
    * linked sessions' briefs (and attached issues) into it as it goes to the provider.
    */
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
+  /** Keeps what a session showed that its provider doesn't write to its file (`DriverEvents.messages`' `keep`). */
+  keepNotes?(sessionId: string, messages: RawSessionMessage[]): void;
   /** Seshboard's own throwaway sessions (Ask's forks), which the sidebar never lists. */
   ephemeral?: { add(sessionId: string): void };
   /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
@@ -474,7 +476,10 @@ export class ProviderHosts {
     const id = () => host.info.sessionId;
     return {
       stream: (delta: Omit<StreamDelta, 'sessionId'>) => this.deps.onStream({ ...delta, sessionId: id() }),
-      messages: (messages: RawSessionMessage[]) => this.deps.onMessages(id(), messages),
+      messages: (messages: RawSessionMessage[], options?: { keep?: boolean }) => {
+        if (options?.keep) this.deps.keepNotes?.(id(), messages);
+        this.deps.onMessages(id(), messages);
+      },
       state: (state: 'running' | 'idle' | 'error', error?: string) => {
         if (state === 'running') {
           host.inTurn = true;

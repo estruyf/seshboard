@@ -156,6 +156,7 @@ import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
+import { ProviderNotes } from './providers/providerNotes.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -502,7 +503,10 @@ export function createEngine(options: EngineOptions): Engine {
     claudeSource,
     () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
     (id) => ephemeral.has(id),
+    (id) => providerNotes.list(id),
   );
+  /** What another provider's sessions showed but their files don't have (Copilot's slash command answers). */
+  const providerNotes = new ProviderNotes(cache.db);
   /** What `providers.detect` found, asked once per run (it starts each provider's CLI for a moment); Check again asks again. */
   let detected: Promise<ProviderDetection[]> | null = null;
   const detectProviders = (refresh: boolean) => {
@@ -1103,6 +1107,7 @@ export function createEngine(options: EngineOptions): Engine {
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     links: hostLinks,
     ephemeral,
+    keepNotes: (id, messages) => providerNotes.add(id, messages),
     settings: sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
@@ -2581,6 +2586,7 @@ export function createEngine(options: EngineOptions): Engine {
     catchUp.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
+    providerNotes.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);

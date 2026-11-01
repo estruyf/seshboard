@@ -447,6 +447,51 @@ describe('engine over a MessagePort', () => {
     expect(prompts[0]).toContain('Review this: the parser');
   });
 
+  it('keeps a Copilot slash command and its answer, which Copilot doesn\'t write, for the next read', async () => {
+    const ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
+    let emit: (event: CopilotEvent) => void = () => {};
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async () => ({
+        sessionId: ID,
+        on: (handler) => ((emit = handler), () => {}),
+        send: async () => 'm1',
+        abort: async () => {},
+        setModel: async () => {},
+        disconnect: async () => {},
+        rpc: {
+          mode: { set: async () => {} },
+          commands: { list: async () => ({ commands: [{ name: 'usage', description: 'Show usage' }] }), invoke: async () => ({ kind: 'completed', message: 'You used 12 premium requests.' }) },
+          mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+          skills: { list: async () => ({ skills: [] }) },
+          agent: { list: async () => ({ agents: [] }) },
+          name: { set: async () => {} },
+          history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+          tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+        },
+      }),
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    await rpc.call('session.create', { cwd: dataDir, prompt: 'Hi', profileId });
+    emit({ type: 'session.idle', data: {} });
+    // Copilot's file has the prompt, never the command.
+    const folder = join(copilotHome, 'session-state', ID);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'events.jsonl'), [{ type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: dataDir } } }, { type: 'user.message', id: 'u1', timestamp: '2026-10-30T10:00:01.000Z', data: { content: 'Hi' } }].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('session.send', { sessionId: ID, text: '/usage', attachments: [], fork: false });
+    await rpc.call('sessions.refresh', {});
+    const texts = JSON.stringify((await rpc.call('transcript.get', { sessionId: ID })).messages);
+    expect(texts).toContain('/usage');
+    expect(texts).toContain('You used 12 premium requests.');
+    expect(texts.indexOf('Hi')).toBeLessThan(texts.indexOf('/usage'));
+  });
+
   it('persists app state', async () => {
     const { client } = connect();
     await client.call('appState.set', { key: 'ui.sidebarWidth', value: 280 });

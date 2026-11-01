@@ -159,6 +159,7 @@ export interface CopilotDriver extends ProviderDriver {
   fork(sessionId: string, toEventId: string | null): Promise<string>;
   /** Renames a session that isn't running here: resumed for the change, then let go. */
   renameSession(sessionId: string, cwd: string, title: string): Promise<void>;
+  ask: NonNullable<ProviderDriver['ask']>;
 }
 
 /** Copilot takes names of 1 to 100 characters. */
@@ -405,7 +406,8 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         const outcome = commandOutcome(name, result);
         if (outcome.model) await session.setModel(outcome.model);
         if (outcome.prompt) return session.send({ prompt: outcome.prompt });
-        events.messages([line('user', text), ...(outcome.note ? [line('assistant', outcome.note)] : [])]);
+        // Copilot doesn't write a command it ran itself to its file: Seshboard keeps these lines for the next read.
+        events.messages([line('user', text), ...(outcome.note ? [line('assistant', outcome.note)] : [])], { keep: true });
         // No turn: the session is ready for the next message.
         events.state('idle');
         return 'command';

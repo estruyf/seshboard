@@ -2,6 +2,7 @@ import type { OptionalProvider } from '@seshboard/protocol';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { MultiProfileSource } from '../profiles/profileSources.ts';
+import { mergeNotes } from './providerNotes.ts';
 
 export interface ProviderSource {
   provider: OptionalProvider;
@@ -25,6 +26,8 @@ export class ProviderSources implements SessionSource {
     private readonly others: () => ProviderSource[],
     /** Seshboard's own throwaway sessions on disk (a fork Ask about this session asks): never listed. */
     private readonly ignore: (sessionId: string) => boolean = () => false,
+    /** What a provider's session showed that its file doesn't have (`ProviderNotes`), put back in its place. */
+    private readonly notes: (sessionId: string) => RawSessionMessage[] = () => [],
   ) {}
 
   /** The Claude profile a session was last found in. */
@@ -83,9 +86,9 @@ export class ProviderSources implements SessionSource {
     return undefined;
   }
 
-  messages(sessionId: string): Promise<RawSessionMessage[]> {
+  async messages(sessionId: string): Promise<RawSessionMessage[]> {
     const other = this.sourceOf(sessionId);
-    return other ? other.source.messages(sessionId) : this.claude.messages(sessionId);
+    return other ? mergeNotes(await other.source.messages(sessionId), this.notes(sessionId)) : this.claude.messages(sessionId);
   }
 
   subagentMessages(sessionId: string, agentId: string): Promise<RawSessionMessage[]> {
