@@ -84,6 +84,8 @@ Copilot's driver (`copilot/copilotDriver.ts`):
 
 **Session linking** (Phase 4 of #199): `ProviderHosts` takes the same `links` as `HostManager` (`hostLinks` in `engine.ts`): `warm` before a message is created or sent, `expand` as it goes to the provider, so `@` links carry their briefs and attached issues into a Copilot session too. A slash command goes as typed. The transcript shows the briefs as chips, as for Claude Code (`parseBriefs` reads any user message).
 
+**Files from the box and VS Code** (Phase 4 of #199): the message box (and the VS Code companion's chips in it) writes files as one line of `@` mentions, which Claude Code opens itself. Copilot's driver adds them to the message as Copilot's own attachments (`mentionAttachments` in `copilot/copilotAttachments.ts`): a file, a folder, or a range of lines as a `selection` with its text. The message keeps its mention line, so the transcript and Edit read it back as chips. Text chips (a selection, diagnostics) go as fenced text, as for Claude Code.
+
 **Routing:** `RoutedHostManager` (`providers/routedHosts.ts`) is the engine's `hosts`: Claude Code's `HostManager`, with the session-level methods (send, interrupt, respond, mode, model, Up next, list, close) routed to `ProviderHosts` for a provider's sessions. Every way to a session (the message box, the phone, Up next, schedules, usage limits, project actions, pipelines) goes through them, so each reaches a provider's sessions without knowing about providers. `HostManager.startHost` still refuses a provider's session, in case anything goes around them.
 
 **Parity:**

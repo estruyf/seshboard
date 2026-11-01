@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode, ProviderQuota, RewindResult } from '@seshboard/protocol';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import { backgroundTasks, cannotRewind, effortsOf, rewindOutcome, rewindPreview, rewindProblem, type CopilotTask } from './copilotActions.ts';
+import { mentionAttachments, type CopilotFileAttachment } from './copilotAttachments.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { CopilotLive } from './copilotLive.ts';
 import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
@@ -12,7 +13,7 @@ import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts'
 export interface CopilotSdkSession {
   readonly sessionId: string;
   on(handler: (event: CopilotEvent) => void): () => void;
-  send(options: { prompt: string; attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string }>; mode?: 'enqueue' | 'immediate' }): Promise<string>;
+  send(options: { prompt: string; attachments?: Array<{ type: 'blob'; data: string; mimeType: string; displayName?: string } | CopilotFileAttachment>; mode?: 'enqueue' | 'immediate' }): Promise<string>;
   abort(): Promise<void>;
   /** The session's RPC: its agent mode (interactive, plan, autopilot) and its slash commands. */
   readonly rpc: {
@@ -366,7 +367,10 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
           const command = !steer && !attachments.length ? parseCommand(text, await sessionCommands()) : null;
           if (command) return runCommand(text, command.name, command.input);
           const blobs = attachments.map((a) => ({ type: 'blob' as const, data: a.data, mimeType: a.mediaType, ...(a.name ? { displayName: a.name } : {}) }));
-          return session.send({ prompt: text, ...(blobs.length ? { attachments: blobs } : {}), ...(steer ? { mode: 'immediate' as const } : {}) });
+          // The files and lines the message box (or the VS Code companion) mentions: Copilot reads them as attachments.
+          const files = mentionAttachments(text, config.cwd);
+          const all = [...blobs, ...files];
+          return session.send({ prompt: text, ...(all.length ? { attachments: all } : {}), ...(steer ? { mode: 'immediate' as const } : {}) });
         },
         async setMode(next: PermissionMode) {
           if (agentModeOf(next) !== agentModeOf(mode)) await session.rpc.mode.set({ mode: agentModeOf(next) });
