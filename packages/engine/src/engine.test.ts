@@ -154,8 +154,8 @@ describe('engine over a MessagePort', () => {
     await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
     await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
     await expect(client.call('session.rename', { sessionId: id, title: 'Parser fix' })).rejects.toMatchObject({ code: 'RENAME_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
-    // Ask about this session stays Claude Code's.
-    await expect(client.call('session.ask', { sessionId: id, question: 'What changed?' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    // Continuing in an editor stays Claude Code's.
+    await expect(client.call('session.continueInEditor', { sessionId: id })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
 
     // Delete moves the session's whole folder to the Trash, named with its Copilot home for main's check.
     await client.call('session.delete', { sessionId: id });
@@ -246,8 +246,8 @@ describe('engine over a MessagePort', () => {
     // Another model starts on its own effort; Copilot's Auto has none to set.
     expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.effort).toBeNull();
     await expect(rpc.call('session.setEffort', { sessionId: COPILOT_ID, effort: 'high' })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Auto model has no effort/) });
-    // Ask about this session stays Claude Code's.
-    await expect(rpc.call('session.ask', { sessionId: COPILOT_ID, question: 'What changed?' })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    // Continuing in an editor stays Claude Code's.
+    await expect(rpc.call('session.continueInEditor', { sessionId: COPILOT_ID })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
     expect(hostStates).toEqual(expect.arrayContaining(['running', 'needs-you', 'idle']));
   });
 
