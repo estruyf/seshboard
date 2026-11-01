@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quotaFooter, quotaLine, resetDay } from './quotaText.ts';
+import { quotaFooter, quotaLeft, quotaLine, quotaUsed, resetDay } from './quotaText.ts';
 
 const quota = { used: 212, entitlement: 1500, percentUsed: 14.13, resetsAt: '2026-11-01' };
 
@@ -18,5 +18,15 @@ describe("a provider's premium requests", () => {
   it('takes a date alone as a local day', () => {
     expect(resetDay('2026-12-01', 'en-US')).toBe('Dec 1');
     expect(resetDay('not a date', 'en-US')).toBe('not a date');
+  });
+});
+
+describe('premium requests in the Usage view', () => {
+  it('says what is left and what was used, or that there is no limit', () => {
+    expect(quotaLeft(quota)).toBeCloseTo(85.87);
+    expect(quotaLeft({ ...quota, percentUsed: 120 })).toBe(0);
+    expect(quotaLeft({ ...quota, entitlement: null })).toBeNull();
+    expect(quotaUsed(quota, 'en-US')).toBe('212 of 1,500 used');
+    expect(quotaUsed({ ...quota, entitlement: null }, 'en-US')).toBe('212 used, no limit on this plan');
   });
 });

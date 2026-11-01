@@ -2785,7 +2785,29 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     await waitInPage(win, `!document.querySelector('[role="menu"]')`, 2_000);
     if (!rowMenu) return "the Copilot session's row menu has no Rename… or Delete session… to pick";
-    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
+
+    // Usage for the Copilot profile: its premium requests (the demo's 212 of 1,500), not Claude Code's limits.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'the palette did not open for Open usage';
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return 'no Open usage in the palette';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, "!!document.querySelector('[data-usage-view]')", 5_000))) return 'Open usage did not open the Usage view';
+    const pickUsageProfile = async (value: string) => {
+      await js("document.querySelector('[data-usage-profile-menu]').click()");
+      if (!(await waitInPage(win, `!!document.querySelector('[data-usage-profile-item=${JSON.stringify(value)}]')`, 3_000))) return false;
+      await js(`document.querySelector('[data-usage-profile-item=${JSON.stringify(value)}]').click()`);
+      return waitInPage(win, `document.querySelector('[data-usage-view]')?.dataset.usageProfile === ${JSON.stringify(value)}`, 3_000);
+    };
+    if (!(await pickUsageProfile(profileId))) return "Usage's profile menu could not pick the Copilot profile";
+    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used') && !document.querySelector('[data-usage-tab]')?.offsetParent", 5_000);
+    const quotaText = (await js("document.querySelector('[data-provider-quota], [data-provider-quota-status]')?.textContent ?? 'nothing'")) as string;
+    await shot(win, 'usage-copilot.png');
+    // Back on a Claude Code profile, so later steps find Usage as it was.
+    if (claudeProfile) await pickUsageProfile(claudeProfile);
+    await js("document.querySelector('[data-usage-back]')?.click()");
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
+    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; Usage shows its premium requests; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
     // profile again), and the sidebar's scope.

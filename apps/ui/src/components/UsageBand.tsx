@@ -57,17 +57,17 @@ export function useUsageSync(): void {
   }, [client]);
 }
 
-/** Loads a profile's usage the first time a band shows it. Undefined until the first answer. */
-export function useUsageFor(profileId: string): UsageEntry | undefined {
+/** Loads a profile's usage the first time a band shows it. Undefined until the first answer, and for no profile (null: another provider's, which has no plan usage). */
+export function useUsageFor(profileId: string | null): UsageEntry | undefined {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
-    if (!client || useUsage.getState().usage.has(profileId)) return;
+    if (!client || profileId === null || useUsage.getState().usage.has(profileId)) return;
     // Fetching starts a short-lived Claude Code process; let the window finish starting first.
     const timer = setTimeout(() => void fetchUsage(client, profileId), performance.now() < 10_000 ? 2_000 : 0);
     return () => clearTimeout(timer);
   }, [client, profileId]);
-  return useUsage((s) => s.usage.get(profileId));
+  return useUsage((s) => (profileId === null ? undefined : s.usage.get(profileId)));
 }
 
 /** A usage bar is a button that opens the Usage view: it keeps its look and lights up on hover. */

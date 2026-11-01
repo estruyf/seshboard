@@ -17,3 +17,11 @@ export function quotaLine(short: string, quota: ProviderQuota, locale?: string):
 export function quotaFooter(quota: ProviderQuota, locale?: string): string {
   return quota.entitlement === null ? `${quota.used.toLocaleString(locale)} premium requests` : `Premium requests ${quota.used.toLocaleString(locale)} of ${quota.entitlement.toLocaleString(locale)}`;
 }
+
+/** What is left of the premium requests, in percent; null without a limit (an unlimited plan). */
+export const quotaLeft = (quota: ProviderQuota): number | null => (quota.entitlement === null ? null : Math.max(0, Math.min(100, 100 - quota.percentUsed)));
+
+/** The Usage view's line under the bar: "212 of 1,500 used", or "212 used, no limit on this plan". */
+export function quotaUsed(quota: ProviderQuota, locale?: string): string {
+  return quota.entitlement === null ? `${quota.used.toLocaleString(locale)} used, no limit on this plan` : `${quota.used.toLocaleString(locale)} of ${quota.entitlement.toLocaleString(locale)} used`;
+}
