@@ -19,7 +19,7 @@ export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: '
  * provider lists the ones it has (`ProviderInfo.supports`); the rest say "Claude Code only, for now", and the list
  * shrinks as a provider gets them.
  */
-export const PROVIDER_FEATURES = ['fork', 'rewind', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'pipeline', 'later', 'schedule'] as const;
+export const PROVIDER_FEATURES = ['fork', 'rewind', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'pipeline', 'later', 'schedule', 'trigger'] as const;
 export type ProviderFeature = (typeof PROVIDER_FEATURES)[number];
 
 /** Whether a value is one of `PROVIDER_FEATURES` (a newer computer may send ones this build doesn't know). */

@@ -165,6 +165,15 @@ function LocalNewSession() {
   /** The effort for the provider's model, when it takes one ('' is the model's own). */
   const [providerEffort, setProviderEffort] = useState<Effort | ''>('');
   const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
+  /**
+   * A queued item or a schedule opened here: its model, effort and mode for another provider's chips too. Which set
+   * applies follows its profile.
+   */
+  const restoreProviderChoices = (draft: { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode | null }) => {
+    setProviderModel(draft.model ?? '');
+    setProviderEffort(draft.effort ?? '');
+    setProviderMode(draft.permissionMode ?? null);
+  };
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
   /** The steps line's Change: opens the Run as menu. */
@@ -518,6 +527,7 @@ function LocalNewSession() {
     setProfileOverride(item.profileId);
     setCwd(item.cwd);
     setD({ model: item.model ?? '', permissionMode: item.permissionMode, effort: item.effort ?? '', workspace: item.workspace, baseRef: item.baseRef, branch: item.branch ?? '' });
+    restoreProviderChoices(item);
     setRestored(null);
     setPreset({ text: item.typed ?? item.prompt, attachments: item.attachments, context: item.context, seq: ++presets.current });
     setDraftPrompt(item.typed ?? item.prompt);
@@ -544,6 +554,7 @@ function LocalNewSession() {
     setProfileOverride(draft.profileId);
     setCwd(draft.cwd);
     setD({ model: draft.model ?? '', permissionMode: draft.permissionMode, effort: draft.effort ?? '', workspace: draft.workspace, baseRef: draft.baseRef, branch: draft.branch ?? '' });
+    restoreProviderChoices(draft);
     setRestored(null);
     setPreset({ text: draft.typed ?? draft.prompt, attachments: draft.attachments, context: draft.context, seq: ++presets.current });
     setDraftPrompt(draft.typed ?? draft.prompt);
@@ -889,12 +900,13 @@ function LocalNewSession() {
           attachments,
           typed: parts?.typed ?? null,
           context: parts?.context ?? [],
-          model: d.model || null,
-          effort: d.effort || null,
-          permissionMode: d.permissionMode,
-          workspace: useWorktree ? 'worktree' : 'current',
+          // Another provider's own model, effort and mode; no worktree or branch for it yet.
+          model: (runWith ? providerModel : d.model) || null,
+          effort: (runWith ? providerEffortShown : d.effort) || null,
+          permissionMode: runWith ? runWithMode : d.permissionMode,
+          workspace: useWorktree && !runWith ? 'worktree' : 'current',
           baseRef: d.baseRef,
-          branch: !useWorktree && d.branch ? d.branch : null,
+          branch: !runWith && !useWorktree && d.branch ? d.branch : null,
           profileId: profileOverride,
         }
       : null;
@@ -909,7 +921,7 @@ function LocalNewSession() {
     forgetUnsavedQueued();
     if (!draft || draft.prompt === '' || sameDraft(queuedNow, draft)) return;
     unsavedQueued.current = { id: fromLater.id, draft, timer: setTimeout(saveQueued, 600) };
-  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride]);
+  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride, runWith, providerModel, providerEffortShown, runWithMode]);
   // Started or removed somewhere else while open here: back to New session.
   useEffect(() => {
     if (fromLater && queueLoaded && !queuedNow) leaveQueued();
@@ -1699,7 +1711,7 @@ function LocalNewSession() {
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               // The queue starts Claude Code sessions: not with another provider yet.
-              secondary={runWith ? undefined : { shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
+              secondary={runWith && !runWithInfo?.supports.includes('later') ? undefined : { shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <>
                   {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
@@ -1724,7 +1736,7 @@ function LocalNewSession() {
                       runAs,
                       scheduleFirst: scheduleFirst && !fromLater,
                       editingSchedule: fromSchedule !== null,
-                      notWith: runWith ? notWithYet(runWith) : null,
+                      provider: runWith ? { reason: notWithYet(runWith), supports: runWithInfo?.supports ?? [] } : null,
                     })}
                     onAction={(action) =>
                       action === 'queue'

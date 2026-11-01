@@ -508,6 +508,14 @@ export function createEngine(options: EngineOptions): Engine {
     }
     return detected;
   };
+  /**
+   * Renames a session: another provider's running here through itself (resuming it a second time would clash), any
+   * other through the source (Claude Code's transcript, or the provider's own rename).
+   */
+  const renameSession = async (sessionId: string, title: string) => {
+    if (await providerHosts.rename(sessionId, title)) return;
+    await source.rename!(sessionId, title);
+  };
   /** Whether a provider has one of Claude Code's own features (`ProviderInfo.supports`). */
   const providerSupports = (provider: OptionalProvider, feature: ProviderFeature) => providerCatalog(providerOptions).find((p) => p.id === provider)?.supports.includes(feature) ?? false;
   /**
@@ -1463,8 +1471,7 @@ export function createEngine(options: EngineOptions): Engine {
       const title = pendingTitles.get(id);
       if (!title || !sessions.pathFor(id) || !source.rename) continue;
       pendingTitles.delete(id);
-      void source
-        .rename(id, title)
+      void renameSession(id, title)
         .then(() => sessions.reread(id))
         .catch((error: Error) => log('warn', `Schedules: could not title ${id}: ${error.message}`));
     }
@@ -2702,16 +2709,12 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'session.rename': async ({ sessionId, title }) => {
       assertClaudeSession(sessionId, 'Renaming', 'rename');
+      if (!source.rename) throw new RpcError('UNSUPPORTED', 'Renaming is not available');
+      if (!sessions.pathFor(sessionId) && !providerHosts.has(sessionId)) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
       // One line, like the titles Claude Code makes itself.
-      const line = title.replace(/\s+/g, ' ').trim();
-      // Another provider's session running here is renamed through it; otherwise through its source.
-      if (!(await providerHosts.rename(sessionId, line))) {
-        if (!source.rename) throw new RpcError('UNSUPPORTED', 'Renaming is not available');
-        if (!sessions.pathFor(sessionId)) throw new RpcError('NOT_FOUND', 'No transcript found for this session');
-        await source.rename(sessionId, line).catch((error: Error) => {
-          throw error instanceof RpcError ? error : new RpcError('RENAME_FAILED', error.message);
-        });
-      }
+      await renameSession(sessionId, title.replace(/\s+/g, ' ').trim()).catch((error: Error) => {
+        throw error instanceof RpcError ? error : new RpcError('RENAME_FAILED', error.message);
+      });
       await sessions.reread(sessionId);
       return {};
     },

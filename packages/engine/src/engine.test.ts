@@ -295,6 +295,58 @@ describe('engine over a MessagePort', () => {
     await expect(rpc.call('session.forkAt', { sessionId: id, messageUuid: 'nope' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/not in this session/) });
   });
 
+  it('starts a queued item and a schedule with a Copilot profile through Copilot, and titles the run through it', async () => {
+    const calls: string[] = [];
+    let made = 0;
+    const ids = ['88888888-8888-4888-8888-888888888881', '88888888-8888-4888-8888-888888888882'];
+    const sessionFor = (sessionId: string): CopilotSdkSession => ({
+      sessionId,
+      on: () => () => {},
+      send: async ({ prompt }) => (calls.push(`send:${sessionId.slice(-1)}:${prompt}`), 'm1'),
+      abort: async () => {},
+      setModel: async () => {},
+      disconnect: async () => {},
+      rpc: {
+        mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
+        commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+        mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+        skills: { list: async () => ({ skills: [] }) },
+        agent: { list: async () => ({ agents: [] }) },
+        name: { set: async ({ name }) => void calls.push(`name:${sessionId.slice(-1)}:${name}`) },
+        history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+        tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+      },
+    });
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'high'] }],
+      createSession: async (o) => (calls.push(`create:${o.model ?? '-'}:${o.reasoningEffort ?? '-'}`), sessionFor(ids[made++]!)),
+      resumeSession: async (id) => (calls.push(`resume:${id}`), sessionFor(id)),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+
+    // A queued item with the Copilot profile starts Copilot, with its model, effort and mode.
+    const { item } = await rpc.call('later.add', { draft: { cwd: dataDir, prompt: 'Queued for Copilot', model: 'gpt-5-mini', effort: 'high', permissionMode: 'plan', profileId } });
+    expect(await rpc.call('later.start', { id: item.id })).toEqual({ sessionId: ids[0] });
+    expect(calls).toEqual(['create:gpt-5-mini:high', 'mode:plan', 'send:1:Queued for Copilot']);
+
+    // A schedule's run too; once the session's files are there, its title goes through it, not a second resume.
+    const draft = { cwd: dataDir, prompt: 'Review open pull requests', model: 'gpt-5-mini', permissionMode: 'default' as const, profileId };
+    const { schedule } = await rpc.call('schedules.save', { schedule: { name: 'Review', draft, rule: { kind: 'weekdays', time: '08:00' }, missed: 'run', paused: false } });
+    const { run } = await rpc.call('schedules.runNow', { id: schedule.id });
+    expect(run).toMatchObject({ result: 'started', sessionId: ids[1] });
+    const folder = join(copilotHome, 'session-state', ids[1]!);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'events.jsonl'), [{ type: 'session.start', id: 'e1', data: { context: { cwd: dataDir } } }, { type: 'user.message', id: 'u1', data: { content: 'Review open pull requests' } }].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('sessions.refresh', {});
+    await vi.waitFor(() => expect(calls).toContain(`name:2:${run.title}`));
+    expect(calls.some((c) => c.startsWith('resume:'))).toBe(false);
+  });
+
   it('persists app state', async () => {
     const { client } = connect();
     await client.call('appState.set', { key: 'ui.sidebarWidth', value: 280 });

@@ -2737,6 +2737,21 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     await waitInPage(win, `!document.querySelector('[data-menu="profile"]')`, 2_000);
     if (!projectOwn) return "the project's profile did not change to Copilot";
+    // The queue, schedules and triggers start Copilot too: Start's ▾ offers them for a prompt. Nothing is added.
+    const box = `document.querySelector('${nsv} [data-composer]')`;
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Copilot later');
+    if (!(await waitInPage(win, `${box}.value.includes('for Copilot later') && !document.querySelector('${nsv} [data-start-menu]')?.disabled`, 3_000))) return "typing in New session with Copilot didn't make Start's menu usable";
+    await js(`document.querySelector('${nsv} [data-start-menu]').click()`);
+    const laterOffered = await waitInPage(win, `['data-queue-add', 'data-schedule-add', 'data-trigger-add'].every((hook) => { const item = document.querySelector('[role=menu] [' + hook + ']'); return !!item && !item.disabled; })`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[role=menu]')`, 2_000);
+    // The box empty again, as it was.
+    await js(`${box}.focus()`);
+    pressKey(win, 'a', ['meta']);
+    pressKey(win, 'Backspace');
+    await waitInPage(win, `${box}.value === ''`, 2_000);
+    if (!laterOffered) return "Start's menu with Copilot doesn't offer Add to queue, Schedule… and Start when…";
 
     // Its session: a mark in the sidebar, a box for Copilot, and a ⋯ menu of what works for it.
     if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Copilot session showed in the sidebar after adding the profile';
@@ -2769,7 +2784,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     pressKey(win, 'Escape');
     await waitInPage(win, `!document.querySelector('[role="menu"]')`, 2_000);
     if (!rowMenu) return "the Copilot session's row menu has no Rename… or Delete session… to pick";
-    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
+    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
     // profile again), and the sidebar's scope.

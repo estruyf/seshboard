@@ -177,15 +177,20 @@ describe('Schedule a session', () => {
     expect(startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: false, worktree: false, question: true, canSchedule: true, scheduleFirst: true }).main).toBe('start');
   });
 
-  it("keeps the queue, schedules, triggers and worktrees off for another provider, saying why", () => {
-    const state = startButtonState({ blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: true, worktree: false, question: false, canSchedule: true, canTrigger: true, scheduleFirst: true, notWith: 'Not with GitHub Copilot yet' });
-    expect(state.main).toBe('start');
-    expect(state.disabled).toBe(false);
-    expect(state.items.filter((i) => i.action !== 'start').map((i) => [i.action, i.disabled, i.reason])).toEqual([
+  it("keeps off what another provider doesn't have yet, saying why", () => {
+    const base = { blocked: null, sending: false, hasMessage: true, hasText: true, startBlocked: null, canWorktree: true, worktree: false, question: false, canSchedule: true, canTrigger: true, scheduleFirst: true } as const;
+    const none = startButtonState({ ...base, provider: { reason: 'Not with GitHub Copilot yet', supports: [] } });
+    expect(none.main).toBe('start');
+    expect(none.disabled).toBe(false);
+    expect(none.items.filter((i) => i.action !== 'start').map((i) => [i.action, i.disabled, i.reason])).toEqual([
       ['queue', true, 'Not with GitHub Copilot yet'],
       ['schedule', true, 'Not with GitHub Copilot yet'],
       ['trigger', true, 'Not with GitHub Copilot yet'],
       ['start-worktree', true, 'Not with GitHub Copilot yet'],
     ]);
+    // One with the queue, schedules and triggers: only the worktree stays off, and Schedule… can be the main part.
+    const some = startButtonState({ ...base, provider: { reason: 'Not with GitHub Copilot yet', supports: ['later', 'schedule', 'trigger'] } });
+    expect(some.main).toBe('schedule');
+    expect(some.items.filter((i) => i.disabled).map((i) => [i.action, i.reason])).toEqual([['start-worktree', 'Not with GitHub Copilot yet']]);
   });
 });
