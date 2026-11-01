@@ -1000,6 +1000,13 @@ export function createEngine(options: EngineOptions): Engine {
   };
   /** What each session last ran with: Claude Code's and other providers' alike. */
   const sessionSettings = createSessionSettingsStore(cache.db);
+  /** Session linking for every host: briefs (and attached issues) written into a message as it goes to the agent. */
+  const hostLinks = {
+    expand: (id: string, text: string) => expandMessage(expandRunBriefs(text), (message, others) => links.expand(id, message, others), githubContext),
+    warm: async (text: string) => {
+      await Promise.all([links.warmText(text), githubContext.warm(text)]);
+    },
+  };
   const hosts = new RoutedHostManager({
     limits,
     signIns,
@@ -1049,12 +1056,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
-    links: {
-      expand: (id, text) => expandMessage(expandRunBriefs(text), (message, others) => links.expand(id, message, others), githubContext),
-      warm: async (text) => {
-        await Promise.all([links.warmText(text), githubContext.warm(text)]);
-      },
-    },
+    links: hostLinks,
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     planApproved: (id, plan) => runner?.planApproved(id, plan) ?? null,
     autoAnswer: (request) => runner?.autoAnswer(request) ?? null,
@@ -1095,6 +1097,7 @@ export function createEngine(options: EngineOptions): Engine {
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
     openElsewhere: async (adapter, id) => (await adapter.inUse?.(id)) ?? false,
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
+    links: hostLinks,
     settings: sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),

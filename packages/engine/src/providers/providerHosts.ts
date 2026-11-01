@@ -33,6 +33,11 @@ export interface ProviderHostsDeps {
   sessionCwd(sessionId: string): string | null;
   /** The session is open in the provider's own app right now (Copilot CLI in a terminal): resuming it here would clash. */
   openElsewhere?(adapter: ProviderAdapter, sessionId: string): Promise<boolean>;
+  /**
+   * Session linking, as for Claude Code: `warm` loads what a message's links need before it is sent, `expand` writes the
+   * linked sessions' briefs (and attached issues) into it as it goes to the provider.
+   */
+  links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
   /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
   readOnly?(sessionId: string): boolean;
   /** What each session last ran with (its mode, model and effort), so a resume picks up where it left off. */
@@ -118,6 +123,7 @@ export class ProviderHosts {
     const permissionMode = this.modeFor(adapter, params.permissionMode);
     // An effort only goes with a model picked (the provider's Auto has none).
     const effort = params.model ? (params.effort ?? null) : null;
+    await this.warm(params.prompt);
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
     const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting', effort);
     host.readOnly = params.readOnly === true;
@@ -144,7 +150,7 @@ export class ProviderHosts {
    * waits in Up next, `steer` joins the turn at its next step, `now` stops the turn and goes first.
    */
   async send(params: { sessionId: string; text: string; attachments: ImageAttachment[]; mode?: SendMode }): Promise<{ sessionId: string; messageUuid: string; queued: boolean }> {
-    const host = this.hosts.get(params.sessionId) ?? (await this.resume(params.sessionId));
+    const [host] = await Promise.all([this.hosts.get(params.sessionId) ?? this.resume(params.sessionId), this.warm(params.text)]);
     const mode = params.mode ?? 'queue';
     if (host.inTurn && mode !== 'steer') {
       const message: StoredUpNext = { id: randomUUID(), text: params.text, attachments: params.attachments, createdAt: Date.now() };
@@ -351,7 +357,7 @@ export class ProviderHosts {
     }
     this.update(host, { state: host.permissions.size ? 'needs-you' : 'running', promptedAt: Date.now(), error: null });
     try {
-      return await host.session!.send(text, attachments, steer);
+      return await host.session!.send(this.expand(host.info.sessionId, text), attachments, steer);
     } catch (error) {
       if (!steer) host.inTurn = false;
       this.update(host, { state: 'error', error: (error as Error).message });
@@ -362,6 +368,25 @@ export class ProviderHosts {
   private async stop(host: Host, upNext: 'hold' | 'continue'): Promise<void> {
     host.stopping = upNext;
     await host.session!.interrupt();
+  }
+
+  /** Loads what a message's links need; a brief that can't be read is no reason not to send it. */
+  private async warm(text: string): Promise<void> {
+    await this.deps.links?.warm(text).catch((error: Error) => this.deps.log('warn', `Linked sessions: ${error.message}`));
+  }
+
+  /**
+   * The message as the provider reads it: linked sessions' briefs written in. A slash command goes as typed (the
+   * provider runs it, and a brief would be its input); one that can't be written goes as typed too.
+   */
+  private expand(sessionId: string, text: string): string {
+    if (!this.deps.links || text.trimStart().startsWith('/')) return text;
+    try {
+      return this.deps.links.expand(sessionId, text);
+    } catch (error) {
+      this.deps.log('warn', `Could not write a linked session's brief: ${error instanceof Error ? error.message : String(error)}`);
+      return text;
+    }
   }
 
   /** Sends the first message of Up next, when there is one and nothing holds it. */

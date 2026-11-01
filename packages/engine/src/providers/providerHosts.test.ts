@@ -3,12 +3,12 @@ import type { Effort, PermissionMode, SessionHostInfo } from '@seshboard/protoco
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import type { StoredUpNext } from '../host/upNextStore.ts';
 import type { DriverEvents, DriverSession, ProviderAdapter, ProviderDriver } from './provider.ts';
-import { ProviderHosts } from './providerHosts.ts';
+import { ProviderHosts, type ProviderHostsDeps } from './providerHosts.ts';
 
 const ID = 'c0ffee00-0000-4000-8000-000000000002';
 
 /** A provider whose driver records what it is asked, and lets the test end turns. */
-function setup(stored: StoredUpNext[] = []) {
+function setup(stored: StoredUpNext[] = [], extra: Partial<ProviderHostsDeps> = {}) {
   const calls: string[] = [];
   let events: DriverEvents | undefined;
   const session: DriverSession = {
@@ -63,6 +63,7 @@ function setup(stored: StoredUpNext[] = []) {
     onTurnEnd: (_id, outcome) => turns.push(outcome),
     onCreated: () => {},
     log: () => {},
+    ...extra,
   });
   const last = () => infos.at(-1)!;
   const turn = { start: () => events!.state('running'), end: () => events!.state('idle') };
@@ -130,6 +131,16 @@ describe('ProviderHosts session actions', () => {
     // Nobody was asked.
     expect(last().state).not.toBe('needs-you');
     expect(hosts.list().permissions).toEqual([]);
+  });
+
+  it('writes linked sessions\' briefs into what it sends, as for Claude Code, but not into a slash command', async () => {
+    const warmed: string[] = [];
+    const { hosts, calls, turn } = setup([], { links: { warm: async (text) => void warmed.push(text), expand: (id, text) => `${text}\n[brief for ${id}]` } });
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Carry on from @Plan', attachments: [], model: null });
+    turn.end();
+    await send(hosts, '/review src');
+    expect(warmed).toEqual(['Carry on from @Plan', '/review src']);
+    expect(calls).toEqual(['start:new:default', `send:Carry on from @Plan\n[brief for ${ID}]`, 'send:/review src']);
   });
 
   it('shows its background tasks and stops one', async () => {
