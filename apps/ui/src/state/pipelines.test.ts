@@ -16,6 +16,9 @@ describe('pipeline words', () => {
     expect(modelWord(null)).toBe('Default model');
     expect(stepSummary(pipeline.steps[0]!, pipeline)).toBe('Fresh · Opus · plan mode · @parent');
     expect(stepSummary(pipeline.steps[1]!, pipeline)).toBe('Fork of Plan · Sonnet · Accept edits · @parent');
+    // Another tool runs it: said after how it starts.
+    const copilot = { ...pipeline.steps[0]!, provider: 'copilot' as const };
+    expect(stepSummary(copilot, pipeline)).toBe('Fresh · Copilot · Opus · plan mode · @parent');
     expect(stepSummary(pipeline.steps[2]!, pipeline)).toBe('Fresh · Opus · read only · @Execute · @parent · runs Test, Lint first · ↺ Execute ×2');
     expect(stepSummary(pipeline.steps[3]!, pipeline)).toBe('commit, push, pull request · waits for you');
   });

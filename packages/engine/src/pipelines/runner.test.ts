@@ -197,6 +197,16 @@ describe('PipelineRunner', () => {
     ]);
   });
 
+  it('hands a step its provider, and leaves it out for Claude Code\'s', async () => {
+    const [plan, execute, ...rest] = builtInPipelines()[0]!.steps;
+    const steps = [plan!, { ...execute!, provider: 'copilot' as const, start: 'fresh' as const }, ...rest];
+    const w = world({ pipelines: [{ ...builtInPipelines()[0]!, id: 'mixed', name: 'Mixed', builtIn: false, steps }] });
+    await w.runner.start({ pipelineId: 'mixed', parentSessionId: 'parent' });
+    expect(w.last().settings).not.toHaveProperty('provider');
+    await w.end(w.last().id);
+    expect(w.last()).toMatchObject({ kind: 'fresh', settings: { provider: 'copilot' } });
+  });
+
   it('links @parent and @<step> as sessions, with the labels in the text', async () => {
     const w = world({ actions: [{ name: 'Test', exitCode: 0, tail: '214 passed', ms: 10 }, { name: 'Lint', exitCode: 1, tail: '2 problems', ms: 10 }] });
     const { run } = await w.runner.start({ pipelineId: executeValidate, parentSessionId: 'parent' });

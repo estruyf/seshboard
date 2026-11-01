@@ -101,6 +101,8 @@ export interface DriverSessionConfig {
   effort?: Effort | null;
   /** One of the driver's `modes`. */
   permissionMode: PermissionMode;
+  /** Only tools that read (a pipeline's read-only step): the driver approves nothing else by itself, whatever the mode. */
+  readOnly?: boolean;
 }
 
 /** One running session of a provider. */

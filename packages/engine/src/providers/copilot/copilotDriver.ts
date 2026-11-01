@@ -277,6 +277,8 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       let mode = config.permissionMode;
       /** The model it runs on (null: Copilot's `auto` before it picks one), which an effort change keeps. */
       let model = config.model;
+      // A read-only step: Accept edits and Autopilot don't approve writes by themselves; every other request is asked.
+      const approves = (request: Record<string, unknown>) => approvesItself(mode, request) && (!config.readOnly || request.kind === 'read');
       const sessionOptions: CopilotSessionOptions = {
         workingDirectory: config.cwd,
         ...(config.model ? { model: config.model } : {}),
@@ -286,7 +288,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
         enableFileChangeTracking: true,
         onPermissionRequest: (request) =>
-          approvesItself(mode, request)
+          approves(request)
             ? Promise.resolve<PermissionAnswer>({ kind: 'approve-once' })
             : new Promise<PermissionAnswer>((resolve) => {
                 // The SDK hands the request without its id: one of ours, for the card and the answer.

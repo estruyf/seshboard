@@ -21,6 +21,7 @@ import {
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
+import { isReadOnlyTool, READ_ONLY_REASON } from '../host/sideQuestions.ts';
 import type { DriverSession, ProviderAdapter } from './provider.ts';
 
 export interface ProviderHostsDeps {
@@ -32,6 +33,8 @@ export interface ProviderHostsDeps {
   sessionCwd(sessionId: string): string | null;
   /** The session is open in the provider's own app right now (Copilot CLI in a terminal): resuming it here would clash. */
   openElsewhere?(adapter: ProviderAdapter, sessionId: string): Promise<boolean>;
+  /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
+  readOnly?(sessionId: string): boolean;
   /** What each session last ran with (its mode, model and effort), so a resume picks up where it left off. */
   settings?: {
     get(sessionId: string): { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode | null } | null | undefined;
@@ -65,6 +68,8 @@ interface Host {
   stopping: false | 'hold' | 'continue';
   /** Up next: messages that go one per turn, once the turn under way ends. */
   queue: StoredUpNext[];
+  /** Only tools that read run (a pipeline's read-only step): every other request is denied before you are asked. */
+  readOnly: boolean;
 }
 
 /**
@@ -107,7 +112,7 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
     const adapter = this.adapterOf(params.profileId);
     if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
@@ -115,9 +120,10 @@ export class ProviderHosts {
     const effort = params.model ? (params.effort ?? null) : null;
     // The provider names the session: it is reported from then on (the window waits on `session.create` until then).
     const host = this.newHost('', adapter, params.cwd, params.model, permissionMode, 'starting', effort);
+    host.readOnly = params.readOnly === true;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -321,8 +327,9 @@ export class ProviderHosts {
     const effort = model ? (saved?.effort ?? null) : null;
     const permissionMode = this.modeFor(adapter, saved?.permissionMode);
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
+    host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });
@@ -395,6 +402,7 @@ export class ProviderHosts {
       inTurn: false,
       stopping: false,
       queue: [],
+      readOnly: false,
       info: {
         sessionId,
         cwd,
@@ -447,6 +455,12 @@ export class ProviderHosts {
         if (state === 'idle') void this.next(host);
       },
       permission: (request: Omit<PermissionRequest, 'sessionId'>) => {
+        // A read-only step answers by itself, with the same rule as Claude Code's read-only hook: reads run, the rest not.
+        if (host.readOnly && host.session) {
+          const input = request.input && typeof request.input === 'object' && !Array.isArray(request.input) ? (request.input as Record<string, unknown>) : {};
+          host.session.respond(request.requestId, isReadOnlyTool(request.toolName, input) ? { behavior: 'allow' } : { behavior: 'deny', message: READ_ONLY_REASON });
+          return;
+        }
         const full = { ...request, sessionId: id() };
         host.permissions.set(request.requestId, full);
         this.requests.set(request.requestId, id());

@@ -57,6 +57,9 @@ describe('pipelineIssues', () => {
     expect(pipelineIssues({ steps: [claude('A', { start: { fork: 'B' } }), claude('B')] }).map((i) => i.message)).toEqual(['A forks B, which doesn’t come before it.']);
     expect(pipelineIssues({ steps: [claude('A', { start: { fork: 'Nope' } })] })[0]!.message).toBe('A forks Nope, and there is no step called that.');
     expect(pipelineIssues({ steps: [claude('A', { start: { fork: 'A' } })] })[0]!.message).toBe('A forks A, which doesn’t come before it.');
+    // A fork keeps its tool: Copilot carries on a Copilot step only.
+    expect(pipelineIssues({ steps: [claude('A'), claude('B', { provider: 'copilot', start: { fork: 'A' } })] }).map((i) => i.message)).toEqual(['B can’t fork A: another tool runs it. Start it fresh, or pick the same tool.']);
+    expect(pipelineIssues({ steps: [claude('A', { provider: 'copilot' }), claude('B', { provider: 'copilot', start: { fork: 'A' } })] })).toEqual([]);
   });
 
   it('refuses sendTo naming a step that does not exist or comes later', () => {

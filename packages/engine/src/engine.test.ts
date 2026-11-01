@@ -401,6 +401,52 @@ describe('engine over a MessagePort', () => {
     expect((await git(repo, ['branch', '--show-current'])).trim()).toBe('feature');
   });
 
+  it('runs a pipeline step with Copilot when the step says so, read-only, with the first Copilot profile', async () => {
+    const created: CopilotSessionOptions[] = [];
+    const prompts: string[] = [];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async (o) => {
+        created.push(o);
+        return {
+          sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+          on: () => () => {},
+          send: async ({ prompt }) => (prompts.push(prompt), 'm1'),
+          abort: async () => {},
+          setModel: async () => {},
+          disconnect: async () => {},
+          rpc: {
+            mode: { set: async () => {} },
+            commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+            mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+            skills: { list: async () => ({ skills: [] }) },
+            agent: { list: async () => ({ agents: [] }) },
+            name: { set: async () => {} },
+            history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+            tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+          },
+        };
+      },
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const step = { kind: 'claude' as const, name: 'Review', provider: 'copilot' as const, readOnly: true, prompt: 'Review this: {{task}}' };
+    const { pipeline } = await rpc.call('pipelines.save', { pipeline: { name: 'Copilot review', scope: { kind: 'all' }, steps: [step] } });
+
+    // No Copilot profile yet: the step says how to get one.
+    const first = await rpc.call('pipelines.run', { pipelineId: pipeline.id, task: 'the parser', project: dataDir });
+    await vi.waitFor(async () => expect((await rpc.call('runs.get', { runId: first.state.run.id })).state?.run.reason).toMatch(/Add a GitHub Copilot profile/));
+
+    await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+    await rpc.call('pipelines.run', { pipelineId: pipeline.id, task: 'the parser', project: dataDir });
+    await vi.waitFor(() => expect(prompts).toHaveLength(1));
+    expect(created[0]).toMatchObject({ workingDirectory: dataDir });
+    expect(prompts[0]).toContain('Review this: the parser');
+  });
+
   it('persists app state', async () => {
     const { client } = connect();
     await client.call('appState.set', { key: 'ui.sidebarWidth', value: 280 });

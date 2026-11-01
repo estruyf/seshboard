@@ -28,7 +28,7 @@ function setup(stored: StoredUpNext[] = []) {
     rename: async (title) => void calls.push(`rename:${title}`),
     rewind: async (id, dryRun) => (calls.push(`rewind:${id}:${dryRun}`), { canRewind: true, error: null, files: [], insertions: 0, deletions: 0 }),
     stopTask: async (id) => void calls.push(`stop:${id}`),
-    respond: () => {},
+    respond: (id, decision) => void calls.push(`respond:${id}:${decision.behavior}`),
     close: async () => void calls.push('close'),
   };
   const driver: ProviderDriver = {
@@ -39,7 +39,7 @@ function setup(stored: StoredUpNext[] = []) {
     status: async () => ({ binary: '/c', version: null, signedIn: true, account: null, login: null, problem: null }),
     models: async () => [],
     commands: async () => [{ name: 'init', description: '', argumentHint: '' }],
-    start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}${config.effort ? `:${config.effort}` : ''}`), session),
+    start: async (config, e) => ((events = e), calls.push(`start:${config.resume ?? 'new'}:${config.permissionMode}${config.effort ? `:${config.effort}` : ''}${config.readOnly ? ':read-only' : ''}`), session),
     dispose: async () => {},
   };
   const adapter = { id: 'copilot', profileId: 'work-copilot', home: '/c', driver } as unknown as ProviderAdapter;
@@ -114,6 +114,22 @@ describe('ProviderHosts session actions', () => {
     turn.end();
     await hosts.rewind(ID, 'u1', false);
     expect(calls.at(-1)).toBe('rewind:u1:false');
+  });
+
+  it('lets a read-only step only read: it answers each request itself, with the read-only rule', async () => {
+    const { hosts, calls, events, last } = setup();
+    await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'Review it', attachments: [], model: null, readOnly: true });
+    expect(calls[0]).toBe('start:new:default:read-only');
+    const ask = (requestId: string, toolName: string, input: Record<string, string>) =>
+      events().permission({ requestId, toolName, input, toolUseId: null, title: null, description: null, decisionReason: null, blockedPath: null, alwaysLabel: null, agentId: null, createdAt: 0 });
+    ask('r1', 'Read', { file_path: '/w/a.ts' });
+    ask('r2', 'Bash', { command: 'git diff --stat' });
+    ask('r3', 'Edit', { file_path: '/w/a.ts', old_string: 'a', new_string: 'b' });
+    ask('r4', 'Bash', { command: 'rm -rf build' });
+    expect(calls.filter((c) => c.startsWith('respond:'))).toEqual(['respond:r1:allow', 'respond:r2:allow', 'respond:r3:deny', 'respond:r4:deny']);
+    // Nobody was asked.
+    expect(last().state).not.toBe('needs-you');
+    expect(hosts.list().permissions).toEqual([]);
   });
 
   it('shows its background tasks and stops one', async () => {

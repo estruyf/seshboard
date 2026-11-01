@@ -3,6 +3,7 @@ import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode } from './host.ts';
 import { SessionOutcome } from './later.ts';
 import { PIPELINE_LIMITS, pipelineIssues } from './pipelines.ts';
+import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
 
 // Pipelines (#179): what is stored and sent. The rules (what starts next, verdicts, the prompt a step gets, the
 // sidebar's tree) are in `pipelines.ts`, without zod, for the UI.
@@ -31,6 +32,11 @@ export const PipelineClaudeStep = z.object({
   permissionMode: PermissionMode.nullable().default(null),
   /** Only tools that read (`isReadOnlyTool`): plan mode would end in a plan to approve. */
   readOnly: z.boolean().default(false),
+  /**
+   * Who runs it: Claude Code (left out), or another provider (GitHub Copilot), with the first profile of it. Its model
+   * and mode are that provider's; it forks only a step of the same provider.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).optional(),
   /** With `{{task}}`, `@parent` and `@<earlier step>`. */
   prompt: z.string().max(PIPELINE_LIMITS.prompt).default(''),
   /** Project actions run in the run's folder before Claude starts, by name; their results go in the prompt. */

@@ -9,6 +9,7 @@ import {
   RemotePermissionMode,
   type OptionalProvider,
   type ProviderFeature,
+  type Effort,
   isOtherProviderSession,
   otherProviderOf,
   COMPANION_DIR,
@@ -1093,6 +1094,7 @@ export function createEngine(options: EngineOptions): Engine {
     profileOf: providerProfileOf,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
     openElsewhere: async (adapter, id) => (await adapter.inUse?.(id)) ?? false,
+    readOnly: (id) => runner?.isReadOnly(id) ?? false,
     settings: sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
@@ -1138,7 +1140,7 @@ export function createEngine(options: EngineOptions): Engine {
    * Starts a session with another provider in `cwd` (a worktree `createSession` made, or the folder as it checked it
    * out): only the message, the model (with its effort), the mode and the worktree's setup apply.
    */
-  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; readOnly?: boolean; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
     // A model or mode from Claude Code's defaults (a project's, a schedule's) is left out when the provider has no such one.
     const driver = providerProfiles.adapter(params.profileId)?.driver;
     const models = params.model && driver ? await driver.models().catch(() => []) : [];
@@ -1146,9 +1148,31 @@ export function createEngine(options: EngineOptions): Engine {
     const model = picked?.value ?? null;
     // An effort only for a model that takes it, and at a level it has.
     const effort = picked?.supportsEffort && params.effort && (picked.efforts ?? [params.effort]).includes(params.effort) ? params.effort : null;
-    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
+    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.readOnly ? { readOnly: true } : {}), ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
     void sessions.refresh();
     return { sessionId };
+  };
+  /** The profile a pipeline step of another provider runs with: the first of that provider's (Settings › Profiles). */
+  const stepProviderProfile = (provider: OptionalProvider): string => {
+    const profile = profiles.providerProfiles().find((p) => p.provider === provider);
+    if (!profile) throw new Error(`Add a ${PROVIDER_NAMES[provider]} profile in Settings › Profiles to run this step.`);
+    return profile.id;
+  };
+  /**
+   * Forks another provider's step for the next one: the whole session (its provider's fork keeps no prompt), then the
+   * prompt, with the step's model, effort and mode for the resume.
+   */
+  const forkProviderStep = async (params: { from: string; prompt: string; model: string | null; effort: Effort | null; permissionMode: PermissionMode }): Promise<string> => {
+    if (!source.fork) throw new Error('Forking is not available');
+    const last = (await source.messages(params.from)).at(-1)?.uuid;
+    if (!last) throw new Error('That step has no conversation to fork yet.');
+    const forked = await source.fork(params.from, last);
+    owned.add(forked);
+    markOwned.run(forked, Date.now());
+    await sessions.refresh();
+    sessionSettings.set(forked, { model: params.model, effort: params.effort, permissionMode: params.permissionMode });
+    await providerHosts.send({ sessionId: forked, text: params.prompt, attachments: [] });
+    return forked;
   };
   recordHostProcesses = () => hostProcesses.record(liveList(), (id) => hosts.has(id));
   recordHostProcesses();
@@ -1765,12 +1789,20 @@ export function createEngine(options: EngineOptions): Engine {
         throw new Error(error instanceof WorktreeFromError ? error.message : (error as Error).message);
       }
     },
-    create: async ({ cwd, prompt, attachments, profileId, model, effort, permissionMode, readOnly }) =>
-      options.stubQueueStarts
-        ? smokeStep({ kind: 'fresh', cwd, text: prompt })
-        : hosts.create({ cwd, prompt, attachments, model, effort, permissionMode, readOnly, worktree: null, profileId: requireProfile(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd)) }),
-    fork: async ({ from, prompt, model, effort, permissionMode, readOnly }) =>
-      options.stubQueueStarts ? smokeStep({ kind: 'fork', from, cwd: smokeHosts.get(from)?.cwd ?? options.dataDir, text: prompt }) : hosts.fork({ from, text: prompt, model, effort, permissionMode, readOnly }),
+    create: async ({ cwd, prompt, attachments, profileId, model, effort, permissionMode, readOnly, provider }) => {
+      if (options.stubQueueStarts) return smokeStep({ kind: 'fresh', cwd, text: prompt });
+      // A step another provider runs starts with its first profile, its own model and mode, in the run's folder.
+      if (provider) return (await createProviderSession({ cwd, prompt, attachments, model, effort, permissionMode, readOnly, profileId: stepProviderProfile(provider) })).sessionId;
+      return hosts.create({ cwd, prompt, attachments, model, effort, permissionMode, readOnly, worktree: null, profileId: requireProfile(profileId && profiles.has(profileId) ? profileId : folderProfile(cwd)) });
+    },
+    fork: async ({ from, prompt, model, effort, permissionMode, readOnly, provider }) => {
+      if (options.stubQueueStarts) return smokeStep({ kind: 'fork', from, cwd: smokeHosts.get(from)?.cwd ?? options.dataDir, text: prompt });
+      // A fork keeps the session's own tool: a step forks only a step of the same provider.
+      const fromProvider = providerAdapterOf(from)?.id;
+      if ((fromProvider ?? null) !== (provider ?? null)) throw new Error(`A ${PROVIDER_NAMES[provider ?? 'claude']} step can't fork a ${PROVIDER_NAMES[fromProvider ?? 'claude']} step. Start it fresh instead.`);
+      if (!provider) return hosts.fork({ from, text: prompt, model, effort, permissionMode, readOnly });
+      return forkProviderStep({ from, prompt, model, effort, permissionMode });
+    },
     send: async (sessionId, text) => {
       if (options.stubQueueStarts) {
         smokeStep({ kind: 'send', sessionId, cwd: smokeHosts.get(sessionId)?.cwd ?? options.dataDir, text });
