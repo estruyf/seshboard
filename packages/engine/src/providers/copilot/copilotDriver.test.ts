@@ -3,7 +3,7 @@ import type { BackgroundTask, PermissionRequest, StreamDelta } from '@seshboard/
 import { vi } from 'vitest';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { DriverEvents } from '../provider.ts';
-import { copilotCandidates, parseCopilotVersion } from './copilotBinary.ts';
+import { copilotCandidates, npmCopilot, parseCopilotVersion } from './copilotBinary.ts';
 import { copilotDriver, premiumQuota, SESHBOARD_CLIENT, type CopilotSdkClient, type CopilotSdkSession, type CopilotSessionOptions, type CreateCopilotClient } from './copilotDriver.ts';
 import type { CopilotTask } from './copilotActions.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
@@ -373,6 +373,34 @@ describe('copilot permissions', () => {
     expect(toPermissionRequest('p', { kind: 'mcp', serverName: 'github', toolName: 'get_issue', args: { n: 1 } }).toolName).toBe('mcp__github__get_issue');
     expect(toCopilotDecision({ behavior: 'allow', always: false })).toEqual({ kind: 'approve-once' });
     expect(toCopilotDecision({ behavior: 'deny', message: 'No' })).toEqual({ kind: 'reject', feedback: 'No' });
+  });
+});
+
+describe('npm\'s Copilot on Windows', () => {
+  const PATH = 'C:\\Program Files\\nodejs;C:\\Users\\me\\AppData\\Roaming\\npm';
+  const npm = 'C:\\Users\\me\\AppData\\Roaming\\npm';
+  const files = (present: string[]) => ({
+    exists: (path: string) => present.includes(path),
+    readJson: (path: string) => (path === `${npm}\\node_modules\\@github\\copilot\\package.json` ? { bin: { copilot: 'npm-loader.js' } } : null),
+  });
+  const all = ['C:\\Program Files\\nodejs\\node.exe', `${npm}\\copilot.cmd`, `${npm}\\node_modules\\@github\\copilot\\npm-loader.js`];
+
+  it('runs the package\'s script with the user\'s own node, as its copilot.cmd would', () => {
+    expect(npmCopilot({ PATH }, 'win32', files(all))).toEqual({ path: 'C:\\Program Files\\nodejs\\node.exe', args: [`${npm}\\node_modules\\@github\\copilot\\npm-loader.js`] });
+  });
+
+  it('starts the SDK on node with the script first', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary: async () => ({ path: 'C:\\node.exe', args: ['C:\\npm\\loader.js'], version: '1.0.90' }), env, createClient: sdk.createClient });
+    await driver.status();
+    expect(sdk.created).toEqual([{ cliPath: 'C:\\node.exe', cliArgs: ['C:\\npm\\loader.js'], env: { PATH: '/usr/bin' } }]);
+  });
+
+  it('needs node, the .cmd and the script, and only on Windows', () => {
+    expect(npmCopilot({ PATH }, 'win32', files(all.slice(1)))).toBeNull();
+    expect(npmCopilot({ PATH }, 'win32', files([all[0]!, all[2]!]))).toBeNull();
+    expect(npmCopilot({ PATH }, 'win32', files(all.slice(0, 2)))).toBeNull();
+    expect(npmCopilot({ PATH: '/usr/bin' }, 'linux', files(all))).toBeNull();
   });
 });
 

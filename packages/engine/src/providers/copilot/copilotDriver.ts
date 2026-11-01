@@ -103,7 +103,8 @@ export function premiumQuota(snapshots: Record<string, CopilotQuotaSnapshot | un
 }
 
 /** Makes the client for the user's `copilot` (the real one loads the SDK; tests pass a fake). */
-export type CreateCopilotClient = (options: { cliPath: string; env: Record<string, string | undefined> }) => Promise<CopilotSdkClient>;
+/** `cliArgs`: what goes before the SDK's own arguments (`node`'s script for npm's install on Windows). */
+export type CreateCopilotClient = (options: { cliPath: string; cliArgs?: string[]; env: Record<string, string | undefined> }) => Promise<CopilotSdkClient>;
 
 type CopilotAgentMode = 'interactive' | 'plan' | 'autopilot';
 
@@ -133,15 +134,15 @@ export const SESHBOARD_CLIENT = 'seshboard';
  * The real client: the Copilot SDK (loaded on first use), running the user's own `copilot` in headless mode. No token
  * is passed: `copilot` uses its own login (`copilot` then `/login`, or the GitHub CLI's), which Seshboard never sees.
  */
-export const sdkCopilotClient: CreateCopilotClient = async ({ cliPath, env }) => {
+export const sdkCopilotClient: CreateCopilotClient = async ({ cliPath, cliArgs, env }) => {
   const { CopilotClient, RuntimeConnection } = await import('@github/copilot-sdk');
   const clean = Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === 'string'));
-  return new CopilotClient({ connection: RuntimeConnection.forStdio({ path: cliPath, env: clean }), logLevel: 'error' }) as unknown as CopilotSdkClient;
+  return new CopilotClient({ connection: RuntimeConnection.forStdio({ path: cliPath, ...(cliArgs?.length ? { args: cliArgs } : {}), env: clean }), logLevel: 'error' }) as unknown as CopilotSdkClient;
 };
 
 export interface CopilotDriverOptions {
   /** The user's `copilot` (null: not installed), looked up when first needed. */
-  binary(): Promise<{ path: string; version: string | null } | null>;
+  binary(): Promise<{ path: string; args?: string[]; version: string | null } | null>;
   /** The environment `copilot` runs with: the login shell's, so its own config and login are found. */
   env(): Promise<Record<string, string | undefined>>;
   createClient?: CreateCopilotClient;
@@ -185,7 +186,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
     client ??= (async () => {
       const binary = await options.binary();
       if (!binary) throw new Error(INSTALL);
-      const made = await create({ cliPath: binary.path, env: await options.env() });
+      const made = await create({ cliPath: binary.path, ...(binary.args?.length ? { cliArgs: binary.args } : {}), env: await options.env() });
       await made.start();
       started = made;
       return made;

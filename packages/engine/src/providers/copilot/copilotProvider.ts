@@ -28,7 +28,7 @@ export interface CopilotProviderOptions {
   shellEnv?: () => Promise<Record<string, string | undefined>>;
   createClient?: CreateCopilotClient;
   /** Where `copilot` is (tests); found on PATH and in the usual places otherwise. */
-  binary?: () => Promise<{ path: string; version: string | null } | null>;
+  binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>;
 }
 
 /**

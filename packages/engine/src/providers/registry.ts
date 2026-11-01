@@ -13,7 +13,7 @@ export interface ProviderOptions {
   /** The login shell's environment, which providers' CLIs run with (their own config and login are found through it). */
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** A fake Copilot SDK and `copilot` (tests). */
-  copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; version: string | null } | null> };
+  copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null> };
 }
 
 /**
