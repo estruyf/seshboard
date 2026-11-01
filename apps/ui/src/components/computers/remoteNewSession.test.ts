@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteOptions, RemoteSession } from '@seshboard/protocol/client';
-import { remoteAutoFace, remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort } from './remoteNewSession.ts';
+import { remoteAutoFace, remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteProviderCreate, remoteTakesEffort } from './remoteNewSession.ts';
 
 const project = (id: string, name: string) => ({ id: id.padEnd(16, '0'), name });
 const session = (id: string, projectId: string, status: RemoteSession['status'], updatedAt = 1): RemoteSession => ({
@@ -130,5 +130,18 @@ describe('the branch on another computer', () => {
     expect(remoteCheckoutBranch('gone', branches, false)).toBeNull();
     expect(remoteCheckoutBranch(null, branches, false)).toBeNull();
     expect(remoteCheckoutBranch('feat/login', null, false)).toBeNull();
+  });
+});
+
+describe('remoteProviderCreate', () => {
+  const copilot = { id: 'copilot' as const, name: 'GitHub Copilot', modes: [{ value: 'default' as const, label: 'Ask before edits', description: '' }], supports: ['worktree' as const, 'branch' as const] };
+
+  it('sends the provider\'s own model and mode, with where when it can', () => {
+    expect(remoteProviderCreate(copilot, { profileId: 'cp', model: 'gpt-5', mode: 'default', worktree: true, checkoutBranch: 'feature' })).toEqual({ profileId: 'cp', model: 'gpt-5', permissionMode: 'default', worktree: true });
+    expect(remoteProviderCreate(copilot, { profileId: 'cp', model: null, mode: 'default', worktree: false, checkoutBranch: 'feature' })).toEqual({ profileId: 'cp', model: null, permissionMode: 'default', worktree: false, checkoutBranch: 'feature' });
+  });
+
+  it('leaves out a worktree and a branch for a computer whose provider has neither', () => {
+    expect(remoteProviderCreate({ ...copilot, supports: [] }, { profileId: 'cp', model: null, mode: 'default', worktree: true, checkoutBranch: 'feature' })).toEqual({ profileId: 'cp', model: null, permissionMode: 'default', worktree: false });
   });
 });

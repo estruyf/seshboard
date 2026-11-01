@@ -37,6 +37,7 @@ export const COMPUTER_METHODS = [
   'session.setEffort',
   'session.setPermissionMode',
   'options.get',
+  'providers.ready',
   'usage.get',
   'usage.tokens',
   'usage.sessionCost',

@@ -140,3 +140,19 @@ export function remoteAutoFace(auto: RemoteSession['auto']): string | null {
   if (auto.choosing) return 'Auto';
   return `Auto · ${auto.picked ? tierLabel(auto.picked) : 'Default model'}`;
 }
+
+/** A provider of a profile on that computer (GitHub Copilot), as `options.get` lists it. */
+export type RemoteProvider = NonNullable<RemoteProfile['provider']>;
+
+/**
+ * What `session.create` gets for a profile of another provider there: its own model and mode, and a worktree or a
+ * branch to check out only when that computer's provider has them (an older one refuses them).
+ */
+export function remoteProviderCreate(
+  provider: RemoteProvider,
+  picked: { profileId: string; model: string | null; mode: RemotePermissionMode; worktree: boolean; checkoutBranch: string | null },
+): RemoteSessionOptions {
+  const worktree = picked.worktree && provider.supports.includes('worktree');
+  const branch = !worktree && picked.checkoutBranch && provider.supports.includes('branch') ? picked.checkoutBranch : null;
+  return { profileId: picked.profileId, model: picked.model, permissionMode: picked.mode, worktree, ...(branch ? { checkoutBranch: branch } : {}) };
+}

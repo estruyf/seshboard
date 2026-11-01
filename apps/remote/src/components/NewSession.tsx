@@ -205,6 +205,8 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
   // The profile picks who runs it: a profile of another provider (GitHub Copilot) leaves only that provider's options.
   const provider = (options ? profilesOf(options).find((p) => p.id === choice.profileId)?.provider : undefined) ?? null;
   const providerProfileId = provider ? choice.profileId : null;
+  /** A provider without worktrees yet (on an older computer) starts in the project's folder. */
+  const providerWorktree = !!provider && choice.worktree && provider.supports.includes('worktree');
   const providerModeNow = provider ? (providerMode && provider.modes.some((m) => m.value === providerMode) ? providerMode : (provider.modes[0]?.value ?? 'default')) : null;
   /** Why the provider can't start a session now (its own words), or that it is being asked. */
   const providerBlocked = provider ? (providerReady?.profileId === providerProfileId ? providerReady!.problem : `Checking ${provider.name}…`) : null;
@@ -246,11 +248,12 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
         return;
       }
       const files = { ...(attachments.images.length ? { images: attachments.images } : {}), ...(attachments.files.length ? { files: attachments.files } : {}) };
-      // Another provider takes only its model and mode; Claude Code the choices that differ from the project's defaults.
+      // Another provider takes its own model and mode (and where, when it can); Claude Code the choices that differ from
+      // the project's defaults.
       const { sessionId } = await client!.call(
         'session.create',
         provider
-          ? { projectId: projectId!, prompt: prompt.trim(), ...files, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow! }
+          ? { projectId: projectId!, prompt: prompt.trim(), ...files, profileId: choice.profileId, model: providerModel, permissionMode: providerModeNow!, worktree: providerWorktree, ...(!providerWorktree && provider.supports.includes('branch') ? withBranch : {}) }
           : { projectId: projectId!, prompt: prompt.trim(), ...files, ...changedFrom(choice, defaults, baseProfile), ...withBranch },
       );
       rememberProject(computer, projectId!);
@@ -359,6 +362,9 @@ export function NewSession({ computers, computer, onComputer, banner, onBack, le
         <ProfileChip options={options} projectId={picked.id} value={choice.profileId} onPick={pickProfile} look={look} />
         <ProviderModelChip provider={provider.name} models={providerModels} value={providerModel} onPick={setProviderModel} look={look} />
         <ProviderModeChip modes={provider.modes} value={providerModeNow!} onPick={setProviderMode} look={look} />
+        {/* Where, when that computer makes the provider's worktrees and checks out its branches too. */}
+        {provider.supports.includes('worktree') && <WorkspaceChip value={choice.worktree} onPick={(worktree) => change({ worktree })} look={look} />}
+        {provider.supports.includes('branch') && !providerWorktree && branches && (branches.current || branches.branches.length > 0) && <BranchChip branches={branches} value={checkout} onPick={setBranch} look={look} />}
       </>
     ) : (
       options &&
