@@ -117,7 +117,7 @@ import { ProviderUsage } from '../providers/ProviderUsage.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
-import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
+import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
@@ -620,7 +620,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
-  const usageLines = useUsageLines(profileId);
+  // While the terminal folds the footer: Claude Code's windows, or another provider's premium requests.
+  const claudeUsageLines = useUsageLines(otherProvider ? null : profileId, !otherProvider);
+  const quota = useProviderQuota(otherProvider ? otherProfileId : null);
+  const usageLines = useMemo(() => (otherProvider ? (quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []) : claudeUsageLines), [otherProvider, quota, claudeUsageLines]);
   // Opening Changes (⌘⇧D) while the terminal fills the view brings the view back, or Changes would open out of sight.
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
@@ -2122,11 +2125,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {/* Another provider's session: how full its context is, and what it has spent in the provider's unit. */}
               {!foldFooter && otherProvider && !readOnly && (contextLive || otherProfileId) && (
-                <div className="flex min-h-6 items-center justify-end gap-3 px-1 text-meta text-muted" data-session-footer data-provider-footer>
+                <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer data-provider-footer>
+                  {/* The account's premium requests this period, where Claude Code's plan usage goes: a ring on the left. */}
+                  <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+                    {otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />}
+                  </div>
                   {/* Compact sends the provider's /compact, as for Claude Code. */}
                   {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />}
-                  {/* The account's premium requests this period, where Claude Code's plan usage goes. */}
-                  {otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} footer />}
                 </div>
               )}
               {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}

@@ -25,3 +25,9 @@ export const quotaLeft = (quota: ProviderQuota): number | null => (quota.entitle
 export function quotaUsed(quota: ProviderQuota, locale?: string): string {
   return quota.entitlement === null ? `${quota.used.toLocaleString(locale)} used, no limit on this plan` : `${quota.used.toLocaleString(locale)} of ${quota.entitlement.toLocaleString(locale)} used`;
 }
+
+/** The ring's tooltip: "Premium requests: 212 of 1,500 used (14%) · resets Dec 1". */
+export function quotaSummary(quota: ProviderQuota, locale?: string): string {
+  const used = quota.entitlement === null ? `${quota.used.toLocaleString(locale)} used, no limit on this plan` : `${quotaUsed(quota, locale)} (${Math.round(quota.percentUsed)}%)`;
+  return [`Premium requests: ${used}`, ...(quota.resetsAt ? [`resets ${resetDay(quota.resetsAt, locale)}`] : [])].join(' · ');
+}

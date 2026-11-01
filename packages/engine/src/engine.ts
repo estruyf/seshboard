@@ -3176,7 +3176,11 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: hosts.listModels() }),
-    'usage.get': ({ refresh, profileId }) => usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh),
+    'usage.get': ({ refresh, profileId }) => {
+      // Plan usage is Claude Code's: another provider's profile has its own (`providers.quota`), never a Claude profile's.
+      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude') throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
+      return usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh);
+    },
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.cost': ({ profileId }) => ({ windows: insights.windowCosts(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()) }),

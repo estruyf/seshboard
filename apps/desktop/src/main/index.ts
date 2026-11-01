@@ -2764,6 +2764,11 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     if (!(await js(`${view}.querySelector('[data-session-provider="copilot"]')?.textContent.includes('GitHub Copilot')`))) return "the session's status line doesn't start with GitHub Copilot";
     if (await js(`!!${view}.querySelector('[data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Claude Code's plan usage";
     if (!(await js(`!!${view}.querySelector('[data-toggle-ask]')`))) return 'a Copilot session has no Ask (Copilot answers it from a fork)';
+    // Its premium requests as a ring on the left of the footer, the details on hover (the demo's 212 of 1,500).
+    const ring = `${view}.querySelector('[data-provider-footer] [data-provider-usage="copilot"]')`;
+    if (!(await waitInPage(win, `(${ring}?.dataset.tooltip ?? '').includes('212 of 1,500 used') && ${ring}.textContent.includes('Premium') && ${ring}.textContent.includes('14%') && ${ring}.getBoundingClientRect().left < ${view}.querySelector('[data-provider-footer]').getBoundingClientRect().left + 40`, 5_000))) {
+      return `the Copilot session's footer has no premium requests ring on its left (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
+    }
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
@@ -2807,6 +2812,12 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-usage-back]')?.click()");
     await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
     if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
+    // Home's card for the profile: its premium requests too, never Claude Code's 5-hour and weekly windows.
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+    const homeCard = `document.querySelector('[data-home-profile=${JSON.stringify(profileId)}]')`;
+    const homeOk = await waitInPage(win, `(${homeCard}?.querySelector('[data-provider-usage="copilot"]')?.dataset.tooltip ?? '').includes('212 of 1,500') && !${homeCard}.querySelector('[data-usage-band], [data-usage-status]')`, 5_000);
+    if (homeOk) await shot(win, 'home-copilot-usage.png');
+    if (!homeOk) return `Home's card for the Copilot profile doesn't show its premium requests (${String(await js(`${homeCard}?.textContent ?? 'no card'`))})`;
     return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; Usage shows its premium requests; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default

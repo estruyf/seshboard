@@ -146,6 +146,8 @@ describe('engine over a MessagePort', () => {
     // Adding a Copilot profile is what makes its sessions show up.
     const { id: profileId } = await client.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
     expect((await client.call('profiles.list', {})).profiles.find((p) => p.id === profileId)).toMatchObject({ provider: 'copilot', account: null });
+    // Plan usage is Claude Code's: a Copilot profile never gets a Claude profile's in its place.
+    await expect(client.call('usage.get', { profileId })).rejects.toMatchObject({ code: 'NOT_CLAUDE_PROFILE' });
     await client.call('sessions.refresh', {});
     const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
     expect(listed).toMatchObject({ provider: 'copilot', profileId, title: 'Fix the parser', cwd: PARSER });
