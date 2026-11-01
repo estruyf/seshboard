@@ -144,3 +144,12 @@ export function autoFace(auto: RemoteSession['auto']): string | null {
   if (auto.choosing) return 'Auto';
   return `Auto · ${auto.picked ? tierLabel(auto.picked) : 'Default model'}`;
 }
+
+/**
+ * Whether a session's provider (another one than Claude Code's: GitHub Copilot) has one of Claude Code's features on
+ * that computer, from its profiles' `supports`. Claude Code's own sessions always do; unknown until `options.get` answers.
+ */
+export function sessionCan(options: RemoteOptions | null, provider: string | null | undefined, feature: string): boolean {
+  if (!provider) return true;
+  return profilesOf(options).some((p) => p.provider?.id === provider && (p.provider.supports as readonly string[]).includes(feature));
+}

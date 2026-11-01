@@ -2764,17 +2764,18 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
     }
     if (!(await js(`${view}.querySelector('[data-session-provider="copilot"]')?.textContent.includes('GitHub Copilot')`))) return "the session's status line doesn't start with GitHub Copilot";
-    if (await js(`!!${view}.querySelector('[data-toggle-ask], [data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Ask or Claude Code's plan usage";
+    if (await js(`!!${view}.querySelector('[data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Claude Code's plan usage";
+    if (!(await js(`!!${view}.querySelector('[data-toggle-ask]')`))) return 'a Copilot session has no Ask (Copilot answers it from a fork)';
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,
-      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && (document.querySelector('[data-menu-note]')?.textContent ?? '').includes('Ask about this session works with Claude Code only, for now')",
+      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
       3_000,
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Archive and the line that Ask is Claude Code only)";
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Archive, with no Claude Code only line)";
     // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
     // picked: the demo's Copilot can't run them.
     const toolbar = (await js(

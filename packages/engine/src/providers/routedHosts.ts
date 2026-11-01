@@ -1,13 +1,13 @@
 import { RpcError, type Capabilities, type Effort, type ImageAttachment, type PermissionDecision, type PermissionMode, type PermissionRequest, type QueuedMessage, type RewindResult, type SendMode, type SessionHostInfo, type SlashCommand } from '@seshboard/protocol';
 import { HostManager } from '../host/hostManager.ts';
+import type { AskResult, AskText } from '../host/sideQuestions.ts';
 import type { ProviderHosts } from './providerHosts.ts';
 
 /**
  * Claude Code's host manager, with the session-level methods routed: a provider's session (GitHub Copilot) goes to
  * `ProviderHosts`, every other to Claude Code's. The engine's many ways to a session (the message box, the phone, Up
  * next, schedules, usage limits, project actions, pipelines) all go through these methods, so each reaches a provider's
- * sessions without knowing about providers. Effort, rewind and stopping a background task are routed too; Ask stays
- * Claude Code's.
+ * sessions without knowing about providers. Effort, rewind, Ask and stopping a background task are routed too.
  */
 export class RoutedHostManager extends HostManager {
   /** Set once both exist (ProviderHosts reports through the same handlers as this). */
@@ -61,6 +61,11 @@ export class RoutedHostManager extends HostManager {
   override async rewind(sessionId: string, userMessageId: string, dryRun: boolean): Promise<RewindResult> {
     const other = this.providerFor(sessionId);
     return other ? other.rewind(sessionId, userMessageId, dryRun) : super.rewind(sessionId, userMessageId, dryRun);
+  }
+
+  override async askAbout(sessionId: string, prompt: string, onText: (text: AskText) => void): Promise<AskResult> {
+    const other = this.providerFor(sessionId);
+    return other ? other.askAbout(sessionId, prompt, onText) : super.askAbout(sessionId, prompt, onText);
   }
 
   override stopTask(sessionId: string, taskId: string): Promise<void> {

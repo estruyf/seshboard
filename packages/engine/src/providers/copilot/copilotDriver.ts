@@ -3,6 +3,7 @@ import type { Effort, ImageAttachment, ModelOption, PermissionDecision, Permissi
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import { backgroundTasks, cannotRewind, effortsOf, rewindOutcome, rewindPreview, rewindProblem, type CopilotTask } from './copilotActions.ts';
 import { mentionAttachments, type CopilotFileAttachment } from './copilotAttachments.ts';
+import { ASK_TIMEOUT_MS, isReadOnlyTool, READ_ONLY_REASON } from '../../host/sideQuestions.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
 import { CopilotLive } from './copilotLive.ts';
 import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
@@ -66,6 +67,8 @@ export interface CopilotSdkClient {
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
   readonly cliProcess?: { pid?: number } | null;
+  /** Deletes a session for good: only Seshboard's own throwaway forks (Ask), never one of yours (they go to the Trash). */
+  deleteSession?(sessionId: string): Promise<void>;
   /**
    * The runtime's RPC: the slash commands a new session has, the account's premium requests, and the sessions on disk
    * (forking one, reading its events without resuming it, which are open in another process).
@@ -255,6 +258,66 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       const sessions = (await connect()).rpc?.sessions;
       if (!sessions) throw new Error("This version of Copilot CLI can't fork sessions");
       return (await sessions.fork({ sessionId, ...(toEventId ? { toEventId } : {}) })).sessionId;
+    },
+
+    async ask({ sessionId, cwd, model, prompt, onText, onFork }) {
+      const sdk = await connect();
+      const sessions = sdk.rpc?.sessions;
+      if (!sessions) throw new Error("This version of Copilot CLI can't fork sessions");
+      // A fork of it answers: the session itself, and its conversation, are left alone.
+      const { sessionId: forkId } = await sessions.fork({ sessionId });
+      onFork(forkId);
+      let answer: string | null = null;
+      let error: string | undefined;
+      let spent = 0;
+      let off = () => {};
+      try {
+        const fork = await sdk.resumeSession(forkId, {
+          workingDirectory: cwd,
+          ...(model ? { model } : {}),
+          streaming: true,
+          clientName: SESHBOARD_CLIENT,
+          // Only tools that read, by the rule of Claude Code's Ask; the rest is denied without asking anyone.
+          onPermissionRequest: async (request) => {
+            const asked = toPermissionRequest('ask', request);
+            const input = asked.input && typeof asked.input === 'object' && !Array.isArray(asked.input) ? (asked.input as Record<string, unknown>) : {};
+            return isReadOnlyTool(asked.toolName, input) ? { kind: 'approve-once' } : toCopilotDecision({ behavior: 'deny', message: READ_ONLY_REASON });
+          },
+        });
+        try {
+          const finished = new Promise<void>((resolve) => {
+            let turns = 0;
+            off = fork.on((event) => {
+              const data = (event.data ?? {}) as Record<string, unknown>;
+              // Its own subagents' steps aren't the answer.
+              if (typeof data.parentToolCallId === 'string') return;
+              if (event.type === 'assistant.turn_start' && turns++ > 0) onText({ reset: true });
+              else if (event.type === 'assistant.message_delta' && typeof data.deltaContent === 'string') onText({ delta: data.deltaContent });
+              else if (event.type === 'assistant.message' && typeof data.content === 'string' && data.content.trim()) answer = data.content;
+              else if (event.type === 'assistant.usage' && typeof data.cost === 'number') spent += data.cost;
+              else if (event.type === 'session.error') {
+                error = typeof data.message === 'string' ? data.message : 'GitHub Copilot stopped with an error';
+                resolve();
+              } else if (event.type === 'session.idle') resolve();
+            });
+          });
+          await fork.send({ prompt });
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), ASK_TIMEOUT_MS)));
+          if ((await Promise.race([finished, late])) === 'late') {
+            error = 'Copilot took too long to answer';
+            await fork.abort().catch(() => {});
+          }
+          clearTimeout(timer);
+        } finally {
+          off();
+          await fork.disconnect().catch(() => {});
+        }
+      } finally {
+        // The fork was only for this question: it goes, as Claude Code's never stays on disk.
+        await sdk.deleteSession?.(forkId).catch(() => {});
+      }
+      return { answer, ...(error ? { error } : {}), spent };
     },
 
     async renameSession(sessionId, cwd, title) {

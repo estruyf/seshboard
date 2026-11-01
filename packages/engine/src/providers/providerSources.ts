@@ -23,6 +23,8 @@ export class ProviderSources implements SessionSource {
     private readonly claude: MultiProfileSource,
     /** The provider profiles, read on every call (adding one takes effect on the next scan). */
     private readonly others: () => ProviderSource[],
+    /** Seshboard's own throwaway sessions on disk (a fork Ask about this session asks): never listed. */
+    private readonly ignore: (sessionId: string) => boolean = () => false,
   ) {}
 
   /** The Claude profile a session was last found in. */
@@ -53,7 +55,7 @@ export class ProviderSources implements SessionSource {
     rest.forEach((infos, index) => {
       const { provider, profileId } = others[index]!;
       for (const info of infos) {
-        if (seen.has(info.sessionId)) continue;
+        if (seen.has(info.sessionId) || this.ignore(info.sessionId)) continue;
         seen.add(info.sessionId);
         this.owners.set(info.sessionId, profileId);
         all.push({ ...info, provider, profileId });
@@ -63,6 +65,7 @@ export class ProviderSources implements SessionSource {
   }
 
   async info(sessionId: string): Promise<RawSessionInfo | undefined> {
+    if (this.ignore(sessionId)) return undefined;
     const other = this.sourceOf(sessionId);
     if (other) {
       const info = await other.source.info(sessionId);

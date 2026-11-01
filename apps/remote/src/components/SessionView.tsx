@@ -27,7 +27,7 @@ import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { useVisualViewport } from './useVisualViewport.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
-import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
+import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, sessionCan, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
@@ -188,8 +188,9 @@ export function SessionView({
   // A session running in Seshboard can change its model and mode from here: the chips need the lists.
   const running = session?.permissionMode != null;
   useEffect(() => {
-    if (client && running && !options) void client.call('options.get', {}).then(setOptions, () => {});
-  }, [client, running, options]);
+    // Another provider's session too: what its provider can do there (Ask) is in its profiles.
+    if (client && (running || session?.provider) && !options) void client.call('options.get', {}).then(setOptions, () => {});
+  }, [client, running, options, session?.provider]);
   const profile = session?.profile ?? null;
 
   const turnEnded = status !== 'working';
@@ -284,6 +285,7 @@ export function SessionView({
   };
   // Claude Code's chips: another provider's session (Copilot) has its own models and modes, which the phone doesn't offer.
   const claudeChips = Boolean(running && options && session && !session.provider);
+  const canAsk = sessionCan(options, session?.provider, 'ask');
   const modelAndMode = claudeChips && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
   const reply = lastReply(messages);
   const copyReply = () => {
@@ -298,8 +300,8 @@ export function SessionView({
    * then Archive and the rest. Rename isn't here: the remote contract can't rename a session yet.
    */
   const phoneMenu: MenuItem[] = [
-    // Ask forks the session in Claude Code: not for another provider's.
-    ...(session?.provider ? [] : [{ label: ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session', icon: <MessageCircleQuestion aria-hidden />, hint: ask.ready ? 'Ready' : undefined, onSelect: () => openAsk(client, sessionId), hook: 'ask' } satisfies MenuItem]),
+    // Ask forks the session in its own tool: another provider's when it can (Copilot can, on a recent computer).
+    ...(!canAsk ? [] : [{ label: ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session', icon: <MessageCircleQuestion aria-hidden />, hint: ask.ready ? 'Ready' : undefined, onSelect: () => openAsk(client, sessionId), hook: 'ask' } satisfies MenuItem]),
     ...(changes ? [{ label: 'Changes', icon: <FileDiff aria-hidden />, hint: `${files} ${files === 1 ? 'file' : 'files'}`, disabled: files === 0, onSelect: openChanges, hook: 'changes' }] : []),
     { label: 'Copy the last reply', icon: <Copy aria-hidden />, disabled: !reply, onSelect: copyReply, hook: 'copy' },
     { kind: 'separator' },
@@ -345,8 +347,8 @@ export function SessionView({
                 {modelAndMode}
               </span>
             )}
-            {/* Ask forks the session in Claude Code: not for another provider's. */}
-            {!session?.provider && (
+            {/* Ask forks the session in its own tool: another provider's when it can. */}
+            {canAsk && (
             <Button
               variant="quiet"
               size="md"

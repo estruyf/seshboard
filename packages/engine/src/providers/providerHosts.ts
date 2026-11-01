@@ -21,7 +21,7 @@ import {
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
-import { isReadOnlyTool, READ_ONLY_REASON } from '../host/sideQuestions.ts';
+import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
 import type { DriverSession, ProviderAdapter } from './provider.ts';
 
 export interface ProviderHostsDeps {
@@ -38,6 +38,8 @@ export interface ProviderHostsDeps {
    * linked sessions' briefs (and attached issues) into it as it goes to the provider.
    */
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
+  /** Seshboard's own throwaway sessions (Ask's forks), which the sidebar never lists. */
+  ephemeral?: { add(sessionId: string): void };
   /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
   readOnly?(sessionId: string): boolean;
   /** What each session last ran with (its mode, model and effort), so a resume picks up where it left off. */
@@ -218,6 +220,22 @@ export class ProviderHosts {
     } catch (error) {
       throw new RpcError('REWIND_FAILED', (error as Error).message);
     }
+  }
+
+  /**
+   * Ask about this session, through its provider: a throwaway fork answers with tools that only read, and nothing
+   * reaches the session. Its cost counts on the provider's account (premium requests), not Claude Code's plan usage.
+   */
+  async askAbout(sessionId: string, prompt: string, onText: (text: AskText) => void): Promise<AskResult> {
+    const adapter = this.adapterOf(this.deps.profileOf(sessionId));
+    if (!adapter?.driver?.ask) throw new RpcError('READ_ONLY_SESSION', 'Ask about this session is not available for this provider');
+    const host = this.hosts.get(sessionId);
+    const cwd = this.deps.sessionCwd(sessionId) ?? host?.info.cwd ?? null;
+    if (!cwd) throw new RpcError('NOT_FOUND', 'Unknown session, or its folder is not recorded');
+    const model = host?.info.model ?? this.deps.settings?.get(sessionId)?.model ?? null;
+    const result = await adapter.driver.ask({ sessionId, cwd, model, prompt, onText, onFork: (id) => this.deps.ephemeral?.add(id) });
+    if (result.spent) this.deps.log('info', `Ask about ${sessionId}: ${Math.round(result.spent * 100) / 100} premium requests`);
+    return { answer: result.answer, ...(result.error ? { error: result.error } : {}), usage: [] };
   }
 
   /** Stops one of a session's background tasks. */

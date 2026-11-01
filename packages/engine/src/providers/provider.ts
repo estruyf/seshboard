@@ -1,5 +1,6 @@
 import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
+import type { AskText } from '../host/sideQuestions.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /** How a provider keeps its sessions on disk, as far as the session index needs to know. */
@@ -158,6 +159,12 @@ export interface ProviderDriver {
   /** The slash commands a new session has, before one runs here. */
   commands(): Promise<SlashCommand[]>;
   start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;
+  /**
+   * Ask about this session: a throwaway fork of it answers `prompt` with tools that only read, beside whatever the
+   * session does, and nothing reaches its conversation. `onFork` names the fork as soon as it exists (to keep it out of
+   * the sidebar); it is gone when this resolves. `spent`: what the answer cost in the provider's unit.
+   */
+  ask?(params: { sessionId: string; cwd: string; model: string | null; prompt: string; onText(text: AskText): void; onFork(forkId: string): void }): Promise<{ answer: string | null; error?: string; spent: number }>;
   /** Stops the provider's runtime (the app quits). */
   dispose(): Promise<void>;
 }

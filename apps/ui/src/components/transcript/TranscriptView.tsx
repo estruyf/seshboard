@@ -378,6 +378,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const otherInfo = useProvider(otherProvider);
   /** Claude Code's own features its provider has too (fork, rewind, rename, delete, effort). */
   const supports = otherInfo?.supports ?? NO_FEATURES;
+  /** Ask about this session: Claude Code's, and another provider's that has it and can run here. */
+  const canAsk = otherProvider === null || (!!otherInfo?.canStart && supports.includes('ask'));
   const readOnly = otherProvider !== null && !otherInfo?.canStart;
   // The provider profile that runs it: its own login, models and commands.
   const otherProfileId = otherProvider ? (host?.profileId ?? summary?.profileId ?? null) : null;
@@ -1488,8 +1490,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
-            // Ask forks the session in Claude Code, which another provider's session isn't.
-            ...(otherProvider && !ask.open
+            // Ask forks the session in its own tool: another provider's only when it can (Copilot can).
+            ...(!canAsk && !ask.open
               ? []
               : [
             {
@@ -2060,7 +2062,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       : undefined
                   }
                   onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  ask={otherProvider ? undefined : { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
+                  ask={!canAsk ? undefined : { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
                   onEscape={() => {
                     // Esc after Reply leaves the message box and goes back to the catch-up.
                     if (useCatchUp.getState().replying !== sessionId) return false;

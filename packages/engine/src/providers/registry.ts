@@ -30,9 +30,10 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       canStart: true,
       modes: COPILOT_MODES,
       installCommand: COPILOT_INSTALL,
-      // Through Copilot's own APIs (fork, rewind, rename) and its folder (delete, to the Trash); the queue, schedules and
-      // triggers start it like New session does, in a worktree or on a branch Seshboard makes. Not yet: Ask and pipelines.
-      supports: ['fork', 'rewind', 'rename', 'delete', 'effort', 'later', 'schedule', 'trigger', 'worktree', 'branch'],
+      // Through Copilot's own APIs (fork, rewind, rename, Ask) and its folder (delete, to the Trash); the queue,
+      // schedules and triggers start it like New session does, in a worktree or on a branch Seshboard makes. A pipeline's
+      // step picks Copilot itself: a run stays Claude Code's.
+      supports: ['fork', 'rewind', 'rename', 'delete', 'effort', 'ask', 'later', 'schedule', 'trigger', 'worktree', 'branch'],
     },
   ];
 }

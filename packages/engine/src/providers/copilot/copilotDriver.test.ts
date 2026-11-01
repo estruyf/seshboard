@@ -62,6 +62,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
     listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high', 'turbo'], defaultReasoningEffort: 'medium' }],
     createSession: async (o) => ((options = o), calls.push(`create:${o.workingDirectory}:${o.model ?? '-'}`), session),
     resumeSession: async (id, o) => ((options = o), calls.push(`resume:${id}`), session),
+    deleteSession: async (id) => void calls.push(`delete:${id}`),
     rpc: {
       sessions: {
         fork: async ({ sessionId, toEventId }) => (calls.push(`fork:${sessionId}:${toEventId ?? '-'}`), { sessionId: 'f0' }),
@@ -264,6 +265,29 @@ describe('Copilot session actions', () => {
     await session.stopTask!('s1');
     expect(sdk.calls).toContain('cancel:s1');
     await vi.waitFor(() => expect(log.tasks.at(-1)).toEqual([]));
+  });
+
+  it('asks a throwaway fork, with tools that only read, streams its answer and deletes the fork', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    const texts: unknown[] = [];
+    const forks: string[] = [];
+    const asked = driver.ask({ sessionId: 'abc', cwd: '/w', model: 'gpt-5-mini', prompt: 'What changed?', onText: (t) => texts.push(t), onFork: (id) => forks.push(id) });
+    await vi.waitFor(() => expect(sdk.calls).toContain('send:What changed?:0'));
+    expect(sdk.calls.slice(0, 3)).toEqual(['start', 'fork:abc:-', 'resume:f0']);
+    expect(forks).toEqual(['f0']);
+    expect(sdk.options()).toMatchObject({ workingDirectory: '/w', model: 'gpt-5-mini' });
+    await expect(sdk.options().onPermissionRequest({ kind: 'read', path: '/w/a.ts' }, { sessionId: 'f0' })).resolves.toEqual({ kind: 'approve-once' });
+    await expect(sdk.options().onPermissionRequest({ kind: 'write', fileName: '/w/a.ts', diff: '+x' }, { sessionId: 'f0' })).resolves.toMatchObject({ kind: expect.stringMatching(/reject|denied/) });
+    sdk.emit({ type: 'assistant.turn_start', data: {} });
+    sdk.emit({ type: 'assistant.message_delta', data: { deltaContent: 'Two files.' } });
+    sdk.emit({ type: 'assistant.message', id: 'a1', data: { content: 'Two files changed.' } });
+    sdk.emit({ type: 'assistant.usage', data: { model: 'gpt-5-mini', cost: 0.33 } });
+    sdk.emit({ type: 'session.idle', data: {} });
+    expect(await asked).toEqual({ answer: 'Two files changed.', spent: 0.33 });
+    expect(texts).toEqual([{ delta: 'Two files.' }]);
+    // Let go, and gone: the fork was only for this question.
+    expect(sdk.calls.slice(-2)).toEqual(['disconnect', 'delete:f0']);
   });
 
   it('reads events and open sessions through the runtime only once it runs, and forks', async () => {

@@ -498,7 +498,11 @@ export function createEngine(options: EngineOptions): Engine {
     }
     appState.set(ALLOWED_PROVIDERS_KEY, []);
   }
-  const source = new ProviderSources(claudeSource, () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })));
+  const source = new ProviderSources(
+    claudeSource,
+    () => providerProfiles.adapters().map((p) => ({ provider: p.id, profileId: p.profileId, source: p.source })),
+    (id) => ephemeral.has(id),
+  );
   /** What `providers.detect` found, asked once per run (it starts each provider's CLI for a moment); Check again asks again. */
   let detected: Promise<ProviderDetection[]> | null = null;
   const detectProviders = (refresh: boolean) => {
@@ -1098,6 +1102,7 @@ export function createEngine(options: EngineOptions): Engine {
     openElsewhere: async (adapter, id) => (await adapter.inUse?.(id)) ?? false,
     readOnly: (id) => runner?.isReadOnly(id) ?? false,
     links: hostLinks,
+    ephemeral,
     settings: sessionSettings,
     upNext,
     onUpNext: (sessionId, queue) => broadcast('upNext.changed', { sessionId, queue }),
@@ -3079,7 +3084,7 @@ export function createEngine(options: EngineOptions): Engine {
     'session.context': ({ sessionId }) => hosts.context(sessionId),
     // Answered beside whatever the session does: never through session.send, so never in its turn or Up next.
     'session.ask': ({ sessionId, threadId, question, replaces }) => {
-      assertClaudeSession(sessionId, 'Ask about this session');
+      assertClaudeSession(sessionId, 'Ask about this session', 'ask');
       return asker.ask(sessionId, question, threadId, replaces);
     },
     'session.askThreads': ({ sessionId }) => asker.list(sessionId),

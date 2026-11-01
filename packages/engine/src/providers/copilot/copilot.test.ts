@@ -308,3 +308,17 @@ describe('a Copilot subagent', () => {
     expect(copilotSubagent(events, 'task-9')).toEqual({ agentType: null, messages: [] });
   });
 });
+
+describe('Seshboard\'s own throwaway sessions', () => {
+  it('leaves an ephemeral one out (a fork Ask about this session asks), from the list and when read', async () => {
+    const dir = join(tempDir(), 'session-state');
+    writeSession(dir, ID, EVENTS);
+    const claude: SessionSource = { list: async () => [], info: async () => undefined, messages: async () => [] };
+    const ephemeral = new Set([ID]);
+    const sources = new ProviderSources(new MultiProfileSource(() => [{ profileId: 'default', source: claude }]), () => [{ provider: 'copilot', profileId: 'p', source: copilotSessionSource(dir) }], (id) => ephemeral.has(id));
+    expect(await sources.list()).toEqual([]);
+    expect(await sources.info(ID)).toBeUndefined();
+    ephemeral.clear();
+    expect((await sources.list()).map((i) => i.sessionId)).toEqual([ID]);
+  });
+});
