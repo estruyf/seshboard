@@ -1634,7 +1634,8 @@ function LocalNewSession() {
               <SectionHeader as="h2" className="px-2">
                 Pick up in {projectName}
               </SectionHeader>
-              <ul className="mt-1 grid">
+              {/* One column no wider than the view, so a long title truncates instead of widening the list. */}
+              <ul className="mt-1 grid grid-cols-[minmax(0,1fr)]">
                 {pickUp.map((row) => {
                   const status = rowStatus(row);
                   const dot = status === 'needs-you' ? 'bg-warn' : status === 'running' ? 'bg-accent-ink animate-pulse' : status === 'unread' ? 'bg-unread' : 'bg-faint/50';

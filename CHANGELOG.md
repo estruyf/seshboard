@@ -27,6 +27,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A long session title no longer makes New session scroll sideways.** In **Pick up in**, a title too long for the row is now cut off with an ellipsis instead of widening the view.
 - **Terminal text no longer spreads its letters out.** In a terminal drawn without WebGL, rows drawn while the terminal was hidden could keep an extra space after every letter ("r e a d y  i n  8 5 4  m s"). The terminal now notices and draws them again with normal spacing.
 - **A computer with an old pairing no longer locks your phone out.** A Seshboard on another computer that was paired before this Mac's Remote key changed (the move to Seshboard made a new one) kept trying every minute, and after a few tries Remote turned away everything on that network, your phone too. It is now told to pair again and stops, and paired devices always get in, even while Remote turns a network away. Pairing a new device from that network still waits, or use **Unblock**. Pairing a computer again in **Settings › Other computers** now replaces its old entry instead of adding a second one.
 - **Keep awake keeps Seshboard itself awake on a Mac.** With the display off, macOS could still slow Seshboard down while Keep awake held sleep off, which can drop phones connected through Remote. Keep awake now keeps Seshboard out of App Nap too.
