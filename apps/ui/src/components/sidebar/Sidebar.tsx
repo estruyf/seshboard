@@ -44,7 +44,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { ProjectFilter, type RemoteProjectSummary, type SourceSummary } from './ProjectMenu.tsx';
 import { thisComputerName } from '../../lib/platform.ts';
-import { sessionRowLabel } from './rowLabel.ts';
+import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
 import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
@@ -312,6 +312,11 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  // Whose session it is: from its transcript, or while it starts (not indexed yet) from what runs it. A session on
+  // another computer has neither.
+  const hostProvider = useHosts((s) => s.hosts.get(data.id)?.provider ?? null);
+  const whose = data.summary ? data.summary : remote ? null : { provider: hostProvider };
+  const agent = agentNameOf(whose);
   // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
   // on, or while its sub-sessions are listed under it.
   const runRow = isRunRowId(data.id);
@@ -401,7 +406,7 @@ export const SessionRow = memo(function SessionRow({
     'data-archived': archived || undefined,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -478,7 +483,7 @@ export const SessionRow = memo(function SessionRow({
         {pen}
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
-        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} /></span> : age}
+        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span> : age}
         {chevron}
       </button>,
     );
@@ -502,7 +507,7 @@ export const SessionRow = memo(function SessionRow({
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
-        <ProviderMark session={data.summary} />
+        <ProviderMark session={whose} />
         {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
         {reviewText ? (
@@ -538,7 +543,7 @@ export const SessionRow = memo(function SessionRow({
         )}
         {chip}
         {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
-        {!statusRail && <StatusIcon status={status} />}
+        {!statusRail && <StatusIcon status={status} agent={agent} />}
       </span>
     </span>
   );

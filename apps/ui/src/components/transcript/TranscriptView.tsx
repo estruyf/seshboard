@@ -1331,7 +1331,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     .join('\n');
   const projectName = question ? QUESTION_LABEL : (project?.name ?? (projectRoot ? basename(projectRoot) : null));
   const failed = !activeHost && host?.state === 'error';
-  const statusLabel = live ? liveLabel(live) : failed ? 'Failed' : 'Not running';
+  const statusLabel = live ? liveLabel(live, agentName) : failed ? 'Failed' : 'Not running';
   const statusTone = live ? (live.status === 'idle' && live.background?.length ? 'text-ok' : STATUS_TONE[live.status]) : failed ? 'text-error' : 'text-muted';
   const gitActivity = `${items.length}:${live?.status ?? ''}:${branchSwitches}`;
   const contextLive =
@@ -1402,18 +1402,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
             {/* A pipeline step's parent, before its state: the way back to the run. */}
             <StepCrumb sessionId={sessionId} />
-            {/* Another provider's session says whose it is first. */}
-            {otherProvider && (
-              <>
-                <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider}>
-                  <ProviderMark session={{ provider: otherProvider }} size={12} />
-                  <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider]}</span>
-                </span>
-                <Sep />
-              </>
-            )}
+            {/* Whose session it is first, as on its sidebar row. */}
+            <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
+              <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
+              <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
+            </span>
+            <Sep />
             <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
-              {live ? <StatusDot live={live} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
+              {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
               <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
                 {statusLabel}
               </span>

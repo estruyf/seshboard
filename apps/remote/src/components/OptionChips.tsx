@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { ClaudeIcon } from './ClaudeIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteSession, type RemoteProfile } from '@seshboard/protocol/remote-client';
 import { branchChoices } from '../lib/branches.ts';
-import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
+import { autoDescription, autoFace, EFFORT_LABEL, MODE_DESCRIPTION, MODE_DOT, MODE_LABEL, MODE_SHORT, modelLabel, PROFILE_DOT, PROFILE_TEXT, profilesOf, projectProfile, takesEffort } from '../lib/options.ts';
 import { ChoiceChip } from './ChoiceChip.tsx';
 import { Sheet } from './Sheet.tsx';
 
@@ -32,11 +33,15 @@ export function ProfileChip({ options, projectId, value, onPick, look }: { optio
       label="Claude profile"
       face={current?.name ?? 'Profile'}
       icon={
-        <span className="flex items-center gap-1">
-          <span aria-hidden className={`size-2 rounded-full ${current ? PROFILE_DOT[current.color] : 'bg-faint'}`} />
-          {/* A profile of another provider shows whose it is (the phone has one: GitHub Copilot). */}
-          {current?.provider && <CopilotIcon size={14} aria-label={current.provider.name} role="img" data-remote-profile-provider={current.provider.id} />}
-        </span>
+        // Whose profile it is (Claude Code's, or another provider's: the phone has one, GitHub Copilot), in the
+        // profile's colour, so it needs no dot.
+        current?.provider ? (
+          <CopilotIcon size={14} aria-label={current.provider.name} role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider={current.provider.id} />
+        ) : current ? (
+          <ClaudeIcon size={14} aria-label="Claude Code" role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider="claude" />
+        ) : (
+          <span aria-hidden className="size-2 rounded-full bg-faint" />
+        )
       }
       selected={value}
       look={look}

@@ -7,6 +7,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
 import { inScope, waitingLabel } from '../../state/sidebarRows.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { agentNameOf } from '../sidebar/rowLabel.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
@@ -163,7 +164,7 @@ export function HomeView() {
                     <span className="truncate text-meta text-muted">{where(row, nameOf(row.projectRoot))}</span>
                     <span className="flex min-w-0 items-center gap-2 text-ui text-accent-ink">
                       <WorkingDots />
-                      <span className="truncate">{row.live?.background?.[0] ?? 'Claude is working'}</span>
+                      <span className="truncate">{row.live?.background?.[0] ?? `${agentNameOf(row.summary)} is working`}</span>
                       <span className="ml-auto shrink-0 text-meta text-faint tabular-nums">{shortAge(row.updatedAt, now)}</span>
                     </span>
                   </button>

@@ -9931,10 +9931,10 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   // Prefer a session that's working right now: that's the case that used to do nothing.
   const id = (await js(
-    "(() => { const rows = [...document.querySelectorAll('[data-session-id]')]; const busy = rows.find((r) => r.querySelector('[aria-label=\"Claude is working\"]')); return (busy ?? rows[0])?.dataset.sessionId ?? null; })()",
+    "(() => { const rows = [...document.querySelectorAll('[data-session-id]')]; const busy = rows.find((r) => r.querySelector('[aria-label$=\" is working\"]')); return (busy ?? rows[0])?.dataset.sessionId ?? null; })()",
   )) as string | null;
   if (!id) return 'no session to archive';
-  const working = (await js(`!!document.querySelector('[data-session-id="${id}"] [aria-label="Claude is working"]')`)) as boolean;
+  const working = (await js(`!!document.querySelector('[data-session-id="${id}"] [aria-label$=" is working"]')`)) as boolean;
   const menu = async (label: string) => {
     const opened = await js(
       `(() => { const row = document.querySelector('[data-session-id="${id}"]'); if (!row) return false; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); return true; })()`,
@@ -10126,7 +10126,7 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
     const header = document.querySelector('[data-archived-toggle]');
     const top = header ? header.getBoundingClientRect().top : Infinity;
     return [...document.querySelectorAll('[data-session-id]')]
-      .filter((r) => r.getBoundingClientRect().top < top && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)} && r.dataset.indexed === 'true' && !r.querySelector('[aria-label="Claude is working"]'))
+      .filter((r) => r.getBoundingClientRect().top < top && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)} && r.dataset.indexed === 'true' && !r.querySelector('[aria-label$=" is working"]'))
       .slice(0, 2).map((r) => r.dataset.sessionId);
   })()`)) as string[];
   if (ids.length < 2) return `ok: skipped, only ${ids.length} idle indexed session(s) in the main list`;

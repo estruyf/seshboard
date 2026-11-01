@@ -10,7 +10,7 @@ import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
-import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { PROFILE_DOT, PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
 import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
 
@@ -117,11 +117,11 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
     chips.push({
       key: 'profile',
       face: (l) => {
-        const Icon = current && current.provider !== 'claude' ? PROVIDER_ICONS[current.provider] : null;
+        const Icon = current ? PROVIDER_ICONS[current.provider] : null;
         return (
           <>
-            <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
-            {Icon && <Icon size={13} aria-hidden data-chip-provider={current!.provider} />}
+            {/* The tool's mark in the profile's colour says both whose it is and which profile, so it needs no dot. */}
+            {Icon ? <Icon size={13} aria-hidden className={`shrink-0 ${PROFILE_TEXT[current!.color]}`} data-chip-provider={current!.provider} /> : <Dot className="bg-faint" />}
             {chipShape(l).profileName && <span>{profileName}</span>}
           </>
         );

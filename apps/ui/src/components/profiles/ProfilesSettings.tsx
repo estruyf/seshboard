@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, FolderOpen, LogIn, Plus, Terminal, X } from 'lucide-react';
+import { Check, ChevronRight, Copy, FolderOpen, LogIn, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { expandHome, isAbsolutePath, PROFILE_COLORS, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, separatorOf, type ClaudeProfile, type ProfileColor, type ProjectDefaults, type SessionProvider } from '@seshboard/protocol/client';
 import type { EngineClient } from '../../engine/connection.ts';
@@ -307,7 +307,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
 
 /** A tool's choice on Add profile's first screen: its mark, its name and one line (or what is missing). */
 function ToolChoice({ tool, checked, onSelect, tabbable, children }: { tool: SessionProvider; checked: boolean; onSelect(): void; tabbable?: boolean; children: ReactNode }) {
-  const Icon = tool === 'claude' ? null : PROVIDER_ICONS[tool];
+  const Icon = PROVIDER_ICONS[tool];
   return (
     <button
       type="button"
@@ -319,7 +319,7 @@ function ToolChoice({ tool, checked, onSelect, tabbable, children }: { tool: Ses
       data-new-profile-tool={tool}
     >
       <RadioMark checked={checked} className="mt-[3px]" />
-      {Icon ? <Icon size={18} aria-hidden className="mt-px shrink-0 text-text" /> : <Terminal size={18} aria-hidden className="mt-px shrink-0 text-text" />}
+      <Icon size={18} aria-hidden className="mt-px shrink-0 text-text" />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="text-ui font-medium text-text">{PROVIDER_NAMES[tool]}</span>
         {children}

@@ -54,6 +54,17 @@ export const PROFILE_DOT: Record<RemoteProfile['color'], string> = {
   gray: 'bg-profile-gray',
 };
 
+/** The profile's colour for text and marks (the tool's mark on the profile chip). */
+export const PROFILE_TEXT: Record<RemoteProfile['color'], string> = {
+  yellow: 'text-profile-yellow',
+  blue: 'text-profile-blue',
+  green: 'text-profile-green',
+  purple: 'text-profile-purple',
+  red: 'text-profile-red',
+  orange: 'text-profile-orange',
+  gray: 'text-profile-gray',
+};
+
 /** What a new session starts with: the project's defaults, then its profile's, until you change one, for this session only. */
 export interface Choice {
   profileId: string;
