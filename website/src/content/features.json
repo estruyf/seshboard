@@ -1492,6 +1492,41 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computers-quote-read",
+      "name": "Other computers: Quote a selection or a message (right-click), and Read a reply in reading mode",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:remote-quote",
+      "name": "Remote app: Quote under a reply, and the Quote pill over selected text (also in Read)",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:computers-changes",
+      "name": "Other computers: Changes with each file's diff, and Commit there",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-ask-catchup",
+      "name": "Other computers: Ask about this session, and the catch-up of a finished turn",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-transcript-tools",
+      "name": "Other computers: open a step to see its diff and output, Find (⌘F), Jump to latest, Copy last reply, Mark as read or unread",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-pipelines",
+      "name": "Other computers: Run a pipeline, a run's steps in the sidebar, and its card with Continue, Skip, Stop and Push",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-queue-notifications",
+      "name": "Other computers: Queue for later in New session, and notifications when a session there needs you or finishes",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:computers-usage-limit",
       "name": "Other computers: Resume now, Resume when it resets and the held Up next messages on a session a usage limit stopped",
       "page": "other-computers"

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { AskEvent } from '@seshboard/protocol/client';
+import type { AskEvent, AskThreadList } from '@seshboard/protocol/client';
 import type { EngineClient as Client } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { agentsToggleStep } from './agentsPanel.ts';
@@ -55,9 +55,29 @@ export function useSessionAsk(sessionId: string): SessionAsk {
 
 const update = (sessionId: string, change: (state: SessionAsk) => SessionAsk) => useAsk.getState().update(sessionId, change);
 
+/**
+ * Where a session's questions go: this computer's engine (`engineAsk`), or the computer a remote session runs on
+ * (`RemoteSessionView`, which keys its panel by the row's id and passes that computer's answers to `receive`).
+ */
+export interface AskBackend {
+  ask(params: { question: string; threadId?: string; replaces?: string }): Promise<{ threadId: string; id: string; at: number }>;
+  threads(): Promise<AskThreadList>;
+}
+
+/** This computer's engine, for one of its sessions. */
+export const engineAsk = (client: Client, sessionId: string): AskBackend => ({
+  ask: (params) => client.call('session.ask', { sessionId, ...params }),
+  threads: () => client.call('session.askThreads', { sessionId }),
+});
+
 /** Reads the threads the engine keeps for a session. */
-export async function loadAskThreads(client: Client, sessionId: string): Promise<void> {
-  const list = await client.call('session.askThreads', { sessionId });
+export function loadAskThreads(client: Client, sessionId: string): Promise<void> {
+  return loadAskThreadsFrom(engineAsk(client, sessionId), sessionId);
+}
+
+/** Reads the threads `backend` keeps, into the panel keyed `sessionId`. */
+export async function loadAskThreadsFrom(backend: AskBackend, sessionId: string): Promise<void> {
+  const list = await backend.threads();
   update(sessionId, (state) => withThreads(state, list));
 }
 
@@ -65,10 +85,15 @@ export async function loadAskThreads(client: Client, sessionId: string): Promise
  * Asks a question in the thread on screen (a new thread when none is, or `threadId`), and opens the panel; the
  * answer comes in there. `replaces` is a failed question asked again.
  */
-export async function askAbout(client: Client, sessionId: string, question: string, options: { threadId?: string; replaces?: string } = {}): Promise<void> {
+export function askAbout(client: Client, sessionId: string, question: string, options: { threadId?: string; replaces?: string } = {}): Promise<void> {
+  return askThrough(engineAsk(client, sessionId), sessionId, question, options);
+}
+
+/** `askAbout` through `backend`, into the panel keyed `sessionId`. */
+export async function askThrough(backend: AskBackend, sessionId: string, question: string, options: { threadId?: string; replaces?: string } = {}): Promise<void> {
   const state = useAsk.getState().sessions.get(sessionId) ?? EMPTY_ASK;
   const threadId = options.threadId ?? currentThread(state)?.id;
-  const asked = await client.call('session.ask', { sessionId, question, ...(threadId ? { threadId } : {}), ...(options.replaces ? { replaces: options.replaces } : {}) });
+  const asked = await backend.ask({ question, ...(threadId ? { threadId } : {}), ...(options.replaces ? { replaces: options.replaces } : {}) });
   const early = useAsk.getState().early.get(asked.id) ?? [];
   update(sessionId, (s) => early.reduce(withEvent, opened(withAsked(s, { ...asked, question }))));
   useRightPanel.getState().setTab(sessionId, 'ask');
@@ -83,18 +108,28 @@ export async function askAbout(client: Client, sessionId: string, question: stri
 
 /** Try again: the failed question goes, and is asked again at the end of its thread. */
 export function retryAsk(client: Client, sessionId: string, threadId: string, id: string, question: string): Promise<void> {
+  return retryAskThrough(engineAsk(client, sessionId), sessionId, threadId, id, question);
+}
+
+/** `retryAsk` through `backend`. */
+export function retryAskThrough(backend: AskBackend, sessionId: string, threadId: string, id: string, question: string): Promise<void> {
   update(sessionId, (state) => withoutItem(state, threadId, id));
-  return askAbout(client, sessionId, question, { threadId, replaces: id });
+  return askThrough(backend, sessionId, question, { threadId, replaces: id });
 }
 
 /** Opens the panel (read first when the window hasn't yet); `focus` puts the caret in its field. */
-export async function openAsk(client: Client | null, sessionId: string, focus = true, prefill?: string): Promise<void> {
+export function openAsk(client: Client | null, sessionId: string, focus = true, prefill?: string): Promise<void> {
+  return openAskThrough(client ? engineAsk(client, sessionId) : null, sessionId, focus, prefill);
+}
+
+/** `openAsk` through `backend` (null: not connected, the threads are read later). */
+export async function openAskThrough(backend: AskBackend | null, sessionId: string, focus = true, prefill?: string): Promise<void> {
   update(sessionId, opened);
   // With Changes open too, Ask comes to the front.
   useRightPanel.getState().setTab(sessionId, 'ask');
   if (focus) focusAsk(sessionId, prefill);
   const state = useAsk.getState().sessions.get(sessionId);
-  if (client && !state?.loaded) await loadAskThreads(client, sessionId).catch(() => {});
+  if (backend && !state?.loaded) await loadAskThreadsFrom(backend, sessionId).catch(() => {});
 }
 
 /** The header's Ask button: open, bring to the front, or close, as Agents does. `othersOpen`: Changes or Agents is open too. */

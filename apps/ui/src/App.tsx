@@ -72,6 +72,7 @@ import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { localSessionId } from './state/remoteSelection.ts';
+import { openRow } from './state/useRemoteRows.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
@@ -174,7 +175,7 @@ function useShortcuts() {
   // The terminal, Open in editor and Open in new window: shared with the pop-out (`useSessionShortcuts`).
   useSessionShortcuts(() => {
     const { view, selectedId } = useSessions.getState();
-    return { terminalOwner: currentTerminalOwner(), sessionId: view === 'session' ? localSessionId(selectedId) : null };
+    return { terminalOwner: currentTerminalOwner(), sessionId: view === 'session' ? localSessionId(selectedId) : null, readId: view === 'session' ? selectedId : null };
   });
 }
 
@@ -183,9 +184,10 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.seshboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
+    // Another computer's session too (its row id), so its notifications stay quiet while it is on screen.
+    window.seshboard?.reportFocus(view === 'session' ? selectedId : null);
   }, [view, selectedId]);
-  useEffect(() => window.seshboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
+  useEffect(() => window.seshboard?.onSelectSession((id) => openRow(id)), []);
   // A pop-out has no Settings, Usage, project pages or New session: they open here, with the window in front.
   useEffect(() => window.seshboard?.onMainRequest(runMainRequest), []);
   // Seshboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.

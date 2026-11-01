@@ -11,6 +11,7 @@ import { appendMessages, applyStream, applyUpdate, NOT_STREAMING, prependMessage
 import type { Client } from './Connected.tsx';
 import { ItemView } from './MessageView.tsx';
 import { ReadSheet } from './ReadSheet.tsx';
+import { SelectionQuote } from './SelectionQuote.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { formatDuration, turnStart, workingLabel } from '../lib/working.ts';
 import { turnEnds, turnLine } from '../lib/turns.ts';
@@ -399,6 +400,7 @@ export function SessionView({
           onOlder={() => void loadOlder()}
           folded={Boolean(card) && !unfolded}
           onUnfold={() => setUnfolded(true)}
+          onQuote={quote}
           header={card && <CatchUpCard card={card} prompt={asked} now={now} wide={wide} committed={committed === card.turnId} onChanges={() => (panelFits ? showPanel(true) : setSheet('changes'))} onCommit={() => (panelFits ? showPanel(true) : setSheet('commit'))} canCommit={Boolean(client) && files > 0} />}
         />
         {error && (
@@ -524,6 +526,7 @@ function Transcript({
   header,
   folded,
   onUnfold,
+  onQuote,
 }: {
   messages: RemoteMessage[];
   results: ReturnType<typeof resultsByCall>;
@@ -538,6 +541,8 @@ function Transcript({
   /** The conversation folds under the catch-up until you ask for it. */
   folded: boolean;
   onUnfold: () => void;
+  /** Quote: a reply, or what you selected, into the message box. */
+  onQuote: (text: string) => void;
 }) {
   const items = useMemo(() => transcriptItems(messages), [messages]);
   const since = useMemo(() => turnStart(messages), [messages]);
@@ -632,7 +637,7 @@ function Transcript({
                   const end = item.kind === 'text' ? ends.get(item.key) : undefined;
                   return (
                     <Fragment key={item.key}>
-                      <ItemView item={item} results={results} live={working && index === items.length - 1} onRead={end ? () => setReading(item.key) : undefined} />
+                      <ItemView item={item} results={results} live={working && index === items.length - 1} onRead={end ? () => setReading(item.key) : undefined} onQuote={onQuote} />
                       {end && (
                         <p className="-mt-3 text-meta whitespace-nowrap text-faint tabular-nums" data-turn-meta>
                           {turnLine(end)}
@@ -656,7 +661,18 @@ function Transcript({
           )}
         </div>
       </div>
-      {readingEnd && <ReadSheet texts={readingEnd.texts} onClose={() => setReading(null)} />}
+      <SelectionQuote root={scroller} onQuote={onQuote} />
+      {readingEnd && (
+        <ReadSheet
+          texts={readingEnd.texts}
+          onClose={() => setReading(null)}
+          onQuote={(text) => {
+            // The sheet covers the message box: it goes, so you see the quote land.
+            setReading(null);
+            onQuote(text);
+          }}
+        />
+      )}
       {away && (
         <Button size="md" onClick={toEnd} data-remote-jump className={`absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md ${missed ? 'border-accent-ink!' : ''}`}>
           <ArrowDown className="size-4" aria-hidden />

@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { keepUnread } from '../../state/keptUnread.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
+import { useComputers } from '../../state/computersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -191,8 +192,9 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
     if (data.remote) {
       const { computerId, computerName, offline, sessionId, projectId, projectName } = data.remote;
-      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const) };
-      const session = { id: sessionId, title: data.title, pinned: data.pinned, projectId, projectName };
+      const features = useComputers.getState().status?.computers.find((c) => c.id === computerId)?.features ?? [];
+      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const), features };
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName };
       setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
       return;
     }

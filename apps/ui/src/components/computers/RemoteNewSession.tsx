@@ -41,8 +41,9 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * `options.get` (an older Seshboard doesn't); they start from the project's defaults, then its profile's, and only
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
  * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
- * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
- * are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
+ * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Queue for later puts the prompt in that
+ * computer's queue (`later.add`), to start there. Folders there can't be picked from here, and Quick question and the
+ * focus limit are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
  * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
@@ -54,6 +55,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [saved] = useState(() => loadRemoteDraft(draftKey));
   const [prompt, setPrompt] = useState(saved.text);
   const [starting, setStarting] = useState(false);
+  const [queuing, setQueuing] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
   const [branches, setBranches] = useState<RemoteBranches | null>(null);
@@ -237,6 +239,36 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       toast((e as Error).message, { body: `It didn’t start on ${name}.` });
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Queue for later: the prompt waits in that computer's queue (Later) until someone starts it there. Images and files
+  // can't wait with it, and a clone has nothing to queue in yet.
+  const attached = attachments.images.length + attachments.files.length > 0;
+  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : attached ? 'Images and files can’t wait in the queue' : null);
+  const queueLater = async () => {
+    if (queueBlocked || starting || queuing || !client || !project) return;
+    const sentFill = fill;
+    const text = savedPrompts.message();
+    if (!text) return;
+    setQueuing(true);
+    try {
+      await callComputer(client, computer.id, 'later.add', {
+        projectId: project.id,
+        prompt: text,
+        ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
+        ...(checkoutBranch ? { checkoutBranch } : {}),
+      });
+      clearRemoteDraft(draftKey);
+      setPrompt('');
+      savedPrompts.sent(sentFill);
+      setChanges({});
+      setBranch(null);
+      toast('Queued for later', { body: `In ${project.name} on ${name}. Start it from the queue there.` });
+    } catch (e) {
+      toast((e as Error).message, { body: `It wasn’t queued on ${name}.` });
+    } finally {
+      setQueuing(false);
     }
   };
 
@@ -443,6 +475,11 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                     </>
                   )}
                 </div>
+                <span className="flex" data-tooltip={!queuing ? (queueBlocked ?? `Wait in the queue on ${name}`) : undefined}>
+                  <Button variant="secondary" size="lg" disabled={!!queueBlocked || starting || queuing} aria-busy={queuing || undefined} onClick={() => void queueLater()} className="disabled:pointer-events-none" data-remote-queue-later>
+                    {queuing ? 'Queueing…' : 'Queue for later'}
+                  </Button>
+                </span>
                 <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
                   <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
                     {starting ? 'Starting…' : `Start on ${name}`}

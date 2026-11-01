@@ -679,6 +679,8 @@ const hub: RemoteHub = new RemoteHub({
   setPermissionMode: async (sessionId, mode) => void modes.set(sessionId, mode),
   autoModel: () => ({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'] }),
   globalPermissionMode: () => 'default',
+  // No global model or effort: New session starts from each project's and profile's defaults.
+  globalModel: () => ({ model: null, effort: null }),
   // No demo session is at a usage limit.
   limit: () => null,
   models: () => [
