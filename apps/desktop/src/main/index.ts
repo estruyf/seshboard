@@ -2748,11 +2748,9 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     const laterOffered = await waitInPage(win, `['data-queue-add', 'data-schedule-add', 'data-trigger-add'].every((hook) => { const item = document.querySelector('[role=menu] [' + hook + ']'); return !!item && !item.disabled; })`, 3_000);
     pressKey(win, 'Escape');
     await waitInPage(win, `!document.querySelector('[role=menu]')`, 2_000);
-    // The box empty again, as it was.
-    await js(`${box}.focus()`);
-    pressKey(win, 'a', ['meta']);
-    pressKey(win, 'Backspace');
-    await waitInPage(win, `${box}.value === ''`, 2_000);
+    // The box empty again, as it was: no unsent prompt left for later steps.
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!(await waitInPage(win, `${box}.value === ''`, 2_000))) return `the box didn't empty again (${JSON.stringify(await js(`${box}.value`))})`;
     if (!laterOffered) return "Start's menu with Copilot doesn't offer Add to queue, Schedule… and Start when…";
 
     // Its session: a mark in the sidebar, a box for Copilot, and a ⋯ menu of what works for it.
