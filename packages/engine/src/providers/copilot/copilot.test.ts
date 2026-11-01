@@ -12,7 +12,7 @@ import { SessionIndex } from '../../sessions/sessionIndex.ts';
 import { removeDir } from '../../util/removeDir.ts';
 import { ProviderProfiles } from '../providerProfiles.ts';
 import { ProviderSources } from '../providerSources.ts';
-import { claudeTool, copilotMessages, userText, type CopilotEvent } from './copilotEvents.ts';
+import { claudeTool, copilotMessages, copilotSubagent, userText, type CopilotEvent } from './copilotEvents.ts';
 import { lockPids, liveStatusOf, openSessions } from './copilotInUse.ts';
 import type { CopilotSdkClient } from './copilotDriver.ts';
 import { copilotProvider } from './copilotProvider.ts';
@@ -286,5 +286,25 @@ describe('a session open in Copilot CLI', () => {
     writeFileSync(join(dir, ID, 'inuse.333.lock'), '');
     expect(openSessions(dir, [ID], new Set([111]), alive)).toEqual([{ sessionId: ID, pid: 333, status: 'running', updatedAt: expect.any(Number) }]);
     expect(lockPids(join(dir, ID)).sort()).toEqual([111, 222, 333]);
+  });
+});
+
+describe('a Copilot subagent', () => {
+  it('reads its own steps by the tool call that started it, without the main conversation\'s', () => {
+    const events: CopilotEvent[] = [
+      { type: 'user.message', id: 'u1', data: { content: 'Explore the repo' } },
+      { type: 'assistant.message', id: 'a1', data: { content: 'Asking an agent.', toolRequests: [{ toolCallId: 'task-1', name: 'task', arguments: { description: 'Explore', prompt: 'Look around', agent_type: 'explore' } }] } },
+      { type: 'subagent.started', id: 's1', data: { toolCallId: 'task-1', agentName: 'explore', agentDisplayName: 'Explore agent', agentDescription: '' } },
+      { type: 'assistant.message', id: 'x1', data: { parentToolCallId: 'task-1', content: 'Reading files.', toolRequests: [{ toolCallId: 'v1', name: 'view', arguments: { path: '/w/a.ts' } }] } },
+      { type: 'tool.execution_complete', id: 'x2', data: { parentToolCallId: 'task-1', toolCallId: 'v1', success: true, result: { content: 'a' } } },
+      // Another agent's step, and the main conversation going on.
+      { type: 'assistant.message', id: 'y1', data: { parentToolCallId: 'task-2', content: 'Not this one.' } },
+      { type: 'tool.execution_complete', id: 'r1', data: { toolCallId: 'task-1', success: true, result: { content: 'Done exploring' } } },
+    ];
+    const agent = copilotSubagent(events, 'task-1');
+    expect(agent.agentType).toBe('Explore agent');
+    expect(agent.messages.map((m) => m.uuid)).toEqual(['x1', 'x2']);
+    expect(copilotMessages(events).map((m) => m.uuid)).toEqual(['u1', 'a1', 'r1']);
+    expect(copilotSubagent(events, 'task-9')).toEqual({ agentType: null, messages: [] });
   });
 });

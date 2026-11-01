@@ -2908,6 +2908,13 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'transcript.get': async ({ sessionId }) => ({ sessionId, messages: await transcripts.read(sessionId) }),
     'transcript.subagent': async ({ sessionId, toolUseId }) => {
+      // Another provider's subagent is in the session's own events, by the tool call that started it.
+      const adapter = providerAdapterOf(sessionId);
+      if (adapter) {
+        const found = adapter.subagent ? await adapter.subagent(sessionId, toolUseId) : { agentType: null, messages: [] };
+        const sink = transcripts.images.sink(sessionId);
+        return { agentId: found.messages.length ? toolUseId : null, agentType: found.agentType, messages: found.messages.map((m) => normaliseMessage(m, sink)) };
+      }
       // Each subagent leaves agent-<id>.meta.json next to its transcript, naming the tool call that started it.
       const transcript = sessions.pathFor(sessionId);
       const dir = transcript ? join(transcript.replace(/\.jsonl$/, ''), 'subagents') : null;

@@ -35,9 +35,12 @@ export interface ProviderMenu {
   onArchive: () => void;
   /** Rename… (its provider renames it too); null leaves it out. */
   onRename?: (() => void) | null;
+  /** The Agents panel, with how many its subagents are and how many still run; null leaves it out. */
+  onAgents?: (() => void) | null;
+  agents?: { total: number; running: number };
 }
 
-/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Rename (when it can), Open in its CLI and Archive. */
+/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Rename (when it can), its Agents, Open in its CLI and Archive. */
 export function providerEntries(provider: ProviderMenu): MenuEntry[] {
   const short = PROVIDER_SHORT_NAMES[provider.id];
   const line = claudeOnlyLine(provider.supports);
@@ -52,6 +55,18 @@ export function providerEntries(provider: ProviderMenu): MenuEntry[] {
       data: { 'data-copy-last-reply': true },
     },
     ...(provider.onRename ? [{ label: 'Rename…', icon: <Pencil size={13} />, onSelect: provider.onRename, data: { 'data-rename-session': true } } satisfies MenuEntry] : []),
+    ...(provider.onAgents && provider.agents
+      ? [
+          {
+            label: 'Agents',
+            icon: <Bot size={13} />,
+            hint: provider.agents.running ? `${provider.agents.running} running` : provider.agents.total ? `${provider.agents.total} finished` : 'None',
+            disabled: provider.agents.total === 0,
+            onSelect: provider.onAgents,
+            data: { 'data-agents-button': true },
+          } satisfies MenuEntry,
+        ]
+      : []),
     {
       label: `Open in ${short} CLI`,
       icon: <SquareTerminal size={13} />,
@@ -246,7 +261,7 @@ export function MoreMenu({
     },
   );
 
-  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null }) : entries;
+  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }) : entries;
   const label = provider ? 'More: compact, tools, copy, open in the CLI, archive' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (

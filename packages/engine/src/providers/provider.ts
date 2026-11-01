@@ -48,6 +48,8 @@ export interface ProviderAdapter {
    * working or waiting, as it does Claude Code sessions in a terminal.
    */
   live?(sessionIds: readonly string[]): Promise<Array<{ sessionId: string; pid: number; status: LiveStatus; updatedAt: number | null }>>;
+  /** A subagent's own conversation, by the tool call that started it (the Agents panel); empty while it has none. */
+  subagent?(sessionId: string, toolUseId: string): Promise<{ agentType: string | null; messages: RawSessionMessage[] }>;
   /**
    * What Delete moves to the Trash for a session (its folder in the provider's), all inside `folder`. Without it, its
    * sessions can't be deleted here.

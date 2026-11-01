@@ -86,6 +86,8 @@ Copilot's driver (`copilot/copilotDriver.ts`):
 
 **Files from the box and VS Code** (Phase 4 of #199): the message box (and the VS Code companion's chips in it) writes files as one line of `@` mentions, which Claude Code opens itself. Copilot's driver adds them to the message as Copilot's own attachments (`mentionAttachments` in `copilot/copilotAttachments.ts`): a file, a folder, or a range of lines as a `selection` with its text. The message keeps its mention line, so the transcript and Edit read it back as chips. Text chips (a selection, diagnostics) go as fenced text, as for Claude Code.
 
+**Subagents** (Phase 4 of #199): Copilot writes a subagent's steps in the session's own events, with the `task` call that started it as their `parentToolCallId`. The main conversation leaves them out; `transcript.subagent` for a provider's session asks the adapter (`ProviderAdapter.subagent`, Copilot's `copilotSubagent`), which converts only that agent's events and names it from `subagent.started`. The provider's ⋯ menu has Agents.
+
 **Routing:** `RoutedHostManager` (`providers/routedHosts.ts`) is the engine's `hosts`: Claude Code's `HostManager`, with the session-level methods (send, interrupt, respond, mode, model, Up next, list, close) routed to `ProviderHosts` for a provider's sessions. Every way to a session (the message box, the phone, Up next, schedules, usage limits, project actions, pipelines) goes through them, so each reaches a provider's sessions without knowing about providers. `HostManager.startHost` still refuses a provider's session, in case anything goes around them.
 
 **Parity:**

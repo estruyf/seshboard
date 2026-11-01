@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { ProviderAdapter } from '../provider.ts';
 import { findCopilot } from './copilotBinary.ts';
 import { forkBoundary } from './copilotActions.ts';
+import { copilotSubagent } from './copilotEvents.ts';
 import { copilotDriver, type CreateCopilotClient } from './copilotDriver.ts';
 import { isAlive, liveStatusOf, lockPids, openSessions, tailEvents } from './copilotInUse.ts';
 import { copilotSessionsDir, copilotSessionSource, EVENTS_FILE, SESSION_ID } from './copilotSource.ts';
@@ -90,6 +91,7 @@ export function copilotProvider({ profileId, copilotHome, userHome, shellEnv = a
         return { sessionId, pid: holder(sessionId) ?? 0, status: liveStatusOf(events), updatedAt };
       });
     },
+    subagent: async (sessionId, toolUseId) => copilotSubagent(await source.events(sessionId), toolUseId),
     // The session's whole folder: its events, workspace.yaml and Copilot's file-change captures.
     trashPaths: (sessionId) => (SESSION_ID.test(sessionId) ? [join(dir, sessionId)] : []),
     files: {

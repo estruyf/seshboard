@@ -102,13 +102,20 @@ export class CopilotConverter {
   private readonly hidden = new Set<string>();
   private count = 0;
 
+  /**
+   * `agent`: the tool call that started a subagent: only its own steps are converted (as its own conversation), and
+   * the main conversation's are left out. Without it, the other way round.
+   */
+  constructor(private readonly agent: string | null = null) {}
+
   /** The messages one event makes (none for most). */
   push(event: CopilotEvent): RawSessionMessage[] {
     const index = this.count++;
     const data = obj(event.data);
     const uuid = event.id ?? `copilot-${index}`;
     const base = { uuid, parent_tool_use_id: null, ...(event.timestamp ? { timestamp: event.timestamp } : {}) };
-    if (str(data.parentToolCallId)) return [];
+    const parent = str(data.parentToolCallId);
+    if (this.agent ? parent !== this.agent : parent) return [];
     switch (event.type) {
       case 'user.message': {
         const text = userText(str(data.content) ?? '');
@@ -149,6 +156,17 @@ export class CopilotConverter {
 export function copilotMessages(events: readonly CopilotEvent[]): RawSessionMessage[] {
   const converter = new CopilotConverter();
   return events.flatMap((event) => converter.push(event));
+}
+
+/**
+ * A subagent's own conversation, by the tool call that started it (`task`, shown as Agent): its steps, and its name
+ * from `subagent.started`. Its own subagents' steps are left out, as the main conversation leaves out its.
+ */
+export function copilotSubagent(events: readonly CopilotEvent[], toolCallId: string): { agentType: string | null; messages: RawSessionMessage[] } {
+  const converter = new CopilotConverter(toolCallId);
+  const started = events.find((e) => e.type === 'subagent.started' && e.data?.toolCallId === toolCallId)?.data ?? {};
+  const agentType = str(started.agentDisplayName) ?? str(started.agentName) ?? str(started.agentType);
+  return { agentType, messages: events.flatMap((event) => converter.push(event)) };
 }
 
 /** Events that mean the session did something, for its last activity (not a resume or a shutdown). */
