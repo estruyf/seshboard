@@ -37,7 +37,8 @@ export interface NewSessionStart {
   github?: { origin: GithubOrigin; worktreeFrom?: WorktreeBranchBase; checkoutPullRequest?: { number: number; repo: string } };
   /**
    * `profileId` is another provider's profile (GitHub Copilot): it starts on this model (null: the provider's default),
-   * its effort (for a model that takes one) and mode. Claude Code's own choices (worktree, branch, Auto) don't apply.
+   * its effort (for a model that takes one) and mode, with the same worktree, branch and pull request as Claude Code's
+   * (New session leaves out what the provider doesn't have yet). Auto doesn't apply.
    */
   provider?: { model: string | null; effort?: Effort | null; permissionMode?: PermissionMode } | null;
 }
@@ -136,11 +137,12 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
   };
 }
 
-/** What `session.create` gets for this start: Claude Code's options, or another provider's few. */
+/** What `session.create` gets for this start: Claude Code's options, or another provider's model, effort and mode with the same git steps. */
 export function createParamsFor(start: NewSessionStart): SessionCreateParams {
   if (!start.provider) return sessionCreateParams(start);
   const { model, effort, permissionMode } = start.provider;
-  return { cwd: start.cwd, prompt: start.prompt, attachments: start.attachments ?? [], model, ...(model && effort ? { effort } : {}), ...(permissionMode ? { permissionMode } : {}), profileId: start.profileId };
+  const { model: _model, effort: _effort, permissionMode: _mode, ...rest } = sessionCreateParams(start);
+  return { ...rest, model, ...(model && effort ? { effort } : {}), ...(permissionMode ? { permissionMode } : {}) };
 }
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */

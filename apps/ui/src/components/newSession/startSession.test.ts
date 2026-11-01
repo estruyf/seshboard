@@ -40,15 +40,11 @@ describe('sessionCreateParams', () => {
     expect(createParamsFor({ ...START, profileId: 'copilot', provider: { model: null, effort: 'high' } })).not.toHaveProperty('effort');
   });
 
-  it('starts a provider profile with only the folder, the message, its model and mode', () => {
-    expect(createParamsFor({ ...START, profileId: 'copilot', worktree: true, provider: { model: 'gpt-5-mini', permissionMode: 'auto' } })).toEqual({
-      cwd: '/work/app',
-      prompt: 'Fix the login redirect',
-      attachments: [],
-      model: 'gpt-5-mini',
-      permissionMode: 'auto',
-      profileId: 'copilot',
-    });
+  it('starts a provider profile on its own model and mode, with the same worktree and branch as Claude Code', () => {
+    const params = createParamsFor({ ...START, profileId: 'copilot', worktree: true, worktreeName: 'try-it', provider: { model: 'gpt-5-mini', permissionMode: 'auto' } });
+    expect(params).toMatchObject({ cwd: '/work/app', prompt: 'Fix the login redirect', attachments: [], model: 'gpt-5-mini', permissionMode: 'auto', profileId: 'copilot', worktree: { name: 'try-it' } });
+    expect(params).not.toHaveProperty('effort');
+    expect(createParamsFor({ ...START, profileId: 'copilot', choices: { ...START.choices, branch: 'feature' }, currentBranch: 'main', provider: { model: null } })).toMatchObject({ checkoutBranch: 'feature', model: null });
   });
 
   it('gives a worktree a made-up name unless it was named', () => {

@@ -107,7 +107,7 @@ export class ProviderHosts {
   }
 
   /** Starts a session with a provider in `cwd` and sends the first message. Returns its id. */
-  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode }): Promise<string> {
+  async create(params: { profileId: string; cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; effort?: Effort | null; permissionMode?: PermissionMode; beforeFirstMessage?: (sessionId: string) => Promise<void> }): Promise<string> {
     const adapter = this.adapterOf(params.profileId);
     if (!adapter?.driver) throw new RpcError('PROVIDER_UNAVAILABLE', 'This profile is not one of a provider that can start sessions');
     const permissionMode = this.modeFor(adapter, params.permissionMode);
@@ -127,6 +127,8 @@ export class ProviderHosts {
     this.deps.settings?.set(session.sessionId, { model: params.model, effort, permissionMode });
     this.deps.onCreated(session.sessionId);
     this.deps.onInfo(host.info);
+    // A new worktree's setup actions (installing its dependencies) run before the first message, as for Claude Code.
+    await params.beforeFirstMessage?.(session.sessionId).catch((error: Error) => this.deps.log('warn', `Worktree setup for ${session.sessionId}: ${error.message}`));
     await this.deliver(host, params.prompt, params.attachments);
     return session.sessionId;
   }

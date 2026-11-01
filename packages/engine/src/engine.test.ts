@@ -347,6 +347,60 @@ describe('engine over a MessagePort', () => {
     expect(calls.some((c) => c.startsWith('resume:'))).toBe(false);
   });
 
+  it('starts a Copilot session in a worktree Seshboard makes, or on a branch it checks out first', async () => {
+    const folders: string[] = [];
+    let made = 0;
+    const ids = ['99999999-9999-4999-8999-999999999991', '99999999-9999-4999-8999-999999999992'];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async (o) => {
+        folders.push(o.workingDirectory);
+        const sessionId = ids[made++]!;
+        return {
+          sessionId,
+          on: () => () => {},
+          send: async () => 'm1',
+          abort: async () => {},
+          setModel: async () => {},
+          disconnect: async () => {},
+          rpc: {
+            mode: { set: async () => {} },
+            commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+            mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+            skills: { list: async () => ({ skills: [] }) },
+            agent: { list: async () => ({ agents: [] }) },
+            name: { set: async () => {} },
+            history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+            tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+          },
+        };
+      },
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    // git runs with the login shell's PATH: this machine's here.
+    const { client: rpc, dataDir } = connect({ path: process.env.PATH ?? '', copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-copilot-git-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    await git(repo, ['branch', 'feature']);
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+
+    // A new worktree: Seshboard makes it (Copilot has no --worktree), and Copilot starts in it.
+    await rpc.call('session.create', { cwd: repo, prompt: 'In a worktree', profileId, worktree: { name: 'copilot-try', baseRef: 'head' } });
+    const worktree = join(repo, '.claude', 'worktrees', 'copilot-try');
+    expect(folders).toEqual([worktree]);
+    expect((await git(worktree, ['branch', '--show-current'])).trim()).toBe('worktree-copilot-try');
+
+    // A branch to check out: switched first, then Copilot starts in the folder.
+    await rpc.call('session.create', { cwd: repo, prompt: 'On the branch', profileId, checkoutBranch: 'feature' });
+    expect(folders[1]).toBe(repo);
+    expect((await git(repo, ['branch', '--show-current'])).trim()).toBe('feature');
+  });
+
   it('persists app state', async () => {
     const { client } = connect();
     await client.call('appState.set', { key: 'ui.sidebarWidth', value: 280 });

@@ -104,7 +104,7 @@ import { SavedPromptStore } from './prompts/savedPromptStore.ts';
 import { GithubService } from './git/github.ts';
 import { FORK_READ_ONLY, GithubOriginStore } from './git/githubOrigins.ts';
 import { checkoutPullRequest as checkoutPullRequest_, PrCheckoutError } from './git/prCheckout.ts';
-import { makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
+import { makeWorktree, makeWorktreeFrom, WorktreeFromError } from './git/worktreeFrom.ts';
 import { LaterStore } from './later/laterStore.ts';
 import { QueueAutoStarter } from './later/autoStart.ts';
 import { ScheduleStore } from './schedules/scheduleStore.ts';
@@ -1134,10 +1134,11 @@ export function createEngine(options: EngineOptions): Engine {
   }, 3_000);
   providerLiveTimer.unref?.();
   /** Starts a session with another provider: only the folder, the message, the model (with its effort) and the mode apply. */
-  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string }) => {
-    const folder = statSafe(params.cwd);
-    if (!folder?.isDirectory()) throw new RpcError('NOT_FOUND', `Folder not found: ${params.cwd}`);
-    assertTrusted(params.cwd);
+  /**
+   * Starts a session with another provider in `cwd` (a worktree `createSession` made, or the folder as it checked it
+   * out): only the message, the model (with its effort), the mode and the worktree's setup apply.
+   */
+  const createProviderSession = async (params: Pick<CreateSessionParams, 'cwd' | 'prompt' | 'attachments' | 'model' | 'effort' | 'permissionMode'> & { profileId: string; beforeFirstMessage?: (sessionId: string) => Promise<void> }) => {
     // A model or mode from Claude Code's defaults (a project's, a schedule's) is left out when the provider has no such one.
     const driver = providerProfiles.adapter(params.profileId)?.driver;
     const models = params.model && driver ? await driver.models().catch(() => []) : [];
@@ -1145,7 +1146,7 @@ export function createEngine(options: EngineOptions): Engine {
     const model = picked?.value ?? null;
     // An effort only for a model that takes it, and at a level it has.
     const effort = picked?.supportsEffort && params.effort && (picked.efforts ?? [params.effort]).includes(params.effort) ? params.effort : null;
-    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode });
+    const sessionId = await providerHosts.create({ profileId: params.profileId, cwd: params.cwd, prompt: params.prompt, attachments: params.attachments, model, effort, permissionMode: params.permissionMode, ...(params.beforeFirstMessage ? { beforeFirstMessage: params.beforeFirstMessage } : {}) });
     void sessions.refresh();
     return { sessionId };
   };
@@ -2169,7 +2170,12 @@ export function createEngine(options: EngineOptions): Engine {
   const createSession = async (params: CreateSessionParams) => {
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
     const chosen = params.profileId ?? (statSafe(params.cwd)?.isDirectory() ? folderProfile(params.cwd) : null);
-    if (chosen && profiles.has(chosen) && profiles.providerOf(chosen) !== 'claude') return createProviderSession({ ...params, profileId: chosen });
+    const provider = chosen && profiles.has(chosen) ? profiles.providerOf(chosen) : 'claude';
+    // Its git steps (a branch, a pull request, a worktree) run here as for Claude Code, when it has them.
+    if (provider !== 'claude') {
+      if (params.worktree && !providerSupports(provider, 'worktree')) throw new RpcError('INVALID', `${PROVIDER_NAMES[provider]} can't start in a worktree yet`);
+      if ((params.checkoutBranch || params.checkoutPullRequest) && !providerSupports(provider, 'branch')) throw new RpcError('INVALID', `${PROVIDER_NAMES[provider]} can't start on another branch yet`);
+    }
     if (questions.contains(params.cwd)) {
       // A quick question has no checkout to branch from or switch.
       if (params.worktree || params.checkoutBranch || params.checkoutPullRequest) throw new RpcError('INVALID', 'Quick questions have no git options');
@@ -2185,16 +2191,8 @@ export function createEngine(options: EngineOptions): Engine {
     // Before a branch is switched or a worktree made, so starting again after the question doesn't do it twice.
     assertTrusted(params.cwd);
     const { checkoutBranch, checkoutPullRequest, github: origin, profileId: chosenProfile, worktree: asked, ...create } = params;
-    const profileId = requireProfile(chosenProfile ?? folderProfile(params.cwd));
-    // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
-    // it has picked. With Auto off it starts on the default model.
-    const routes = create.model === AUTO_MODEL && autoModel.enabled;
-    if (create.model === AUTO_MODEL) create.model = null;
-    const pickModel = async (sessionId: string) => {
-      const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
-      if (route.routeId) routing.attach(route.routeId, sessionId);
-      return { model: route.ok ? route.model : null, autoPick: autoPickOf(route.ok ? route : { ...route, model: null }) };
-    };
+    // Claude Code's profile, checked before any git step, so a missing one never leaves a branch switched.
+    const profileId = provider === 'claude' ? requireProfile(chosenProfile ?? folderProfile(params.cwd)) : chosen!;
     if (checkoutBranch) {
       if (params.worktree) throw new RpcError('INVALID', 'A new worktree gets its own branch; choose the current folder to check out a branch');
       // Only a real switch changes files under another session; starting on the branch already checked out is fine.
@@ -2216,35 +2214,51 @@ export function createEngine(options: EngineOptions): Engine {
         throw error;
       }
     }
-    // A worktree from a branch (a pull request's) is made here; Claude Code makes the others itself (`--worktree`).
+    // A worktree from a branch (a pull request's) is made here; Claude Code makes the others itself (`--worktree`), and
+    // for another provider Seshboard makes those too.
     let cwd = params.cwd;
     let worktree: ClaudeWorktreeRequest | null = null;
     let setupBranch: string | undefined;
-    if (asked && typeof asked.baseRef === 'object') {
+    const made = async (make: (root: string, env: Record<string, string>) => Promise<{ path: string; branch: string }>) => {
       try {
-        const made = await makeWorktreeFrom(resolver.resolve(params.cwd).root, asked.name, asked.baseRef, { env: (await shell.ready).env });
-        cwd = made.path;
-        setupBranch = made.branch;
+        const done = await make(resolver.resolve(params.cwd).root, (await shell.ready).env);
+        cwd = done.path;
+        setupBranch = done.branch;
       } catch (error) {
         if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
         throw error;
       }
+    };
+    if (asked && typeof asked.baseRef === 'object') {
+      const base = asked.baseRef;
+      await made((root, env) => makeWorktreeFrom(root, asked.name, base, { env }));
     } else if (asked && asked.baseRef === 'fresh' && projectDefaultBranch(params.cwd)) {
       // A project that names its own default branch starts fresh worktrees from origin's copy of it, not from origin's HEAD.
       const branch = projectDefaultBranch(params.cwd)!;
-      const root = resolver.resolve(params.cwd).root;
-      const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
-      try {
-        const made = await makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env: (await shell.ready).env });
-        cwd = made.path;
-        setupBranch = made.branch;
-      } catch (error) {
-        if (error instanceof WorktreeFromError) throw new RpcError('GIT_FAILED', error.message);
-        throw error;
-      }
+      await made(async (root, env) => {
+        const remotes = (await git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim());
+        return makeWorktreeFrom(root, asked.name, { branch, ...(remotes.includes('origin') ? { remote: 'origin' } : {}) }, { env });
+      });
+    } else if (asked && provider !== 'claude') {
+      const baseRef = asked.baseRef as ClaudeWorktreeRequest['baseRef'];
+      await made((root, env) => makeWorktree(root, asked.name, baseRef, { env }));
     } else if (asked) worktree = { name: asked.name, baseRef: asked.baseRef as ClaudeWorktreeRequest['baseRef'] };
     const setup = asked ? (id: string) => worktreeSetup(id, params.cwd, asked.name, setupBranch)?.() ?? Promise.resolve() : undefined;
-    const sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+    let sessionId: string;
+    if (provider !== 'claude') {
+      ({ sessionId } = await createProviderSession({ ...create, cwd, profileId, ...(setup ? { beforeFirstMessage: setup } : {}) }));
+    } else {
+      // Auto routes once the session is open, so starting doesn't wait for it; the session says Auto is choosing until
+      // it has picked. With Auto off it starts on the default model.
+      const routes = create.model === AUTO_MODEL && autoModel.enabled;
+      if (create.model === AUTO_MODEL) create.model = null;
+      const pickModel = async (id: string) => {
+        const route = await router.route({ profileId, prompt: params.prompt, imageCount: params.attachments.length });
+        if (route.routeId) routing.attach(route.routeId, id);
+        return { model: route.ok ? route.model : null, autoPick: autoPickOf(route.ok ? route : { ...route, model: null }) };
+      };
+      sessionId = await hosts.create({ ...create, cwd, worktree, profileId, ...(routes ? { pickModel } : {}), ...(setup ? { beforeFirstMessage: setup } : {}) });
+    }
     if (origin) {
       // Where it works on the pull request (the checkout's top folder, as git status reports it), and on which branch.
       const top = await topLevel(cwd).catch(() => cwd);

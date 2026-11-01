@@ -1,6 +1,6 @@
 import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
 import { askWhat, offersProjectProfile, switchNoticeFor, type SwitchNoticeState } from './providerSwitch.ts';
@@ -289,6 +289,11 @@ function LocalNewSession() {
   const agent = runWith ? PROVIDER_SHORT_NAMES[runWith] : 'Claude';
   const catalog = useProviders((s) => s.providers);
   /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
+  /** Another provider doesn't have this one of Claude Code's features yet (a worktree, a branch, a pipeline). */
+  const lacks = (feature: ProviderFeature) => runWith !== null && !(runWithInfo?.supports.includes(feature) ?? false);
+  const noWorktree = lacks('worktree');
+  const noBranch = lacks('branch');
+  const noPipeline = lacks('pipeline');
   const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
   /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
@@ -831,7 +836,7 @@ function LocalNewSession() {
   const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace }, isProject ? project!.defaults.defaultBranch : null);
   const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
   const trayBranch = branchLabel({
-    worktree: useWorktree && !runWith,
+    worktree: useWorktree && !noWorktree,
     baseRef: d.baseRef,
     remote: gitStatus?.pushRemote ?? null,
     baseBranch: gitStatus?.baseBranch ?? null,
@@ -904,9 +909,9 @@ function LocalNewSession() {
           model: (runWith ? providerModel : d.model) || null,
           effort: (runWith ? providerEffortShown : d.effort) || null,
           permissionMode: runWith ? runWithMode : d.permissionMode,
-          workspace: useWorktree && !runWith ? 'worktree' : 'current',
+          workspace: useWorktree && !noWorktree ? 'worktree' : 'current',
           baseRef: d.baseRef,
-          branch: !runWith && !useWorktree && d.branch ? d.branch : null,
+          branch: !noBranch && !useWorktree && d.branch ? d.branch : null,
           profileId: profileOverride,
         }
       : null;
@@ -1050,8 +1055,9 @@ function LocalNewSession() {
         cwd: folder,
         prompt: text,
         attachments,
-        choices: fresh ? { ...d, branch: '', workspace: 'current' } : d,
-        worktree: fresh ? false : worktree,
+        // What the provider doesn't have yet stays out (its controls are off too).
+        choices: fresh ? { ...d, branch: '', workspace: 'current' } : noBranch ? { ...d, branch: '' } : d,
+        worktree: fresh || noWorktree ? false : worktree,
         worktreeName: effectiveName,
         currentBranch: gitBranches.current,
         checkedOutElsewhere: gitBranches.checkedOutElsewhere,
@@ -1061,7 +1067,7 @@ function LocalNewSession() {
         addProject: !cloned && options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
-        github: fresh ? undefined : githubStart(worktree),
+        github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
         provider: runWith ? { model: providerModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
       },
       {
@@ -1187,7 +1193,7 @@ function LocalNewSession() {
           : { value: d.effort, onChange: (effort) => update({ effort }) }
       }
       mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (setProviderMode(mode), setSwitched(null)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
-      pipeline={runAs && !runWith ? boxChoiceUse(runAs) : null}
+      pipeline={runAs && !noPipeline ? boxChoiceUse(runAs) : null}
     />
   );
 
@@ -1514,11 +1520,11 @@ function LocalNewSession() {
                   </span>
                   <ChoiceMenu
                     name="workspace"
-                    value={useWorktree && !runWith ? 'worktree' : 'current'}
+                    value={useWorktree && !noWorktree ? 'worktree' : 'current'}
                     onChange={(workspace) => update({ workspace })}
                     // Worktrees and branches are Claude Code's options: another provider works in the folder as it is.
-                    disabled={!!runWith}
-                    title={runWith ? notWithYet(runWith) : routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
+                    disabled={noWorktree}
+                    title={runWith && noWorktree ? notWithYet(runWith) : routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
                     heading={githubPr ? `Work on #${githubPr.number} in` : 'Where'}
                     chevron
                     width={githubPr ? 340 : 300}
@@ -1571,8 +1577,8 @@ function LocalNewSession() {
                         : undefined
                     }
                   >
-                    {useWorktree && !runWith ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
-                    <span>{useWorktree && !runWith ? 'New worktree' : 'Current checkout'}</span>
+                    {useWorktree && !noWorktree ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
+                    <span>{useWorktree && !noWorktree ? 'New worktree' : 'Current checkout'}</span>
                   </ChoiceMenu>
 
                   {githubPr ? (
@@ -1582,13 +1588,13 @@ function LocalNewSession() {
                         {useWorktree ? prBranch(githubPr) : githubPr.headRefName}
                       </span>
                     </span>
-                  ) : useWorktree && !runWith ? (
+                  ) : useWorktree && !noWorktree ? (
                     <ChoiceMenu
                       name="base"
-                      disabled={!!runWith}
+                      disabled={noWorktree}
                       value={d.baseRef}
                       onChange={(baseRef) => update({ baseRef })}
-                      title={runWith ? notWithYet(runWith) : 'The branch the new worktree starts from'}
+                      title={runWith && noWorktree ? notWithYet(runWith) : 'The branch the new worktree starts from'}
                       heading="Branch from"
                       chevron
                       mono
@@ -1611,10 +1617,10 @@ function LocalNewSession() {
                   ) : gitBranches.branches.length > 0 ? (
                     <ChoiceMenu
                       name="branch"
-                      disabled={!!runWith}
+                      disabled={noBranch}
                       value={checkoutBranch ?? gitBranches.current ?? ''}
                       onChange={(b) => update({ branch: b === gitBranches.current ? '' : b })}
-                      title={runWith ? notWithYet(runWith) : 'Check out a branch before the session starts. Git keeps uncommitted changes, or refuses when they conflict.'}
+                      title={runWith && noBranch ? notWithYet(runWith) : 'Check out a branch before the session starts. Git keeps uncommitted changes, or refuses when they conflict.'}
                       heading="Branch"
                       chevron
                       mono
@@ -1642,11 +1648,11 @@ function LocalNewSession() {
                   <span className="flex-1" />
                   {/* The quick way to the most common route change; the menu has the details (base, name). */}
                   <label
-                    className={`flex shrink-0 items-center gap-2 px-1.5 text-ui ${canWorktree && !runWith ? 'cursor-pointer text-muted' : 'text-faint'}`}
-                    data-tooltip={runWith ? notWithYet(runWith) : canWorktree ? 'Work in an isolated copy of the repository' : 'Needs a git repository'}
+                    className={`flex shrink-0 items-center gap-2 px-1.5 text-ui ${canWorktree && !noWorktree ? 'cursor-pointer text-muted' : 'text-faint'}`}
+                    data-tooltip={runWith && noWorktree ? notWithYet(runWith) : canWorktree ? 'Work in an isolated copy of the repository' : 'Needs a git repository'}
                   >
                     Worktree
-                    <Switch checked={useWorktree && !runWith} disabled={!canWorktree || !!runWith} onChange={(on) => update({ workspace: on ? 'worktree' : 'current' })} dataAttrs={{ 'data-worktree-switch': true }} />
+                    <Switch checked={useWorktree && !noWorktree} disabled={!canWorktree || noWorktree} onChange={(on) => update({ workspace: on ? 'worktree' : 'current' })} dataAttrs={{ 'data-worktree-switch': true }} />
                   </label>
                 </>
               )}
@@ -1707,7 +1713,7 @@ function LocalNewSession() {
                   return false;
                 }
                 // A pipeline picked in Run as: Enter runs it, with the text as its task.
-                if (runAs && !runWith) return runPipelineWith(runAs.id, text, attachments);
+                if (runAs && !noPipeline) return runPipelineWith(runAs.id, text, attachments);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               // The queue starts Claude Code sessions: not with another provider yet.
@@ -1716,8 +1722,8 @@ function LocalNewSession() {
                 <>
                   {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
                     // Shown with another provider too, off, so it says why rather than going missing.
-                    <span className="inline-flex" data-tooltip={runWith ? notWithYet(runWith) : undefined}>
-                      <RunAsChip pipelines={projectPipelines} value={runWith ? null : runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending || !!runWith} />
+                    <span className="inline-flex" data-tooltip={runWith && noPipeline ? notWithYet(runWith) : undefined}>
+                      <RunAsChip pipelines={projectPipelines} value={noPipeline ? null : runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending || noPipeline} />
                     </span>
                   )}
                   <StartButton

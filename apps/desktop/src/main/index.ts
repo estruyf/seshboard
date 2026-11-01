@@ -2705,24 +2705,26 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     await waitInPage(win, `!document.querySelector('[data-menu="profile"]')`, 2_000);
     if (!claudeProfile) return 'no Claude Code profile in the menu';
 
-    // 5. A worktree on with Claude Code, then Copilot: the notice says so; Back puts both back.
+    // 5. A worktree on with Claude Code, then Copilot: it stays on (Seshboard makes Copilot's worktrees too), with no
+    // notice; Claude Code again leaves it as it was.
     const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
     if (!(await pick(claudeProfile))) return 'the Claude Code profile could not be picked';
-    let switchChecked = 'no git repository here, so no worktree to turn off';
+    let switchChecked = 'no git repository here, so no worktree to keep';
     if (await waitInPage(win, `${toggle} && !${toggle}.disabled`, 5_000)) {
       const wasOn = (await js(`${toggle}.getAttribute('aria-checked') === 'true'`)) as boolean;
       if (!wasOn) await js(`${toggle}.click()`);
       if (!(await waitInPage(win, `${toggle}.getAttribute('aria-checked') === 'true'`, 2_000))) return 'the worktree switch did not turn on';
       if (!(await pick(profileId))) return 'the Copilot profile could not be picked again';
       const notice = `document.querySelector('${nsv} [data-provider-switch-notice]')`;
-      if (!(await waitInPage(win, `${notice}?.textContent.includes("Worktree turned off. GitHub Copilot can't run in a worktree yet.")`, 3_000))) return `switching to Copilot did not say the worktree was turned off (${String(await js(`${notice}?.textContent ?? 'no notice'`))})`;
-      if (!(await js(`${toggle}.disabled && ${toggle}.closest('[data-tooltip]')?.dataset.tooltip === 'Not with GitHub Copilot yet'`))) return "the worktree switch isn't off with Not with GitHub Copilot yet";
+      if (!(await waitInPage(win, `${toggle}.getAttribute('aria-checked') === 'true' && !${toggle}.disabled`, 3_000))) return 'switching to Copilot turned the worktree off';
+      // Showing that nothing appears: a moment for a notice that shouldn't come.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (await js(`!!${notice}`)) return `switching to Copilot said it turned something off (${String(await js(`${notice}.textContent`))})`;
       await shot(win, 'new-session-copilot-switch.png');
-      await js(`${notice}.querySelector('[data-provider-switch-back]').click()`);
-      if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(claudeProfile)} && ${toggle}.getAttribute('aria-checked') === 'true' && !${notice}`, 3_000))) return 'Back did not put the Claude Code profile and the worktree back';
+      if (!(await pick(claudeProfile))) return 'the Claude Code profile could not be picked back';
       if (!wasOn) await js(`${toggle}.click()`);
       await waitInPage(win, `${toggle}.getAttribute('aria-checked') === ${JSON.stringify(String(wasOn))}`, 2_000);
-      switchChecked = 'the worktree notice and Back';
+      switchChecked = 'the worktree stays on with Copilot';
     }
 
     // 6. Copilot for the project from now on, from the hint under the box.

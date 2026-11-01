@@ -7,7 +7,7 @@ import { git, listRemoteBranches } from './gitChanges.ts';
 import { GithubOriginStore } from './githubOrigins.ts';
 import { checkoutPullRequest, PrCheckoutError } from './prCheckout.ts';
 import type { GhCommand } from './pullRequest.ts';
-import { makeWorktreeFrom, worktreePath, WorktreeFromError } from './worktreeFrom.ts';
+import { makeWorktree, makeWorktreeFrom, worktreePath, WorktreeFromError } from './worktreeFrom.ts';
 
 /** Commits as a fixed author, so the tests don't depend on the machine's git identity. */
 const commit = (cwd: string, message: string) => git(cwd, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', message]);
@@ -59,6 +59,28 @@ describe('worktrees from a branch and from a pull request', () => {
     await git(repo, ['switch', '-q', '-c', 'feat/issue-start']);
     await expect(makeWorktreeFrom(repo, 'pr-151', { branch: 'feat/issue-start', pullRequest: 151 })).rejects.toThrow(/feat\/issue-start is checked out in/);
     expect(existsSync(worktreePath(repo, 'pr-151'))).toBe(false);
+  });
+
+  it('makes the worktrees Claude Code makes itself: from this commit, or fresh from origin\'s default branch', async () => {
+    // The checkout is a commit ahead of origin, and origin's main a commit ahead of the copy here.
+    await commit(repo, 'local work');
+    await commit(origin, 'newer on origin');
+    const head = await makeWorktree(repo, 'from-head', 'head');
+    expect(head).toEqual({ path: worktreePath(repo, 'from-head'), branch: 'worktree-from-head' });
+    expect((await git(head.path, ['log', '-1', '--format=%s'])).trim()).toBe('local work');
+    const fresh = await makeWorktree(repo, 'fresh-one', 'fresh');
+    expect((await git(fresh.path, ['log', '-1', '--format=%s'])).trim()).toBe('newer on origin');
+    for (const made of [head, fresh]) expect(await git(made.path, ['rev-parse', '--abbrev-ref', '@{upstream}'], { allowExitCodes: [128] }).catch(() => '')).toBe('');
+    await expect(makeWorktree(repo, 'from-head', 'head')).rejects.toThrow(/worktree named from-head already/);
+  });
+
+  it('makes a fresh worktree from this commit when there is no origin', async () => {
+    const alone = join(scratch, 'alone');
+    mkdirSync(alone);
+    await git(alone, ['init', '-q', '-b', 'main']);
+    await commit(alone, 'only here');
+    const made = await makeWorktree(alone, 'fresh', 'fresh');
+    expect((await git(made.path, ['log', '-1', '--format=%s'])).trim()).toBe('only here');
   });
 
   it('starts a worktree branch from a local branch, or one only the remote has', async () => {
