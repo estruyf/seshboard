@@ -4,14 +4,16 @@
  * gets them, and no image ships for them. The painting is pure, for testing; `DockActivity` gets Electron through a host.
  */
 
-/** The icon's empty jacks in reading order, as fractions of the 1024px macOS canvas (`build/icon.svg`). */
-export const FREE_JACKS: readonly { x: number; y: number }[] = [
-  [512, 312],
-  [712, 312],
-  [312, 512],
-  [512, 512],
-  [712, 712],
-].map(([x, y]) => ({ x: x! / 1024, y: y! / 1024 }));
+import { FREE_JACK_CELLS, jackCell, WORKING_ROUND_MS, WORKING_STILL_LEVEL, WORKING_TAIL } from '@seshboard/protocol/working-panel';
+
+/**
+ * The icon's empty jacks in the order the light visits them (shared with the `WorkingPanel` under replies), as
+ * fractions of the 1024px macOS canvas (`build/icon.svg`): the jacks sit 200px apart, the first at 312.
+ */
+export const FREE_JACKS: readonly { x: number; y: number }[] = FREE_JACK_CELLS.map((cell) => {
+  const { row, col } = jackCell(cell);
+  return { x: (312 + col * 200) / 1024, y: (312 + row * 200) / 1024 };
+});
 
 /** A jack's dark hole, and its ring, as fractions of the canvas. */
 const HOLE = 34 / 1024;
@@ -20,9 +22,9 @@ const RING = 62 / 1024;
 export const JACK_STEPS = 4;
 export const FRAME_COUNT = FREE_JACKS.length * JACK_STEPS;
 /** How many jacks the tail reaches back over. */
-const TAIL = 2.4;
-/** About 13 frames a second, so the cables' pulse runs smoothly: one round of the five jacks takes 1.5 seconds. */
-export const FRAME_MS = 75;
+const TAIL = WORKING_TAIL;
+/** About 13 frames a second, so the cables' pulse runs smoothly: one round of the five jacks takes `WORKING_ROUND_MS`. */
+export const FRAME_MS = WORKING_ROUND_MS / FRAME_COUNT;
 /** The size the frames are drawn at: the Dock's largest (128pt, magnified, on a Retina screen) and then some. */
 export const FRAME_SIZE = 512;
 
@@ -66,7 +68,7 @@ export function cableHeads(frame: number): number[] {
 }
 
 /** With Reduce motion on: no movement, every empty jack lit, so the Dock still says Claude is working. */
-export const STILL_LEVELS: readonly number[] = FREE_JACKS.map(() => 0.75);
+export const STILL_LEVELS: readonly number[] = FREE_JACKS.map(() => WORKING_STILL_LEVEL);
 
 /**
  * How much light covers a point `t` hole radii from a jack's centre: a solid light in the middle of the hole that

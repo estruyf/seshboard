@@ -12,7 +12,7 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { activityByProject, latestBranches, orderProjects } from '../newSession/projectTiles.ts';
-import { WorkingDots } from '../transcript/ActivityGroup.tsx';
+import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { homeSessions, homeSummary, profileActivity, profileActivityLine, projectMeta } from './homeModel.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { ProfileUsageCard } from '../UsageBand.tsx';
@@ -163,7 +163,7 @@ export function HomeView() {
                     <span className="truncate text-body font-semibold">{row.title || 'Untitled session'}</span>
                     <span className="truncate text-meta text-muted">{where(row, nameOf(row.projectRoot))}</span>
                     <span className="flex min-w-0 items-center gap-2 text-ui text-accent-ink">
-                      <WorkingDots />
+                      <WorkingPanel />
                       <span className="truncate">{row.live?.background?.[0] ?? `${agentNameOf(row.summary)} is working`}</span>
                       <span className="ml-auto shrink-0 text-meta text-faint tabular-nums">{shortAge(row.updatedAt, now)}</span>
                     </span>

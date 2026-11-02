@@ -52,7 +52,7 @@ Monospace (`font-mono`) is for paths, commands, branches in menus and diffs, at 
 | State | Token | Shape |
 |---|---|---|
 | Needs you (a permission or a question) | `warn` (pink) | 3px rail on the row, pulsing dot, pink frame on the card |
-| Working | `accent-ink` (yellow) | rail, spinner or the three working dots |
+| Working | `accent-ink` (yellow) | rail, spinner or the working panel (`WorkingPanel`) |
 | Running in the background | `ok` (green) | slow spinner |
 | Finished, unread | `unread` (blue) | rail and dot, bold title |
 | Failed | `error` | `!` badge |

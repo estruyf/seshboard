@@ -32,7 +32,7 @@ import { ProjectIcon } from '../ProjectIcon.tsx';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { ClampedPrompt } from '../transcript/ClampedPrompt.tsx';
-import { WorkingDots } from '../transcript/ActivityGroup.tsx';
+import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from '../transcript/BackgroundTaskList.tsx';
 import { backgroundSummary } from '../transcript/backgroundTasks.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
@@ -531,7 +531,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           {working && connected && (
             <p className="flex h-6.5 items-center gap-2 text-ui text-text/85" role="status" data-computer-working>
               <span className="flex w-4 shrink-0 justify-center">
-                <WorkingDots />
+                <WorkingPanel state={prompts.length ? 'waiting' : 'working'} />
               </span>
               <span className="min-w-0 truncate">{prompts.length ? 'Waiting for you' : streaming.kind === 'tool' ? `Using ${streaming.text}…` : streaming.kind === 'thinking' ? 'Thinking…' : 'Working…'}</span>
               <LiveTurnParts live={live} startedAt={null} />

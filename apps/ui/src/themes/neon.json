@@ -50,7 +50,11 @@
       "chart-output": "#16d96a",
       "chart-cache-write": "#c2255c",
       "chart-cache-read": "#1c7ed6",
-      "chart-input": "#d61fc3"
+      "chart-input": "#d61fc3",
+      "working-plug-a": "#3ec77c",
+      "working-plug-b": "#00ca68",
+      "working-plug-c": "#ff7df2",
+      "working-plug-d": "#e13ad0"
     }
   },
   "dark": {
@@ -99,7 +103,11 @@
       "chart-output": "#2ae37a",
       "chart-cache-write": "#e64980",
       "chart-cache-read": "#339af0",
-      "chart-input": "#ff7df2"
+      "chart-input": "#ff7df2",
+      "working-plug-a": "#7dffb0",
+      "working-plug-b": "#2ae37a",
+      "working-plug-c": "#ff7df2",
+      "working-plug-d": "#e13ad0"
     },
     "terminal": {
       "background": "#050507",

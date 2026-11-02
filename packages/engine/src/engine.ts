@@ -355,9 +355,10 @@ export interface Engine {
   setQueueFocus(focus: { limit: number | null; countExternal: boolean }): void;
   /**
    * With `stubQueueStarts` only: a stand-in session this app "runs", for the smoke test's queue step. `running` starts
-   * a turn, `idle` ends it with `outcome`, `closed` takes it away.
+   * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt (never
+   * answered: the smoke test moves the session on, which takes the prompt away).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
   /**
    * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
    * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
@@ -1347,6 +1348,8 @@ export function createEngine(options: EngineOptions): Engine {
   };
   /** The smoke test's stand-in sessions (`stubQueueStarts`), by id. */
   const smokeHosts = new Map<string, HostInfo>();
+  /** The stand-ins holding a made-up permission prompt (`needs-you`). */
+  const smokePermissions = new Set<string>();
   /** Main sends the focus limit (`setQueueFocus`): an item that starts by itself waits for a free slot instead of asking. */
   let queueFocus: { limit: number | null; countExternal: boolean } = { limit: null, countExternal: false };
   /**
@@ -1470,6 +1473,14 @@ export function createEngine(options: EngineOptions): Engine {
     else smokeHosts.set(sessionId, info);
     awake.update(sessionId, info);
     broadcast('session.host', withAwake(info));
+    // Waiting for you: a permission prompt, as a host asks one, until the session moves on.
+    const requestId = `smoke-permission-${sessionId}`;
+    if (state === 'needs-you' && !smokePermissions.has(sessionId)) {
+      smokePermissions.add(sessionId);
+      broadcast('session.permission', { requestId, sessionId, toolName: 'Bash', toolUseId: null, input: { command: 'echo smoke' }, title: 'Claude wants to run echo smoke', description: null, decisionReason: null, blockedPath: null, alwaysLabel: null, agentId: null, createdAt: Date.now() });
+    } else if (state !== 'needs-you' && smokePermissions.delete(sessionId)) {
+      broadcast('session.permissionResolved', { requestId, sessionId });
+    }
     autoStarter?.onHost(info);
   };
   const demoQueueFile = options.stubQueueStarts ? options.demoUsage?.queueHostFile : undefined;

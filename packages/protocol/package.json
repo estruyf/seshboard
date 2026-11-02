@@ -14,7 +14,8 @@
     "./theme-shadow": "./src/themeShadow.ts",
     "./companion-client": "./src/companionClient.ts",
     "./paths": "./src/paths.ts",
-    "./remote-client": "./src/remoteClient.ts"
+    "./remote-client": "./src/remoteClient.ts",
+    "./working-panel": "./src/workingPanel.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

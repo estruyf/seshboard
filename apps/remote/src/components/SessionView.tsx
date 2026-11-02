@@ -24,6 +24,7 @@ import { EffortChip, ModeChip, ModelChip, ModelModeChip } from './OptionChips.ts
 import { lastReply, turnPrompt } from '../lib/promptTitle.ts';
 import { startState } from '../lib/newOptions.ts';
 import { DockedPrompt } from './PermissionCard.tsx';
+import { WorkingPanel } from './WorkingPanel.tsx';
 import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { useVisualViewport } from './useVisualViewport.ts';
@@ -692,7 +693,7 @@ function Transcript({
 }
 
 /**
- * Claude is working, at the end of the conversation, as on the computer: three dots, how long the turn has taken and
+ * Claude is working, at the end of the conversation, as on the computer: the patch panel, how long the turn has taken and
  * what Claude is doing (thinking, using a tool), so a quiet stretch doesn't look like a session that stopped.
  */
 function WorkingLine({ streaming, since }: { streaming: Streaming; since: number | null }) {
@@ -703,10 +704,8 @@ function WorkingLine({ streaming, since }: { streaming: Streaming; since: number
   }, []);
   return (
     <p className="flex min-w-0 items-center gap-2 text-ui text-muted" data-remote-working>
-      <span className="working-dots flex w-4 shrink-0 justify-center" aria-hidden>
-        <span />
-        <span />
-        <span />
+      <span className="flex w-4 shrink-0 justify-center">
+        <WorkingPanel />
       </span>
       {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
       <span className="shrink-0" aria-live="polite">
