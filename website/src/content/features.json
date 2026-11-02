@@ -1447,6 +1447,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:copilot-sessions",
+      "name": "GitHub Copilot sessions: Settings: Profiles offers Copilot CLI when it finds it (Add Copilot profile, Not now); Add profile asks which tool runs its sessions, uses Copilot CLI's own folder and skips sign in when it is signed in already, and ends on Copilot is ready (Start a Copilot session, Use Copilot for a project, Make it the default); New session groups profiles by tool, says what switching to Copilot turned off (Back to), offers Use Copilot for the project from now on and shows its premium requests; a Copilot session's ⋯ menu (Compact, Tools, Copy the last reply, Open in Copilot CLI, Archive); signed in with Copilot CLI's own login",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"

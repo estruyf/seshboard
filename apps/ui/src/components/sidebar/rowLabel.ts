@@ -1,3 +1,4 @@
+import { otherProviderOf, PROVIDER_NAMES, type SessionProvider } from '@seshboard/protocol/client';
 import type { RowStatus } from '../../state/sidebarRows.ts';
 
 /** What a row's status icon means, in words: its tooltip, and what VoiceOver reads for it. */
@@ -9,6 +10,15 @@ export const STATUS_LABEL: Record<Exclude<RowStatus, null>, string> = {
   background: 'Ready, a background task is running',
   idle: 'Open and ready',
 };
+
+/** Who works in a session, for "… is working": another provider's name (GitHub Copilot), or Claude. */
+export const agentNameOf = (session: { provider?: SessionProvider | null } | null | undefined): string => {
+  const other = session ? otherProviderOf(session) : null;
+  return other ? PROVIDER_NAMES[other] : 'Claude';
+};
+
+/** `STATUS_LABEL` with the agent's name in "… is working". */
+export const statusLabel = (status: Exclude<RowStatus, null>, agent = 'Claude'): string => (status === 'running' ? `${agent} is working` : STATUS_LABEL[status]);
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -45,6 +55,8 @@ export function sessionRowLabel(row: {
   ownWindow?: boolean;
   /** It holds a message you typed and didn't send. */
   draft?: boolean;
+  /** Who works in it, for "… is working" (`agentNameOf`). Claude by default. */
+  agent?: string;
   /** A pipeline runs from it, or it is a run row: where the run is ("Validate · 3 of 4"). */
   pipeline?: string | null;
   updatedAt: number;
@@ -52,7 +64,7 @@ export function sessionRowLabel(row: {
 }): string {
   const parts = [row.title || 'Untitled session'];
   if (row.project) parts.push(row.project);
-  if (row.status) parts.push(STATUS_LABEL[row.status]);
+  if (row.status) parts.push(statusLabel(row.status, row.agent));
   if (row.pipeline) parts.push(`pipeline at ${row.pipeline.replace(/ · /g, ', ')}`);
   if (row.pinned) parts.push('pinned');
   if (row.archived) parts.push('archived');

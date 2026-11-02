@@ -25,6 +25,7 @@ import {
   type RemoteUsageBreakdown,
   type UsageBreakdown,
   type WorktreeBase,
+  otherProviderOf,
 } from '@seshboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
@@ -74,6 +75,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     workingSince: live.get(s.id)?.updatedAt ?? live.get(s.id)?.startedAt ?? null,
     unread: flags.get(s.id)?.unread ?? false,
     pinned: flags.get(s.id)?.pinned ?? false,
+    provider: (flags.get(s.id) ? otherProviderOf(flags.get(s.id)!) : null) ?? running.get(s.id)?.provider ?? null,
     model: running.get(s.id)?.model ?? null,
     effort: running.get(s.id)?.effort ?? null,
     permissionMode: running.get(s.id)?.permissionMode ?? null,

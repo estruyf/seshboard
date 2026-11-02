@@ -104,6 +104,7 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   showMods: 'Show mods',
   hiddenMods: 'Mods with their UI hidden',
   githubHintSeen: 'Projects that showed the GitHub CLI hint',
+  providerOffersDismissed: 'Tools found on this computer, not offered again',
   sidebarSort: 'Sidebar order',
   quickActions: 'Quick actions on hover',
   quickActionsShow: 'Quick actions to show',
@@ -212,7 +213,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
     const entries = stores.profiles.exportEntries();
     const dirOf = (id: string) => entries.find((e) => e.id === id)?.dir ?? null;
     file.profiles = {
-      list: entries.map(({ dir, name, color, defaults }) => ({ dir, name, color, defaults: Object.values(defaults).some((v) => v !== null) ? defaults : null })),
+      list: entries.map(({ dir, name, color, defaults, provider }) => ({ dir, provider, name, color, defaults: Object.values(defaults).some((v) => v !== null) ? defaults : null })),
       default: dirOf(stores.profiles.defaultId()),
       links: stores.profiles.links().map(({ root, profileId }) => ({ path: root, profile: dirOf(profileId) })),
     };
@@ -448,7 +449,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       if (id === null) {
         note('profiles', entry.name, 'add', dir === null ? null : relocatedNote(entry.dir!, dir));
         writes.push(() => {
-          const added = stores.profiles.add(entry.name, entry.color, dir!);
+          const added = stores.profiles.add(entry.name, entry.color, dir!, entry.provider);
           if (usefulDefaults) stores.profiles.setDefaults(added, usefulDefaults);
         });
         continue;

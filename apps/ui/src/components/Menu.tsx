@@ -44,7 +44,7 @@ export interface SubmenuItem {
  * `heading`: a small label over a group of items. `title`: the menu's subject in bold, with a line
  * about it (a branch and where it stands). `note`: a sentence under the items, such as why some are unavailable.
  */
-export type MenuEntry = MenuItem | SubmenuItem | 'separator' | { heading: string } | { title: string; detail?: string } | { note: string; tone?: 'warn' };
+export type MenuEntry = MenuItem | SubmenuItem | 'separator' | { heading: string } | { title: string; detail?: string } | { note: string; tone?: 'warn' | 'faint' };
 
 /** How long the pointer rests on an item before its submenu opens (or the open one closes), so crossing a row on the way in doesn't swap it. */
 const SUBMENU_DELAY = 150;
@@ -186,7 +186,7 @@ export function Menu({
             <p
               key={i}
               role="presentation"
-              className={`text-ui ${entry.tone === 'warn' ? 'mx-2 my-1 rounded-md bg-warn/10 px-2.5 py-1.5 text-warn' : 'px-3 pt-1 pb-1.5 text-muted'}`}
+              className={`text-ui ${entry.tone === 'warn' ? 'mx-2 my-1 rounded-md bg-warn/10 px-2.5 py-1.5 text-warn' : entry.tone === 'faint' ? 'px-3 pt-1 pb-1.5 text-faint' : 'px-3 pt-1 pb-1.5 text-muted'}`}
               data-menu-note
             >
               {entry.note}

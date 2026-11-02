@@ -5,6 +5,7 @@ import { BUILTIN_PROFILE_ID, withoutContext, type LogLevel, type SessionsChanged
 import { originFromEntrypoint, readHead, readLastActivity, type TranscriptHead } from '../claude/origin.ts';
 import type { ProjectResolver } from '../claude/projectResolver.ts';
 import type { RawSessionInfo, SessionSource } from '../claude/sessionSource.ts';
+import type { ProviderFiles } from '../providers/provider.ts';
 import { coalesce } from '../util/coalesce.ts';
 
 /** What the index derives from disk; user flags are added on the way out (see `decorate`). */
@@ -36,10 +37,12 @@ interface TranscriptFile {
   profileId: string;
 }
 
-/** One profile's `projects` folder. */
+/** One profile's `projects` folder, or another provider's sessions folder (`~/.copilot/session-state`). */
 export interface ProjectsRoot {
   profileId: string;
   dir: string;
+  /** Set for another provider's folder: how its files map to sessions (Claude Code's layout is the index's own). */
+  provider?: ProviderFiles;
 }
 
 export interface SessionIndexOptions {
@@ -307,16 +310,23 @@ export class SessionIndex {
         this.watchers.delete(dir);
       }
     }
-    for (const { dir, profileId } of roots) {
+    for (const { dir, profileId, provider } of roots) {
       if (this.watchers.has(dir)) continue;
       try {
         // A new profile has no projects folder until its first session. Create it when the profile's own
         // folder exists, so that first session shows up at once; otherwise the next refresh tries again.
-        if (!existsSync(dir) && existsSync(dirname(dir))) mkdirSync(dir);
+        // Another provider's folder is never made: Seshboard only reads it.
+        if (!provider && !existsSync(dir) && existsSync(dirname(dir))) mkdirSync(dir);
         if (!existsSync(dir)) continue;
         const watcher = watch(dir, { recursive: true }, (_event, filename) => {
-          const match = filename ? SESSION_FILE.exec(filename.toString()) : null;
-          if (match) this.fileChanged(match[2]!, join(dir, filename!.toString()), profileId);
+          if (!filename) return;
+          if (provider) {
+            const session = provider.sessionOf(filename.toString());
+            if (session) this.fileChanged(session.sessionId, session.file, profileId);
+            return;
+          }
+          const match = SESSION_FILE.exec(filename.toString());
+          if (match) this.fileChanged(match[2]!, join(dir, filename.toString()), profileId);
         });
         watcher.on('error', (error) => {
           this.options.log('warn', `Watching ${dir} failed: ${error.message}`);
@@ -386,7 +396,14 @@ export class SessionIndex {
   /** Maps session id → transcript file for every top-level transcript under each profile's projects/. */
   private scanFiles(): Map<string, TranscriptFile> {
     const files = new Map<string, TranscriptFile>();
-    for (const { dir: root, profileId } of this.options.projectsDirs()) {
+    for (const { dir: root, profileId, provider } of this.options.projectsDirs()) {
+      if (provider) {
+        for (const [id, path] of provider.files()) {
+          const stat = statSync(path, { throwIfNoEntry: false });
+          if (stat?.isFile()) files.set(id, { path, mtime: Math.round(stat.mtimeMs), profileId });
+        }
+        continue;
+      }
       let projectDirs: string[];
       try {
         projectDirs = readdirSync(root);
@@ -416,7 +433,8 @@ export class SessionIndex {
     // Read the head ourselves only when needed: the SDK misses the folder when the first prompt is
     // huge (a pasted image), and the session would then be filed under "Unknown folder".
     let head: TranscriptHead | undefined;
-    const readOnce = () => (head ??= file ? readHead(file.path) : { entrypoint: null, cwd: null });
+    // Another provider's source read its own files: none of Claude Code's format is read for it.
+    const readOnce = () => (head ??= file && !info.provider ? readHead(file.path) : { entrypoint: null, cwd: null });
     const entrypoint = previous?.entrypoint ?? readOnce().entrypoint;
     const cwd = info.cwd ?? previous?.summary.cwd ?? readOnce().cwd;
     const location = cwd ? this.options.resolver.resolve(cwd) : null;
@@ -426,7 +444,7 @@ export class SessionIndex {
     // The SDK's lastModified is the file's mtime, which moves when Claude Code merely exits or
     // reopens the session; use the last message instead. Read again only when the file changed.
     const unchanged = previous && file && previous.mtime === file.mtime;
-    const updatedAt = unchanged ? previous.summary.updatedAt : ((file && readLastActivity(file.path)) ?? info.lastModified);
+    const updatedAt = info.provider ? info.lastModified : unchanged ? previous.summary.updatedAt : ((file && readLastActivity(file.path)) ?? info.lastModified);
     const summary: RawSummary = {
       id: info.sessionId,
       title,
@@ -438,12 +456,13 @@ export class SessionIndex {
       worktree: location?.worktree
         ? { name: location.worktree.name, branch: this.options.resolver.branch(location) }
         : null,
-      origin: this.options.isOwned?.(info.sessionId) ? 'app' : originFromEntrypoint(entrypoint),
+      origin: info.provider ? (info.origin ?? 'unknown') : this.options.isOwned?.(info.sessionId) ? 'app' : originFromEntrypoint(entrypoint),
       createdAt: info.createdAt ?? null,
       updatedAt,
       fileSize: info.fileSize ?? null,
       tag: info.tag ?? null,
       profileId: info.profileId ?? file?.profileId ?? previous?.summary.profileId ?? BUILTIN_PROFILE_ID,
+      ...(info.provider ? { provider: info.provider } : {}),
     };
     return { summary, path: file?.path ?? previous?.path ?? null, mtime: file?.mtime ?? previous?.mtime ?? null, entrypoint };
   }

@@ -87,6 +87,11 @@ export interface HostManagerDeps {
    * the folder's hooks and MCP servers as a session does.
    */
   assertTrusted?: (cwd: string) => void;
+  /**
+   * Throws (READ_ONLY_SESSION) for another provider's session (Copilot), which Claude Code can't resume or fork. Every
+   * way to a session's process (the message box, the phone, Up next, schedules) passes `startHost`, so it is checked there.
+   */
+  assertClaudeSession?: (sessionId: string, action: string) => void;
   /** Helper processes register in the live registry while they run; the engine hides them. */
   ephemeral?: { add(sessionId: string): void; delete(sessionId: string): void };
   /** A profile's installed plugins, for sessions that aren't running (their own list comes from Claude Code). */
@@ -318,6 +323,7 @@ export class HostManager {
   }
 
   private async startHost(sessionId: string, fork: boolean, busyMessage: string): Promise<SessionHost> {
+    this.deps.assertClaudeSession?.(sessionId, fork ? 'Forking' : 'Sending');
     if (!fork && this.deps.isOpenElsewhere(sessionId) && this.recentlyClosed(sessionId)) {
       await this.waitForExit(sessionId);
     }

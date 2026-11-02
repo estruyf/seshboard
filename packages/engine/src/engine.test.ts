@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
-import { createEngine } from './engine.ts';
+import { createEngine, type EngineOptions } from './engine.ts';
+import type { CopilotSdkClient, CopilotSdkSession, CopilotSessionOptions } from './providers/copilot/copilotDriver.ts';
+import type { CopilotEvent } from './providers/copilot/copilotEvents.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { git } from './git/gitChanges.ts';
@@ -69,7 +71,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void } = {}) {
+function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -86,6 +88,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     sessionSource: (typeof extra.source === 'function' ? extra.source(dataDir) : extra.source) ?? fakeSource,
     ...(extra.sdk ? { sdk: async () => extra.sdk! } : {}),
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
+    // Never the machine's own `copilot`: without a fake, Copilot CLI isn't installed.
+    copilot: extra.copilot ?? { binary: async () => null },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -118,6 +122,376 @@ describe('engine over a MessagePort', () => {
     expect(info.versions.sqlite).toMatch(/^\d+\.\d+/);
     expect(info.shell.resolved).toBe(false);
     expect(info.claude).toBeNull();
+  });
+
+  it('shows a Copilot profile\'s sessions under that profile, refuses Claude Code\'s own actions, and deletes them to the Trash', async () => {
+    const trashed: string[][] = [];
+    const { client, dataDir } = connect({ trashed });
+    const id = '44444444-4444-4444-8444-444444444444';
+    // A Copilot profile's folder in the test's own folder, never the machine's ~/.copilot.
+    const copilotHome = join(dataDir, 'copilot');
+    const folder = join(copilotHome, 'session-state', id);
+    mkdirSync(folder, { recursive: true });
+    const events = [
+      { type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: PARSER } } },
+      { type: 'user.message', id: 'e2', timestamp: '2026-10-30T10:00:01.000Z', data: { content: 'Fix the parser' } },
+      { type: 'assistant.message', id: 'e3', timestamp: '2026-10-30T10:00:02.000Z', data: { content: 'Done.' } },
+    ];
+    writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true })]);
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+
+    // Adding a Copilot profile is what makes its sessions show up.
+    const { id: profileId } = await client.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    expect((await client.call('profiles.list', {})).profiles.find((p) => p.id === profileId)).toMatchObject({ provider: 'copilot', account: null });
+    // Plan usage is Claude Code's: a Copilot profile never gets a Claude profile's in its place.
+    await expect(client.call('usage.get', { profileId })).rejects.toMatchObject({ code: 'NOT_CLAUDE_PROFILE' });
+    await client.call('sessions.refresh', {});
+    const listed = (await client.call('sessions.list', {})).sessions.find((s) => s.id === id);
+    expect(listed).toMatchObject({ provider: 'copilot', profileId, title: 'Fix the parser', cwd: PARSER });
+
+    // Copilot can run sessions, but isn't installed here: sending, forking and renaming (all through Copilot) say so.
+    await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    await expect(client.call('session.forkAt', { sessionId: id, messageUuid: 'e3' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    await expect(client.call('session.rename', { sessionId: id, title: 'Parser fix' })).rejects.toMatchObject({ code: 'RENAME_FAILED', message: expect.stringMatching(/Install GitHub Copilot CLI/) });
+    // Continuing in an editor stays Claude Code's.
+    await expect(client.call('session.continueInEditor', { sessionId: id })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+
+    // Delete moves the session's whole folder to the Trash, named with its Copilot home for main's check.
+    await client.call('session.delete', { sessionId: id });
+    expect(trashed).toEqual([[folder]]);
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+  });
+
+  it('starts and steers a Copilot session through its driver, with Copilot\'s own login', async () => {
+    const COPILOT_ID = '55555555-5555-4555-8555-555555555555';
+    const calls: string[] = [];
+    let emit: (event: CopilotEvent) => void = () => {};
+    let options: CopilotSessionOptions | undefined;
+    const session: CopilotSdkSession = {
+      sessionId: COPILOT_ID,
+      on: (handler) => ((emit = handler), () => {}),
+      send: async ({ prompt }) => (calls.push(`send:${prompt}`), 'm1'),
+      abort: async () => void calls.push('abort'),
+      setModel: async (model, o) => void calls.push(`model:${model}${o?.reasoningEffort ? `:${o.reasoningEffort}` : ''}`),
+      disconnect: async () => void calls.push('disconnect'),
+      rpc: {
+        mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
+        commands: { list: async () => ({ commands: [] }), invoke: async () => ({ kind: 'completed' }) },
+        mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+        skills: { list: async () => ({ skills: [] }) },
+        agent: { list: async () => ({ agents: [] }) },
+        name: { set: async ({ name }) => void calls.push(`name:${name}`) },
+        history: {
+          listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [{ eventId: 'u1' }] }),
+          previewRewind: async () => ({ available: true, files: [{ path: join(PARSER, 'a.ts'), linesAdded: 3, linesRemoved: 1 }] }),
+          rewind: async ({ eventId, mode }) => (calls.push(`rewind:${eventId}:${mode}`), { outcome: 'success', restoredFiles: [join(PARSER, 'a.ts')] }),
+        },
+        tasks: {
+          list: async () => ({ tasks: [{ type: 'shell', id: 't1', description: 'Dev server', status: 'running', startedAt: '2026-10-30T10:00:00.000Z', attachmentMode: 'detached' }] }),
+          cancel: async ({ id }) => (calls.push(`cancel:${id}`), { cancelled: true }),
+        },
+      },
+    };
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true, statusMessage: 'octocat (via gh)' }),
+      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }],
+      createSession: async (o) => ((options = o), session),
+      resumeSession: async (_id, o) => ((options = o), session),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const hostStates: string[] = [];
+    rpc.on('session.host', (info) => info.sessionId === COPILOT_ID && hostStates.push(info.state));
+
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+    expect(await rpc.call('providers.status', { profileId })).toEqual({ binary: '/fake/copilot', version: '1.0.90', signedIn: true, account: 'octocat (via gh)', login: null, problem: null });
+    // A Copilot without the quota call says nothing about premium requests, rather than failing.
+    expect(await rpc.call('providers.quota', { profileId })).toEqual({ quota: null });
+    expect((await rpc.call('providers.models', { profileId })).models).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low', 'medium', 'high'] }]);
+
+    // The profile decides who starts it: a Copilot profile starts Copilot, with Copilot's model and an effort it takes.
+    const { sessionId } = await rpc.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', effort: 'high' });
+    expect(sessionId).toBe(COPILOT_ID);
+    expect(options).toMatchObject({ workingDirectory: dataDir, model: 'gpt-5-mini', reasoningEffort: 'high', clientName: 'seshboard', enableFileChangeTracking: true });
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.effort).toBe('high');
+    expect(calls).toEqual(['send:Add a test']);
+
+    emit({ type: 'assistant.turn_start', data: {} });
+    const answer = options!.onPermissionRequest({ requestId: 'p1', kind: 'shell', fullCommandText: 'npm test' }, { sessionId: COPILOT_ID });
+    const listed = await rpc.call('hosts.list', {});
+    expect(listed.hosts.find((h) => h.sessionId === COPILOT_ID)?.state).toBe('needs-you');
+    expect(listed.permissions).toEqual([expect.objectContaining({ requestId: 'p1', sessionId: COPILOT_ID, toolName: 'Bash' })]);
+    await rpc.call('session.respond', { requestId: 'p1', decision: { behavior: 'allow' } });
+    await expect(answer).resolves.toEqual({ kind: 'approve-once' });
+    emit({ type: 'assistant.message', id: 'a1', data: { content: 'Done.' } });
+    emit({ type: 'session.idle', data: {} });
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.state).toBe('idle');
+
+    // Effort, rename, background tasks and rewind go through the running session.
+    await rpc.call('session.setEffort', { sessionId: COPILOT_ID, effort: 'low' });
+    await rpc.call('session.rename', { sessionId: COPILOT_ID, title: '  Parser\n fix ' });
+    emit({ type: 'session.background_tasks_changed', data: {} });
+    await vi.waitFor(async () => expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.backgroundTasks).toEqual([{ taskId: 't1', type: 'local_bash', description: 'Dev server', startedAt: Date.parse('2026-10-30T10:00:00.000Z') }]));
+    await rpc.call('session.stopTask', { sessionId: COPILOT_ID, taskId: 't1' });
+    expect(await rpc.call('session.rewind', { sessionId: COPILOT_ID, messageUuid: 'u1', dryRun: true })).toEqual({ canRewind: true, error: null, files: [join(PARSER, 'a.ts')], insertions: 3, deletions: 1 });
+    expect(await rpc.call('session.rewind', { sessionId: COPILOT_ID, messageUuid: 'u1', dryRun: false })).toMatchObject({ canRewind: true, files: [join(PARSER, 'a.ts')] });
+    expect(calls.slice(1)).toEqual(['model:gpt-5-mini:low', 'name:Parser fix', 'cancel:t1', 'rewind:u1:conversation-and-files']);
+
+    await rpc.call('session.send', { sessionId: COPILOT_ID, text: 'And another', attachments: [], fork: false });
+    await rpc.call('session.interrupt', { sessionId: COPILOT_ID });
+    await rpc.call('session.setModel', { sessionId: COPILOT_ID, model: null });
+    expect(calls.slice(-3)).toEqual(['send:And another', 'abort', 'model:auto']);
+    // Another model starts on its own effort; Copilot's Auto has none to set.
+    expect((await rpc.call('hosts.list', {})).hosts.find((h) => h.sessionId === COPILOT_ID)?.effort).toBeNull();
+    await expect(rpc.call('session.setEffort', { sessionId: COPILOT_ID, effort: 'high' })).rejects.toMatchObject({ code: 'PROVIDER_FAILED', message: expect.stringMatching(/Auto model has no effort/) });
+    // Continuing in an editor stays Claude Code's.
+    await expect(rpc.call('session.continueInEditor', { sessionId: COPILOT_ID })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    expect(hostStates).toEqual(expect.arrayContaining(['running', 'needs-you', 'idle']));
+  });
+
+  it('forks a Copilot session through Copilot, just after the message (and its tools\' results)', async () => {
+    const id = '66666666-6666-4666-8666-666666666666';
+    const forks: Array<{ sessionId: string; toEventId?: string }> = [];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: () => Promise.reject(new Error('not here')),
+      resumeSession: () => Promise.reject(new Error('not here')),
+      rpc: {
+        sessions: {
+          fork: async (params) => (forks.push(params), { sessionId: '77777777-7777-4777-8777-777777777777' }),
+          // Once the first fork started the runtime, the events are asked of it: a failed read falls back to the file.
+          readPersistedEvents: () => Promise.reject(new Error('expired')),
+          checkInUse: async () => ({ inUse: [] }),
+        },
+      },
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    mkdirSync(join(copilotHome, 'session-state', id), { recursive: true });
+    const events = [
+      { type: 'session.start', id: 'e1', data: { context: { cwd: PARSER } } },
+      { type: 'user.message', id: 'u1', data: { content: 'Fix the parser' } },
+      { type: 'assistant.message', id: 'a1', data: { content: 'Running the tests.', toolRequests: [{ toolCallId: 't1', name: 'bash', arguments: { command: 'npm test' } }] } },
+      { type: 'tool.execution_start', id: 'x1', data: { toolCallId: 't1' } },
+      { type: 'tool.execution_complete', id: 'r1', data: { toolCallId: 't1', success: true, result: { content: 'ok' } } },
+      { type: 'user.message', id: 'u2', data: { content: 'Now the docs' } },
+    ];
+    writeFileSync(join(copilotHome, 'session-state', id, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    await rpc.call('sessions.refresh', {});
+
+    // Fork from the reply: it keeps the reply's tool result, and ends before the next message.
+    expect(await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'a1' })).toEqual({ sessionId: '77777777-7777-4777-8777-777777777777' });
+    // Edit and resend forks at the message before your prompt: the fork ends just before it.
+    await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'r1' });
+    // The last message: the fork keeps everything.
+    await rpc.call('session.forkAt', { sessionId: id, messageUuid: 'u2' });
+    expect(forks).toEqual([{ sessionId: id, toEventId: 'u2' }, { sessionId: id, toEventId: 'u2' }, { sessionId: id }]);
+    await expect(rpc.call('session.forkAt', { sessionId: id, messageUuid: 'nope' })).rejects.toMatchObject({ code: 'FORK_FAILED', message: expect.stringMatching(/not in this session/) });
+  });
+
+  it('starts a queued item and a schedule with a Copilot profile through Copilot, and titles the run through it', async () => {
+    const calls: string[] = [];
+    let made = 0;
+    const ids = ['88888888-8888-4888-8888-888888888881', '88888888-8888-4888-8888-888888888882'];
+    const sessionFor = (sessionId: string): CopilotSdkSession => ({
+      sessionId,
+      on: () => () => {},
+      send: async ({ prompt }) => (calls.push(`send:${sessionId.slice(-1)}:${prompt}`), 'm1'),
+      abort: async () => {},
+      setModel: async () => {},
+      disconnect: async () => {},
+      rpc: {
+        mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
+        commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+        mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+        skills: { list: async () => ({ skills: [] }) },
+        agent: { list: async () => ({ agents: [] }) },
+        name: { set: async ({ name }) => void calls.push(`name:${sessionId.slice(-1)}:${name}`) },
+        history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+        tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+      },
+    });
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'high'] }],
+      createSession: async (o) => (calls.push(`create:${o.model ?? '-'}:${o.reasoningEffort ?? '-'}`), sessionFor(ids[made++]!)),
+      resumeSession: async (id) => (calls.push(`resume:${id}`), sessionFor(id)),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+
+    // A queued item with the Copilot profile starts Copilot, with its model, effort and mode.
+    const { item } = await rpc.call('later.add', { draft: { cwd: dataDir, prompt: 'Queued for Copilot', model: 'gpt-5-mini', effort: 'high', permissionMode: 'plan', profileId } });
+    expect(await rpc.call('later.start', { id: item.id })).toEqual({ sessionId: ids[0] });
+    expect(calls).toEqual(['create:gpt-5-mini:high', 'mode:plan', 'send:1:Queued for Copilot']);
+
+    // A schedule's run too; once the session's files are there, its title goes through it, not a second resume.
+    const draft = { cwd: dataDir, prompt: 'Review open pull requests', model: 'gpt-5-mini', permissionMode: 'default' as const, profileId };
+    const { schedule } = await rpc.call('schedules.save', { schedule: { name: 'Review', draft, rule: { kind: 'weekdays', time: '08:00' }, missed: 'run', paused: false } });
+    const { run } = await rpc.call('schedules.runNow', { id: schedule.id });
+    expect(run).toMatchObject({ result: 'started', sessionId: ids[1] });
+    const folder = join(copilotHome, 'session-state', ids[1]!);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'events.jsonl'), [{ type: 'session.start', id: 'e1', data: { context: { cwd: dataDir } } }, { type: 'user.message', id: 'u1', data: { content: 'Review open pull requests' } }].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('sessions.refresh', {});
+    await vi.waitFor(() => expect(calls).toContain(`name:2:${run.title}`));
+    expect(calls.some((c) => c.startsWith('resume:'))).toBe(false);
+  });
+
+  it('starts a Copilot session in a worktree Seshboard makes, or on a branch it checks out first', async () => {
+    const folders: string[] = [];
+    let made = 0;
+    const ids = ['99999999-9999-4999-8999-999999999991', '99999999-9999-4999-8999-999999999992'];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async (o) => {
+        folders.push(o.workingDirectory);
+        const sessionId = ids[made++]!;
+        return {
+          sessionId,
+          on: () => () => {},
+          send: async () => 'm1',
+          abort: async () => {},
+          setModel: async () => {},
+          disconnect: async () => {},
+          rpc: {
+            mode: { set: async () => {} },
+            commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+            mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+            skills: { list: async () => ({ skills: [] }) },
+            agent: { list: async () => ({ agents: [] }) },
+            name: { set: async () => {} },
+            history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+            tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+          },
+        };
+      },
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    // git runs with the login shell's PATH: this machine's here.
+    const { client: rpc, dataDir } = connect({ path: process.env.PATH ?? '', copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-copilot-git-')));
+    cleanups.push(() => rmSync(repo, { recursive: true, force: true }));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'first']);
+    await git(repo, ['branch', 'feature']);
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+
+    // A new worktree: Seshboard makes it (Copilot has no --worktree), and Copilot starts in it.
+    await rpc.call('session.create', { cwd: repo, prompt: 'In a worktree', profileId, worktree: { name: 'copilot-try', baseRef: 'head' } });
+    const worktree = join(repo, '.claude', 'worktrees', 'copilot-try');
+    expect(folders).toEqual([worktree]);
+    expect((await git(worktree, ['branch', '--show-current'])).trim()).toBe('worktree-copilot-try');
+
+    // A branch to check out: switched first, then Copilot starts in the folder.
+    await rpc.call('session.create', { cwd: repo, prompt: 'On the branch', profileId, checkoutBranch: 'feature' });
+    expect(folders[1]).toBe(repo);
+    expect((await git(repo, ['branch', '--show-current'])).trim()).toBe('feature');
+  });
+
+  it('runs a pipeline step with Copilot when the step says so, read-only, with the first Copilot profile', async () => {
+    const created: CopilotSessionOptions[] = [];
+    const prompts: string[] = [];
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async (o) => {
+        created.push(o);
+        return {
+          sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+          on: () => () => {},
+          send: async ({ prompt }) => (prompts.push(prompt), 'm1'),
+          abort: async () => {},
+          setModel: async () => {},
+          disconnect: async () => {},
+          rpc: {
+            mode: { set: async () => {} },
+            commands: { list: async () => ({ commands: [] }), invoke: async () => ({}) },
+            mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+            skills: { list: async () => ({ skills: [] }) },
+            agent: { list: async () => ({ agents: [] }) },
+            name: { set: async () => {} },
+            history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+            tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+          },
+        };
+      },
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const step = { kind: 'claude' as const, name: 'Review', provider: 'copilot' as const, readOnly: true, prompt: 'Review this: {{task}}' };
+    const { pipeline } = await rpc.call('pipelines.save', { pipeline: { name: 'Copilot review', scope: { kind: 'all' }, steps: [step] } });
+
+    // No Copilot profile yet: the step says how to get one.
+    const first = await rpc.call('pipelines.run', { pipelineId: pipeline.id, task: 'the parser', project: dataDir });
+    await vi.waitFor(async () => expect((await rpc.call('runs.get', { runId: first.state.run.id })).state?.run.reason).toMatch(/Add a GitHub Copilot profile/));
+
+    await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: join(dataDir, 'copilot'), provider: 'copilot' });
+    await rpc.call('pipelines.run', { pipelineId: pipeline.id, task: 'the parser', project: dataDir });
+    await vi.waitFor(() => expect(prompts).toHaveLength(1));
+    expect(created[0]).toMatchObject({ workingDirectory: dataDir });
+    expect(prompts[0]).toContain('Review this: the parser');
+  });
+
+  it('keeps a Copilot slash command and its answer, which Copilot doesn\'t write, for the next read', async () => {
+    const ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
+    let emit: (event: CopilotEvent) => void = () => {};
+    const client: CopilotSdkClient = {
+      start: async () => {},
+      stop: async () => {},
+      getAuthStatus: async () => ({ isAuthenticated: true }),
+      listModels: async () => [],
+      createSession: async () => ({
+        sessionId: ID,
+        on: (handler) => ((emit = handler), () => {}),
+        send: async () => 'm1',
+        abort: async () => {},
+        setModel: async () => {},
+        disconnect: async () => {},
+        rpc: {
+          mode: { set: async () => {} },
+          commands: { list: async () => ({ commands: [{ name: 'usage', description: 'Show usage' }] }), invoke: async () => ({ kind: 'completed', message: 'You used 12 premium requests.' }) },
+          mcp: { list: async () => ({ servers: [] }), enable: async () => {}, disable: async () => {}, restartServer: async () => {} },
+          skills: { list: async () => ({ skills: [] }) },
+          agent: { list: async () => ({ agents: [] }) },
+          name: { set: async () => {} },
+          history: { listRewindPoints: async () => ({ fileChangeTrackingEnabled: true, points: [] }), previewRewind: async () => ({ available: false, files: [] }), rewind: async () => ({ outcome: 'success', restoredFiles: [] }) },
+          tasks: { list: async () => ({ tasks: [] }), cancel: async () => ({ cancelled: false }) },
+        },
+      }),
+      resumeSession: () => Promise.reject(new Error('not here')),
+    };
+    const { client: rpc, dataDir } = connect({ copilot: { createClient: async () => client, binary: async () => ({ path: '/fake/copilot', version: '1.0.90' }) } });
+    const copilotHome = join(dataDir, 'copilot');
+    const { id: profileId } = await rpc.call('profiles.add', { name: 'Copilot', color: 'purple', configDir: copilotHome, provider: 'copilot' });
+    await rpc.call('session.create', { cwd: dataDir, prompt: 'Hi', profileId });
+    emit({ type: 'session.idle', data: {} });
+    // Copilot's file has the prompt, never the command.
+    const folder = join(copilotHome, 'session-state', ID);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'events.jsonl'), [{ type: 'session.start', id: 'e1', timestamp: '2026-10-30T10:00:00.000Z', data: { context: { cwd: dataDir } } }, { type: 'user.message', id: 'u1', timestamp: '2026-10-30T10:00:01.000Z', data: { content: 'Hi' } }].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    await rpc.call('session.send', { sessionId: ID, text: '/usage', attachments: [], fork: false });
+    await rpc.call('sessions.refresh', {});
+    const texts = JSON.stringify((await rpc.call('transcript.get', { sessionId: ID })).messages);
+    expect(texts).toContain('/usage');
+    expect(texts).toContain('You used 12 premium requests.');
+    expect(texts.indexOf('Hi')).toBeLessThan(texts.indexOf('/usage'));
   });
 
   it('persists app state', async () => {

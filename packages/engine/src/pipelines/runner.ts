@@ -13,6 +13,7 @@ import {
   type CatchUp,
   type Effort,
   type NextStep,
+  type OptionalProvider,
   type PermissionMode,
   type Pipeline,
   type PipelineClaudeStep,
@@ -36,6 +37,8 @@ export interface StepSettings {
   effort: Effort | null;
   permissionMode: PermissionMode;
   readOnly: boolean;
+  /** Another provider runs it (GitHub Copilot); left out: Claude Code. */
+  provider?: OptionalProvider;
 }
 
 /** Why a step that is ready can't start yet: the focus limit (a free slot), or a usage limit (its reset). */
@@ -524,7 +527,7 @@ export class PipelineRunner {
         steps: sessions,
         actions,
       });
-      const settings: StepSettings = { model: step.model, effort: step.effort, permissionMode: step.permissionMode ?? 'default', readOnly: step.readOnly };
+      const settings: StepSettings = { model: step.model, effort: step.effort, permissionMode: step.permissionMode ?? 'default', readOnly: step.readOnly, ...(step.provider ? { provider: step.provider } : {}) };
       // A triggered run's event text goes to the first step that starts a session; later steps fork it or link it.
       const context = Object.keys(sessions).length === 0 ? this.deps.runs.context(run.id) : null;
       const prompt = context ? `${filled.text}\n\n${context}` : filled.text;

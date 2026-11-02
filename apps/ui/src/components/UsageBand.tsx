@@ -12,6 +12,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
 import { thisComputerName } from '../lib/platform.ts';
+import { ProviderUsage } from './providers/ProviderUsage.tsx';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -57,17 +58,17 @@ export function useUsageSync(): void {
   }, [client]);
 }
 
-/** Loads a profile's usage the first time a band shows it. Undefined until the first answer. */
-export function useUsageFor(profileId: string): UsageEntry | undefined {
+/** Loads a profile's usage the first time a band shows it. Undefined until the first answer, and for no profile (null: another provider's, which has no plan usage). */
+export function useUsageFor(profileId: string | null): UsageEntry | undefined {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   useEffect(() => {
-    if (!client || useUsage.getState().usage.has(profileId)) return;
+    if (!client || profileId === null || useUsage.getState().usage.has(profileId)) return;
     // Fetching starts a short-lived Claude Code process; let the window finish starting first.
     const timer = setTimeout(() => void fetchUsage(client, profileId), performance.now() < 10_000 ? 2_000 : 0);
     return () => clearTimeout(timer);
   }, [client, profileId]);
-  return useUsage((s) => s.usage.get(profileId));
+  return useUsage((s) => (profileId === null ? undefined : s.usage.get(profileId)));
 }
 
 /** A usage bar is a button that opens the Usage view: it keeps its look and lights up on hover. */
@@ -83,9 +84,10 @@ function footerLabel(limit: UsageLimit): string {
 }
 
 /** The footer's windows as short names and percentages, for the ring that stands in for the footer while the terminal is open below. */
-export function useUsageLines(profileId?: string | null): UsageLine[] {
+export function useUsageLines(profileId?: string | null, enabled = true): UsageLine[] {
   const defaultId = useProfiles((s) => s.defaultId);
-  const usage = useUsageFor(profileId ?? defaultId)?.usage;
+  // Another provider's session has no plan usage: nothing is asked (`enabled` false).
+  const usage = useUsageFor(enabled ? (profileId ?? defaultId) : null)?.usage;
   return useMemo(() => (usage ? visibleLimits(usage.limits).map((limit) => ({ label: footerLabel(limit), percent: limit.percent })) : []), [usage]);
 }
 
@@ -267,7 +269,9 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
  */
 export function ProfileUsageCard({ profileId, activity }: { profileId: string; activity: string }) {
   const profile = useProfiles((s) => s.profiles.find((p) => p.id === profileId));
-  const entry = useUsageFor(profileId);
+  /** A profile of another provider (GitHub Copilot): its premium requests, never Claude Code's plan usage. */
+  const provider = profile && profile.provider !== 'claude' ? profile.provider : null;
+  const entry = useUsageFor(provider ? null : profileId);
   const usage = entry?.usage ?? null;
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -285,7 +289,9 @@ export function ProfileUsageCard({ profileId, activity }: { profileId: string; a
         {profile?.account?.email && <span className="min-w-0 truncate text-meta text-faint">{profile.account.email}</span>}
       </div>
       <p className="text-meta text-muted">{activity}</p>
-      {limits.length === 0 ? (
+      {provider ? (
+        <ProviderUsage profileId={profileId} provider={provider} form="card" />
+      ) : limits.length === 0 ? (
         <p className="text-meta text-faint" data-tooltip={entry?.error ?? undefined} data-usage-status>
           {usageMessage(entry)}
         </p>

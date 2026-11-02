@@ -89,6 +89,8 @@ export interface ComposerProps {
   submitRequest?: number;
   /** Compact controls in the card's bottom-left corner in place of the hint line (the model, mode and effort chips). */
   controls?: ReactNode;
+  /** A line inside the card, right above the controls (New session: what switching to another provider turned off). */
+  above?: ReactNode;
   /** Buttons in the card's bottom-right corner, before attach (a session's Tools). */
   actions?: ReactNode;
   /** Mods' chips (the prompt shield and statuses), first on the right of the footer; they fold before anything else moves. */
@@ -1228,6 +1230,7 @@ export function Composer(props: ComposerProps) {
             {notice}
           </p>
         )}
+        {props.controls && props.above}
         <div className={`mt-1.5 flex items-center justify-between gap-x-2 ${props.controls ? 'flex-wrap gap-y-1.5' : ''}`} data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}

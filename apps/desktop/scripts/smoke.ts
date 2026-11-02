@@ -74,7 +74,7 @@ if (process.argv.includes('--demo')) {
   linkClaude(world.home);
   // The home folder is HOME on macOS and USERPROFILE on Windows; with CLAUDE_CONFIG_DIR, neither the app nor
   // Claude Code sees the real one.
-  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SESHBOARD_SMOKE_DEMO: '1' });
+  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), COPILOT_HOME: join(world.home, '.copilot'), SESHBOARD_SMOKE_DEMO: '1', SESHBOARD_STUB_COPILOT: '1' });
   console.log(`demo home: ${world.home}`);
 }
 

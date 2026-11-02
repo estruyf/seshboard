@@ -769,4 +769,22 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE pipeline_runs ADD COLUMN unattended INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // v42: Profiles of other providers (#199): a profile's config folder and login can be GitHub Copilot's
+  // (`COPILOT_HOME`). Every profile from before is Claude Code's. A user choice: keep it.
+  `
+  ALTER TABLE claude_profiles ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';
+  `,
+
+  // v43: What another provider's session showed but didn't write to its own file (#199): a slash command you ran and
+  // the words it answered, put back into the conversation when it is read. Nothing else has them: keep them.
+  `
+  CREATE TABLE provider_notes (
+    uuid TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    message_json TEXT NOT NULL
+  );
+  CREATE INDEX provider_notes_session ON provider_notes (session_id, at);
+  `,
 ];

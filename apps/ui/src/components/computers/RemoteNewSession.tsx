@@ -1,6 +1,7 @@
 import { FolderDown, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { MODE_DOT } from '../../lib/modes.ts';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -31,7 +32,7 @@ import { ComputerChip } from './ComputerChip.tsx';
 import { SavedPromptMenu, useRemoteSavedPrompts } from './useRemoteSavedPrompts.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { ChipMenu, RemoteEffortChip, RemoteModeChip, RemoteModelChip, RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
-import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice } from './remoteNewSession.ts';
+import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteProviderCreate, remoteTakesEffort, type RemoteChoice } from './remoteNewSession.ts';
 
 /**
  * New session with another computer picked in Run on (docs/remote-access.md, Other computers): that computer's projects
@@ -167,7 +168,29 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const defaults = remoteDefaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: RemoteChoice = { ...defaults, ...changes };
   const change = (next: Partial<RemoteChoice>) => setChanges((current) => ({ ...current, ...next }));
-  const worktree = choice.worktree;
+  // A profile of another provider there (GitHub Copilot) starts it, as on the phone: that computer says whether it can
+  // run now and which models it has, and only the provider's own modes are offered.
+  const provider = remoteProfiles(options).find((p) => p.id === choice.profileId)?.provider ?? null;
+  const providerProfileId = provider ? choice.profileId : null;
+  const [providerReady, setProviderReady] = useState<{ profileId: string; problem: string | null; models: RemoteOptions['models'] } | null>(null);
+  const [providerModel, setProviderModel] = useState<string | null>(null);
+  const [providerMode, setProviderMode] = useState<RemotePermissionMode | null>(null);
+  useEffect(() => {
+    if (!client || !connected || !providerProfileId) return;
+    let current = true;
+    void callComputer(client, computer.id, 'providers.ready', { profileId: providerProfileId }).then(
+      (result) => current && setProviderReady({ profileId: providerProfileId, ...result }),
+      (e: Error) => current && setProviderReady({ profileId: providerProfileId, problem: e.message, models: [] }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, computer.id, connected, providerProfileId]);
+  const providerModels = providerReady && providerReady.profileId === providerProfileId ? providerReady.models : [];
+  const providerBlocked = provider ? (providerReady?.profileId === providerProfileId ? providerReady!.problem : `Checking ${provider.name} on ${name}…`) : null;
+  const providerModeNow = provider ? (providerMode && provider.modes.some((m) => m.value === providerMode) ? providerMode : (provider.modes[0]?.value ?? 'default')) : null;
+  /** Another provider there without worktrees yet starts in the project's folder. */
+  const worktree = choice.worktree && (!provider || provider.supports.includes('worktree'));
 
   // Another project has its own branches; read them again when the window comes back, as they change there too.
   const takesBranch = computer.features.includes(REMOTE_FEATURE_BRANCHES);
@@ -191,7 +214,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
 
   const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
-  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : !prompt.trim() && !fill ? 'Type a message first' : null;
+  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : providerBlocked ? providerBlocked : !prompt.trim() && !fill ? 'Type a message first' : null;
   const start = async () => {
     if (blocked || starting || attachments.reading || !client || (!project && !cloning)) return;
     // A saved prompt with a blank still empty: that blank gets the focus instead.
@@ -223,9 +246,14 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         // Only a computer that takes them gets these: an older one would drop them without a word.
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
-        ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
+        // Another provider takes its own model and mode; Claude Code the choices that differ from the project's defaults.
+        ...(options
+          ? provider
+            ? remoteProviderCreate(provider, { profileId: choice.profileId, model: providerModel, mode: providerModeNow!, worktree, checkoutBranch: fresh ? null : checkoutBranch })
+            : remoteChanges(choice, defaults, baseProfile)
+          : {}),
         ...(inClone ? { worktree: false } : {}),
-        ...(checkoutBranch && !fresh ? { checkoutBranch } : {}),
+        ...(checkoutBranch && !fresh && !provider ? { checkoutBranch } : {}),
       });
       if (fresh) closeClone();
       clearRemoteDraft(draftKey);
@@ -467,11 +495,27 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                         value={choice.profileId}
                         projectProfileId={baseProfile}
                         ownProfile={Boolean(options.projects.find((p) => p.id === project.id)?.profileId)}
-                        onPick={(profileId) => change({ profileId })}
+                        // Another profile, another tool maybe: its model and mode start from its own.
+                        onPick={(profileId) => (change({ profileId }), setProviderModel(null), setProviderMode(null))}
                       />
-                      <RemoteModelChip options={options} value={choice.model} offerAuto={options.auto?.enabled ?? false} onPick={(model) => change({ model })} />
-                      {options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) && <RemoteEffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
-                      <RemoteModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
+                      {provider ? (
+                        <>
+                          <RemoteModelChip options={{ ...options, models: providerModels }} value={providerModel} onPick={setProviderModel} disabled={providerReady?.profileId !== providerProfileId} />
+                          <ChipMenu
+                            label={`Mode: ${provider.modes.find((m) => m.value === providerModeNow)?.label ?? providerModeNow}`}
+                            value={provider.modes.find((m) => m.value === providerModeNow)?.label ?? providerModeNow}
+                            icon={<span aria-hidden className={`size-1.5 shrink-0 rounded-full ${MODE_DOT[providerModeNow!] ?? 'bg-faint'}`} />}
+                            entries={provider.modes.map((m) => ({ label: m.label, detail: m.description, checked: m.value === providerModeNow, onSelect: () => setProviderMode(m.value) }))}
+                            data-remote-provider-mode={providerModeNow}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <RemoteModelChip options={options} value={choice.model} offerAuto={options.auto?.enabled ?? false} onPick={(model) => change({ model })} />
+                          {options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) && <RemoteEffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
+                          <RemoteModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
+                        </>
+                      )}
                     </>
                   )}
                 </div>

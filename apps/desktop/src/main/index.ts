@@ -20,7 +20,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -33,7 +33,7 @@ import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
@@ -509,7 +509,7 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; on?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
@@ -529,6 +529,7 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
   // Always answer: the engine waits for a reply to every trash request.
   try {
     if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
+    if (typeof request.copilotHome === 'string') return await trashCopilotForEngine(request.id, request.paths, request.copilotHome);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -546,6 +547,17 @@ async function trashForEngine(id: number, requested: unknown[], requestedRoot: u
   if (refused.length > 0 || paths.length !== requested.length) {
     const where = repoRoot ? `the repository ${repoRoot}` : "Claude Code's projects folder";
     return { type: 'trash-result', id, error: `Refusing to move files outside ${where}: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves a GitHub Copilot session's folder to the Trash after checking it is one, in the profile's `COPILOT_HOME`. */
+async function trashCopilotForEngine(id: number, requested: unknown[], copilotHome: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableCopilotSession(p, copilotHome));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Copilot's sessions folder: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -2592,6 +2604,240 @@ async function runSettingsSearchStep(win: BrowserWindow): Promise<string> {
  * a line at the bottom. ↓ skips the headers, Pipelines opens its page, search keeps the groups with its results in the
  * menu's order, and a short window scrolls the menu without the bottom block overlapping Connect. Read-only.
  */
+/**
+ * GitHub Copilot from start to use (#199). Settings › Profiles offers Copilot CLI found on this computer; Add Copilot
+ * profile opens Add profile on Copilot, its folder is Copilot's own, and signed in already there is no sign in step:
+ * Copilot is ready, and its Start a Copilot session opens New session on the profile. There a worktree that was on
+ * says it was turned off, and Back puts the Claude profile and the worktree back; the hint's link makes Copilot the
+ * project's profile. Its session in the sidebar has a mark, a box for Copilot and a ⋯ menu of what works for it.
+ * Nothing is sent or started. The demo's Copilot CLI is made up (SESHBOARD_STUB_COPILOT): installed, signed in as
+ * demo-user, with one session in `~/.copilot`. Elsewhere, without Copilot CLI or its login, the step is skipped. The
+ * profile is removed again, which puts the project back on the default profile.
+ */
+async function runProvidersStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const demo = !!process.env.SESHBOARD_SMOKE_DEMO;
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"copilot\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="copilot"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  const skip = async (why: string) => {
+    await js(`[...(${page}?.querySelectorAll('button') ?? [])].find((b) => b.textContent.trim() === 'Cancel')?.click()`);
+    return demo ? why : `ok: skipped, ${why}`;
+  };
+  // Copilot sessions started outside Seshboard follow Claude Code's rule: only with sessions from other apps shown.
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  /** A project added for New session (the throwaway profile has none), removed again at the end. */
+  let addedProject: string | null = null;
+  try {
+    // 1. The offer: Copilot CLI is here, and no profile uses it yet.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return skip('no Copilot CLI found on this computer (no offer in Profiles)');
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/GitHub Copilot CLI is on this (Mac|PC)/.test(offerText)) return `the offer reads ${JSON.stringify(offerText)}`;
+    // 2. Add Copilot profile: Add profile on Copilot, then its own folder.
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="copilot"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Copilot profile did not open Add profile with Copilot picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return skip('Copilot CLI is not installed here (Next stays off)');
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.copilot$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Copilot offers ${String(await js(`${folderField}?.value`))}, not ~/.copilot`;
+    // 3. Signed in there already: no sign in step, and Add profile ends on Copilot is ready.
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-signed-in]')`, 5_000))) return skip("Copilot CLI isn't signed in here (a sign in would open its login)");
+    const submit = (await js(`${page}.querySelector('[data-add-profile-submit]').textContent.trim()`)) as string;
+    if (submit !== 'Add profile') return `signed in, the button reads ${JSON.stringify(submit)}`;
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Copilot is ready')`, 10_000))) return 'adding the profile did not end on Copilot is ready';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (demo && !(await js(`${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user')`))) return "Copilot is ready doesn't say who it is signed in as";
+    await shot(win, 'copilot-ready.png');
+
+    // 4. Start a Copilot session: New session, on the Copilot profile, for this session.
+    await js(`${ready}.querySelector('[data-profile-ready-start]').click()`);
+    const nsv = '[data-new-session-view]';
+    const chip = `document.querySelector('${nsv} [data-profile-select]')`;
+    if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(profileId)}`, 5_000))) return 'Start a Copilot session did not open New session on the Copilot profile';
+    // No project open yet (the throwaway profile has none): one with sessions is added and picked, which keeps the
+    // Copilot profile. It is removed again at the end.
+    const folderOf = `document.querySelector('${nsv} [data-folder-select]')?.dataset.value`;
+    if (!(await js(`!!${folderOf}`))) {
+      await js(`document.querySelector('${nsv} [data-add-folder]')?.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')", 5_000))) return 'New session has no project to add';
+      addedProject = (await js(
+        "(() => { const all = [...document.querySelectorAll('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')].map((e) => e.dataset.knownProject); return all.find((r) => /acme-store$/.test(r)) ?? all[0]; })()",
+      )) as string;
+      await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)}).click()`);
+      if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)})?.dataset.added === 'true'`, 3_000))) return 'the project was not added';
+      pressKey(win, 'Escape');
+      await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000);
+      if (!(await js(`${folderOf} === ${JSON.stringify(addedProject)}`))) {
+        if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)})`, 3_000))) return 'the added project is not offered in New session';
+        await js(`document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)}).click()`);
+      }
+      if (!(await waitInPage(win, `${folderOf} === ${JSON.stringify(addedProject)}`, 5_000))) return 'New session did not pick the added project';
+      if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(profileId)}`, 3_000))) return 'picking a project dropped the Copilot profile';
+    }
+    if (!(await waitInPage(win, `document.querySelector('${nsv} [data-composer]')?.placeholder === 'What should Copilot work on?'`, 5_000))) return `New session with Copilot asks ${JSON.stringify(await js(`document.querySelector('${nsv} [data-composer]')?.placeholder`))}`;
+    if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-chip="effort"]') && !!document.querySelector('${nsv} [data-chip-provider="copilot"]')`, 3_000))) return "New session with the Copilot profile still shows Claude Code's effort, or no Copilot mark";
+    const pick = async (value: string) => {
+      await js(`${chip}?.click()`);
+      const item = `document.querySelector('[data-menu="profile"] [data-choice="${value}"]')`;
+      if (!(await waitInPage(win, item, 3_000))) return false;
+      await js(`${item}.click()`);
+      return waitInPage(win, `${chip}?.dataset.value === '${value}'`, 3_000);
+    };
+    // The profile menu has a header per tool now that profiles use two.
+    await js(`${chip}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-menu="profile"] [data-choice-group="GitHub Copilot"]') && !!document.querySelector('[data-menu="profile"] [data-add-profile-from-menu]')`, 3_000))) return 'the profile menu has no header per tool, or no Add profile…';
+    const claudeProfile = (await js(`[...document.querySelectorAll('[data-menu="profile"] [data-choice]')].map((b) => b.dataset.choice).find((v) => v !== ${JSON.stringify(profileId)}) ?? null`)) as string | null;
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[data-menu="profile"]')`, 2_000);
+    if (!claudeProfile) return 'no Claude Code profile in the menu';
+
+    // 5. A worktree on with Claude Code, then Copilot: it stays on (Seshboard makes Copilot's worktrees too), with no
+    // notice; Claude Code again leaves it as it was.
+    const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
+    if (!(await pick(claudeProfile))) return 'the Claude Code profile could not be picked';
+    let switchChecked = 'no git repository here, so no worktree to keep';
+    if (await waitInPage(win, `${toggle} && !${toggle}.disabled`, 5_000)) {
+      const wasOn = (await js(`${toggle}.getAttribute('aria-checked') === 'true'`)) as boolean;
+      if (!wasOn) await js(`${toggle}.click()`);
+      if (!(await waitInPage(win, `${toggle}.getAttribute('aria-checked') === 'true'`, 2_000))) return 'the worktree switch did not turn on';
+      if (!(await pick(profileId))) return 'the Copilot profile could not be picked again';
+      const notice = `document.querySelector('${nsv} [data-provider-switch-notice]')`;
+      if (!(await waitInPage(win, `${toggle}.getAttribute('aria-checked') === 'true' && !${toggle}.disabled`, 3_000))) return 'switching to Copilot turned the worktree off';
+      // Showing that nothing appears: a moment for a notice that shouldn't come.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (await js(`!!${notice}`)) return `switching to Copilot said it turned something off (${String(await js(`${notice}.textContent`))})`;
+      await shot(win, 'new-session-copilot-switch.png');
+      if (!(await pick(claudeProfile))) return 'the Claude Code profile could not be picked back';
+      if (!wasOn) await js(`${toggle}.click()`);
+      await waitInPage(win, `${toggle}.getAttribute('aria-checked') === ${JSON.stringify(String(wasOn))}`, 2_000);
+      switchChecked = 'the worktree stays on with Copilot';
+    }
+
+    // 6. Copilot for the project from now on, from the hint under the box.
+    if (!(await pick(profileId))) return 'the Copilot profile could not be picked for the project';
+    const link = `document.querySelector('${nsv} [data-use-profile-for-project]')`;
+    if (!(await waitInPage(win, `!!${link}`, 3_000))) return 'no "Use Copilot for … from now on" under the box';
+    const linkText = (await js(`${link}.textContent`)) as string;
+    await js(`${link}.click()`);
+    if (!(await waitInPage(win, `/^From .+'s defaults\\.$/.test(document.querySelector('${nsv} [data-profile-hint]')?.textContent ?? '') && !${link}`, 5_000))) return 'after the link, the hint does not say it comes from the defaults';
+    await js(`${chip}.click()`);
+    const projectOwn = await waitInPage(win, `document.querySelector('[data-menu="profile"] [data-choice=${JSON.stringify(profileId)}]')?.textContent.includes('(project)')`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[data-menu="profile"]')`, 2_000);
+    if (!projectOwn) return "the project's profile did not change to Copilot";
+    // The queue, schedules and triggers start Copilot too: Start's ▾ offers them for a prompt. Nothing is added.
+    const box = `document.querySelector('${nsv} [data-composer]')`;
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Copilot later');
+    if (!(await waitInPage(win, `${box}.value.includes('for Copilot later') && !document.querySelector('${nsv} [data-start-menu]')?.disabled`, 3_000))) return "typing in New session with Copilot didn't make Start's menu usable";
+    await js(`document.querySelector('${nsv} [data-start-menu]').click()`);
+    const laterOffered = await waitInPage(win, `['data-queue-add', 'data-schedule-add', 'data-trigger-add'].every((hook) => { const item = document.querySelector('[role=menu] [' + hook + ']'); return !!item && !item.disabled; })`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[role=menu]')`, 2_000);
+    // The box empty again, as it was: no unsent prompt left for later steps.
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!(await waitInPage(win, `${box}.value === ''`, 2_000))) return `the box didn't empty again (${JSON.stringify(await js(`${box}.value`))})`;
+    if (!laterOffered) return "Start's menu with Copilot doesn't offer Add to queue, Schedule… and Start when…";
+
+    // Its session: a mark in the sidebar, a box for Copilot, and a ⋯ menu of what works for it.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Copilot session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `${view}?.querySelector('[data-composer]')?.placeholder === 'Message GitHub Copilot'`, 10_000))) {
+      return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
+    }
+    if (!(await js(`${view}.querySelector('[data-session-provider="copilot"]')?.textContent.includes('GitHub Copilot')`))) return "the session's status line doesn't start with GitHub Copilot";
+    if (await js(`!!${view}.querySelector('[data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Claude Code's plan usage";
+    if (!(await js(`!!${view}.querySelector('[data-toggle-ask]')`))) return 'a Copilot session has no Ask (Copilot answers it from a fork)';
+    // Its premium requests as a ring on the left of the footer, the details on hover (the demo's 212 of 1,500).
+    const ring = `${view}.querySelector('[data-provider-footer] [data-provider-usage="copilot"]')`;
+    if (!(await waitInPage(win, `(${ring}?.dataset.tooltip ?? '').includes('212 of 1,500 used') && ${ring}.textContent.includes('Premium') && ${ring}.textContent.includes('14%') && ${ring}.getBoundingClientRect().left < ${view}.querySelector('[data-provider-footer]').getBoundingClientRect().left + 40`, 5_000))) {
+      return `the Copilot session's footer has no premium requests ring on its left (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
+    }
+    if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
+    await js(`${view}.querySelector('[data-more-menu]').click()`);
+    const menuOk = await waitInPage(
+      win,
+      "!!document.querySelector('[data-open-provider-cli=\"copilot\"]') && !!document.querySelector('[data-archive-session]') && !!document.querySelector('[role=\"menu\"] [data-rename-session]') && !!document.querySelector('[role=\"menu\"] [data-agents-button]') && !document.querySelector('[data-menu-note]')",
+      3_000,
+    );
+    await shot(win, 'copilot-session-menu.png');
+    pressKey(win, 'Escape');
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Archive, with no Claude Code only line)";
+    // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
+    // picked: the demo's Copilot can't run them.
+    const toolbar = (await js(
+      `(() => { const labels = [...${view}.querySelectorAll('[data-message-actions] button')].map((b) => b.getAttribute('aria-label') ?? ''); return { fork: labels.some((l) => l.startsWith('Fork from here')), rewind: labels.includes('Rewind to before this message') }; })()`,
+    )) as { fork: boolean; rewind: boolean };
+    if (!toolbar.fork || !toolbar.rewind) return `the Copilot transcript has no ${toolbar.fork ? 'Rewind on your message' : 'Fork on its replies'}`;
+    await js(`(() => { const row = document.querySelector('[data-session-id="${id}"]'); const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+    const rowMenu = await waitInPage(win, `(() => { const rename = document.querySelector('[role="menu"] [data-rename-session]'); const remove = document.querySelector('[role="menu"] [data-delete-session]'); return !!rename && !!remove && !rename.disabled && !remove.disabled; })()`, 3_000);
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!document.querySelector('[role="menu"]')`, 2_000);
+    if (!rowMenu) return "the Copilot session's row menu has no Rename… or Delete session… to pick";
+
+    // Usage for the Copilot profile: its premium requests (the demo's 212 of 1,500), not Claude Code's limits.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'the palette did not open for Open usage';
+    await setFieldValue(win, '[data-palette-input]', 'Open usage');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Open usage'))", 3_000))) return 'no Open usage in the palette';
+    pressKey(win, 'Return');
+    if (!(await waitInPage(win, "!!document.querySelector('[data-usage-view]')", 5_000))) return 'Open usage did not open the Usage view';
+    const pickUsageProfile = async (value: string) => {
+      await js("document.querySelector('[data-usage-profile-menu]').click()");
+      if (!(await waitInPage(win, `!!document.querySelector('[data-usage-profile-item=${JSON.stringify(value)}]')`, 3_000))) return false;
+      await js(`document.querySelector('[data-usage-profile-item=${JSON.stringify(value)}]').click()`);
+      return waitInPage(win, `document.querySelector('[data-usage-view]')?.dataset.usageProfile === ${JSON.stringify(value)}`, 3_000);
+    };
+    if (!(await pickUsageProfile(profileId))) return "Usage's profile menu could not pick the Copilot profile";
+    const quotaShown = await waitInPage(win, "(document.querySelector('[data-provider-quota=\"copilot\"]')?.textContent ?? '').includes('212 of 1,500 used') && !document.querySelector('[data-usage-tab]')?.offsetParent", 5_000);
+    const quotaText = (await js("document.querySelector('[data-provider-quota], [data-provider-quota-status]')?.textContent ?? 'nothing'")) as string;
+    await shot(win, 'usage-copilot.png');
+    // Back on a Claude Code profile, so later steps find Usage as it was.
+    if (claudeProfile) await pickUsageProfile(claudeProfile);
+    await js("document.querySelector('[data-usage-back]')?.click()");
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!quotaShown) return `Usage for the Copilot profile doesn't show its premium requests (${quotaText})`;
+    // Home's card for the profile: its premium requests too, never Claude Code's 5-hour and weekly windows.
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+    const homeCard = `document.querySelector('[data-home-profile=${JSON.stringify(profileId)}]')`;
+    const homeOk = await waitInPage(win, `(${homeCard}?.querySelector('[data-provider-usage="copilot"]')?.dataset.tooltip ?? '').includes('212 of 1,500') && !${homeCard}.querySelector('[data-usage-band], [data-usage-status]')`, 5_000);
+    if (homeOk) await shot(win, 'home-copilot-usage.png');
+    if (!homeOk) return `Home's card for the Copilot profile doesn't show its premium requests (${String(await js(`${homeCard}?.textContent ?? 'no card'`))})`;
+    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; Usage shows its premium requests; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
+  } finally {
+    // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
+    // profile again), and the sidebar's scope.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    if (addedProject) await removeProjectInProjects(win, addedProject);
+  }
+}
+
 async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const key = (keyCode: string) => {
@@ -3536,6 +3782,9 @@ async function addSmokeProfile(win: BrowserWindow, name: string, folder: string)
   if (!(await waitInPage(win, "document.querySelector('[data-add-profile]')", 3_000))) return 'no Add profile in Settings';
   const before = (await js("document.querySelectorAll('[data-profiles] [data-profile]').length")) as number;
   await click('[data-add-profile]');
+  // The first screen asks which tool runs its sessions: Claude Code, already picked.
+  if (!(await waitInPage(win, "document.querySelector('[data-new-profile-tool=\"claude\"]')?.getAttribute('aria-checked') === 'true'", 3_000))) return 'Add profile did not open on Claude Code';
+  await click('[data-add-profile-next]');
   if (!(await waitInPage(win, "document.querySelector('[data-new-profile-folder]')", 3_000))) return 'the add profile form did not open';
   await setFieldValue(win, '[data-new-profile-name]', name);
   await setFieldValue(win, '[data-new-profile-folder]', folder);
@@ -3632,6 +3881,9 @@ async function runProfilesStep(win: BrowserWindow): Promise<string> {
   await shot(win, 'profile-guide.png');
   await click('[data-profile-guide-toggle]');
   await click('[data-add-profile]');
+  // The first screen asks which tool runs its sessions: Claude Code, already picked.
+  if (!(await waitInPage(win, "document.querySelector('[data-new-profile-tool=\"claude\"]')?.getAttribute('aria-checked') === 'true'", 3_000))) return 'Add profile did not open on Claude Code';
+  await click('[data-add-profile-next]');
   if (!(await waitInPage(win, "document.querySelector('[data-new-profile-folder]')", 3_000))) return 'the add profile form did not open';
   await setFieldValue(win, '[data-new-profile-name]', 'Smoke work');
   await setFieldValue(win, '[data-new-profile-folder]', folder);
@@ -9912,10 +10164,10 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   // Prefer a session that's working right now: that's the case that used to do nothing.
   const id = (await js(
-    "(() => { const rows = [...document.querySelectorAll('[data-session-id]')]; const busy = rows.find((r) => r.querySelector('[aria-label=\"Claude is working\"]')); return (busy ?? rows[0])?.dataset.sessionId ?? null; })()",
+    "(() => { const rows = [...document.querySelectorAll('[data-session-id]')]; const busy = rows.find((r) => r.querySelector('[aria-label$=\" is working\"]')); return (busy ?? rows[0])?.dataset.sessionId ?? null; })()",
   )) as string | null;
   if (!id) return 'no session to archive';
-  const working = (await js(`!!document.querySelector('[data-session-id="${id}"] [aria-label="Claude is working"]')`)) as boolean;
+  const working = (await js(`!!document.querySelector('[data-session-id="${id}"] [aria-label$=" is working"]')`)) as boolean;
   const menu = async (label: string) => {
     const opened = await js(
       `(() => { const row = document.querySelector('[data-session-id="${id}"]'); if (!row) return false; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); return true; })()`,
@@ -10107,7 +10359,7 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
     const header = document.querySelector('[data-archived-toggle]');
     const top = header ? header.getBoundingClientRect().top : Infinity;
     return [...document.querySelectorAll('[data-session-id]')]
-      .filter((r) => r.getBoundingClientRect().top < top && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)} && r.dataset.indexed === 'true' && !r.querySelector('[aria-label="Claude is working"]'))
+      .filter((r) => r.getBoundingClientRect().top < top && r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)} && r.dataset.indexed === 'true' && !r.querySelector('[aria-label$=" is working"]'))
       .slice(0, 2).map((r) => r.dataset.sessionId);
   })()`)) as string[];
   if (ids.length < 2) return `ok: skipped, only ${ids.length} idle indexed session(s) in the main list`;
@@ -10561,6 +10813,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
+  // After the steps that need New session on no folder: picking the project it adds is remembered.
+  await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
@@ -10582,6 +10836,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, a model picked in Options shows in the accent colour', runPhoneOptionsStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: New session, Start is dim while empty and ready with a task', runPhoneStartStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: New session with a Copilot profile, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
   // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.

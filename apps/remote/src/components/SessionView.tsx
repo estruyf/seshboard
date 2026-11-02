@@ -28,7 +28,7 @@ import { toast } from './Toasts.tsx';
 import { useFinePointer, useMedia } from '../lib/media.ts';
 import { useVisualViewport } from './useVisualViewport.ts';
 import { AttachButton, AttachmentTray, useAttachments } from './Attachments.tsx';
-import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, takesEffort } from '../lib/options.ts';
+import { autoFace, MODE_DOT, MODE_SHORT, modelLabel, PROFILE_DOT, sessionCan, takesEffort } from '../lib/options.ts';
 import { ChangesPanel, panelWasOpen, rememberPanel } from './ChangesPanel.tsx';
 import { AskPanel, AskSheet } from './AskPanel.tsx';
 import { BackgroundTasks } from './BackgroundTasks.tsx';
@@ -189,8 +189,9 @@ export function SessionView({
   // A session running in Seshboard can change its model and mode from here: the chips need the lists.
   const running = session?.permissionMode != null;
   useEffect(() => {
-    if (client && running && !options) void client.call('options.get', {}).then(setOptions, () => {});
-  }, [client, running, options]);
+    // Another provider's session too: what its provider can do there (Ask) is in its profiles.
+    if (client && (running || session?.provider) && !options) void client.call('options.get', {}).then(setOptions, () => {});
+  }, [client, running, options, session?.provider]);
   const profile = session?.profile ?? null;
 
   const turnEnded = status !== 'working';
@@ -283,7 +284,10 @@ export function SessionView({
       throw e;
     }
   };
-  const modelAndMode = running && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
+  // Claude Code's chips: another provider's session (Copilot) has its own models and modes, which the phone doesn't offer.
+  const claudeChips = Boolean(running && options && session && !session.provider);
+  const canAsk = sessionCan(options, session?.provider, 'ask');
+  const modelAndMode = claudeChips && options && session ? `${autoFace(session.auto) ?? modelLabel(options.models, session.model)} · ${MODE_SHORT[session.permissionMode!]}` : null;
   const reply = lastReply(messages);
   const copyReply = () => {
     if (!reply) return;
@@ -297,7 +301,8 @@ export function SessionView({
    * then Archive and the rest. Rename isn't here: the remote contract can't rename a session yet.
    */
   const phoneMenu: MenuItem[] = [
-    { label: ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session', icon: <MessageCircleQuestion aria-hidden />, hint: ask.ready ? 'Ready' : undefined, onSelect: () => openAsk(client, sessionId), hook: 'ask' },
+    // Ask forks the session in its own tool: another provider's when it can (Copilot can, on a recent computer).
+    ...(!canAsk ? [] : [{ label: ask.ready ? 'Ask about this session, an answer is ready' : 'Ask about this session', icon: <MessageCircleQuestion aria-hidden />, hint: ask.ready ? 'Ready' : undefined, onSelect: () => openAsk(client, sessionId), hook: 'ask' } satisfies MenuItem]),
     ...(changes ? [{ label: 'Changes', icon: <FileDiff aria-hidden />, hint: `${files} ${files === 1 ? 'file' : 'files'}`, disabled: files === 0, onSelect: openChanges, hook: 'changes' }] : []),
     { label: 'Copy the last reply', icon: <Copy aria-hidden />, disabled: !reply, onSelect: copyReply, hook: 'copy' },
     { kind: 'separator' },
@@ -343,6 +348,8 @@ export function SessionView({
                 {modelAndMode}
               </span>
             )}
+            {/* Ask forks the session in its own tool: another provider's when it can. */}
+            {canAsk && (
             <Button
               variant="quiet"
               size="md"
@@ -357,6 +364,7 @@ export function SessionView({
               <span>Ask</span>
               {ask.ready && <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-link ring-2 ring-bg" data-remote-ask-ready />}
             </Button>
+            )}
             {(files > 0 || changes) && (
               <Button variant="quiet" size="md" onClick={openChanges} aria-pressed={panelOpen || undefined} aria-label={`Changes, ${files} ${files === 1 ? 'file' : 'files'}`} className={`px-2! ${panelOpen ? 'bg-selected text-text!' : ''}`} data-remote-changes>
                 <FileDiff className="size-4" aria-hidden />
@@ -432,7 +440,7 @@ export function SessionView({
           features={features}
           wide={wide}
           modelMode={
-            running && options && session ? (
+            claudeChips && options && session ? (
               <ModelModeChip
                 options={options}
                 session={session}
@@ -444,7 +452,7 @@ export function SessionView({
             ) : null
           }
           chips={
-            running && options && session ? (
+            claudeChips && options && session ? (
               <>
                 <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
                 {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}

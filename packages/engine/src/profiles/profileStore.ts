@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { BUILTIN_PROFILE_ID, RpcError, type ClaudeProfile, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot } from '@seshboard/protocol';
+import { BUILTIN_PROFILE_ID, RpcError, SESSION_PROVIDERS, type ClaudeProfile, type OptionalProvider, type ProfileColor, type ProfileDefaults, type ProfilesSnapshot, type SessionProvider } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import { parseDefaults } from '../projects/projectRegistry.ts';
 
@@ -16,7 +16,17 @@ interface Row {
   config_dir: string | null;
   sort: number;
   defaults_json: string | null;
+  provider: string;
 }
+
+/** A profile of another provider (GitHub Copilot): its config folder (`COPILOT_HOME`) is the provider's own. */
+export interface ProviderProfile {
+  id: string;
+  provider: OptionalProvider;
+  home: string;
+}
+
+const providerOfRow = (row: Row): SessionProvider => ((SESSION_PROVIDERS as readonly string[]).includes(row.provider) ? (row.provider as SessionProvider) : 'claude');
 
 /** What the engine needs to read and run a profile. */
 export interface ProfileRuntime {
@@ -68,8 +78,9 @@ const COLORS: readonly ProfileColor[] = ['yellow', 'blue', 'green', 'purple', 'r
 const asColor = (value: string): ProfileColor => (COLORS.includes(value as ProfileColor) ? (value as ProfileColor) : 'gray');
 
 /**
- * Claude profiles: the built-in one (Claude Code's own config folder, whatever $CLAUDE_CONFIG_DIR
- * says) plus any folders the user added, and which one is the default for projects without a link.
+ * Profiles: the built-in one (Claude Code's own config folder, whatever $CLAUDE_CONFIG_DIR says) plus any folders the
+ * user added, and which one is the default for projects without a link. A profile is Claude Code's, or another
+ * provider's (GitHub Copilot, with its `COPILOT_HOME`): `runtimes()` is only Claude Code's, `providerProfiles()` the rest.
  */
 export class ProfileStore {
   private readonly statements;
@@ -84,8 +95,8 @@ export class ProfileStore {
     private readonly onChange: (snapshot: ProfilesSnapshot) => void = () => {},
   ) {
     this.statements = {
-      all: db.prepare('SELECT id, name, color, config_dir, sort, defaults_json FROM claude_profiles ORDER BY sort, created_at'),
-      insert: db.prepare('INSERT INTO claude_profiles (id, name, color, config_dir, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
+      all: db.prepare('SELECT id, name, color, config_dir, sort, defaults_json, provider FROM claude_profiles ORDER BY sort, created_at'),
+      insert: db.prepare('INSERT INTO claude_profiles (id, name, color, config_dir, sort, created_at, provider) VALUES (?, ?, ?, ?, ?, ?, ?)'),
       rename: db.prepare('UPDATE claude_profiles SET name = ? WHERE id = ?'),
       recolor: db.prepare('UPDATE claude_profiles SET color = ? WHERE id = ?'),
       setDefaults: db.prepare('UPDATE claude_profiles SET defaults_json = ? WHERE id = ?'),
@@ -98,7 +109,7 @@ export class ProfileStore {
       projectProfile: db.prepare('SELECT profile_id FROM project_settings WHERE root = ?'),
     };
     if (!this.rows().some((r) => r.id === BUILTIN_PROFILE_ID)) {
-      this.statements.insert.run(BUILTIN_PROFILE_ID, 'Personal', 'yellow', null, 0, Date.now());
+      this.statements.insert.run(BUILTIN_PROFILE_ID, 'Personal', 'yellow', null, 0, Date.now(), 'claude');
     }
   }
 
@@ -111,14 +122,30 @@ export class ProfileStore {
     return typeof stored === 'string' && this.rows().some((r) => r.id === stored) ? stored : BUILTIN_PROFILE_ID;
   }
 
-  /** Every profile, the built-in one first unless reordered. */
+  /** Claude Code's profiles, the built-in one first unless reordered: everything that reads or runs Claude Code uses these. */
   runtimes(): ProfileRuntime[] {
-    return this.rows().map((r) => this.runtimeOf(r));
+    return this.rows().filter((r) => providerOfRow(r) === 'claude').map((r) => this.runtimeOf(r));
   }
 
+  /** A Claude Code profile's runtime. Another provider's profile (or none) falls back to the built-in one. */
   runtime(id: string | null | undefined): ProfileRuntime {
-    const row = this.rows().find((r) => r.id === (id ?? this.defaultId())) ?? this.rows().find((r) => r.id === BUILTIN_PROFILE_ID)!;
+    const claude = this.rows().filter((r) => providerOfRow(r) === 'claude');
+    const row = claude.find((r) => r.id === (id ?? this.defaultId())) ?? claude.find((r) => r.id === BUILTIN_PROFILE_ID)!;
     return this.runtimeOf(row);
+  }
+
+  /** Other providers' profiles (GitHub Copilot), with their config folders. */
+  providerProfiles(): ProviderProfile[] {
+    return this.rows().flatMap((r) => {
+      const provider = providerOfRow(r);
+      return provider !== 'claude' && r.config_dir ? [{ id: r.id, provider, home: r.config_dir }] : [];
+    });
+  }
+
+  /** Who runs a profile's sessions: Claude Code, unless it is another provider's profile. */
+  providerOf(id: string | null | undefined): SessionProvider {
+    const row = this.rows().find((r) => r.id === (id ?? this.defaultId()));
+    return row ? providerOfRow(row) : 'claude';
   }
 
   has(id: string): boolean {
@@ -136,15 +163,18 @@ export class ProfileStore {
     const defaultId = this.defaultId();
     const profiles = this.rows().map((row): ClaudeProfile => {
       const { configDir, envDir } = this.runtimeOf(row);
+      const provider = providerOfRow(row);
       return {
         id: row.id,
+        provider,
         name: row.name,
         color: asColor(row.color),
         configDir,
         builtin: row.config_dir === null,
         isDefault: row.id === defaultId,
         exists: existsSync(configDir),
-        account: readAccount(accountFile(envDir)),
+        // Another provider's login is its CLI's own: `providers.status` tells who it is.
+        account: provider === 'claude' ? readAccount(accountFile(envDir)) : null,
         defaults: readProfileDefaults(row.defaults_json),
       };
     });
@@ -153,8 +183,8 @@ export class ProfileStore {
   }
 
   /** Every profile as a settings file records it. */
-  exportEntries(): Array<{ id: string; dir: string | null; name: string; color: ProfileColor; defaults: ProfileDefaults }> {
-    return this.rows().map((r) => ({ id: r.id, dir: r.config_dir, name: r.name, color: asColor(r.color), defaults: readProfileDefaults(r.defaults_json) }));
+  exportEntries(): Array<{ id: string; dir: string | null; name: string; color: ProfileColor; defaults: ProfileDefaults; provider: SessionProvider }> {
+    return this.rows().map((r) => ({ id: r.id, dir: r.config_dir, name: r.name, color: asColor(r.color), defaults: readProfileDefaults(r.defaults_json), provider: providerOfRow(r) }));
   }
 
   /** Every project linked to a profile, with that profile's id. */
@@ -166,7 +196,7 @@ export class ProfileStore {
   idOfDir(dir: string | null): string | null {
     if (dir === null) return this.rows().find((r) => r.config_dir === null)?.id ?? null;
     const wanted = resolve(dir);
-    return this.runtimes().find((p) => p.id !== BUILTIN_PROFILE_ID && resolve(p.configDir) === wanted)?.id ?? null;
+    return this.rows().find((r) => r.config_dir !== null && resolve(r.config_dir) === wanted)?.id ?? null;
   }
 
   /** The `.claude.json` file each profile's login lives in. */
@@ -186,17 +216,17 @@ export class ProfileStore {
     return this.accountsSeen === before ? null : snapshot;
   }
 
-  add(name: string, color: ProfileColor, configDir: string): string {
+  add(name: string, color: ProfileColor, configDir: string, provider: SessionProvider = 'claude'): string {
     const dir = resolve(configDir);
-    const taken = this.runtimes().find((p) => resolve(p.configDir) === dir);
+    const taken = [...this.runtimes().map((p) => p.configDir), ...this.providerProfiles().map((p) => p.home)].find((d) => resolve(d) === dir);
     if (taken) throw new RpcError('DUPLICATE', 'Another profile already uses this folder');
     const stat = statSync(dir, { throwIfNoEntry: false });
     if (stat && !stat.isDirectory()) throw new RpcError('NOT_A_FOLDER', `Not a folder: ${dir}`);
-    // Claude Code creates the rest on first use; the folder must exist to be watched.
+    // Claude Code (or Copilot) creates the rest on first use; the folder must exist to be watched.
     if (!stat) mkdirSync(dir, { recursive: true });
     const id = randomUUID();
     const sort = Math.max(0, ...this.rows().map((r) => r.sort)) + 1;
-    this.statements.insert.run(id, name, color, dir, sort, Date.now());
+    this.statements.insert.run(id, name, color, dir, sort, Date.now(), provider);
     this.changed();
     return id;
   }

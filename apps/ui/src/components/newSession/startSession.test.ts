@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GateOutcome } from '../../state/focusGate.ts';
 import type { Choices } from './choices.ts';
-import { branchBlocked, checkoutBranchFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
+import { branchBlocked, checkoutBranchFor, createParamsFor, sessionCreateParams, shouldPrewarm, startNewSession, type NewSessionStart, type StartDeps } from './startSession.ts';
 
 const CHOICES: Choices = { model: 'opus', permissionMode: 'acceptEdits', effort: 'high', workspace: 'current', baseRef: 'fresh', branch: '' };
 const START: NewSessionStart = { cwd: '/work/app', prompt: 'Fix the login redirect', choices: CHOICES, worktree: false, currentBranch: 'main', profileId: 'default' };
@@ -33,6 +33,18 @@ describe('sessionCreateParams', () => {
       profileId: 'default',
     });
     expect(sessionCreateParams({ ...START, choices: { ...CHOICES, model: '', effort: '' } })).toMatchObject({ model: null, effort: null });
+  });
+
+  it('sends a provider\'s effort only with a model picked (its Auto has none)', () => {
+    expect(createParamsFor({ ...START, profileId: 'copilot', provider: { model: 'gpt-5-mini', effort: 'high' } })).toMatchObject({ model: 'gpt-5-mini', effort: 'high' });
+    expect(createParamsFor({ ...START, profileId: 'copilot', provider: { model: null, effort: 'high' } })).not.toHaveProperty('effort');
+  });
+
+  it('starts a provider profile on its own model and mode, with the same worktree and branch as Claude Code', () => {
+    const params = createParamsFor({ ...START, profileId: 'copilot', worktree: true, worktreeName: 'try-it', provider: { model: 'gpt-5-mini', permissionMode: 'auto' } });
+    expect(params).toMatchObject({ cwd: '/work/app', prompt: 'Fix the login redirect', attachments: [], model: 'gpt-5-mini', permissionMode: 'auto', profileId: 'copilot', worktree: { name: 'try-it' } });
+    expect(params).not.toHaveProperty('effort');
+    expect(createParamsFor({ ...START, profileId: 'copilot', choices: { ...START.choices, branch: 'feature' }, currentBranch: 'main', provider: { model: null } })).toMatchObject({ checkoutBranch: 'feature', model: null });
   });
 
   it('gives a worktree a made-up name unless it was named', () => {

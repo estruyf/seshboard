@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sessionRowLabel, spokenAge, stepRowLabel } from './rowLabel.ts';
+import { agentNameOf, sessionRowLabel, spokenAge, statusLabel, stepRowLabel } from './rowLabel.ts';
 
 const now = new Date(2026, 9, 6, 12, 0).getTime();
 const MINUTE = 60_000;
@@ -51,6 +51,22 @@ describe('pipeline rows', () => {
     );
     expect(stepRowLabel({ title: 'Validate · round 2', parent: 'Add a toggle', meta: 'Opus · read only · working', status: 'running' })).toBe(
       'Validate · round 2, step of Add a toggle, Opus, read only, working, Claude is working',
+    );
+  });
+});
+
+describe('statusLabel', () => {
+  it('names the agent that works in the session', () => {
+    expect(statusLabel('running')).toBe('Claude is working');
+    expect(statusLabel('running', agentNameOf({ provider: 'copilot' }))).toBe('GitHub Copilot is working');
+    expect(statusLabel('running', agentNameOf({ provider: 'claude' }))).toBe('Claude is working');
+    expect(statusLabel('running', agentNameOf(null))).toBe('Claude is working');
+    expect(statusLabel('idle', 'GitHub Copilot')).toBe('Open and ready');
+  });
+
+  it('says it in the row label too', () => {
+    expect(sessionRowLabel({ title: 'Check the issue', project: 'switchboard', status: 'running', pinned: false, archived: false, beside: false, agent: 'GitHub Copilot', updatedAt: now, now })).toBe(
+      'Check the issue, switchboard, GitHub Copilot is working, updated just now',
     );
   });
 });

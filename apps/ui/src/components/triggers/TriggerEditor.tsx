@@ -1,6 +1,6 @@
 import { AlertTriangle, CircleDot, CircleX, Folder, GitBranch, ListTree, MessageSquareDiff, Pencil, SquareTerminal, Zap } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BUILT_IN_PIPELINES, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, notWithYet, pipelineProblem, STATE_LABEL_KEYS, TRIGGER_LIMITS, type ProviderFeature, type StateLabelKey, type TriggerRepoInfo } from '@seshboard/protocol/client';
 import { modelLabel } from '../../lib/autoModel.ts';
 import { basename } from '../../lib/format.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
@@ -8,6 +8,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import {
   firstCheckLine,
@@ -160,6 +161,16 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   }, [project?.defaults, profileDefaults, globalSetting, globalModel]);
   const models = useHosts((s) => s.models);
   const [form, setForm] = useState<TriggerForm>(() => (request.trigger ? triggerForm(request.trigger) : newTriggerForm(request.root, defaults, request.from)));
+  // A profile of another provider (GitHub Copilot) starts it: its models and modes, and none of what it can't do yet.
+  const providerOf = (profile: string) => profiles.find((p) => p.id === profile)?.provider ?? 'claude';
+  const runsWith = providerOf(form.profileId ?? project?.profileId ?? defaultProfile);
+  const runWith = runsWith === 'claude' ? null : runsWith;
+  const runWithInfo = useProvider(runWith);
+  const readiness = useProviderReadiness(runWith ? (form.profileId ?? project?.profileId ?? defaultProfile) : null);
+  const lacks = (feature: ProviderFeature) => runWith !== null && !(runWithInfo?.supports.includes(feature) ?? false);
+  /** The form as it can run: another provider's in the project's folder, as one session, until it has worktrees and pipelines. */
+  const runnable = (f: TriggerForm): TriggerForm => ({ ...f, ...(lacks('worktree') ? { workspace: 'current' as const } : {}), ...(lacks('pipeline') ? { start: 'session' as const } : {}) });
+  const shown = runnable(form);
   const [info, setInfo] = useState<TriggerRepoInfo | null>(() => useTriggers.getState().repoInfo.get(request.root) ?? null);
   const [renaming, setRenaming] = useState(false);
   const [otherAssignee, setOtherAssignee] = useState(() => form.assignee !== '@me');
@@ -194,11 +205,11 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
     return hidden ? [...own, hidden] : own;
   }, [allPipelines, request.root, form.pipelineId]);
   const pipeline = formPipeline(form, pipelines);
-  const startsPipeline = form.start === 'pipeline';
+  const startsPipeline = shown.start === 'pipeline';
   const problem = formProblem(form) ?? (startsPipeline && form.pipelineId ? pipelineProblem(pipeline, request.root) : null);
   const warning = sharedRepoWarning(form, info?.repo ?? null, info?.collaborators ?? null);
   // Sessions in the project's folder run one at a time; a pipeline run makes a worktree of its own.
-  const folder = !startsPipeline && form.workspace === 'current';
+  const folder = !startsPipeline && shown.workspace === 'current';
   const atOnce = folder ? 1 : form.maxAtOnce;
   const unit = (n: number) => (startsPipeline ? (n === 1 ? 'run' : 'runs') : n === 1 ? 'session' : 'sessions');
   const issues = form.kind === 'issues';
@@ -218,7 +229,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
     setSaving(true);
     setError(null);
     try {
-      const saved = await saveTrigger(formToSave(form));
+      const saved = await saveTrigger(formToSave(runnable(form)));
       request.onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -490,12 +501,12 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
               <SegmentedControl
                 mode="radio"
                 label="Starts"
-                value={form.start}
+                value={shown.start}
                 // The first of the project's pipelines, unless one is picked already.
                 onChange={(start) => update({ start, pipelineId: start === 'pipeline' && !pipelines.some((p) => p.id === form.pipelineId) ? (pipelines[0]?.id ?? null) : form.pipelineId })}
                 segments={[
                   { value: 'session', label: 'A session', data: { 'data-trigger-starts': 'session' } },
-                  { value: 'pipeline', label: 'A pipeline', data: { 'data-trigger-starts': 'pipeline' } },
+                  { value: 'pipeline', label: 'A pipeline', disabled: lacks('pipeline'), ...(lacks('pipeline') && runWith ? { tooltip: notWithYet(runWith) } : {}), data: { 'data-trigger-starts': 'pipeline' } },
                 ]}
                 className="w-fit"
               />
@@ -546,8 +557,10 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                 <Select
                   label="Workspace"
                   className={CHIP}
-                  value={form.workspace}
+                  value={shown.workspace}
                   onChange={(workspace) => update({ workspace })}
+                  disabled={lacks('worktree')}
+                  {...(lacks('worktree') && runWith ? { tooltip: notWithYet(runWith) } : {})}
                   options={[
                     { value: 'worktree', label: 'New worktree', icon: <GitBranch size={13} aria-hidden /> },
                     { value: 'current', label: 'Project folder', icon: <Folder size={13} aria-hidden /> },
@@ -557,10 +570,11 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
               )}
               {profiles.length > 1 && (
                 <Select
-                  label="Claude profile"
+                  label="Profile"
                   className={CHIP}
                   value={profileId}
-                  onChange={(value) => update({ profileId: value === (project?.profileId ?? defaultProfile) ? null : value })}
+                  // Another tool has other models and modes: they start from its defaults.
+                  onChange={(value) => update({ profileId: value === (project?.profileId ?? defaultProfile) ? null : value, ...(providerOf(value) !== runsWith ? { model: null, effort: null, permissionMode: 'default' as const } : {}) })}
                   options={profiles.map((p) => ({ value: p.id, label: p.name, icon: <span className={`size-2 rounded-full ${PROFILE_DOT[p.color]}`} /> }))}
                   dataAttrs={{ 'data-trigger-profile': true }}
                 />
@@ -575,7 +589,11 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                     className={CHIP}
                     value={form.model ?? ''}
                     onChange={(value) => update({ model: value || null })}
-                    options={[{ value: '', label: 'Default model' }, ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })), ...(form.model && !models.some((m) => m.value === form.model) ? [{ value: form.model, label: modelLabel(models, form.model) }] : [])]}
+                    options={
+                      runWith
+                        ? [{ value: '', label: 'Default model' }, ...(readiness?.models ?? []).map((m) => ({ value: m.value, label: m.displayName })), ...(form.model && !readiness?.models.some((m) => m.value === form.model) ? [{ value: form.model, label: form.model }] : [])]
+                        : [{ value: '', label: 'Default model' }, ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })), ...(form.model && !models.some((m) => m.value === form.model) ? [{ value: form.model, label: modelLabel(models, form.model) }] : [])]
+                    }
                     dataAttrs={{ 'data-trigger-model': true }}
                   />
                   <Select
@@ -584,7 +602,11 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                     value={form.permissionMode}
                     onChange={(permissionMode) => update({ permissionMode })}
                     // Bypass permissions is left out: a trigger starts work from text other people wrote.
-                    options={MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }))}
+                    options={
+                      runWith
+                        ? (runWithInfo?.modes ?? []).filter((m) => m.value !== 'bypassPermissions').map((m) => ({ value: m.value, label: m.label, icon: <span className={`size-2 rounded-full ${MODE_DOT[m.value] ?? 'bg-faint'}`} /> }))
+                        : MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }))
+                    }
                     dataAttrs={{ 'data-trigger-mode': true }}
                   />
                   {fromProject && <span className="text-meta text-muted">from the project</span>}
