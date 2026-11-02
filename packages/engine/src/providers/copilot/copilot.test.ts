@@ -131,6 +131,31 @@ describe('copilotSessionSource', () => {
     const info = await copilotSessionSource(dir).info(ID);
     expect(info).toMatchObject({ summary: 'Create a test.json file', cwd: '/work/demo', gitBranch: 'main', origin: 'unknown' });
   });
+
+  it('takes the folder from a hook when there is no session.start and no workspace.yaml', async () => {
+    const dir = tempDir();
+    const hook: CopilotEvent = { type: 'hook.start', id: 'h1', timestamp: '2026-06-26T16:10:42.000Z', data: { hookType: 'postToolUse', input: { sessionId: ID, cwd: '/work/demo' } } };
+    writeSession(dir, ID, [hook, ...EVENTS.slice(1)]);
+    const info = await copilotSessionSource(dir).info(ID);
+    expect(info).toMatchObject({ summary: 'Create a test.json file', cwd: '/work/demo' });
+  });
+
+  it('lists a session whose file starts mid-conversation, by your prompt after autopilot\'s empty ones', async () => {
+    const dir = tempDir();
+    const hook: CopilotEvent = { type: 'hook.start', id: 'h1', data: { hookType: 'postToolUse', input: { cwd: '/work/demo' } } };
+    const nudge: CopilotEvent = { type: 'user.message', id: 'u1', timestamp: '2026-06-26T16:10:43.000Z', data: { content: '', transformedContent: 'Keep going', source: 'autopilot' } };
+    const prompt: CopilotEvent = { type: 'user.message', id: 'u2', timestamp: '2026-06-26T16:11:00.000Z', data: { content: 'Pick up the next task' } };
+    writeSession(dir, ID, [hook, nudge, EVENTS[7]!, prompt, EVENTS[7]!]);
+    const info = await copilotSessionSource(dir).info(ID);
+    expect(info).toMatchObject({ summary: 'Pick up the next task', cwd: '/work/demo' });
+    expect(info?.firstPrompt).toBe('Pick up the next task');
+  });
+
+  it('still leaves out a session with only autopilot\'s empty nudges', async () => {
+    const dir = tempDir();
+    writeSession(dir, ID, [{ type: 'user.message', id: 'u1', data: { content: '', source: 'autopilot' } }]);
+    expect(await copilotSessionSource(dir).info(ID)).toBeUndefined();
+  });
 });
 
 describe('providers in the session index', () => {

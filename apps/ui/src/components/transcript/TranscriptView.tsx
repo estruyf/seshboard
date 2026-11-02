@@ -2,7 +2,7 @@ import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -440,7 +440,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return first < 0 ? -1 : renderItems.findIndex((item, index) => index > first && item.kind !== 'user');
   }, [renderItems, autoPick]);
 
-  const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
+  // Last, the host's folder: another provider's session (GitHub Copilot) has no entry in Claude Code's live registry,
+  // and isn't listed until it has a prompt (or is listed under "Unknown folder" when its file doesn't name one), so
+  // without it the session would have no project (and no actions).
+  const projectRoot =
+    [summary?.projectRoot, registryLive?.projectRoot, host ? hostAsLive(host)?.projectRoot : null].find((root) => !!root && isAbsolutePath(root)) ??
+    summary?.projectRoot ??
+    registryLive?.projectRoot ??
+    null;
   const project = useProjects((s) => (projectRoot ? s.projects.get(projectRoot) : undefined));
 
   // The catch-up: a briefing on the last turn, as a banner over the conversation.

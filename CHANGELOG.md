@@ -37,6 +37,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Project actions show up in GitHub Copilot sessions.** A Copilot session that was new, or whose file doesn't name its folder, had no actions above the message box and none in the ⋯ menu. It now takes its project from the folder Copilot runs in.
+- **Long GitHub Copilot sessions can be pinned, archived and renamed again.** A Copilot session whose history starts partway through (after autopilot kept it going) showed as "New session", with Rename, Pin, Archive and Delete greyed out. It now shows with your last prompt as its title, in its project, with every action.
 - **A long session title no longer makes New session scroll sideways.** In **Pick up in**, a title too long for the row is now cut off with an ellipsis instead of widening the view.
 - **Terminal text no longer spreads its letters out.** In a terminal drawn without WebGL, rows drawn while the terminal was hidden could keep an extra space after every letter ("r e a d y  i n  8 5 4  m s"). The terminal now notices and draws them again with normal spacing.
 - **A computer with an old pairing no longer locks your phone out.** A Seshboard on another computer that was paired before this Mac's Remote key changed (the move to Seshboard made a new one) kept trying every minute, and after a few tries Remote turned away everything on that network, your phone too. It is now told to pair again and stops, and paired devices always get in, even while Remote turns a network away. Pairing a new device from that network still waits, or use **Unblock**. Pairing a computer again in **Settings › Other computers** now replaces its old entry instead of adding a second one.

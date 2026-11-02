@@ -57,6 +57,32 @@ const time = (value: string | undefined | null): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+/**
+ * The prompts you wrote, in order: not a subagent's, and not autopilot's nudges to carry on (their `content` is empty;
+ * the nudge is only in `transformedContent`).
+ */
+function promptsIn(events: CopilotEvent[]): string[] {
+  const prompts: string[] = [];
+  for (const event of events) {
+    if (event.type !== 'user.message' || event.data?.parentToolCallId) continue;
+    const text = typeof event.data?.content === 'string' ? userText(event.data.content) : '';
+    if (text) prompts.push(text);
+  }
+  return prompts;
+}
+
+/**
+ * The folder a hook ran in (`hook.start`'s `input.cwd`). A session whose file has no `session.start` and no
+ * `workspace.yaml` (some the Copilot app wrote) still names its folder there; without it the session has no project.
+ */
+function hookCwd(events: CopilotEvent[]): string | undefined {
+  for (const event of events) {
+    const cwd = (event.data?.input as { cwd?: unknown } | undefined)?.cwd;
+    if (event.type === 'hook.start' && typeof cwd === 'string' && cwd) return cwd;
+  }
+  return undefined;
+}
+
 export interface CopilotSourceOptions {
   /**
    * Reads a session's events through Copilot's own API (`sessions.readPersistedEvents`), which doesn't resume it. Null
@@ -100,26 +126,28 @@ export function copilotSessionSource(sessionsDir: string, options: CopilotSource
     const head = eventsIn(readRange(path, 0, Math.min(stat.size, HEAD_BYTES)), false);
     const start = head.find((e) => e.type === 'session.start')?.data ?? {};
     const context = (start.context ?? {}) as Record<string, unknown>;
-    const firstUser = head.find((e) => e.type === 'user.message' && !(e.data as { parentToolCallId?: unknown } | undefined)?.parentToolCallId);
-    const firstPrompt = typeof firstUser?.data?.content === 'string' ? userText(firstUser.data.content) : undefined;
+    const firstPrompt = promptsIn(head)[0];
     const tail = stat.size > TAIL_BYTES ? eventsIn(readRange(path, stat.size - TAIL_BYTES, TAIL_BYTES), true) : head;
     const lastActive = [...tail].reverse().find((e) => ACTIVITY_EVENTS.has(e.type) && time(e.timestamp) !== undefined);
 
     const name = yaml.name?.trim();
     const summary = yaml.summary?.trim();
+    // A file that starts mid-conversation (no session.start, its head only autopilot's empty nudges) still has your
+    // prompts further on: the last one in the tail names it, so it is listed and can be pinned, archived or renamed.
+    const laterPrompt = firstPrompt ? undefined : promptsIn(tail).at(-1);
     // Nothing asked yet (a session just started, or one Copilot opened for itself): it shows up with its first prompt.
-    if (!name && !summary && !firstPrompt) {
+    if (!name && !summary && !firstPrompt && !laterPrompt) {
       cache.delete(sessionId);
       return undefined;
     }
     const result: RawSessionInfo = {
       sessionId,
-      summary: name || summary || firstPrompt || '',
+      summary: name || summary || firstPrompt || laterPrompt || '',
       ...(name && yaml.user_named === 'true' ? { customTitle: name } : {}),
       ...(firstPrompt ? { firstPrompt } : {}),
       lastModified: time(lastActive?.timestamp) ?? time(yaml.updated_at) ?? Math.round(stat.mtimeMs),
       fileSize: stat.size,
-      cwd: yaml.cwd || (typeof context.cwd === 'string' ? context.cwd : undefined),
+      cwd: yaml.cwd || (typeof context.cwd === 'string' ? context.cwd : undefined) || hookCwd(head),
       gitBranch: yaml.branch || (typeof context.branch === 'string' ? context.branch : undefined),
       createdAt: time(yaml.created_at) ?? time(typeof start.startTime === 'string' ? start.startTime : undefined),
       provider: 'copilot',
