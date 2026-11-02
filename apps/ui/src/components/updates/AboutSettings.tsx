@@ -9,7 +9,7 @@ import { Button } from '../ui/Button.tsx';
 import { Radio, RadioGroup } from '../ui/Radio.tsx';
 import { Toggle } from '../ui/Toggle.tsx';
 import { useInstallUpdate } from './useInstallUpdate.tsx';
-import { ClaudeCodeUpdates } from './ClaudeCodeUpdates.tsx';
+import { ClaudeCodeUpdates, ProviderUpdates } from './ClaudeCodeUpdates.tsx';
 
 const CHANNELS: Array<{ value: UpdateChannel; label: string; detail: string }> = [
   { value: 'stable', label: 'Stable', detail: 'Published releases.' },
@@ -152,6 +152,7 @@ export function AboutSettings() {
       </div>
 
       <ClaudeCodeUpdates now={now} />
+      <ProviderUpdates now={now} />
       {dialog}
     </div>
   );

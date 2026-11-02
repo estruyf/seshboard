@@ -243,7 +243,7 @@ export function ProviderModelChip({ provider, models, value, onPick, look }: { p
   );
 }
 
-/** Another provider's modes, in its words (Copilot's Autopilot). */
+/** Another provider's modes, in its words (Copilot's). */
 export function ProviderModeChip({ modes, value, onPick, look }: { modes: NonNullable<RemoteProfile['provider']>['modes']; value: RemotePermissionMode; onPick: (mode: RemotePermissionMode) => void; look?: Look }) {
   return (
     <ChoiceChip<RemotePermissionMode>

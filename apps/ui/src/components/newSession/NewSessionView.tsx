@@ -278,7 +278,7 @@ function LocalNewSession() {
   const runWith: OptionalProvider | null = chosenProvider === 'claude' ? null : chosenProvider;
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? profileId : null);
-  /** The provider's own modes (Copilot's Autopilot), and the one picked: its first until you pick another. */
+  /** The provider's own modes (Copilot's), and the one picked: its first until you pick another. */
   const runWithModes = runWithInfo?.modes ?? [];
   const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
   /** The provider's model, when it takes an effort and its provider has the setting (its Auto never does). */

@@ -1,5 +1,6 @@
 import type { DriverEvents } from '../provider.ts';
 import { claudeTool, CopilotConverter, isHiddenTool, type CopilotEvent } from './copilotEvents.ts';
+import { modelOfChange } from './copilotFusion.ts';
 
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
@@ -50,9 +51,12 @@ export class CopilotLive {
           this.events.usage({ spent: { amount: Math.round(this.spent * 100) / 100, unit: 'premium requests' } });
         }
         break;
-      case 'session.model_change':
-        if (str(data.newModel)) this.events.model(str(data.newModel)!);
+      case 'session.model_change': {
+        // Auto with a Fusion tier is that tier, as the model menu has it.
+        const model = modelOfChange(data);
+        if (model) this.events.model(model);
         break;
+      }
       case 'session.idle':
         this.clear();
         this.events.state('idle');

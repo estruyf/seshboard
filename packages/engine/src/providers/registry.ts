@@ -5,6 +5,9 @@ import type { ProviderAdapter } from './provider.ts';
 import { COPILOT_MODES, type CreateCopilotClient } from './copilot/copilotDriver.ts';
 import { COPILOT_INSTALL, COPILOT_RESUME, copilotProvider } from './copilot/copilotProvider.ts';
 import { copilotHome } from './copilot/copilotSource.ts';
+import { findCopilot } from './copilot/copilotBinary.ts';
+import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpdate.ts';
+import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 
 export interface ProviderOptions {
   env: NodeJS.ProcessEnv;
@@ -12,8 +15,22 @@ export interface ProviderOptions {
   home: string;
   /** The login shell's environment, which providers' CLIs run with (their own config and login are found through it). */
   shellEnv: () => Promise<Record<string, string | undefined>>;
-  /** A fake Copilot SDK and `copilot` (tests). */
-  copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null> };
+  /** A fake Copilot SDK and `copilot` (tests), and what its `copilot version` says (the demo). */
+  copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
+}
+
+/** The update check of a provider's CLI (Settings › About), for a provider with a profile. */
+export function createProviderUpdater(provider: OptionalProvider, { home, shellEnv, copilot = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+  switch (provider) {
+    case 'copilot':
+      return copilotUpdater({
+        ...deps,
+        // Found again on each check: an update can move it, and installing it works without restarting Seshboard.
+        binary: copilot.binary ?? (async () => findCopilot(await shellEnv(), home)),
+        env: async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string')),
+        ...(copilot.version ? { version: copilot.version } : {}),
+      });
+  }
 }
 
 /**

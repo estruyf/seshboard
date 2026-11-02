@@ -9,6 +9,7 @@ import { CopilotLive } from './copilotLive.ts';
 import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
 import { copilotCapabilities, type CopilotMcpServer, type CopilotSkill } from './copilotCapabilities.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
+import { copilotModel, fusionModels, isTierModel, modelOfChange, withFusion, type CopilotAutoTier } from './copilotFusion.ts';
 
 /** The subset of the Copilot SDK's `CopilotSession` the driver uses (tests fake it). */
 export interface CopilotSdkSession {
@@ -39,7 +40,8 @@ export interface CopilotSdkSession {
     /** Its shell commands and agents, the ones running in the background among them. */
     tasks: { list(): Promise<{ tasks: CopilotTask[] }>; cancel(params: { id: string }): Promise<{ cancelled: boolean }> };
   };
-  setModel(model: string, options?: { reasoningEffort?: Effort }): Promise<void>;
+  /** `autoTier`: one of Auto's routing preferences (Fusion), only with `auto`; null goes back to Auto's default. */
+  setModel(model: string, options?: { reasoningEffort?: Effort; autoTier?: string | null }): Promise<void>;
   disconnect(): Promise<void>;
 }
 
@@ -49,6 +51,8 @@ type PermissionAnswer = ReturnType<typeof toCopilotDecision> | { kind: 'user-not
 export interface CopilotSessionOptions {
   workingDirectory: string;
   model?: string;
+  /** One of Auto's routing preferences (Fusion), with `model: 'auto'`. */
+  autoTier?: string;
   reasoningEffort?: Effort;
   streaming: boolean;
   /** Copilot keeps what each turn changed in files, which Rewind restores. */
@@ -75,6 +79,8 @@ export interface CopilotSdkClient {
    */
   readonly rpc?: {
     commands?: { list(): Promise<{ commands: CopilotCommand[] }> };
+    /** The account's models, with Auto's routing preferences (Fusion's tiers) on runtimes that have them. */
+    models?: { list(params: Record<string, never>): Promise<{ auto?: { tiers: CopilotAutoTier[] } }> };
     account?: { getQuota(params: Record<string, never>): Promise<{ quotaSnapshots: Record<string, CopilotQuotaSnapshot | undefined> }> };
     sessions?: {
       fork(params: { sessionId: string; toEventId?: string; name?: string }): Promise<{ sessionId: string }>;
@@ -109,22 +115,24 @@ export type CreateCopilotClient = (options: { cliPath: string; cliArgs?: string[
 type CopilotAgentMode = 'interactive' | 'plan' | 'autopilot';
 
 /**
- * Seshboard's permission modes as Copilot has them. Copilot's own agent modes are interactive, plan and autopilot;
- * accepting edits is Seshboard approving Copilot's file requests itself (`approvesItself`).
+ * Seshboard's permission modes, named as Claude Code's are, mapped to Copilot's agent modes (interactive, plan and
+ * autopilot). Accepting edits, and Auto mode's approving everything (Copilot's autopilot with all permissions), are
+ * Seshboard answering Copilot's requests itself (`approvesItself`).
  */
 export const COPILOT_MODES: ProviderMode[] = [
   { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
   { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
   { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
-  { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
+  { value: 'auto', label: 'Auto mode', description: 'Copilot keeps going until the task is done, without asking' },
 ];
 
 /** Copilot's agent mode for one of Seshboard's. */
 export const agentModeOf = (mode: PermissionMode): CopilotAgentMode => (mode === 'plan' ? 'plan' : mode === 'auto' ? 'autopilot' : 'interactive');
 
-/** Requests Seshboard approves without asking in a mode: file reads and edits in Accept edits and Autopilot. */
+/** Requests Seshboard approves without asking in a mode: file reads and edits in Accept edits, everything in Auto mode. */
 export function approvesItself(mode: PermissionMode, request: Record<string, unknown>): boolean {
-  return (mode === 'acceptEdits' || mode === 'auto') && (request.kind === 'write' || request.kind === 'read');
+  if (mode === 'auto') return true;
+  return mode === 'acceptEdits' && (request.kind === 'write' || request.kind === 'read');
 }
 
 /** The name Copilot records for sessions Seshboard starts (`client_name` in `workspace.yaml`). */
@@ -162,6 +170,13 @@ export interface CopilotDriver extends ProviderDriver {
   renameSession(sessionId: string, cwd: string, title: string): Promise<void>;
   ask: NonNullable<ProviderDriver['ask']>;
 }
+
+/** A session's model in its options: Fusion's tiers are Auto with the tier. */
+const modelOptions = (model: string | null | undefined): Pick<CopilotSessionOptions, 'model' | 'autoTier'> => {
+  if (!model) return {};
+  const { model: id, autoTier } = copilotModel(model);
+  return { model: id, ...(autoTier ? { autoTier } : {}) };
+};
 
 /** Copilot takes names of 1 to 100 characters. */
 const sessionName = (title: string) => title.trim().slice(0, 100);
@@ -225,11 +240,14 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
     },
 
     async models(): Promise<ModelOption[]> {
-      const models = await (await connect()).listModels();
-      return models.map((m) => {
+      const sdk = await connect();
+      // Fusion's tiers come with the model list on newer runtimes; an older one has none, and its models still show.
+      const [models, listed] = await Promise.all([sdk.listModels(), sdk.rpc?.models?.list({}).catch(() => null)]);
+      const options = models.map((m) => {
         const efforts = effortsOf(m.supportedReasoningEfforts);
         return { value: m.id, displayName: m.name, description: '', supportsEffort: m.capabilities?.supports?.reasoningEffort === true, ...(efforts ? { efforts } : {}) };
       });
+      return withFusion(options, fusionModels(listed?.auto?.tiers));
     },
 
     async readEvents(sessionId) {
@@ -276,7 +294,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       try {
         const fork = await sdk.resumeSession(forkId, {
           workingDirectory: cwd,
-          ...(model ? { model } : {}),
+          ...modelOptions(model),
           streaming: true,
           clientName: SESHBOARD_CLIENT,
           // Only tools that read, by the rule of Claude Code's Ask; the rest is denied without asking anyone.
@@ -339,16 +357,17 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       const sdk = await connect();
-      const pending = new Map<string, (answer: PermissionAnswer) => void>();
+      /** Requests waiting for an answer, with what they asked: a mode that asks less answers them. */
+      const pending = new Map<string, { request: Record<string, unknown>; resolve: (answer: PermissionAnswer) => void }>();
       let mode = config.permissionMode;
       /** The model it runs on (null: Copilot's `auto` before it picks one), which an effort change keeps. */
       let model = config.model;
-      // A read-only step: Accept edits and Autopilot don't approve writes by themselves; every other request is asked.
+      // A read-only step: Accept edits and Auto mode approve only reads by themselves; every other request is asked.
       const approves = (request: Record<string, unknown>) => approvesItself(mode, request) && (!config.readOnly || request.kind === 'read');
       const sessionOptions: CopilotSessionOptions = {
         workingDirectory: config.cwd,
-        ...(config.model ? { model: config.model } : {}),
-        ...(config.model && config.effort ? { reasoningEffort: config.effort } : {}),
+        ...modelOptions(config.model),
+        ...(config.model && config.effort && !isTierModel(config.model) ? { reasoningEffort: config.effort } : {}),
         streaming: true,
         clientName: SESHBOARD_CLIENT,
         // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
@@ -359,7 +378,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
             : new Promise<PermissionAnswer>((resolve) => {
                 // The SDK hands the request without its id: one of ours, for the card and the answer.
                 const requestId = typeof request.requestId === 'string' ? request.requestId : `copilot-${randomUUID()}`;
-                pending.set(requestId, resolve);
+                pending.set(requestId, { request, resolve });
                 events.permission(toPermissionRequest(requestId, request));
               }),
       };
@@ -378,13 +397,13 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       const off = session.on((event) => {
         live.handle(event);
         // A command, or Auto picking one: the model shown is the one an effort applies to.
-        if (event.type === 'session.model_change' && typeof event.data?.newModel === 'string') model = event.data.newModel;
+        if (event.type === 'session.model_change') model = modelOfChange(event.data) ?? model;
         // Copilot only says that its tasks changed; a turn's end settles the ones it waited for.
         if (event.type === 'session.background_tasks_changed' || event.type === 'session.idle') refreshTasks();
       });
       /** Answers every open request as nobody being there (a stopped turn, a closed session). */
       const dropAll = () => {
-        for (const [requestId, resolve] of pending) {
+        for (const [requestId, { resolve }] of pending) {
           resolve({ kind: 'user-not-available' });
           events.permissionDone(requestId);
         }
@@ -441,6 +460,13 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         async setMode(next: PermissionMode) {
           if (agentModeOf(next) !== agentModeOf(mode)) await session.rpc.mode.set({ mode: agentModeOf(next) });
           mode = next;
+          // A request asked before the change waits on its card; the new mode answers the ones it approves.
+          for (const [requestId, { request, resolve }] of pending) {
+            if (!approves(request)) continue;
+            pending.delete(requestId);
+            resolve({ kind: 'approve-once' });
+            events.permissionDone(requestId);
+          }
         },
         async interrupt() {
           dropAll();
@@ -448,11 +474,15 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         },
         async setModel(next: string | null) {
           // Copilot's own default is `auto`. The effort goes back to the model's default.
-          await session.setModel(next ?? 'auto');
+          const { model: id, autoTier } = copilotModel(next ?? 'auto');
+          // Leaving a Fusion tier for Auto takes Auto's default routing again; a runtime without tiers is never sent one.
+          const tier = autoTier ? { autoTier } : id === 'auto' && isTierModel(model) ? { autoTier: null } : null;
+          await session.setModel(id, tier ?? undefined);
           model = next;
         },
         async setEffort(effort: Effort | null) {
           if (!model) throw new Error("Copilot's Auto model has no effort setting. Pick a model first.");
+          if (isTierModel(model)) throw new Error('Copilot Fusion picks its own effort. Pick a model to set one.');
           // No effort: the model's own default level, which Copilot doesn't go back to by itself.
           const level = effort ?? effortsOf([(await sdk.listModels()).find((m) => m.id === model)?.defaultReasoningEffort ?? ''])?.[0];
           await session.setModel(model, level ? { reasoningEffort: level } : undefined);
@@ -473,10 +503,10 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
           refreshTasks();
         },
         respond(requestId: string, decision: PermissionDecision) {
-          const resolve = pending.get(requestId);
-          if (!resolve) return;
+          const open = pending.get(requestId);
+          if (!open) return;
           pending.delete(requestId);
-          resolve(toCopilotDecision(decision));
+          open.resolve(toCopilotDecision(decision));
           events.permissionDone(requestId);
           if (decision.behavior === 'deny' && decision.interrupt) void session.abort().catch(() => {});
         },

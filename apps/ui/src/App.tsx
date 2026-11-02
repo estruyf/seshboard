@@ -68,6 +68,7 @@ import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
 import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
 import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
+import { useProviderUpdatesSync } from './state/providerUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
@@ -215,6 +216,7 @@ export function App() {
   useTerminalsSync();
   useUpdatesSync();
   useClaudeUpdateSync();
+  useProviderUpdatesSync();
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();

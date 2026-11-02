@@ -331,7 +331,7 @@ export function runPhoneStartStep(): Promise<string> {
 
 /**
  * New session with a provider profile (#199): picking the demo computer's Copilot profile in Options leaves Copilot's
- * models and modes (Autopilot), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
+ * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
  * project's Claude Code profile. Nothing is started.
  */
 export function runPhoneProviderStep(): Promise<string> {
@@ -353,12 +353,12 @@ export function runPhoneProviderStep(): Promise<string> {
     if (picked) return picked;
     const rows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
     if (rows !== 'profile,model,mode') return `with the Copilot profile, Options has ${rows}`;
-    const mode = await pick('mode', 'Autopilot');
+    const mode = await pick('mode', 'Auto mode');
     if (mode) return mode;
     await js("document.querySelector('[data-remote-sheet-done]').click()");
     if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'Done did not close Options';
     const summary = (await js("document.querySelector('[data-remote-new-options]').getAttribute('aria-label')")) as string;
-    if (!summary.includes('GitHub Copilot') || !summary.includes('Autopilot')) return `the summary reads "${summary}"`;
+    if (!summary.includes('GitHub Copilot') || !summary.includes('Auto mode')) return `the summary reads "${summary}"`;
     if ((await js("document.querySelector('[data-remote-new-prompt]').placeholder")) !== 'What should GitHub Copilot do?') return 'the box still asks Claude';
     await js(TYPE('Add a health check'));
     if (!(await waitInPage(win, "document.querySelector('[data-remote-start]').dataset.remoteStartState === 'ready'", 5_000))) return 'Start did not get ready with Copilot and a task';

@@ -7,7 +7,7 @@ export * from './providerConstants.ts';
 export const SessionProviderSchema = z.enum(SESSION_PROVIDERS);
 export const OptionalProviderSchema = z.enum(OPTIONAL_PROVIDERS);
 
-/** One of Seshboard's permission modes as a provider has it, in its words ("Autopilot" for Copilot's `auto`). */
+/** One of Seshboard's permission modes as a provider has it: its label, and what it does there, in the provider's words. */
 export const ProviderMode = z.object({ value: PermissionMode, label: z.string(), description: z.string() });
 export type ProviderMode = z.infer<typeof ProviderMode>;
 

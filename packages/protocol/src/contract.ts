@@ -46,8 +46,8 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
-import { ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
-import { ClaudeUpdateState } from './claudeUpdate.ts';
+import { OptionalProviderSchema, ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
+import { ClaudeUpdateState, ProviderUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
 import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
@@ -1456,6 +1456,15 @@ export const contract = {
     'claudeUpdate.dismiss': { params: z.object({}), result: z.object({}) },
     /** Turns automatic checks on or off (remembered). */
     'claudeUpdate.setEnabled': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+
+    // --- Other providers' CLI updates (GitHub Copilot CLI): as Claude Code's, one per provider with a profile ---------
+    'providerUpdate.list': { params: z.object({}), result: z.object({ updates: z.array(ProviderUpdateState) }) },
+    /** Asks the provider's CLI whether a newer version is out. The result arrives through `providerUpdate.changed`. */
+    'providerUpdate.check': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    /** Runs its update command (NOT_FOUND without a profile of it; UNSUPPORTED and BUSY as for Claude Code). */
+    'providerUpdate.update': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    'providerUpdate.dismiss': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    'providerUpdate.setEnabled': { params: z.object({ provider: OptionalProviderSchema, enabled: z.boolean() }), result: z.object({}) },
     /** What the mods of every running session show now (`mods.*` events follow). */
     'mods.snapshot': { params: z.object({}), result: z.object({ sessions: z.array(ModsSnapshot) }) },
     /**
@@ -1514,6 +1523,8 @@ export const contract = {
     /** Full list whenever terminals start, exit or close. */
     'terminals.changed': z.object({ terminals: z.array(TerminalInfo) }),
     'claudeUpdate.changed': ClaudeUpdateState,
+    /** Every provider check, whenever one changes or a provider's first profile is added or its last removed. */
+    'providerUpdate.changed': z.object({ updates: z.array(ProviderUpdateState) }),
     /** Worktree sizes measured in the background (`worktrees.size`), as they finish. */
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */

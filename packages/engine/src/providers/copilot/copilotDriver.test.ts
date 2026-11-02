@@ -7,6 +7,7 @@ import { copilotCandidates, npmCopilot, parseCopilotVersion } from './copilotBin
 import { copilotDriver, premiumQuota, SESHBOARD_CLIENT, type CopilotSdkClient, type CopilotSdkSession, type CopilotSessionOptions, type CreateCopilotClient } from './copilotDriver.ts';
 import type { CopilotTask } from './copilotActions.ts';
 import type { CopilotEvent } from './copilotEvents.ts';
+import type { CopilotAutoTier } from './copilotFusion.ts';
 import { commandList, commandOutcome, parseCommand } from './copilotCommands.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
 
@@ -20,7 +21,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
     on: (h) => ((handler = h), () => (handler = undefined)),
     send: async ({ prompt, attachments }) => (calls.push(`send:${prompt}:${attachments?.length ?? 0}`), 'm1'),
     abort: async () => void calls.push('abort'),
-    setModel: async (model, o) => void calls.push(`model:${model}${o?.reasoningEffort ? `:${o.reasoningEffort}` : ''}`),
+    setModel: async (model, o) => void calls.push(`model:${model}${o?.reasoningEffort ? `:${o.reasoningEffort}` : ''}${o && 'autoTier' in o ? `:tier=${o.autoTier}` : ''}`),
     disconnect: async () => void calls.push('disconnect'),
     rpc: {
       mode: { set: async ({ mode }) => void calls.push(`mode:${mode}`) },
@@ -55,6 +56,8 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
   const tasks: { list: CopilotTask[] } = { list: [] };
   const pages: Array<{ events: CopilotEvent[]; cursor: string; hasMore: boolean; cursorStatus: string }> = [];
   const reads: Array<string | undefined> = [];
+  /** Auto's routing preferences the runtime lists (none: a runtime without them). */
+  const auto: { tiers?: CopilotAutoTier[] } = {};
   const client: CopilotSdkClient = {
     start: async () => void calls.push('start'),
     stop: async () => void calls.push('stop'),
@@ -64,6 +67,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
     resumeSession: async (id, o) => ((options = o), calls.push(`resume:${id}`), session),
     deleteSession: async (id) => void calls.push(`delete:${id}`),
     rpc: {
+      models: { list: async () => (auto.tiers ? { auto: { tiers: auto.tiers } } : {}) },
       sessions: {
         fork: async ({ sessionId, toEventId }) => (calls.push(`fork:${sessionId}:${toEventId ?? '-'}`), { sessionId: 'f0' }),
         readPersistedEvents: async ({ cursor }) => (reads.push(cursor), pages.shift()!),
@@ -73,7 +77,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
   };
   const created: Array<{ cliPath: string }> = [];
   const createClient: CreateCopilotClient = async (o) => (created.push(o), client);
-  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options!, rewind, tasks, pages, reads };
+  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options!, rewind, tasks, pages, reads, auto };
 }
 
 function recorder() {
@@ -177,10 +181,15 @@ describe('copilotDriver', () => {
     expect(sdk.calls).toContain('mode:interactive');
     // Accept edits: a file write is approved without a card; a command still asks.
     await expect(sdk.options().onPermissionRequest({ kind: 'write', fileName: '/w/a.ts' }, { sessionId: 's' })).resolves.toEqual({ kind: 'approve-once' });
-    void sdk.options().onPermissionRequest({ kind: 'shell', fullCommandText: 'rm -rf x' }, { sessionId: 's' });
+    const waiting = sdk.options().onPermissionRequest({ requestId: 'p3', kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' });
     expect(log.permissions.map((p) => p.toolName)).toEqual(['Bash']);
+    // Auto mode is Copilot's autopilot with all permissions: the command already waiting runs, and so does the next one.
     await session.setMode('auto');
     expect(sdk.calls).toContain('mode:autopilot');
+    await expect(waiting).resolves.toEqual({ kind: 'approve-once' });
+    expect(log.done).toEqual(['p3']);
+    await expect(sdk.options().onPermissionRequest({ kind: 'shell', fullCommandText: 'npm test' }, { sessionId: 's' })).resolves.toEqual({ kind: 'approve-once' });
+    expect(log.permissions).toHaveLength(1);
     await session.send('Steer', [], true);
     expect(sdk.calls).toContain('send:Steer:0');
 
@@ -189,6 +198,53 @@ describe('copilotDriver', () => {
     sdk.emit({ type: 'assistant.usage', data: { cost: 0.33 } });
     expect(log.usage).toEqual([{ contextTokens: 13_289, contextMax: 128_000 }, { spent: { amount: 0.33, unit: 'premium requests' } }, { spent: { amount: 0.66, unit: 'premium requests' } }]);
     expect(driver.modes.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
+  });
+
+  it('offers Fusion tiers after Auto, starts and switches to them as Auto with the tier, and reports them back', async () => {
+    const sdk = fakeSdk();
+    const tier = (id: string, displayName: string, more: Partial<CopilotAutoTier> = {}): CopilotAutoTier => ({ id, displayName, description: `${displayName} routing`, type: 'fusion', status: { enabled: true }, ...more });
+    sdk.auto.tiers = [tier('fusion-standard', 'Fusion Standard'), tier('fusion-max', 'Fusion Max'), tier('balance', 'Balance', { type: 'auto' }), tier('fusion-high', 'Fusion High', { status: { enabled: false } })];
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    expect((await driver.models()).map((m) => [m.value, m.displayName, m.supportsEffort])).toEqual([
+      ['auto:fusion-standard', 'Fusion Standard', false],
+      ['auto:fusion-max', 'Fusion Max', false],
+      ['gpt-5-mini', 'GPT-5 mini', true],
+    ]);
+
+    const { log, events } = recorder();
+    const session = await driver.start({ cwd: '/w', model: 'auto:fusion-max', effort: 'high', permissionMode: 'default' }, events);
+    // Fusion picks its own effort: none goes with it.
+    expect(sdk.options()).toMatchObject({ model: 'auto', autoTier: 'fusion-max' });
+    expect(sdk.options().reasoningEffort).toBeUndefined();
+    sdk.emit({ type: 'session.model_change', data: { newModel: 'auto', autoTier: 'fusion-max' } });
+    expect(log.models).toEqual(['auto:fusion-max']);
+    await expect(session.setEffort!('low')).rejects.toThrow(/Fusion picks its own effort/);
+
+    await session.setModel('auto:fusion-standard');
+    // Back to Copilot's default: Auto's own routing again.
+    await session.setModel(null);
+    await session.setModel('gpt-5-mini');
+    expect(sdk.calls.filter((c) => c.startsWith('model:'))).toEqual(['model:auto:tier=fusion-standard', 'model:auto:tier=null', 'model:gpt-5-mini']);
+  });
+
+  it('leaves Auto alone on a runtime without Fusion', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    expect((await driver.models()).map((m) => m.value)).toEqual(['gpt-5-mini']);
+    const session = await driver.start({ cwd: '/w', model: 'gpt-5-mini', permissionMode: 'default' }, recorder().events);
+    await session.setModel(null);
+    expect(sdk.calls).toContain('model:auto');
+  });
+
+  it('approves only reads by itself in a read-only step, even in Auto mode', async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    const { log, events } = recorder();
+    await driver.start({ cwd: '/w', model: null, permissionMode: 'auto', readOnly: true }, events);
+    await expect(sdk.options().onPermissionRequest({ kind: 'read', path: '/w/a.ts' }, { sessionId: 's' })).resolves.toEqual({ kind: 'approve-once' });
+    void sdk.options().onPermissionRequest({ kind: 'shell', fullCommandText: 'rm -rf x' }, { sessionId: 's' });
+    void sdk.options().onPermissionRequest({ kind: 'write', fileName: '/w/a.ts' }, { sessionId: 's' });
+    expect(log.permissions.map((p) => p.toolName)).toEqual(['Bash', 'Edit']);
   });
 });
 

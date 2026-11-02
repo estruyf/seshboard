@@ -211,7 +211,7 @@ export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
-/** A provider's own mode for one of Seshboard's (Copilot's Autopilot for `auto`). */
+/** A provider's own mode for one of Seshboard's (Copilot's, described in its words). */
 export const RemoteProviderMode = z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() });
 
 /**

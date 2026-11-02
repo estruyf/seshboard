@@ -41,7 +41,7 @@ export interface ComposerChipRowProps {
    */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
   /**
-   * The permission mode. `choices`: the modes another provider has, in its words (Copilot's Autopilot); without them,
+   * The permission mode. `choices`: the modes another provider has, in its words (Copilot's); without them,
    * Claude Code's. Null when there is no mode to pick.
    */
   mode: { value: PermissionMode; onChange(mode: PermissionMode): void; choices?: readonly ProviderMode[] } | null;

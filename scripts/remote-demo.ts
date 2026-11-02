@@ -679,7 +679,7 @@ const hub: RemoteHub = new RemoteHub({
             { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
             { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
             { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
-            { value: 'auto', label: 'Autopilot', description: 'Copilot keeps going until the task is done; edits apply, commands still ask' },
+            { value: 'auto', label: 'Auto mode', description: 'Copilot keeps going until the task is done, without asking' },
           ],
           supports: [],
         }

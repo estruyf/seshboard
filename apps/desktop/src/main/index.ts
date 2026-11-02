@@ -3033,7 +3033,21 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     const homeOk = await waitInPage(win, `(${homeCard}?.querySelector('[data-provider-usage="copilot"]')?.dataset.tooltip ?? '').includes('212 of 1,500') && !${homeCard}.querySelector('[data-usage-band], [data-usage-status]')`, 5_000);
     if (homeOk) await shot(win, 'home-copilot-usage.png');
     if (!homeOk) return `Home's card for the Copilot profile doesn't show its premium requests (${String(await js(`${homeCard}?.textContent ?? 'no card'`))})`;
-    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; Usage shows its premium requests; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row`;
+    // Settings › About checks Copilot CLI too, while a Copilot profile exists. The demo's says it is up to date; a real
+    // one asks GitHub (`copilot version`, which downloads nothing). Update is never clicked, and refused in smoke runs.
+    if (!(await openPage('about'))) return 'no About page in Settings';
+    const copilotUpdates = "document.querySelector('[data-settings-page=\"about\"] [data-copilot-updates]')";
+    if (!(await waitInPage(win, `!!${copilotUpdates}`, 3_000))) return 'Settings › About has no GitHub Copilot CLI section with a Copilot profile';
+    await js(`${copilotUpdates}.querySelector('[data-copilot-update-check]')?.click()`);
+    const finished = demo ? "['up-to-date']" : "['up-to-date', 'available', 'error']";
+    if (!(await waitInPage(win, `${finished}.includes(${copilotUpdates}?.dataset.copilotUpdateStatus) && !!${copilotUpdates}.querySelector('[data-copilot-installed-version]')?.dataset.copilotInstalledVersion`, 35_000))) {
+      return `the GitHub Copilot CLI check did not finish (${String(await js(`${copilotUpdates}?.dataset.copilotUpdateStatus`))}: ${String(await js(`${copilotUpdates}?.querySelector('[data-copilot-update-text]')?.textContent`))})`;
+    }
+    const copilotCheck = String(await js(`${copilotUpdates}.querySelector('[data-copilot-update-text]').textContent`));
+    await js(`${copilotUpdates}.scrollIntoView({ block: 'center' })`);
+    await shot(win, 'about-copilot.png');
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    return `ok: offered, added in two screens without a sign in, Copilot is ready, Start opened New session on it; ${switchChecked}; ${JSON.stringify(linkText)} made it the project's; Add to queue, Schedule… and Start when… offered; Usage shows its premium requests; its session has Copilot's ⋯ menu with Rename, Fork and Rewind on its messages, and Rename… and Delete… on its row; About: ${JSON.stringify(copilotCheck)}`;
   } finally {
     // Back as it was: the Copilot profile removed (its folder and sessions stay on disk; the project is on the default
     // profile again), and the sidebar's scope.

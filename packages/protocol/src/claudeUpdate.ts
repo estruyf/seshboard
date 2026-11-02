@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
 
 /** How the `claude` binary was installed, which decides how to update it. */
 export const ClaudeInstallMethod = z.enum(['native', 'homebrew', 'npm', 'local', 'winget', 'unknown']);
@@ -46,3 +47,15 @@ export const ClaudeUpdateState = z.object({
   updatedTo: z.string().nullable(),
 });
 export type ClaudeUpdateState = z.infer<typeof ClaudeUpdateState>;
+
+/**
+ * Another provider's CLI (GitHub Copilot CLI), checked like Claude Code: one for each provider with a profile. The
+ * same state, with whose it is. `channel` is null when the CLI keeps its own (Copilot's stable or prerelease).
+ */
+export const ProviderUpdateState = ClaudeUpdateState.extend({
+  provider: z.enum(OPTIONAL_PROVIDERS),
+  /** The CLI's name, as Settings › About shows it. */
+  name: z.string(),
+  channel: z.string().nullable(),
+});
+export type ProviderUpdateState = z.infer<typeof ProviderUpdateState>;

@@ -155,7 +155,7 @@ import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
-import { createProvider, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
+import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
@@ -163,6 +163,7 @@ import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
 import { findClaude } from './system/claudeBinary.ts';
 import { ClaudeUpdater, type ClaudeUpdaterOptions } from './system/claudeUpdater.ts';
+import { ProviderUpdates } from './providers/providerUpdates.ts';
 import { normaliseMessage } from './claude/transcript.ts';
 import { SessionIndex } from './sessions/sessionIndex.ts';
 import { exportSettings, planImport, readSettingsFile, writeBackup, writeSettingsFile, type SettingsStores } from './settings/settingsTransfer.ts';
@@ -228,6 +229,7 @@ export interface EngineOptions {
    * The Claude Code update check. `automatic: false` skips the checks after launch (tests);
    * `allowUpdate: false` refuses to run an update command (the smoke test).
    */
+  /** Claude Code's update check, and the providers' CLIs' (`automatic`, `allowUpdate` and `run` apply to both). */
   claudeUpdates?: Pick<ClaudeUpdaterOptions, 'registryUrl' | 'allowUpdate' | 'run'> & { automatic?: boolean };
   /**
    * Listens for the VS Code companion on a Unix socket and writes where to `<dataDir>/companion/engine.json`. Off
@@ -474,6 +476,8 @@ export function createEngine(options: EngineOptions): Engine {
   const shell = new ShellEnvironment(appState, options.shellEnv ? () => options.shellEnv! : undefined);
   // One Claude Code login per config folder. Profiles can be added and removed at runtime, so
   // everything per profile (sources, live registries, usage) is looked up through `profiles`.
+  /** The providers' CLI update checks, made once the providers are (a profile change before then has nothing to sync). */
+  let providerUpdates: ProviderUpdates | null = null;
   const profiles = new ProfileStore(cache.db, appState, { configDir: claudeConfigDir, fromEnv: configDirFromEnv }, (snapshot) => {
     broadcast('profiles.changed', snapshot);
     profilesChanged();
@@ -736,6 +740,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Profiles were added or removed: read their folders (or stop reading them). */
   function profilesChanged() {
+    providerUpdates?.sync();
     syncRegistries(watching);
     if (watching) accounts.sync();
     broadcast('sessions.live', { live: liveList() });
@@ -796,6 +801,23 @@ export function createEngine(options: EngineOptions): Engine {
     ...options.claudeUpdates,
   });
   if (options.claudeUpdates?.automatic !== false) claudeUpdater.start();
+  // The CLIs of other providers with a profile (GitHub Copilot CLI), checked as Claude Code is.
+  const providerChecks = new ProviderUpdates({
+    providers: () => [...new Set(profiles.providerProfiles().map((p) => p.provider))],
+    create: (provider, onChange) =>
+      createProviderUpdater(provider, providerOptions, {
+        store: appState,
+        ready: shell.ready,
+        onChange,
+        log,
+        ...(options.claudeUpdates?.allowUpdate !== undefined ? { allowUpdate: options.claudeUpdates.allowUpdate } : {}),
+        ...(options.claudeUpdates?.run ? { run: options.claudeUpdates.run } : {}),
+      }),
+    automatic: options.claudeUpdates?.automatic !== false,
+    onChange: (updates) => broadcast('providerUpdate.changed', { updates }),
+  });
+  providerUpdates = providerChecks;
+  providerChecks.sync();
   const files = new FileIndex();
 
   const sdk = options.sdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
@@ -4177,6 +4199,27 @@ export function createEngine(options: EngineOptions): Engine {
       claudeUpdater.setEnabled(enabled);
       return {};
     },
+    'providerUpdate.list': () => ({ updates: providerChecks.list() }),
+    'providerUpdate.check': ({ provider }) => {
+      void providerChecks.get(provider).check();
+      return {};
+    },
+    'providerUpdate.update': ({ provider }) => {
+      // As Claude Code's: a refusal answers the request, the update reports through providerUpdate.changed.
+      providerChecks
+        .get(provider)
+        .update()
+        .catch((error: Error) => log('error', `${provider} update failed: ${error.message}`));
+      return {};
+    },
+    'providerUpdate.dismiss': ({ provider }) => {
+      providerChecks.get(provider).dismiss();
+      return {};
+    },
+    'providerUpdate.setEnabled': ({ provider, enabled }) => {
+      providerChecks.get(provider).setEnabled(enabled);
+      return {};
+    },
     'terminal.restart': async ({ id }) => {
       // An action is looked up again: it may have been edited, deleted or lost its approval since.
       const run = actionRuns.get(id);
@@ -4315,6 +4358,7 @@ export function createEngine(options: EngineOptions): Engine {
       insights.close();
       checksWatcher.close();
       claudeUpdater.close();
+      providerChecks.close();
       terminals.closeAll();
       clearTimeout(searchTimer);
       sessions.stop();
