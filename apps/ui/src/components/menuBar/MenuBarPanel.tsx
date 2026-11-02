@@ -62,6 +62,11 @@ export function MenuBarPanel() {
   const boxRef = useRef<HTMLTextAreaElement>(null);
   /** What is open inside and wants Esc first (the project list, the pause choices): Esc closes those before the panel. */
   const innerEscape = useRef(new Set<() => void>());
+  /**
+   * Whether the keys are in use: the focused row is highlighted only then, so it never shows next to the row under the
+   * pointer. On while the panel opens (focus is on the first row for ↩), off once the pointer moves, on again with a key.
+   */
+  const [keys, setKeys] = useState(true);
 
   // The window fits what it shows (main keeps it under 70% of the screen; past that, this scrolls).
   useLayoutEffect(() => {
@@ -82,7 +87,10 @@ export function MenuBarPanel() {
   const rowCount = rows.length;
   useEffect(() => {
     focusStart();
-    return bridge()?.onMenuBarShown(() => requestAnimationFrame(focusStart));
+    return bridge()?.onMenuBarShown(() => {
+      setKeys(true);
+      requestAnimationFrame(focusStart);
+    });
     // Once, and again each time the icon opens the panel: never while you are using it.
   }, []);
   // The first rows can arrive after the panel opened: focus moves to them unless you already went somewhere.
@@ -100,8 +108,10 @@ export function MenuBarPanel() {
       bridge()?.menuBarCommand('close');
       return;
     }
+    if (event.key === 'Tab') setKeys(true);
     const target = event.target as HTMLElement;
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+    setKeys(true);
     // ↑ and ↓ move through the rows; in the box and the lists they stay theirs.
     if (!target.matches('[data-menubar-row]')) return;
     const all = [...(rootRef.current?.querySelectorAll<HTMLElement>('[data-menubar-row]') ?? [])];
@@ -113,7 +123,16 @@ export function MenuBarPanel() {
   };
 
   return (
-    <div ref={rootRef} role="dialog" aria-label="Seshboard" className="h-full overflow-y-auto bg-bg text-text" onKeyDown={onKeyDown} data-menubar-panel>
+    <div
+      ref={rootRef}
+      role="dialog"
+      aria-label="Seshboard"
+      className="h-full overflow-y-auto bg-bg text-text"
+      onKeyDown={onKeyDown}
+      onPointerMove={() => keys && setKeys(false)}
+      data-menubar-panel
+      data-menubar-keys={keys || undefined}
+    >
       <div ref={contentRef} className="grid gap-1 p-2.5">
         <Header />
         {rows.length === 0 ? (
@@ -180,8 +199,13 @@ function Row({ row, client }: { row: MenuBarRow; client: ReturnType<typeof useCl
   // The same call as the permission card's Allow, and the session's own Stop.
   const allow = () => run(() => client!.call('session.respond', { requestId: row.request!.requestId, decision: { behavior: 'allow', always: false } }));
   const stop = () => run(() => client!.call('session.interrupt', { sessionId: row.id }));
+  // The row lights up under the pointer only over the part that opens it, so Allow, Open and Stop show their own hover;
+  // with the keys, while its row has focus.
   return (
-    <div className="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-border/45 has-[[data-menubar-row]:focus-visible]:bg-border/45" data-menubar-session={row.id}>
+    <div
+      className="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 has-[[data-menubar-row]:hover]:bg-border/45 in-data-menubar-keys:has-[[data-menubar-row]:focus]:bg-border/45"
+      data-menubar-session={row.id}
+    >
       <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 text-left outline-none" onClick={() => openSession(row.id)} data-menubar-row aria-label={`${row.title}: ${row.detail}`}>
         <ProjectIcon project={projects.get(row.projectRoot)} root={row.projectRoot} size={18} />
         <span className="grid min-w-0 flex-1 gap-px">
@@ -203,9 +227,9 @@ function Row({ row, client }: { row: MenuBarRow; client: ReturnType<typeof useCl
       )}
       {row.section === 'working' && (
         <>
-          <span className="shrink-0 text-meta text-faint tabular-nums group-hover:hidden group-focus-within:hidden">{row.age}</span>
-          {/* Stop shows on hover (and with focus in the row), in place of the age. */}
-          <span className="hidden group-hover:flex group-focus-within:flex">
+          <span className="shrink-0 text-meta text-faint tabular-nums group-hover:hidden in-data-menubar-keys:group-focus-within:hidden">{row.age}</span>
+          {/* Stop shows on hover (and with the keys, with focus in the row), in place of the age. */}
+          <span className="hidden group-hover:flex in-data-menubar-keys:group-focus-within:flex">
             <Button size="sm" iconOnly icon={<Square size={11} aria-hidden />} onClick={stop} disabled={!client || busy} aria-busy={busy} aria-label={`Stop ${row.title}`} data-tooltip="Stop" data-menubar-stop={row.id} />
           </span>
         </>
