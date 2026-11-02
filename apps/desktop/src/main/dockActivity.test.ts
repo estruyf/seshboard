@@ -1,11 +1,21 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { FREE_JACK_CELLS, WORKING_ROUND_MS, WORKING_STILL_LEVEL } from '@seshboard/protocol/working-panel';
 import { cableHeads, DockActivity, FRAME_COUNT, FRAME_MS, FREE_JACKS, JACK_STEPS, jackLevels, paintFrame, STILL_LEVELS, type DockActivityHost } from './dockActivity.ts';
 
 /** A plain dark tile, opaque, as BGRA. */
 const tile = (size: number) => Buffer.alloc(size * size * 4, 0).fill(Buffer.from([0x10, 0x10, 0x10, 0xff]));
 const pixel = (bitmap: Buffer, size: number, x: number, y: number) => [...bitmap.subarray((y * size + x) * 4, (y * size + x) * 4 + 4)];
 const centre = (i: number, size: number) => [Math.round(FREE_JACKS[i]!.x * size), Math.round(FREE_JACKS[i]!.y * size)] as const;
+
+describe('shared with the working mark', () => {
+  it('takes the order, the round and the still frame from @seshboard/protocol/working-panel', () => {
+    // The icon's jacks sit 200px apart on the 1024px canvas, the first at 312.
+    expect(FREE_JACKS.map((jack) => [Math.round(jack.x * 1024), Math.round(jack.y * 1024)])).toEqual(FREE_JACK_CELLS.map((cell) => [312 + (cell % 3) * 200, 312 + Math.floor(cell / 3) * 200]));
+    expect(FRAME_MS * FRAME_COUNT).toBe(WORKING_ROUND_MS);
+    expect(STILL_LEVELS.every((level) => level === WORKING_STILL_LEVEL)).toBe(true);
+  });
+});
 
 describe('jackLevels', () => {
   it('lights one jack fully, the two before it fading, and moves on every fourth frame', () => {

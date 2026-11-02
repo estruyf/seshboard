@@ -80,7 +80,8 @@ import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } fr
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
-import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
+import { formatDuration, useTicker } from './ActivityGroup.tsx';
+import { WorkingPanel, type WorkingState } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
@@ -190,7 +191,11 @@ function SpinnerSlot({ sessionId, message, children }: { sessionId: string; mess
 
 function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
-  const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
+  // Waiting on a permission or a question is still the turn: the line says so, with the panel in its waiting frame.
+  const running = useHosts((s) => {
+    const state = s.hosts.get(sessionId)?.state;
+    return state === 'running' || state === 'needs-you';
+  });
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
   // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
@@ -201,7 +206,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
         <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
           <span className="flex w-4 shrink-0 justify-center">
-            <WorkingDots />
+            <WorkingPanel />
           </span>
           {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
           <AutoWand />
@@ -221,12 +226,13 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   }
   if (!running || !showIndicator) return null;
   const label = live.waitingSince !== null ? 'Waiting for you' : compacting ? 'Compacting the conversation' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'still' : 'working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
-          <WorkingDots />
+          <WorkingPanel state={panel} />
         </span>
         <span className="shrink-0">{label}</span>
         {/* The turn's time and tokens so far, as Settings › Conversation says. */}

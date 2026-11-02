@@ -1,4 +1,4 @@
-import { contrast, fromOklch, parseColor, toHex, toOklch, type Oklch, type Rgba } from '@seshboard/protocol/color';
+import { composite, contrast, fromOklch, parseColor, toHex, toOklch, type Oklch, type Rgba } from '@seshboard/protocol/color';
 import type { ThemeMode, ThemeToken, ThemeTokens } from '@seshboard/protocol/theme-format';
 import demoTime from '../themes/demo-time.json';
 
@@ -14,15 +14,15 @@ import demoTime from '../themes/demo-time.json';
 export const DEMO_TIME_TOKENS = { light: demoTime.light.colors, dark: demoTime.dark.colors } as Record<ThemeMode, ThemeTokens>;
 
 /** WCAG targets the generator meets against the canvas (and the sidebar and cards on it). */
-export const CONTRAST = { text: 4.5, muted: 4.5, faint: 3, accentInk: 4.5, status: 4.5, profile: 3 } as const;
+export const CONTRAST = { text: 4.5, muted: 4.5, faint: 3, accentInk: 4.5, status: 4.5, profile: 3, mark: 2 } as const;
 
 /**
  * Lightness steps from the canvas, measured on Demo Time (OKLCH L). Dark themes step lighter,
  * light themes darker; a light theme's cards and menus are a touch lighter than its canvas, when it isn't white already.
  */
 const STEPS = {
-  light: { sidebar: -0.027, card: 0.012, popover: 0.012, border: -0.082, overlayBorder: -0.129 },
-  dark: { sidebar: 0.064, card: 0.064, popover: 0.109, border: 0.108, overlayBorder: 0.197 },
+  light: { sidebar: -0.027, card: 0.012, popover: 0.012, border: -0.082, overlayBorder: -0.129, hole: -0.13 },
+  dark: { sidebar: 0.064, card: 0.064, popover: 0.109, border: 0.108, overlayBorder: 0.197, hole: 0.163 },
 } as const;
 
 /** Where text sits on Demo Time (OKLCH L), the starting point before solving for contrast. */
@@ -189,8 +189,34 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'chart-cache-write': demo['chart-cache-write'],
     'chart-cache-read': demo['chart-cache-read'],
     'chart-input': demo['chart-input'],
+    // The working mark: holes a step from the canvas (warm on a light one, as the accent), a light in the theme's
+    // accent (see `workingLight`), and the icon's cable colours, darkened only where they would wash out on the canvas.
+    'working-hole': hex(surface(steps.hole, mode === 'light' ? 2 : 0)),
+    ...workingLight(mode, canvas, accent),
+    'working-plug-a': keepHue(demo['working-plug-a'], CONTRAST.mark),
+    'working-plug-b': keepHue(demo['working-plug-b'], CONTRAST.mark),
+    'working-plug-c': keepHue(demo['working-plug-c'], CONTRAST.mark),
+    'working-plug-d': keepHue(demo['working-plug-d'], CONTRAST.mark),
   };
   return { ...tokens, ...deriveTokens(mode, { text, 'accent-ink': accentInk, ok, error }) };
+}
+
+/** How much of the accent tints the warm white of a lit jack in dark mode. */
+const LIT_TINT = 0.28;
+/** How much of the light its glow keeps over the canvas in light mode. */
+const GLOW_MIX = 0.6;
+
+/**
+ * The working mark's light in a theme's accent: in dark mode a warm white tinted with it and a ring of the accent
+ * itself, in light mode the accent (moved to 2:1 on the canvas, so a pale one still shows) with a softer ring. Demo
+ * Time sets its own (the app icon's amber), so the mark matches the Dock there.
+ */
+export function workingLight(mode: ThemeMode, canvas: string, accent: string): Pick<ThemeTokens, 'working-lit' | 'working-glow'> {
+  const acc = read(accent);
+  if (mode === 'dark') return { 'working-lit': toHex(composite({ ...acc, a: LIT_TINT }, WHITE)), 'working-glow': toHex({ ...acc, a: 1 }) };
+  const away = contrast(read(canvas), BLACK) >= contrast(read(canvas), WHITE) ? 'darker' : 'lighter';
+  const lit = solvedHex(toOklch(acc), [read(canvas)], CONTRAST.mark, away);
+  return { 'working-lit': lit, 'working-glow': toHex(composite({ ...read(lit), a: GLOW_MIX }, read(canvas))) };
 }
 
 /** Tokens that are worked out from others after a theme's colours are applied. */

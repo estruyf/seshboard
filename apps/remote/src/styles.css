@@ -43,6 +43,14 @@
   --sb-profile-red: #cf222e;
   --sb-profile-orange: #d1600a;
   --sb-profile-gray: #6e7781;
+  /* The working mark (WorkingPanel), as on the computer. */
+  --sb-working-hole: #d6d4ce;
+  --sb-working-lit: #ff961a;
+  --sb-working-glow: #ffb85c;
+  --sb-working-plug-a: #f3a27f;
+  --sb-working-plug-b: #c95f3d;
+  --sb-working-plug-c: #dcb058;
+  --sb-working-plug-d: #ec9f33;
 }
 
 /*
@@ -84,6 +92,13 @@
     --sb-profile-red: #ff8787;
     --sb-profile-orange: #ffa94d;
     --sb-profile-gray: #9ba4b7;
+    --sb-working-hole: #3d404a;
+    --sb-working-lit: #fff1cc;
+    --sb-working-glow: #ff961a;
+    --sb-working-plug-a: #f3a27f;
+    --sb-working-plug-b: #c95f3d;
+    --sb-working-plug-c: #ffd27a;
+    --sb-working-plug-d: #ec9f33;
   }
 }
 
@@ -121,6 +136,13 @@
   --sb-profile-red: #ff8787;
   --sb-profile-orange: #ffa94d;
   --sb-profile-gray: #9ba4b7;
+  --sb-working-hole: #3d404a;
+  --sb-working-lit: #fff1cc;
+  --sb-working-glow: #ff961a;
+  --sb-working-plug-a: #f3a27f;
+  --sb-working-plug-b: #c95f3d;
+  --sb-working-plug-c: #ffd27a;
+  --sb-working-plug-d: #ec9f33;
 }
 
 :root[data-mode='light'] {
@@ -278,35 +300,86 @@ body {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
-/* Claude is working: three dots that take turns, as on the computer (apps/ui/src/styles.css). */
-.working-dots {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
+/*
+ * Claude is working: the app icon's patch panel (WorkingPanel), its free jacks lighting up in turn like the Dock's.
+ * Each jack runs the same round (--working-round) with its own delay (--jack-delay), both set by the component. A jack
+ * is full for its turn (WORKING_HOLD, 20%) with a ring of glow that narrows from 2px to 1px, then fades to dark by
+ * WORKING_FADE (2.4 of 5 jacks, 48%), so the two before the lit one are still fading. A test keeps the stops in step with
+ * @seshboard/protocol/working-panel. A copy of apps/ui/src/styles.css's rules: change both together.
+ */
+.working-panel .jack-hole {
+  fill: var(--sb-working-hole);
 }
-.working-dots span {
-  width: 4px;
-  height: 4px;
-  border-radius: 9999px;
-  background: var(--sb-accent-ink);
-  animation: working-dot 1.2s ease-in-out infinite;
+.working-panel .jack-lit {
+  fill: var(--sb-working-lit);
 }
-.working-dots span:nth-child(2) {
-  animation-delay: 0.2s;
+.working-panel .jack-glow {
+  fill: var(--sb-working-glow);
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.working-dots span:nth-child(3) {
-  animation-delay: 0.4s;
+.working-panel .jack-plug-a {
+  fill: var(--sb-working-plug-a);
 }
-@keyframes working-dot {
+.working-panel .jack-plug-b {
+  fill: var(--sb-working-plug-b);
+}
+.working-panel .jack-plug-c {
+  fill: var(--sb-working-plug-c);
+}
+.working-panel .jack-plug-d {
+  fill: var(--sb-working-plug-d);
+}
+.working-panel .jack-light {
+  opacity: 0;
+}
+.working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
+  animation-duration: var(--working-round);
+  animation-delay: var(--jack-delay);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.working-panel[data-working-state='working'] .jack-light {
+  animation-name: working-jack;
+}
+.working-panel[data-working-state='working'] .jack-glow {
+  animation-name: working-glow;
+}
+/* Compacting, and every state with Reduce motion: the five free jacks softly lit, without glow, as the Dock's still frame. */
+.working-panel[data-working-state='still'] .jack-light {
+  opacity: 0.8;
+}
+/* Waiting for you: all five lit in the needs-you colour. */
+.working-panel[data-working-state='waiting'] .jack-light {
+  opacity: 1;
+}
+.working-panel[data-working-state='waiting'] .jack-lit {
+  fill: var(--sb-warn);
+}
+.working-panel:not([data-working-state='working']) .jack-glow {
+  visibility: hidden;
+}
+@keyframes working-jack {
   0%,
-  80%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  40% {
+  20% {
     opacity: 1;
-    transform: translateY(-2px);
+  }
+  48%,
+  100% {
+    opacity: 0;
+  }
+}
+/* The glow is drawn 2px past the jack's 3px dot: 1px past it at the end of the turn, none once it is dark. */
+@keyframes working-glow {
+  0% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(0.714);
+  }
+  48%,
+  100% {
+    transform: scale(0.427);
   }
 }
 
@@ -379,9 +452,14 @@ body {
   .pulse-dot {
     animation: none;
   }
-  .working-dots span {
+  .working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
     animation: none;
+  }
+  .working-panel[data-working-state='working'] .jack-light {
     opacity: 0.8;
+  }
+  .working-panel[data-working-state='working'] .jack-glow {
+    visibility: hidden;
   }
   .collapse-out,
   .sheet-in,

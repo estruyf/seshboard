@@ -45,6 +45,13 @@ const TOKEN_HELP: Partial<Record<(typeof THEME_TOKENS)[number], string>> = {
   'diff-removed': 'The background of removed lines.',
   'terminal-bg': 'The terminal panel (always dark).',
   'terminal-shadow': 'The shadow the terminal panel casts on the conversation.',
+  'working-hole': 'The working mark (the patch panel under a reply): a free jack while it is dark.',
+  'working-lit': 'The working mark: a free jack when the light is on it. Generated from the accent when missing.',
+  'working-glow': 'The working mark: the ring of glow around a lit jack. Generated from the accent when missing.',
+  'working-plug-a': 'The working mark: the plugged jack top left, the start of one cable (the app icon\'s cable colours).',
+  'working-plug-b': 'The working mark: the plugged jack middle right, the end of that cable.',
+  'working-plug-c': 'The working mark: the plugged jack bottom left, the start of the other cable.',
+  'working-plug-d': 'The working mark: the plugged jack bottom middle, the end of that cable.',
 };
 
 const Colors = z

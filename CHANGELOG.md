@@ -27,6 +27,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Pick the model and effort new sessions start with.** **Settings › General › New sessions** now has **Global model** and **Global effort**, next to Global permission mode. They apply where a session's project and Claude profile set none, also to sessions started from a link or your phone, and a project's or profile's **Global default** names them. As with the permission mode, a project follows its profile's model and effort, or you pick **Global default** to skip the profile's. Leave them on **Claude Code's default** to keep what Claude Code picks.
 - **Remote keeps a log, and says when it turns a device away.** Remote now writes who connected, who it refused and why (for example a device you revoked that still tries), and when it makes an address wait, to `remote.log`. Open it from **Settings › Remote › Advanced**. When an address waits after refused attempts, the status card says so, and **Unblock** lets everyone on it in again without restarting Seshboard.
 
+### Changed
+
+- The working line under a reply shows the patch panel from the app icon, its free jacks lighting up in turn, like the Dock. It takes the colours of your theme: its light is the theme's accent, and the themes named after an app icon have that icon's cables.
+
 ### Fixed
 
 - **A long session title no longer makes New session scroll sideways.** In **Pick up in**, a title too long for the row is now cut off with an ellipsis instead of widening the view.

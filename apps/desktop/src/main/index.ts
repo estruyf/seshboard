@@ -1278,6 +1278,7 @@ async function runAutoModelStep(win: BrowserWindow): Promise<string> {
         ).catch(() => 'unknown');
         return `Start on Auto did not open the session with the prompt and Auto is choosing a model…: ${seen}`;
       }
+      if (!(await js(`!!document.querySelector('${session} [data-auto-choosing] [data-working-panel][data-working-state="working"]') && !document.querySelector('.working-dots')`))) return 'Auto is choosing a model… did not show the working panel';
       await shot(win, 'auto-model-choosing.png');
       await js(`document.querySelector('${session} [data-more-menu]').click()`);
       if (!(await waitInPage(win, "document.querySelector('[data-stop-session]:not(:disabled)')", 3_000))) return 'no Stop session while Auto was choosing';
@@ -7778,6 +7779,84 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The working mark under a reply (WorkingPanel), on a stand-in session: the patch panel on the working line with its
+ * light moving, its still frame while compacting, and lit in the needs-you colour while a permission prompt waits.
+ * Follows the theme (Forest's plugs are its icon's). Takes the working line in light and in dark, as it is and zoomed,
+ * and in Forest and Signal (working-panel-light.png, working-panel-dark@3x.png, working-panel-forest-dark@3x.png, …).
+ */
+async function runWorkingPanelStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-working-')));
+  const standIn = `smoke-working-${randomUUID()}`;
+  const host = (state: 'running' | 'needs-you' | 'closed', compacting?: boolean) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(compacting !== undefined ? { compacting } : {}) });
+  const panel = `document.querySelector('[data-current-session="${standIn}"] [data-streaming] [data-working-panel]')`;
+  const scheme = nativeTheme.themeSource;
+  const themeId = preferences.get().themeId;
+  const zoom0 = win.webContents.getZoomFactor();
+  try {
+    if (!smokeSessionId) return 'no session to switch to';
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'working'`, 5_000))) return 'the working line did not show the patch panel';
+    const look = (await js(`(() => { const p = ${panel}; const lights = [...p.querySelectorAll('.jack-light')]; return { jacks: p.querySelectorAll('[data-jack]').length, moving: lights.filter((l) => getComputedStyle(l).animationName === 'working-jack').length, dots: document.querySelectorAll('.working-dots').length, size: Math.round(p.getBoundingClientRect().width), hidden: p.getAttribute('aria-hidden') }; })()`)) as { jacks: number; moving: number; dots: number; size: number; hidden: string | null };
+    if (look.dots > 0) return `the three working dots are still on screen (${look.dots})`;
+    if (look.jacks !== 9 || look.moving !== 5) return `the panel has ${look.jacks} jacks with ${look.moving} moving, not 9 with 5`;
+    if (look.size !== 16 || look.hidden !== 'true') return `the panel is ${look.size}px and aria-hidden=${look.hidden}, not 16px and hidden`;
+    // Demo Time as it is and zoomed three times for the pull request; two themes named after icon colourways, zoomed.
+    for (const [theme, mode] of [['demo-time', 'light'], ['demo-time', 'dark'], ['forest', 'light'], ['forest', 'dark'], ['signal', 'light'], ['signal', 'dark']] as const) {
+      if (preferences.get().themeId !== theme) updatePreferences({ themeId: theme });
+      nativeTheme.themeSource = mode;
+      if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: dark)').matches === ${mode === 'dark'}`, 3_000))) return `the window did not switch to ${mode}`;
+      // The plugged jacks follow the theme: Forest's are its icon's cable colours.
+      if (theme === 'forest' && mode === 'dark') {
+        const plug = (await js(`getComputedStyle(${panel}.querySelector('.jack-plug-a')).fill`)) as string;
+        if (!(await waitInPage(win, `getComputedStyle(${panel}.querySelector('.jack-plug-a')).fill === 'rgb(166, 240, 177)'`, 3_000))) return `in Forest the first plug is ${plug}, not the Forest icon's #a6f0b1`;
+      }
+      // A new theme repaints the whole window: let it land before zooming and taking the picture.
+      await settle(win, 500);
+      for (const zoom of theme === 'demo-time' ? [1, 3] : [3]) {
+        win.webContents.setZoomFactor(zoom);
+        await settle(win, 500);
+        // The page measures in CSS pixels; the capture takes the window's, `zoom` times as many.
+        const box = (await js(`(() => { const line = document.querySelector('[data-current-session="${standIn}"] [data-streaming] p'); line.scrollIntoView({ block: 'center' }); const r = line.getBoundingClientRect(); const z = ${zoom}; return { x: Math.max(0, Math.floor((r.left - 16) * z)), y: Math.max(0, Math.floor((r.top - 12) * z)), width: Math.round(Math.min(320, innerWidth - r.left + 16) * z), height: Math.ceil((r.height + 24) * z) }; })()`)) as Electron.Rectangle;
+        const name = `working-panel-${theme === 'demo-time' ? '' : `${theme}-`}${mode}${zoom === 1 ? '' : `@${zoom}x`}.png`;
+        try {
+          writeFileSync(join(smokeOutDir!, name), (await win.webContents.capturePage(box)).toPNG());
+        } catch (error) {
+          console.log(`[smoke] could not take ${name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      win.webContents.setZoomFactor(zoom0);
+    }
+    updatePreferences({ themeId });
+    nativeTheme.themeSource = scheme;
+    host('running', true);
+    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'still' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the still panel';
+    if ((await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName !== 'none').length`)) !== 0) return 'the still panel kept moving';
+    host('running', false);
+    host('needs-you');
+    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'waiting' && ${panel}.closest('[data-streaming]').innerText.includes('Waiting for you')`, 5_000))) {
+      const seen = await js(`document.querySelector('[data-current-session="${standIn}"] [data-streaming]')?.innerText ?? 'no working line'`).catch(() => 'unknown');
+      return `a permission prompt did not show the waiting panel (${JSON.stringify(seen)})`;
+    }
+    return 'ok: the working line showed the patch panel (9 jacks, 5 moving, 16px, hidden from screen readers) and no dots, still while compacting, and waiting while a permission prompt was held';
+  } finally {
+    if (preferences.get().themeId !== themeId) updatePreferences({ themeId });
+    nativeTheme.themeSource = scheme;
+    win.webContents.setZoomFactor(zoom0);
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    await waitInPage(win, `document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Keep awake until done (#241), on a stand-in session: the ⋯ menu turns it on and the pill above the message box
  * shows it, main holds sleep off while the session works, the pill turns it off, and once the session is done the flag
  * goes by itself (after the engine's short grace period with `SESHBOARD_STUB_QUEUE`).
@@ -10774,6 +10853,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('working panel: the patch panel on the working line, still while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });

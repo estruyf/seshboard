@@ -42,6 +42,13 @@ export const PHONE_TOKENS: Readonly<Record<string, string>> = {
   'profile-red': 'profile-red',
   'profile-orange': 'profile-orange',
   'profile-gray': 'profile-gray',
+  'working-hole': 'working-hole',
+  'working-lit': 'working-lit',
+  'working-glow': 'working-glow',
+  'working-plug-a': 'working-plug-a',
+  'working-plug-b': 'working-plug-b',
+  'working-plug-c': 'working-plug-c',
+  'working-plug-d': 'working-plug-d',
 };
 
 const SOURCES = new Set(Object.values(PHONE_TOKENS));
