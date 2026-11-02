@@ -1843,12 +1843,24 @@ async function clickLikeAUser(win: BrowserWindow, selector: string, button: 'lef
  * Runs a long project action from the header menu, then stops and restarts it from the run strip above
  * the terminal: with real mouse events in light, with Tab and Enter in dark. The command only sleeps.
  */
+/**
+ * Hides the toasts on screen while a step clicks the header of a terminal docked below, where they sit (a Claude Code
+ * update offered at launch stays until closed, and a later step checks it). The returned function shows them again.
+ */
+async function hideToasts(win: BrowserWindow): Promise<() => Promise<void>> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  await js("document.querySelectorAll('[data-toast-close]').forEach((b) => { const t = b.closest('[role=status], [role=alert]') ?? b.parentElement; t.style.visibility = 'hidden'; t.dataset.smokeHidden = ''; })");
+  return async () => void (await js("document.querySelectorAll('[data-smoke-hidden]').forEach((t) => { t.style.visibility = ''; delete t.dataset.smokeHidden; })"));
+}
+
 async function runActionTerminalStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const scheme = preferences.get().colorScheme;
+  const showToasts = await hideToasts(win);
   try {
     return await actionTerminalChecks(win, js);
   } finally {
+    await showToasts();
     updatePreferences({ colorScheme: scheme });
   }
 }
@@ -1959,9 +1971,11 @@ type PanelBox = { top: number; left: number; width: number; height: number; bott
 async function runTerminalLayoutStep(win: BrowserWindow): Promise<string> {
   const scheme = preferences.get().colorScheme;
   const bounds = win.getBounds();
+  const showToasts = await hideToasts(win);
   try {
     return await terminalLayoutChecks(win);
   } finally {
+    await showToasts();
     updatePreferences({ colorScheme: scheme });
     win.setBounds(bounds);
     // Leave the next steps a closed panel docked below.
@@ -1993,9 +2007,9 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   if (look.pill !== '36x4' || !look.centred) return `failed: the grab handle is ${look.pill}, centred ${look.centred}`;
   if (look.padding !== '10px 16px') return `failed: the terminal's padding is ${look.padding}`;
 
-  // Docked below, the footer row folds into a ring next to Send; it shows every number and opens the same popup.
-  if (!(await waitInPage(win, "!document.querySelector('[data-current-session] [data-session-footer]') && document.querySelector('[data-current-session] [data-folded-meter]')", 5_000))) {
-    return 'failed: the footer did not fold into a ring in the message box';
+  // Docked below, the tray under the message box shows only a ring; it shows every number and opens the same popup.
+  if (!(await waitInPage(win, "!document.querySelector('[data-current-session] [data-composer-tray] [data-usage-band]') && document.querySelector('[data-current-session] [data-composer-tray] [data-folded-meter]')", 5_000))) {
+    return 'failed: the tray did not fold its usage and context into a ring';
   }
   const ring = (await js("document.querySelector('[data-folded-meter]').dataset.tooltip")) as string;
   // A real click, which moves focus off the terminal (xterm keeps the keys, Escape too, while it has focus).
@@ -2026,10 +2040,10 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   const side = (await js(`(() => {
     const p = document.querySelector('[data-terminal-panel]').getBoundingClientRect(), h = document.querySelector('[data-current-session] header').getBoundingClientRect();
     const send = document.querySelector('[data-current-session] [data-composer-submit]').getBoundingClientRect();
-    return { underHeader: Math.abs(p.top - h.bottom) < 2, fullHeight: Math.abs(p.bottom - innerHeight) < 2, sendLeft: send.right <= p.left, footer: !!document.querySelector('[data-current-session] [data-session-footer]'), ring: !!document.querySelector('[data-folded-meter]'), handle: document.querySelector('[data-terminal-resize]').getAttribute('aria-orientation') };
+    return { underHeader: Math.abs(p.top - h.bottom) < 2, fullHeight: Math.abs(p.bottom - innerHeight) < 2, sendLeft: send.right <= p.left, footer: !!document.querySelector('[data-current-session] [data-composer-tray]'), ring: !!document.querySelector('[data-folded-meter]'), handle: document.querySelector('[data-terminal-resize]').getAttribute('aria-orientation') };
   })()`)) as { underHeader: boolean; fullHeight: boolean; sendLeft: boolean; footer: boolean; ring: boolean; handle: string };
   if (!side.underHeader || !side.fullHeight || !side.sendLeft) return `failed: docked right the panel is not full height beside the conversation (${JSON.stringify(side)})`;
-  if (!side.footer || side.ring) return 'failed: docked right the footer row did not come back';
+  if (!side.footer || side.ring) return 'failed: docked right the tray did not show its usage and context again';
   if (side.handle !== 'vertical') return 'failed: docked right the handle is not on the left edge';
   // Docking animates and re-fits the terminal: measure once the width has stopped changing.
   let wide = (await box())!;
@@ -2120,10 +2134,10 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-terminal-dock]').click()");
   if (!(await waitInPage(win, `${PANEL_BOX}.dock === 'bottom'`, 3_000))) return 'failed: Dock below did not move the panel back';
 
-  // Hide brings the footer row back.
+  // Hide brings the tray's usage and context back.
   await js("document.querySelector('[data-terminal-hide]').click()");
-  if (!(await waitInPage(win, "!document.querySelector('[data-terminal-panel]') && document.querySelector('[data-current-session] [data-session-footer]')", 3_000))) return 'failed: hiding the panel did not bring the footer row back';
-  return `ok: own background with a top shadow, 36x4 handle, 10/16px padding; footer folded into a ring ("${ring.replace(/\n/g, ' · ')}"); ↑ and drag resize; docked right full height with the footer back and → ← resizing; ${changes}; maximize by button, Esc and ⌘⇧J; light and dark; a 900px window docks it below and widening puts it back`;
+  if (!(await waitInPage(win, "!document.querySelector('[data-terminal-panel]') && document.querySelector('[data-current-session] [data-composer-tray]') && !document.querySelector('[data-current-session] [data-folded-meter]')", 3_000))) return 'failed: hiding the panel did not bring the tray back';
+  return `ok: own background with a top shadow, 36x4 handle, 10/16px padding; the tray folded into a ring ("${ring.replace(/\n/g, ' · ')}"); ↑ and drag resize; docked right full height with the tray back and → ← resizing; ${changes}; maximize by button, Esc and ⌘⇧J; light and dark; a 900px window docks it below and widening puts it back`;
 }
 
 /** Adds a project action through the editor, opened from the header's More menu; saving closes the editor. */
@@ -2977,12 +2991,12 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session has no message box for Copilot (${String(await js(`${view}?.querySelector('[data-composer]')?.placeholder ?? 'no box'`))})`;
     }
     if (!(await js(`${view}.querySelector('[data-session-provider="copilot"]')?.textContent.includes('GitHub Copilot')`))) return "the session's status line doesn't start with GitHub Copilot";
-    if (await js(`!!${view}.querySelector('[data-session-footer]:not([data-provider-footer])')`)) return "a Copilot session shows Claude Code's plan usage";
+    if (await js(`!!${view}.querySelector('[data-composer-tray] [data-usage-band]')`)) return "a Copilot session shows Claude Code's plan usage";
     if (!(await js(`!!${view}.querySelector('[data-toggle-ask]')`))) return 'a Copilot session has no Ask (Copilot answers it from a fork)';
-    // Its premium requests as a ring on the left of the footer, the details on hover (the demo's 212 of 1,500).
-    const ring = `${view}.querySelector('[data-provider-footer] [data-provider-usage="copilot"]')`;
-    if (!(await waitInPage(win, `(${ring}?.dataset.tooltip ?? '').includes('212 of 1,500 used') && ${ring}.textContent.includes('Premium') && ${ring}.textContent.includes('14%') && ${ring}.getBoundingClientRect().left < ${view}.querySelector('[data-provider-footer]').getBoundingClientRect().left + 40`, 5_000))) {
-      return `the Copilot session's footer has no premium requests ring on its left (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
+    // Its premium requests on the right of the tray under the box, the details on hover (the demo's 212 of 1,500).
+    const ring = `${view}.querySelector('[data-composer-tray-info] [data-provider-usage="copilot"]')`;
+    if (!(await waitInPage(win, `(${ring}?.dataset.tooltip ?? '').includes('212 of 1,500 used') && ${ring}.textContent.includes('Premium') && ${ring}.textContent.includes('14%')`, 5_000))) {
+      return `the Copilot session's tray has no premium requests on its right (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
     }
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
     await js(`${view}.querySelector('[data-more-menu]').click()`);
@@ -6569,14 +6583,14 @@ async function runNewSessionStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.activeElement?.closest('[data-menu=\"model\"]')", 2_000))) return 'the model menu did not open with focus';
   escape();
   if (!(await waitInPage(win, "!document.querySelector('[data-menu=\"model\"]') && document.activeElement?.matches('[data-model-select]')", 2_000))) return 'Escape did not close the model menu';
-  // The effort chip sits in the same row as the model and permission chips.
+  // The effort chip sits in the same row as the model and permission chips, on the tray under the box and Start session.
   const effortBefore = (await js("document.querySelector('[data-new-session-view] [data-effort-select]')?.dataset.value ?? ''")) as string;
   const pick = effortBefore === 'high' ? 'max' : 'high';
   if (!(await chooseChoice(win, 'effort', pick, '[data-new-session-view]'))) return 'picking an effort did not stick';
   const sameRow = (await js(
-    "(() => { const row = (s) => document.querySelector('[data-new-session-view] ' + s)?.getBoundingClientRect(); const m = row('[data-model-select]'), e = row('[data-effort-select]'), send = row('[data-composer-submit]'); return !!(m && e && send) && Math.abs(m.top - e.top) < 4 && Math.abs(m.top + m.height / 2 - (send.top + send.height / 2)) < 6; })()",
+    "(() => { const row = (s) => document.querySelector('[data-new-session-view] ' + s)?.getBoundingClientRect(); const m = row('[data-model-select]'), e = row('[data-effort-select]'), send = row('[data-composer-submit]'); return !!(m && e && send) && Math.abs(m.top - e.top) < 4 && m.top >= send.bottom && !!document.querySelector('[data-new-session-view] [data-composer-tray] [data-model-select]'); })()",
   )) as boolean;
-  if (!sameRow) return 'the chips and Start session are not on one row';
+  if (!sameRow) return 'the chips are not on one row on the tray under Start session';
   // The chips shrink by dropping parts, never by cutting words: no chip is narrower than its content.
   const clipped = (await js(
     "[...document.querySelectorAll('[data-new-session-view] [data-composer-chips] [aria-haspopup=menu]')].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.getAttribute('aria-label'))",
@@ -10385,6 +10399,114 @@ async function runSendNowStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The message box and the tray under it, in the smoke session: the tray holds the chips (and the old session footer is
+ * gone), folds into the profile and one chip when the box is narrow, changes the model (in the demo home only, then puts
+ * it back), and a stand-in that works shows Stop and Queue in the box. Pictures of idle and working, light and dark.
+ */
+async function runComposerTrayStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'no smoke session';
+  const pane = `[data-current-session="${smokeSessionId}"]`;
+  const tray = `document.querySelector('${pane} [data-composer-tray]')`;
+  const root = `document.querySelector('${pane} [data-composer-root]')`;
+  const scheme = nativeTheme.themeSource;
+  const pictures = async (name: string) => {
+    for (const mode of ['light', 'dark'] as const) {
+      nativeTheme.themeSource = mode;
+      if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: dark)').matches === ${mode === 'dark'}`, 3_000))) return false;
+      await shot(win, `composer-tray-${name}-${mode}.png`);
+    }
+    nativeTheme.themeSource = scheme;
+    return true;
+  };
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-tray-')));
+  const standIn = `smoke-tray-${randomUUID()}`;
+  const host = (state: 'running' | 'closed') => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state });
+  try {
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    // 1. The tray hangs under the box, 16px narrower on each side and touching it, with the chips; no footer line.
+    if (!(await waitInPage(win, `!!${tray}?.querySelector('[data-chip]')`, 10_000))) return `no tray with chips under the message box (${String(await js(`${tray}?.innerText ?? 'no tray'`))})`;
+    const look = (await js(`(() => {
+      const t = ${tray}, card = document.querySelector('${pane} [data-composer-card]'), box = document.querySelector('${pane} [data-composer]');
+      const tr = t.getBoundingClientRect(), cr = card.getBoundingClientRect();
+      return { left: Math.round(tr.left - cr.left), right: Math.round(cr.right - tr.right), gap: Math.round(tr.top - cr.bottom), chips: t.querySelectorAll('[data-composer-chips] > [data-chip]').length, group: t.getAttribute('role') + ':' + t.getAttribute('aria-label'), footer: !!document.querySelector('${pane} [data-session-footer]'), lines: Math.round(box.clientHeight / parseFloat(getComputedStyle(box).lineHeight)), chipsInBox: !!card.querySelector('[data-chip]') };
+    })()`)) as { left: number; right: number; gap: number; chips: number; group: string; footer: boolean; lines: number; chipsInBox: boolean };
+    if (look.footer) return 'the session footer is still under the message box';
+    if (look.chipsInBox) return 'the chips are still in the message box';
+    if (look.left !== 16 || look.right !== 16 || Math.abs(look.gap) > 1) return `the tray is not 16px narrower and touching the box (${JSON.stringify(look)})`;
+    if (look.chips < 3) return `the tray has ${look.chips} chips, not the profile, model, effort and mode`;
+    if (look.group !== 'group:Options for the next message') return `the tray is not labelled as a group (${look.group})`;
+    if (look.lines < 3) return `the box is ${look.lines} lines tall, not at least 3`;
+    if (!(await pictures('idle'))) return 'the window did not switch between light and dark';
+
+    // 2. A narrow box: the tray folds into the profile and one chip, which opens one menu with Model, Effort and Mode.
+    await js(`${root}.style.maxWidth = '300px'`);
+    try {
+      if (!(await waitInPage(win, `${tray}.hasAttribute('data-composer-tray-folded') && !!${tray}.querySelector('[data-folded-chip]')`, 5_000))) return `the tray did not fold in a narrow box (${String(await js(`${tray}.getBoundingClientRect().width`))}px)`;
+      const folded = (await js(`({ chips: ${tray}.querySelectorAll('[data-composer-chips] > [data-chip]:not([data-chip="profile"])').length, label: ${tray}.querySelector('[data-folded-chip]').getAttribute('aria-label'), tools: !!${tray}.querySelector('[data-open-tools]')?.checkVisibility({ visibilityProperty: true }) })`)) as { chips: number; label: string; tools: boolean };
+      if (folded.chips !== 1) return `the folded tray shows ${folded.chips} chips besides the profile, not one`;
+      if (!folded.label.startsWith('Model, effort and mode: ')) return `the folded chip is labelled ${JSON.stringify(folded.label)}`;
+      if (folded.tools) return 'Tools still shows on a folded tray';
+      await js(`${tray}.querySelector('[data-folded-chip]').click()`);
+      if (!(await waitInPage(win, "document.querySelectorAll('[data-menu=\"folded\"] [data-folded-row]').length >= 2", 3_000))) return "the folded chip's menu has no Model, Effort and Mode rows";
+      await js(`${tray}.querySelector('[data-folded-chip]').click()`);
+      await shot(win, 'composer-tray-folded.png');
+    } finally {
+      await js(`${root}.style.maxWidth = ''`);
+    }
+    if (!(await waitInPage(win, `!${tray}.hasAttribute('data-composer-tray-folded')`, 5_000))) return 'the tray stayed folded at full width';
+
+    // 3. The model from the tray (the demo home only: it is saved for the session), its menu above the chip, then back.
+    let model = 'model change skipped outside the demo home';
+    const chip = `${tray}.querySelector('[data-session-model-select]')`;
+    if (process.env.SESHBOARD_SMOKE_DEMO && (await js(`!!${chip} && !${chip}.disabled`))) {
+      const pick = async (value: string | null) => {
+        await js(`${chip}.click()`);
+        if (!(await waitInPage(win, "!!document.querySelector('[data-menu=\"session-model\"]')", 3_000))) return null;
+        const chosen = (await js(`(() => { const items = [...document.querySelectorAll('[data-menu="session-model"] [data-choice]')].filter((b) => !b.disabled); const b = ${value === null ? "items.find((i) => i.getAttribute('aria-checked') !== 'true')" : `items.find((i) => i.dataset.choice === ${JSON.stringify(value)})`}; b?.click(); return b ? b.dataset.choice : null; })()`)) as string | null;
+        if (chosen === null) await js(`${chip}.click()`);
+        return chosen;
+      };
+      const before = (await js(`${chip}.dataset.value`)) as string;
+      await js(`${chip}.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-menu=\"session-model\"]')", 3_000))) return "the tray's model chip opened no menu";
+      const upward = (await js(`document.querySelector('[data-menu="session-model"]').getBoundingClientRect().bottom <= ${chip}.getBoundingClientRect().top`)) as boolean;
+      await js(`${chip}.click()`);
+      if (!upward) return "at the bottom of a session the model menu opened downward";
+      const chosen = await pick(null);
+      if (chosen === null) return 'the model menu had no other model to pick';
+      if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(chosen)}`, 5_000))) return `the model chip did not change to ${chosen}`;
+      // A saved session's menu offers "Default model" only until a model is set: then the pick stays, in a demo home thrown away after the run.
+      if ((await pick(before)) !== null) {
+        if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(before)}`, 5_000))) return `the model did not go back to ${before || 'the default'}`;
+        model = `the model changed to ${chosen} and back`;
+      } else model = `the model changed to ${chosen}`;
+    }
+
+    // 4. A stand-in that works: Stop and Queue are in the box, not on the tray.
+    host('running');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show as working';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    const card = `document.querySelector('[data-current-session="${standIn}"] [data-composer-card]')`;
+    if (!(await waitInPage(win, `!!${card}?.querySelector('[data-composer-stop]') && (${card}.querySelector('[data-composer-submit]')?.innerText.includes('Queue') || !!${card}.querySelector('[data-send-menu]'))`, 5_000))) {
+      return `Stop and Queue are not in the box while it works (${String(await js(`${card}?.querySelector('[data-composer-footer-end]')?.innerText ?? 'no box'`))})`;
+    }
+    if (await js(`!!document.querySelector('[data-current-session="${standIn}"] [data-composer-tray] [data-composer-stop]')`)) return 'Stop is on the tray';
+    if (!(await pictures('working'))) return 'the window did not switch between light and dark';
+    return `ok: the tray under the box (${look.chips} chips, 16px in, touching, no footer, ${look.lines} lines), folded to the profile and one chip in a narrow box, ${model}, Stop and Queue in the box while it works; pictures in light and dark`;
+  } finally {
+    nativeTheme.themeSource = scheme;
+    host('closed');
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/**
  * Ask about this session in the smoke session, answered by the engine's stub (SESHBOARD_STUB_BTW), so no model is
  * called and nothing reaches the session: the transcript and Up next must not change. Questions go through the Ask
  * button, the panel's field and `/btw`, never through Send, so a broken button could never send one as a message.
@@ -11028,20 +11150,20 @@ async function runModsStep(win: BrowserWindow): Promise<string> {
       10_000,
     );
   if (!(await status('ready'))) return 'failed: the status chip did not show';
-  // A narrow message box: the chips under it must not run under anything on the right of the footer (the mods' chips,
-  // Ask, Stop, Send), side by side or on a line of their own. Measured once the footer has settled at that width.
+  // A narrow message box: the attach buttons on the left of its row must not run under anything on the right (the mods'
+  // chips, Ask, Stop, Send). Measured once the row has settled at that width.
   const squeeze = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = '380px'; return !!f; })()";
   const release = "(() => { const f = document.querySelector('[data-composer-footer]'); if (f) f.style.maxWidth = ''; })()";
   const clear = `(() => {
     const f = document.querySelector('[data-composer-footer]');
-    const chips = [...document.querySelectorAll('[data-composer-chips] [data-chip]')].map((c) => c.getBoundingClientRect());
+    const chips = [...document.querySelectorAll('[data-composer-footer-start] button')].map((c) => c.getBoundingClientRect());
     const right = [...(document.querySelector('[data-composer-footer-end]')?.children ?? [])].map((c) => c.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1);
     if (!f || f.getBoundingClientRect().width > 381 || chips.length === 0 || right.length === 0) return false;
     return !chips.some((c) => right.some((r) => c.right > r.left + 0.5 && c.left < r.right - 0.5 && c.bottom > r.top + 0.5 && c.top < r.bottom - 0.5));
   })()`;
   if (!(await js(squeeze))) return 'failed: no message box footer to narrow';
   try {
-    if (!(await waitInPage(win, clear, 5_000))) return "failed: at a narrow width the chips under the message box run under the mods' chips or the buttons on the right";
+    if (!(await waitInPage(win, clear, 5_000))) return "failed: at a narrow width the attach buttons in the message box run under the mods' chips or the buttons on the right";
   } finally {
     await js(release);
   }
@@ -11187,6 +11309,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('send now only while Claude works', () => runSendNowStep(win));
   await step('Ask about this session, nothing added to the conversation', () => runAskStep(win));
   await step('controls', () => runControlsStep(win));
+  await step('message box and its tray: the chips under the box, no footer, folds narrow, a model from the tray, Stop and Queue in the box', () => runComposerTrayStep(win));
   await step('sidebar states', () => runSidebarStatesStep(win));
   await step('new session view', () => runNewSessionStep(win));
   // Finding a checkout of an unknown repository walks the folders on disk.

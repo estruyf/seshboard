@@ -3,11 +3,11 @@ import { create } from 'zustand';
 import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
-import { useProfile, useProfiles } from '../state/profilesStore.ts';
+import { useProfiles } from '../state/profilesStore.ts';
 import { ProfileBadge, ProfileDot } from './profiles/ProfileBadge.tsx';
 import { Meter } from './ui/Meter.tsx';
 import type { UsageLine } from './session/foldedMeter.ts';
-import { costComputersNotes, countdown, limitCosts, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
+import { costComputersNotes, countdown, limitCosts, limitLabel, nextUsageEntry, spokenLimit, usageMessage, usageSummary, visibleLimits, type UsageEntry } from './usageFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
@@ -101,15 +101,12 @@ const resetTitle = (limit: UsageLimit, now: number) =>
  * Plan usage, like the claude-stats mod: one pill per window with a ring and a reset countdown.
  * Shows the limits of the given Claude profile (the default one when omitted).
  * `compact` drops the pills for a single line (`6% 5h · 4h44m`), for the new session's route tray.
- * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the quiet line under a session's composer, reset times in the tooltips;
- * the profile is shown next to it by the caller.
- * `tray`: the footer with the profile in front and when each window resets (`● Work  5h ▬ 9% · resets 3h 10m`),
- * for New session. Its parent must be an `@container`: the reset times go first when it is narrow, then the bars.
+ * `footer`: small rings (`5h ◔ 9%   Week ◔ 18%`) for the tray under the message box, reset times in the tooltips;
+ * the profile is a chip on the same tray.
  */
-export function UsageBand({ profileId, compact = false, footer = false, tray = false }: { profileId?: string | null; compact?: boolean; footer?: boolean; tray?: boolean }) {
+export function UsageBand({ profileId, compact = false, footer = false }: { profileId?: string | null; compact?: boolean; footer?: boolean }) {
   const defaultId = useProfiles((s) => s.defaultId);
   const id = profileId ?? defaultId;
-  const profile = useProfile(id);
   const usage = useUsageFor(id)?.usage;
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -119,56 +116,11 @@ export function UsageBand({ profileId, compact = false, footer = false, tray = f
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
   // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
-  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && (footer || tray);
+  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer;
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
   const costs = limitCosts(limits, priced.windows, showCost ? currency : null);
   const costNotes = costComputersNotes(thisComputerName(), priced.counted, priced.uncounted.map((u) => u.reason));
-  if (tray) {
-    // The profile shows at once, also while its usage loads: it is the answer to "which account?".
-    return (
-      <button
-        type="button"
-        onClick={() => openUsage(id)}
-        aria-label={`Plan usage${profile ? ` of ${profile.name}` : ''}. Open usage`}
-        data-tooltip={usageSummary(limits, now, costs, costNotes)}
-        className={`flex min-w-0 items-center gap-3 rounded-md px-1.5 py-0.5 -mx-1.5 text-meta text-muted ${BAND_HOVER}`}
-        data-usage-band
-        data-usage-profile={id}
-      >
-        {profile && (
-          <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap" data-usage-profile-name>
-            <ProfileDot color={profile.color} />
-            <span className="truncate text-text">{profile.name}</span>
-          </span>
-        )}
-        {limits.map((limit, i) => (
-          <span key={`${limit.kind}:${limit.scope ?? ''}`} className="flex items-center gap-1.5 whitespace-nowrap">
-            <Meter percent={limit.percent} label={spokenLimit(limit, now, costs[i])} showValue hideTrackNarrow="tight">
-              <span>{footerLabel(limit)}</span>
-            </Meter>
-            {/* The meter's label already says the cost. */}
-            {costs[i] && (
-              <span aria-hidden className="tabular-nums text-faint @max-[560px]:hidden" data-usage-cost={limit.kind}>
-                {costs[i]}
-              </span>
-            )}
-            {/* The meter's label already says when it resets. */}
-            {limit.resetsAt && (
-              <span aria-hidden className="text-faint @max-[640px]:hidden" data-usage-reset>
-                · resets {resetLabel(limit.resetsAt, now)}
-              </span>
-            )}
-          </span>
-        ))}
-        {extra?.enabled && extra.usedCredits !== null && extra.usedCredits > 0 && (
-          <span className="whitespace-nowrap @max-[640px]:hidden">
-            <span className="text-ok">{money(extra.usedCredits, extra.currency)}</span> extra
-          </span>
-        )}
-      </button>
-    );
-  }
   if (!usage || limits.length === 0) return null;
   // Each pill is a meter, read as one sentence ("5-hour limit: 6% used, resets in 4h3m") instead of "6% 5h".
   const meter = (limit: UsageLimit) => ({

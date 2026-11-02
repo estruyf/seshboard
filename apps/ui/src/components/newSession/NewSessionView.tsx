@@ -71,7 +71,8 @@ import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { OpenInButton } from '../OpenInButton.tsx';
 import { CatchUpButton } from '../git/CatchUpButton.tsx';
-import { UsageBand } from '../UsageBand.tsx';
+import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { openUsage } from '../../state/usageViewStore.ts';
 import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
@@ -276,6 +277,8 @@ function LocalNewSession() {
   // Who runs the session follows from its profile: Claude Code, or another provider's (GitHub Copilot) with its own login.
   const chosenProvider = profiles.find((p) => p.id === profileId)?.provider ?? 'claude';
   const runWith: OptionalProvider | null = chosenProvider === 'claude' ? null : chosenProvider;
+  // The plan usage on the tray, in one line for its folded chip's menu (Claude Code's profiles only).
+  const usageLines = useUsageLines(runWith ? null : profileId, !runWith);
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? profileId : null);
   /** The provider's own modes (Copilot's), and the one picked: its first until you pick another. */
@@ -1683,6 +1686,10 @@ function LocalNewSession() {
               localContext
               onContextChange={setDraftContext}
               controls={controls}
+              profileId={profileId}
+              // Claude Code's plan usage for the profile; another provider's, its premium requests.
+              info={runWith ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
+              usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(profileId) } : null}
               above={
                 <div role="status" aria-live="polite" className="empty:hidden">
                   {switched && switchedBack && (
@@ -1769,14 +1776,11 @@ function LocalNewSession() {
           {/* What Start will run: a pipeline's steps, once there is a task. */}
           {runAs && draftPrompt.trim() !== '' && <RunAsSteps name={runAs.name} steps={runAsSteps(runAs, modelWord(shownModel === AUTO_MODEL ? null : shownModel || null))} onChange={() => setRunAsMenu((n) => n + 1)} />}
 
-          {/* A container: as the column narrows, the usage drops its reset times, then its bars. */}
-          <div className="@container -mt-2 flex min-h-5 items-center justify-between gap-4 px-2 text-meta text-muted" data-tray-footer>
-            <span className="flex min-w-0 items-center">{notice}</span>
-            <span className="min-w-0 shrink-0">
-              {/* Claude Code's plan usage for its profile; another provider's, its premium requests. */}
-              {runWith ? <ProviderUsage profileId={profileId} provider={runWith} /> : <UsageBand tray profileId={profileId} />}
-            </span>
-          </div>
+          {notice && (
+            <div className="-mt-2 flex min-h-5 items-center px-2 text-meta text-muted" data-tray-footer>
+              <span className="flex min-w-0 items-center">{notice}</span>
+            </div>
+          )}
 
           {/* Its own line, so it is read whole: what starting from an issue or pull request does, and doesn't. */}
           {githubItem && (

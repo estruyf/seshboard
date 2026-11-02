@@ -7,6 +7,7 @@ import { usePipelines, writeInRun } from '../../state/pipelinesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Composer } from '../composer/Composer.tsx';
+import { UsageBand } from '../UsageBand.tsx';
 import { Button } from '../ui/Button.tsx';
 import { paneHandle, paneHeader, type PaneProps } from '../computers/ComputerView.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -94,7 +95,8 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
             </div>
           </div>
           <div className="shrink-0 border-t border-border bg-bg">
-            <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">
+            {/* The message box at the catch-up card's width, a size wider than the step tree. */}
+            <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">
               {state.run.parentSessionId ? (
                 // You wrote here already: the run has its own session now, where the conversation goes on.
                 <p className="flex flex-wrap items-center justify-between gap-2 text-ui text-muted" data-run-row-adopted>
@@ -111,6 +113,9 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
                 placeholder={PARENT_PLACEHOLDER}
                 links={{ sessionId: null, root: state.run.projectRoot }}
                 disabledReason={connection.status !== 'connected' ? 'Connecting to the engine…' : null}
+                // The run's profile (the default one when it has none): its plan usage on the tray, as under a session's box.
+                profileId={state.run.profileId}
+                info={<UsageBand profileId={state.run.profileId} footer />}
                 onSubmit={async (text) => {
                   const sessionId = await writeInRun(runId, text);
                   if (!sessionId) return false;

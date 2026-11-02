@@ -31,6 +31,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- The message box is bigger, with the model, effort, mode and profile on a tray under it, together with context and usage.
 - The working line under a reply shows the patch panel from the app icon, its free jacks lighting up in turn, like the Dock. It takes the colours of your theme: its light is the theme's accent, and the themes named after an app icon have that icon's cables.
 
 ### Fixed

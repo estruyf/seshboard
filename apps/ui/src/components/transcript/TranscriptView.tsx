@@ -1,6 +1,6 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -79,6 +79,8 @@ import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx'
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
+import { openUsage } from '../../state/usageViewStore.ts';
+import { boxPlaceholder } from '../composer/trayFold.ts';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker } from './ActivityGroup.tsx';
 import { WorkingPanel, type WorkingState } from '../ui/WorkingPanel.tsx';
@@ -1896,7 +1898,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
           <div className={`shrink-0 border-t border-border bg-bg ${terminalMaximized ? 'hidden' : ''}`}>
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
-            <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-1.5 @max-[860px]:px-4">
+            {/* The message box at the catch-up card's width, a size wider than the conversation. */}
+            <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">
               {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0 || keepAwake) && (
                 <div className="grid gap-1.5">
                   {/* The project's actions on the left; Claude's task list and its background tasks on the right, as small pills. The task list opens below them. */}
@@ -2042,7 +2045,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={otherProvider && !running ? `Message ${agentName}` : replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message ${agentName}. It goes in Up next until ${agentName} finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message ${agentName}. ${agentName} reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops ${agentName} and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
+                  placeholder={
+                    replying && !running && !otherProvider
+                      ? replyPlaceholder(title)
+                      : runPlaceholder && !running && !otherProvider
+                        ? runPlaceholder
+                        : running || activeHost || otherProvider
+                          ? boxPlaceholder({ agent: agentName, running, whileWorking, sendNow: formatKeys(keysFor('composer.send-now')) })
+                          : restart
+                            ? 'Message Claude to start this session again'
+                            : 'Message Claude to resume this session'
+                  }
                   submitLabel={openElsewhere && !otherProvider ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
                   disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : otherProvider && openElsewhere ? `Open in ${PROVIDER_NAMES[otherProvider]} right now` : null}
@@ -2110,46 +2123,31 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       </span>
                     )
                   }
-                  meter={foldFooter && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />}
-                  actions={
-                    cwd && !readOnly && (
-                      <Button
-                        variant="quiet"
-                        size="sm"
-                        iconOnly
-                        icon={<Blocks size={15} aria-hidden />}
-                        data-open-tools
-                        onClick={() => useOverlay.getState().show('tools')}
-                        data-tooltip="Tools: the MCP servers, skills, agents and plugins this session can use"
-                        aria-label="Tools: MCP servers, skills, agents and plugins"
-                        aria-haspopup="dialog"
-                      />
+                  profileId={otherProvider ? otherProfileId : profileId}
+                  tools={cwd && !readOnly ? () => useOverlay.getState().show('tools') : null}
+                  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
+                  // ring, with every number in its tooltip.
+                  info={
+                    foldFooter ? null : otherProvider ? (
+                      otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                    ) : (
+                      <>
+                        <UsageBand profileId={profileId} footer />
+                        <SessionCost sessionId={sessionId} profileId={profileId} />
+                      </>
+                    )
+                  }
+                  usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(otherProvider ? otherProfileId : profileId) } : null}
+                  meter={
+                    foldFooter ? (
+                      <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
+                    ) : (
+                      // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
+                      (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                     )
                   }
                 />
               </div>
-              )}
-              {/* Another provider's session: how full its context is, and what it has spent in the provider's unit. */}
-              {!foldFooter && otherProvider && !readOnly && (contextLive || otherProfileId) && (
-                <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer data-provider-footer>
-                  {/* The account's premium requests this period, where Claude Code's plan usage goes: a ring on the left. */}
-                  <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
-                    {otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />}
-                  </div>
-                  {/* Compact sends the provider's /compact, as for Claude Code. */}
-                  {contextLive && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />}
-                </div>
-              )}
-              {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}
-              {!foldFooter && !otherProvider && (
-                <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer>
-                  {/* Its own container: the bars hide when this row is short of room, not when the pane is narrow. */}
-                  <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
-                    <UsageBand profileId={profileId} footer />
-                  </div>
-                  <SessionCost sessionId={sessionId} profileId={profileId} />
-                  <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
-                </div>
               )}
             </div>
           </div>

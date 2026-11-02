@@ -2272,6 +2272,11 @@
       "page": "sessions/conversation"
     },
     {
+      "id": "feature:composer-tray",
+      "name": "The message box with the tray under it: profile, model, effort and mode, Tools, context and usage, folding into one chip in a narrow window",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:composer-context-menu",
       "name": "Message box right-click menu: Cut, Copy, Paste (with images) and Select all",
       "page": "sessions/conversation"

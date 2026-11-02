@@ -1,6 +1,6 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
@@ -13,6 +13,9 @@ import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts'
 import { PROFILE_DOT, PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
 import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
+import { TrayContext } from './ComposerTray.tsx';
+import { FoldedChip, type FoldedSection } from './FoldedChip.tsx';
+import { foldedFace, foldedLabel } from './trayFold.ts';
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
 export interface ChipNames {
@@ -77,8 +80,9 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
 /**
  * The message box's chip row, the same in a session, in New session and in the palette's prompt step:
  * profile · model · effort · permission mode as quiet buttons that show only the value ("Personal",
- * "Opus 4.5", "Medium", "Auto"), each opening its menu above it. The profile chip shows only with more
- * than one profile, like the profile badges elsewhere.
+ * "Opus 4.5", "Medium", "Auto"), each opening its menu below it, or above it when there is no room below. The
+ * profile chip shows only with more than one profile, like the profile badges elsewhere. In a folded tray
+ * (`TrayContext`), model, effort and mode are one chip (`FoldedChip`).
  *
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
@@ -111,6 +115,10 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
   const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
+  const effortChoices: Array<Choice<Effort | ''>> = effort ? [{ value: '', label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))] : [];
+  const modeChoices: Array<Choice<PermissionMode>> = modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }));
+  // In a tray too narrow for every chip, model, effort and mode are one chip (the profile keeps its own).
+  const tray = useContext(TrayContext);
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
@@ -138,7 +146,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           label={`Profile: ${profileName}${current && current.provider !== 'claude' ? ` (${PROVIDER_NAMES[current.provider]})` : ''}`}
           title={`Profile: ${profileName}${current && current.provider !== 'claude' ? `, runs with ${PROVIDER_NAMES[current.provider]}` : ''}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
           heading="Profile"
-          placement="up"
+          placement="auto"
           choices={byTool(profiles).map((p) => ({
             value: p.id,
             label: profile.labelFor?.(p) ?? p.name,
@@ -197,7 +205,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         label={modelTitle}
         title={withNote(modelTitle, pipeline?.model)}
         heading="Model"
-        placement="up"
+        placement="auto"
         choices={model.choices}
         actions={model.actions}
         width={isAuto || model.choices.some((c) => c.value === AUTO_MODEL) ? 300 : 260}
@@ -224,8 +232,8 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           label={`Effort: ${effortLabel}`}
           title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
           heading="Effort"
-          placement="up"
-          choices={[{ value: '' as const, label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
+          placement="auto"
+          choices={effortChoices}
           width={200}
         >
           {face}
@@ -250,8 +258,8 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         label={`Permission mode: ${modeShort}`}
         title={withNote(`Permission mode: ${modeShort} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
         heading="Permissions"
-        placement="up"
-        choices={modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
+        placement="auto"
+        choices={modeChoices}
         width={280}
       >
         {face}
@@ -264,9 +272,17 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
     return use?.dim ?? false;
   };
 
+  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : modelName;
+  const sections: FoldedSection[] = [
+    { key: 'model', heading: 'Model', shown: modelShown, value: model.value, choices: model.choices, onChange: model.onChange, actions: model.actions, name: names.model },
+    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), name: names.effort }] : []),
+    ...(mode ? [{ key: 'mode' as const, heading: 'Mode', shown: modeShort, value: mode.value, choices: modeChoices, onChange: (v: string) => mode.onChange(v as PermissionMode), name: names.mode }] : []),
+  ];
+  const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile') : chips;
+
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>
-      {chips.map((chip) => (
+      {shownChips.map((chip) => (
         <div
           key={chip.key}
           className={`shrink-0 transition-opacity ${dimmed(chip.key) ? 'opacity-50 hover:opacity-100 focus-within:opacity-100' : ''}`}
@@ -277,6 +293,18 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           {chip.menu(chip.face(level))}
         </div>
       ))}
+      {tray.folded && (
+        <div className="min-w-0" data-chip="folded" {...{ 'data-model-chip': isAuto ? 'auto' : model.value || 'default' }}>
+          <FoldedChip
+            sections={sections}
+            face={foldedFace(sections.map((s) => s.shown))}
+            label={foldedLabel({ model: modelShown, effort: sections.find((s) => s.key === 'effort')?.shown, mode: sections.find((s) => s.key === 'mode')?.shown })}
+            disabled={disabled}
+            tools={tray.tools}
+            usage={tray.usage}
+          />
+        </div>
+      )}
       {/* The row at every level, out of sight and out of the way of clicks, screen readers and the layout around it. */}
       <div ref={measureRef} aria-hidden className="pointer-events-none invisible absolute top-0 left-0 size-0 overflow-hidden">
         {FOOTER_LEVELS.map((l) => (

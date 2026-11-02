@@ -76,7 +76,7 @@ With more than one Claude profile, the rail on a session row shows the profile's
 **Per area.** The detailed rules for these parts of the UI are in [docs/ui-patterns.md](../../docs/ui-patterns.md). Open the section when you change that area:
 
 - [Components](../../docs/ui-patterns.md#components): variants, sizes and props of `Button`, `Kbd`, `KeyCombo`, `Pill`, `Meter`, `SplitButton`, `Dialog`, `ConfirmDialog`, `Stepper`, `SegmentedControl`, `Notice`, `SectionHeader`.
-- [Message box chips](../../docs/ui-patterns.md#message-box-chips): the profile, model, effort and mode chips under the message box.
+- [The message box and its tray](../../docs/ui-patterns.md#the-message-box-and-its-tray): what goes in the box and what on the tray under it, the profile, model, effort and mode chips, and how the tray folds.
 - [Pasted text](../../docs/ui-patterns.md#pasted-text): a long paste as a card in the context tray.
 - [A message back in the box](../../docs/ui-patterns.md#a-message-back-in-the-box): Edit in Up next, Undo after Remove: restoring a message as it was written.
 - [Ask about this session](../../docs/ui-patterns.md#ask-about-this-session): the Ask panel and `/btw`, never part of the conversation.
