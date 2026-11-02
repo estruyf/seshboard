@@ -57,6 +57,7 @@ import {
   type CatchUp,
   type QueuedMessage,
   type StreamDelta,
+  type PermissionDecision,
   type PermissionRequest,
   type PromptScope,
   accountKey,
@@ -355,10 +356,15 @@ export interface Engine {
   setQueueFocus(focus: { limit: number | null; countExternal: boolean }): void;
   /**
    * With `stubQueueStarts` only: a stand-in session this app "runs", for the smoke test's queue step. `running` starts
-   * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt (never
-   * answered: the smoke test moves the session on, which takes the prompt away).
+   * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
+   * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
   smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
+  /**
+   * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
+   * instead of Claude Code, and records what it got. For the menu bar's new work.
+   */
+  smokeStubCreate(on: boolean): void;
   /**
    * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
    * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
@@ -1477,11 +1483,34 @@ export function createEngine(options: EngineOptions): Engine {
     const requestId = `smoke-permission-${sessionId}`;
     if (state === 'needs-you' && !smokePermissions.has(sessionId)) {
       smokePermissions.add(sessionId);
-      broadcast('session.permission', { requestId, sessionId, toolName: 'Bash', toolUseId: null, input: { command: 'echo smoke' }, title: 'Claude wants to run echo smoke', description: null, decisionReason: null, blockedPath: null, alwaysLabel: null, agentId: null, createdAt: Date.now() });
+      broadcast('session.permission', smokePermission(sessionId));
     } else if (state !== 'needs-you' && smokePermissions.delete(sessionId)) {
       broadcast('session.permissionResolved', { requestId, sessionId });
     }
     autoStarter?.onHost(info);
+  };
+  /** A stand-in's made-up permission prompt, as a host sends one. */
+  const smokePermission = (sessionId: string): PermissionRequest => ({
+    requestId: `smoke-permission-${sessionId}`,
+    sessionId,
+    toolName: 'Bash',
+    toolUseId: null,
+    input: { command: 'echo smoke' },
+    title: 'Claude wants to run echo smoke',
+    description: null,
+    decisionReason: null,
+    blockedPath: null,
+    alwaysLabel: null,
+    agentId: null,
+    createdAt: Date.now(),
+  });
+  /** Allow or Deny on a stand-in's prompt (the menu bar's Allow): the session works again, or stops on Deny. */
+  const respondStandIn = (requestId: string, decision: PermissionDecision): boolean => {
+    const sessionId = requestId.startsWith('smoke-permission-') ? requestId.slice('smoke-permission-'.length) : null;
+    const host = sessionId && smokePermissions.has(sessionId) ? smokeHosts.get(sessionId) : undefined;
+    if (!host) return false;
+    standInHost({ sessionId: host.sessionId, cwd: host.cwd, state: decision.behavior === 'allow' ? 'running' : 'idle' });
+    return true;
   };
   const demoQueueFile = options.stubQueueStarts ? options.demoUsage?.queueHostFile : undefined;
   /** The demo session the screenshot tour shows as working here, to take away again. */
@@ -2223,7 +2252,15 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Starts a new session: New session's `session.create`, and a queued item starting (`later.start`). */
   type CreateSessionParams = Parameters<Handlers<Contract>['session.create']>[0];
+  /** `smokeStubCreate`: the starts the smoke test asked for, while it is on. */
+  let stubCreate = false;
   const createSession = async (params: CreateSessionParams) => {
+    if (stubCreate && options.stubQueueStarts) {
+      const sessionId = `smoke-new-${randomUUID()}`;
+      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null })}\n`);
+      standInHost({ sessionId, cwd: params.cwd, state: 'running' });
+      return { sessionId };
+    }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
     const chosen = params.profileId ?? (statSafe(params.cwd)?.isDirectory() ? folderProfile(params.cwd) : null);
     const provider = chosen && profiles.has(chosen) ? profiles.providerOf(chosen) : 'claude';
@@ -2986,7 +3023,7 @@ export function createEngine(options: EngineOptions): Engine {
 
     'hosts.list': () => {
       const list = hosts.list();
-      return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake) };
+      return { ...list, hosts: [...list.hosts, ...smokeHosts.values()].map(withAwake), permissions: [...list.permissions, ...[...smokePermissions].map(smokePermission)] };
     },
     'session.create': createSession,
     'session.send': async (params) => {
@@ -3158,6 +3195,7 @@ export function createEngine(options: EngineOptions): Engine {
       return { mods: listMods(runtimes.map((p, i) => ({ profileId: p.id, configDir: p.configDir, env: envs[i]! }))) };
     },
     'session.respond': ({ requestId, decision }) => {
+      if (respondStandIn(requestId, decision)) return {};
       hosts.respond(requestId, decision);
       return {};
     },
@@ -4194,6 +4232,9 @@ export function createEngine(options: EngineOptions): Engine {
       globalModel = globals;
     },
     smokeQueueHost: standInHost,
+    smokeStubCreate: (on) => {
+      stubCreate = on;
+    },
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {
       if (!options.stubQueueStarts) return;
       smokeReplies.set(sessionId, reply);

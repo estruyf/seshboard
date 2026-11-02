@@ -217,6 +217,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
 | ⌘/ | Keyboard shortcuts |
+| ⌘↩ | Start new work in the background (in the menu bar's panel) |
+| ⌘0 | Open Seshboard (in the menu bar's panel) |
 | ⌘Q then ⌘Q | Quit (Seshboard asks first; Press once if you turned that off) |
 | ⌘J or ⌃` | Show or hide the terminal |
 | ⌘⇧J | Maximize or restore the terminal |

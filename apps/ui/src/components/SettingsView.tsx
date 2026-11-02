@@ -22,6 +22,8 @@ import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
 import { GlobalModelSettings } from './general/GlobalModelSettings.tsx';
+import { MenuBarSettings } from './general/MenuBarSettings.tsx';
+import { menuBarTitle } from './general/menuBarCopy.ts';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
@@ -448,6 +450,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </Section>
           <Section title="Sleep">
             <KeepAwakeSetting />
+          </Section>
+          <Section title={menuBarTitle()}>
+            <MenuBarSettings />
           </Section>
           <Section title="Terminal">
             <ShellCommandSetting />

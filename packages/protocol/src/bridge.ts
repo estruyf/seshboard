@@ -18,6 +18,7 @@ import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
+export * from "./notificationPause.ts";
 
 /**
  * The small API the preload script exposes on `window.seshboard`.
@@ -92,10 +93,22 @@ export const IpcChannel = {
   getPopoutView: "seshboard:get-popout-view",
   reportView: "seshboard:report-view",
   viewReturned: "seshboard:view-returned",
+  menuBarCommand: "seshboard:menu-bar-command",
+  menuBarResize: "seshboard:menu-bar-resize",
+  menuBarShown: "seshboard:menu-bar-shown",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
 export const POPOUT_QUERY = "popout";
+
+/** The query parameter that makes a window the menu bar's panel (`?menubar=1`). */
+export const MENU_BAR_QUERY = "menubar";
+
+/**
+ * What the menu bar's panel asks main to do: open the main window (Open Seshboard), quit (through the quit guard, as
+ * ⌘Q does), or close the panel (Esc, or after opening something).
+ */
+export type MenuBarCommand = "open" | "quit" | "close";
 
 /**
  * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
@@ -357,6 +370,20 @@ export interface Preferences {
    * up in turn while a session works. On by default.
    */
   dockActivity: boolean;
+  /**
+   * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
+   * what needs you and new work, from the menu bar's icon. On by default.
+   */
+  menuBar: boolean;
+  /**
+   * Settings › General › Menu bar: "Keep running when the window closes". On, closing the last window leaves the app
+   * running with its sessions (Windows and Linux too), and the menu bar icon stays. On by default.
+   */
+  keepRunning: boolean;
+  /** Settings › General › Menu bar: "Hide from the Dock while no window is open" (macOS). Off by default. */
+  hideDock: boolean;
+  /** Pause notifications (the menu bar): no notifications or sounds until this time (ms since epoch); null when not paused. */
+  notificationsPausedUntil: number | null;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
@@ -458,6 +485,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
+  menuBar: true,
+  keepRunning: true,
+  hideDock: false,
+  notificationsPausedUntil: null,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
@@ -645,6 +676,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
+  if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
+  if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
+  if (raw.notificationsPausedUntil === null || (typeof raw.notificationsPausedUntil === "number" && Number.isFinite(raw.notificationsPausedUntil)))
+    out.notificationsPausedUntil = raw.notificationsPausedUntil;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -970,6 +1006,14 @@ export interface SeshboardBridge {
   onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
+  /** Whether this window is the menu bar's panel (`?menubar=1`). Read once when the page loads. */
+  readonly menuBar: boolean;
+  /** From the menu bar's panel: open the main window, quit, or close the panel. */
+  menuBarCommand(command: MenuBarCommand): void;
+  /** From the menu bar's panel: how tall its content is, so the window fits it (up to 70% of the screen). */
+  menuBarResize(height: number): void;
+  /** In the menu bar's panel: it was shown again (the icon was clicked), so it puts focus back on its first row. */
+  onMenuBarShown(listener: () => void): () => void;
   /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */

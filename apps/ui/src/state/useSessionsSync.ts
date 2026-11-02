@@ -9,7 +9,7 @@ import { toRows, useSessions } from './sessionsStore.ts';
 import { startupSession } from './sidebarRows.ts';
 import { createSnapshotEventQueue } from './snapshotEvents.ts';
 import { loadDrafts } from './useDraftsSync.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { secondaryWindow } from './popoutsStore.ts';
 
 const SELECTED_KEY = 'ui.selectedSession';
 
@@ -87,7 +87,7 @@ export function useSessionsSync(): void {
       batch.flush();
     });
     // A pop-out shows its one session (PopoutApp selects it): the window to open with is the main window's to choose.
-    if (!started && !starting && !popoutSession) {
+    if (!started && !starting && !secondaryWindow) {
       starting = true;
       void Promise.all([client.call('appState.get', { key: SELECTED_KEY }), snapshot])
         .then(([{ value }]) => {
@@ -121,6 +121,6 @@ export function useSessionsSync(): void {
   const selectedId = useSessions((s) => s.selectedId);
   const decided = useStartup((s) => s.decided);
   useEffect(() => {
-    if (client && decided && !popoutSession) void client.call('appState.set', { key: SELECTED_KEY, value: selectedId }).catch(() => {});
+    if (client && decided && !secondaryWindow) void client.call('appState.set', { key: SELECTED_KEY, value: selectedId }).catch(() => {});
   }, [client, decided, selectedId]);
 }

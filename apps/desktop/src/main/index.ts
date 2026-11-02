@@ -5,8 +5,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -14,6 +14,7 @@ import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
 import { DockActivity } from './dockActivity.ts';
+import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
@@ -249,7 +250,11 @@ function updatePreferences(patch: unknown): void {
     appIcon.apply(next.appIcon);
     dockActivity.iconChanged();
   }
-  dockActivity.setEnabled(next.dockActivity);
+  dockActivity.setEnabled(next.dockActivity && !dockHidden);
+  menuBar.setEnabled(next.menuBar);
+  // Hide from the Dock: turned on with no window open hides it now; turned off shows it again.
+  if (!mainWindow && next.hideDock) hideDock();
+  else if (!next.hideDock) showDock();
   keepAwake.apply(next.keepAwake);
   updater.setAutoCheck(next.autoUpdate);
   updater.setChannel(next.updateChannel);
@@ -626,6 +631,194 @@ function bringToFront(win: BrowserWindow): void {
   win.focus();
 }
 
+// --- The menu bar (the notification area on Windows) -----------------------------------------------------------------
+
+/** The icon in the menu bar, while Settings › General › Menu bar › Show in the menu bar is on. */
+let tray: Tray | null = null;
+/** What the icon says now, for its right-click menu. */
+let trayCounts: MenuBarCounts = { working: 0, needsYou: 0 };
+/**
+ * The icon: idle, working (its free jacks light up in turn) and needs you (with the count), from the Notifier's
+ * `Attention`, as the Dock and its badge are.
+ */
+const menuBar = new MenuBar<NativeImage>({
+  platform: process.platform,
+  show: (image) => {
+    tray = new Tray(image);
+    if (process.platform === 'linux') {
+      // A tray on Linux can't open a panel: its menu is all there is.
+      tray.setContextMenu(trayContextMenu());
+    } else {
+      tray.on('click', () => toggleMenuBarPanel());
+      tray.on('right-click', () => tray?.popUpContextMenu(trayContextMenu()));
+    }
+  },
+  hide: () => {
+    tray?.destroy();
+    tray = null;
+    menuBarPanel?.hide();
+  },
+  setImage: (image) => tray?.setImage(image),
+  setTitle: (title) => tray?.setTitle(title, { fontType: 'monospacedDigit' }),
+  setToolTip: (text) => tray?.setToolTip(text),
+  setMenu: (counts) => {
+    trayCounts = counts;
+    if (process.platform === 'linux') tray?.setContextMenu(trayContextMenu());
+  },
+  image: (frames, template) => {
+    const image = nativeImage.createEmpty();
+    for (const frame of frames) {
+      const png = nativeImage.createFromBitmap(frame.bitmap, { width: frame.size, height: frame.size }).toPNG();
+      image.addRepresentation({ scaleFactor: frame.scale, width: frame.size / frame.scale, height: frame.size / frame.scale, buffer: png });
+    }
+    if (template) image.setTemplateImage(true);
+    return image;
+  },
+  reducedMotion: () => systemPreferences.getAnimationSettings().prefersReducedMotion,
+  darkTaskbar: () => nativeTheme.shouldUseDarkColorsForSystemIntegratedUI,
+  every: (ms, tick) => {
+    const timer = setInterval(guarded('menu bar icon', tick), ms);
+    return () => clearInterval(timer);
+  },
+});
+nativeTheme.on('updated', () => menuBar.refresh());
+
+/** The icon's right-click menu (on Linux its only one): the counts, Open Seshboard, New session…, Pause notifications, Quit. */
+function trayContextMenu(): Menu {
+  const paused = (preferences.get().notificationsPausedUntil ?? 0) > Date.now();
+  return Menu.buildFromTemplate(
+    trayMenu(trayCounts, paused).map((item): MenuItemConstructorOptions => {
+      if (item.kind === 'line') return { label: item.label, enabled: false };
+      if (item.kind === 'separator') return { type: 'separator' };
+      if (item.kind === 'pause') return { label: item.label, submenu: item.choices.map((choice) => ({ label: choice.label, click: () => pauseNotifications(choice.id === 'resume' ? null : choice.id) })) };
+      const click = item.id === 'open' ? () => showWindow() : item.id === 'new-session' ? () => sendToWindow(showWindow(), IpcChannel.mainRequested, { kind: 'new-session', cwd: null, worktree: false } satisfies MainWindowRequest) : () => requestQuit();
+      return { label: item.label, click };
+    }),
+  );
+}
+
+/** Pause notifications: no notifications or sounds until then (null resumes them). */
+function pauseNotifications(choice: NotificationPause | null): void {
+  updatePreferences({ notificationsPausedUntil: choice ? pauseUntil(choice, new Date()) : null });
+}
+
+/** Quit Seshboard from the menu bar: through the quit guard, as ⌘Q does. */
+function requestQuit(): void {
+  if (asksBeforeQuit()) quitGuard.request();
+  else quitApp();
+}
+
+/** The panel a click on the icon opens: made once, hidden on blur and Esc, and kept for the next click. */
+let menuBarPanel: BrowserWindow | null = null;
+/** How tall the panel's content is (it reports it), and when the panel last hid. */
+let menuBarContentHeight = 420;
+let menuBarHiddenAt = 0;
+/** The smoke test keeps the panel open while it looks at it, whatever has focus. */
+let menuBarPinned = false;
+
+function toggleMenuBarPanel(): void {
+  if (menuBarPanel?.isVisible()) return void menuBarPanel.hide();
+  // The click that hid the panel (it lost focus to the menu bar) is the same click: don't open it again at once.
+  if (Date.now() - menuBarHiddenAt < 300) return;
+  showMenuBarPanel();
+}
+
+function showMenuBarPanel(): BrowserWindow {
+  const panel = menuBarPanel && !menuBarPanel.isDestroyed() ? menuBarPanel : createMenuBarPanel();
+  placeMenuBarPanel(panel);
+  panel.show();
+  panel.focus();
+  if (process.platform === 'darwin') app.focus({ steal: true });
+  if (readyRenderers.has(panel.webContents.id)) panel.webContents.send(IpcChannel.menuBarShown);
+  return panel;
+}
+
+/** Under the icon on macOS, above it on a taskbar at the bottom; as tall as its content, up to 70% of the screen. */
+function placeMenuBarPanel(panel: BrowserWindow): void {
+  const bounds = tray?.getBounds();
+  const display = bounds && bounds.width > 0 ? screen.getDisplayMatching(bounds) : screen.getPrimaryDisplay();
+  const area = display.workArea;
+  // No bounds (Linux, or the icon not placed yet): the top right corner.
+  const icon = bounds && bounds.width > 0 ? bounds : { x: area.x + area.width - 40, y: area.y - 24, width: 24, height: 24 };
+  const size = { width: PANEL_WIDTH, height: panelHeight(menuBarContentHeight, area) };
+  panel.setBounds({ ...panelPosition(icon, size, area), ...size });
+}
+
+function createMenuBarPanel(): BrowserWindow {
+  const panel = new BrowserWindow({
+    width: PANEL_WIDTH,
+    height: panelHeight(menuBarContentHeight, screen.getPrimaryDisplay().workArea),
+    show: false,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    ...(process.platform === 'darwin' ? { type: 'panel' as const } : {}),
+    backgroundColor: windowBackground(),
+    webPreferences: webPreferences(),
+  });
+  menuBarPanel = panel;
+  if (process.platform === 'darwin') panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  panel.on('blur', () => {
+    if (menuBarPinned || panel.isDestroyed()) return;
+    panel.hide();
+  });
+  panel.on('hide', () => void (menuBarHiddenAt = Date.now()));
+  // The app menu would take these first (⌘0 is Actual size there): Open Seshboard, Settings… and Quit, as the panel shows them.
+  panel.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control) || input.alt || input.shift) return;
+    const key = input.key.toLowerCase();
+    const run = key === '0' ? () => void showWindow() : key === ',' ? () => openSettings() : key === 'q' ? requestQuit : null;
+    if (!run) return;
+    event.preventDefault();
+    panel.hide();
+    run();
+  });
+  panel.on('closed', () => {
+    if (menuBarPanel === panel) menuBarPanel = null;
+  });
+  loadRenderer(panel, undefined, true);
+  return panel;
+}
+
+ipcMain.on(IpcChannel.menuBarCommand, (_event, command: unknown) => {
+  if (command !== 'close' && command !== 'open' && command !== 'quit') return;
+  menuBarPanel?.hide();
+  const run: Record<MenuBarCommand, () => void> = { close: () => {}, open: () => void showWindow(), quit: requestQuit };
+  run[command]();
+});
+ipcMain.on(IpcChannel.menuBarResize, (event, height: unknown) => {
+  if (typeof height !== 'number' || !Number.isFinite(height) || !menuBarPanel || event.sender.id !== menuBarPanel.webContents.id) return;
+  menuBarContentHeight = height;
+  if (menuBarPanel.isVisible()) placeMenuBarPanel(menuBarPanel);
+});
+
+/** Settings › General › Menu bar › Hide from the Dock while no window is open (macOS): whether it is hidden now. */
+let dockHidden = false;
+
+function hideDock(): void {
+  if (process.platform !== 'darwin' || dockHidden || !app.dock) return;
+  dockHidden = true;
+  // The Dock's activity has no icon to draw on while it is hidden.
+  dockActivity.setEnabled(false);
+  app.dock.hide();
+}
+
+/** A window opens (or the setting goes off): the Dock is back, with its colourway, its activity and its badge. */
+function showDock(): void {
+  if (!dockHidden || !app.dock) return;
+  dockHidden = false;
+  void app.dock.show().then(() => {
+    appIcon.apply(preferences.get().appIcon);
+    dockActivity.setEnabled(preferences.get().dockActivity);
+    notifier?.refreshBadge();
+  });
+}
+
 /** The pop-out a menu item was clicked in, or null (the main window is meant). */
 function popoutIn(win: Electron.BaseWindow | undefined): BrowserWindow | null {
   return [...popouts.values()].find((popout) => popout === win && !popout.isDestroyed()) ?? null;
@@ -826,6 +1019,8 @@ function createWindow(): BrowserWindow {
     webPreferences: webPreferences(),
   });
   mainWindow = win;
+  // Hidden from the Dock while no window was open: it comes back with this one.
+  showDock();
 
   win.once('ready-to-show', () => {
     // maximize() shows the window, so it waits for the first paint like show().
@@ -846,13 +1041,15 @@ function createWindow(): BrowserWindow {
   win.on('close', remember);
   // The taskbar button flashes while a session needs you (Notifier); looking at the window is enough.
   if (process.platform !== 'darwin') win.on('focus', () => win.flashFrame(false));
-  // On Windows and Linux closing the window quits the app (its sessions stop), so it asks first, as ⌘Q does on macOS.
+  // On Windows and Linux, with Keep running when the window closes off, closing the window quits the app (its sessions
+  // stop), so it asks first, as ⌘Q does on macOS.
   // Windows is shutting down, restarting or signing out: closing then mustn't ask, or it would hold that up.
   win.on('session-end', () => {
     quitting = true;
   });
   win.on('close', (event) => {
-    if (process.platform === 'darwin' || quitting || scripted || !asksBeforeQuit()) return;
+    // With Keep running when the window closes on, closing only closes the window: nothing to ask.
+    if (!quitsWhenAllClosed(process.platform, preferences.get().keepRunning) || quitting || scripted || !asksBeforeQuit()) return;
     event.preventDefault();
     quitGuard.request();
   });
@@ -860,13 +1057,16 @@ function createWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
     for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
+    // Closing quits (Windows and Linux, Keep running off): the hidden panel mustn't count as a window left open.
+    if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) menuBarPanel?.destroy();
+    else if (preferences.get().hideDock && !quitting) hideDock();
   });
   loadRenderer(win);
   return win;
 }
 
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
-function loadRenderer(win: BrowserWindow, popout?: string): void {
+function loadRenderer(win: BrowserWindow, popout?: string, menuBarPanelPage = false): void {
   const contentsId = win.webContents.id;
   // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
   // and the page says it is ready only once, so it would never count as ready again.
@@ -903,9 +1103,11 @@ function loadRenderer(win: BrowserWindow, popout?: string): void {
   if (devUrl) {
     const url = new URL(devUrl);
     if (popout) url.searchParams.set(POPOUT_QUERY, popout);
+    if (menuBarPanelPage) url.searchParams.set(MENU_BAR_QUERY, '1');
     void win.loadURL(url.toString());
   } else {
-    void win.loadFile(join(here, '../renderer/index.html'), popout ? { query: { [POPOUT_QUERY]: popout } } : undefined);
+    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : menuBarPanelPage ? { [MENU_BAR_QUERY]: '1' } : null;
+    void win.loadFile(join(here, '../renderer/index.html'), query ? { query } : undefined);
   }
 }
 
@@ -7857,6 +8059,128 @@ async function runWorkingPanelStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The menu bar (#menu-bar): stand-in sessions (one waiting on a held prompt, one working) for the icon and the panel,
+ * which opens through `showMenuBarPanel` and stays open while the step looks (`menuBarPinned`). Each step makes its own
+ * stand-ins and closes them, so `--only` can run any one of them.
+ */
+async function withMenuBarPanel(run: (panel: BrowserWindow, ids: { waiting: string; working: string }, folder: string) => Promise<string>): Promise<string> {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-menu-bar-')));
+  const ids = { waiting: `smoke-menubar-wait-${randomUUID()}`, working: `smoke-menubar-work-${randomUUID()}` };
+  const host = (sessionId: string, state: 'running' | 'needs-you' | 'closed') => engine.send({ type: 'smokeQueueHost', sessionId, cwd: folder, state });
+  menuBarPinned = true;
+  try {
+    if (!menuBar.visible) return 'failed: no icon in the menu bar';
+    host(ids.working, 'running');
+    // Waiting for you: the stand-in holds a made-up `echo smoke` permission prompt.
+    host(ids.waiting, 'needs-you');
+    const panel = showMenuBarPanel();
+    if (!(await waitInPage(panel, "!!document.querySelector('[data-menubar-panel]')", 15_000))) return 'failed: the panel did not show';
+    return await run(panel, ids, folder);
+  } finally {
+    menuBarPinned = false;
+    menuBarPanel?.hide();
+    host(ids.waiting, 'closed');
+    host(ids.working, 'closed');
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+const inSection = (section: string, id: string) => `!!document.querySelector('[data-menubar-section="${section}"] [data-menubar-session="${id}"]')`;
+
+/** The icon says needs you with the count, and the panel's sections hold the stand-ins and the demo's unread sessions. */
+function runMenuBarPanelStep(win: BrowserWindow): Promise<string> {
+  return withMenuBarPanel(async (panel, ids) => {
+    const js = (code: string) => panel.webContents.executeJavaScript(code) as Promise<unknown>;
+    if (!(await waitInPage(panel, `${inSection('needs-you', ids.waiting)} && ${inSection('working', ids.working)}`, 5_000))) {
+      return `failed: the sections were ${await js("JSON.stringify([...document.querySelectorAll('[data-menubar-section]')].map((s) => [s.dataset.menubarSection, s.querySelectorAll('[data-menubar-session]').length]))")}`;
+    }
+    if (!(await until(() => menuBar.state === 'needs-you' && menuBar.counts.needsYou >= 1 && menuBar.counts.working >= 1, 3_000))) return `failed: the icon is ${menuBar.state} (${JSON.stringify(menuBar.counts)})`;
+    const wants = (await js(`document.querySelector('[data-menubar-session="${ids.waiting}"]')?.innerText ?? ''`)) as string;
+    if (!wants.includes('Wants to run echo smoke')) return `failed: the waiting row says ${JSON.stringify(wants)}`;
+    // Finished, unread: at most five, each one the main window's sidebar shows as unread too (its row's label says so).
+    const finished = (await js("JSON.stringify([...document.querySelectorAll('[data-menubar-section=\"finished\"] [data-menubar-session]')].map((r) => r.dataset.menubarSession))")) as string;
+    const finishedIds = JSON.parse(finished) as string[];
+    if (finishedIds.length > 5) return `failed: ${finishedIds.length} finished rows, more than five`;
+    const unreadInSidebar = (await win.webContents.executeJavaScript(`JSON.stringify(${JSON.stringify(finishedIds)}.filter((id) => !(document.querySelector('[data-session-list] [data-session-id="' + id + '"]')?.getAttribute('aria-label') ?? '').includes('New activity since you last looked')))`)) as string;
+    if (finishedIds.length && JSON.parse(unreadInSidebar).length) return `failed: finished rows the sidebar doesn't show as unread: ${unreadInSidebar}`;
+    const focusOnRow = await js("document.activeElement?.hasAttribute('data-menubar-row') === true");
+    if (!focusOnRow) return 'failed: focus did not start on the first row';
+    await shot(panel, 'menu-bar-panel.png');
+    return `ok: the icon says needs you (${JSON.stringify(menuBar.counts)}), the panel lists the waiting and working stand-ins, ${finishedIds.length} finished, focus on the first row`;
+  });
+}
+
+/** Allow on the waiting stand-in answers its prompt, and the session moves to Working. */
+function runMenuBarAllowStep(): Promise<string> {
+  return withMenuBarPanel(async (panel, ids) => {
+    const js = (code: string) => panel.webContents.executeJavaScript(code) as Promise<unknown>;
+    if (!(await waitInPage(panel, `!!document.querySelector('[data-menubar-allow="${ids.waiting}"]')`, 5_000))) return 'failed: no Allow on the waiting session';
+    const label = await js(`document.querySelector('[data-menubar-allow="${ids.waiting}"]').getAttribute('aria-label')`);
+    if (label !== `Allow Title ${ids.waiting}` && !(typeof label === 'string' && label.startsWith('Allow '))) return `failed: Allow is labelled ${JSON.stringify(label)}`;
+    await js(`document.querySelector('[data-menubar-allow="${ids.waiting}"]').click()`);
+    if (!(await waitInPage(panel, inSection('working', ids.waiting), 5_000))) return 'failed: after Allow the session did not move to Working';
+    if (!(await until(() => menuBar.counts.needsYou === 0, 3_000))) return `failed: the icon still counts ${menuBar.counts.needsYou} needing you`;
+    return 'ok: Allow answered the prompt, the session moved to Working and the count went';
+  });
+}
+
+/** New work in the panel starts a (stand-in) session in the background: it shows under Working, the main window doesn't move. */
+function runMenuBarNewWorkStep(win: BrowserWindow): Promise<string> {
+  return withMenuBarPanel(async (panel) => {
+    const js = (code: string) => panel.webContents.executeJavaScript(code) as Promise<unknown>;
+    const mainState = () => win.webContents.executeJavaScript("JSON.stringify({ session: document.querySelector('[data-current-session]')?.dataset.currentSession ?? null, view: document.querySelector('[data-new-session-view]') ? 'new' : 'other' })") as Promise<string>;
+    const before = { bounds: win.getBounds(), state: await mainState() };
+    engine.send({ type: 'smokeStubCreate', on: true });
+    let created: string | null = null;
+    try {
+      if (!(await waitInPage(panel, "document.querySelector('[data-menubar-project]')?.dataset.menubarProject", 5_000))) return 'failed: New work has no project';
+      await js("document.querySelector('[data-menubar-box]').focus()");
+      panel.webContents.insertText('Add the menu bar to Settings');
+      if (!(await waitInPage(panel, "!document.querySelector('[data-menubar-start]').disabled", 3_000))) return 'failed: Start stayed off with text in the box';
+      // ⌘↩ (Ctrl+Enter elsewhere) starts it, as the button says.
+      panel.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
+      if (!(await waitInPage(panel, "!!document.querySelector('[data-menubar-started]')", 10_000))) return `failed: it did not say Started (${await js("document.querySelector('[data-menubar-new-work]')?.innerText ?? ''")})`;
+      created = (await js("document.querySelector('[data-menubar-started]').dataset.menubarStarted")) as string;
+      if (!(await waitInPage(panel, inSection('working', created), 5_000))) return 'failed: the new session did not show under Working';
+      const after = { bounds: win.getBounds(), state: await mainState() };
+      if (JSON.stringify(after) !== JSON.stringify(before)) return `failed: the main window moved: ${JSON.stringify(before)} → ${JSON.stringify(after)}`;
+      await js("document.querySelector('[data-menubar-done]').click()");
+      if (!(await waitInPage(panel, "!!document.querySelector('[data-menubar-new-work]')", 2_000))) return 'failed: Done did not bring the box back';
+      return 'ok: ⌘↩ started the work in the background, it shows under Working, the main window stayed where it was';
+    } finally {
+      engine.send({ type: 'smokeStubCreate', on: false });
+      if (created) engine.send({ type: 'smokeQueueHost', sessionId: created, cwd: tmpdir(), state: 'closed' });
+    }
+  });
+}
+
+/** Settings › General › Menu bar › Show in the menu bar: off takes the icon away, on brings it back. */
+async function runMenuBarSettingStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const switchIs = (on: boolean) => waitInPage(win, `document.querySelector('[data-menu-bar-setting][role="switch"]')?.getAttribute('aria-checked') === '${on}'`, 2_000);
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  await click('[data-settings-section="general"]');
+  if (!(await switchIs(true)) || !preferences.get().menuBar) return 'failed: Show in the menu bar is not on by default';
+  if (!menuBar.visible || !tray) return 'failed: no icon while the switch is on';
+  if (!preferences.get().keepRunning) return 'failed: Keep running when the window closes is not on by default';
+  try {
+    await click('[data-menu-bar-setting]');
+    if (!(await switchIs(false)) || !(await until(() => !menuBar.visible && tray === null, 2_000))) return 'failed: turning it off left the icon';
+    await click('[data-menu-bar-setting]');
+    if (!(await switchIs(true)) || !(await until(() => menuBar.visible && tray !== null, 2_000))) return 'failed: turning it on again did not bring the icon back';
+  } finally {
+    if (!preferences.get().menuBar) updatePreferences({ menuBar: true });
+    await click('[data-close-settings]');
+  }
+  return 'ok: off took the icon away, on brought it back';
+}
+
+/**
  * Keep awake until done (#241), on a stand-in session: the ⋯ menu turns it on and the pill above the message box
  * shows it, main holds sleep off while the session works, the pill turns it off, and once the session is done the flag
  * goes by itself (after the engine's short grace period with `SESHBOARD_STUB_QUEUE`).
@@ -10854,6 +11178,10 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
   await step('working panel: the patch panel on the working line, still while compacting, waiting on a permission', () => runWorkingPanelStep(win));
+  await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));
+  await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());
+  await step('menu bar: new work starts in the background, the main window stays where it was', () => runMenuBarNewWorkStep(win));
+  await step('menu bar: turning off Show in the menu bar takes the icon away', () => runMenuBarSettingStep(win));
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
@@ -10953,6 +11281,7 @@ app.whenReady().then(() => {
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);
   dockActivity.setEnabled(preferences.get().dockActivity);
+  menuBar.setEnabled(preferences.get().menuBar);
   keepAwake.apply(preferences.get().keepAwake);
   // The commit shows in brackets after the version, handy when someone reports a bug from a build.
   app.setAboutPanelOptions({
@@ -10997,6 +11326,8 @@ app.whenReady().then(() => {
     notificationIcon: () => appIcon.windowIcon(),
     // Only the Dock has an icon to animate: Windows and Linux show the window's.
     ...(process.platform === 'darwin' ? { working: (working: boolean) => dockActivity.setWorking(working) } : {}),
+    // The menu bar's icon follows the same counts as the Dock and the badge.
+    counts: (counts) => menuBar.setCounts(counts),
     ...(smokeOutDir ? { record: (event: RecordedAlert) => void recordedNotifications.push(event), recordRuns: (runs: ScheduleRunEvent[]) => void recordedScheduleRuns.push(...runs) } : {}),
   });
   notifier.connect();
@@ -11058,7 +11389,8 @@ app.on('second-instance', (_event, argv, workingDirectory) => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // Keep running when the window closes: sessions go on, and the menu bar's icon stays (Windows and Linux too).
+  if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) app.quit();
 });
 
 app.on('before-quit', () => {

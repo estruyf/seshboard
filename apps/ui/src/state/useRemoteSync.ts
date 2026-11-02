@@ -3,7 +3,7 @@ import { useEngineConnection } from '../engine/useEngine.ts';
 import { connectedRows, connectionAnnouncement, connectionChanges, connectToastDue, dayKey, type ConnectedDevice } from './connectedDevices.ts';
 import { revokeDevice, setToastDay, toastDay, useRemote } from './remoteStore.ts';
 import { toast } from './toastStore.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { secondaryWindow } from './popoutsStore.ts';
 import { useThemes } from './themeStore.ts';
 import { remoteTheme } from '../lib/themeRemote.ts';
 
@@ -31,7 +31,7 @@ export function useRemoteSync(): void {
 
   // On connecting and on every change of theme (picked, or its file edited). The engine passes on only a change.
   useEffect(() => {
-    if (!client || popoutSession) return;
+    if (!client || secondaryWindow) return;
     const send = ({ entry, resolved }: ReturnType<typeof useThemes.getState>['active']) => void client.call('remote.setTheme', remoteTheme(entry.file.name, resolved)).catch(() => {});
     send(useThemes.getState().active);
     return useThemes.subscribe((state, prev) => state.active !== prev.active && send(state.active));
@@ -39,7 +39,7 @@ export function useRemoteSync(): void {
 
   useEffect(() => {
     // The main window says it; a pop-out would say it twice.
-    if (popoutSession) return;
+    if (secondaryWindow) return;
     // Null until the first status: the devices connected at startup are neither announced nor toasted.
     let before: ConnectedDevice[] | null = null;
     return useRemote.subscribe((state, prev) => {

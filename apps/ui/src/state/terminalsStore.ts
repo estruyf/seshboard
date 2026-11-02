@@ -9,7 +9,7 @@ import { ownerSession } from '../components/terminal/appTerminal.ts';
 import { ENGINE_RESTARTED_MESSAGE, panelsWithLostTerminals } from '../components/terminal/lostTerminals.ts';
 import { runOnce } from '../lib/inFlight.ts';
 import { passFocusGate } from './focusGate.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { secondaryWindow } from './popoutsStore.ts';
 
 const PANEL_KEY = 'ui.terminalPanel';
 
@@ -288,7 +288,7 @@ export function useTerminalsSync(): void {
 
   // Saved by the main window only: a pop-out's smaller window would clamp the sizes it saves.
   useEffect(() => {
-    if (!client || popoutSession) return;
+    if (!client || secondaryWindow) return;
     const timer = setTimeout(() => void client.call('appState.set', { key: PANEL_KEY, value: { open: [...openFor].slice(-REMEMBER_OPEN), height: panelHeight, width: panelWidth, dock } }), 300);
     return () => clearTimeout(timer);
   }, [client, openFor, panelHeight, panelWidth, dock]);

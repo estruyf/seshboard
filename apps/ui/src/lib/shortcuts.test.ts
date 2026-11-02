@@ -290,7 +290,9 @@ describe('the shortcut registry', () => {
       'usage.back': [at({ view: 'usage' }), SESSION],
       'memory.save': [at({ view: 'project' }), SESSION],
     };
-    const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when).map((s) => s.id);
+    // The menu bar's panel handles its own keys: they never work in the main window.
+    for (const id of ['menubar.start', 'menubar.open'] as const) expect(available(shortcutById(id), SESSION) || available(shortcutById(id), HOME)).toBe(false);
+    const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when && !s.id.startsWith('menubar.')).map((s) => s.id);
     expect(Object.keys(cases).sort()).toEqual(conditional.sort());
     for (const [id, [works, doesnt]] of Object.entries(cases)) {
       expect(available(shortcutById(id as ShortcutId), works), `${id} works`).toBe(true);

@@ -66,3 +66,12 @@ describe('sounds for events that arrive together', () => {
     expect(louder('actionEnded', 'finished')).toBe('finished');
   });
 });
+
+describe('Pause notifications', () => {
+  it('plays no notification and no sound until the pause ends', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, notificationsPausedUntil: 2_000 };
+    expect(alertFor('needs-you', false, prefs, 1_000)).toEqual({ notify: false, sound: null });
+    expect(alertFor('needs-you', false, prefs, 2_000).notify).toBe(true);
+    expect(alertFor('needs-you', false, { ...prefs, notificationsPausedUntil: null }, 1_000).notify).toBe(true);
+  });
+});
