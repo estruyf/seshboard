@@ -2123,7 +2123,6 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       </span>
                     )
                   }
-                  profileId={otherProvider ? otherProfileId : profileId}
                   tools={cwd && !readOnly ? () => useOverlay.getState().show('tools') : null}
                   // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
                   // ring, with every number in its tooltip.

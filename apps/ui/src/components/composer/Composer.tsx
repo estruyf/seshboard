@@ -101,8 +101,6 @@ export interface ComposerProps {
   status?: ReactNode;
   /** Last on the tray: the context ring (with plan usage in its tooltip while the terminal is open below). */
   meter?: ReactNode;
-  /** The profile the next message runs with: a non-default one colours the tray's edge. */
-  profileId?: string | null;
   /** A shortcut shown on the submit button, like `⌘↵`. */
   submitHint?: string;
   /** A taller prompt that is the main thing on screen. */
@@ -1319,7 +1317,7 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
-      {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} profileId={props.profileId} />}
+      {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} />}
     </div>
   );
 }

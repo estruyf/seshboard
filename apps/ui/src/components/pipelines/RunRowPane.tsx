@@ -114,7 +114,6 @@ export function RunRowPane({ runId, pane }: { runId: string; pane: PaneProps }) 
                 links={{ sessionId: null, root: state.run.projectRoot }}
                 disabledReason={connection.status !== 'connected' ? 'Connecting to the engine…' : null}
                 // The run's profile (the default one when it has none): its plan usage on the tray, as under a session's box.
-                profileId={state.run.profileId}
                 info={<UsageBand profileId={state.run.profileId} footer />}
                 onSubmit={async (text) => {
                   const sessionId = await writeInRun(runId, text);

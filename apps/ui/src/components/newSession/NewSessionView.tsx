@@ -1458,15 +1458,11 @@ function LocalNewSession() {
 
           {!fromLater && <PromptChips root={cwd && !question ? cwd : null} draftKey={draftKey} />}
 
-          {/* The message box with its route strip on top: the strip's bottom edge is the card's top border.
-              With a folder picked, the whole card takes its project's colour, with a faint ring around it. */}
-          <div
-            className="rounded-xl transition-shadow [&>div>.rounded-xl]:rounded-t-none"
-            style={projectColor ? { boxShadow: `0 0 0 4px color-mix(in srgb, ${projectColor} 14%, transparent)` } : undefined}
-            data-project-color={projectColor ?? undefined}
-          >
+          {/* The message box with its route strip on top: the strip's bottom edge is the card's top border, so the
+              card's top corners are square. With a folder picked, the strip and the card take its project's colour. */}
+          <div className="[&_[data-composer-card]]:rounded-t-none" data-project-color={projectColor ?? undefined}>
             <div
-              className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-xl border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
+              className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
               style={projectColor ? { borderColor: projectColor } : undefined}
               data-route-tray
             >
@@ -1686,7 +1682,6 @@ function LocalNewSession() {
               localContext
               onContextChange={setDraftContext}
               controls={controls}
-              profileId={profileId}
               // Claude Code's plan usage for the profile; another provider's, its premium requests.
               info={runWith ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
               usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(profileId) } : null}

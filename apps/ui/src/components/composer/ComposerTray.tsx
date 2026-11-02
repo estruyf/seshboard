@@ -1,6 +1,5 @@
 import { Blocks } from 'lucide-react';
 import { createContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useProfiles } from '../../state/profilesStore.ts';
 import { CHOICE_PILL } from '../newSession/ChoiceMenu.tsx';
 import { trayFolds } from './trayFold.ts';
 
@@ -34,8 +33,6 @@ export interface ComposerTrayProps {
   usage?: TrayUsage | null;
   /** The context ring, last on the right. It stays when the tray folds. */
   meter?: ReactNode;
-  /** The profile that runs the next message: a non-default one colours the tray's edge. */
-  profileId?: string | null;
 }
 
 /**
@@ -43,15 +40,12 @@ export interface ComposerTrayProps {
  * and the context ring on the right. When the chips at their smallest level and the right side don't fit, it folds:
  * model, effort and mode become one chip (`TrayContext`), Tools and usage move into its menu, and the ring stays.
  */
-export function ComposerTray({ controls, tools, info, usage, meter, profileId }: ComposerTrayProps) {
+export function ComposerTray({ controls, tools, info, usage, meter }: ComposerTrayProps) {
   const trayRef = useRef<HTMLDivElement>(null);
   const startRef = useRef<HTMLDivElement>(null);
   const foldableRef = useRef<HTMLSpanElement>(null);
   const meterRef = useRef<HTMLSpanElement>(null);
   const [folded, setFolded] = useState(false);
-  const profiles = useProfiles((s) => s.profiles);
-  const defaultId = useProfiles((s) => s.defaultId);
-  const profile = profiles.length > 1 && profileId && profileId !== defaultId ? profiles.find((p) => p.id === profileId) : undefined;
 
   useLayoutEffect(() => {
     const tray = trayRef.current;
@@ -91,11 +85,9 @@ export function ComposerTray({ controls, tools, info, usage, meter, profileId }:
         role="group"
         aria-label="Options for the next message"
         // One step darker than the box: the card's surface half over what is behind it.
-        className={`relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl border border-t-0 bg-card/55 px-1.5 py-1 text-ui text-muted ${profile ? '' : 'border-border'}`}
-        style={profile ? { borderColor: `var(--sb-profile-${profile.color})` } : undefined}
+        className="relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl border border-t-0 border-border bg-card/55 px-1.5 py-1 text-ui text-muted"
         data-composer-tray
         data-composer-tray-folded={folded || undefined}
-        data-tray-profile={profile?.id}
       >
         <div ref={startRef} className="flex min-w-0 flex-1 items-center">
           {controls}
