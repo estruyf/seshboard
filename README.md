@@ -219,6 +219,18 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘/ | Keyboard shortcuts |
 | ⌘↩ | Start new work in the background (in the menu bar's panel) |
 | ⌘0 | Open Seshboard (in the menu bar's panel) |
+| ⌃⌥Space | Quick start: start a session from any app (in any app; Change it in Settings › General › Quick start) |
+| ↩ | Start the session in the background (in the quick start panel) |
+| ⌘↩ | Start it and open Seshboard (in the quick start panel) |
+| ⌘K | Quick start actions (in the quick start panel) |
+| ⌘1 to ⌘9 | Pick a project (in the quick start panel) |
+| ⌘W | Start in a new worktree (in the quick start panel) |
+| ⌘M | Change the model (in the quick start panel) |
+| ⇧⇥ | Change the permission mode (in the quick start panel) |
+| ⌘P | Change the profile (in the quick start panel) |
+| ⌘V | Attach the clipboard (in the quick start panel) |
+| ⌘L | Add to Later instead (in the quick start panel) |
+| ⌘O | Open the new session (in the quick start panel) |
 | ⌘Q then ⌘Q | Quit (Seshboard asks first; Press once if you turned that off) |
 | ⌘J or ⌃` | Show or hide the terminal |
 | ⌘⇧J | Maximize or restore the terminal |

@@ -97,6 +97,13 @@ describe('the settings index', () => {
     expect(found('dock', 'win32')).not.toContain('hide-dock');
   });
 
+  it('finds quick start by quick start, launcher, global shortcut and raycast', () => {
+    const found = (query: string) => searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.id);
+    for (const query of ['quick start', 'launcher', 'global shortcut', 'raycast']) {
+      expect(found(query), query).toEqual(expect.arrayContaining(['quick-start-shortcut', 'quick-start-background', 'quick-start-needs-you']));
+    }
+  });
+
   it('writes like the app: no em dashes', () => {
     expect(entries.filter((entry) => `${entry.label} ${entry.detail ?? ''}`.includes('—')).map((entry) => entry.id)).toEqual([]);
   });

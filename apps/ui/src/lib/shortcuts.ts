@@ -33,11 +33,15 @@ export function shortcutFromEvent(event: {
   code?: string;
 }): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
-  // Option changes the character on macOS (⌥P = π); use the physical key instead.
+  // Option changes the character on macOS (⌥P = π, ⌥1 = ¡, ⌥Space a no-break space); use the physical key instead.
   const raw =
     event.altKey && event.code?.startsWith("Key")
       ? event.code.slice(3).toLowerCase()
-      : event.key.toLowerCase();
+      : event.altKey && event.code?.startsWith("Digit")
+        ? event.code.slice(5)
+        : event.code === "Space"
+          ? " "
+          : event.key.toLowerCase();
   const key = NAMED_KEYS[raw] ?? raw;
   return [
     event.metaKey && "cmd",
@@ -383,6 +387,116 @@ export const SHORTCUTS = [
     context: "In the menu bar's panel",
     when: () => false,
     menu: true,
+  },
+  // The quick start panel (its own window, opened by a global shortcut): never in the main window, so they don't
+  // count there, and project actions may use the panel's keys. The global shortcut itself stays reserved.
+  {
+    id: "quickstart.open",
+    keys: ["ctrl+alt+space"],
+    action: "Quick start: start a session from any app",
+    section: "general",
+    context: "In any app",
+    note: "Change it in Settings › General › Quick start",
+    when: () => false,
+  },
+  {
+    id: "quickstart.start",
+    keys: ["enter"],
+    action: "Start the session in the background",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.start-open",
+    keys: ["mod+enter"],
+    action: "Start it and open Seshboard",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.actions",
+    keys: ["mod+k"],
+    action: "Quick start actions",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.pick",
+    keys: ["mod+1..9"],
+    action: "Pick a project",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.worktree",
+    keys: ["mod+w"],
+    action: "Start in a new worktree",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.model",
+    keys: ["mod+m"],
+    action: "Change the model",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.mode",
+    keys: ["shift+tab"],
+    action: "Change the permission mode",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.profile",
+    keys: ["mod+p"],
+    action: "Change the profile",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.paste",
+    keys: ["mod+v"],
+    action: "Attach the clipboard",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.later",
+    keys: ["mod+l"],
+    action: "Add to Later instead",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.open-started",
+    keys: ["mod+o"],
+    action: "Open the new session",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
   },
   {
     id: "quit",

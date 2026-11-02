@@ -96,6 +96,12 @@ export const IpcChannel = {
   menuBarCommand: "seshboard:menu-bar-command",
   menuBarResize: "seshboard:menu-bar-resize",
   menuBarShown: "seshboard:menu-bar-shown",
+  quickStartCommand: "seshboard:quick-start-command",
+  quickStartPassClicks: "seshboard:quick-start-pass-clicks",
+  quickStartShown: "seshboard:quick-start-shown",
+  quickStartKey: "seshboard:quick-start-key",
+  getQuickStartStatus: "seshboard:get-quick-start-status",
+  quickStartStatus: "seshboard:quick-start-status",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
@@ -109,6 +115,29 @@ export const MENU_BAR_QUERY = "menubar";
  * ⌘Q does), or close the panel (Esc, or after opening something).
  */
 export type MenuBarCommand = "open" | "quit" | "close";
+
+/** The query parameter that makes a window the quick start panel (`?quickstart=1`), which the global shortcut opens. */
+export const QUICK_START_QUERY = "quickstart";
+
+/** Quick start's global shortcut until one is picked in Settings › General: ⌃⌥Space, Ctrl+Alt+Space elsewhere. */
+export const DEFAULT_QUICK_START_SHORTCUT = "ctrl+alt+space";
+
+/** How quick start's global shortcut stands: `registered` is false when another app has the keys. */
+export interface QuickStartStatus {
+  /** The shortcut in the registry's stored form (`ctrl+alt+space`). */
+  shortcut: string;
+  registered: boolean;
+}
+
+/** A key the app menu would take in the quick start panel (⌘W, ⌘M…), handed to the page instead. */
+export interface QuickStartKey {
+  key: string;
+  shift: boolean;
+}
+
+/** Whether a stored shortcut can be quick start's: at least one modifier and a key, in the stored form. */
+export const isQuickStartShortcut = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= 60 && /^(?:(?:cmd|ctrl|alt|shift)\+)+[a-z0-9]+$/.test(value) && !/^(?:shift\+)+[a-z0-9]+$/.test(value);
 
 /**
  * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
@@ -382,6 +411,15 @@ export interface Preferences {
   keepRunning: boolean;
   /** Settings › General › Menu bar: "Hide from the Dock while no window is open" (macOS). Off by default. */
   hideDock: boolean;
+  /**
+   * Settings › General › Quick start: the global shortcut that opens the quick start panel from any app, in the
+   * registry's stored form (`ctrl+alt+space`).
+   */
+  quickStartShortcut: string;
+  /** Settings › General › Quick start: "Start in the background". Off, ↩ in the panel opens Seshboard too, as ⌘↩ does. */
+  quickStartBackground: boolean;
+  /** Settings › General › Quick start: "Show what needs you", the waiting sessions at the top of the panel. */
+  quickStartNeedsYou: boolean;
   /** Pause notifications (the menu bar): no notifications or sounds until this time (ms since epoch); null when not paused. */
   notificationsPausedUntil: number | null;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
@@ -488,6 +526,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   menuBar: true,
   keepRunning: true,
   hideDock: false,
+  quickStartShortcut: DEFAULT_QUICK_START_SHORTCUT,
+  quickStartBackground: true,
+  quickStartNeedsYou: true,
   notificationsPausedUntil: null,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
@@ -679,6 +720,9 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
   if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
   if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
+  if (isQuickStartShortcut(raw.quickStartShortcut)) out.quickStartShortcut = raw.quickStartShortcut;
+  if (typeof raw.quickStartBackground === "boolean") out.quickStartBackground = raw.quickStartBackground;
+  if (typeof raw.quickStartNeedsYou === "boolean") out.quickStartNeedsYou = raw.quickStartNeedsYou;
   if (raw.notificationsPausedUntil === null || (typeof raw.notificationsPausedUntil === "number" && Number.isFinite(raw.notificationsPausedUntil)))
     out.notificationsPausedUntil = raw.notificationsPausedUntil;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
@@ -1014,6 +1058,26 @@ export interface SeshboardBridge {
   menuBarResize(height: number): void;
   /** In the menu bar's panel: it was shown again (the icon was clicked), so it puts focus back on its first row. */
   onMenuBarShown(listener: () => void): () => void;
+  /** Whether this window is the quick start panel (`?quickstart=1`). Read once when the page loads. */
+  readonly quickStart: boolean;
+  /** From the quick start panel: close it (Esc, after a start, or after opening a session). */
+  quickStartClose(): void;
+  /**
+   * From the quick start panel: the pointer is over the window's see-through part (`true`), so clicks go to the app
+   * under it; or back over the panel or one of its menus (`false`).
+   */
+  quickStartPassClicks(pass: boolean): void;
+  /**
+   * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
+   * (5 minutes) for what was typed to go.
+   */
+  onQuickStartShown(listener: (keepDraft: boolean) => void): () => void;
+  /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */
+  onQuickStartKey(listener: (key: QuickStartKey) => void): () => void;
+  /** How quick start's global shortcut stands (Settings › General says when another app has it). */
+  quickStartStatus(): Promise<QuickStartStatus>;
+  /** Fires in every window when the global shortcut is registered again (changed in Settings, or at launch). */
+  onQuickStartStatus(listener: (status: QuickStartStatus) => void): () => void;
   /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */

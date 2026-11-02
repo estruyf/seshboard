@@ -24,6 +24,8 @@ import { FocusSettings } from './focus/FocusSettings.tsx';
 import { GlobalModelSettings } from './general/GlobalModelSettings.tsx';
 import { MenuBarSettings } from './general/MenuBarSettings.tsx';
 import { menuBarTitle } from './general/menuBarCopy.ts';
+import { QuickStartSettings } from './general/QuickStartSettings.tsx';
+import { QUICK_START_TITLE } from './general/quickStartCopy.ts';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
@@ -453,6 +455,9 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </Section>
           <Section title={menuBarTitle()}>
             <MenuBarSettings />
+          </Section>
+          <Section title={QUICK_START_TITLE}>
+            <QuickStartSettings />
           </Section>
           <Section title="Terminal">
             <ShellCommandSetting />

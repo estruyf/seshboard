@@ -438,6 +438,12 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   outline-offset: 1px;
 }
 
+/* The quick start panel's window: see-through around the panel, which draws its own surface. */
+html[data-quick-start-window],
+html[data-quick-start-window] body {
+  background: transparent;
+}
+
 /* Scrollbars in the theme's colours: a thin thumb on a transparent track (no grey system gutter). */
 * {
   scrollbar-width: thin;

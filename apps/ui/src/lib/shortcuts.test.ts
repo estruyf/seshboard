@@ -292,7 +292,11 @@ describe('the shortcut registry', () => {
     };
     // The menu bar's panel handles its own keys: they never work in the main window.
     for (const id of ['menubar.start', 'menubar.open'] as const) expect(available(shortcutById(id), SESSION) || available(shortcutById(id), HOME)).toBe(false);
-    const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when && !s.id.startsWith('menubar.')).map((s) => s.id);
+    // So do the quick start panel's, and its global shortcut works in other apps, not in a window of Seshboard's.
+    const quickStart = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.id.startsWith('quickstart.'));
+    expect(quickStart.length).toBeGreaterThan(5);
+    for (const def of quickStart) expect(available(def, SESSION) || available(def, HOME), def.id).toBe(false);
+    const conditional = (SHORTCUTS as readonly ShortcutDef[]).filter((s) => s.when && !s.id.startsWith('menubar.') && !s.id.startsWith('quickstart.')).map((s) => s.id);
     expect(Object.keys(cases).sort()).toEqual(conditional.sort());
     for (const [id, [works, doesnt]] of Object.entries(cases)) {
       expect(available(shortcutById(id as ShortcutId), works), `${id} works`).toBe(true);
@@ -360,6 +364,13 @@ describe('shortcut collisions', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('recording a shortcut', () => {
+  it('reads ⌥Space and ⌥1 by their keys, not the characters macOS types for them', () => {
+    expect(shortcutFromEvent({ metaKey: false, ctrlKey: true, altKey: true, shiftKey: false, key: '\u00a0', code: 'Space' })).toBe('ctrl+alt+space');
+    expect(shortcutFromEvent({ metaKey: true, ctrlKey: false, altKey: true, shiftKey: false, key: '¡', code: 'Digit1' })).toBe('cmd+alt+1');
   });
 });
 

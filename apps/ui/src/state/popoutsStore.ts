@@ -7,11 +7,14 @@ export const popoutSession: string | null = typeof window === 'undefined' ? null
 /** This window is the menu bar's panel (`?menubar=1`). */
 export const menuBarWindow: boolean = typeof window === 'undefined' ? false : (window.seshboard?.menuBar ?? false);
 
+/** This window is the quick start panel (`?quickstart=1`), which the global shortcut opens over any app. */
+export const quickStartWindow: boolean = typeof window === 'undefined' ? false : (window.seshboard?.quickStart ?? false);
+
 /**
- * Not the main window: a pop-out or the menu bar's panel. Such a window saves nothing of the main window's (its
+ * Not the main window: a pop-out, the menu bar's panel or the quick start panel. Such a window saves nothing of the main window's (its
  * selection, the sidebar's filter, the terminal panel) and does none of its app-wide work.
  */
-export const secondaryWindow: boolean = popoutSession !== null || menuBarWindow;
+export const secondaryWindow: boolean = popoutSession !== null || menuBarWindow || quickStartWindow;
 
 interface PopoutsState {
   /** Sessions shown in a window of their own, as main reports them (`onPopoutsChanged`). */

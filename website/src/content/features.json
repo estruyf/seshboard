@@ -1162,6 +1162,66 @@
       "page": "sessions/states"
     },
     {
+      "id": "shortcut:quickstart.open",
+      "name": "quickstart.open",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.start",
+      "name": "quickstart.start",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.start-open",
+      "name": "quickstart.start-open",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.actions",
+      "name": "quickstart.actions",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.pick",
+      "name": "quickstart.pick",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.worktree",
+      "name": "quickstart.worktree",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.model",
+      "name": "quickstart.model",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.mode",
+      "name": "quickstart.mode",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.profile",
+      "name": "quickstart.profile",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.paste",
+      "name": "quickstart.paste",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.later",
+      "name": "quickstart.later",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.open-started",
+      "name": "quickstart.open-started",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:quit",
       "name": "quit",
       "page": "settings"
@@ -1469,6 +1529,16 @@
     {
       "id": "feature:menu-bar-settings",
       "name": "Settings: General: Menu bar (Show in the menu bar, Keep running when the window closes, Hide from the Dock while no window is open)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:quick-start",
+      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard and Add to Later instead",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:quick-start-settings",
+      "name": "Settings: General: Quick start (Shortcut, with Reset and a message when another app has it; Start in the background; Show what needs you)",
       "page": "settings"
     },
     {

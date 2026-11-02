@@ -4,15 +4,13 @@ import { isPaused, NOTIFICATION_PAUSES, pauseUntil, type NotificationPause } fro
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { matches } from '../../lib/shortcuts.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
-import { passFocusGate } from '../../state/focusGate.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
-import { trustRepository } from '../../state/repoTrust.ts';
 import { useListedRows, useProjectName } from '../../state/useQueue.ts';
-import { globalChoices, LAST_MODE_KEY, layeredDefaults, newSessionChoices, readLastMode } from '../newSession/choices.ts';
-import { startNewSession } from '../newSession/startSession.ts';
+import { projectProfile, quickSetup, startQuickSession } from '../quickStart/quickStartSession.ts';
+import { useQuickProjects } from '../quickStart/useQuickProjects.ts';
 import { ProfileBadge } from '../profiles/ProfileBadge.tsx';
 import { ProjectIcon } from '../ProjectIcon.tsx';
 import { tileOf } from '../theme/AppIconSettings.tsx';
@@ -20,7 +18,7 @@ import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { useUsageLines } from '../UsageBand.tsx';
-import { menuBarRows, nextRow, pickableProjects, SECTION_TITLES, type MenuBarRow, type MenuBarSection } from './menuBarModel.ts';
+import { menuBarRows, nextRow, SECTION_TITLES, type MenuBarRow, type MenuBarSection } from './menuBarModel.ts';
 
 const bridge = () => window.seshboard;
 /** Opens a session in the main window; the panel goes. */
@@ -88,6 +86,8 @@ export function MenuBarPanel() {
   useEffect(() => {
     focusStart();
     return bridge()?.onMenuBarShown(() => {
+      // Projects added or changed in the main window since the panel last showed.
+      useProjects.getState().reload();
       setKeys(true);
       requestAnimationFrame(focusStart);
     });
@@ -254,11 +254,13 @@ function useClient() {
   return connection.status === 'connected' ? connection.client : null;
 }
 
-/** New work: a project (recent ones first, with Find), its profile, a box, and Start (⌘↩), in the background. */
+/**
+ * New work: a project (in New session's order, with Find), its profile, a box, and Start (⌘↩), in the background. The
+ * list and the start are quick start's (`useQuickProjects`, `startQuickSession`), so the two never differ.
+ */
 function NewWork({ boxRef, innerEscape }: { boxRef: RefObject<HTMLTextAreaElement | null>; innerEscape: RefObject<Set<() => void>> }) {
   const client = useClient();
   const projects = useProjects((s) => s.projects);
-  const questionsDir = useProjects((s) => s.questionsDir);
   const profiles = useProfiles((s) => s.profiles);
   const defaultProfile = useProfiles((s) => s.defaultId);
   const prefs = usePreferences((s) => s.prefs);
@@ -268,11 +270,11 @@ function NewWork({ boxRef, innerEscape }: { boxRef: RefObject<HTMLTextAreaElemen
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState<{ sessionId: string; root: string; prompt: string } | null>(null);
-  const recent = useMemo(() => pickableProjects(projects.values(), '', questionsDir), [projects, questionsDir]);
-  // The most recent project until you pick one.
-  const chosen = root && projects.get(root)?.exists ? root : (recent[0]?.root ?? null);
+  const listed = useQuickProjects('');
+  // The first project in the list until you pick one.
+  const chosen = root && projects.get(root)?.exists ? root : (listed[0]?.root ?? null);
   const project = chosen ? projects.get(chosen) : undefined;
-  const profileId = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : defaultProfile;
+  const profileId = projectProfile(project, profiles, defaultProfile);
 
   useOpenOnEscape(picking, () => setPicking(false), innerEscape);
 
@@ -282,35 +284,25 @@ function NewWork({ boxRef, innerEscape }: { boxRef: RefObject<HTMLTextAreaElemen
     setBusy(true);
     setError(null);
     try {
-      // The project's defaults, as the palette's New session starts with them: its own, then its profile's, then Settings'.
-      const defaults = layeredDefaults(project?.added ? project.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
-      const last = readLastMode((await client.call('appState.get', { key: LAST_MODE_KEY })).value);
-      const choices = newSessionChoices(defaults, prefs.newSessionMode, last, globalChoices(prefs));
-      const inspection = await client.call('projects.inspect', { path: chosen });
-      const git = inspection.isGitRepo ? await client.call('git.branches', { cwd: chosen }) : { current: null, branches: [], checkedOutElsewhere: [] };
-      const outcome = await startNewSession(
-        {
-          cwd: chosen,
-          prompt,
-          choices,
-          worktree: choices.workspace === 'worktree' && inspection.isGitRepo,
-          currentBranch: git.current,
-          checkedOutElsewhere: git.checkedOutElsewhere,
-          profileId,
-          autoEnabled: prefs.autoModel.enabled,
-        },
-        {
-          createSession: (params) => client.call('session.create', params),
-          gate: passFocusGate,
-          trust: (needed) => trustRepository(client, needed),
-          addProject: async () => {},
-          // The main window shows the session from the engine; nothing waits here for its transcript.
-          keep: () => {},
-          // In the background: the main window stays where it was.
-          open: (sessionId) => setStarted({ sessionId, root: chosen, prompt }),
-        },
-      );
-      if (outcome.kind === 'started') setText('');
+      // The project's defaults, as New session starts with them: its own, then its profile's, then Settings'.
+      const profile = profiles.find((p) => p.id === profileId);
+      const setup = await quickSetup(client, { root: chosen, project, profile, prefs, question: false });
+      if (!setup.exists) throw new Error(`${project?.name ?? chosen}’s folder is gone`);
+      const outcome = await startQuickSession(client, {
+        root: chosen,
+        prompt,
+        choices: setup.choices,
+        worktree: setup.choices.workspace === 'worktree' && setup.isGitRepo,
+        profileId,
+        setup,
+        autoEnabled: prefs.autoModel.enabled,
+        provider: !!profile && profile.provider !== 'claude',
+      });
+      // In the background: the main window stays where it was.
+      if (outcome.kind === 'started') {
+        setStarted({ sessionId: outcome.sessionId, root: chosen, prompt });
+        setText('');
+      }
     } catch (e) {
       setError(`Couldn't start: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -402,13 +394,12 @@ function NewWork({ boxRef, innerEscape }: { boxRef: RefObject<HTMLTextAreaElemen
   );
 }
 
-/** The projects, most recent first, with Find: ↑ ↓ and ↩ pick one, as clicking does. */
+/** The projects in New session's order, with Find: ↑ ↓ and ↩ pick one, as clicking does. */
 function ProjectPicker({ onPick }: { onPick(root: string): void }) {
   const projects = useProjects((s) => s.projects);
-  const questionsDir = useProjects((s) => s.questionsDir);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const found = useMemo(() => pickableProjects(projects.values(), query, questionsDir).slice(0, 6), [projects, query, questionsDir]);
+  const found = useQuickProjects(query).slice(0, 6);
   return (
     <div className="border-b border-edge p-1.5" data-menubar-picker>
       <input
@@ -448,7 +439,7 @@ function ProjectPicker({ onPick }: { onPick(root: string): void }) {
             className={`flex cursor-default items-center gap-2 rounded-md px-2 py-1 text-ui ${i === active ? 'bg-selected' : ''}`}
             data-menubar-pick={p.root}
           >
-            <ProjectIcon project={p} root={p.root} size={14} />
+            <ProjectIcon project={projects.get(p.root)} root={p.root} size={14} />
             <span className="truncate">{p.name}</span>
           </li>
         ))}

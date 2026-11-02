@@ -1,7 +1,6 @@
-import type { CatchUp, PermissionRequest, ProjectInfo } from '@seshboard/protocol/client';
+import type { CatchUp, PermissionRequest } from '@seshboard/protocol/client';
 import { reviewLabel } from '../catchUp/catchUpModel.ts';
 import { shortAge } from '../../lib/format.ts';
-import { fuzzyScore } from '../../lib/fuzzy.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 
 /** The menu bar panel's sections, in the order they show: what needs you first, then what works, then what finished. */
@@ -94,22 +93,6 @@ export function menuBarRows(input: {
 
 /** The section headings, as the panel shows them. */
 export const SECTION_TITLES: Record<MenuBarSection, string> = { 'needs-you': 'Needs you', working: 'Working', finished: 'Finished, unread' };
-
-/**
- * The projects New work can start in: the ones that exist (never the quick questions folder), most recently used
- * first, filtered by what was typed in Find.
- */
-export function pickableProjects(projects: Iterable<ProjectInfo>, query: string, questionsDir: string | null): ProjectInfo[] {
-  const usable = [...projects].filter((p) => p.exists && p.root !== questionsDir);
-  const recent = usable.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0) || a.name.localeCompare(b.name));
-  const q = query.trim();
-  if (!q) return recent;
-  return recent
-    .map((project) => ({ project, score: Math.max(fuzzyScore(q, project.name) ?? -Infinity, (fuzzyScore(q, project.root) ?? -Infinity) - 1) }))
-    .filter((entry) => entry.score > -Infinity)
-    .sort((a, b) => b.score - a.score)
-    .map((entry) => entry.project);
-}
 
 /** The next row for ↑ and ↓ in the panel, staying at the ends. */
 export function nextRow(count: number, current: number, key: 'ArrowDown' | 'ArrowUp' | 'Home' | 'End'): number {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatchUp, LiveSession, PermissionRequest, ProjectInfo } from '@seshboard/protocol/client';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
-import { canAllow, FINISHED_SHOWN, menuBarRows, nextRow, pickableProjects, wantsLabel } from './menuBarModel.ts';
+import { canAllow, FINISHED_SHOWN, menuBarRows, nextRow, wantsLabel } from './menuBarModel.ts';
 
 const NOW = 1_000_000_000;
 const live = (status: LiveSession['status'], startedAt = NOW - 6 * 60_000) => ({ status, startedAt }) as LiveSession;
@@ -90,17 +90,6 @@ describe('wantsLabel', () => {
     expect(canAllow(request('a', { toolName: 'AskUserQuestion' }))).toBe(false);
     expect(canAllow(request('a', { toolName: 'ExitPlanMode' }))).toBe(false);
     expect(canAllow(null)).toBe(false);
-  });
-});
-
-describe('pickableProjects', () => {
-  const project = (root: string, lastActivity: number | null, exists = true) => ({ root, name: root.split('/').pop()!, exists, lastActivity }) as ProjectInfo;
-  const all = [project('/p/alpha', 10), project('/p/seshboard', 30), project('/p/gone', 50, false), project('/q', 40), project('/p/demo-time', 20)];
-  it('lists the projects that exist, most recent first, without the questions folder', () => {
-    expect(pickableProjects(all, '', '/q').map((p) => p.name)).toEqual(['seshboard', 'demo-time', 'alpha']);
-  });
-  it('finds by name', () => {
-    expect(pickableProjects(all, 'demo', '/q').map((p) => p.name)).toEqual(['demo-time']);
   });
 });
 

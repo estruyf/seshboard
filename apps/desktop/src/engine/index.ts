@@ -130,6 +130,12 @@ process.parentPort.on('message', (event) => {
     engine.smokeStubCreate((data as { on?: unknown }).on === true);
     return;
   }
+  // The smoke run's quick start steps: a throwaway folder as a project, added and removed again.
+  if (data?.type === 'smokeProject') {
+    const { path, add } = data as { path?: unknown; add?: unknown };
+    if (typeof path === 'string') engine.smokeProject(path, add === true);
+    return;
+  }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
     const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };

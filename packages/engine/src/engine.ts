@@ -367,6 +367,8 @@ export interface Engine {
    * instead of Claude Code, and records what it got. For the menu bar's new work.
    */
   smokeStubCreate(on: boolean): void;
+  /** The smoke test (`stubQueueStarts` only): adds a throwaway folder as a project, or removes it again. For quick start. */
+  smokeProject(path: string, add: boolean): void;
   /**
    * With `stubQueueStarts` only: ends a pipeline step's turn (#179) for the smoke test, with the reply its verdict is
    * read from. The steps are stand-in sessions there, and what each got is in `smoke-pipeline-starts.jsonl`.
@@ -4277,6 +4279,11 @@ export function createEngine(options: EngineOptions): Engine {
     smokeQueueHost: standInHost,
     smokeStubCreate: (on) => {
       stubCreate = on;
+    },
+    smokeProject: (path, add) => {
+      if (!options.stubQueueStarts) return;
+      if (add) projects.add(path);
+      else projects.remove(path);
     },
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {
       if (!options.stubQueueStarts) return;

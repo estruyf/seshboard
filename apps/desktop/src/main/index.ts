@@ -5,8 +5,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -16,6 +16,7 @@ import { AppIcon } from './appIcon.ts';
 import { DockActivity } from './dockActivity.ts';
 import { MenuBar, PANEL_WIDTH, panelHeight, panelPosition, quitsWhenAllClosed, trayMenu, type MenuBarCounts } from './menuBar.ts';
 import { EngineProcess } from './engineProcess.ts';
+import { QuickStart, quickStartBounds } from './quickStart.ts';
 import { remoteIdentity, throwawayRemoteKey } from './remoteIdentity.ts';
 import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.ts';
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
@@ -146,8 +147,10 @@ const themes = new ThemeStore(join(app.getPath('userData'), 'themes'), BUILT_IN_
 
 /** The window's background before the page paints: the theme's background for the current mode. */
 const windowBackground = () => themes.background(preferences.get().themeId, nativeTheme.shouldUseDarkColors);
+/** Windows that are see-through around what they draw (the quick start panel's): they keep no background. */
+const seeThroughWindows = new WeakSet<BrowserWindow>();
 const updateWindowBackgrounds = () => {
-  for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(windowBackground());
+  for (const win of BrowserWindow.getAllWindows()) if (!seeThroughWindows.has(win)) win.setBackgroundColor(windowBackground());
 };
 
 // SESHBOARD_MOCK_UPDATES=1 points the updater at a local feed (scripts/mock-update-server.ts).
@@ -252,6 +255,7 @@ function updatePreferences(patch: unknown): void {
   }
   dockActivity.setEnabled(next.dockActivity && !dockHidden);
   menuBar.setEnabled(next.menuBar);
+  if (app.isReady()) quickStart.setShortcut(next.quickStartShortcut);
   // Hide from the Dock: turned on with no window open hides it now; turned off shows it again.
   if (!mainWindow && next.hideDock) hideDock();
   else if (!next.hideDock) showDock();
@@ -793,7 +797,7 @@ function createMenuBarPanel(): BrowserWindow {
   panel.on('closed', () => {
     if (menuBarPanel === panel) menuBarPanel = null;
   });
-  loadRenderer(panel, undefined, true);
+  loadRenderer(panel, undefined, 'menubar');
   return panel;
 }
 
@@ -808,6 +812,114 @@ ipcMain.on(IpcChannel.menuBarResize, (event, height: unknown) => {
   menuBarContentHeight = height;
   if (menuBarPanel.isVisible()) placeMenuBarPanel(menuBarPanel);
 });
+
+// --- Quick start: a global shortcut opens a panel over any app -------------------------------------------------------
+
+/** The quick start panel: loaded once, hidden after startup, and kept for the next shortcut so it opens at once. */
+let quickStartPanel: BrowserWindow | null = null;
+/** The smoke test keeps the panel open while it looks at it, whatever has focus. */
+let quickStartPinned = false;
+
+/**
+ * The global shortcut (⌃⌥Space by default) and the panel it opens. On macOS the panel is a non-activating panel
+ * (`type: 'panel'`): it shows over the app in front, full-screen ones too, and takes the keys without making Seshboard
+ * the active app, so its main window stays where it was. On Windows it is a topmost window without a taskbar button,
+ * and only it is focused.
+ */
+const quickStart = new QuickStart({
+  platform: process.platform,
+  register: (accelerator, onPress) => globalShortcut.register(accelerator, guarded('quick start shortcut', onPress)),
+  unregister: (accelerator) => globalShortcut.unregister(accelerator),
+  visible: () => !!quickStartPanel && !quickStartPanel.isDestroyed() && quickStartPanel.isVisible(),
+  show: (keepDraft) => void showQuickStartPanel(keepDraft),
+  hide: () => quickStartPanel?.hide(),
+  log: (message) => console.warn(message),
+  status: (status) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.quickStartStatus, status);
+  },
+  now: () => Date.now(),
+});
+
+function showQuickStartPanel(keepDraft: boolean): BrowserWindow {
+  const panel = quickStartPanel && !quickStartPanel.isDestroyed() ? quickStartPanel : createQuickStartPanel();
+  // On the screen with the cursor, whichever app is in front.
+  panel.setBounds(quickStartBounds(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea));
+  // Clicks land on the panel until the page says the pointer is over its see-through part.
+  panel.setIgnoreMouseEvents(false);
+  if (process.platform === 'darwin') {
+    // Never `show()` or `app.focus()`: they activate the app, which brings its main window forward. A panel takes the
+    // keys without that.
+    panel.showInactive();
+    panel.focus();
+  } else {
+    panel.show();
+    panel.focus();
+  }
+  if (readyRenderers.has(panel.webContents.id)) panel.webContents.send(IpcChannel.quickStartShown, keepDraft);
+  return panel;
+}
+
+/** Keys the app menu would take while the panel has focus (⌘W would close it): the panel handles them itself. */
+const QUICK_START_KEYS = new Set(['enter', 'k', 'w', 'm', 'p', 'l', 'o', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+
+function createQuickStartPanel(): BrowserWindow {
+  const area = screen.getPrimaryDisplay().workArea;
+  const panel = new BrowserWindow({
+    ...quickStartBounds(area),
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    // The panel draws its own shadow. The system's, on a see-through window, traces the outline of everything drawn
+    // (the CSS shadow too), as a ring around the panel, and macOS keeps the outline of the first frame.
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    ...(process.platform === 'darwin' ? { type: 'panel' as const } : {}),
+    webPreferences: webPreferences(),
+  });
+  quickStartPanel = panel;
+  seeThroughWindows.add(panel);
+  // Above full-screen apps too, and on every Space, without turning the app into a menu bar app and back.
+  if (process.platform === 'darwin') {
+    panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    panel.setAlwaysOnTop(true, 'pop-up-menu');
+  }
+  panel.on('blur', () => {
+    if (quickStartPinned || panel.isDestroyed() || !panel.isVisible()) return;
+    quickStart.hide();
+  });
+  panel.on('hide', () => quickStart.hidden());
+  panel.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control) || input.alt) return;
+    const key = input.key.toLowerCase();
+    if (!QUICK_START_KEYS.has(key)) return;
+    event.preventDefault();
+    panel.webContents.send(IpcChannel.quickStartKey, { key, shift: input.shift });
+  });
+  panel.on('closed', () => {
+    if (quickStartPanel === panel) quickStartPanel = null;
+  });
+  loadRenderer(panel, undefined, 'quickstart');
+  return panel;
+}
+
+ipcMain.on(IpcChannel.quickStartCommand, (event, command: unknown) => {
+  if (command !== 'close' || !quickStartPanel || event.sender.id !== quickStartPanel.webContents.id) return;
+  quickStart.hide();
+});
+// Under the panel the window is see-through: clicks there go to the app under it (and so close the panel), while the
+// pointer still reports its moves, so the page can say when it is back over the panel or a menu.
+ipcMain.on(IpcChannel.quickStartPassClicks, (event, pass: unknown) => {
+  if (typeof pass !== 'boolean' || !quickStartPanel || event.sender.id !== quickStartPanel.webContents.id) return;
+  quickStartPanel.setIgnoreMouseEvents(pass, { forward: true });
+});
+ipcMain.handle(IpcChannel.getQuickStartStatus, () => quickStart.status);
 
 /** Settings › General › Menu bar › Hide from the Dock while no window is open (macOS): whether it is hidden now. */
 let dockHidden = false;
@@ -1070,15 +1182,17 @@ function createWindow(): BrowserWindow {
     if (mainWindow === win) mainWindow = null;
     for (const popout of [...popouts.values()]) if (!popout.isDestroyed()) popout.close();
     // Closing quits (Windows and Linux, Keep running off): the hidden panel mustn't count as a window left open.
-    if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) menuBarPanel?.destroy();
-    else if (preferences.get().hideDock && !quitting) hideDock();
+    if (quitsWhenAllClosed(process.platform, preferences.get().keepRunning)) {
+      menuBarPanel?.destroy();
+      quickStartPanel?.destroy();
+    } else if (preferences.get().hideDock && !quitting) hideDock();
   });
   loadRenderer(win);
   return win;
 }
 
 /** What every window's page needs: ready tracking, a reload after a crash, links in the browser, and the page itself. */
-function loadRenderer(win: BrowserWindow, popout?: string, menuBarPanelPage = false): void {
+function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' | 'quickstart' | null = null): void {
   const contentsId = win.webContents.id;
   // Only a new page in the window itself: `did-start-loading` also fires for frames inside it (a previewed HTML file),
   // and the page says it is ready only once, so it would never count as ready again.
@@ -1115,10 +1229,10 @@ function loadRenderer(win: BrowserWindow, popout?: string, menuBarPanelPage = fa
   if (devUrl) {
     const url = new URL(devUrl);
     if (popout) url.searchParams.set(POPOUT_QUERY, popout);
-    if (menuBarPanelPage) url.searchParams.set(MENU_BAR_QUERY, '1');
+    if (panelPage) url.searchParams.set(panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY, '1');
     void win.loadURL(url.toString());
   } else {
-    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : menuBarPanelPage ? { [MENU_BAR_QUERY]: '1' } : null;
+    const query: Record<string, string> | null = popout ? { [POPOUT_QUERY]: popout } : panelPage ? { [panelPage === 'menubar' ? MENU_BAR_QUERY : QUICK_START_QUERY]: '1' } : null;
     void win.loadFile(join(here, '../renderer/index.html'), query ? { query } : undefined);
   }
 }
@@ -8182,9 +8296,15 @@ function runMenuBarNewWorkStep(win: BrowserWindow): Promise<string> {
     const mainState = () => win.webContents.executeJavaScript("JSON.stringify({ session: document.querySelector('[data-current-session]')?.dataset.currentSession ?? null, view: document.querySelector('[data-new-session-view]') ? 'new' : 'other' })") as Promise<string>;
     const before = { bounds: win.getBounds(), state: await mainState() };
     engine.send({ type: 'smokeStubCreate', on: true });
+    // New work lists your projects as New session does: a throwaway one, as the demo home adds none until a later step.
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-menu-bar-project-')));
+    engine.send({ type: 'smokeProject', path: project, add: true });
     let created: string | null = null;
     try {
-      if (!(await waitInPage(panel, "document.querySelector('[data-menubar-project]')?.dataset.menubarProject", 5_000))) return 'failed: New work has no project';
+      const hasProject = "document.querySelector('[data-menubar-project]')?.dataset.menubarProject";
+      // The engine adds it on its own channel: showing the panel again reloads the list, as a click on the icon does.
+      if (!(await waitInPage(panel, hasProject, 2_500))) panel.webContents.send(IpcChannel.menuBarShown);
+      if (!(await waitInPage(panel, hasProject, 5_000))) return 'failed: New work has no project';
       await js("document.querySelector('[data-menubar-box]').focus()");
       panel.webContents.insertText('Add the menu bar to Settings');
       if (!(await waitInPage(panel, "!document.querySelector('[data-menubar-start]').disabled", 3_000))) return 'failed: Start stayed off with text in the box';
@@ -8201,8 +8321,164 @@ function runMenuBarNewWorkStep(win: BrowserWindow): Promise<string> {
     } finally {
       engine.send({ type: 'smokeStubCreate', on: false });
       if (created) engine.send({ type: 'smokeQueueHost', sessionId: created, cwd: tmpdir(), state: 'closed' });
+      engine.send({ type: 'smokeProject', path: project, add: false });
+      try {
+        rmSync(project, { recursive: true, force: true });
+      } catch {
+        // A temp folder left behind is harmless.
+      }
     }
   });
+}
+
+/**
+ * Quick start (#quick-start): the global shortcut can't be pressed from here, so the smoke hook opens the panel the way
+ * the shortcut does (`showQuickStartPanel`) and keeps it open while the step looks (`quickStartPinned`). Each step
+ * starts from an empty panel, so `--only` can run any one of them.
+ */
+async function withQuickStart(run: (panel: BrowserWindow, js: (code: string) => Promise<unknown>, project: { root: string; name: string }) => Promise<string>): Promise<string> {
+  // A throwaway folder as a project of the throwaway profile (the demo home adds none until a later step does).
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-quick-start-')));
+  const project = { root, name: basename(root) };
+  engine.send({ type: 'smokeProject', path: root, add: true });
+  quickStartPinned = true;
+  try {
+    const panel = showQuickStartPanel(false);
+    const js = (code: string) => panel.webContents.executeJavaScript(code) as Promise<unknown>;
+    if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start] [data-quick-start-field]')", 15_000))) return 'failed: the panel did not show its field';
+    // Opened again by the hook while it was loading: empty, with focus in the field.
+    panel.webContents.send(IpcChannel.quickStartShown, false);
+    if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-field]') && !document.querySelector('[data-quick-start-field]').value", 3_000))) return 'failed: the panel did not start empty';
+    return await run(panel, js, project);
+  } finally {
+    quickStartPinned = false;
+    quickStart.hide();
+    engine.send({ type: 'smokeProject', path: root, add: false });
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/** Types a project's name in the field and presses ↩: the project becomes the token. Returns its root, or what went wrong. */
+async function pickQuickStartProject(panel: BrowserWindow, js: (code: string) => Promise<unknown>, first: { root: string; name: string }): Promise<{ root: string } | { failed: string }> {
+  const listed = `[...document.querySelectorAll('[data-quick-start-section="projects"] [data-quick-start-project]')].some((row) => row.dataset.quickStartProject === ${JSON.stringify(first.root)})`;
+  // The engine adds the project on its own channel: showing the panel again reloads the list, as the shortcut does.
+  if (!(await waitInPage(panel, listed, 2_500))) panel.webContents.send(IpcChannel.quickStartShown, true);
+  if (!(await waitInPage(panel, listed, 5_000))) return { failed: `the throwaway project is not in the list (${await js("document.querySelector('[data-quick-start]').innerText")})` };
+  await js("document.querySelector('[data-quick-start-field]').focus()");
+  panel.webContents.insertText(first.name);
+  if (!(await waitInPage(panel, `document.querySelector('[data-quick-start-project][aria-selected="true"]')?.dataset.quickStartProject === ${JSON.stringify(first.root)}`, 3_000))) return { failed: `typing ${first.name} did not put it first` };
+  pressKey(panel, 'Enter');
+  if (!(await waitInPage(panel, `document.querySelector('[data-quick-start-token]')?.dataset.quickStartToken === ${JSON.stringify(first.root)} && document.activeElement?.hasAttribute('data-quick-start-task')`, 3_000))) return { failed: 'Enter did not make the project a token with focus in the task' };
+  if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-options]')", 10_000))) return { failed: `the options did not show (${await js("document.querySelector('[data-quick-start]').innerText")})` };
+  return { root: first.root };
+}
+
+/** The panel lists the waiting stand-in under Needs you with what it wants, and the projects with ⌘1–⌘9. */
+async function runQuickStartPanelStep(): Promise<string> {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-quick-start-')));
+  const waiting = `smoke-quickstart-wait-${randomUUID()}`;
+  engine.send({ type: 'smokeQueueHost', sessionId: waiting, cwd: folder, state: 'needs-you' });
+  try {
+    return await withQuickStart(async (panel, js) => {
+      const row = `document.querySelector('[data-quick-start-section="needs-you"] [data-quick-start-session="${waiting}"]')`;
+      if (!(await waitInPage(panel, `!!${row}`, 5_000))) return `failed: the waiting session is not under Needs you (${await js("JSON.stringify([...document.querySelectorAll('[data-quick-start-section]')].map((s) => s.dataset.quickStartSection))")})`;
+      const wants = (await js(`${row}.innerText`)) as string;
+      if (!wants.includes('Wants to run echo smoke')) return `failed: the waiting row says ${JSON.stringify(wants)}`;
+      const projects = (await js("document.querySelectorAll('[data-quick-start-section=\"projects\"] [data-quick-start-project]').length")) as number;
+      if (projects === 0) return 'failed: no projects';
+      if (!(await js("!!document.querySelector('[data-quick-start-project] kbd')"))) return 'failed: the first project has no ⌘1';
+      if (!(await js("document.activeElement?.hasAttribute('data-quick-start-field') && document.querySelector('[role=dialog][aria-label=\"Quick start\"]') !== null"))) return 'failed: focus did not start in the field of the Quick start dialog';
+      // A theme or preference change paints every window's background: never this one, which is see-through around the panel.
+      updateWindowBackgrounds();
+      // Electron reports it without alpha (see-through reads as #000000): it must not be the theme's.
+      if (panel.getBackgroundColor().toLowerCase() === windowBackground().slice(0, 7).toLowerCase()) return `failed: the panel's window got the theme's background ${panel.getBackgroundColor()}, so it isn't see-through`;
+      await shot(panel, 'quick-start-panel.png');
+      return `ok: Needs you shows the waiting session with what it wants, ${projects} projects with ⌘1–⌘9, focus in the field`;
+    });
+  } finally {
+    engine.send({ type: 'smokeQueueHost', sessionId: waiting, cwd: folder, state: 'closed' });
+    try {
+      rmSync(folder, { recursive: true, force: true });
+    } catch {
+      // A temp folder left behind is harmless.
+    }
+  }
+}
+
+/** Typing a project's name and ↩ makes it a token; ⌫ at the start takes it away again. */
+function runQuickStartTokenStep(): Promise<string> {
+  return withQuickStart(async (panel, js, project) => {
+    const picked = await pickQuickStartProject(panel, js, project);
+    if ('failed' in picked) return `failed: ${picked.failed}`;
+    if (!(await js("document.querySelector('[data-quick-start-source]')?.innerText.startsWith('From ')"))) return 'failed: the options did not say they are the defaults';
+    pressKey(panel, 'Backspace');
+    if (!(await waitInPage(panel, "!document.querySelector('[data-quick-start-token]') && document.activeElement?.hasAttribute('data-quick-start-field')", 3_000))) return 'failed: ⌫ at the start did not go back to the list';
+    await shot(panel, 'quick-start-token.png');
+    return 'ok: the project became a token with its defaults, and ⌫ went back to the list';
+  });
+}
+
+/** A task and ↩ start a (stand-in) session in the background: it shows in the sidebar, and the main window doesn't take focus. */
+async function runQuickStartStartStep(win: BrowserWindow): Promise<string> {
+  const mainState = () => win.webContents.executeJavaScript("JSON.stringify({ session: document.querySelector('[data-current-session]')?.dataset.currentSession ?? null, new: !!document.querySelector('[data-new-session-view]') })") as Promise<string>;
+  const before = { bounds: win.getBounds(), state: await mainState() };
+  engine.send({ type: 'smokeStubCreate', on: true });
+  let created: string | null = null;
+  try {
+    return await withQuickStart(async (panel, js, project) => {
+      const picked = await pickQuickStartProject(panel, js, project);
+      if ('failed' in picked) return `failed: ${picked.failed}`;
+      panel.webContents.insertText('Smoke quick start: tidy the changelog');
+      if (!(await waitInPage(panel, "!document.querySelector('[data-quick-start-start]').disabled", 3_000))) return 'failed: Start stayed off with a task';
+      pressKey(panel, 'Enter');
+      if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-started]')", 10_000))) return `failed: it did not say Started (${await js("document.querySelector('[data-quick-start]').innerText")})`;
+      created = (await js("document.querySelector('[data-quick-start-started]').dataset.quickStartStarted")) as string;
+      if (!(await js("document.querySelector('[data-quick-start-started]').innerText.includes('Started in')"))) return 'failed: the confirmation does not say Started in';
+      if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${created}"]')`, 5_000))) return 'failed: the new session is not in the sidebar';
+      if (BrowserWindow.getFocusedWindow() === win) return 'failed: the main window took focus';
+      const after = { bounds: win.getBounds(), state: await mainState() };
+      if (JSON.stringify(after) !== JSON.stringify(before)) return `failed: the main window moved: ${JSON.stringify(before)} → ${JSON.stringify(after)}`;
+      await shot(panel, 'quick-start-started.png');
+      return 'ok: ↩ started the session in the background, it is in the sidebar, the main window kept its place and focus stayed off it';
+    });
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    if (created) engine.send({ type: 'smokeQueueHost', sessionId: created, cwd: tmpdir(), state: 'closed' });
+  }
+}
+
+/** ⌘K, then Add to Later instead: the task goes on the queue (the main window's sidebar lists it), and nothing starts. */
+async function runQuickStartLaterStep(win: BrowserWindow): Promise<string> {
+  const task = `Smoke quick start later ${randomUUID().slice(0, 8)}`;
+  const row = `[...document.querySelectorAll('[data-session-list] [data-queue-item]')].find((el) => el.getAttribute('aria-label')?.includes(${JSON.stringify(task)}))`;
+  try {
+    return await withQuickStart(async (panel, js, project) => {
+      const picked = await pickQuickStartProject(panel, js, project);
+      if ('failed' in picked) return `failed: ${picked.failed}`;
+      panel.webContents.insertText(task);
+      // ⌘K comes through main (the app menu would take it first) to the panel.
+      pressKey(panel, 'K', ['meta']);
+      if (!(await waitInPage(panel, "!!document.querySelector('[data-quick-start-actions] [data-quick-start-action=\"later\"]')", 3_000))) return 'failed: ⌘K did not open the actions';
+      // The throwaway folder isn't a git repository, so there is no worktree to start in; Change profile… needs two profiles.
+      const actions = JSON.parse((await js("JSON.stringify([...document.querySelectorAll('[data-quick-start-action]')].map((a) => a.dataset.quickStartAction))")) as string) as string[];
+      if (actions.join() !== ['start-open', 'model', 'mode', 'profile', 'paste', 'later'].filter((a) => a !== 'profile' || actions.includes('profile')).join()) return `failed: the actions are ${actions.join(', ')}`;
+      await shot(panel, 'quick-start-actions.png');
+      await js("document.querySelector('[data-quick-start-action=\"later\"]').click()");
+      if (!(await waitInPage(panel, "document.querySelector('[data-quick-start-started]')?.dataset.quickStartStarted === 'later'", 5_000))) return `failed: it did not say Added to Later (${await js("document.querySelector('[data-quick-start]').innerText")})`;
+      if (!(await waitInPage(win, `!!${row}`, 5_000))) return 'failed: the task is not in the queue in the sidebar';
+      return 'ok: ⌘K opened the actions (no worktree outside a git repository), Add to Later instead put the task on the queue';
+    });
+  } finally {
+    if (await win.webContents.executeJavaScript(`!!${row}`)) {
+      await win.webContents.executeJavaScript(`${row}.focus()`);
+      pressKey(win, 'Backspace');
+      await waitInPage(win, `!${row}`, 3_000);
+    }
+  }
 }
 
 /** Settings › General › Menu bar › Show in the menu bar: off takes the icon away, on brings it back. */
@@ -11338,6 +11614,10 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());
   await step('menu bar: new work starts in the background, the main window stays where it was', () => runMenuBarNewWorkStep(win));
   await step('menu bar: turning off Show in the menu bar takes the icon away', () => runMenuBarSettingStep(win));
+  await step('quick start: the panel lists what needs you and the projects', () => runQuickStartPanelStep());
+  await step('quick start: a project name and Enter make the token, Backspace goes back', () => runQuickStartTokenStep());
+  await step('quick start: Enter starts a session in the background, the main window keeps focus off', () => runQuickStartStartStep(win));
+  await step('quick start: Cmd+K Add to Later instead puts the task in the queue', () => runQuickStartLaterStep(win));
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
@@ -11495,7 +11775,10 @@ app.whenReady().then(() => {
   // Scheduled sessions (#173): runs due while the computer slept are dealt with when it wakes. The engine's own timer
   // sees a clock or time zone change within a minute.
   powerMonitor.on('resume', () => engine.send({ type: 'wake' }));
-  createWindow();
+  const first = createWindow();
+  // The global shortcut, and the quick start panel loaded (hidden) once the main window is up, so it opens at once.
+  quickStart.setShortcut(preferences.get().quickStartShortcut);
+  first.once('ready-to-show', () => setTimeout(guarded('quick start panel', () => void (quickStartPanel ?? createQuickStartPanel())), 1_500));
   updater.start();
   // The packaged app declares the scheme in Info.plist; this also takes it back if another app claimed it.
   // Development and smoke builds leave the system's link handlers alone.
@@ -11557,6 +11840,7 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  quickStart.dispose();
   keepAwake.dispose();
   sessionsAwake.dispose();
 });
