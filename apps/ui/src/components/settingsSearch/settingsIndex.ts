@@ -1,5 +1,6 @@
 import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
+import { HIDE_DOCK_DETAIL, HIDE_DOCK_LABEL, KEEP_RUNNING_LABEL, keepRunningDetail, MENU_BAR_KEYWORDS, menuBarDetail, menuBarLabel } from '../general/menuBarCopy.ts';
 import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
@@ -21,6 +22,9 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Seshboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     { id: 'keep-awake', page: 'general', label: keepAwakeLabel(), detail: keepAwakeDetail(), keywords: 'caffeinate sleep awake power insomnia prevent idle lid battery vm virtual machine schedules triggers remote', target: '[data-keep-awake]' },
+    { id: 'menu-bar', page: 'general', label: menuBarLabel(), detail: menuBarDetail(), keywords: MENU_BAR_KEYWORDS, target: '[data-menu-bar-setting]' },
+    { id: 'keep-running', page: 'general', label: KEEP_RUNNING_LABEL, detail: keepRunningDetail(), keywords: `${MENU_BAR_KEYWORDS} close window quit exit background`, target: '[data-keep-running]' },
+    { id: 'hide-dock', page: 'general', os: 'darwin', label: HIDE_DOCK_LABEL, detail: HIDE_DOCK_DETAIL, keywords: `${MENU_BAR_KEYWORDS} hide accessory`, target: '[data-hide-dock]' },
     { id: 'shell-command', page: 'general', label: 'Shell command', detail: shellCommandDetail(), keywords: 'terminal cli command line path code . switchboard seshboard sesh open folder install bin', target: '[data-shell-command]' },
     {
       id: 'new-session-mode',

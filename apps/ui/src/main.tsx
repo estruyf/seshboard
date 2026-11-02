@@ -1,9 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { MenuBarApp } from './components/menuBar/MenuBarApp.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
 import { KEEPS_SELECTION, SELECTABLE } from './lib/selectable.ts';
-import { popoutSession } from './state/popoutsStore.ts';
+import { menuBarWindow, popoutSession } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
 // Applies the theme (a generated style element) before the first render.
@@ -37,7 +38,7 @@ if (popoutSession) receiveSessionView(popoutSession, window.seshboard?.popoutVie
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* A pop-out window shows one session (`?popout=<id>`); the main window shows the whole app. */}
-    {popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
+    {/* A pop-out window shows one session (`?popout=<id>`), the menu bar's panel only itself (`?menubar=1`); the main window shows the whole app. */}
+    {menuBarWindow ? <MenuBarApp /> : popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
   </StrictMode>,
 );

@@ -4,6 +4,15 @@ import { create } from 'zustand';
 /** The session this window shows on its own when it is a pop-out; null in the main window. */
 export const popoutSession: string | null = typeof window === 'undefined' ? null : (window.seshboard?.popout ?? null);
 
+/** This window is the menu bar's panel (`?menubar=1`). */
+export const menuBarWindow: boolean = typeof window === 'undefined' ? false : (window.seshboard?.menuBar ?? false);
+
+/**
+ * Not the main window: a pop-out or the menu bar's panel. Such a window saves nothing of the main window's (its
+ * selection, the sidebar's filter, the terminal panel) and does none of its app-wide work.
+ */
+export const secondaryWindow: boolean = popoutSession !== null || menuBarWindow;
+
 interface PopoutsState {
   /** Sessions shown in a window of their own, as main reports them (`onPopoutsChanged`). */
   ids: ReadonlySet<string>;

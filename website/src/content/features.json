@@ -1152,6 +1152,16 @@
       "page": "new-session/queue"
     },
     {
+      "id": "shortcut:menubar.start",
+      "name": "menubar.start",
+      "page": "sessions/states"
+    },
+    {
+      "id": "shortcut:menubar.open",
+      "name": "menubar.open",
+      "page": "sessions/states"
+    },
+    {
       "id": "shortcut:quit",
       "name": "quit",
       "page": "settings"
@@ -1450,6 +1460,21 @@
       "id": "feature:dock-activity",
       "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
       "page": "settings"
+    },
+    {
+      "id": "feature:menu-bar",
+      "name": "Seshboard in the menu bar (the notification area on Windows, a menu on Linux): the icon lights up while sessions work and shows how many need you; its panel has Allow, Stop, what finished and New work in the background",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:menu-bar-settings",
+      "name": "Settings: General: Menu bar (Show in the menu bar, Keep running when the window closes, Hide from the Dock while no window is open)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:pause-notifications",
+      "name": "Pause notifications from the menu bar: for 1 hour, 3 hours or until tomorrow",
+      "page": "settings/notifications"
     },
     {
       "id": "feature:copilot-sessions",

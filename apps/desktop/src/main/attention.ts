@@ -143,8 +143,14 @@ export class Attention {
    * the sidebar lists sessions from other apps. One that waits on you isn't working: the badge says that.
    */
   working(): boolean {
-    for (const state of this.hostStates.values()) if (state === 'running' || state === 'starting') return true;
-    return this.cliRunning.size > 0;
+    return this.workingCount() > 0;
+  }
+
+  /** How many sessions work: in Seshboard (starting or running) and, as `working()`, in Terminal. For the menu bar. */
+  workingCount(): number {
+    let count = this.cliRunning.size;
+    for (const state of this.hostStates.values()) if (state === 'running' || state === 'starting') count++;
+    return count;
   }
 
   /** After an engine restart, state is rebuilt from the fresh snapshot. */

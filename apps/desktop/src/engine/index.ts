@@ -125,6 +125,11 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // The smoke run's menu bar step: New work starts a stand-in session instead of Claude Code.
+  if (data?.type === 'smokeStubCreate') {
+    engine.smokeStubCreate((data as { on?: unknown }).on === true);
+    return;
+  }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
     const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };

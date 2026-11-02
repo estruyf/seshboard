@@ -9,9 +9,9 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { appIconDetail, appIconNote, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from './appIconCopy.ts';
 import { Heading } from './Heading.tsx';
 
-/** Each colourway's tile (128px, for 64px on a Retina screen), made by the icon script with the platform's corners. */
+/** Each colourway's tile (128px, for 64px on a Retina screen), made by the icon script with the platform's corners. The menu bar panel shows the chosen one as its mark. */
 const TILES = import.meta.glob<string>('../../assets/app-icons/*.png', { eager: true, import: 'default' });
-const tileOf = (key: AppIconKey) => TILES[`../../assets/app-icons/${settingsTileFile(key)}`];
+export const tileOf = (key: AppIconKey) => TILES[`../../assets/app-icons/${settingsTileFile(key)}`];
 
 /** One colourway: its icon and name; the chosen one has the accent frame, a tint and a check. */
 function IconTile({ icon, selected, onSelect }: { icon: (typeof APP_ICONS)[number]; selected: boolean; onSelect(): void }) {

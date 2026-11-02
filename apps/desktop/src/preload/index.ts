@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, type MenuBarCommand, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -119,6 +119,14 @@ const bridge: SeshboardBridge = {
     return () => ipcRenderer.off(IpcChannel.viewReturned, handler);
   },
   popIn: () => ipcRenderer.send(IpcChannel.popIn),
+  menuBar: new URLSearchParams(window.location.search).has(MENU_BAR_QUERY),
+  menuBarCommand: (command: MenuBarCommand) => ipcRenderer.send(IpcChannel.menuBarCommand, command),
+  menuBarResize: (height) => ipcRenderer.send(IpcChannel.menuBarResize, height),
+  onMenuBarShown(listener) {
+    const handler = () => listener();
+    ipcRenderer.on(IpcChannel.menuBarShown, handler);
+    return () => ipcRenderer.off(IpcChannel.menuBarShown, handler);
+  },
   showSession: (sessionId) => ipcRenderer.send(IpcChannel.showSession, sessionId),
   forwardKeys: (keys) => ipcRenderer.send(IpcChannel.forwardKeys, keys),
   onKeysForwarded(listener) {

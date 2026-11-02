@@ -4,7 +4,7 @@ import type { ProjectInfo, SessionSummary } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { withQuestions } from '../lib/questions.ts';
 import { useSessions } from './sessionsStore.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { secondaryWindow } from './popoutsStore.ts';
 
 const FILTER_KEY = 'ui.projectFilter';
 
@@ -96,13 +96,13 @@ export function useProjectsSync(): void {
 
   // The sidebar's filter: a pop-out has no sidebar, and leaves it alone.
   useEffect(() => {
-    if (!client || popoutSession) return;
+    if (!client || secondaryWindow) return;
     void client.call('appState.get', { key: FILTER_KEY }).then(({ value }) => {
       if (typeof value === 'string') useProjects.getState().setFilter(value);
     });
   }, [client]);
 
   useEffect(() => {
-    if (client && !popoutSession) void client.call('appState.set', { key: FILTER_KEY, value: filter });
+    if (client && !secondaryWindow) void client.call('appState.set', { key: FILTER_KEY, value: filter });
   }, [client, filter]);
 }

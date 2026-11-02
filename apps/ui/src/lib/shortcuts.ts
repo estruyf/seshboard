@@ -366,6 +366,24 @@ export const SHORTCUTS = [
     action: "Keyboard shortcuts",
     section: "general",
   },
+  // The menu bar's panel (its own window): never in the main window, so they don't count there.
+  {
+    id: "menubar.start",
+    keys: ["mod+enter"],
+    action: "Start new work in the background",
+    section: "general",
+    context: "In the menu bar's panel",
+    when: () => false,
+  },
+  {
+    id: "menubar.open",
+    keys: ["mod+0"],
+    action: "Open Seshboard",
+    section: "general",
+    context: "In the menu bar's panel",
+    when: () => false,
+    menu: true,
+  },
   {
     id: "quit",
     keys: ["mod+q mod+q"],
