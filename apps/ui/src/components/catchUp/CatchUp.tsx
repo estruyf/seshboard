@@ -191,20 +191,24 @@ export interface CatchUpSlotProps {
   active: boolean;
   /** The Changes panel is on screen beside this session (a session outside git shows none). */
   changesOpen: boolean;
+  /** A session on another computer (`RemoteSessionView`): what its buttons do there, and whether it is unread there. */
+  remote?: { actions: CatchUpActions; unread: boolean };
 }
 
 /**
  * The catch-up in a session: the banner over the conversation, or the strip it folds into, and its keys. Keys work while
  * focus is in this session's view but not in the message box or another field, and never while a dialog or menu is open.
  */
-export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen }: CatchUpSlotProps) {
+export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen, remote }: CatchUpSlotProps) {
   const sessionId = card.sessionId;
-  const unread = useSessions((s) => s.sessions.get(sessionId)?.unread ?? false);
+  const localUnread = useSessions((s) => s.sessions.get(sessionId)?.unread ?? false);
+  const unread = remote?.unread ?? localUnread;
   const key = turnKey(card);
   const committed = useCatchUp((s) => s.committed.has(key));
   const details = useCatchUp((s) => !s.detailsClosed.has(key));
   const replying = useCatchUp((s) => s.replying === sessionId);
-  const actions = useCatchUpActions({ card, cwd, changes });
+  const localActions = useCatchUpActions({ card, cwd, changes });
+  const actions = remote?.actions ?? localActions;
   const ref = useRef<HTMLDivElement>(null);
   const shared: Shared = { card, actions, unread, committed, changesOpen };
 

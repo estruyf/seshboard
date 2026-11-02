@@ -37,6 +37,17 @@ const run = (over: Partial<PipelineRunState['run']> = {}, steps: Array<Partial<P
 const ids = (rows: readonly SessionRowData[]) => rows.map((r) => r.id);
 
 describe('sidebarForest', () => {
+  it('nests a remote sub-session under its remote parent, and leaves one whose parent is not listed on its own', () => {
+    const remote = (id: string, parentRowId: string | null): SessionRowData =>
+      row(id, {
+        summary: null,
+        remote: { computerId: 'c1', computerName: 'studio', sessionId: id, projectId: 'p', projectName: 'site', status: null, waitingTool: null, workingSince: null, profile: null, offline: false, lastSeen: null, parentRowId },
+      });
+    const forest = sidebarForest([remote('remote:c1:parent', null), remote('remote:c1:step', 'remote:c1:parent'), remote('remote:c1:lone', 'remote:c1:run-row')], [], NOW);
+    expect(ids(forest.roots)).toEqual(['remote:c1:parent', 'remote:c1:lone']);
+    expect(ids(forest.children.get('remote:c1:parent') ?? [])).toEqual(['remote:c1:step']);
+  });
+
   it('nests sub-sessions under their parent in step order, and keeps them out of the top level', () => {
     const state = run({}, [
       { step: 'Plan', index: 0, sessionId: 'plan' },

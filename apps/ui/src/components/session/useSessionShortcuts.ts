@@ -14,6 +14,8 @@ export interface SessionKeyTarget {
   terminalOwner: string | null;
   /** The session Open in editor and Open in new window work on, or null (not in a session view). */
   sessionId: string | null;
+  /** The session Read the last reply opens, when not `sessionId`: another computer's session (its row id) reads too. */
+  readId?: string | null;
 }
 
 /**
@@ -30,7 +32,7 @@ export function useSessionShortcuts(target: () => SessionKeyTarget): void {
     const onKey = (event: KeyboardEvent) => {
       const key = sessionKey(event, popoutSession !== null);
       if (!key) return;
-      const { terminalOwner, sessionId } = targetRef.current();
+      const { terminalOwner, sessionId, readId = sessionId } = targetRef.current();
       if (key === 'terminal.maximize') {
         // The terminal takes the whole view, or gives it back. Closed, it opens maximized.
         if (!terminalOwner) return;
@@ -56,9 +58,9 @@ export function useSessionShortcuts(target: () => SessionKeyTarget): void {
         if (read.open) {
           event.preventDefault();
           read.close();
-        } else if (sessionId) {
+        } else if (readId) {
           event.preventDefault();
-          read.openLast(sessionId);
+          read.openLast(readId);
         }
       } else if (key === 'editor.open') {
         if (!sessionId) return;

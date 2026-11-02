@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { BrowserWindow } from 'electron';
-import { until, waitInPage } from './pageDriver.ts';
+import { settle, until, waitInPage } from './pageDriver.ts';
 
 /**
  * The smoke steps of the remote app on a phone: the real app from apps/remote, served by Vite, in a hidden 390×844
@@ -189,6 +189,61 @@ export function runPhoneSessionMoreStep(): Promise<string> {
     if (!items.startsWith('ask,')) return `⋯ starts with ${items}, not Ask about this session`;
     await js("document.querySelector('[data-remote-session-more]').click()");
     return `ok: ⋯ has ${items.replaceAll(',', ', ')}`;
+  });
+}
+
+/**
+ * Quote on a phone, read-only: Quote under a finished reply, the Quote pill over selected text, and the pill in Read,
+ * which closes the sheet. Each puts a Markdown quote in the message box, which is emptied again; nothing is sent.
+ */
+export function runPhoneQuoteStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const view = '[data-remote-session-view]';
+    await js(`document.querySelector('${view} [data-remote-unfold]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-quote]')`, 3_000))) return 'a finished reply has no Quote';
+    const box = `${view} [data-remote-message]`;
+    const empty = `(() => { const box = document.querySelector('${box}'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ''); box.dispatchEvent(new Event('input', { bubbles: true })); box.blur(); })()`;
+    const quoted = async (what: string) => {
+      const ok = await waitInPage(win, `document.querySelector('${box}')?.value.startsWith('> ')`, 3_000);
+      const value = (await js(`document.querySelector('${box}')?.value ?? ''`)) as string;
+      await js(empty);
+      return ok ? null : `${what} put no quote in the message box (${JSON.stringify(value.slice(0, 40))})`;
+    };
+    /** Selects the first paragraph with some text under `scope`, scrolled into view first. */
+    const select = async (scope: string) => {
+      const paragraph = `[...document.querySelectorAll('${scope} [data-quote-source] p')].find((p) => p.textContent.trim().length > 20)`;
+      await js(`${paragraph}?.scrollIntoView({ block: 'center' })`);
+      await settle(win);
+      return js(`(() => { const p = ${paragraph}; if (!p) return false; const range = document.createRange(); range.selectNodeContents(p); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); return true; })()`);
+    };
+    const pill = "document.querySelector('[data-remote-quote-selection]')";
+    try {
+      await js(`[...document.querySelectorAll('${view} [data-remote-quote]')].at(-1).click()`);
+      const fromButton = await quoted('Quote under a reply');
+      if (fromButton) return fromButton;
+
+      if (!(await select(view))) return 'the conversation has no paragraph to select';
+      if (!(await waitInPage(win, `${pill} && getComputedStyle(${pill}).visibility !== 'hidden'`, 3_000))) return 'no Quote pill over the selection';
+      await js(`${pill}.click()`);
+      const fromSelection = await quoted('The Quote pill');
+      if (fromSelection) return fromSelection;
+      if (await js(`Boolean(${pill})`)) return 'the Quote pill stayed after quoting';
+
+      await js(`[...document.querySelectorAll('${view} [data-remote-read]')].at(-1).click()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-sheet=\"read\"] [data-quote-source]')", 3_000))) return 'Read did not open';
+      if (!(await select('[data-remote-sheet="read"]'))) return 'Read has no paragraph to select';
+      if (!(await waitInPage(win, `${pill} && getComputedStyle(${pill}).visibility !== 'hidden'`, 3_000))) return 'no Quote pill over a selection in Read';
+      await js(`${pill}.click()`);
+      if (!(await waitInPage(win, "!document.querySelector('[data-remote-sheet=\"read\"]')", 3_000))) return 'Quote in Read did not close the sheet';
+      const fromRead = await quoted('The Quote pill in Read');
+      if (fromRead) return fromRead;
+      return 'ok: Quote under a reply, the pill over a selection, and the pill in Read (which closed) each quoted into the box';
+    } finally {
+      await js('window.getSelection().removeAllRanges()');
+      await js(`document.querySelector('${box}') && ${empty}`).catch(() => {});
+    }
   });
 }
 
