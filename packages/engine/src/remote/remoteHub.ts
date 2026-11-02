@@ -73,7 +73,7 @@ import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
-import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The app's theme, kept so a phone that connects before a window opened gets it too. */
@@ -842,7 +842,10 @@ export class RemoteHub {
    * remote branch, or a name that isn't one.
    */
   private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
-    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode(), this.options.globalModel());
+    const profile = this.profileFor(project, options.profileId);
+    // Settings › General's model and effort are Claude Code's: another provider's profile starts on its own default.
+    const globals = this.options.providerOfProfile?.(profile.id) ? NO_GLOBAL_MODEL : this.options.globalModel();
+    const choice = sessionChoice(options, project.defaults, profile, this.options.globalPermissionMode(), globals);
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
@@ -1093,7 +1096,7 @@ export class RemoteHub {
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
           profiles: profiles.map((p) => {
             const provider = this.options.providerOfProfile?.(p.id) ?? null;
-            return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, globalModel), ...(provider ? { provider } : {}) };
+            return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, provider ? NO_GLOBAL_MODEL : globalModel), ...(provider ? { provider } : {}) };
           }),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),

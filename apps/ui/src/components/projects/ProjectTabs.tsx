@@ -37,7 +37,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
-import { describeDefaults, hasDefaults, ProjectDefaultsEditor } from './ProjectDefaultsEditor.tsx';
+import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
 /** Re-renders relative ages once a minute. */
@@ -431,6 +431,8 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const home = useHomeFolder();
   // Fields the project leaves unset come from its profile's defaults.
   const profile = useProfile(project.profileId);
+  // A project on a Copilot profile picks Copilot's models for its defaults.
+  const provider = useProviderChoices(profile);
   const fallback = profiles.find((p) => p.isDefault);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
@@ -492,7 +494,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
       )}
       <SettingRow label="Defaults" hint={`New sessions in ${project.name} start with these. The New session view can still change them for one session.`}>
         <div className="grid w-full min-w-0 gap-2">
-          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} profileRef={profile ? { id: profile.id, name: profile.name } : null} onSave={(d) => void save(d)} />
+          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} profileRef={profile ? { id: profile.id, name: profile.name } : null} provider={provider} onSave={(d) => void save(d)} />
           {error && (
             <p role="alert" className="text-ui text-error">
               Couldn't save the defaults: {error}

@@ -2891,6 +2891,12 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     profileId = (await js(`${ready}.dataset.profileReady`)) as string;
     if (demo && !(await js(`${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user')`))) return "Copilot is ready doesn't say who it is signed in as";
     await shot(win, 'copilot-ready.png');
+    // Its own new session defaults: Copilot's models, which New session then starts on (checked in 4).
+    const defaultsCard = `[data-profile="${profileId}"] [data-profile-defaults="${profileId}"]`;
+    await js(`document.querySelector(${JSON.stringify(`${defaultsCard} [data-profile-defaults-toggle]`)})?.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${defaultsCard} [data-default-model]`)})`, 3_000))) return 'the Copilot profile has no new session defaults';
+    if (!(await chooseOption(win, `${defaultsCard} [data-default-model]`, 'gpt-5'))) return "the Copilot profile's model default does not offer Copilot's models";
+    if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`${defaultsCard} [data-profile-defaults-summary]`)})?.innerText.includes('gpt-5')`, 3_000))) return "the Copilot profile's model default was not saved";
 
     // 4. Start a Copilot session: New session, on the Copilot profile, for this session.
     await js(`${ready}.querySelector('[data-profile-ready-start]').click()`);
@@ -2919,6 +2925,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     }
     if (!(await waitInPage(win, `document.querySelector('${nsv} [data-composer]')?.placeholder === 'What should Copilot work on?'`, 5_000))) return `New session with Copilot asks ${JSON.stringify(await js(`document.querySelector('${nsv} [data-composer]')?.placeholder`))}`;
     if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-chip="effort"]') && !!document.querySelector('${nsv} [data-chip-provider="copilot"]')`, 3_000))) return "New session with the Copilot profile still shows Claude Code's effort, or no Copilot mark";
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-model-chip="gpt-5"]')`, 5_000))) return "New session with the Copilot profile did not start on the profile's default model";
     const pick = async (value: string) => {
       await js(`${chip}?.click()`);
       const item = `document.querySelector('[data-menu="profile"] [data-choice="${value}"]')`;

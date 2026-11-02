@@ -82,7 +82,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
+import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
 /**
@@ -161,10 +161,11 @@ function LocalNewSession() {
    * it doesn't undo it, until another profile is picked.
    */
   const pinnedProfile = useRef<string | null>(null);
-  // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session.
-  const [providerModel, setProviderModel] = useState('');
+  // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session. Null until picked: the
+  // project's and profile's defaults then decide ('' is the provider's own default model).
+  const [providerModel, setProviderModel] = useState<string | null>(null);
   /** The effort for the provider's model, when it takes one ('' is the model's own). */
-  const [providerEffort, setProviderEffort] = useState<Effort | ''>('');
+  const [providerEffort, setProviderEffort] = useState<Effort | '' | null>(null);
   const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
   /**
    * A queued item or a schedule opened here: its model, effort and mode for another provider's chips too. Which set
@@ -174,6 +175,12 @@ function LocalNewSession() {
     setProviderModel(draft.model ?? '');
     setProviderEffort(draft.effort ?? '');
     setProviderMode(draft.permissionMode ?? null);
+  };
+  /** Back to the defaults for another provider's model, effort and mode. */
+  const forgetProviderChoices = () => {
+    setProviderModel(null);
+    setProviderEffort(null);
+    setProviderMode(null);
   };
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
@@ -281,13 +288,22 @@ function LocalNewSession() {
   const usageLines = useUsageLines(runWith ? null : profileId, !runWith);
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? profileId : null);
-  /** The provider's own modes (Copilot's), and the one picked: its first until you pick another. */
+  /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
+  const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
+  /** The provider's own modes (Copilot's). */
   const runWithModes = runWithInfo?.modes ?? [];
-  const runWithMode = providerMode && runWithModes.some((m) => m.value === providerMode) ? providerMode : (runWithModes[0]?.value ?? 'default');
+  /** The provider's model, effort and mode: the ones picked, else the defaults, with the mode New session starts in. */
+  const providerChoices = providerStart(
+    { model: providerModel, effort: providerEffort, permissionMode: providerMode },
+    sessionDefaults,
+    d.permissionMode,
+    { models: readiness?.models ?? [], modes: runWithModes, effort: runWithInfo?.supports.includes('effort') ?? false },
+  );
+  const runWithModel = providerChoices.model;
+  const runWithMode = providerChoices.permissionMode;
+  const providerEffortShown = providerChoices.effort;
   /** The provider's model, when it takes an effort and its provider has the setting (its Auto never does). */
-  const providerEffortModel = providerModel && runWithInfo?.supports.includes('effort') ? readiness?.models.find((m) => m.value === providerModel && m.supportsEffort) : undefined;
-  /** The effort picked, when the model takes it (one it doesn't have is left out). */
-  const providerEffortShown: Effort | '' = providerEffortModel && providerEffort && (providerEffortModel.efforts ?? [providerEffort]).includes(providerEffort) ? providerEffort : '';
+  const providerEffortModel = runWithModel && runWithInfo?.supports.includes('effort') ? readiness?.models.find((m) => m.value === runWithModel && m.supportsEffort) : undefined;
   /** Who works in the folder, in the copy around the box. */
   const agent = runWith ? PROVIDER_SHORT_NAMES[runWith] : 'Claude';
   const catalog = useProviders((s) => s.providers);
@@ -298,8 +314,6 @@ function LocalNewSession() {
   const noBranch = lacks('branch');
   const noPipeline = lacks('pipeline');
   const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
-  /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
-  const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   const defaultsKey = JSON.stringify(sessionDefaults);
   /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults, with the mode Settings says (a link's never skips permission prompts). */
   const firstChoices = (): Choices =>
@@ -364,6 +378,7 @@ function LocalNewSession() {
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setD(firstChoices());
   };
@@ -419,6 +434,7 @@ function LocalNewSession() {
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setAddAsProject(true);
     setCwd(link.cwd);
@@ -462,6 +478,7 @@ function LocalNewSession() {
     if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setPendingStart(null);
     setLinkRepo(null);
@@ -714,6 +731,7 @@ function LocalNewSession() {
   // A new folder starts from its project's defaults (again when they arrive or change, until the user changes something).
   useEffect(() => {
     if (!loaded || touchedFor.current === cwd) return;
+    forgetProviderChoices();
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
   }, [loaded, cwd, defaultsKey, newSessionMode, newSessionModel, newSessionEffort, lastMode, autostarting, question, questionChoices]);
@@ -772,6 +790,12 @@ function LocalNewSession() {
 
   // A change applies to this session only; a project's own defaults are set in its configuration. Only the mode is
   // kept, for Remember last. Always build on the latest state: two quick changes (folder, then model) must not undo each other.
+  /** A choice made in another provider's chips: it stays when the project's defaults change, as `update`'s. */
+  const pickForProvider = () => {
+    touchedFor.current = cwd;
+    setSavedNote(null);
+    setSwitched(null);
+  };
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
     setSavedNote(null);
@@ -796,6 +820,7 @@ function LocalNewSession() {
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = undefined;
+    forgetProviderChoices();
     if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);
@@ -836,8 +861,14 @@ function LocalNewSession() {
   /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
   const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
-  const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace }, isProject ? project!.defaults.defaultBranch : null);
-  const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
+  // With another provider, its own model, effort and mode are what the project saves.
+  const asDefaults = toProjectDefaults(
+    { ...d, workspace: useWorktree ? 'worktree' : d.workspace, ...(runWith ? { model: runWithModel, effort: providerEffortShown, permissionMode: runWithMode } : {}) },
+    isProject ? project!.defaults.defaultBranch : null,
+  );
+  // Only for a profile of the project's provider: another's models would mean nothing to the project's sessions.
+  const projectProvider = profiles.find((p) => p.id === (projectProfile ?? defaultProfile))?.provider ?? 'claude';
+  const unsaved = isProject && chosenProvider === projectProvider && !sameDefaults(asDefaults, project!.defaults);
   const trayBranch = branchLabel({
     worktree: useWorktree && !noWorktree,
     baseRef: d.baseRef,
@@ -909,7 +940,7 @@ function LocalNewSession() {
           typed: parts?.typed ?? null,
           context: parts?.context ?? [],
           // Another provider's own model, effort and mode; no worktree or branch for it yet.
-          model: (runWith ? providerModel : d.model) || null,
+          model: (runWith ? runWithModel : d.model) || null,
           effort: (runWith ? providerEffortShown : d.effort) || null,
           permissionMode: runWith ? runWithMode : d.permissionMode,
           workspace: useWorktree && !noWorktree ? 'worktree' : 'current',
@@ -929,7 +960,7 @@ function LocalNewSession() {
     forgetUnsavedQueued();
     if (!draft || draft.prompt === '' || sameDraft(queuedNow, draft)) return;
     unsavedQueued.current = { id: fromLater.id, draft, timer: setTimeout(saveQueued, 600) };
-  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride, runWith, providerModel, providerEffortShown, runWithMode]);
+  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride, runWith, runWithModel, providerEffortShown, runWithMode]);
   // Started or removed somewhere else while open here: back to New session.
   useEffect(() => {
     if (fromLater && queueLoaded && !queuedNow) leaveQueued();
@@ -1071,7 +1102,7 @@ function LocalNewSession() {
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
         github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
-        provider: runWith ? { model: providerModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
+        provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1175,10 +1206,10 @@ function LocalNewSession() {
       model={
         runWith
           ? {
-              value: providerModel,
-              label: providerModel ? (readiness?.models.find((m) => m.value === providerModel)?.displayName ?? providerModel) : 'Default model',
+              value: runWithModel,
+              label: runWithModel ? (readiness?.models.find((m) => m.value === runWithModel)?.displayName ?? runWithModel) : 'Default model',
               // Another model starts on its own effort.
-              onChange: (model) => (setProviderModel(model), setProviderEffort(''), setSwitched(null)),
+              onChange: (model) => (pickForProvider(), setProviderModel(model), setProviderEffort('')),
               choices: [{ value: '', label: 'Default model', description: `What ${PROVIDER_NAMES[runWith]} picks` }, ...(readiness?.models ?? []).map((m) => ({ value: m.value, label: m.displayName }))],
             }
           : {
@@ -1191,11 +1222,11 @@ function LocalNewSession() {
       effort={
         runWith
           ? providerEffortModel
-            ? { value: providerEffortShown, onChange: setProviderEffort, ...(providerEffortModel.efforts ? { levels: providerEffortModel.efforts } : {}), defaultDescription: 'The model’s own level' }
+            ? { value: providerEffortShown, onChange: (effort) => (pickForProvider(), setProviderEffort(effort)), ...(providerEffortModel.efforts ? { levels: providerEffortModel.efforts } : {}), defaultDescription: 'The model’s own level' }
             : null
           : { value: d.effort, onChange: (effort) => update({ effort }) }
       }
-      mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (setProviderMode(mode), setSwitched(null)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
+      mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (pickForProvider(), setProviderMode(mode)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
       pipeline={runAs && !noPipeline ? boxChoiceUse(runAs) : null}
     />
   );

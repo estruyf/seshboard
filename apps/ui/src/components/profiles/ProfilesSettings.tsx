@@ -11,7 +11,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { openTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
-import { describeDefaults, ProjectDefaultsEditor } from '../projects/ProjectDefaultsEditor.tsx';
+import { describeDefaults, ProjectDefaultsEditor, useProviderChoices } from '../projects/ProjectDefaultsEditor.tsx';
 import { APP_TERMINAL } from '../terminal/appTerminal.ts';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
@@ -167,12 +167,14 @@ function CopyCommand({ command, block = false }: { command: string; block?: bool
 
 /**
  * What new sessions with this profile start with, where their project sets nothing. Folded away under a
- * one-line summary, since most people set them once.
+ * one-line summary, since most people set them once. Another provider's profile (GitHub Copilot) picks from its own
+ * models, asked once it is unfolded.
  */
 function ProfileDefaultsSection({ profile, onError }: { profile: ClaudeProfile; onError(message: string): void }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [open, setOpen] = useState(false);
+  const provider = useProviderChoices(profile, open);
   // The editor works on a project's shape; a profile has no branch. Kept stable so quick changes build on each other.
   const defaults = useMemo<ProjectDefaults>(() => ({ ...profile.defaults, branch: null, defaultBranch: null }), [profile.defaults]);
   // Without a repository the editor offers no branch to start a worktree from.
@@ -196,7 +198,7 @@ function ProfileDefaultsSection({ profile, onError }: { profile: ClaudeProfile; 
       {open && (
         <div className="grid min-w-0 gap-2.5 pl-5">
           <p className="text-ui text-muted">New sessions with {profile.name} start with these, unless their project sets its own. The New session view can still change them for one session.</p>
-          <ProjectDefaultsEditor root={null} defaults={defaults} isGitRepo profile={null} onSave={save} />
+          <ProjectDefaultsEditor root={null} defaults={defaults} isGitRepo profile={null} provider={provider} onSave={save} />
         </div>
       )}
     </div>
@@ -232,7 +234,8 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
         />
         <ColorPicker value={profile.color} onChange={(color) => void call(client?.call('profiles.update', { id: profile.id, color }))} />
         <span className="flex-1" />
-        <span data-tooltip="Projects without a profile of their own use the default">
+        {/* Flex, so the radio isn't set on a text baseline and lines up with the remove button. */}
+        <span className="flex" data-tooltip="Projects without a profile of their own use the default">
           <Radio
             checked={profile.isDefault}
             tabbable
@@ -294,8 +297,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           <CopyCommand command={loginCommand(profile)} block />
         </div>
       )}
-      {/* Claude Code's models, efforts and worktrees: another provider's sessions pick theirs in New session. */}
-      {profile.provider === 'claude' && <ProfileDefaultsSection profile={profile} onError={setError} />}
+      <ProfileDefaultsSection profile={profile} onError={setError} />
       {error && (
         <p role="alert" className="text-ui text-error">
           {error}

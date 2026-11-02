@@ -37,7 +37,7 @@ import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub, remoteAppOrigins, type RemoteFromDevice, type RemotePipelines } from './remoteHub.ts';
-import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteSessions, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
 
@@ -108,7 +108,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
+async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -214,7 +214,7 @@ async function setup(options: { copilotProfile?: boolean; identity?: Uint8Array 
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
     globalPermissionMode: () => 'default',
-    globalModel: () => ({ model: null, effort: null }),
+    globalModel: () => options.globalModel ?? { model: null, effort: null },
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -453,6 +453,20 @@ describe('Remote hub', () => {
     expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
     // A mode the provider doesn't have is refused, not passed on.
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it("starts a provider profile's session on its own default model, not the global one", async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true, globalModel: { model: 'haiku', effort: 'high' } });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    // The global model and effort are Claude Code's: its profiles get them, Copilot's doesn't.
+    expect(options.profiles.find((p) => p.id === 'default')?.defaults).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(options.profiles.find((p) => p.id === 'copilot')?.defaults).toMatchObject({ model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'copilot' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'copilot', model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'default' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default', model: 'haiku', effort: 'high' });
   });
 
   it('says which device sent a prompt, answered or started a session, by its id', async () => {

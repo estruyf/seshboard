@@ -3037,6 +3037,11 @@
       "page": "settings/claude-profiles"
     },
     {
+      "id": "feature:copilot-defaults",
+      "name": "GitHub Copilot defaults for new sessions: a Copilot profile's model, effort, permission mode and workspace in Settings › Profiles, and a project's on a Copilot profile in its Settings, with Copilot's own models and no global model or effort",
+      "page": "settings/claude-profiles"
+    },
+    {
       "id": "feature:new-session-permission-mode",
       "name": "Global permission mode: what new sessions start in where the profile and project set none, or Remember last",
       "page": "settings"

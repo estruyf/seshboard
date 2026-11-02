@@ -1,4 +1,4 @@
-import { inheritedDefault, inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
+import { inheritedDefault, inheritedPermissionMode, isBranchBase, type Effort, type ModelOption, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -96,6 +96,37 @@ export function startingChoices(globals: GlobalChoices, project: ProjectDefaults
     workspace: project?.workspace ?? globals.workspace,
     baseRef: project?.baseRef ?? globals.baseRef,
     branch: project?.branch ?? '',
+  };
+}
+
+/** Another provider's (GitHub Copilot's) model, effort and mode for a new session. '' is its own default model, or the model's own effort. */
+export interface ProviderStart {
+  model: string;
+  effort: Effort | '';
+  permissionMode: PermissionMode;
+}
+
+/**
+ * What a new session with another provider's profile starts with: what was picked for it (null: nothing yet), else the
+ * project's and profile's defaults (`defaults`, see `layeredDefaults`) where the provider has them, else its own
+ * default model and the mode New session starts in (`mode`: those defaults' or the global one). Settings › General's
+ * model and effort are Claude Code's, so they never apply. A model the provider doesn't list (a Claude Code model saved
+ * before the project's profile changed) is left out, and so is an effort the model doesn't take.
+ */
+export function providerStart(
+  picked: { model: string | null; effort: Effort | '' | null; permissionMode: PermissionMode | null },
+  defaults: Pick<ProjectDefaults, 'model' | 'effort'> | null | undefined,
+  mode: PermissionMode,
+  provider: { models: readonly Pick<ModelOption, 'value' | 'supportsEffort' | 'efforts'>[]; modes: readonly { value: PermissionMode }[]; effort: boolean },
+): ProviderStart {
+  const model = picked.model ?? (defaults?.model && provider.models.some((m) => m.value === defaults.model) ? defaults.model : '');
+  // Picking another model starts it on its own effort, so the default's only goes with the default's model.
+  const effort = picked.effort ?? (picked.model === null ? (defaults?.effort ?? '') : '');
+  const takes = model && provider.effort ? provider.models.find((m) => m.value === model && m.supportsEffort) : undefined;
+  return {
+    model,
+    effort: takes && effort && (takes.efforts ?? [effort]).includes(effort) ? effort : '',
+    permissionMode: [picked.permissionMode, mode].find((m) => m && provider.modes.some((p) => p.value === m)) ?? provider.modes[0]?.value ?? 'default',
   };
 }
 
