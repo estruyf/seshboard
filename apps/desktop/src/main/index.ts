@@ -649,6 +649,7 @@ const menuBar = new MenuBar<NativeImage>({
       // A tray on Linux can't open a panel: its menu is all there is.
       tray.setContextMenu(trayContextMenu());
     } else {
+      tray.on('mouse-down', () => void (menuBarOpenAtPress = panelOpenOrJustHidden()));
       tray.on('click', () => toggleMenuBarPanel());
       tray.on('right-click', () => tray?.popUpContextMenu(trayContextMenu()));
     }
@@ -716,10 +717,19 @@ let menuBarHiddenAt = 0;
 /** The smoke test keeps the panel open while it looks at it, whatever has focus. */
 let menuBarPinned = false;
 
+/** Whether the panel was open when the icon was pressed (macOS), so the click after it closes it rather than reopening it. */
+let menuBarOpenAtPress: boolean | null = null;
+
+function panelOpenOrJustHidden(): boolean {
+  // The press that hid the panel (it lost focus to the menu bar) is the same click: it counts as open.
+  return !!menuBarPanel?.isVisible() || Date.now() - menuBarHiddenAt < 300;
+}
+
 function toggleMenuBarPanel(): void {
-  if (menuBarPanel?.isVisible()) return void menuBarPanel.hide();
-  // The click that hid the panel (it lost focus to the menu bar) is the same click: don't open it again at once.
-  if (Date.now() - menuBarHiddenAt < 300) return;
+  // The panel hides on blur when the icon is pressed and the click comes on release, maybe much later: go by the press.
+  const open = menuBarOpenAtPress ?? panelOpenOrJustHidden();
+  menuBarOpenAtPress = null;
+  if (open) return void menuBarPanel?.hide();
   showMenuBarPanel();
 }
 
@@ -762,7 +772,9 @@ function createMenuBarPanel(): BrowserWindow {
     webPreferences: webPreferences(),
   });
   menuBarPanel = panel;
-  if (process.platform === 'darwin') panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Without skipTransformProcessType, Electron turns the app into a menu bar app and back, which sends it behind the
+  // app in front.
+  if (process.platform === 'darwin') panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   panel.on('blur', () => {
     if (menuBarPinned || panel.isDestroyed()) return;
     panel.hide();

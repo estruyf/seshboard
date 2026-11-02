@@ -92,6 +92,22 @@ describe('generating a theme from canvas and accent', () => {
     expect(contrastOf(light['working-glow'], '#fffbea')).toBeLessThan(contrastOf(light['working-lit'], '#fffbea'));
   });
 
+  it("keeps the working mark's plugs apart from its free jacks", () => {
+    // A grey cable (Aluminium, Signal) only differs from the holes in lightness, so it needs more of it to read as plugged.
+    for (const { id, raw } of BUILT_IN_THEMES) {
+      const resolved = resolveTheme(parse(raw));
+      for (const mode of THEME_MODES) {
+        const tokens = resolved[mode]?.tokens;
+        if (!tokens) continue;
+        for (const plug of ['working-plug-a', 'working-plug-b', 'working-plug-c', 'working-plug-d'] as const) {
+          const grey = toOklch(parseColor(tokens[plug])!).c < 0.05;
+          const need = grey ? 2.5 : mode === 'dark' ? 1.5 : 1.3;
+          expect(contrastOf(tokens[plug], tokens['working-hole']), `${id} ${mode} ${plug}`).toBeGreaterThanOrEqual(need);
+        }
+      }
+    }
+  });
+
   it('comes close to Demo Time from its canvas and accent', () => {
     // Known differences: on-accent is pure black (Demo Time uses its near-black), the greys and text of a
     // white canvas get a hint of the yellow accent (Demo Time's are cool blue-grey), the diff backgrounds
