@@ -222,6 +222,25 @@ describe('settings export and import', () => {
     ]);
   });
 
+  it('carries the pull requests that moved sessions to Done, and keeps yours', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, archived_at, done_pr) VALUES ('s1', 5, 12), ('s2', 6, 13)").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.donePrs).toEqual([
+      { id: 's1', pr: 12 },
+      { id: 's2', pr: 13 },
+    ]);
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, done_pr) VALUES ('s2', 99)").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toContain('1 session done by a merged pull request');
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, done_pr FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', done_pr: 12 },
+      { id: 's2', done_pr: 99 },
+    ]);
+  });
+
   it('only exports and imports the chosen sections', () => {
     const before = mac();
     const folder = tempDir();

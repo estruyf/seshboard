@@ -5,9 +5,11 @@ import { companionStatus, type SessionSources } from '../companion/companionSess
 export interface RetentionPolicy {
   archiveAfterDays: number;
   deleteArchived: DeleteArchived;
+  /** A session whose pull request merged moves to Done by itself (`mergedDone.ts`). */
+  doneOnMerge: boolean;
 }
 
-export const DEFAULT_RETENTION: RetentionPolicy = { archiveAfterDays: DEFAULT_PREFERENCES.archiveAfterDays, deleteArchived: DEFAULT_PREFERENCES.deleteArchived };
+export const DEFAULT_RETENTION: RetentionPolicy = { archiveAfterDays: DEFAULT_PREFERENCES.archiveAfterDays, deleteArchived: DEFAULT_PREFERENCES.deleteArchived, doneOnMerge: DEFAULT_PREFERENCES.doneOnMerge };
 
 /** Where the renderer saves unsent messages (`useDraftsSync`): `{ version, drafts: { <session id or new:…>: … } }`. */
 export const DRAFTS_KEY = 'ui.drafts';

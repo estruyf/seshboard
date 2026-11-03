@@ -23,6 +23,8 @@ export interface LooseEndsWatcherOptions {
   ownerOf(sessionId: string): string;
   /** Every owner's loose ends, after a change. */
   emit(looseEnds: ReadonlyMap<string, readonly GitLooseEnd[]>): void;
+  /** After a look with git and GitHub known, with the loose ends found then: moves merged sessions to Done (`mergedDone.ts`). */
+  merged?(repo: RepoToCheck, facts: RepoFacts, looseEnds: ReadonlySet<string>): void;
   log?(message: string): void;
 }
 
@@ -73,6 +75,7 @@ export class LooseEndsWatcher {
   private readonly turnRoots = new Set<string>();
   private running: Promise<void> = Promise.resolve();
   private closed = false;
+  private started = false;
 
   constructor(
     private readonly options: LooseEndsWatcherOptions,
@@ -91,8 +94,11 @@ export class LooseEndsWatcher {
     return new Set(this.current.keys());
   }
 
+  /** The first look, soon; later calls change nothing. */
   start(): void {
-    this.schedule(5_000);
+    if (this.started) return;
+    this.started = true;
+    this.schedule(1_000);
   }
 
   close(): void {
@@ -145,6 +151,7 @@ export class LooseEndsWatcher {
         else this.current.delete(owner);
       }
       this.store?.save(repo.root, new Map([...this.current].filter(([, e]) => e.root === repo.root).map(([owner, e]) => [owner, e.ends])));
+      if (facts && github) this.options.merged?.(repo, facts, this.owners());
     }
     if (changedOwners(before, this.all()).length) this.options.emit(this.all());
     if (!roots) this.schedule(this.foreground ? FOREGROUND_EVERY_MS : BACKGROUND_EVERY_MS);

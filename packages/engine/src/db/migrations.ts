@@ -805,4 +805,10 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX loose_ends_root ON loose_ends (root);
   `,
+
+  // v46: A session moved to Done because its pull request merged (session triage): the pull request's number, which
+  // its row shows ("Merged #123") and which marks the merge as handled, so Reopen sticks. A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN done_pr INTEGER;
+  `,
 ];

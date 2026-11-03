@@ -426,6 +426,8 @@ export interface Preferences {
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** Settings › Sessions: a session whose pull request merged moves to Done by itself. On by default. */
+  doneOnMerge: boolean;
   /** Settings › Sessions: "Mark as read after". An unread session you open is read after you look at it this long. */
   markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
@@ -532,6 +534,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notificationsPausedUntil: null,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  doneOnMerge: true,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
@@ -732,6 +735,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  if (typeof raw.doneOnMerge === "boolean") out.doneOnMerge = raw.doneOnMerge;
   const reading = raw.markReadAfter as Record<string, unknown> | null | undefined;
   const seconds = clampDays(reading?.seconds, MARK_READ_SECONDS);
   if (typeof reading?.enabled === "boolean" && seconds !== null)

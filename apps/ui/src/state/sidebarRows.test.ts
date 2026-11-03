@@ -164,6 +164,7 @@ describe('doneReason', () => {
   it('says why a session is in Done: marked done by you, or inactive for so many days', () => {
     expect(doneReason(row('listed'), NOW, DAYS)).toBeNull();
     expect(doneReason(row('done', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR }), NOW, DAYS)).toEqual({ kind: 'done' });
+    expect(doneReason(row('merged', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR, summary: { donePr: 123 } as SessionRowData['summary'] }), NOW, DAYS)).toEqual({ kind: 'merged', pr: 123 });
     expect(doneReason(row('quiet', { updatedAt: NOW - 5 * DAY - HOUR }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 5 });
     // Marked done before its last activity, it came back; once that ages out it is inactive, not done by you.
     expect(doneReason(row('back', { archivedAt: NOW - 10 * DAY, updatedAt: NOW - 3 * DAY }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 3 });
@@ -173,6 +174,7 @@ describe('doneReason', () => {
 
   it('reads as the row says it', () => {
     expect(doneReasonLabel({ kind: 'done' })).toBe('Done');
+    expect(doneReasonLabel({ kind: 'merged', pr: 123 })).toBe('Merged #123');
     expect(doneReasonLabel({ kind: 'inactive', days: 1 })).toBe('Inactive 1 day');
     expect(doneReasonLabel({ kind: 'inactive', days: 4 })).toBe('Inactive 4 days');
   });

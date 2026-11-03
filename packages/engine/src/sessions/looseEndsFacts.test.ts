@@ -6,6 +6,7 @@ import { git } from '../git/gitChanges.ts';
 import type { GhCommand } from '../git/pullRequest.ts';
 import { attributeLooseEnds, type BranchSession } from './looseEnds.ts';
 import { repoFacts } from './looseEndsFacts.ts';
+import { mergedMoves } from './mergedDone.ts';
 
 let dir: string;
 let repo: string;
@@ -93,6 +94,10 @@ describe('loose ends in a real repository', () => {
     const merged = await repoFacts(repo, { env: env(), gh });
     expect(merged.facts!.pullRequests!.get('feat/squashed')).toMatchObject({ number: 7, state: 'merged' });
     expect(Object.fromEntries(attributeLooseEnds(merged.facts!, sessions))).toEqual({});
+    // The merge moves the session to Done when it was quiet since; activity after the merge keeps it where it is.
+    const candidate = { id: 'work', branch: 'feat/squashed', listed: true, pinned: false, working: false, attention: false, openInApp: false, restoredAt: null, donePr: null, looseEnds: false };
+    expect(mergedMoves(merged.facts!, [{ ...candidate, updatedAt: Date.parse('2026-11-01T09:00:00Z') }])).toEqual([{ sessionId: 'work', pr: 7 }]);
+    expect(mergedMoves(merged.facts!, [{ ...candidate, updatedAt: Date.parse('2026-11-01T11:00:00Z') }])).toEqual([]);
   });
 
   it('reads failing checks of open pull requests from the rollup, and says unknown when gh is offline', async () => {

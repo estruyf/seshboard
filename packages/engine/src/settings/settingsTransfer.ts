@@ -99,6 +99,7 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   notificationsPausedUntil: 'Pause notifications',
   archiveAfterDays: 'Move finished sessions to Done after',
   deleteArchived: 'Delete Done sessions',
+  doneOnMerge: 'Move to Done when its pull request merges',
   markReadAfter: 'Mark as read after',
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
@@ -271,6 +272,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
       owned: ids('SELECT id FROM owned_sessions ORDER BY id'),
       continued: ids('SELECT id FROM continued_sessions ORDER BY id'),
       notes: stores.db.prepare('SELECT id, note FROM session_flags WHERE note IS NOT NULL ORDER BY id').all() as Array<{ id: string; note: string }>,
+      donePrs: stores.db.prepare('SELECT id, done_pr AS pr FROM session_flags WHERE done_pr IS NOT NULL ORDER BY id').all() as Array<{ id: string; pr: number }>,
     };
   }
   return file;
@@ -802,7 +804,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
 
   // --- Sessions (only ever added) -------------------------------------------------------------
   if (has('sessions')) {
-    const { pinned, settled, archived, owned, continued, notes } = file.sessions!;
+    const { pinned, settled, archived, owned, continued, notes, donePrs } = file.sessions!;
     const ids = (sql: string) => new Set((stores.db.prepare(sql).all() as Array<{ id: string }>).map((r) => r.id));
     const groups = [
       { label: 'pinned', ids: pinned, have: ids('SELECT id FROM session_flags WHERE pinned = 1'), sql: 'INSERT INTO session_flags (id, pinned) VALUES (?, 1) ON CONFLICT (id) DO UPDATE SET pinned = 1' },
@@ -848,6 +850,17 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       writes.push(() => {
         const statement = stores.db.prepare('INSERT INTO session_flags (id, note) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET note = COALESCE(session_flags.note, excluded.note)');
         for (const { id, note: text } of newNotes) statement.run(id, text);
+      });
+    }
+    // Merged pull requests that moved sessions to Done: the label, and the merge known as handled (Reopen sticks).
+    const handled = ids('SELECT id FROM session_flags WHERE done_pr IS NOT NULL');
+    const newDone = (donePrs ?? []).filter(({ id }) => !handled.has(id));
+    unchanged += (donePrs ?? []).length - newDone.length;
+    if (newDone.length > 0) {
+      note('sessions', `${newDone.length} ${newDone.length === 1 ? 'session' : 'sessions'} done by a merged pull request`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare('INSERT INTO session_flags (id, done_pr) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET done_pr = COALESCE(session_flags.done_pr, excluded.done_pr)');
+        for (const { id, pr } of newDone) statement.run(id, pr);
       });
     }
   }
