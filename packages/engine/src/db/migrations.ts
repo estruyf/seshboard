@@ -793,4 +793,16 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE session_flags ADD COLUMN note TEXT;
   `,
+
+  // v45: Loose ends (session triage): what each session (or run row) left behind in git and on GitHub, as last found,
+  // so a restart or gh offline starts from what was known. Derived: fine to drop, a look finds them again.
+  `
+  CREATE TABLE loose_ends (
+    owner TEXT PRIMARY KEY,
+    root TEXT NOT NULL,
+    ends_json TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX loose_ends_root ON loose_ends (root);
+  `,
 ];

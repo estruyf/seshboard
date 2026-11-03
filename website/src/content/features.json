@@ -3667,6 +3667,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:loose-ends",
+      "name": "Loose ends: a marker on a session that left files not committed, commits not pushed, failing checks or a closed pull request, which keeps it out of Done until you mark it done",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:session-note",
       "name": "What's left: a one-line note under a session's title (N, Note… in its menu or the palette), found by search",
       "page": "sessions/sidebar"

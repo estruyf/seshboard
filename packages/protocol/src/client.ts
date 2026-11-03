@@ -33,6 +33,7 @@ export { BUILTIN_PROFILE_ID, PROFILE_COLORS } from './profileConstants.ts';
 export { OPTIONAL_PROVIDERS, PROVIDER_FEATURES, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, SESSION_PROVIDERS, claudeOnlyLine, isOtherProviderSession, joinWords, notWithYet, otherProviderOf, providerOf, switchLosses, switchNotice, type OptionalProvider, type ProviderFeature, type SessionProvider, type SwitchChoices, type SwitchLoss } from './providerConstants.ts';
 export { PROJECT_NAME_MAX } from './projectConstants.ts';
 export { cleanNote, SESSION_NOTE_MAX } from './sessionNote.ts';
+export { looseEndText, sameLooseEnds, type GitLooseEnd, type LooseEnd } from './looseEnds.ts';
 export { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
 export { PR_BODY_LIMIT } from './pullRequestConstants.ts';
 export { randomWorktreeName } from './worktreeName.ts';

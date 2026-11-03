@@ -33,9 +33,11 @@ export function sidebarGroups(
     quick?: ReadonlyMap<string, QuickInfo>;
     runs?: Iterable<PipelineRunState>;
     openParents?: ReadonlySet<string>;
+    /** Run rows with loose ends (`keptSessions.ts`): listed as a session with them is. */
+    kept?: ReadonlySet<string>;
   },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
-  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays);
+  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays, options.kept);
   const { active } = buildSessionList(forest.roots, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays, children: forest.children });
   const open = options.openParents ?? usePipelineTree.getState().open;
   return groupsFor(active, options.sort, options.quick).map(({ group, rows: inGroup }) => ({ group, rows: withOpenChildren(inGroup, forest.children, open) }));

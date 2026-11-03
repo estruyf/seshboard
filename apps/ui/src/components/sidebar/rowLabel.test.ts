@@ -35,6 +35,10 @@ describe('sessionRowLabel', () => {
     );
   });
 
+  it('reads what it left behind', () => {
+    expect(sessionRowLabel({ ...base, left: ['3 files not committed', 'A queued prompt'] })).toBe('Fix the login bug, switchboard, left: 3 files not committed, a queued prompt, updated 5 minutes ago');
+  });
+
   it('reads the note after the state', () => {
     expect(sessionRowLabel({ ...base, note: 'push after review' })).toBe('Fix the login bug, switchboard, note: push after review, updated 5 minutes ago');
   });

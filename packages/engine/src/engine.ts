@@ -13,6 +13,7 @@ import {
   isOtherProviderSession,
   otherProviderOf,
   cleanNote,
+  listedInMainList,
   COMPANION_DIR,
   REMOTE_LOG_FILE,
   contract,
@@ -126,6 +127,9 @@ import { candidatesFromPaste, candidatesOf } from './memory/claudeExport.ts';
 import { readExport } from './memory/memoryImport.ts';
 import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
+import { repoFacts } from './sessions/looseEndsFacts.ts';
+import { isCandidate, type BranchSession } from './sessions/looseEnds.ts';
+import { LooseEndsStore, LooseEndsWatcher, type RepoToCheck } from './sessions/looseEndsWatcher.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
 import type { HostManagerDeps, SdkRuntime } from './host/hostManager.ts';
@@ -432,6 +436,8 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** The VS Code companion's socket, when this engine listens for it. */
   let companion: CompanionHub | null = null;
+  /** What sessions left behind in git and on GitHub (`looseEndsWatcher.ts`); made once sessions and pull requests are. */
+  let looseEnds: LooseEndsWatcher | null = null;
   /** Remote, when this engine offers it. */
   let remote: RemoteHub | null = null;
   /** Other computers this app paired with, when this engine can keep a key for them. */
@@ -1019,6 +1025,7 @@ export function createEngine(options: EngineOptions): Engine {
     onTurnEnd: (sessionId, outcome) => {
       autoStarter?.turnEnded(sessionId, outcome);
       triggerWatcher?.turnEnded(sessionId, outcome);
+      looseEnds?.turnEnded(sessions.get(sessionId)?.projectRoot ?? null);
       const card = catchUp.turnEnded(sessionId, outcome);
       quietly(card);
       // A pipeline's step reads the catch-up (does Claude wait for you?) before the run goes on. Send now's turn has none.
@@ -2387,7 +2394,7 @@ export function createEngine(options: EngineOptions): Engine {
   };
 
   /** Sessions with an unsent message or a queued prompt (Up next too): the sidebar's lists keep them whatever their age. */
-  const keptSessions = (): Set<string> => new Set([...sessionsWithDrafts(appState.get(DRAFTS_KEY)), ...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]);
+  const keptSessions = (): Set<string> => new Set([...sessionsWithDrafts(appState.get(DRAFTS_KEY)), ...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId), ...(looseEnds?.owners() ?? [])]);
 
   if (options.companion) {
     companion = new CompanionHub({
@@ -2615,7 +2622,59 @@ export function createEngine(options: EngineOptions): Engine {
       drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
       // Messages waiting in Up next keep their session, like a queued prompt does.
       queued: new Set([...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]),
+      looseEnds: looseEnds?.owners() ?? new Set(),
     });
+
+  // --- Loose ends: what sessions left behind in git and on GitHub ------------------------------------------------
+  /** A pipeline step's loose ends go to its run: the session the run started from, or the run's own row. */
+  const runOwner = () => {
+    const owner = new Map<string, string>();
+    for (const { run, steps } of runner?.list() ?? []) for (const step of steps) if (step.sessionId) owner.set(step.sessionId, run.parentSessionId ?? run.id);
+    return owner;
+  };
+  /** Every git repository with a candidate session (listed, or Done by inactivity lately), with all of its sessions. */
+  const looseEndRepos = (): RepoToCheck[] => {
+    const now = Date.now();
+    const all = retentionCandidates({
+      summaries: sessions.snapshot().sessions,
+      live: liveList(),
+      ...hosts.list(),
+      drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
+      queued: new Set([...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]),
+      looseEnds: looseEnds?.owners() ?? new Set(),
+    });
+    const byRoot = new Map<string, { candidate: boolean; sessions: BranchSession[] }>();
+    for (const { summary, listing } of all) {
+      const root = summary.projectRoot;
+      const entry = byRoot.get(root) ?? { candidate: false, sessions: [] };
+      entry.sessions.push({ id: summary.id, cwd: summary.cwd, branch: summary.worktree?.branch ?? summary.gitBranch, updatedAt: summary.updatedAt });
+      if (!entry.candidate) entry.candidate = isCandidate({ listed: listedInMainList(listing, now, retention.archiveAfterDays), archivedAt: listing.archivedAt, updatedAt: listing.updatedAt, working: listing.working }, now, retention.archiveAfterDays);
+      byRoot.set(root, entry);
+    }
+    return [...byRoot].filter(([root, e]) => e.candidate && resolver.resolve(root).gitDir).map(([root, e]) => ({ root, sessions: e.sessions }));
+  };
+  looseEnds = new LooseEndsWatcher(
+    {
+      repos: looseEndRepos,
+      facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false) }),
+      ownerOf: (() => {
+        let owners: Map<string, string> | null = null;
+        let at = 0;
+        // Read once per look, not per session.
+        return (id: string) => {
+          if (!owners || Date.now() - at > 1_000) {
+            owners = runOwner();
+            at = Date.now();
+          }
+          return owners.get(id) ?? id;
+        };
+      })(),
+      emit: (map) => broadcast('sessions.looseEnds', { looseEnds: Object.fromEntries([...map].map(([owner, ends]) => [owner, [...ends]])) }),
+      log: (message) => log('warn', message),
+    },
+    new LooseEndsStore(cache.db),
+  );
+  looseEnds.start();
   // Questions about a session (Ask about this session, /btw) are kept per session, apart from the transcript;
   // answers go to every window, and their tokens count on the session's profile.
   const askStore = new AskStore(cache.db);
@@ -2784,6 +2843,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
       return {};
     },
+    'sessions.listLooseEnds': () => ({ looseEnds: Object.fromEntries(looseEnds?.all() ?? []) }),
     'sessions.setNote': ({ sessionId, note }) => {
       sessions.setNote(sessionId, note === null ? null : cleanNote(note));
       return {};
@@ -4314,7 +4374,10 @@ export function createEngine(options: EngineOptions): Engine {
     setChrome: (enabled) => hosts.setChrome(enabled),
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
-    setForeground: (foreground) => checksWatcher.setForeground(foreground),
+    setForeground: (foreground) => {
+      checksWatcher.setForeground(foreground);
+      looseEnds?.setForeground(foreground);
+    },
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
       if (!spec) return;
@@ -4372,6 +4435,7 @@ export function createEngine(options: EngineOptions): Engine {
       for (const monitor of usageMonitors.values()) monitor.stop();
       insights.close();
       checksWatcher.close();
+      looseEnds?.close();
       claudeUpdater.close();
       providerChecks.close();
       terminals.closeAll();

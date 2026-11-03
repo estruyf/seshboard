@@ -4,6 +4,7 @@ import type { ListedAction, ProjectDefaults, ProjectInfo } from '@seshboard/prot
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { cleanUpWorktrees, openProject, type ProjectTab } from '../../state/projectPageStore.ts';
 import { agoText, basename, shortAge, tildify } from '../../lib/format.ts';
@@ -207,7 +208,8 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   const permissions = useHosts((s) => s.permissions);
   const catchUps = useCatchUp((s) => s.cards);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
-  const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root }), [rows, now, archiveAfterDays, root]);
+  const kept = useKeptSessions();
+  const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root, kept }), [rows, now, archiveAfterDays, root, kept]);
   const archived = useMemo(() => buildSessionList(rows, { search: '', project: root, now, archiveAfterDays }).archived, [rows, now, archiveAfterDays, root]);
   const [archivedOpen, setArchivedOpen] = useState<boolean | null>(null);
   const showArchived = archivedOpen ?? groups.length === 0;

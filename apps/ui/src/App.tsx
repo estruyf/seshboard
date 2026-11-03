@@ -43,6 +43,7 @@ import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
+import { useLooseEndsSync } from './state/looseEndsStore.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
 import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
@@ -230,6 +231,7 @@ export function App() {
   useTriggersSync();
   usePipelinesSync();
   useCatchUpSync();
+  useLooseEndsSync();
   useUpNextSync();
   useModsSync();
   useLimitsSync();

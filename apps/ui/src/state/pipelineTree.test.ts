@@ -108,6 +108,9 @@ describe('sidebarForest', () => {
     const { active: up, archived } = buildSessionList(forest.roots, { search: '', project: null, now: NOW, archiveAfterDays: 1, children: forest.children });
     expect(ids(up)).toEqual(['run-a', 'run-b']);
     expect(ids(archived)).toEqual(['run-c']);
+    // With loose ends (files not committed in its worktree), the run row stays listed, as a session with them does.
+    const kept = sidebarForest(rows, [active, recent, stale], NOW, 1, new Set(['run-c']));
+    expect(ids(buildSessionList(kept.roots, { search: '', project: null, now: NOW, archiveAfterDays: 1, children: kept.children }).archived)).toEqual([]);
   });
 
   it('auto-archives a tree by its newest activity, never while its run goes on', () => {
