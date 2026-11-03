@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,12 +6,19 @@ import type { GitLooseEnd } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import type { RepoFacts } from './looseEnds.ts';
 import { LooseEndsStore, LooseEndsWatcher } from './looseEndsWatcher.ts';
+import { removeDir } from '../util/removeDir.ts';
 
 let dir: string;
+/** The cache each test opened: closed before its folder goes, which Windows refuses while the file is open. */
+let opened: ReturnType<typeof openCacheDatabase> | null = null;
 beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-loose-watch-')));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  if (opened?.db.isOpen) opened.close();
+  opened = null;
+  await removeDir(dir);
+});
 
 const ROOT = '/work/app';
 const facts = (uncommitted: number, unpushed: number): RepoFacts => ({
@@ -24,7 +31,7 @@ const facts = (uncommitted: number, unpushed: number): RepoFacts => ({
 
 describe('LooseEndsWatcher', () => {
   it('finds loose ends, says when they change, keeps them across a restart, and keeps what it can’t know', async () => {
-    const db = openCacheDatabase(join(dir, 'cache.sqlite'));
+    const db = (opened = openCacheDatabase(join(dir, 'cache.sqlite')));
     const emitted: Array<Record<string, readonly GitLooseEnd[]>> = [];
     let next: { facts: RepoFacts | null; github: boolean } = { facts: facts(2, 1), github: true };
     const make = () =>
