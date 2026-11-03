@@ -120,6 +120,7 @@ const PLANS: Record<string, Plan> = {
   pin: 'here',
   archive: 'here',
   note: 'here',
+  remind: 'here',
   fork: 'here',
   rewind: 'here',
   compact: 'here',

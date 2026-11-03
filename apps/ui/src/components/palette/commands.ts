@@ -189,6 +189,8 @@ export interface PaletteApi {
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
   /** Opens the note of the session on screen: what's left in it, one line under its title. */
   editNote(): void;
+  /** Remind me later about the session on screen. */
+  remind(): void;
   compact(): void;
   /** Keep awake until done, on or off, for the session on screen. */
   setKeepAwake(on: boolean): void;
@@ -762,6 +764,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: "what's left todo to do remember reminder later comment",
     when: indexed,
     run: (api) => api.editNote(),
+  },
+  {
+    id: 'remind',
+    title: 'Remind me…',
+    group: 'session',
+    icon: BellRing,
+    keywords: 'remind later snooze reminder come back tomorrow evening hour',
+    when: indexed,
+    run: (api) => api.remind(),
   },
   {
     id: 'fork',

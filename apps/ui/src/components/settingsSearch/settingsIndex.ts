@@ -280,6 +280,8 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'notification alerts banner notification centre center do not disturb needs you finished error action blocked permission system settings',
       target: '[data-notifications-toggle]',
     },
+    { id: 'notifications-reminders', page: 'notifications', label: 'Reminders', detail: 'When a session you asked to be reminded about comes back.', keywords: 'reminder remind later snooze notification', target: '[data-notifications-reminders]' },
+    { id: 'notifications-badge-reminders', page: 'notifications', label: 'Count reminders in the badge', detail: "Due reminders count with what needs you, on the app's icon.", keywords: 'badge dock taskbar count reminders', target: '[data-notifications-badge-reminders]' },
     { id: 'notifications-test', page: 'notifications', label: 'Check that they come through.', detail: 'Send a test notification', keywords: 'notification test try', target: '[data-notifications-test]' },
     { id: 'sounds', page: 'notifications', label: 'Sounds', detail: 'A sound per moment. Works with notifications on or off.', keywords: 'sound audio chime alert mute notification', target: '[data-sounds-toggle]' },
     { id: 'sound-needs-you', page: 'notifications', label: 'Needs you', detail: 'Claude asks for a permission, has a question or a plan.', keywords: 'sound needs you permission question plan waiting', target: '[data-sound-event="needsYou"]' },

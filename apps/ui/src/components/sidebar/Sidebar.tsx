@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -20,6 +20,8 @@ import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startPass } from '../../state/catchUpPass.ts';
 import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { openRemindEditor } from '../../state/remindEditorStore.ts';
+import { reminderLabel } from '../../state/reminders.ts';
 import { useRowLooseEnds } from '../../state/looseEndsStore.ts';
 import { looseEndLines, rowLooseEnds } from '../../state/looseEndsText.ts';
 import { useLater } from '../../state/laterStore.ts';
@@ -350,7 +352,9 @@ export const SessionRow = memo(function SessionRow({
   const liveCwd = data.live?.cwd && !data.isWorktree && !inWorktree(data.live.cwd) ? data.live.cwd : null;
   const liveBranch = useCheckoutBranches((s) => (liveCwd && s.byCwd.has(liveCwd) ? (s.byCwd.get(liveCwd) ?? 'detached') : null));
   const branch = liveBranch ?? data.branch;
-  const emphasised = status === 'needs-you' || status === 'running' || status === 'unread';
+  // A reminder that came due (Remind me later): in the unread colour, with a bell, until you open it.
+  const reminderText = !archived && !remote && data.summary?.remindAt != null && data.summary.remindedAt != null ? reminderLabel(data.summary.remindAt, data.summary.remindedAt) : null;
+  const emphasised = status === 'needs-you' || status === 'running' || status === 'unread' || reminderText !== null;
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
@@ -365,7 +369,7 @@ export const SessionRow = memo(function SessionRow({
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
   const profile = useRowProfile(data);
-  const statusRail = status && RAIL_TONE[status];
+  const statusRail = (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
   const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
@@ -428,7 +432,7 @@ export const SessionRow = memo(function SessionRow({
     'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -456,6 +460,7 @@ export const SessionRow = memo(function SessionRow({
     'data-tooltip': [
       data.title,
       style === 'compact' ? doneText : null,
+      style === 'compact' ? reminderText : null,
       style === 'compact' && note ? `Note: ${note}` : null,
       style === 'compact' ? projectName : null,
       style === 'compact' ? waitingFor : null,
@@ -536,7 +541,12 @@ export const SessionRow = memo(function SessionRow({
         <ProviderMark session={whose} />
         {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
-        {note && status !== 'needs-you' ? (
+        {reminderText && status !== 'needs-you' ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-unread" data-row-reminder>
+            <Bell size={11} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{[reminderText, note].filter(Boolean).join(' · ')}</span>
+          </span>
+        ) : note && status !== 'needs-you' ? (
           // Your note takes the second line from the review time, the run, the draft and the branch; what a waiting
           // session asks for still wins.
           <span className="flex min-w-0 flex-1 items-center gap-1 text-muted" data-row-note>
@@ -676,7 +686,7 @@ export function Sidebar() {
   const runs = usePipelines((s) => s.runs);
   const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept), [merged, runs, now, archiveAfterDays, kept]);
   const openParents = usePipelineTree((s) => s.open);
-  const { active, archived } = useMemo(
+  const { active, archived, snoozed } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),
     [forest, search, projectFilter, now, archiveAfterDays],
   );
@@ -730,8 +740,10 @@ export function Sidebar() {
         quick,
         children: forest.children,
         openParents,
+        // Snoozed sessions are out of the list; a search still finds them, under Snoozed.
+        ...(searching ? { snoozed } : {}),
       }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents],
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed],
   );
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
@@ -1045,6 +1057,19 @@ export function Sidebar() {
       }
       return;
     }
+    // L: Remind me later, for the picked sessions or the focused (or hovered) one. Sessions of this computer only.
+    if (matches(event.nativeEvent, 'sidebar.remind') && !target.closest('input, textarea, [contenteditable="true"]')) {
+      const id =
+        target.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ??
+        scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
+      const remindable = (row: SessionRowData) => !!row.summary && !row.remote;
+      const targets = multi ? pickedRows.filter(remindable) : rows.flatMap((r) => (r.kind === 'session' && r.data.id === id && remindable(r.data) ? [r.data] : []));
+      if (targets.length) {
+        event.preventDefault();
+        openRemindEditor(targets.map((row) => row.id));
+      }
+      return;
+    }
     // N: the focused (or hovered) session's note. A session of this computer only, with a transcript.
     if (matches(event.nativeEvent, 'sidebar.note') && !multi && !target.closest('input, textarea, [contenteditable="true"]')) {
       const id =
@@ -1126,6 +1151,8 @@ export function Sidebar() {
     const entries: MenuEntry[] = [{ heading: `${picked.size} selected` }];
     if (pickActive.length) entries.push({ label: `Done: ${count(pickActive)}`, hint: 'until new activity', onSelect: actOnPicks(pickActive, ARCHIVE) });
     if (pickArchived.length) entries.push({ label: `Reopen ${count(pickArchived)}`, onSelect: actOnPicks(pickArchived, { archived: false }) });
+    const remindable = pickTargets.filter((row) => !row.remote);
+    if (remindable.length) entries.push({ label: `Remind me about ${count(remindable)}…`, hint: formatKeys(keysFor('sidebar.remind')), onSelect: () => openRemindEditor(remindable.map((row) => row.id)), data: { 'data-picked-remind': true } });
     if (pickTargets.length) entries.push({ label: `${allPinned ? 'Unpin' : 'Pin'} ${count(pickTargets)}`, onSelect: actOnPicks(pickTargets, { pinned: !allPinned }) });
     entries.push('separator', { label: 'Clear selection', hint: 'Esc', onSelect: () => setPicks(NO_PICKS) });
     if (pickTargets.length) entries.push('separator', { label: `Delete ${count(pickTargets)}…`, hint: '⌘⌫', danger: true, onSelect: () => setDeleting(pickTargets) });

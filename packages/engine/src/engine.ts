@@ -129,6 +129,7 @@ import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { repoFacts } from './sessions/looseEndsFacts.ts';
 import { mergedMoves } from './sessions/mergedDone.ts';
+import { BreakThrough, dueNow } from './sessions/reminders.ts';
 import { isCandidate, type BranchSession, type RepoFacts } from './sessions/looseEnds.ts';
 import { LooseEndsStore, LooseEndsWatcher, type RepoToCheck } from './sessions/looseEndsWatcher.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
@@ -178,6 +179,7 @@ import { TranscriptHub } from './sessions/transcriptHub.ts';
 import { diagnoseTranscript } from './sessions/transcriptDiagnosis.ts';
 import { continueInEditor, detectEditors, openInEditor } from './system/editors.ts';
 import { CompanionHub } from './companion/companionHub.ts';
+import { companionStatus } from './companion/companionSessions.ts';
 import { RemoteHub } from './remote/remoteHub.ts';
 import { NO_GLOBAL_MODEL, type GlobalModel } from './remote/remoteView.ts';
 import { CloneService, trustNeededError } from './projects/cloneService.ts';
@@ -2654,6 +2656,34 @@ export function createEngine(options: EngineOptions): Engine {
     }
     return [...byRoot].filter(([root, e]) => e.candidate && resolver.resolve(root).gitDir).map(([root, e]) => ({ root, sessions: e.sessions }));
   };
+  // --- Remind me later ------------------------------------------------------------------------------------------
+  const breakThrough = new BreakThrough();
+  /**
+   * Snoozed sessions that start to need you, fail or work drop their reminder; reminders due by now come back under
+   * Reminders, and go out as notifications (main) and pushes (phones).
+   */
+  const checkReminders = () => {
+    const now = Date.now();
+    const snoozed = sessions.snoozed();
+    if (snoozed.length) {
+      const live = new Map(liveList().map((l) => [l.sessionId, l]));
+      const hostById = new Map(hosts.list().hosts.map((h) => [h.sessionId, h]));
+      const woken = breakThrough.check(snoozed, (id) => companionStatus(sessions.get(id), live.get(id) ?? null, hostById.get(id)));
+      if (woken.length) sessions.setReminder(woken, null);
+    }
+    const due = dueNow(sessions.dueReminders(now), now);
+    if (due.length === 0) return;
+    sessions.markReminded(due.map((d) => d.sessionId), now);
+    const reminders = due.map(({ sessionId, remindAt, missed }) => {
+      const summary = sessions.get(sessionId);
+      return { id: sessionId, title: summary?.title ?? 'Untitled session', note: summary?.note ?? null, remindAt, missed };
+    });
+    broadcast('sessions.remindersDue', { reminders });
+    remote?.pushReminders(reminders);
+  };
+  const reminderTimer = setInterval(checkReminders, 60_000);
+  reminderTimer.unref?.();
+
   // --- PR merged moves to Done ------------------------------------------------------------------------------------
   /** Sessions moved to Done by a merge since a window last had focus: the toast (with Undo) goes out then, in one. */
   const mergedPending: Array<{ id: string; title: string; pr: number }> = [];
@@ -2827,6 +2857,8 @@ export function createEngine(options: EngineOptions): Engine {
   scanCompleteHook = () => {
     scanned = true;
     maybeRunOnLaunch();
+    // Reminders that came due while Seshboard was closed.
+    checkReminders();
     // Loose ends need the sessions: the first look waits for the first full scan.
     looseEnds?.start();
   };
@@ -2891,6 +2923,16 @@ export function createEngine(options: EngineOptions): Engine {
         triggerWatcher?.released(sessionId);
         checksWatcher.release(sessionId);
       }
+      return {};
+    },
+    'sessions.remind': ({ sessionIds, at }) => {
+      sessions.setReminder(sessionIds, at);
+      // Remind now (or a time already past) comes at once.
+      if (at !== null && at <= Date.now()) checkReminders();
+      return {};
+    },
+    'sessions.clearReminder': ({ sessionIds }) => {
+      sessions.setReminder(sessionIds, null);
       return {};
     },
     'sessions.listLooseEnds': () => ({ looseEnds: Object.fromEntries(looseEnds?.all() ?? []) }),
@@ -4410,7 +4452,10 @@ export function createEngine(options: EngineOptions): Engine {
       standInHost({ sessionId, cwd, state: 'idle' });
       await runner?.turnEnded(sessionId, outcome, null);
     },
-    wake: () => scheduler.wake(),
+    wake: () => {
+      scheduler.wake();
+      checkReminders();
+    },
     advanceScheduleClock: (ms) => {
       if (!options.stubQueueStarts) return;
       scheduleClockOffset += ms;
@@ -4429,6 +4474,7 @@ export function createEngine(options: EngineOptions): Engine {
       looseEnds?.setForeground(foreground);
       foregroundNow = foreground;
       flushMerged();
+      if (foreground) checkReminders();
     },
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;
@@ -4488,6 +4534,7 @@ export function createEngine(options: EngineOptions): Engine {
       insights.close();
       checksWatcher.close();
       looseEnds?.close();
+      clearInterval(reminderTimer);
       claudeUpdater.close();
       providerChecks.close();
       terminals.closeAll();

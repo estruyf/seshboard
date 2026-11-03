@@ -51,6 +51,8 @@ export function sessionRowLabel(row: {
   archived: boolean | string | null;
   /** What's left, in your words. */
   note?: string | null;
+  /** A reminder that came due: "Reminder", "Reminder (from 09:00)". */
+  reminder?: string | null;
   /** What it left behind: uncommitted changes, commits not pushed and the rest (`looseEndLines`). */
   left?: readonly string[];
   /** One of several sessions picked with ⌘- or ⇧-click. */
@@ -71,6 +73,7 @@ export function sessionRowLabel(row: {
   if (row.project) parts.push(row.project);
   if (row.status) parts.push(statusLabel(row.status, row.agent));
   if (row.pipeline) parts.push(`pipeline at ${row.pipeline.replace(/ · /g, ', ')}`);
+  if (row.reminder) parts.push(row.reminder.charAt(0).toLowerCase() + row.reminder.slice(1));
   if (row.note) parts.push(`note: ${row.note}`);
   if (row.left?.length) parts.push(`left: ${row.left.map((line) => line.charAt(0).toLowerCase() + line.slice(1)).join(', ')}`);
   if (row.pinned) parts.push('pinned');

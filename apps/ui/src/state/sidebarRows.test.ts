@@ -252,6 +252,23 @@ describe('groupSessions', () => {
     expect(ids(triageOrder([rows[1]!, rows[2]!, rows[4]!, rows[0]!, rows[5]!, rows[6]!, rows[3]!]))).toEqual(['unread', 'failed', 'read', 'read-earlier']);
   });
 
+  it('puts snoozed sessions in neither list, and a due reminder under Reminders above To review', () => {
+    const snoozed = row('later', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], unread: true, pinned: true });
+    const busy = row('busy', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], live: live('running') });
+    const due = row('due', { summary: { remindAt: NOW - HOUR, remindedAt: NOW } as SessionRowData['summary'] });
+    const list = buildSessionList([snoozed, busy, due, row('unread', { unread: true })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
+    expect([ids(list.active), ids(list.archived), ids(list.snoozed)]).toEqual([['busy', 'due', 'unread'], [], ['later']]);
+    expect(groupSessions(list.active).map((g) => [g.group, ids(g.rows)])).toEqual([
+      ['working', ['busy']],
+      ['reminders', ['due']],
+      ['review', ['unread']],
+    ]);
+    expect(ids(triageOrder(list.active))).toEqual(['due', 'unread']);
+    // Searching, the snoozed ones are listed under Snoozed, before Done.
+    const rows = buildListRows(list.active, [], { now: NOW, archivedOpen: false, snoozed: list.snoozed });
+    expect(rows.filter((r) => r.kind === 'group').map((r) => r.kind === 'group' && r.group)).toEqual(['working', 'reminders', 'review', 'snoozed']);
+  });
+
   it('finds a session by its note', () => {
     const noted = row('noted', { summary: { note: 'waiting on Jan' } as SessionRowData['summary'] });
     expect(ids(buildSessionList([noted, row('other')], { search: 'jan', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['noted']);

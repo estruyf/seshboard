@@ -26,6 +26,7 @@ import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { Switch } from '../ui/Toggle.tsx';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { TriggersCard } from './UpcomingTriggers.tsx';
+import { RemindersCard, snoozedSessions } from './UpcomingReminders.tsx';
 
 const CARD = 'grid content-start gap-1 rounded-xl border border-border bg-card p-3';
 
@@ -78,7 +79,9 @@ export function UpcomingView() {
   const byId = useMemo(() => new Map(schedules.map((s) => [s.id, s])), [schedules]);
   const shownTriggers = useMemo(() => allTriggers.filter((t) => inProject(t.projectRoot, project)), [allTriggers, project]);
   const cards = visibleCards(filter.kind);
-  const nothing = queue.entries.length === 0 && listedSchedules(schedules, now).length === 0 && history.length === 0 && allTriggers.length === 0;
+  const sessionsById = useSessions((s) => s.sessions);
+  const reminders = useMemo(() => snoozedSessions(sessionsById.values()).filter((s) => inProject(s.projectRoot, project)), [sessionsById, project]);
+  const nothing = queue.entries.length === 0 && listedSchedules(schedules, now).length === 0 && history.length === 0 && allTriggers.length === 0 && reminders.length === 0;
 
   const nameOf = (cwd: string) => projectName(projectOf(cwd));
   const openProjectMenu = () => {
@@ -135,6 +138,7 @@ export function UpcomingView() {
                   { value: 'queue', label: 'Queue', badge: entries.length, data: { 'data-upcoming-kind': 'queue' } },
                   { value: 'schedules', label: 'Schedules', badge: shownSchedules.length, data: { 'data-upcoming-kind': 'schedules' } },
                   { value: 'triggers', label: 'Triggers', badge: shownTriggers.length, data: { 'data-upcoming-kind': 'triggers' } },
+                  { value: 'reminders', label: 'Reminders', badge: reminders.length, data: { 'data-upcoming-kind': 'reminders' } },
                 ]}
               />
               <button
@@ -172,8 +176,10 @@ export function UpcomingView() {
           <div
             className={`mx-auto grid w-full max-w-[1600px] gap-4 px-6 py-5 ${!cards.schedules ? 'grid-cols-1' : 'grid-cols-[minmax(0,2fr)_minmax(340px,1fr)] items-start @max-[820px]:grid-cols-1'}`}
           >
-            {(cards.queue || cards.runs || cards.triggers) && (
+            {(cards.queue || cards.runs || cards.triggers || cards.reminders) && (
               <div className="grid min-w-0 content-start gap-4">
+                {/* In All, only once something is snoozed. */}
+                {cards.reminders && (filter.kind === 'reminders' || reminders.length > 0) && <RemindersCard reminders={reminders} now={now} />}
                 {cards.queue && <QueueCard entries={entries} total={queue.entries} rows={queue.rows} nameOf={nameOf} />}
                 {cards.runs && <RunsCard runs={runs} schedules={schedules} now={now} nameOf={nameOf} onMenu={setMenu} />}
                 {/* In All, only once there are triggers: an empty card would say nothing the others don't. */}

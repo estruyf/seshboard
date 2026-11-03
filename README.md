@@ -257,6 +257,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | U | Mark the session read or unread (in the sidebar, on the focused or hovered session) |
 | P | Pin or unpin the session (in the sidebar, on the focused or hovered session) |
 | N | Write what's left in the session (in the sidebar, on the focused or hovered session; One line under its title. Empty clears it) |
+| L | Remind me about the session later (in the sidebar, on the focused or hovered session, or the picked ones; It leaves the list until then, and comes back under Reminders) |
 | ⌘Z | Undo the last quick action (in the sidebar) |
 | ← or → | Close or open a section, or a pipeline's steps (on a section header or a pipeline's row in the sidebar) |
 | ⌥-click | Close or open every section (on a section header in the sidebar) |
@@ -349,6 +350,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | E | Mark it done, and go to the next session to review |
 | S | Skip to the next session to review (To review first, then Open; The skipped session stays as it is) |
 | N | Write what's left in the session (Use as note takes what the catch-up says it needs) |
+| L | Remind me later, and go to the next session to review |
 | Space | Open or close Details, or show the folded catch-up |
 
 **New session**

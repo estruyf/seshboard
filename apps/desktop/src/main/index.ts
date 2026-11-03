@@ -9574,6 +9574,44 @@ async function runLooseEndsStep(win: BrowserWindow): Promise<string> {
   return `ok: the marker on the dark mode session says "${tooltip.replace(/\n/g, '; ')}"`;
 }
 
+/**
+ * Remind me later: L on a demo session snoozes it (In 1 hour), so it leaves the list; Upcoming's Reminders lists it,
+ * and Remind now brings it back under Reminders with a notification; opening it clears the reminder. The flags live in
+ * the throwaway profile.
+ */
+async function runRemindStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, it snoozes a demo session';
+  const title = 'Refactor auth middleware';
+  const find = `[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.innerText.startsWith(${JSON.stringify(title)}))`;
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${find}`, 3_000))) return `no "${title}" row`;
+  const id = (await js(`${find}.dataset.sessionId`)) as string;
+  const row = `document.querySelector('[data-session-list] [data-session-id="${id}"]')`;
+  await js(`${row}.focus()`);
+  pressKey(win, 'L');
+  if (!(await waitInPage(win, "!!document.querySelector('[data-remind-dialog]')", 3_000))) return 'L on the row did not open Remind me';
+  await js("document.querySelector('[data-remind-preset=\"hour\"]').click()");
+  await js("document.querySelector('[data-remind-save]').click()");
+  if (!(await waitInPage(win, `!document.querySelector('[data-remind-dialog]') && !${row}`, 3_000))) return 'the snoozed session stayed in the list';
+  const notifiedBefore = recordedNotifications.filter((n) => n.kind === 'reminder').length;
+  // Upcoming › Reminders lists it; Remind now brings it back.
+  await js("document.querySelector('[data-upcoming-nav]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-upcoming-kind=\"reminders\"]')", 3_000))) return 'Upcoming has no Reminders filter';
+  await js("document.querySelector('[data-upcoming-kind=\"reminders\"]').click()");
+  const item = `document.querySelector('[data-upcoming-reminder="${id}"]')`;
+  if (!(await waitInPage(win, `!!${item}`, 3_000))) return 'Upcoming does not list the reminder';
+  await shot(win, 'upcoming-reminders.png');
+  await js(`${item}.querySelector('[data-upcoming-reminder-now]').click()`);
+  if (!(await waitInPage(win, `!!${row}?.querySelector('[data-row-reminder]') && !!document.querySelector('[data-session-group="reminders"]')`, 5_000))) return 'Remind now did not bring it back under Reminders';
+  const notified = await until(() => recordedNotifications.filter((n) => n.kind === 'reminder').length > notifiedBefore, 3_000);
+  await shot(win, 'reminders.png');
+  // Opening it clears the reminder.
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, `!!${row} && !${row}.querySelector('[data-row-reminder]')`, 5_000))) return 'opening the session did not clear its reminder';
+  return `ok: L snoozed "${title}", Upcoming listed it, Remind now brought it back under Reminders${notified ? ' with a notification' : ' (no notification recorded)'}, opening it cleared it`;
+}
+
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
   pressKey(win, keyCode, modifiers);
   return waitInPage(win, `${PALETTE_MODE} === ${JSON.stringify(mode)} && document.activeElement?.matches('[data-palette-input]')`, 3_000);
@@ -11765,6 +11803,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
   await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
+  await step('remind me later: L, gone from the list, Upcoming, Remind now, back under Reminders, cleared on open', () => runRemindStep(win));
   await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {

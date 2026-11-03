@@ -79,6 +79,8 @@ export function focusSessions(input: FocusInput): FocusSession[] {
     if (!state) return;
     // A session waiting for you always counts: answering it is the way to free a place.
     if (state !== 'needs-you' && settled(summary, state === 'working')) return;
+    // Snoozed (Remind me later): off your mind until it comes back, unless Claude works in it.
+    if (state === 'unread' && summary && summary.remindAt != null && summary.remindedAt == null) return;
     const at = Math.max(summary?.updatedAt ?? 0, fallback.at);
     out.push({
       id,

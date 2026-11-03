@@ -195,6 +195,23 @@ describe('SessionIndex', () => {
     expect(setup([], db).index.get(ID_B)).toMatchObject({ donePr: 13 });
   });
 
+  it('snoozes sessions, brings them back when due, and takes the reminder away on Done', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A), info(ID_B)], db);
+    await t.index.refresh();
+    t.index.setReminder([ID_A, ID_B], 5_000);
+    expect(t.index.snoozed().sort()).toEqual([ID_A, ID_B].sort());
+    expect(t.index.dueReminders(4_999)).toEqual([]);
+    expect(t.index.dueReminders(5_000).map((d) => d.sessionId).sort()).toEqual([ID_A, ID_B].sort());
+    t.index.markReminded([ID_A], 6_000);
+    expect(t.index.get(ID_A)).toMatchObject({ remindAt: 5_000, remindedAt: 6_000 });
+    expect(t.index.dueReminders(7_000).map((d) => d.sessionId)).toEqual([ID_B]);
+    t.index.setFlags(ID_B, { archived: true });
+    expect(t.index.get(ID_B)).toMatchObject({ remindAt: null, remindedAt: null });
+    t.index.stop();
+    expect(setup([], db).index.get(ID_A)).toMatchObject({ remindAt: 5_000, remindedAt: 6_000 });
+  });
+
   it('archives a pipeline tree in one change, and hides sessions until they have new activity', async () => {
     const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
     const t = setup([info(ID_A), info(ID_B)], db);
