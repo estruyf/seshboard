@@ -100,7 +100,7 @@ export function quickActionForKey(key: 'archive' | 'read' | 'pin', row: QuickAct
 }
 
 /** The toast after a quick action: what was done, in the words of its menu item. Stop has none. */
-export function quickActionToast(method: QuickActionMethod, title: string): string | null {
+export function quickActionToast(method: QuickActionMethod, title: string, left: string | null = null): string | null {
   switch (method) {
     case 'markRead':
       return 'Marked as read';
@@ -111,7 +111,8 @@ export function quickActionToast(method: QuickActionMethod, title: string): stri
     case 'unpin':
       return 'Unpinned';
     case 'archive':
-      return `Done: “${title}”`;
+      // What it left behind, so marking it done is never a surprise: "Done: “x”. 3 files not committed".
+      return `Done: “${title}”${left ? `. ${left}` : ''}`;
     case 'unarchive':
       return `Reopened “${title}”`;
     case 'stop':

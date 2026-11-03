@@ -221,7 +221,7 @@ process.parentPort.on('message', (event) => {
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
     const afterDays = clampDays(data.deleteArchived?.afterDays, DELETE_AFTER_DAYS) ?? DELETE_AFTER_DAYS.default;
-    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays } });
+    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays }, doneOnMerge: (data as { doneOnMerge?: unknown }).doneOnMerge !== false });
     return;
   }
   if (data?.type === 'remote-identity-result' && typeof data.id === 'number') {

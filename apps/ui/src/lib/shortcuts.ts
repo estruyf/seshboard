@@ -636,6 +636,15 @@ export const SHORTCUTS = [
     where: "sidebar",
   },
   {
+    id: "sidebar.note",
+    keys: ["n"],
+    action: "Write what's left in the session",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session",
+    note: "One line under its title. Empty clears it",
+    where: "sidebar",
+  },
+  {
     id: "sidebar.undo",
     keys: ["mod+z"],
     action: "Undo the last quick action",
@@ -1281,6 +1290,15 @@ export const SHORTCUTS = [
     context: "To review first, then Open",
     note: "The skipped session stays as it is",
     when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.note",
+    keys: ["n"],
+    action: "Write what's left in the session",
+    section: "catch-up",
+    context: "Use as note takes what the catch-up says it needs",
+    when: catchUpCard,
     where: "view",
   },
   {

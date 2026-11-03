@@ -247,6 +247,12 @@ export function SessionsSettings({ scrollRef }: { scrollRef: RefObject<HTMLDivEl
               <span className={`w-8 text-ui ${deleting.enabled ? 'text-muted' : 'text-faint'}`}>days</span>
               <Switch checked={deleting.enabled} onChange={onSwitch} label="Delete Done sessions" dataAttrs={{ 'data-auto-delete': true, 'data-on': deleting.enabled }} />
             </SettingRow>
+            <SettingRow
+              label="Move to Done when its pull request merges"
+              detail={`A session whose pull request merged goes to Done, unless it is pinned, working, open in Seshboard or active since.${deleting.enabled ? ` Like every session in Done, it goes to the ${trashName()} after the days set above.` : ''}`}
+            >
+              <Switch checked={prefs.doneOnMerge} onChange={(on) => update({ doneOnMerge: on })} label="Move to Done when its pull request merges" dataAttrs={{ 'data-done-on-merge': true, 'data-on': prefs.doneOnMerge }} />
+            </SettingRow>
           </div>
           {periods && readable.length > 0 && (
             <Notice

@@ -173,6 +173,16 @@ export const RouteResult = z.discriminatedUnion('ok', [
 export type RouteResult = z.infer<typeof RouteResult>;
 
 /** Every request the UI can make and every event the engine can push. */
+/** One thing a session left behind in git or on GitHub (`GitLooseEnd`). */
+const GitLooseEndSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('uncommitted'), files: z.number() }),
+  z.object({ kind: z.literal('unpushed'), commits: z.number() }),
+  z.object({ kind: z.literal('checks-failing'), pr: z.number(), failed: z.number() }),
+  z.object({ kind: z.literal('pr-closed'), pr: z.number() }),
+]);
+/** By session (or pipeline run row) id. */
+const LooseEndsMap = z.record(z.string(), z.array(GitLooseEndSchema));
+
 export const contract = {
   requests: {
     'system.info': {
@@ -199,6 +209,13 @@ export const contract = {
     /** Pin a session, or archive it (moves it to "Archived") until it has new activity. */
     'sessions.setFlags': {
       params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }),
+      result: z.object({}),
+    },
+    /** What sessions left behind in git and on GitHub, as last found (`sessions.looseEnds` follows). */
+    'sessions.listLooseEnds': { params: z.object({}), result: z.object({ looseEnds: LooseEndsMap }) },
+    /** What's left in a session, in your words: one line (`cleanNote`), or null to clear it. */
+    'sessions.setNote': {
+      params: z.object({ sessionId: SessionId, note: z.string().max(1000).nullable() }),
       result: z.object({}),
     },
     /**
@@ -1501,6 +1518,13 @@ export const contract = {
     'sessions.changed': SessionsChanged,
     /** Full replacement of the live-session list whenever the registry changes. */
     'sessions.live': z.object({ live: z.array(LiveSession) }),
+    /**
+     * Sessions moved to Done because their pull request merged, sent once a window has focus (the toast with Undo). A
+     * batch of them in one event.
+     */
+    'sessions.mergedDone': z.object({ sessions: z.array(z.object({ id: z.string(), title: z.string(), pr: z.number() })) }),
+    /** Every session's loose ends, whenever one changes (sessions without any left out). */
+    'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,
     'session.host': SessionHostInfo,
     /** Claude Code reported a new model list (replaces the one from `models.list`). */

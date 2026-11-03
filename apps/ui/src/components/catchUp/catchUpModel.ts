@@ -2,7 +2,7 @@
  * The catch-up's logic, without React or the DOM, so it can be tested: when the banner shows, what it says, which actions
  * it offers in which order, and what a key press does. `CatchUpBanner` and `CatchUpStrip` draw it.
  */
-import type { CatchUp, CatchUpNeedKind } from '@seshboard/protocol/client';
+import { cleanNote, type CatchUp, type CatchUpNeedKind } from '@seshboard/protocol/client';
 
 /** How the catch-up shows in the session: in full (the banner), folded into the strip, or not at all. */
 export type CatchUpShow = 'full' | 'strip' | null;
@@ -155,10 +155,14 @@ export type CatchUpKey =
   | { type: 'space' }
   /** S: on to the next session to go through, leaving this one as it is. */
   | { type: 'skip' }
+  /** N: write what's left in the session (banner only). */
+  | { type: 'note' }
   | { type: 'action'; id: CatchUpActionId };
 
 /** The letter that skips to the next session, in the banner and the strip. */
 export const SKIP_KEY = 's';
+/** The letter that opens the session's note, in the banner. */
+export const NOTE_KEY = 'n';
 
 const LETTERS: Record<string, CatchUpActionId> = Object.fromEntries(Object.entries(ACTION_KEYS).map(([id, key]) => [key, id as CatchUpActionId]));
 
@@ -179,6 +183,7 @@ export function catchUpKey(event: KeyLike, ctx: { target: KeyTarget; overlay: bo
   // Folded into the strip, only Space (show it), Skip and its primary action work; the other letters are for the banner.
   if (ctx.show === 'strip') return key === 'Enter' && ctx.target !== 'control' ? { type: 'primary' } : null;
   if (key === 'Enter') return ctx.target === 'control' ? null : { type: 'primary' };
+  if (key.toLowerCase() === NOTE_KEY) return { type: 'note' };
   const id = LETTERS[key.toLowerCase()];
   return id ? { type: 'action', id } : null;
 }
@@ -196,6 +201,16 @@ export function escapeStep(state: { replying: boolean; changesOpen: boolean; det
 
 /** "Reply to Claude about <title>…", the message box's placeholder after Reply. */
 export const replyPlaceholder = (title: string) => `Reply to Claude about ${title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title}…`;
+
+/**
+ * What the catch-up offers as the session's note ("Use as note"): what it needs from you, in its own words, unless it
+ * needs nothing or the note says that already. Only offered: a note is never set by itself.
+ */
+export function suggestedNote(card: CatchUp, note: string | null | undefined): string | null {
+  if (card.need.kind === 'none') return null;
+  const suggestion = cleanNote(card.need.title);
+  return suggestion && suggestion !== note ? suggestion : null;
+}
 
 /** Where you are in a pass through the sessions to go through (Skip and Done move it on). */
 export interface PassState {

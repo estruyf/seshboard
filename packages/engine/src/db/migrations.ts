@@ -787,4 +787,28 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX provider_notes_session ON provider_notes (session_id, at);
   `,
+
+  // v44: What's left in a session, in your words (session triage): one line, shown under its title. A user choice:
+  // keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN note TEXT;
+  `,
+
+  // v45: Loose ends (session triage): what each session (or run row) left behind in git and on GitHub, as last found,
+  // so a restart or gh offline starts from what was known. Derived: fine to drop, a look finds them again.
+  `
+  CREATE TABLE loose_ends (
+    owner TEXT PRIMARY KEY,
+    root TEXT NOT NULL,
+    ends_json TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX loose_ends_root ON loose_ends (root);
+  `,
+
+  // v46: A session moved to Done because its pull request merged (session triage): the pull request's number, which
+  // its row shows ("Merged #123") and which marks the merge as handled, so Reopen sticks. A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN done_pr INTEGER;
+  `,
 ];

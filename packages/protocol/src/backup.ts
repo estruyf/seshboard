@@ -101,6 +101,10 @@ export const SettingsFile = z.object({
       archived: z.array(z.object({ id: SessionId, at: z.number() })).max(100_000).default([]),
       owned: z.array(SessionId).max(100_000).default([]),
       continued: z.array(SessionId).max(100_000).default([]),
+      /** What's left in a session (phase 3 of session triage); left out by versions from before notes. */
+      notes: z.array(z.object({ id: SessionId, note: z.string().max(1000) })).max(100_000).optional(),
+      /** Sessions moved to Done by their merged pull request, with its number; left out by versions from before. */
+      donePrs: z.array(z.object({ id: SessionId, pr: z.number().int() })).max(100_000).optional(),
     })
     .optional(),
 });

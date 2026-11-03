@@ -46,6 +46,7 @@ import { lastLimit } from '../focus/focusLimit.ts';
 import { syncStep } from '../git/gitPlan.ts';
 import { manage } from '../sidebar/ProjectMenu.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { openUnsentList } from '../drafts/UnsentList.tsx';
 import { basename } from '../../lib/format.ts';
 import type { PaletteApi } from './commands.ts';
@@ -174,6 +175,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
       if (change.archived && session) archiveSessions([{ id: sessionId, title: session.title }], apply);
       else apply();
     },
+    editNote: () => openNoteEditor(sessionId),
     setKeepAwake: (on) => call(on ? 'keep the computer awake' : 'stop keeping the computer awake', (c) => c.call('session.keepAwake', { sessionId, on })),
     // Finishing work: the focus limit never stands in the way of compacting.
     compact: () => call('compact the context', (c) => c.call('session.send', { sessionId, text: '/compact', attachments: [], fork: false })),

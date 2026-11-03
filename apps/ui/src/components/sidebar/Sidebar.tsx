@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Inbox, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -19,6 +19,10 @@ import { SidebarNav } from './SidebarNav.tsx';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
 import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startPass } from '../../state/catchUpPass.ts';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { useRowLooseEnds } from '../../state/looseEndsStore.ts';
+import { looseEndLines, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -354,6 +358,8 @@ export const SessionRow = memo(function SessionRow({
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
   const done = archived ? doneReason(data, now, archiveAfterDays) : null;
   const doneText = done ? doneReasonLabel(done) : null;
+  // What's left, in your words: under the title, but not in Done, where it is kept and hidden.
+  const note = archived || remote ? null : (data.summary?.note ?? null);
   const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone} ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
@@ -373,6 +379,15 @@ export const SessionRow = memo(function SessionRow({
   const chevron = expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} onToggle={() => onToggleTree(data.id)} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
+  // Loose ends: what it left behind in git or on GitHub, or a queued prompt. The tooltip lists them, the unsent message too.
+  const gitEnds = useRowLooseEnds(data.id);
+  const queued = useLater((s) => s.items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id));
+  const leftLines = remote ? [] : looseEndLines(rowLooseEnds(gitEnds, { draft: draft !== null, queued }));
+  const loose = !remote && (gitEnds.length > 0 || queued) && (
+    <span className="flex shrink-0 text-muted" data-tooltip={leftLines.join('\n')} aria-hidden data-row-loose-ends={gitEnds.map((e) => e.kind).join(' ') || 'queued'}>
+      <CircleDashed size={11} aria-hidden />
+    </span>
+  );
   // Open in a window of its own: a click brings that window to the front.
   const ownWindow = usePopouts((s) => s.ids.has(data.id));
   const windowMark = ownWindow && <AppWindow size={11} className="shrink-0 text-faint" aria-hidden data-row-own-window />;
@@ -413,7 +428,7 @@ export const SessionRow = memo(function SessionRow({
     'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -441,6 +456,7 @@ export const SessionRow = memo(function SessionRow({
     'data-tooltip': [
       data.title,
       style === 'compact' ? doneText : null,
+      style === 'compact' && note ? `Note: ${note}` : null,
       style === 'compact' ? projectName : null,
       style === 'compact' ? waitingFor : null,
       limitText,
@@ -489,6 +505,7 @@ export const SessionRow = memo(function SessionRow({
         {pin}
         {windowMark}
         {pen}
+        {loose}
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
         {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span> : age}
@@ -509,6 +526,7 @@ export const SessionRow = memo(function SessionRow({
           {pin}
           {windowMark}
           {pen}
+          {loose}
           {warning}
           {age}
           {chevron}
@@ -518,7 +536,14 @@ export const SessionRow = memo(function SessionRow({
         <ProviderMark session={whose} />
         {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
-        {reviewText ? (
+        {note && status !== 'needs-you' ? (
+          // Your note takes the second line from the review time, the run, the draft and the branch; what a waiting
+          // session asks for still wins.
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-muted" data-row-note>
+            <NotebookPen size={11} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{note}</span>
+          </span>
+        ) : reviewText ? (
           <span className="min-w-0 flex-1 truncate" data-row-review={review}>
             {!filtered && `${projectName} · `}
             <span className={status === 'needs-you' ? 'font-medium text-warn' : ''}>{reviewText}</span>
@@ -649,7 +674,7 @@ export function Sidebar() {
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays), [merged, runs, now, archiveAfterDays]);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept), [merged, runs, now, archiveAfterDays, kept]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),
@@ -1017,6 +1042,18 @@ export function Sidebar() {
       if (targets.length) {
         event.preventDefault();
         setDeleting(targets);
+      }
+      return;
+    }
+    // N: the focused (or hovered) session's note. A session of this computer only, with a transcript.
+    if (matches(event.nativeEvent, 'sidebar.note') && !multi && !target.closest('input, textarea, [contenteditable="true"]')) {
+      const id =
+        target.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ??
+        scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
+      const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
+      if (listed?.kind === 'session' && listed.data.summary && !listed.data.remote && !isRunRowId(listed.data.id)) {
+        event.preventDefault();
+        openNoteEditor(listed.data.id);
       }
       return;
     }

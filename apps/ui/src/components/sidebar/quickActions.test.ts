@@ -102,6 +102,7 @@ describe('quickActionForKey', () => {
 describe('toasts and undo', () => {
   it('says what was done', () => {
     expect(quickActionToast('archive', 'Slide transitions')).toBe('Done: “Slide transitions”');
+    expect(quickActionToast('archive', 'Slide transitions', '3 files not committed')).toBe('Done: “Slide transitions”. 3 files not committed');
     expect(quickActionToast('markRead', 'x')).toBe('Marked as read');
     expect(quickActionToast('pin', 'x')).toBe('Pinned');
     expect(quickActionToast('stop', 'x')).toBeNull();

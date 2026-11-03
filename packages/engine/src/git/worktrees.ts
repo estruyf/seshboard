@@ -198,19 +198,51 @@ function run(command: string, args: string[], cwd: string, env: Record<string, s
  * signed in, or the repository isn't on GitHub. `env` is the login shell's, so `gh` is on the PATH.
  */
 export async function fetchPullRequests(root: string, env: Record<string, string>, gh: GhCommand = defaultGh()): Promise<Map<string, WorktreePullRequest> | null> {
-  const out = await run(gh.file, [...gh.args, 'pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state,headRefName,baseRefName,url,isDraft'], root, ghEnv(env), 15_000);
+  const out = await run(gh.file, [...gh.args, 'pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state,headRefName,baseRefName,url,isDraft,mergedAt'], root, ghEnv(env), 15_000);
   if (out === null) return null;
   try {
-    const list = JSON.parse(out) as Array<{ number: number; state: string; headRefName: string; baseRefName?: string; url: string; isDraft?: boolean }>;
+    const list = JSON.parse(out) as Array<{ number: number; state: string; headRefName: string; baseRefName?: string; url: string; isDraft?: boolean; mergedAt?: string | null }>;
     const byBranch = new Map<string, WorktreePullRequest>();
     // gh lists the newest first; an open one wins over an older merged or closed one either way.
     for (const pr of list) {
       const state = pr.state.toLowerCase();
       if (state !== 'open' && state !== 'merged' && state !== 'closed') continue;
       const known = byBranch.get(pr.headRefName);
-      if (!known || (state === 'open' && known.state !== 'open')) byBranch.set(pr.headRefName, { number: pr.number, state, url: pr.url, ...(state === 'open' ? { draft: pr.isDraft === true } : {}), ...(pr.baseRefName ? { base: pr.baseRefName } : {}) });
+      const mergedAt = state === 'merged' && pr.mergedAt ? Date.parse(pr.mergedAt) || null : null;
+      if (!known || (state === 'open' && known.state !== 'open'))
+        byBranch.set(pr.headRefName, { number: pr.number, state, url: pr.url, ...(state === 'open' ? { draft: pr.isDraft === true } : {}), ...(pr.baseRefName ? { base: pr.baseRefName } : {}), ...(state === 'merged' ? { mergedAt } : {}) });
     }
     return byBranch;
+  } catch {
+    return null;
+  }
+}
+
+/** A check in `statusCheckRollup`: a check run (`conclusion`) or a commit status (`state`). */
+type RollupItem = { __typename?: string; status?: string; conclusion?: string | null; state?: string };
+
+const FAILED = new Set(['FAILURE', 'ERROR', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'CANCELLED']);
+
+/** How many checks in a rollup failed (a cancelled run counts: the work isn't verified). */
+export const failedInRollup = (rollup: readonly RollupItem[] | null | undefined): number =>
+  (rollup ?? []).filter((c) => FAILED.has(String(c.conclusion ?? c.state ?? '').toUpperCase())).length;
+
+/**
+ * The open pull requests with failing checks, by branch, from one `gh pr list --state open` with the checks rollup.
+ * Only open ones: the rollup makes the list heavy, and a closed pull request's checks are no loose end. Null when gh
+ * can't answer.
+ */
+export async function fetchFailingChecks(root: string, env: Record<string, string>, gh: GhCommand = defaultGh()): Promise<Map<string, { pr: number; failed: number }> | null> {
+  const out = await run(gh.file, [...gh.args, 'pr', 'list', '--state', 'open', '--limit', '50', '--json', 'number,headRefName,statusCheckRollup'], root, ghEnv(env), 15_000);
+  if (out === null) return null;
+  try {
+    const list = JSON.parse(out) as Array<{ number: number; headRefName: string; statusCheckRollup?: RollupItem[] | null }>;
+    const failing = new Map<string, { pr: number; failed: number }>();
+    for (const pr of list) {
+      const failed = failedInRollup(pr.statusCheckRollup);
+      if (failed > 0 && !failing.has(pr.headRefName)) failing.set(pr.headRefName, { pr: pr.number, failed });
+    }
+    return failing;
   } catch {
     return null;
   }

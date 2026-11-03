@@ -20,6 +20,7 @@ import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -33,6 +34,9 @@ import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
 import { QUICK_UNDO, quickActionToast, type QuickActionMethod } from './quickActions.ts';
 import { quickActionDone } from './quickUndo.ts';
+import { useLooseEnds } from '../../state/looseEndsStore.ts';
+import { leftBehind, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -188,7 +192,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
     if (method === 'stop') return runMethod(method, data);
-    const message = quickActionToast(method, data.title);
+    // Done with something left behind says what (an unsent message asks first, elsewhere).
+    const queued = useLater.getState().items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id);
+    const left = method === 'archive' ? leftBehind(rowLooseEnds(useLooseEnds.getState().byOwner.get(data.id) ?? [], { draft: false, queued })) : null;
+    const message = quickActionToast(method, data.title, left);
     runMethod(method, data, () => {
       if (!message) return;
       quickActionDone(message, () => {
@@ -243,6 +250,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       label: `Session “${data.title}”`,
       entries: [
         { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || !canRename, data: { 'data-rename-session': true } },
+        { label: data.summary?.note ? 'Edit note…' : 'Note…', hint: formatKeys(keysFor('sidebar.note')), onSelect: () => openNoteEditor(data.id), disabled: !data.summary || isRunRowId(data.id), data: { 'data-session-note': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)

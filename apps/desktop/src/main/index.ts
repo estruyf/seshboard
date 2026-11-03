@@ -272,7 +272,7 @@ function updatePreferences(patch: unknown): void {
 
 /** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
 function sendEngineSettings(prefs: Preferences): void {
-  engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
+  engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
   // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
@@ -9518,6 +9518,62 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
   return `ok: "${label}" opened the first with 1 of ${total}, ${done.join(', ')}`;
 }
 
+/**
+ * What's left in a session: N on its row opens the note, Save shows it under the title, the sidebar's search finds the
+ * session by it, and Note… in the row's menu clears it again. The note lives in the throwaway profile.
+ */
+async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'failed: no smoke session was opened';
+  const row = `document.querySelector('[data-session-list] [data-session-id="${smokeSessionId}"]')`;
+  const dialog = "document.querySelector('[data-session-note-dialog]')";
+  const text = 'smoke note: push after review';
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the smoke session has no row in the sidebar';
+  await js(`${row}.focus()`);
+  pressKey(win, 'N');
+  if (!(await waitInPage(win, `!!${dialog} && document.activeElement?.matches('[data-session-note-input]')`, 3_000))) return 'N on the row did not open the note';
+  await setFieldValue(win, '[data-session-note-input]', text);
+  await js("document.querySelector('[data-session-note-save]').click()");
+  const shown = `(() => { const r = ${row}; return !!r && ((r.querySelector('[data-row-note]')?.innerText ?? '').includes(${JSON.stringify(text)}) || (r.dataset.tooltip ?? '').includes(${JSON.stringify(text)})); })()`;
+  if (!(await waitInPage(win, `!${dialog} && ${shown}`, 3_000))) return 'the note did not show on the row';
+  if (!(await js(`(${row}.getAttribute('aria-label') ?? '').includes('note: ${text}')`))) return 'the row\'s label does not read the note';
+  await shot(win, 'session-note.png');
+  // Search finds it by the note alone.
+  await setFieldValue(win, 'input[placeholder="Search sessions"]', 'push after review');
+  const found = await waitInPage(win, `!!${row} && [...document.querySelectorAll('[data-session-list] [data-session-id]')].every((r) => r.dataset.sessionId === ${JSON.stringify(smokeSessionId)} || (r.innerText + (r.dataset.tooltip ?? '')).toLowerCase().includes('push after review'))`, 3_000);
+  await setFieldValue(win, 'input[placeholder="Search sessions"]', '');
+  if (!found) return 'search did not find the session by its note';
+  // Clear it from the row's menu.
+  await waitInPage(win, `!!${row}`, 3_000);
+  await js(`(() => { const r = ${row}; const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 40, clientY: b.top + 20 })); })()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-session-note]')", 3_000))) return 'the row menu has no Note…';
+  await js("document.querySelector('[role=menu] [data-session-note]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-session-note-clear]')", 3_000))) return 'the note has no Clear';
+  await js("document.querySelector('[data-session-note-clear]').click()");
+  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:')`, 3_000))) return 'Clear left the note on the row';
+  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, Clear from the menu took it away';
+}
+
+/**
+ * Loose ends: the demo's dark mode session left three files uncommitted in acme-store, so its row has the marker, with
+ * the files in its tooltip and its label. The engine looks a few seconds after it starts. Read-only: git is only read.
+ */
+async function runLooseEndsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, only the demo home has a session with known loose ends';
+  const row = "[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.innerText.startsWith('Add dark mode toggle to settings'))";
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the dark mode session has no row';
+  if (!(await waitInPage(win, `(${row}?.querySelector('[data-row-loose-ends]')?.dataset.rowLooseEnds ?? '').includes('uncommitted')`, 20_000))) return 'the dark mode session has no loose ends marker';
+  const tooltip = (await js(`${row}.querySelector('[data-row-loose-ends]').dataset.tooltip`)) as string;
+  await shot(win, 'loose-ends.png');
+  if (!/\d+ files? not committed/.test(tooltip)) return `the marker's tooltip says "${tooltip}"`;
+  const label = (await js(`${row}.getAttribute('aria-label') ?? ''`)) as string;
+  if (!label.includes('left: ')) return `the row's label doesn't say what is left ("${label}")`;
+  return `ok: the marker on the dark mode session says "${tooltip.replace(/\n/g, '; ')}"`;
+}
+
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
   pressKey(win, keyCode, modifiers);
   return waitInPage(win, `${PALETTE_MODE} === ${JSON.stringify(mode)} && document.activeElement?.matches('[data-palette-input]')`, 3_000);
@@ -11707,6 +11763,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
+  await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
+  await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
   await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {
