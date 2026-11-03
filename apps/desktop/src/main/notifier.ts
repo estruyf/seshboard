@@ -14,6 +14,9 @@ import { pipelineAlerts, stepSessions } from './pipelineAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
 
+/** "09:00": when a missed reminder was for. */
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
 /** A recorded event: whether it was for the session on screen, and what it did with the settings at the time. */
 export type RecordedAlert = AttentionEvent & { suppressed: boolean } & Alert;
 
@@ -70,6 +73,8 @@ export class Notifier {
   private steps = new Set<string>();
   /** Reminds you before a large session's cache lapses (Settings › Usage). */
   private readonly cache: CacheReminder;
+  /** Sessions whose reminder came due and that you haven't opened yet: the badge counts them when Settings says so. */
+  private readonly reminded = new Set<string>();
   /** The sessions of paired computers, and their names, for their notifications. */
   private remote = new RemoteAttention();
   private computerNames = new Map<string, string>();
@@ -93,6 +98,8 @@ export class Notifier {
   /** Settings changed: the cache reminder may be due sooner or not at all. */
   prefsChanged(): void {
     this.cache.prefsChanged();
+    // Due reminders may count in the badge now, or not any more.
+    this.updateBadge();
   }
 
   /** (Re)connects; call again after the engine restarts. */
@@ -108,7 +115,24 @@ export class Notifier {
     const client = createRpcClient<Contract>(mainPortTransport(port2), { timeoutMs: 15_000 });
     this.client = client;
 
-    client.on('sessions.changed', ({ upserted }) => upserted.forEach((s) => this.attention.setTitle(s.id, s.title)));
+    client.on('sessions.changed', ({ upserted, removed }) => {
+      upserted.forEach((s) => this.attention.setTitle(s.id, s.title));
+      const before = this.reminded.size;
+      for (const s of upserted) this.trackReminder(s);
+      for (const id of removed) this.reminded.delete(id);
+      if (this.reminded.size !== before) this.updateBadge();
+    });
+    // Remind me later: "Reminder: <title>", with your note; one missed while Seshboard was closed says when it was for.
+    client.on('sessions.remindersDue', ({ reminders }) =>
+      this.handle(
+        reminders.map((r) => ({
+          kind: 'reminder' as const,
+          sessionId: r.id,
+          title: r.missed ? `Reminder (from ${clock(r.remindAt)}): ${r.title}` : `Reminder: ${r.title}`,
+          body: r.note ?? 'You asked to be reminded.',
+        })),
+      ),
+    );
     client.on('session.host', (info) => {
       this.handle(this.attention.onHost(info));
       this.cache.onHost(info);
@@ -172,7 +196,10 @@ export class Notifier {
     // Seed state silently: only changes from here on deserve a notification.
     void Promise.all([client.call('sessions.list', {}), client.call('hosts.list', {}), client.call('terminal.list', {})])
       .then(([sessions, hosts, terminals]) => {
-        sessions.sessions.forEach((s) => this.attention.setTitle(s.id, s.title));
+        sessions.sessions.forEach((s) => {
+          this.attention.setTitle(s.id, s.title);
+          this.trackReminder(s);
+        });
         hosts.hosts.forEach((h) => {
           this.attention.onHost(h);
           this.cache.onHost(h);
@@ -263,6 +290,11 @@ export class Notifier {
     this.updateBadge();
   }
 
+  private trackReminder(s: { id: string; remindedAt?: number | null; archivedAt: number | null }): void {
+    if (s.remindedAt != null) this.reminded.add(s.id);
+    else this.reminded.delete(s.id);
+  }
+
   /** The Dock came back after it was hidden (Hide from the Dock while no window is open): its badge again. */
   refreshBadge(): void {
     this.updateBadge();
@@ -271,8 +303,10 @@ export class Notifier {
   /** The badge, and whether the Dock's icon shows Claude working: both follow the sessions' states. */
   private updateBadge(): void {
     this.options.working?.(this.attention.working());
-    const count = this.attention.badge();
-    this.options.counts?.({ working: this.attention.workingCount(), needsYou: count });
+    const needsYou = this.attention.badge();
+    this.options.counts?.({ working: this.attention.workingCount(), needsYou });
+    // Settings › Notifications: due reminders can count too (off by default: the badge is what needs you).
+    const count = needsYou + (this.options.alerts().notifications.badgeReminders ? this.reminded.size : 0);
     app.dock?.setBadge(count > 0 ? String(count) : '');
     // Windows has no badge count: a dot over the taskbar button says it instead.
     const win = this.options.window();

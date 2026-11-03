@@ -238,7 +238,7 @@ export function SessionList({
     const flags = (archived: boolean) => (run ? client.call('runs.archive', { runId: run.run.id, archived }) : client.call('session.setFlags', { sessionId, archived }));
     void flags(true)
       .then(() => {
-        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void flags(false).catch(failed) } });
+        toast(`Done: ${session.title}`, { action: { label: 'Undo', run: () => void flags(false).catch(failed) } });
         onArchived(session.id);
       })
       // A run that still goes on can't be archived: its own words say so ("Stop it first").
@@ -246,7 +246,7 @@ export function SessionList({
   };
   const archiveLabel = (session: ListedSession) => {
     const steps = tree.children.get(session.id)?.length ?? 0;
-    return treeRun(session) && steps ? `Archive with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Archive';
+    return treeRun(session) && steps ? `Done, with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Done';
   };
   const rowItems = (session: ListedSession): MenuItem[] => [
     ...(session.runRow ? [] : [{ label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) }]),

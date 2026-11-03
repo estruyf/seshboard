@@ -272,7 +272,7 @@ function updatePreferences(patch: unknown): void {
 
 /** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
 function sendEngineSettings(prefs: Preferences): void {
-  engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived });
+  engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
   // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
@@ -3128,7 +3128,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Archive, with no Claude Code only line)";
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
     // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
     // picked: the demo's Copilot can't run them.
     const toolbar = (await js(
@@ -8043,7 +8043,7 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the run row is not in the sidebar';
   await openMenu();
   const archiveItem = "document.querySelector('[role=menu] [data-run-row-action=\"archive\"]')";
-  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Archive with its 2 steps')`, 2_000))) return `the run row menu has no Archive with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
+  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Done, with its 2 steps')`, 2_000))) return `the run row menu has no Done, with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
   if (await js("!!document.querySelector('[role=menu] [data-rename-session]')")) return 'the run row menu offers Rename';
   await js(`${archiveItem}.click()`);
   // Archived, closed by default: open it to see the tree.
@@ -8067,7 +8067,7 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
   if (!(await waitInPage(win, `!${row}`, 5_000))) return 'Delete did not take the run row away';
   if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
-  return `ok: Stop the run, then Archive with its 2 steps moved ${runId} with Execute and Validate to Archived; Delete… asked (with Keep the sub-sessions) and took it away`;
+  return `ok: Stop the run, then Done, with its 2 steps moved ${runId} with Execute and Validate to Done; Delete… asked (with Keep the sub-sessions) and took it away`;
 }
 
 /**
@@ -9483,7 +9483,7 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
         await js(`document.querySelector('[data-session-list] [data-session-id="${current.id}"]').click()`);
         await waitInPage(win, `!!document.querySelector('[data-current-session="${current.id}"]')`, 3_000);
         if (await openPalette(win, 'K', ['meta'], 'commands')) {
-          await setFieldValue(win, '[data-palette-input]', 'Unarchive');
+          await setFieldValue(win, '[data-palette-input]', 'Reopen');
           if (await waitInPage(win, "!!document.querySelector('[data-palette-command=\"archive\"]')", 2_000)) await js("document.querySelector('[data-palette-command=\"archive\"]').click()");
           else await closePalette(win);
         }
@@ -9516,6 +9516,100 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
     await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
   }
   return `ok: "${label}" opened the first with 1 of ${total}, ${done.join(', ')}`;
+}
+
+/**
+ * What's left in a session: N on its row opens the note, Save shows it under the title, the sidebar's search finds the
+ * session by it, and Note… in the row's menu clears it again. The note lives in the throwaway profile.
+ */
+async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!smokeSessionId) return 'failed: no smoke session was opened';
+  const row = `document.querySelector('[data-session-list] [data-session-id="${smokeSessionId}"]')`;
+  const dialog = "document.querySelector('[data-session-note-dialog]')";
+  const text = 'smoke note: push after review';
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the smoke session has no row in the sidebar';
+  await js(`${row}.focus()`);
+  pressKey(win, 'N');
+  if (!(await waitInPage(win, `!!${dialog} && document.activeElement?.matches('[data-session-note-input]')`, 3_000))) return 'N on the row did not open the note';
+  await setFieldValue(win, '[data-session-note-input]', text);
+  await js("document.querySelector('[data-session-note-save]').click()");
+  const shown = `(() => { const r = ${row}; return !!r && ((r.querySelector('[data-row-note]')?.innerText ?? '').includes(${JSON.stringify(text)}) || (r.dataset.tooltip ?? '').includes(${JSON.stringify(text)})); })()`;
+  if (!(await waitInPage(win, `!${dialog} && ${shown}`, 3_000))) return 'the note did not show on the row';
+  if (!(await js(`(${row}.getAttribute('aria-label') ?? '').includes('note: ${text}')`))) return 'the row\'s label does not read the note';
+  await shot(win, 'session-note.png');
+  // Search finds it by the note alone.
+  await setFieldValue(win, 'input[placeholder="Search sessions"]', 'push after review');
+  const found = await waitInPage(win, `!!${row} && [...document.querySelectorAll('[data-session-list] [data-session-id]')].every((r) => r.dataset.sessionId === ${JSON.stringify(smokeSessionId)} || (r.innerText + (r.dataset.tooltip ?? '')).toLowerCase().includes('push after review'))`, 3_000);
+  await setFieldValue(win, 'input[placeholder="Search sessions"]', '');
+  if (!found) return 'search did not find the session by its note';
+  // Clear it from the row's menu.
+  await waitInPage(win, `!!${row}`, 3_000);
+  await js(`(() => { const r = ${row}; const b = r.getBoundingClientRect(); r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 40, clientY: b.top + 20 })); })()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[role=menu] [data-session-note]')", 3_000))) return 'the row menu has no Note…';
+  await js("document.querySelector('[role=menu] [data-session-note]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-session-note-clear]')", 3_000))) return 'the note has no Clear';
+  await js("document.querySelector('[data-session-note-clear]').click()");
+  if (!(await waitInPage(win, `!${dialog} && !!${row} && !${row}.querySelector('[data-row-note]') && !(${row}.dataset.tooltip ?? '').includes('Note:')`, 3_000))) return 'Clear left the note on the row';
+  return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, Clear from the menu took it away';
+}
+
+/**
+ * Loose ends: the demo's dark mode session left three files uncommitted in acme-store, so its row has the marker, with
+ * the files in its tooltip and its label. The engine looks a few seconds after it starts. Read-only: git is only read.
+ */
+async function runLooseEndsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, only the demo home has a session with known loose ends';
+  const row = "[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.innerText.startsWith('Add dark mode toggle to settings'))";
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the dark mode session has no row';
+  if (!(await waitInPage(win, `(${row}?.querySelector('[data-row-loose-ends]')?.dataset.rowLooseEnds ?? '').includes('uncommitted')`, 20_000))) return 'the dark mode session has no loose ends marker';
+  const tooltip = (await js(`${row}.querySelector('[data-row-loose-ends]').dataset.tooltip`)) as string;
+  await shot(win, 'loose-ends.png');
+  if (!/\d+ files? not committed/.test(tooltip)) return `the marker's tooltip says "${tooltip}"`;
+  const label = (await js(`${row}.getAttribute('aria-label') ?? ''`)) as string;
+  if (!label.includes('left: ')) return `the row's label doesn't say what is left ("${label}")`;
+  return `ok: the marker on the dark mode session says "${tooltip.replace(/\n/g, '; ')}"`;
+}
+
+/**
+ * Remind me later: L on a demo session snoozes it (In 1 hour), so it leaves the list; Upcoming's Reminders lists it,
+ * and Remind now brings it back under Reminders with a notification; opening it clears the reminder. The flags live in
+ * the throwaway profile.
+ */
+async function runRemindStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, it snoozes a demo session';
+  const title = 'Refactor auth middleware';
+  const find = `[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.innerText.startsWith(${JSON.stringify(title)}))`;
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${find}`, 3_000))) return `no "${title}" row`;
+  const id = (await js(`${find}.dataset.sessionId`)) as string;
+  const row = `document.querySelector('[data-session-list] [data-session-id="${id}"]')`;
+  await js(`${row}.focus()`);
+  pressKey(win, 'L');
+  if (!(await waitInPage(win, "!!document.querySelector('[data-remind-dialog]')", 3_000))) return 'L on the row did not open Remind me';
+  await js("document.querySelector('[data-remind-preset=\"hour\"]').click()");
+  await js("document.querySelector('[data-remind-save]').click()");
+  if (!(await waitInPage(win, `!document.querySelector('[data-remind-dialog]') && !${row}`, 3_000))) return 'the snoozed session stayed in the list';
+  const notifiedBefore = recordedNotifications.filter((n) => n.kind === 'reminder').length;
+  // Upcoming › Reminders lists it; Remind now brings it back.
+  await js("document.querySelector('[data-upcoming-nav]').click()");
+  if (!(await waitInPage(win, "!!document.querySelector('[data-upcoming-kind=\"reminders\"]')", 3_000))) return 'Upcoming has no Reminders filter';
+  await js("document.querySelector('[data-upcoming-kind=\"reminders\"]').click()");
+  const item = `document.querySelector('[data-upcoming-reminder="${id}"]')`;
+  if (!(await waitInPage(win, `!!${item}`, 3_000))) return 'Upcoming does not list the reminder';
+  await shot(win, 'upcoming-reminders.png');
+  await js(`${item}.querySelector('[data-upcoming-reminder-now]').click()`);
+  if (!(await waitInPage(win, `!!${row}?.querySelector('[data-row-reminder]') && !!document.querySelector('[data-session-group="reminders"]')`, 5_000))) return 'Remind now did not bring it back under Reminders';
+  const notified = await until(() => recordedNotifications.filter((n) => n.kind === 'reminder').length > notifiedBefore, 3_000);
+  await shot(win, 'reminders.png');
+  // Opening it clears the reminder.
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, `!!${row} && !${row}.querySelector('[data-row-reminder]')`, 5_000))) return 'opening the session did not clear its reminder';
+  return `ok: L snoozed "${title}", Upcoming listed it, Remind now brought it back under Reminders${notified ? ' with a notification' : ' (no notification recorded)'}, opening it cleared it`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
@@ -11094,7 +11188,7 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
   // In the main list: rendered and above the "Archived" header. The list is virtualised, so check from the top.
   const toTop = "document.querySelector('[data-session-list]').scrollTop = 0";
   const inMainList = `(() => { const row = document.querySelector('[data-session-id="${id}"]'); if (!row) return false; const header = document.querySelector('[data-archived-toggle]'); return !header || row.getBoundingClientRect().top < header.getBoundingClientRect().top; })()`;
-  if (!(await menu('Archive'))) return 'no Archive item';
+  if (!(await menu('Done'))) return 'no Done item';
   // A working session asks first: Archive while it works? for one in another app (the demo's), Stop and archive for one
   // the smoke started here.
   if (working) {
@@ -11121,11 +11215,11 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
     );
     return `archived session not found under Archived: ${seen}`;
   }
-  if (!(await menu('Unarchive'))) return 'no Unarchive item';
+  if (!(await menu('Reopen'))) return 'no Reopen item';
   // Scroll to the top on every check: opening Archived above slides the list down to it for 200ms, which would undo a
   // single scroll made while it runs and leave the unarchived row out of the virtualised list.
   if (!(await waitInPage(win, `(${toTop}, ${inMainList})`, 3_000))) return 'unarchiving did nothing';
-  return `ok: archived ${working ? 'a working session' : 'a session'} and unarchived it`;
+  return `ok: marked ${working ? 'a working session' : 'a session'} done and reopened it`;
 }
 
 /**
@@ -11202,13 +11296,13 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   if (!(await hover(id))) return 'hovering a finished session showed no buttons';
   await shot(win, 'sidebar-quick-actions.png');
   const shown = await actions(id);
-  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Archive`;
+  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Done`;
   const label = (await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').dataset.tooltip`)) as string;
-  if (!/^Archive \(E\)$/.test(label)) return `the Archive tooltip says “${label}”`;
+  if (!/^Done \(E\)$/.test(label)) return `the Done tooltip says “${label}”`;
   await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').click()`);
   await js(`${list}.scrollTop = 0`);
   if (!(await waitInPage(win, `!${inMainList(id)}`, 3_000))) return 'Archive did not move the session out of the main list';
-  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-quick-action-toast]')].some((t) => t.innerText.startsWith('Archived') && t.querySelector('[data-toast-undo]'))", 2_000))) return 'no “Archived …” toast with Undo';
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-quick-action-toast]')].some((t) => t.innerText.startsWith('Done: ') && t.querySelector('[data-toast-undo]'))", 2_000))) return 'no “Done: …” toast with Undo';
 
   // 2. Undo puts it back.
   await js("[...document.querySelectorAll('[data-quick-action-toast]')].at(-1).querySelector('[data-toast-undo]').click()");
@@ -11293,11 +11387,11 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
   if (!(await js(`${row(a)}?.querySelector('[data-pick-box]')?.dataset.pickBox === 'true' && !!${row(a)}?.closest('[data-list-row]')?.querySelector('[data-pick-block]')`))) return 'the picked row has no ticked checkbox or tinted block';
   await shot(win, 'multi-select.png');
   await js(`(() => { const r = ${row(a)}.getBoundingClientRect(); ${row(a)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); })()`);
-  const item = "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.innerText.startsWith('Archive 2 sessions'))";
+  const item = "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.innerText.startsWith('Done: 2 sessions'))";
   if (!(await waitInPage(win, `!!${item}`, 3_000))) {
     const seen = await js("JSON.stringify([...document.querySelectorAll('[role=menuitem]')].map((b) => b.innerText))");
     await js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
-    return `no "Archive 2 sessions" item in the menu: ${seen}`;
+    return `no "Done: 2 sessions" item in the menu: ${seen}`;
   }
   await js(`${item}.click()`);
   await js(`${list}.scrollTop = 0`);
@@ -11707,6 +11801,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
+  await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
+  await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
+  await step('remind me later: L, gone from the list, Upcoming, Remind now, back under Reminders, cleared on open', () => runRemindStep(win));
   await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {

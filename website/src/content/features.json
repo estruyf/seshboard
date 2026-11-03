@@ -22,6 +22,16 @@
       "page": "sessions/archived"
     },
     {
+      "id": "palette:note",
+      "name": "note",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:remind",
+      "name": "remind",
+      "page": "sessions/upcoming"
+    },
+    {
       "id": "palette:branches",
       "name": "Branches…",
       "page": "projects/branches"
@@ -188,7 +198,7 @@
     },
     {
       "id": "palette:delete-archived-sessions",
-      "name": "Delete archived sessions…",
+      "name": "Delete Done sessions…",
       "page": "settings/sessions"
     },
     {
@@ -1328,8 +1338,18 @@
     },
     {
       "id": "shortcut:sidebar.quick-archive",
-      "name": "Archive the session, or unarchive it",
+      "name": "Mark the session done, or reopen it",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.note",
+      "name": "Write what's left in the session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.remind",
+      "name": "Remind me about the session later",
+      "page": "sessions/upcoming"
     },
     {
       "id": "shortcut:sidebar.quick-pin",
@@ -1548,7 +1568,7 @@
     },
     {
       "id": "feature:copilot-sessions",
-      "name": "GitHub Copilot sessions: Settings: Profiles offers Copilot CLI when it finds it (Add Copilot profile, Not now); Add profile asks which tool runs its sessions, uses Copilot CLI's own folder and skips sign in when it is signed in already, and ends on Copilot is ready (Start a Copilot session, Use Copilot for a project, Make it the default); New session groups profiles by tool, says what switching to Copilot turned off (Back to), offers Use Copilot for the project from now on and shows its premium requests; a Copilot session's ⋯ menu (Compact, Tools, Copy the last reply, Open in Copilot CLI, Archive); its models, with Copilot Fusion's tiers (Standard, High, Max) after Auto; the same permission modes as Claude, Auto mode without asking; signed in with Copilot CLI's own login",
+      "name": "GitHub Copilot sessions: Settings: Profiles offers Copilot CLI when it finds it (Add Copilot profile, Not now); Add profile asks which tool runs its sessions, uses Copilot CLI's own folder and skips sign in when it is signed in already, and ends on Copilot is ready (Start a Copilot session, Use Copilot for a project, Make it the default); New session groups profiles by tool, says what switching to Copilot turned off (Back to), offers Use Copilot for the project from now on and shows its premium requests; a Copilot session's ⋯ menu (Compact, Tools, Copy the last reply, Open in Copilot CLI, Done); its models, with Copilot Fusion's tiers (Standard, High, Max) after Auto; the same permission modes as Claude, Auto mode without asking; signed in with Copilot CLI's own login",
       "page": "settings"
     },
     {
@@ -1723,12 +1743,12 @@
     },
     {
       "id": "feature:remote-row-menu",
-      "name": "Remote: Mark as read and Archive from a long press, a right-click or the row's actions button",
+      "name": "Remote: Mark as read and Done from a long press, a right-click or the row's actions button",
       "page": "remote-access"
     },
     {
       "id": "feature:remote-session-menu",
-      "name": "Remote: a session's ⋯ with Ask about this session, Changes, Copy the last reply, Archive, Stop and Mark as read",
+      "name": "Remote: a session's ⋯ with Ask about this session, Changes, Copy the last reply, Done, Stop and Mark as read",
       "page": "remote-access"
     },
     {
@@ -1843,7 +1863,7 @@
     },
     {
       "id": "feature:remote-swipe-actions",
-      "name": "Remote: swipe to mark as read or archive, with Undo",
+      "name": "Remote: swipe to mark as read or done, with Undo",
       "page": "remote-access"
     },
     {
@@ -2073,17 +2093,17 @@
     },
     {
       "id": "feature:archive-closes-session",
-      "name": "Archiving closes the open session",
+      "name": "Marking a session done closes it",
       "page": "sessions/archived"
     },
     {
       "id": "feature:archive-draft-confirm",
-      "name": "Archive and discard the unsent message",
+      "name": "Mark done and discard the unsent message",
       "page": "sessions/unsent-drafts"
     },
     {
       "id": "feature:archive-while-working",
-      "name": "Archive while working",
+      "name": "Mark done while working",
       "page": "sessions/archived"
     },
     {
@@ -2118,7 +2138,7 @@
     },
     {
       "id": "feature:auto-archive",
-      "name": "Auto-archive after the days you set",
+      "name": "Inactive sessions go to Done after the days you set",
       "page": "sessions/archived"
     },
     {
@@ -2418,7 +2438,7 @@
     },
     {
       "id": "feature:checks-archived",
-      "name": "Archived sessions stop following their pull request checks",
+      "name": "Done sessions stop following their pull request checks",
       "page": "terminal-changes-git/git"
     },
     {
@@ -2718,7 +2738,7 @@
     },
     {
       "id": "feature:manual-archive",
-      "name": "Archive a session",
+      "name": "Mark a session done",
       "page": "sessions/archived"
     },
     {
@@ -2878,17 +2898,17 @@
     },
     {
       "id": "feature:middle-click-archive",
-      "name": "Middle-click to archive",
+      "name": "Middle-click to mark done",
       "page": "sessions/archived"
     },
     {
       "id": "feature:sidebar-quick-actions",
-      "name": "Quick actions on hover: Mark as read, Pin and Archive on a session row, with Undo",
+      "name": "Quick actions on hover: Mark as read, Pin and Done on a session row, with Undo",
       "page": "sessions/sidebar"
     },
     {
       "id": "feature:sidebar-quick-actions-setting",
-      "name": "Settings › Sidebar: Quick actions on hover, and Show (Archive only or Read · Pin · Archive)",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or Read · Pin · Done)",
       "page": "sessions/sidebar"
     },
     {
@@ -3648,13 +3668,53 @@
     },
     {
       "id": "feature:sidebar-review-open",
-      "name": "To review and Open: finished sessions you haven't read, then the ones you read but haven't archived",
+      "name": "To review and Open: finished sessions you haven't read, then the ones you read but haven't marked done",
       "page": "sessions/sidebar"
     },
     {
       "id": "feature:sidebar-open-count",
       "name": "\"N open\" in the sidebar footer: a click goes through them in catch-up, To review first",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:done-on-merge",
+      "name": "A session whose pull request merged moves to Done by itself (\"Merged #123\"), with one toast and Undo",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:done-on-merge-setting",
+      "name": "Settings › Sessions: Move to Done when its pull request merges",
+      "page": "settings/sessions"
+    },
+    {
+      "id": "feature:loose-ends",
+      "name": "Loose ends: a marker on a session that left files not committed, commits not pushed, failing checks or a closed pull request, which keeps it out of Done until you mark it done",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-note",
+      "name": "What's left: a one-line note under a session's title (N, Note… in its menu or the palette), found by search",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:remind-me-later",
+      "name": "Remind me later: In 1 hour, This evening, Tomorrow, Monday or a time you pick; the session leaves the list and comes back under Reminders with a notification",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-reminders",
+      "name": "Upcoming: a Reminders filter, with Edit, Remind now and Cancel; the sidebar's Upcoming counts reminders and says the next one",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:reminder-settings",
+      "name": "Settings › Notifications: Reminders, and Count reminders in the badge",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "feature:done-reason",
+      "name": "Done: each row says why (Done, or Inactive 3 days), inactive ones dimmed",
+      "page": "sessions/archived"
     },
     {
       "id": "feature:keep-unsent-listed",
@@ -3903,7 +3963,7 @@
     },
     {
       "id": "feature:unarchive",
-      "name": "Unarchive",
+      "name": "Reopen a session from Done",
       "page": "sessions/archived"
     },
     {
@@ -4242,6 +4302,11 @@
       "page": "sessions/catch-up"
     },
     {
+      "id": "feature:catch-up-use-as-note",
+      "name": "Catch-up: Use as note puts what it needs from you under the session's title, in one click",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "palette:why-request",
       "name": "Why is Claude asking?",
       "page": "permissions"
@@ -4309,6 +4374,16 @@
     {
       "id": "shortcut:catchup.skip",
       "name": "catchup.skip",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.note",
+      "name": "catchup.note",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.remind",
+      "name": "catchup.remind",
       "page": "sessions/catch-up"
     },
     {
@@ -4623,7 +4698,7 @@
     },
     {
       "id": "feature:pipeline-archive-tree",
-      "name": "Archive or delete a pipeline run with its sub-sessions",
+      "name": "Mark a pipeline run done, or delete it, with its sub-sessions",
       "page": "sessions/pipelines"
     },
     {

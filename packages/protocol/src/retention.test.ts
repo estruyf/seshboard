@@ -40,6 +40,13 @@ describe('listedInMainList', () => {
     expect(listedInMainList(listing({ updatedAt: old, keep: true, archivedAt: old + DAY_MS }), NOW, 3)).toBe(false);
   });
 
+  it('takes a snoozed session out of the main list and out of Done, until it needs you or works', () => {
+    expect(listedInMainList(listing({ snoozed: true, pinned: true, unread: true }), NOW, 3)).toBe(false);
+    expect(archivedSince(listing({ snoozed: true, updatedAt: NOW - 100 * DAY_MS }), NOW, 3)).toBeNull();
+    expect(listedInMainList(listing({ snoozed: true, attention: true }), NOW, 3)).toBe(true);
+    expect(listedInMainList(listing({ snoozed: true, working: true }), NOW, 3)).toBe(true);
+  });
+
   it('counts unarchiving by hand as activity until there is something newer', () => {
     expect(listedInMainList(listing({ updatedAt: NOW - 50 * DAY_MS, restoredAt: NOW - 40 * DAY_MS }), NOW, 3)).toBe(true);
     expect(listedInMainList(listing({ updatedAt: NOW - 40 * DAY_MS, restoredAt: NOW - 50 * DAY_MS }), NOW, 3)).toBe(false);

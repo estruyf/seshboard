@@ -115,15 +115,15 @@ export function DeleteArchivedDialog({
   const archived = mode === 'archive' ? dayText(deleteDays) : days;
   return (
     <ConfirmDialog
-      title={mode === 'turn-on' ? `Turn on deleting after ${days}?` : mode === 'archive' ? `Archive after ${days}?` : `Delete after ${days}?`}
+      title={mode === 'turn-on' ? `Turn on deleting after ${days}?` : mode === 'archive' ? `Move to Done after ${days}?` : `Delete after ${days}?`}
       confirmLabel={mode === 'turn-on' ? 'Turn on' : 'Change'}
       data={{ 'data-delete-archived-dialog': mode }}
       body={
         due.length === 0 ? (
-          <>No session has been archived for more than {archived}. After that, {pace}.</>
+          <>No session has been in Done for more than {archived}. After that, {pace}.</>
         ) : (
           <>
-            {due.length === 1 ? '1 session has' : `${due.length.toLocaleString()} sessions have`} been archived for more than {archived} ({formatBytes(bytes)}).{' '}
+            {due.length === 1 ? '1 session has' : `${due.length.toLocaleString()} sessions have`} been in Done for more than {archived} ({formatBytes(bytes)}).{' '}
             {due.length === 1 ? 'It goes' : 'They go'} to the {trash} today. After that, {pace}.
           </>
         )

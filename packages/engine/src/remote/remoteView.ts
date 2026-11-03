@@ -87,7 +87,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const prompts = promptsFor(sources.permissions ?? [], listed).map(remotePrompt);
   if (!options.runs) return { sessions, prompts };
   const now = options.now ?? Date.now();
-  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now });
+  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, ...(sources.kept ? { kept: sources.kept } : {}) });
   return { sessions, prompts, runs };
 }
 
@@ -99,12 +99,12 @@ export const REMOTE_RUN_LIMIT = 50;
  * run rows (runs started from New session) the sidebar lists. A run row is listed as a session is: while it works or
  * waits for you, until you archive it, and for `archiveAfterDays` after its last activity.
  */
-export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number }): RemoteRunState[] {
+export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number; kept?: ReadonlySet<string> }): RemoteRunState[] {
   const shown = runs.filter((state) => {
     const { run, steps } = state;
     if (run.parentSessionId) return listed.has(run.parentSessionId) || steps.some((s) => s.sessionId !== null && listed.has(s.sessionId));
     const goesOn = run.status === 'running' || run.status === 'waiting' || run.status === 'paused';
-    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false, keep: false }, options.now, options.archiveAfterDays);
+    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false, keep: options.kept?.has(run.id) ?? false }, options.now, options.archiveAfterDays);
   });
   return shown
     .sort((a, b) => b.run.updatedAt - a.run.updatedAt)

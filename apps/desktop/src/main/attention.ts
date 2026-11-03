@@ -1,7 +1,7 @@
 import type { ChecksFinished, HostState, LiveSession, PermissionRequest, SessionHostInfo, TerminalInfo } from '@seshboard/protocol/client';
 
 export interface AttentionEvent {
-  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-stopped' | 'pipeline-done';
+  kind: 'needs-you' | 'finished' | 'failed' | 'action-done' | 'resumed' | 'checks-failed' | 'checks-passed' | 'cache-expiring' | 'queue-started' | 'queue-skipped' | 'schedule-started' | 'schedule-queued' | 'schedule-skipped' | 'trigger-started' | 'trigger-paused' | 'pipeline-stopped' | 'pipeline-done' | 'reminder';
   sessionId: string;
   title: string;
   body: string;

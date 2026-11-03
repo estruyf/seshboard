@@ -202,6 +202,64 @@ describe('settings export and import', () => {
     ]);
   });
 
+  it('carries notes on sessions, and keeps yours where a session has one', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, note) VALUES ('s1', 'push after review'), ('s2', 'waiting on Jan')").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.notes).toEqual([
+      { id: 's1', note: 'push after review' },
+      { id: 's2', note: 'waiting on Jan' },
+    ]);
+
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, note) VALUES ('s2', 'mine')").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toEqual(['1 note on sessions']);
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, note FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', note: 'push after review' },
+      { id: 's2', note: 'mine' },
+    ]);
+  });
+
+  it('carries the pull requests that moved sessions to Done, and keeps yours', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, archived_at, done_pr) VALUES ('s1', 5, 12), ('s2', 6, 13)").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.donePrs).toEqual([
+      { id: 's1', pr: 12 },
+      { id: 's2', pr: 13 },
+    ]);
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, done_pr) VALUES ('s2', 99)").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toContain('1 session done by a merged pull request');
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, done_pr FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', done_pr: 12 },
+      { id: 's2', done_pr: 99 },
+    ]);
+  });
+
+  it('carries reminders, and keeps yours', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, remind_at, reminded_at) VALUES ('s1', 100, NULL), ('s2', 200, 250)").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.reminders).toEqual([
+      { id: 's1', at: 100, remindedAt: null },
+      { id: 's2', at: 200, remindedAt: 250 },
+    ]);
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, remind_at) VALUES ('s2', 999)").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toContain('1 reminder');
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, remind_at, reminded_at FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', remind_at: 100, reminded_at: null },
+      { id: 's2', remind_at: 999, reminded_at: null },
+    ]);
+  });
+
   it('only exports and imports the chosen sections', () => {
     const before = mac();
     const folder = tempDir();

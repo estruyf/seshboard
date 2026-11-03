@@ -242,11 +242,12 @@ describe('when(): a session is open', () => {
     expect(ids(inSession())).toEqual(expect.arrayContaining(['open-in-editor', 'reveal-in-finder', 'tools']));
   });
 
-  it('says Pin or Unpin, Archive or Unarchive, from the session', () => {
+  it('says Pin or Unpin, Mark as done or Reopen, from the session', () => {
     const pinned = inSession({ pinned: true, archived: true });
     const byId = (id: string) => COMMANDS.find((c) => c.id === id)!;
     expect(titleOf(byId('pin'), pinned)).toBe('Unpin');
-    expect(titleOf(byId('archive'), pinned)).toBe('Unarchive');
+    expect(titleOf(byId('archive'), pinned)).toBe('Reopen');
+    expect(titleOf(byId('archive'), inSession())).toBe('Mark as done');
     expect(titleOf(byId('pin'), inSession())).toBe('Pin');
     const api = { setFlags: vi.fn() } as unknown as PaletteApi;
     byId('archive').run!(api, pinned);

@@ -20,6 +20,9 @@ import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { openRemindEditor } from '../../state/remindEditorStore.ts';
+import { reminderWhen } from '../../state/reminders.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -33,6 +36,9 @@ import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
 import { QUICK_UNDO, quickActionToast, type QuickActionMethod } from './quickActions.ts';
 import { quickActionDone } from './quickUndo.ts';
+import { useLooseEnds } from '../../state/looseEndsStore.ts';
+import { leftBehind, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -188,7 +194,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
     if (method === 'stop') return runMethod(method, data);
-    const message = quickActionToast(method, data.title);
+    // Done with something left behind says what (an unsent message asks first, elsewhere).
+    const queued = useLater.getState().items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id);
+    const left = method === 'archive' ? leftBehind(rowLooseEnds(useLooseEnds.getState().byOwner.get(data.id) ?? [], { draft: false, queued })) : null;
+    const message = quickActionToast(method, data.title, left);
     runMethod(method, data, () => {
       if (!message) return;
       quickActionDone(message, () => {
@@ -243,6 +252,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       label: `Session “${data.title}”`,
       entries: [
         { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || !canRename, data: { 'data-rename-session': true } },
+        {
+          label: data.summary?.remindAt != null && data.summary.remindedAt == null ? `Remind me… (${reminderWhen(data.summary.remindAt, Date.now())})` : 'Remind me…',
+          hint: formatKeys(keysFor('sidebar.remind')),
+          onSelect: () => openRemindEditor([data.id]),
+          disabled: !data.summary || isRunRowId(data.id),
+          data: { 'data-session-remind': true },
+        },
+        { label: data.summary?.note ? 'Edit note…' : 'Note…', hint: formatKeys(keysFor('sidebar.note')), onSelect: () => openNoteEditor(data.id), disabled: !data.summary || isRunRowId(data.id), data: { 'data-session-note': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
@@ -250,8 +267,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           : []),
         { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => setPinned(data, !data.pinned), disabled: !data.summary },
         archivedNow
-          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
-          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
+          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Reopen', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
+          : { label: tree !== null ? archiveTreeLabel(tree) : 'Done', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
         'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
@@ -388,9 +405,9 @@ function StopAndArchive({ data, hosted, stop, archive, onClose }: { data: Sessio
   const stoppable = hosted || !!data.remote;
   return (
     <ConfirmDialog
-      title={stoppable ? 'Stop and archive?' : 'Archive while it works?'}
-      body={stoppable ? `“${title}” is ${state}. It is stopped first, then archived.` : `“${title}” is ${state} in another app. It keeps running there after you archive it.`}
-      confirmLabel={stoppable ? 'Stop and archive' : 'Archive'}
+      title={stoppable ? 'Stop it and mark it done?' : 'Mark it done while it works?'}
+      body={stoppable ? `“${title}” is ${state}. It is stopped first, then moved to Done.` : `“${title}” is ${state} in another app. It keeps running there after you mark it done.`}
+      confirmLabel={stoppable ? 'Stop and mark done' : 'Mark done'}
       data={{ 'data-stop-archive-confirm': stoppable ? 'stop' : 'archive' }}
       onConfirm={async () => {
         if (stoppable) {

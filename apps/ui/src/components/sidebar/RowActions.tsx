@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Mail, MailOpen, Pin, PinOff, Square } from 'lucide-react';
+import { Check, Mail, MailOpen, Pin, PinOff, RotateCcw, Square } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import type { QuickAction, QuickActionMethod } from './quickActions.ts';
@@ -8,8 +8,8 @@ const ICON: Record<QuickActionMethod, ReactNode> = {
   markUnread: <Mail size={13} aria-hidden />,
   pin: <Pin size={13} aria-hidden />,
   unpin: <PinOff size={13} aria-hidden />,
-  archive: <Archive size={13} aria-hidden />,
-  unarchive: <ArchiveRestore size={13} aria-hidden />,
+  archive: <Check size={13} aria-hidden />,
+  unarchive: <RotateCcw size={13} aria-hidden />,
   stop: <Square size={11} aria-hidden />,
 };
 

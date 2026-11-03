@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SESSION_NOTE_MAX } from './sessionNote.ts';
 import { AbsolutePath } from './absolutePath.ts';
 import { Effort, PermissionMode, WorktreeBaseSchema } from './host.ts';
 import { SESSION_PROVIDERS } from './providerConstants.ts';
@@ -43,6 +44,14 @@ export const SessionSummary = z.object({
   viewedAt: z.number().nullable(),
   /** Changed since the user last looked at it. */
   unread: z.boolean(),
+  /** Remind me later: when it comes back (ms). Out of the main list until then, unless Claude needs you or works in it. */
+  remindAt: z.number().nullable().optional(),
+  /** When the reminder came due: the session shows under Reminders until you open it, mark it done or snooze it again. */
+  remindedAt: z.number().nullable().optional(),
+  /** The pull request whose merge moved it to Done ("Merged #123"); also how a merge is known to be handled. */
+  donePr: z.number().nullable().optional(),
+  /** What's left to do, in your words ("push after review"), one line. Kept in Seshboard's database; null or left out: none. */
+  note: z.string().max(SESSION_NOTE_MAX).nullable().optional(),
   /** Started, forked or continued in Seshboard (the default sidebar shows only these). */
   inApp: z.boolean(),
   /** The Claude profile whose config folder holds the transcript (resume and fork use it). */

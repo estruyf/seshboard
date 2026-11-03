@@ -1,7 +1,10 @@
 import type { SessionGroup } from './sidebarRows.ts';
 
-/** The sidebar's sections that can close: every one but Needs you and To review (and Archived, which has its own toggle). */
-export type SectionKey = Exclude<SessionGroup, 'needs-you' | 'review'> | 'queue';
+/**
+ * The sidebar's sections that can close: every one but Needs you, To review, Reminders and Snoozed (and Archived, which
+ * has its own toggle).
+ */
+export type SectionKey = Exclude<SessionGroup, 'needs-you' | 'review' | 'reminders' | 'snoozed'> | 'queue';
 
 export const SECTION_KEYS: readonly SectionKey[] = ['working', 'queue', 'pinned', 'open', 'read', 'still-working'];
 

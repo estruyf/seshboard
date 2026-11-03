@@ -104,6 +104,12 @@ describe('what counts as going', () => {
     expect(ids(counted)).toEqual([]);
   });
 
+  it('leaves a snoozed session out until it comes back, but counts it while it works or waits', () => {
+    const snoozed = { unread: true, remindAt: NOW + HOUR, remindedAt: null };
+    const counted = input({ hosts: [host('later', 'idle'), host('busy', 'running'), host('due', 'idle')], sessions: [summary('later', snoozed), summary('busy', snoozed), summary('due', { unread: true, remindAt: NOW - HOUR, remindedAt: NOW })] });
+    expect(ids(counted)).toEqual(['busy:working', 'due:unread']);
+  });
+
   it('stops counting a session once it is settled, until it has something new', () => {
     const archivedAfter = summary('settled', { unread: true, archivedAt: NOW - MINUTE });
     const newerSince = summary('back', { unread: true, archivedAt: NOW - HOUR, updatedAt: NOW - MINUTE });

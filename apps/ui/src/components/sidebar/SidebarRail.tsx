@@ -278,7 +278,7 @@ export function SidebarRail() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
   const runs = usePipelines((s) => s.runs);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS }), [listed, now, archiveAfterDays, sort, quick, runs]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS, kept }), [listed, now, archiveAfterDays, sort, quick, runs, kept]);
   // A sub-session in the main area: its parent's icon is the one that shows it.
   const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
   const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);

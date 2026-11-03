@@ -11,6 +11,8 @@ import { otherModalOpen, overlayOpen } from './lib/modalGuards.ts';
 import { LinkError } from './components/LinkError.tsx';
 import { QuitPrompt } from './components/QuitPrompt.tsx';
 import { ArchiveDraftDialog } from './components/drafts/ArchiveDraftDialog.tsx';
+import { SessionNoteDialog } from './components/notes/SessionNoteDialog.tsx';
+import { RemindDialog } from './components/notes/RemindDialog.tsx';
 import { UnsentList } from './components/drafts/UnsentList.tsx';
 import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
@@ -42,6 +44,9 @@ import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
+import { useLooseEndsSync } from './state/looseEndsStore.ts';
+import { useReminderClear } from './state/useReminderClear.ts';
+import { useMergedDoneToast } from './state/mergedDoneToast.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
 import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
@@ -229,6 +234,9 @@ export function App() {
   useTriggersSync();
   usePipelinesSync();
   useCatchUpSync();
+  useLooseEndsSync();
+  useReminderClear();
+  useMergedDoneToast();
   useUpNextSync();
   useModsSync();
   useLimitsSync();
@@ -299,6 +307,8 @@ export function App() {
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />
+      <SessionNoteDialog />
+      <RemindDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
       {cloning && <CloneProjectDialog />}
       <BackupDialogs />

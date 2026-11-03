@@ -11,7 +11,7 @@ export const SECTION_INFO: Record<BackupSection, { label: string; detail: string
   triggers: { label: 'Triggers', detail: 'Triggers with their sources, prompts and choices. They come in paused: check each one, then resume it.' },
   pipelines: { label: 'Pipelines', detail: 'Your pipelines with their steps. Built-in ones are always there, and runs stay on this computer.' },
   choices: { label: 'App choices', detail: 'Default editor, New session defaults, Claude Code update checks.' },
-  sessions: { label: 'Pinned and archived sessions', detail: 'Only useful on this Mac, or when ~/.claude is copied too.' },
+  sessions: { label: 'Pinned and Done sessions', detail: 'Only useful on this Mac, or when ~/.claude is copied too.' },
 };
 
 /** Sessions are left out by default: their ids only mean something where the same transcripts are. */

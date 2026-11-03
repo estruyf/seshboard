@@ -198,7 +198,7 @@ describe('notification and sound preferences', () => {
 
   it('notifies and stays quiet on a fresh install, with a different sound for each moment', () => {
     const fresh = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(undefined) };
-    expect(fresh.notifications).toEqual({ enabled: true });
+    expect(fresh.notifications).toEqual({ enabled: true, reminders: true, badgeReminders: false });
     expect(fresh.sounds).toEqual({ enabled: false, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' }, volume: 0.5, revision: 2 });
     expect(new Set(Object.values(fresh.sounds.byEvent)).size).toBe(4);
   });
@@ -229,7 +229,7 @@ describe('notification and sound preferences', () => {
       for (const notifications of [true, false]) {
         for (const on of [true, false]) {
           const moved = old({ notifications, sounds: on });
-          expect(moved.notifications).toEqual({ enabled: notifications });
+          expect(moved.notifications).toEqual({ enabled: notifications, reminders: true, badgeReminders: false });
           expect(moved.sounds?.enabled).toBe(on);
         }
       }
@@ -295,7 +295,7 @@ describe('notification and sound preferences', () => {
     expect(on.sounds).toEqual(current.sounds);
     const picked = sanitizePreferences(mergePreferences(current, { sounds: { byEvent: { error: 'none' } } }));
     expect(picked.sounds?.byEvent).toEqual({ ...current.sounds.byEvent, error: 'none' });
-    expect(sanitizePreferences(mergePreferences(current, { notifications: { enabled: false } })).notifications).toEqual({ enabled: false });
+    expect(sanitizePreferences(mergePreferences(current, { notifications: { enabled: false } })).notifications).toEqual({ enabled: false, reminders: true, badgeReminders: false });
   });
 
   it('plays a missing sound as the fallback, and none as none', () => {

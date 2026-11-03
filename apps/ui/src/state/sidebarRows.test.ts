@@ -3,7 +3,7 @@ import type { LaterItem, LiveSession, SessionHostInfo } from '@seshboard/protoco
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startupSession, triageOrder, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, doneReason, doneReasonLabel, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startupSession, triageOrder, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -159,6 +159,27 @@ describe('buildSessionList', () => {
   });
 });
 
+describe('doneReason', () => {
+  const DAY = 24 * HOUR;
+  it('says why a session is in Done: marked done by you, or inactive for so many days', () => {
+    expect(doneReason(row('listed'), NOW, DAYS)).toBeNull();
+    expect(doneReason(row('done', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR }), NOW, DAYS)).toEqual({ kind: 'done' });
+    expect(doneReason(row('merged', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR, summary: { donePr: 123 } as SessionRowData['summary'] }), NOW, DAYS)).toEqual({ kind: 'merged', pr: 123 });
+    expect(doneReason(row('quiet', { updatedAt: NOW - 5 * DAY - HOUR }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 5 });
+    // Marked done before its last activity, it came back; once that ages out it is inactive, not done by you.
+    expect(doneReason(row('back', { archivedAt: NOW - 10 * DAY, updatedAt: NOW - 3 * DAY }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 3 });
+    // Another computer's sessions are never in Done here.
+    expect(doneReason(row('remote', { archivedAt: NOW, remote: { computerId: 'm', computerName: 'M', sessionId: 's', status: 'idle', offline: false } as SessionRowData['remote'] }), NOW, DAYS)).toBeNull();
+  });
+
+  it('reads as the row says it', () => {
+    expect(doneReasonLabel({ kind: 'done' })).toBe('Done');
+    expect(doneReasonLabel({ kind: 'merged', pr: 123 })).toBe('Merged #123');
+    expect(doneReasonLabel({ kind: 'inactive', days: 1 })).toBe('Inactive 1 day');
+    expect(doneReasonLabel({ kind: 'inactive', days: 4 })).toBe('Inactive 4 days');
+  });
+});
+
 describe('groupSessions', () => {
   const rows = [
     row('pinned-yesterday', { updatedAt: NOW - 20 * HOUR, pinned: true }),
@@ -229,6 +250,28 @@ describe('groupSessions', () => {
 
   it('lists the sessions to go through: To review, then Open, in the order given', () => {
     expect(ids(triageOrder([rows[1]!, rows[2]!, rows[4]!, rows[0]!, rows[5]!, rows[6]!, rows[3]!]))).toEqual(['unread', 'failed', 'read', 'read-earlier']);
+  });
+
+  it('puts snoozed sessions in neither list, and a due reminder under Reminders above To review', () => {
+    const snoozed = row('later', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], unread: true, pinned: true });
+    const busy = row('busy', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], live: live('running') });
+    const due = row('due', { summary: { remindAt: NOW - HOUR, remindedAt: NOW } as SessionRowData['summary'] });
+    const list = buildSessionList([snoozed, busy, due, row('unread', { unread: true })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
+    expect([ids(list.active), ids(list.archived), ids(list.snoozed)]).toEqual([['busy', 'due', 'unread'], [], ['later']]);
+    expect(groupSessions(list.active).map((g) => [g.group, ids(g.rows)])).toEqual([
+      ['working', ['busy']],
+      ['reminders', ['due']],
+      ['review', ['unread']],
+    ]);
+    expect(ids(triageOrder(list.active))).toEqual(['due', 'unread']);
+    // Searching, the snoozed ones are listed under Snoozed, before Done.
+    const rows = buildListRows(list.active, [], { now: NOW, archivedOpen: false, snoozed: list.snoozed });
+    expect(rows.filter((r) => r.kind === 'group').map((r) => r.kind === 'group' && r.group)).toEqual(['working', 'reminders', 'review', 'snoozed']);
+  });
+
+  it('finds a session by its note', () => {
+    const noted = row('noted', { summary: { note: 'waiting on Jan' } as SessionRowData['summary'] });
+    expect(ids(buildSessionList([noted, row('other')], { search: 'jan', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['noted']);
   });
 
   it('keeps a session with an unsent message or a queued prompt listed, however old', () => {

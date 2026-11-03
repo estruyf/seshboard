@@ -176,7 +176,7 @@ export type MainWindowRequest =
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
-  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | null; scheduleId: string | null };
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -256,6 +256,10 @@ export type SoundChoice = string;
 /** A system notification when Claude needs you, finishes or stops with an error, and when a project action ends. The badge shows either way. */
 export interface NotificationPrefs {
   enabled: boolean;
+  /** A reminder that comes due (Remind me later) shows a notification. On by default. */
+  reminders: boolean;
+  /** Due reminders count in the Dock's badge (and the taskbar's dot) with what needs you. Off by default. */
+  badgeReminders: boolean;
 }
 
 export interface SoundPrefs {
@@ -269,7 +273,7 @@ export interface SoundPrefs {
   revision: number;
 }
 
-export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true, reminders: true, badgeReminders: false };
 
 /**
  * Settings › Usage › Large context. A session whose context is at least `percent` full is "large": its ring turns
@@ -426,6 +430,8 @@ export interface Preferences {
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** Settings › Sessions: a session whose pull request merged moves to Done by itself. On by default. */
+  doneOnMerge: boolean;
   /** Settings › Sessions: "Mark as read after". An unread session you open is read after you look at it this long. */
   markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
@@ -532,6 +538,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notificationsPausedUntil: null,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  doneOnMerge: true,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
@@ -732,6 +739,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  if (typeof raw.doneOnMerge === "boolean") out.doneOnMerge = raw.doneOnMerge;
   const reading = raw.markReadAfter as Record<string, unknown> | null | undefined;
   const seconds = clampDays(reading?.seconds, MARK_READ_SECONDS);
   if (typeof reading?.enabled === "boolean" && seconds !== null)
@@ -764,9 +772,15 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.
-  if (typeof raw.notifications === "boolean") out.notifications = { enabled: raw.notifications };
-  else if (typeof (raw.notifications as NotificationPrefs | null)?.enabled === "boolean")
-    out.notifications = { enabled: (raw.notifications as NotificationPrefs).enabled };
+  if (typeof raw.notifications === "boolean") out.notifications = { ...DEFAULT_NOTIFICATIONS, enabled: raw.notifications };
+  else if (typeof (raw.notifications as NotificationPrefs | null)?.enabled === "boolean") {
+    const stored = raw.notifications as Partial<NotificationPrefs>;
+    out.notifications = {
+      enabled: stored.enabled!,
+      reminders: typeof stored.reminders === "boolean" ? stored.reminders : DEFAULT_NOTIFICATIONS.reminders,
+      badgeReminders: typeof stored.badgeReminders === "boolean" ? stored.badgeReminders : DEFAULT_NOTIFICATIONS.badgeReminders,
+    };
+  }
   const sounds = sanitizeSounds(raw);
   if (sounds) out.sounds = sounds;
   return out;

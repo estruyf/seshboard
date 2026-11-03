@@ -911,7 +911,7 @@ describe('engine over a MessagePort', () => {
       const trashed: string[][] = [];
       const { engine, client } = connect({ trashed, source });
       await ready(client);
-      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: false, afterDays: 1 } });
+      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: false, afterDays: 1 }, doneOnMerge: true });
       await expect(engine.deleteArchivedNow()).resolves.toBeNull();
       expect(trashed).toEqual([]);
       expect((await client.call('sessions.list', {})).sessions).toHaveLength(ids.length);
@@ -924,7 +924,7 @@ describe('engine over a MessagePort', () => {
       client.on('engine.log', (entry) => void logs.push(entry.message));
       await ready(client);
       // The first settings after the scan start the launch run; a run asked for now waits for it.
-      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: true, afterDays: 30 } });
+      engine.setRetention({ archiveAfterDays: 3, deleteArchived: { enabled: true, afterDays: 30 }, doneOnMerge: true });
       await expect(engine.deleteArchivedNow()).resolves.toMatchObject({ deleted: 0, failed: 0 });
       expect((await client.call('sessions.list', {})).sessions.map((s) => s.id).sort()).toEqual([PINNED_ID, DRAFT_ID, QUEUED_ID].sort());
       expect(trashed.flat().filter((p) => p.endsWith('.jsonl'))).toHaveLength(2);

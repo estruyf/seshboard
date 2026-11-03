@@ -1,4 +1,4 @@
-import { Archive, Blocks, Bot, Code, Coffee, Copy, Ellipsis, Minimize2, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
+import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, NotebookPen, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
 import { claudeOnlyLine, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderFeature } from '@seshboard/protocol/client';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -15,6 +15,7 @@ import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -75,7 +76,7 @@ export function providerEntries(provider: ProviderMenu): MenuEntry[] {
       onSelect: () => provider.onOpenCli?.(),
       data: { 'data-open-provider-cli': provider.id, ...(provider.onOpenCli ? {} : { 'data-tooltip': `Stop it here first: ${short} can't run it in two places` }) },
     },
-    { label: 'Archive', icon: <Archive size={13} />, onSelect: provider.onArchive, data: { 'data-archive-session': true } },
+    { label: 'Done', icon: <Check size={13} />, onSelect: provider.onArchive, data: { 'data-archive-session': true } },
     // Plain text, not a disabled item: screen readers don't land on it as an action.
     ...(line ? (['separator', { note: line, tone: 'faint' }] as MenuEntry[]) : []),
   ];
@@ -199,6 +200,13 @@ export function MoreMenu({
       onSelect: () => setRenaming(true),
       data: { 'data-rename-session': true },
     },
+    {
+      label: 'Note…',
+      icon: <NotebookPen size={13} />,
+      disabled: title === null,
+      onSelect: () => openNoteEditor(sessionId),
+      data: { 'data-session-note': true },
+    },
     ...(onAgents
       ? [
           {
@@ -262,7 +270,7 @@ export function MoreMenu({
   );
 
   const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }) : entries;
-  const label = provider ? 'More: compact, tools, copy, open in the CLI, archive' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
+  const label = provider ? 'More: compact, tools, copy, open in the CLI, done' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (
     <div className="no-drag relative flex shrink-0 items-center" data-actions-bar>

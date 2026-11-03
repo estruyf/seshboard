@@ -14,6 +14,7 @@ import {
   reviewLabel,
   secondaryActions,
   stateLabel,
+  suggestedNote,
   type KeyLike,
   type ShowContext,
 } from './catchUpModel.ts';
@@ -146,6 +147,8 @@ describe('the keys', () => {
     expect(catchUpKey(key('e'), at('view'))).toEqual({ type: 'action', id: 'archive' });
     expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'space' });
     expect(catchUpKey(key('s'), at('view'))).toEqual({ type: 'skip' });
+    expect(catchUpKey(key('n'), at('view'))).toEqual({ type: 'note' });
+    expect(catchUpKey(key('l'), at('view'))).toEqual({ type: 'remind' });
     expect(catchUpKey(key('x'), at('view'))).toBeNull();
   });
 
@@ -170,6 +173,7 @@ describe('the keys', () => {
     expect(catchUpKey(key('s'), at('view', { show: 'strip' }))).toEqual({ type: 'skip' });
     expect(catchUpKey(key('s'), at('elsewhere', { show: 'strip' }))).toBeNull();
     expect(catchUpKey(key('c'), at('view', { show: 'strip' }))).toBeNull();
+    expect(catchUpKey(key('n'), at('view', { show: 'strip' }))).toBeNull();
     expect(catchUpKey(key('c'), at('view', { show: null }))).toBeNull();
   });
 
@@ -218,5 +222,14 @@ describe('going through sessions', () => {
     // Not on this session, or no pass: nothing to say.
     expect(passPosition({ current: 'o1', skipped: new Set(), handled: 0 }, 'r1', order)).toBeNull();
     expect(passPosition(null, 'r1', order)).toBeNull();
+  });
+});
+
+describe('Use as note', () => {
+  it('offers what the catch-up needs from you, never when it needs nothing or the note says it already', () => {
+    expect(suggestedNote(card(), null)).toBe('Commit the changes');
+    expect(suggestedNote(card({ need: { kind: 'reply', title: '  Answer\nthe question ', text: '' } }), 'old')).toBe('Answer the question');
+    expect(suggestedNote(card({ need: need('none') }), null)).toBeNull();
+    expect(suggestedNote(card(), 'Commit the changes')).toBeNull();
   });
 });

@@ -253,7 +253,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           />
           <Toggle
             label="Quick actions on hover"
-            detail="Mark read, Pin and Archive appear on a row under the pointer."
+            detail="Mark read, Pin and Done appear on a row under the pointer."
             checked={prefs.quickActions}
             attr="data-quick-actions-setting"
             onChange={(quickActions) => update({ quickActions })}
@@ -270,8 +270,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.quickActionsShow}
                 onChange={(quickActionsShow) => update({ quickActionsShow })}
                 segments={[
-                  { value: 'archive', label: 'Archive only', data: { 'data-quick-actions-show': 'archive' } },
-                  { value: 'all', label: 'Read · Pin · Archive', data: { 'data-quick-actions-show': 'all' } },
+                  { value: 'archive', label: 'Done only', data: { 'data-quick-actions-show': 'archive' } },
+                  { value: 'all', label: 'Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
                 ]}
                 className="shrink-0"
               />

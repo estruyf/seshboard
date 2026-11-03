@@ -4,6 +4,11 @@ import type { CatchUp as CatchUpCardData, GitChanges } from '@seshboard/protocol
 import { moveOn, usePassPosition } from '../../state/catchUpPass.ts';
 import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { openRemindEditor } from '../../state/remindEditorStore.ts';
+import { useEngineConnection } from '../../engine/useEngine.ts';
+import { saveNote } from '../../state/sessionNotes.ts';
+import { toast } from '../../state/toastStore.ts';
 import { closeChanges } from '../../state/changesPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { OVERLAY_SELECTOR } from '../session/permissionKeys.ts';
@@ -22,6 +27,7 @@ import {
   reviewLabel,
   secondaryActions,
   stateLabel,
+  suggestedNote,
   type CatchUpActionId,
   type CatchUpShow,
   type CatchUpTone,
@@ -44,6 +50,10 @@ interface Shared {
   position: { position: number; total: number } | null;
   /** On to the next session to go through; null where there is none to go to (a pop-out). */
   skip: (() => void) | null;
+  /** What it needs from you, offered as the session's note in one click; null when there's nothing to offer. */
+  useAsNote: { text: string; run(): void } | null;
+  /** Remind me later (L), then on to the next session; null for another computer's session. */
+  remind: (() => void) | null;
 }
 
 /** "2 of 7" while going through sessions (the footer's "N open", or Skip and Done). */
@@ -149,7 +159,7 @@ function CatchUpStrip({ card, actions, committed, changesOpen, position, skip }:
  * The banner over the conversation: the state, your ask, the review time and the primary action, then what it needs and
  * the signals. Details (Space) opens what Claude did and skipped, and the other actions.
  */
-function CatchUpBanner({ card, actions, unread, committed, changesOpen, details, position, skip }: Shared & { details: boolean }) {
+function CatchUpBanner({ card, actions, unread, committed, changesOpen, details, position, skip, useAsNote, remind }: Shared & { details: boolean }) {
   const tone = committed ? 'ok' : NEED_TONE[card.need.kind];
   const primary = primaryAction(card.need.kind, committed);
   const secondary = secondaryActions(card, { unread, committed });
@@ -175,7 +185,12 @@ function CatchUpBanner({ card, actions, unread, committed, changesOpen, details,
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 pl-4">
           <span className={`shrink-0 text-ui font-semibold ${TEXT[tone]}`}>{committed ? 'Committed' : card.need.title}</span>
-          <span className="min-w-0 flex-1 basis-48 text-ui text-muted">{committed ? 'Archive it to clear it from your list.' : card.need.text}</span>
+          <span className="min-w-0 flex-1 basis-48 text-ui text-muted">{committed ? 'Mark it done to clear it from your list.' : card.need.text}</span>
+          {useAsNote && !committed && (
+            <Button variant="quiet" size="sm" onClick={useAsNote.run} data-tooltip={`Note “${useAsNote.text}” under its title in the sidebar`} data-catchup-use-note>
+              Use as note
+            </Button>
+          )}
           <Chips card={card} />
         </div>
         {details && (
@@ -188,6 +203,11 @@ function CatchUpBanner({ card, actions, unread, committed, changesOpen, details,
               {secondary.map((id) => (
                 <ActionButton key={id} id={id} primary={false} actions={actions} changesOpen={changesOpen} />
               ))}
+              {remind && (
+                <Button variant="secondary" size="md" shortcut="catchup.remind" onClick={remind} data-catchup-remind>
+                  Remind me later
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -244,10 +264,17 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen, rem
   const position = usePassPosition(rowId);
   // A pop-out shows one session: there is nowhere to skip to.
   const skip = popoutSession ? null : () => moveOn(rowId, 'skip');
-  const shared: Shared = { card, actions, unread, committed, changesOpen, position, skip };
+  // Notes are this computer's (v1): another computer's session has none here.
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const note = useSessions((s) => s.sessions.get(sessionId)?.note ?? null);
+  const suggestion = remote ? null : suggestedNote(card, note);
+  const useAsNote = suggestion ? { text: suggestion, run: () => void saveNote(client, sessionId, suggestion).catch((e: unknown) => toast(`Couldn't save the note: ${e instanceof Error ? e.message : String(e)}`)) } : null;
+  const remind = remote ? null : () => openRemindEditor([sessionId], () => !popoutSession && moveOn(rowId, 'done'));
+  const shared: Shared = { card, actions, unread, committed, changesOpen, position, skip, useAsNote, remind };
 
-  const latest = useRef({ show, details, replying, changesOpen, actions, committed, skip });
-  latest.current = { show, details, replying, changesOpen, actions, committed, skip };
+  const latest = useRef({ show, details, replying, changesOpen, actions, committed, skip, remind });
+  latest.current = { show, details, replying, changesOpen, actions, committed, skip, remind };
   useEffect(() => {
     if (!active) return;
     const onKey = (event: KeyboardEvent) => {
@@ -269,9 +296,12 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen, rem
         else s.actions.fold(true);
         return;
       }
-      if (action.type === 'skip' && !s.skip) return;
+      if ((action.type === 'skip' && !s.skip) || ((action.type === 'note' || action.type === 'remind') && remote)) return;
       event.preventDefault();
       if (action.type === 'skip') return s.skip?.();
+      if (action.type === 'note') return openNoteEditor(sessionId);
+      // Remind me later, then on to the next session to go through (a pop-out shows one session: it stays).
+      if (action.type === 'remind') return s.remind?.();
       if (action.type === 'primary') return s.actions.run(primaryAction(card.need.kind, s.committed));
       // Space opens and closes Details in the banner, and opens the banner from the strip.
       if (action.type === 'space') return s.show === 'full' ? useCatchUp.getState().setDetails(card, !s.details) : s.actions.fold(false);
@@ -280,7 +310,7 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen, rem
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, card, unread]);
+  }, [active, card, unread, remote]);
 
   return (
     <div ref={ref} className="shrink-0" data-catchup-slot={show === 'full' ? 'banner' : 'strip'}>

@@ -570,7 +570,15 @@ export const remoteContract = {
      * computer it is paired with), and `label`, what each push starts with (this computer's name, with more than one).
      */
     'push.subscribe': {
-      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean(), vapid: RemoteVapidKeys.optional(), label: z.string().trim().min(1).max(60).optional() }),
+      params: z.object({
+        subscription: RemotePushSubscription,
+        needsYou: z.boolean(),
+        finished: z.boolean(),
+        /** Reminders that come due (Remind me later); left out by a phone from before: it follows `finished`. */
+        reminders: z.boolean().optional(),
+        vapid: RemoteVapidKeys.optional(),
+        label: z.string().trim().min(1).max(60).optional(),
+      }),
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },

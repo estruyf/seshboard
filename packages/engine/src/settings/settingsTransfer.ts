@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   BACKUP_SECTIONS,
+  cleanNote,
   DEFAULT_PREFERENCES,
   Schedule,
   Trigger,
@@ -96,8 +97,9 @@ const PREFERENCE_LABELS: Record<Exclude<keyof Preferences, InternalPreference>, 
   quickStartBackground: 'Start quick starts in the background',
   quickStartNeedsYou: 'Show what needs you in quick start',
   notificationsPausedUntil: 'Pause notifications',
-  archiveAfterDays: 'Archive finished sessions after',
-  deleteArchived: 'Delete archived sessions',
+  archiveAfterDays: 'Move finished sessions to Done after',
+  deleteArchived: 'Delete Done sessions',
+  doneOnMerge: 'Move to Done when its pull request merges',
   markReadAfter: 'Mark as read after',
   whileWorking: 'Enter while Claude is working',
   autoModel: 'Auto model',
@@ -269,6 +271,9 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
       archived: stores.db.prepare('SELECT id, archived_at AS at FROM session_flags WHERE archived_at IS NOT NULL ORDER BY id').all() as Array<{ id: string; at: number }>,
       owned: ids('SELECT id FROM owned_sessions ORDER BY id'),
       continued: ids('SELECT id FROM continued_sessions ORDER BY id'),
+      notes: stores.db.prepare('SELECT id, note FROM session_flags WHERE note IS NOT NULL ORDER BY id').all() as Array<{ id: string; note: string }>,
+      donePrs: stores.db.prepare('SELECT id, done_pr AS pr FROM session_flags WHERE done_pr IS NOT NULL ORDER BY id').all() as Array<{ id: string; pr: number }>,
+      reminders: stores.db.prepare('SELECT id, remind_at AS at, reminded_at AS remindedAt FROM session_flags WHERE remind_at IS NOT NULL ORDER BY id').all() as Array<{ id: string; at: number; remindedAt: number | null }>,
     };
   }
   return file;
@@ -800,7 +805,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
 
   // --- Sessions (only ever added) -------------------------------------------------------------
   if (has('sessions')) {
-    const { pinned, settled, archived, owned, continued } = file.sessions!;
+    const { pinned, settled, archived, owned, continued, notes, donePrs, reminders } = file.sessions!;
     const ids = (sql: string) => new Set((stores.db.prepare(sql).all() as Array<{ id: string }>).map((r) => r.id));
     const groups = [
       { label: 'pinned', ids: pinned, have: ids('SELECT id FROM session_flags WHERE pinned = 1'), sql: 'INSERT INTO session_flags (id, pinned) VALUES (?, 1) ON CONFLICT (id) DO UPDATE SET pinned = 1' },
@@ -832,6 +837,44 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
           'INSERT INTO session_flags (id, archived_at) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET archived_at = COALESCE(session_flags.archived_at, excluded.archived_at)',
         );
         for (const [id, at] of add) statement.run(id, at);
+      });
+    }
+    // Notes: added where a session has none; yours wins where it has one.
+    const noted = ids('SELECT id FROM session_flags WHERE note IS NOT NULL');
+    const newNotes = (notes ?? []).flatMap(({ id, note }) => {
+      const clean = cleanNote(note);
+      return clean && !noted.has(id) ? [{ id, note: clean }] : [];
+    });
+    unchanged += (notes ?? []).length - newNotes.length;
+    if (newNotes.length > 0) {
+      note('sessions', `${newNotes.length} ${newNotes.length === 1 ? 'note' : 'notes'} on sessions`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare('INSERT INTO session_flags (id, note) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET note = COALESCE(session_flags.note, excluded.note)');
+        for (const { id, note: text } of newNotes) statement.run(id, text);
+      });
+    }
+    // Merged pull requests that moved sessions to Done: the label, and the merge known as handled (Reopen sticks).
+    const handled = ids('SELECT id FROM session_flags WHERE done_pr IS NOT NULL');
+    const newDone = (donePrs ?? []).filter(({ id }) => !handled.has(id));
+    unchanged += (donePrs ?? []).length - newDone.length;
+    if (newDone.length > 0) {
+      note('sessions', `${newDone.length} ${newDone.length === 1 ? 'session' : 'sessions'} done by a merged pull request`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare('INSERT INTO session_flags (id, done_pr) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET done_pr = COALESCE(session_flags.done_pr, excluded.done_pr)');
+        for (const { id, pr } of newDone) statement.run(id, pr);
+      });
+    }
+    // Reminders: added where a session has none; yours wins.
+    const reminding = ids('SELECT id FROM session_flags WHERE remind_at IS NOT NULL');
+    const newReminders = (reminders ?? []).filter(({ id }) => !reminding.has(id));
+    unchanged += (reminders ?? []).length - newReminders.length;
+    if (newReminders.length > 0) {
+      note('sessions', `${newReminders.length} ${newReminders.length === 1 ? 'reminder' : 'reminders'}`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare(
+          'INSERT INTO session_flags (id, remind_at, reminded_at) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET remind_at = COALESCE(session_flags.remind_at, excluded.remind_at), reminded_at = CASE WHEN session_flags.remind_at IS NULL THEN excluded.reminded_at ELSE session_flags.reminded_at END',
+        );
+        for (const { id, at, remindedAt } of newReminders) statement.run(id, at, remindedAt);
       });
     }
   }

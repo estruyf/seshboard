@@ -68,7 +68,7 @@ interface SessionsState {
    * Changes a session's summary here at once, ahead of the engine's `sessions.changed` (Mark as read, Archive), so the
    * focus counter and the sidebar follow the click right away. The engine's next update replaces it.
    */
-  patchSummary(id: string, patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt'>>): void;
+  patchSummary(id: string, patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt' | 'note'>>): void;
   /** Shows a session in the active pane (or focuses the pane already showing it). */
   select(id: string | null): void;
   /** Opens a session in a new pane next to the active one (`planOpen`); with no room, says so in a toast instead. */
