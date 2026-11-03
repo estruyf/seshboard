@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, POPOUT_QUERY, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -27,6 +27,7 @@ const bridge: SeshboardBridge = {
   chooseMemoryExport: () => ipcRenderer.invoke(IpcChannel.chooseMemoryExport) as Promise<string[]>,
   saveImage: (request: SaveImageRequest) => ipcRenderer.invoke(IpcChannel.saveImage, request) as Promise<string | null>,
   showSavedImage: (path: string) => ipcRenderer.send(IpcChannel.showSavedImage, path),
+  showRemoteLog: () => ipcRenderer.send(IpcChannel.showRemoteLog),
   // File.path is gone from Electron; webUtils is how a sandboxed page learns where a dropped file lives.
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   reportFocus: (sessionId: string | null) => ipcRenderer.send(IpcChannel.focusSession, sessionId),
@@ -118,6 +119,33 @@ const bridge: SeshboardBridge = {
     return () => ipcRenderer.off(IpcChannel.viewReturned, handler);
   },
   popIn: () => ipcRenderer.send(IpcChannel.popIn),
+  menuBar: new URLSearchParams(window.location.search).has(MENU_BAR_QUERY),
+  menuBarCommand: (command: MenuBarCommand) => ipcRenderer.send(IpcChannel.menuBarCommand, command),
+  menuBarResize: (height) => ipcRenderer.send(IpcChannel.menuBarResize, height),
+  onMenuBarShown(listener) {
+    const handler = () => listener();
+    ipcRenderer.on(IpcChannel.menuBarShown, handler);
+    return () => ipcRenderer.off(IpcChannel.menuBarShown, handler);
+  },
+  quickStart: new URLSearchParams(window.location.search).has(QUICK_START_QUERY),
+  quickStartClose: () => ipcRenderer.send(IpcChannel.quickStartCommand, 'close'),
+  quickStartPassClicks: (pass) => ipcRenderer.send(IpcChannel.quickStartPassClicks, pass),
+  onQuickStartShown(listener) {
+    const handler = (_event: unknown, keepDraft: boolean) => listener(keepDraft === true);
+    ipcRenderer.on(IpcChannel.quickStartShown, handler);
+    return () => ipcRenderer.off(IpcChannel.quickStartShown, handler);
+  },
+  onQuickStartKey(listener) {
+    const handler = (_event: unknown, key: QuickStartKey) => listener(key);
+    ipcRenderer.on(IpcChannel.quickStartKey, handler);
+    return () => ipcRenderer.off(IpcChannel.quickStartKey, handler);
+  },
+  quickStartStatus: () => ipcRenderer.invoke(IpcChannel.getQuickStartStatus) as Promise<QuickStartStatus>,
+  onQuickStartStatus(listener) {
+    const handler = (_event: unknown, status: QuickStartStatus) => listener(status);
+    ipcRenderer.on(IpcChannel.quickStartStatus, handler);
+    return () => ipcRenderer.off(IpcChannel.quickStartStatus, handler);
+  },
   showSession: (sessionId) => ipcRenderer.send(IpcChannel.showSession, sessionId),
   forwardKeys: (keys) => ipcRenderer.send(IpcChannel.forwardKeys, keys),
   onKeysForwarded(listener) {

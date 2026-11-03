@@ -2,6 +2,8 @@ import { Copy, Lock, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type DragEvent } from 'react';
 import { PIPELINE_LIMITS, type Pipeline, type PipelineScope } from '@seshboard/protocol/client';
 import { useHosts } from '../../../state/hostsStore.ts';
+import { useProfiles } from '../../../state/profilesStore.ts';
+import { useProvider, useProviderReadiness } from '../../../state/providersStore.ts';
 import { useProjects } from '../../../state/projectsStore.ts';
 import { useProjectActionList } from '../../actions/useActions.ts';
 import { Button } from '../../ui/Button.tsx';
@@ -12,7 +14,7 @@ import { Select } from '../../ui/Select.tsx';
 import { useFlash } from '../../ui/useFlash.ts';
 import { addStep, formIssues, hasPush, isDirty, moveStep, removeStep, type PipelineForm } from './editorModel.ts';
 import { PipelineTree } from './PipelineTree.tsx';
-import { FIELD, StepCard } from './StepCard.tsx';
+import { FIELD, StepCard, type StepTool } from './StepCard.tsx';
 
 export interface PipelineEditorProps {
   /** The form to start from (a saved pipeline's, or a new one). */
@@ -40,6 +42,14 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
   const models = useHosts((s) => s.models);
+  // GitHub Copilot can run a step once there is a profile of it: the first one's models, and Copilot's modes.
+  const copilotProfile = useProfiles((s) => s.profiles.find((p) => p.provider === 'copilot')?.id ?? null);
+  const copilotInfo = useProvider(copilotProfile ? 'copilot' : null);
+  const copilotReady = useProviderReadiness(copilotProfile);
+  const tools = useMemo<StepTool[]>(
+    () => (copilotInfo ? [{ id: 'copilot', name: copilotInfo.name, models: copilotReady?.models ?? [], modes: copilotInfo.modes, supports: copilotInfo.supports }] : []),
+    [copilotInfo, copilotReady],
+  );
   const listed = useProjects((s) => s.listed);
   const projects = useMemo(() => listed.filter((p) => p.added && p.exists), [listed]);
   // "Run first" offers the project's actions; for every project's pipeline, the global ones (read through any project).
@@ -200,6 +210,7 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
                 readOnly={readOnly}
                 issues={issues.filter((i) => i.step === index).map((i) => i.message)}
                 models={models}
+                tools={tools}
                 actions={actions}
                 actionsKnown={form.scope.kind === 'project'}
                 drag={dragFor(index)}

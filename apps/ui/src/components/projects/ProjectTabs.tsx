@@ -4,6 +4,7 @@ import type { ListedAction, ProjectDefaults, ProjectInfo } from '@seshboard/prot
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { formatShortcut } from '../../lib/shortcuts.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { cleanUpWorktrees, openProject, type ProjectTab } from '../../state/projectPageStore.ts';
 import { agoText, basename, shortAge, tildify } from '../../lib/format.ts';
@@ -37,7 +38,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Select } from '../ui/Select.tsx';
 import { useFlash } from '../ui/useFlash.ts';
-import { describeDefaults, hasDefaults, ProjectDefaultsEditor } from './ProjectDefaultsEditor.tsx';
+import { describeDefaults, hasDefaults, ProjectDefaultsEditor, useProviderChoices } from './ProjectDefaultsEditor.tsx';
 import { defaultChips, overviewWorktrees, recentSessions, sessionState } from './projectOverview.ts';
 
 /** Re-renders relative ages once a minute. */
@@ -197,7 +198,7 @@ export function ProjectOverview({ project }: { project: ProjectInfo }) {
 }
 
 /**
- * Sessions: the project's sessions with the sidebar's rows and grouping (Needs you, Working, then by day), its queue,
+ * Sessions: the project's sessions with the sidebar's rows and grouping (Needs you, Working, Pinned, To review, Open), its queue,
  * its schedules,
  * and its archived sessions in their own section at the end, closed unless nothing else is listed.
  */
@@ -207,7 +208,8 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
   const permissions = useHosts((s) => s.permissions);
   const catchUps = useCatchUp((s) => s.cards);
   const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
-  const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root }), [rows, now, archiveAfterDays, root]);
+  const kept = useKeptSessions();
+  const groups = useMemo(() => sidebarGroups(rows, { now, archiveAfterDays, project: root, kept }), [rows, now, archiveAfterDays, root, kept]);
   const archived = useMemo(() => buildSessionList(rows, { search: '', project: root, now, archiveAfterDays }).archived, [rows, now, archiveAfterDays, root]);
   const [archivedOpen, setArchivedOpen] = useState<boolean | null>(null);
   const showArchived = archivedOpen ?? groups.length === 0;
@@ -258,19 +260,19 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
         ))
       )}
       {archived.length > 0 && (
-        <section aria-label="Archived" className="grid gap-1" data-project-archived>
+        <section aria-label="Done" className="grid gap-1" data-project-archived>
           <SectionHeader
             count={archived.length}
             toggle={{
               expanded: showArchived,
               onToggle: () => setArchivedOpen(!showArchived),
               leading: true,
-              tooltip: `Quiet for ${archiveAfterDays === 1 ? 'a day' : `${archiveAfterDays} days`}, or archived by you. They come back when there is something new.`,
+              tooltip: `Marked done by you, or inactive for ${archiveAfterDays === 1 ? 'a day' : `${archiveAfterDays} days`}. They come back when there is something new.`,
               data: { 'data-archived-toggle': true, 'data-open': showArchived },
             }}
             className="h-[22px] px-3"
           >
-            Archived
+            Done
           </SectionHeader>
           {showArchived && <div className="grid gap-1">{archived.map((r) => row(r, true))}</div>}
         </section>
@@ -431,6 +433,8 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const home = useHomeFolder();
   // Fields the project leaves unset come from its profile's defaults.
   const profile = useProfile(project.profileId);
+  // A project on a Copilot profile picks Copilot's models for its defaults.
+  const provider = useProviderChoices(profile);
   const fallback = profiles.find((p) => p.isDefault);
   const save = async (defaults: ProjectDefaults) => {
     if (!client) return;
@@ -492,7 +496,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
       )}
       <SettingRow label="Defaults" hint={`New sessions in ${project.name} start with these. The New session view can still change them for one session.`}>
         <div className="grid w-full min-w-0 gap-2">
-          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} profileRef={profile ? { id: profile.id, name: profile.name } : null} onSave={(d) => void save(d)} />
+          <ProjectDefaultsEditor root={project.root} defaults={project.defaults} isGitRepo={isGitRepo} profile={profile?.defaults} profileRef={profile ? { id: profile.id, name: profile.name } : null} provider={provider} onSave={(d) => void save(d)} />
           {error && (
             <p role="alert" className="text-ui text-error">
               Couldn't save the defaults: {error}

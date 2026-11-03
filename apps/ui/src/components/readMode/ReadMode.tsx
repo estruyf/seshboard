@@ -2,7 +2,7 @@ import { Copy, MessageCircleQuestion, TextQuote } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { LiveSession } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { openAsk } from '../../state/askStore.ts';
+import { openAsk, openAskThrough, type AskBackend } from '../../state/askStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { useReadMode } from '../../state/readModeStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
@@ -10,6 +10,8 @@ import { fitSidebar } from '../../state/sidebarWidth.ts';
 import { Markdown, StreamingMarkdown } from '../transcript/Markdown.tsx';
 import { currentHeading, STREAMING_BLOCK, type ReadReply } from '../transcript/readReply.ts';
 import { TranscriptItem } from '../transcript/TranscriptItem.tsx';
+import { RemoteText } from '../computers/RemoteText.tsx';
+import { RemoteToolList } from '../computers/RemoteToolList.tsx';
 import { overlayOpen } from '../../lib/modalGuards.ts';
 import { SelectionToolbar, useSelectionChip } from '../memory/SelectionToolbar.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -49,9 +51,11 @@ const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (el.is
  * One reply, full window, on the paper colours: the session's own renderer for the text, an outline of its headings,
  * and the tool calls folded into one line (or shown in place). It is drawn by the session view, through a portal, so
  * it has the same message actions, file links and tool components as the conversation under it, which stays mounted
- * and keeps its scroll.
+ * and keeps its scroll. `remote`: a session on another computer (`RemoteSessionView`, `sessionId` its row id). Its text
+ * is `RemoteText` (nothing in it acts here), its tool calls are one line each that open, Reply with quote goes to its
+ * message box (`draftKey`) and Ask about this to that computer (`ask`; null while it is not connected).
  */
-export function ReadMode({ sessionId, title, live, cwd, reply }: { sessionId: string; title: string; live: LiveSession | null; cwd: string | null; reply: ReadReply }) {
+export function ReadMode({ sessionId, title, live, cwd, reply, remote }: { sessionId: string; title: string; live: LiveSession | null; cwd: string | null; reply: ReadReply; remote?: { draftKey: string; ask: AskBackend | null } }) {
   const prefs = useReadMode((s) => s.prefs);
   const go = useReadMode((s) => s.go);
   const close = useReadMode((s) => s.close);
@@ -147,12 +151,12 @@ export function ReadMode({ sessionId, title, live, cwd, reply }: { sessionId: st
     hide();
     close('elsewhere');
     // After the view behind is reachable again, so the message box can take the caret.
-    setTimeout(() => useDrafts.getState().requestQuote(sessionId, text));
+    setTimeout(() => useDrafts.getState().requestQuote(remote?.draftKey ?? sessionId, text));
   };
   const ask = (text: string) => {
     hide();
     close('elsewhere');
-    setTimeout(() => void openAsk(client, sessionId, true, askPrefill(text)));
+    setTimeout(() => void (remote ? openAskThrough(remote.ask, sessionId, true, askPrefill(text)) : openAsk(client, sessionId, true, askPrefill(text))));
   };
 
   // The reading keys (registry: read.*). They wait while the reader types, a menu or dialog is open, or the session list is.
@@ -224,7 +228,11 @@ export function ReadMode({ sessionId, title, live, cwd, reply }: { sessionId: st
               {reply.blocks.map((block) =>
                 block.kind === 'text' ? (
                   <div key={block.key} data-read-text data-block={block.key}>
-                    {block.key === STREAMING_BLOCK ? <StreamingMarkdown text={block.text} variant="reading" /> : <Markdown text={block.text} variant="reading" />}
+                    {remote ? <RemoteText text={block.text} variant="reading" /> : block.key === STREAMING_BLOCK ? <StreamingMarkdown text={block.text} variant="reading" /> : <Markdown text={block.text} variant="reading" />}
+                  </div>
+                ) : toolsShown && remote ? (
+                  <div key={block.key} className="my-4 font-sans leading-normal" data-read-tool-block>
+                    <RemoteToolList tools={block.items.flatMap((item) => (item.kind === 'tool' ? [{ id: item.id, name: item.name, input: item.input, failed: item.result?.isError === true, result: item.result && { text: item.result.text, isError: item.result.isError, truncated: item.result.truncated } }] : []))} />
                   </div>
                 ) : toolsShown ? (
                   <div key={block.key} className="my-4 font-sans text-body leading-normal" data-read-tool-block>

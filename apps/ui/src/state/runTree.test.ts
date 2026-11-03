@@ -17,13 +17,13 @@ describe('a run as one tree', () => {
     expect(treeSessionCount(treeRunsOf(runs, 'p'))).toBe(3);
   });
 
-  it('offers Stop the run only while it works or waits, and Archive or Unarchive with its steps', () => {
-    expect(actions(run({ status: 'running' }))).toEqual(['Open', 'Stop the run', 'Archive with its 2 steps', 'Delete…']);
-    expect(actions(run({ status: 'waiting', waitingFor: 'push' }))).toEqual(['Open', 'Stop the run', 'Archive with its 2 steps', 'Delete…']);
-    expect(actions(run({ status: 'stopped' }))).toEqual(['Open', 'Archive with its 2 steps', 'Delete…']);
-    expect(actions(run({ status: 'done' }), true)).toEqual(['Open', 'Unarchive with its 2 steps', 'Delete…']);
-    expect(archiveTreeLabel(1)).toBe('Archive with its step');
-    expect(archiveTreeLabel(0)).toBe('Archive');
+  it('offers Stop the run only while it works or waits, and Done or Reopen with its steps', () => {
+    expect(actions(run({ status: 'running' }))).toEqual(['Open', 'Stop the run', 'Done, with its 2 steps', 'Delete…']);
+    expect(actions(run({ status: 'waiting', waitingFor: 'push' }))).toEqual(['Open', 'Stop the run', 'Done, with its 2 steps', 'Delete…']);
+    expect(actions(run({ status: 'stopped' }))).toEqual(['Open', 'Done, with its 2 steps', 'Delete…']);
+    expect(actions(run({ status: 'done' }), true)).toEqual(['Open', 'Reopen with its 2 steps', 'Delete…']);
+    expect(archiveTreeLabel(1)).toBe('Done, with its step');
+    expect(archiveTreeLabel(0)).toBe('Done');
   });
 
   it('never archives a run that goes on', () => {

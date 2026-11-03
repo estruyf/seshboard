@@ -1,6 +1,6 @@
-import { FolderDown, GitBranch } from 'lucide-react';
+import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -30,8 +30,11 @@ import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
 import { SavedPromptMenu, useRemoteSavedPrompts } from './useRemoteSavedPrompts.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
-import { ChipMenu, RemoteEffortChip, RemoteModeChip, RemoteModelChip, RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
-import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteProjectProfile, remoteProjectTiles, remoteTakesEffort, type RemoteChoice } from './remoteNewSession.ts';
+import { RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
+import { AutoWand, ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { ComposerTray } from '../composer/ComposerTray.tsx';
+import { Switch } from '../ui/Toggle.tsx';
+import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelChoices, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteProviderCreate, remoteTakesEffort, type RemoteChoice } from './remoteNewSession.ts';
 
 /**
  * New session with another computer picked in Run on (docs/remote-access.md, Other computers): that computer's projects
@@ -41,8 +44,9 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * `options.get` (an older Seshboard doesn't); they start from the project's defaults, then its profile's, and only
  * what you change is sent, as in the remote app. Images and files go with the prompt when that computer takes them
  * (`RemoteAttachments.tsx`). In the current checkout, the branch checked out there shows, and another one picked is
- * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Folders there can't be picked from here, and Quick question, the queue and the focus limit
- * are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
+ * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Queue for later puts the prompt in that
+ * computer's queue (`later.add`), to start there. Folders there can't be picked from here, and Quick question and the
+ * focus limit are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
  * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
@@ -54,6 +58,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const [saved] = useState(() => loadRemoteDraft(draftKey));
   const [prompt, setPrompt] = useState(saved.text);
   const [starting, setStarting] = useState(false);
+  const [queuing, setQueuing] = useState(false);
   const [changes, setChanges] = useState<Partial<RemoteChoice>>({});
   /** That computer's branches for the picked project's folder (null: not read yet, or it can't say). */
   const [branches, setBranches] = useState<RemoteBranches | null>(null);
@@ -165,7 +170,30 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const defaults = remoteDefaultChoice(options, projectId, changes.profileId ?? baseProfile);
   const choice: RemoteChoice = { ...defaults, ...changes };
   const change = (next: Partial<RemoteChoice>) => setChanges((current) => ({ ...current, ...next }));
-  const worktree = choice.worktree;
+  // A profile of another provider there (GitHub Copilot) starts it, as on the phone: that computer says whether it can
+  // run now and which models it has, and only the provider's own modes are offered.
+  const provider = remoteProfiles(options).find((p) => p.id === choice.profileId)?.provider ?? null;
+  const providerProfileId = provider ? choice.profileId : null;
+  const [providerReady, setProviderReady] = useState<{ profileId: string; problem: string | null; models: RemoteOptions['models'] } | null>(null);
+  const [providerModel, setProviderModel] = useState<string | null>(null);
+  const [providerMode, setProviderMode] = useState<RemotePermissionMode | null>(null);
+  useEffect(() => {
+    if (!client || !connected || !providerProfileId) return;
+    let current = true;
+    void callComputer(client, computer.id, 'providers.ready', { profileId: providerProfileId }).then(
+      (result) => current && setProviderReady({ profileId: providerProfileId, ...result }),
+      (e: Error) => current && setProviderReady({ profileId: providerProfileId, problem: e.message, models: [] }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, computer.id, connected, providerProfileId]);
+  const providerModels = providerReady && providerReady.profileId === providerProfileId ? providerReady.models : [];
+  const providerBlocked = provider ? (providerReady?.profileId === providerProfileId ? providerReady!.problem : `Checking ${provider.name} on ${name}…`) : null;
+  const providerModeNow = provider ? (providerMode && provider.modes.some((m) => m.value === providerMode) ? providerMode : (provider.modes[0]?.value ?? 'default')) : null;
+  /** Another provider there without worktrees yet starts in the project's folder. */
+  const canWorktree = !provider || provider.supports.includes('worktree');
+  const worktree = choice.worktree && canWorktree;
 
   // Another project has its own branches; read them again when the window comes back, as they change there too.
   const takesBranch = computer.features.includes(REMOTE_FEATURE_BRANCHES);
@@ -189,7 +217,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
 
   const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
-  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : !prompt.trim() && !fill ? 'Type a message first' : null;
+  const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : providerBlocked ? providerBlocked : !prompt.trim() && !fill ? 'Type a message first' : null;
   const start = async () => {
     if (blocked || starting || attachments.reading || !client || (!project && !cloning)) return;
     // A saved prompt with a blank still empty: that blank gets the focus instead.
@@ -221,9 +249,14 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         // Only a computer that takes them gets these: an older one would drop them without a word.
         ...(images.length ? { images } : {}),
         ...(files.length ? { files } : {}),
-        ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
+        // Another provider takes its own model and mode; Claude Code the choices that differ from the project's defaults.
+        ...(options
+          ? provider
+            ? remoteProviderCreate(provider, { profileId: choice.profileId, model: providerModel, mode: providerModeNow!, worktree, checkoutBranch: fresh ? null : checkoutBranch })
+            : remoteChanges(choice, defaults, baseProfile)
+          : {}),
         ...(inClone ? { worktree: false } : {}),
-        ...(checkoutBranch && !fresh ? { checkoutBranch } : {}),
+        ...(checkoutBranch && !fresh && !provider ? { checkoutBranch } : {}),
       });
       if (fresh) closeClone();
       clearRemoteDraft(draftKey);
@@ -237,6 +270,36 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       toast((e as Error).message, { body: `It didn’t start on ${name}.` });
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Queue for later: the prompt waits in that computer's queue (Later) until someone starts it there. Images and files
+  // can't wait with it, and a clone has nothing to queue in yet.
+  const attached = attachments.images.length + attachments.files.length > 0;
+  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : attached ? 'Images and files can’t wait in the queue' : null);
+  const queueLater = async () => {
+    if (queueBlocked || starting || queuing || !client || !project) return;
+    const sentFill = fill;
+    const text = savedPrompts.message();
+    if (!text) return;
+    setQueuing(true);
+    try {
+      await callComputer(client, computer.id, 'later.add', {
+        projectId: project.id,
+        prompt: text,
+        ...(options ? remoteChanges(choice, defaults, baseProfile) : {}),
+        ...(checkoutBranch ? { checkoutBranch } : {}),
+      });
+      clearRemoteDraft(draftKey);
+      setPrompt('');
+      savedPrompts.sent(sentFill);
+      setChanges({});
+      setBranch(null);
+      toast('Queued for later', { body: `In ${project.name} on ${name}. Start it from the queue there.` });
+    } catch (e) {
+      toast((e as Error).message, { body: `It wasn’t queued on ${name}.` });
+    } finally {
+      setQueuing(false);
     }
   };
 
@@ -339,66 +402,78 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
 
           <PromptChips root={null} draftKey={connected ? draftKey : undefined} />
 
-          <div className="rounded-xl">
-            <div className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-xl border border-b-0 border-remote/45 bg-border/25 px-1.5 py-1" data-route-tray>
+          {/* The message box with its route strip on top, as New session here: the strip's bottom edge is the card's
+              top border, and both take the violet of another computer. How it runs is on the tray under the box. */}
+          <div className="@container/box relative" data-remote-composer>
+            <div className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 border-remote/45 bg-border/25 px-1.5 py-1" data-route-tray>
               <ComputerChip name={name} size="header" offline={!connected} />
-              <span aria-hidden className="px-0.5 text-faint">
+              <span aria-hidden className="text-faint">
                 /
               </span>
               {project && !cloning ? (
-                <span className="flex min-w-0 items-center gap-1.5 px-1 text-ui font-semibold text-text" data-route-project>
+                <span className="flex h-7 min-w-0 shrink items-center gap-1.5 px-1.5 text-ui font-semibold text-text" data-route-project>
                   <ProjectIcon project={undefined} root={remoteProjectKey(computer.id, project.id)} name={project.name} size={16} />
                   <span className="truncate">{project.name}</span>
                 </span>
               ) : (
-                <span className="min-w-0 truncate px-1.5 text-ui text-muted" data-route-hint>
+                <span className="min-w-0 flex-1 truncate px-1.5 text-ui text-muted" data-route-hint>
                   {cloning ? (cloneJob.plan ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.` : 'Paste a GitHub repository to clone.') : `Choose a project on ${name}`}
                 </span>
               )}
               {options && project && !cloning && (
                 <>
-                  <span aria-hidden className="px-0.5 text-faint">
+                  <span aria-hidden className="text-faint">
                     /
                   </span>
-                  <ChipMenu
-                    label={`Where: ${worktree ? 'New worktree' : 'Current checkout'}`}
-                    value={worktree ? 'New worktree' : 'Current checkout'}
-                    entries={[
-                      { label: 'Current checkout', checked: !worktree, onSelect: () => change({ worktree: false }) },
-                      { label: 'New worktree', checked: worktree, onSelect: () => change({ worktree: true }) },
+                  <ChoiceMenu
+                    name="remote-workspace"
+                    value={worktree ? 'worktree' : 'current'}
+                    onChange={(where) => change({ worktree: where === 'worktree' })}
+                    // Another provider there without worktrees works in the folder as it is.
+                    disabled={!canWorktree}
+                    title={canWorktree ? `Where Claude works on ${name}` : `${provider!.name} works in the folder as it is`}
+                    heading="Where"
+                    chevron
+                    width={300}
+                    choices={[
+                      { value: 'current', label: 'Current checkout', description: `Edits land in the working copy on ${name}` },
+                      { value: 'worktree', label: 'New worktree', description: 'Isolated copy of the repository there' },
                     ]}
-                    data-route-where
-                  />
+                  >
+                    {worktree ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
+                    <span data-route-where>{worktree ? 'New worktree' : 'Current checkout'}</span>
+                  </ChoiceMenu>
                   {!worktree && branches && (branches.current || branches.branches.length > 0) && (
-                    <>
-                      <span aria-hidden className="px-0.5 text-faint">
-                        /
+                    <ChoiceMenu
+                      name="remote-branch"
+                      value={checkoutBranch ?? branches.current ?? ''}
+                      onChange={(b) => setBranch(b === branches.current || b === '' ? null : b)}
+                      title={`Check out a branch on ${name} before the session starts. Git keeps uncommitted changes, or refuses when they conflict.`}
+                      heading="Branch"
+                      chevron
+                      mono
+                      search="Search branches"
+                      width={300}
+                      choices={remoteBranchChoices(branches)}
+                    >
+                      <GitBranch size={14} className="shrink-0" aria-hidden />
+                      <span className="truncate" data-route-branch>
+                        {checkoutBranch ?? branches.current ?? 'detached'}
                       </span>
-                      <ChoiceMenu
-                        name="remote-branch"
-                        value={checkoutBranch ?? branches.current ?? ''}
-                        onChange={(b) => setBranch(b === branches.current || b === '' ? null : b)}
-                        title={`Check out a branch on ${name} before the session starts. Git keeps uncommitted changes, or refuses when they conflict.`}
-                        heading="Branch"
-                        chevron
-                        mono
-                        search="Search branches"
-                        width={300}
-                        choices={remoteBranchChoices(branches)}
-                      >
-                        <GitBranch size={14} className="shrink-0" aria-hidden />
-                        <span className="truncate" data-route-branch>
-                          {checkoutBranch ?? branches.current ?? 'detached'}
-                        </span>
-                      </ChoiceMenu>
-                    </>
+                    </ChoiceMenu>
                   )}
+                  <span className="flex-1" />
+                  {/* The quick way to the most common route change, as here. */}
+                  <label className={`flex shrink-0 items-center gap-2 px-1.5 text-ui ${canWorktree ? 'cursor-pointer text-muted' : 'text-faint'}`} data-tooltip={canWorktree ? 'Work in an isolated copy of the repository' : `${provider!.name} works in the folder as it is`}>
+                    Worktree
+                    <Switch checked={worktree} disabled={!canWorktree} onChange={(on) => change({ worktree: on })} dataAttrs={{ 'data-worktree-switch': true }} />
+                  </label>
                 </>
               )}
             </div>
-            <div ref={composer} className="relative rounded-xl rounded-t-none border border-remote/45 bg-card px-3 pt-2.5 pb-2 shadow-sm" data-remote-composer>
-              <DropOverlay drop={attachments.drop} />
-              {menu && <SavedPromptMenu menu={menu} onChoose={savedPrompts.choose} projectName={project?.name ?? name} />}
+            <DropOverlay drop={attachments.drop} />
+            {menu && <SavedPromptMenu menu={menu} onChoose={savedPrompts.choose} projectName={project?.name ?? name} />}
+            <div ref={composer} className="relative z-[1] rounded-[18px] rounded-t-none border border-remote/45 bg-card px-3 pt-3 pb-2 shadow-md" data-composer-card>
               {fill && (
                 <>
                   <PromptFiller ref={savedPrompts.fillerRef} state={fill} onChange={savedPrompts.setFill} projectName={project?.name ?? name} root={null} cwd={null} disabled={!connected} onClear={savedPrompts.clearFill} onSend={() => void start()} onLeave={() => box.current?.focus()} />
@@ -424,32 +499,76 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                 className="block field-sizing-content max-h-80 min-h-24 w-full min-w-0 resize-none bg-transparent px-1 pt-1 text-title leading-relaxed font-normal text-text outline-none placeholder:text-faint disabled:opacity-60"
                 data-composer
               />
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-0.5">
+              {/* The box's own row: what goes into the message on the left, what starts it on the right. */}
+              <div className="mt-1.5 flex items-center gap-x-2" data-composer-footer>
+                <div className="-ml-1 flex shrink-0 items-center gap-0.5" data-composer-footer-start>
                   <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
-                  {options && project && !cloning && (
-                    <>
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+                  <span className="flex" data-tooltip={!queuing ? (queueBlocked ?? `Wait in the queue on ${name}`) : undefined}>
+                    <Button variant="secondary" size="lg" disabled={!!queueBlocked || starting || queuing} aria-busy={queuing || undefined} onClick={() => void queueLater()} className="disabled:pointer-events-none" data-remote-queue-later>
+                      <span className="@max-[600px]/box:hidden">{queuing ? 'Queueing…' : 'Queue for later'}</span>
+                      <span className="hidden @max-[600px]/box:inline">{queuing ? 'Queueing…' : 'Queue'}</span>
+                    </Button>
+                  </span>
+                  <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
+                    <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} aria-busy={starting || undefined} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
+                      {starting ? 'Starting…' : `Start on ${name}`}
+                    </Button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            {options && project && !cloning && (
+              <ComposerTray
+                controls={
+                  <ComposerChipRow
+                    lead={
                       <RemoteProfileChip
                         options={options}
                         computerName={name}
                         value={choice.profileId}
                         projectProfileId={baseProfile}
                         ownProfile={Boolean(options.projects.find((p) => p.id === project.id)?.profileId)}
-                        onPick={(profileId) => change({ profileId })}
+                        disabled={!connected}
+                        // Another profile, another tool maybe: its model and mode start from its own.
+                        onPick={(profileId) => (change({ profileId }), setProviderModel(null), setProviderMode(null))}
                       />
-                      <RemoteModelChip options={options} value={choice.model} offerAuto={options.auto?.enabled ?? false} onPick={(model) => change({ model })} />
-                      {options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) && <RemoteEffortChip options={options} value={choice.effort} onPick={(effort) => change({ effort })} />}
-                      <RemoteModeChip options={options} value={choice.permissionMode} onPick={(permissionMode) => change({ permissionMode })} />
-                    </>
-                  )}
-                </div>
-                <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
-                  <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
-                    {starting ? 'Starting…' : `Start on ${name}`}
-                  </Button>
-                </span>
-              </div>
-            </div>
+                    }
+                    profile={null}
+                    model={
+                      provider
+                        ? {
+                            value: providerModel ?? '',
+                            label: remoteModelLabel(providerModels, providerModel),
+                            onChange: (model) => setProviderModel(model || null),
+                            choices: remoteModelChoices(providerModels, providerModel ?? '', { defaultDescription: `What ${provider.name} picks` }),
+                          }
+                        : {
+                            value: choice.model ?? '',
+                            label: remoteModelLabel(options.models, choice.model),
+                            onChange: (model) => change({ model: model || null }),
+                            choices: remoteModelChoices(options.models, choice.model ?? '', { auto: options.auto?.enabled ? { allowed: options.auto.allowed, icon: <AutoWand /> } : null }),
+                          }
+                    }
+                    effort={!provider && options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) ? { value: choice.effort ?? '', levels: options.efforts, onChange: (effort) => change({ effort: effort || null }) } : null}
+                    mode={
+                      provider
+                        ? provider.modes.length
+                          ? { value: providerModeNow!, choices: provider.modes, onChange: (mode) => setProviderMode(mode as RemotePermissionMode) }
+                          : null
+                        : {
+                            value: choice.permissionMode,
+                            // Bypass shows when it is the default there, but only that computer can pick it.
+                            onChange: (mode) => (options.modes as PermissionMode[]).includes(mode) && change({ permissionMode: mode }),
+                          }
+                    }
+                    disabled={!connected || (!!provider && providerReady?.profileId !== providerProfileId)}
+                    names={{ profile: 'remote-profile', model: 'remote-model', effort: 'remote-effort', mode: 'remote-mode' }}
+                  />
+                }
+              />
+            )}
           </div>
           <p className="-mt-2 text-center text-meta text-muted" data-remote-start-note>
             Claude runs on {name}, in its folders and with its Claude profile. You follow it from here.

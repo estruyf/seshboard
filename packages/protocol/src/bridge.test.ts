@@ -124,6 +124,26 @@ describe('newSessionMode preference', () => {
   });
 });
 
+describe('global model and effort preferences', () => {
+  it("leaves both to Claude Code by default", () => {
+    expect(DEFAULT_PREFERENCES.newSessionModel).toBe('');
+    expect(DEFAULT_PREFERENCES.newSessionEffort).toBe('');
+  });
+
+  it('keeps any short model id, trimmed, and drops the rest', () => {
+    for (const model of ['', 'opus', 'auto', 'claude-sonnet-5-5[1m]']) expect(sanitizePreferences({ newSessionModel: model })).toEqual({ newSessionModel: model });
+    expect(sanitizePreferences({ newSessionModel: ' opus ' })).toEqual({ newSessionModel: 'opus' });
+    expect(sanitizePreferences({ newSessionModel: 'x'.repeat(201) })).toEqual({});
+    expect(sanitizePreferences({ newSessionModel: null })).toEqual({});
+  });
+
+  it('keeps the effort levels and empty, and drops anything else', () => {
+    for (const effort of ['', 'low', 'medium', 'high', 'xhigh', 'max']) expect(sanitizePreferences({ newSessionEffort: effort })).toEqual({ newSessionEffort: effort });
+    expect(sanitizePreferences({ newSessionEffort: 'extreme' })).toEqual({});
+    expect(sanitizePreferences({ newSessionEffort: 3 })).toEqual({});
+  });
+});
+
 describe('mark as read preference', () => {
   it('marks an opened session read after 3 seconds by default', () => {
     expect(DEFAULT_PREFERENCES.markReadAfter).toEqual({ enabled: true, seconds: 3 });
@@ -178,7 +198,7 @@ describe('notification and sound preferences', () => {
 
   it('notifies and stays quiet on a fresh install, with a different sound for each moment', () => {
     const fresh = { ...DEFAULT_PREFERENCES, ...sanitizePreferences(undefined) };
-    expect(fresh.notifications).toEqual({ enabled: true });
+    expect(fresh.notifications).toEqual({ enabled: true, reminders: true, badgeReminders: false });
     expect(fresh.sounds).toEqual({ enabled: false, byEvent: { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' }, volume: 0.5, revision: 2 });
     expect(new Set(Object.values(fresh.sounds.byEvent)).size).toBe(4);
   });
@@ -209,7 +229,7 @@ describe('notification and sound preferences', () => {
       for (const notifications of [true, false]) {
         for (const on of [true, false]) {
           const moved = old({ notifications, sounds: on });
-          expect(moved.notifications).toEqual({ enabled: notifications });
+          expect(moved.notifications).toEqual({ enabled: notifications, reminders: true, badgeReminders: false });
           expect(moved.sounds?.enabled).toBe(on);
         }
       }
@@ -275,7 +295,7 @@ describe('notification and sound preferences', () => {
     expect(on.sounds).toEqual(current.sounds);
     const picked = sanitizePreferences(mergePreferences(current, { sounds: { byEvent: { error: 'none' } } }));
     expect(picked.sounds?.byEvent).toEqual({ ...current.sounds.byEvent, error: 'none' });
-    expect(sanitizePreferences(mergePreferences(current, { notifications: { enabled: false } })).notifications).toEqual({ enabled: false });
+    expect(sanitizePreferences(mergePreferences(current, { notifications: { enabled: false } })).notifications).toEqual({ enabled: false, reminders: true, badgeReminders: false });
   });
 
   it('plays a missing sound as the fallback, and none as none', () => {

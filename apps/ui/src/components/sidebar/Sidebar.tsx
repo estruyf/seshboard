@@ -1,8 +1,8 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
-import type { CatchUp } from '@seshboard/protocol/client';
+import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
@@ -17,6 +17,14 @@ import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { SidebarNav } from './SidebarNav.tsx';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
+import { startPass } from '../../state/catchUpPass.ts';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { openRemindEditor } from '../../state/remindEditorStore.ts';
+import { reminderLabel } from '../../state/reminders.ts';
+import { useRowLooseEnds } from '../../state/looseEndsStore.ts';
+import { looseEndLines, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -29,7 +37,7 @@ import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
-import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, doneReason, doneReasonLabel, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
@@ -44,7 +52,7 @@ import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
 import { ProjectFilter, type RemoteProjectSummary, type SourceSummary } from './ProjectMenu.tsx';
 import { thisComputerName } from '../../lib/platform.ts';
-import { sessionRowLabel } from './rowLabel.ts';
+import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
 import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
@@ -53,6 +61,7 @@ import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
 import { StatusIcon } from './StatusIcon.tsx';
+import { ProviderMark } from '../providers/ProviderMark.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
 import { formatKeys, keysFor, matches, modKey } from '../../lib/shortcuts.ts';
 import { useQueueMenu } from '../queue/queueMenu.tsx';
@@ -155,7 +164,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
   );
 }
 
-/** The Archived header, docked under the list while closed and in the list while open: the same toggle in both places. */
+/** The Done header, docked under the list while closed and in the list while open: the same toggle in both places. */
 function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: number; open: boolean; onToggle(): void; onMenu(at: { x: number; y: number }): void; action?: ReactNode }) {
   const days = usePreferences((s) => s.prefs.archiveAfterDays);
   return (
@@ -165,7 +174,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
         expanded: open,
         onToggle,
         leading: true,
-        tooltip: `Quiet for ${days === 1 ? 'a day' : `${days} days`}, or archived by you. They come back when there is something new.`,
+        tooltip: `Marked done by you, or inactive for ${days === 1 ? 'a day' : `${days} days`}. They come back when there is something new.`,
         data: { 'data-archived-toggle': true, 'data-open': open },
       }}
       action={
@@ -176,7 +185,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
             size="sm"
             iconOnly
             icon={<Ellipsis size={13} aria-hidden />}
-            aria-label="Archived options"
+            aria-label="Done options"
             aria-haspopup="menu"
             className="ml-auto tracking-normal normal-case"
             onClick={(e) => {
@@ -189,18 +198,18 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
       }
       className="h-[22px] flex-1"
     >
-      Archived
+      Done
     </SectionHeader>
   );
 }
 
-/** The Archived header's menu: every session in Settings › Sessions (showing Archived), or the archive settings. */
+/** The Done header's menu: every session in Settings › Sessions (showing Done), or the settings for Done. */
 const archivedMenu = (at: { x: number; y: number }): { x: number; y: number; entries: MenuEntry[]; label: string } => ({
   ...at,
-  label: 'Archived',
+  label: 'Done',
   entries: [
     { label: 'Manage sessions…', icon: <Archive size={13} aria-hidden />, onSelect: () => openSessionManager({ status: 'archived' }), data: { 'data-archived-manage': true } },
-    { label: 'Archive settings…', icon: <Settings size={13} aria-hidden />, onSelect: () => openSessionManager({ focus: 'archive' }), data: { 'data-archived-settings': true } },
+    { label: 'Done settings…', icon: <Settings size={13} aria-hidden />, onSelect: () => openSessionManager({ focus: 'archive' }), data: { 'data-archived-settings': true } },
   ],
 });
 
@@ -311,6 +320,11 @@ export const SessionRow = memo(function SessionRow({
   // With a project filter on, every row is in that project: the name would only repeat.
   const filtered = useProjects((s) => s.filter !== null);
   const status = rowStatus(data);
+  // Whose session it is: from its transcript, or while it starts (not indexed yet) from what runs it. A session on
+  // another computer has neither.
+  const hostProvider = useHosts((s) => s.hosts.get(data.id)?.provider ?? null);
+  const whose = data.summary ? data.summary : remote ? null : { provider: hostProvider };
+  const agent = agentNameOf(whose);
   // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
   // on, or while its sub-sessions are listed under it.
   const runRow = isRunRowId(data.id);
@@ -338,16 +352,24 @@ export const SessionRow = memo(function SessionRow({
   const liveCwd = data.live?.cwd && !data.isWorktree && !inWorktree(data.live.cwd) ? data.live.cwd : null;
   const liveBranch = useCheckoutBranches((s) => (liveCwd && s.byCwd.has(liveCwd) ? (s.byCwd.get(liveCwd) ?? 'detached') : null));
   const branch = liveBranch ?? data.branch;
-  const emphasised = status === 'needs-you' || status === 'running' || status === 'unread';
+  // A reminder that came due (Remind me later): in the unread colour, with a bell, until you open it.
+  const reminderText = !archived && !remote && data.summary?.remindAt != null && data.summary.remindedAt != null ? reminderLabel(data.summary.remindAt, data.summary.remindedAt) : null;
+  const emphasised = status === 'needs-you' || status === 'running' || status === 'unread' || reminderText !== null;
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
+  // In Done: why ("Done", "Inactive 3 days"). Inactive rows are dimmed, so they don't read as finished by you.
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
+  const done = archived ? doneReason(data, now, archiveAfterDays) : null;
+  const doneText = done ? doneReasonLabel(done) : null;
+  // What's left, in your words: under the title, but not in Done, where it is kept and hidden.
+  const note = archived || remote ? null : (data.summary?.note ?? null);
   const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone} ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
   // colour, the bold title and the group. With one profile it is the status (needs you, working, unread).
   const profile = useRowProfile(data);
-  const statusRail = status && RAIL_TONE[status];
+  const statusRail = (status && RAIL_TONE[status]) || (reminderText ? RAIL_TONE.unread : null);
   const profileRail = profile ? PROFILE_DOT[profile.color] : null;
   const railTone = profileRail ?? statusRail;
   const rail = railTone && (
@@ -361,6 +383,15 @@ export const SessionRow = memo(function SessionRow({
   const chevron = expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} onToggle={() => onToggleTree(data.id)} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
+  // Loose ends: what it left behind in git or on GitHub, or a queued prompt. The tooltip lists them, the unsent message too.
+  const gitEnds = useRowLooseEnds(data.id);
+  const queued = useLater((s) => s.items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id));
+  const leftLines = remote ? [] : looseEndLines(rowLooseEnds(gitEnds, { draft: draft !== null, queued }));
+  const loose = !remote && (gitEnds.length > 0 || queued) && (
+    <span className="flex shrink-0 text-muted" data-tooltip={leftLines.join('\n')} aria-hidden data-row-loose-ends={gitEnds.map((e) => e.kind).join(' ') || 'queued'}>
+      <CircleDashed size={11} aria-hidden />
+    </span>
+  );
   // Open in a window of its own: a click brings that window to the front.
   const ownWindow = usePopouts((s) => s.ids.has(data.id));
   const windowMark = ownWindow && <AppWindow size={11} className="shrink-0 text-faint" aria-hidden data-row-own-window />;
@@ -398,9 +429,10 @@ export const SessionRow = memo(function SessionRow({
     // Indexed sessions have a transcript, so they can be pinned and archived.
     'data-indexed': data.summary !== null,
     'data-archived': archived || undefined,
+    'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, note, left: leftLines, reminder: reminderText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -427,6 +459,9 @@ export const SessionRow = memo(function SessionRow({
     'data-remote-offline': remote?.offline || undefined,
     'data-tooltip': [
       data.title,
+      style === 'compact' ? doneText : null,
+      style === 'compact' ? reminderText : null,
+      style === 'compact' && note ? `Note: ${note}` : null,
       style === 'compact' ? projectName : null,
       style === 'compact' ? waitingFor : null,
       limitText,
@@ -440,7 +475,7 @@ export const SessionRow = memo(function SessionRow({
   };
   // A remote session's computer, at the end of its second line.
   const chip = remote && <ComputerChip name={remote.computerName} offline={remote.offline} className="ml-auto max-w-[45%]" />;
-  const dim = away ? 'opacity-55' : '';
+  const dim = away || (done?.kind === 'inactive' && !selected) ? 'opacity-55' : '';
   // Selection is a neutral fill (a yellow tint vanishes on the light sidebar). Picked rows sit on a
   // tinted block the list draws behind them, so they need no fill of their own.
   const surface = picked
@@ -475,9 +510,10 @@ export const SessionRow = memo(function SessionRow({
         {pin}
         {windowMark}
         {pen}
+        {loose}
         {warning}
         {remote && <ComputerChip name={remote.computerName} offline={remote.offline} />}
-        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} /></span> : age}
+        {status ? <span className={`flex shrink-0 ${hideForActions}`}><StatusIcon status={status} agent={agent} /></span> : age}
         {chevron}
       </button>,
     );
@@ -495,15 +531,29 @@ export const SessionRow = memo(function SessionRow({
           {pin}
           {windowMark}
           {pen}
+          {loose}
           {warning}
           {age}
           {chevron}
         </span>
       </span>
       <span className="flex h-4 min-w-0 items-center gap-1.5 text-meta text-faint">
+        <ProviderMark session={whose} />
         {triggered !== null && <Zap size={11} className="shrink-0 text-trigger" aria-label={`Started by ${triggered || 'a trigger'}`} role="img" data-row-triggered />}
         {scheduled && <Repeat size={11} className="shrink-0" aria-label="From a schedule" role="img" data-row-scheduled />}
-        {reviewText ? (
+        {reminderText && status !== 'needs-you' ? (
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-unread" data-row-reminder>
+            <Bell size={11} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{[reminderText, note].filter(Boolean).join(' · ')}</span>
+          </span>
+        ) : note && status !== 'needs-you' ? (
+          // Your note takes the second line from the review time, the run, the draft and the branch; what a waiting
+          // session asks for still wins.
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-muted" data-row-note>
+            <NotebookPen size={11} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{note}</span>
+          </span>
+        ) : reviewText ? (
           <span className="min-w-0 flex-1 truncate" data-row-review={review}>
             {!filtered && `${projectName} · `}
             <span className={status === 'needs-you' ? 'font-medium text-warn' : ''}>{reviewText}</span>
@@ -529,6 +579,12 @@ export const SessionRow = memo(function SessionRow({
           </span>
         ) : (
           <>
+            {/* In Done, why comes first, before the branch. */}
+            {doneText && status !== 'unread' && (
+              <span className="shrink-0" data-row-done={done?.kind}>
+                {doneText} ·
+              </span>
+            )}
             {status !== 'unread' && branch && <GitBranch size={11} className={`shrink-0 ${data.isWorktree ? 'text-accent-ink/80' : ''}`} aria-hidden />}
             {/* Finished with something you haven't read: say so where the branch would be. */}
             <span className="min-w-0 flex-1 truncate">{(status === 'unread' ? ['Finished, unread', filtered ? null : projectName].filter(Boolean) : place).join(' · ')}</span>
@@ -536,7 +592,7 @@ export const SessionRow = memo(function SessionRow({
         )}
         {chip}
         {/* The rail and the age's colour already say needs you, working and unread; the icon is for the rest. */}
-        {!statusRail && <StatusIcon status={status} />}
+        {!statusRail && <StatusIcon status={status} agent={agent} />}
       </span>
     </span>
   );
@@ -619,7 +675,8 @@ export function Sidebar() {
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
-  const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
@@ -627,9 +684,9 @@ export function Sidebar() {
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays), [merged, runs, now, archiveAfterDays]);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept), [merged, runs, now, archiveAfterDays, kept]);
   const openParents = usePipelineTree((s) => s.open);
-  const { active, archived } = useMemo(
+  const { active, archived, snoozed } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),
     [forest, search, projectFilter, now, archiveAfterDays],
   );
@@ -663,7 +720,7 @@ export function Sidebar() {
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.computerName.localeCompare(b.computerName));
   }, [remoteRows]);
 
-  // Sections (Needs you, Working, the Queue, Pinned, Today, Yesterday, Earlier), then Archived while it's open. Closed
+  // Sections (Needs you, Working, the Queue, Pinned, To review, Open), then Archived while it's open. Closed
   // sections keep their header (and the open session's row). Closed, Archived is docked under the list; while
   // searching, its matches are listed under the rest.
   const searching = search.trim() !== '';
@@ -683,8 +740,10 @@ export function Sidebar() {
         quick,
         children: forest.children,
         openParents,
+        // Snoozed sessions are out of the list; a search still finds them, under Snoozed.
+        ...(searching ? { snoozed } : {}),
       }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents],
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed],
   );
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
@@ -998,6 +1057,31 @@ export function Sidebar() {
       }
       return;
     }
+    // L: Remind me later, for the picked sessions or the focused (or hovered) one. Sessions of this computer only.
+    if (matches(event.nativeEvent, 'sidebar.remind') && !target.closest('input, textarea, [contenteditable="true"]')) {
+      const id =
+        target.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ??
+        scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
+      const remindable = (row: SessionRowData) => !!row.summary && !row.remote;
+      const targets = multi ? pickedRows.filter(remindable) : rows.flatMap((r) => (r.kind === 'session' && r.data.id === id && remindable(r.data) ? [r.data] : []));
+      if (targets.length) {
+        event.preventDefault();
+        openRemindEditor(targets.map((row) => row.id));
+      }
+      return;
+    }
+    // N: the focused (or hovered) session's note. A session of this computer only, with a transcript.
+    if (matches(event.nativeEvent, 'sidebar.note') && !multi && !target.closest('input, textarea, [contenteditable="true"]')) {
+      const id =
+        target.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ??
+        scrollRef.current?.querySelector<HTMLElement>('[data-row-wrap]:hover > [data-session-id]')?.dataset.sessionId;
+      const listed = rows.find((r) => r.kind === 'session' && r.data.id === id);
+      if (listed?.kind === 'session' && listed.data.summary && !listed.data.remote && !isRunRowId(listed.data.id)) {
+        event.preventDefault();
+        openNoteEditor(listed.data.id);
+      }
+      return;
+    }
     if (matches(event.nativeEvent, 'sidebar.rename') && !multi) {
       const focused = (event.target as HTMLElement).closest<HTMLElement>('[data-session-id]')?.dataset.sessionId ?? selectedId;
       const target = rows.find((r) => r.kind === 'session' && r.data.id === focused);
@@ -1065,8 +1149,10 @@ export function Sidebar() {
   const pickedMenu = (at: { x: number; y: number }) => {
     const count = (rows: SessionRowData[]) => `${rows.length} ${rows.length === 1 ? 'session' : 'sessions'}`;
     const entries: MenuEntry[] = [{ heading: `${picked.size} selected` }];
-    if (pickActive.length) entries.push({ label: `Archive ${count(pickActive)}`, hint: 'until new activity', onSelect: actOnPicks(pickActive, ARCHIVE) });
-    if (pickArchived.length) entries.push({ label: `Unarchive ${count(pickArchived)}`, onSelect: actOnPicks(pickArchived, { archived: false }) });
+    if (pickActive.length) entries.push({ label: `Done: ${count(pickActive)}`, hint: 'until new activity', onSelect: actOnPicks(pickActive, ARCHIVE) });
+    if (pickArchived.length) entries.push({ label: `Reopen ${count(pickArchived)}`, onSelect: actOnPicks(pickArchived, { archived: false }) });
+    const remindable = pickTargets.filter((row) => !row.remote);
+    if (remindable.length) entries.push({ label: `Remind me about ${count(remindable)}…`, hint: formatKeys(keysFor('sidebar.remind')), onSelect: () => openRemindEditor(remindable.map((row) => row.id)), data: { 'data-picked-remind': true } });
     if (pickTargets.length) entries.push({ label: `${allPinned ? 'Unpin' : 'Pin'} ${count(pickTargets)}`, onSelect: actOnPicks(pickTargets, { pinned: !allPinned }) });
     entries.push('separator', { label: 'Clear selection', hint: 'Esc', onSelect: () => setPicks(NO_PICKS) });
     if (pickTargets.length) entries.push('separator', { label: `Delete ${count(pickTargets)}…`, hint: '⌘⌫', danger: true, onSelect: () => setDeleting(pickTargets) });
@@ -1099,6 +1185,8 @@ export function Sidebar() {
   }, []);
   const running = useMemo(() => pipelinesRunning(runs.values()), [runs]);
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
+  // What is still yours to go through: To review and Open, as listed (search and the project filter apply).
+  const openCount = useMemo(() => triageOrder(active).length, [active]);
   const waitingNotice = useWaitingAnnouncement(all, loaded);
   const deviceNotice = useDeviceAnnouncement();
   const remoteFooterShown = useRemoteFooterShown();
@@ -1316,12 +1404,12 @@ export function Sidebar() {
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             {pickActive.length > 0 || pickArchived.length === 0 ? (
-              <Button icon={<Archive size={13} className="shrink-0" aria-hidden />} data-archive-selected disabled={pickActive.length === 0} onClick={actOnPicks(pickActive, ARCHIVE)} className={pickButton}>
-                <span className="truncate">Archive</span>
+              <Button icon={<Check size={13} className="shrink-0" aria-hidden />} data-archive-selected disabled={pickActive.length === 0} onClick={actOnPicks(pickActive, ARCHIVE)} className={pickButton}>
+                <span className="truncate">Done</span>
               </Button>
             ) : (
-              <Button icon={<ArchiveRestore size={13} className="shrink-0" aria-hidden />} data-unarchive-selected onClick={actOnPicks(pickArchived, { archived: false })} className={pickButton}>
-                <span className="truncate">Unarchive</span>
+              <Button icon={<RotateCcw size={13} className="shrink-0" aria-hidden />} data-unarchive-selected onClick={actOnPicks(pickArchived, { archived: false })} className={pickButton}>
+                <span className="truncate">Reopen</span>
               </Button>
             )}
             <Button
@@ -1366,12 +1454,24 @@ export function Sidebar() {
         <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
         <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
-          {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} open`}
+          {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} running`}
           {running && <span data-footer-pipelines>{` · ${running}`}</span>}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
           {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}
         </button>
+        {openCount > 0 && (
+          <Pill
+            icon={<Inbox size={11} className="shrink-0" aria-hidden />}
+            onClick={() => startPass()}
+            aria-label={`${openCount} open ${openCount === 1 ? 'session' : 'sessions'}. Go through them`}
+            data-tooltip="Go through them in catch-up: To review first, then Open"
+            data-footer-open={openCount}
+            className="shrink-0"
+          >
+            {openCount} open
+          </Pill>
+        )}
         {unsent.length > 0 && (
           <Pill
             icon={<PencilLine size={11} className="shrink-0" aria-hidden />}

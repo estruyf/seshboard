@@ -40,20 +40,30 @@ export interface ListingState {
   updatedAt: number;
   /** Open in Seshboard (a process idling elsewhere doesn't count). */
   openInApp: boolean;
+  /** Holds an unsent message or a queued prompt waits for it: work you left there, so it never ages out. */
+  keep: boolean;
+  /** Remind me later, not due yet: out of the main list (and not in Done), unless it needs you or works. */
+  snoozed?: boolean;
 }
+
+/** A reminder set and not due yet (`remindedAt` is set once it is). */
+export const isSnoozed = (s: { remindAt?: number | null; remindedAt?: number | null }): boolean => s.remindAt != null && s.remindedAt == null;
 
 /**
  * Main list or Archived? Anything that needs you or is pinned stays up. Archiving by hand hides a session until it has
  * new activity (one that is still working stays archived until it finishes). Unarchiving by hand keeps it up until it
- * has new activity. Otherwise what works, is open in the app or is unread stays, and the rest after `archiveAfterDays`
- * without activity.
+ * has new activity. Otherwise what works, is open in the app, is unread or holds something you left (`keep`) stays, and the
+ * rest after `archiveAfterDays` without activity.
  */
 export function listedInMainList(s: ListingState, now: number, archiveAfterDays: number): boolean {
-  if (s.attention || s.pinned) return true;
+  // What needs you or works breaks through a reminder; the rest of a snoozed session waits for it.
+  if (s.attention) return true;
+  if (s.snoozed && !s.working) return false;
+  if (s.pinned) return true;
   if (s.archivedAt !== null && (s.archivedAt >= s.updatedAt || s.working)) return false;
   if (s.working) return true;
   if (s.restoredAt !== null && s.restoredAt >= s.updatedAt) return true;
-  return s.openInApp || s.unread || now - s.updatedAt < archiveAfterDays * DAY_MS;
+  return s.openInApp || s.unread || s.keep || now - s.updatedAt < archiveAfterDays * DAY_MS;
 }
 
 /**
@@ -61,7 +71,8 @@ export function listedInMainList(s: ListingState, now: number, archiveAfterDays:
  * activity plus `archiveAfterDays`. Null while the main list shows it.
  */
 export function archivedSince(s: ListingState, now: number, archiveAfterDays: number): number | null {
-  if (listedInMainList(s, now, archiveAfterDays)) return null;
+  // Snoozed isn't Done: it comes back by itself.
+  if (s.snoozed || listedInMainList(s, now, archiveAfterDays)) return null;
   if (s.archivedAt !== null && (s.archivedAt >= s.updatedAt || s.working)) return s.archivedAt;
   return s.updatedAt + archiveAfterDays * DAY_MS;
 }

@@ -24,7 +24,7 @@ self.addEventListener('push', (event) => {
     // Not one of ours: still show something, as browsers require for every push.
   }
   const title = typeof data.title === 'string' && data.title ? data.title : 'Seshboard';
-  const line = typeof data.line === 'string' ? data.line : data.kind === 'finished' ? 'Claude finished a turn.' : 'Claude needs you.';
+  const line = typeof data.line === 'string' ? data.line : data.kind === 'finished' ? 'Claude finished a turn.' : data.kind === 'reminder' ? 'You asked to be reminded.' : 'Claude needs you.';
   // With more than one computer, its name first; with more than one Claude profile, the profile
   // ("mystic · Work · web · Allow Bash: npm publish --tag beta").
   const body = [data.computer, data.profile, data.project, line].filter((part) => typeof part === 'string' && part).join(' · ');

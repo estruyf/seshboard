@@ -68,7 +68,7 @@ interface SessionsState {
    * Changes a session's summary here at once, ahead of the engine's `sessions.changed` (Mark as read, Archive), so the
    * focus counter and the sidebar follow the click right away. The engine's next update replaces it.
    */
-  patchSummary(id: string, patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt'>>): void;
+  patchSummary(id: string, patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt' | 'note'>>): void;
   /** Shows a session in the active pane (or focuses the pane already showing it). */
   select(id: string | null): void;
   /** Opens a session in a new pane next to the active one (`planOpen`); with no room, says so in a toast instead. */
@@ -217,6 +217,8 @@ export interface SessionRowData {
   error: boolean;
   /** The Claude profile the session belongs to. */
   profileId: string;
+  /** An unsent message or a queued prompt waits in it (`keptSessions.ts`): listed whatever its age. */
+  kept?: boolean;
   /**
    * A session on another computer (`remoteRows`): its computer, its id there and its state. Its row's `id` is
    * `remoteRowId`, never a local session id; `live` and `summary` are null.
@@ -224,10 +226,15 @@ export interface SessionRowData {
   remote?: RemoteRowInfo | null;
 }
 
+/**
+ * The sessions as rows, with their live state. `kept` are the sessions with an unsent message or a queued prompt
+ * (`useKeptSessions`); messages in a session's Up next count too.
+ */
 export function toRows(
   sessions: Map<string, SessionSummary>,
   live: Map<string, LiveSession>,
   hosts: Map<string, SessionHostInfo> = new Map(),
+  kept: ReadonlySet<string> = new Set(),
 ): SessionRowData[] {
   const rows: SessionRowData[] = [];
   // Sessions running in this app report their own state; it is more precise than the registry.
@@ -255,6 +262,7 @@ export function toRows(
       inApp: s.inApp || l?.origin === 'app',
       error: hosts.get(s.id)?.state === 'error',
       profileId: s.profileId,
+      ...(kept.has(s.id) || (hosts.get(s.id)?.queue.length ?? 0) > 0 ? { kept: true } : {}),
     });
   }
   // Running sessions that have not written a transcript yet still deserve a row.

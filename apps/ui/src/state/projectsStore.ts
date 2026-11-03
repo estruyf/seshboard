@@ -4,7 +4,7 @@ import type { ProjectInfo, SessionSummary } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { withQuestions } from '../lib/questions.ts';
 import { useSessions } from './sessionsStore.ts';
-import { popoutSession } from './popoutsStore.ts';
+import { secondaryWindow } from './popoutsStore.ts';
 
 const FILTER_KEY = 'ui.projectFilter';
 
@@ -28,6 +28,8 @@ interface ProjectsState {
   newSessionIn: string | null;
   /** ...and start in a new worktree there (a session header's "New worktree…"). */
   newSessionWorktree: boolean;
+  /** A profile New session should pick for one session when it opens (Copilot is ready's Start a Copilot session). */
+  newSessionProfile: string | null;
   setProjects(projects: ProjectInfo[]): void;
   setQuestionsDir(dir: string): void;
   setFilter(root: string | null): void;
@@ -35,6 +37,7 @@ interface ProjectsState {
   reload(): void;
   showAdd(open: boolean): void;
   startIn(root: string | null, options?: { worktree?: boolean }): void;
+  startWith(profileId: string | null): void;
 }
 
 export const useProjects = create<ProjectsState>()((set) => ({
@@ -48,6 +51,7 @@ export const useProjects = create<ProjectsState>()((set) => ({
   adding: false,
   newSessionIn: null,
   newSessionWorktree: false,
+  newSessionProfile: null,
   setProjects: (listed) => set((s) => ({ listed, projects: withQuestions(listed, s.questionsDir), loaded: true })),
   setQuestionsDir: (questionsDir) => set((s) => ({ questionsDir, projects: withQuestions(s.listed, questionsDir) })),
   setFilter: (filter) => set({ filter }),
@@ -55,6 +59,7 @@ export const useProjects = create<ProjectsState>()((set) => ({
   reload: () => set((s) => ({ version: s.version + 1 })),
   showAdd: (adding) => set({ adding }),
   startIn: (newSessionIn, options = {}) => set({ newSessionIn, newSessionWorktree: options.worktree ?? false }),
+  startWith: (newSessionProfile) => set({ newSessionProfile }),
 }));
 
 /**
@@ -91,13 +96,13 @@ export function useProjectsSync(): void {
 
   // The sidebar's filter: a pop-out has no sidebar, and leaves it alone.
   useEffect(() => {
-    if (!client || popoutSession) return;
+    if (!client || secondaryWindow) return;
     void client.call('appState.get', { key: FILTER_KEY }).then(({ value }) => {
       if (typeof value === 'string') useProjects.getState().setFilter(value);
     });
   }, [client]);
 
   useEffect(() => {
-    if (client && !popoutSession) void client.call('appState.set', { key: FILTER_KEY, value: filter });
+    if (client && !secondaryWindow) void client.call('appState.set', { key: FILTER_KEY, value: filter });
   }, [client, filter]);
 }

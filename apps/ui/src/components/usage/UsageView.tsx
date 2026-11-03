@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, Gauge, RefreshCw } from 'lucide-react';
-import type { UsagePeriod } from '@seshboard/protocol/client';
+import type { ProfileColor, SessionProvider, UsagePeriod } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { matches } from '../../lib/shortcuts.ts';
@@ -8,12 +8,14 @@ import { useComputers } from '../../state/computersStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { closeUsage, useUsageView, type UsageComputers, type UsageTab } from '../../state/usageViewStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
-import { ProfileDot } from '../profiles/ProfileBadge.tsx';
+import { PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
+import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { fetchUsage, useUsageFor } from '../UsageBand.tsx';
 import { LimitsTab } from './LimitsTab.tsx';
+import { ProviderUsagePanel } from './ProviderUsagePanel.tsx';
 import { TokensTab } from './TokensTab.tsx';
 import { PERIOD_LABEL, PERIODS } from './usageModel.ts';
 
@@ -42,6 +44,12 @@ const overlayOpen = () => document.querySelector('[role="dialog"], [role="alertd
  * sessions used the current window) and Tokens (where the tokens went per session, project, model and day). A main
  * view like Home; Esc and Back return to where it was opened from.
  */
+/** A profile as the message box shows it: its tool's logo in its colour. */
+function ProfileMark({ provider, color }: { provider: SessionProvider; color: ProfileColor }) {
+  const Icon = PROVIDER_ICONS[provider];
+  return <Icon size={13} aria-hidden className={`shrink-0 ${PROFILE_TEXT[color]}`} />;
+}
+
 export function UsageView() {
   const profileId = useUsageView((s) => s.profileId) ?? useProfiles.getState().defaultId;
   const tab = useUsageView((s) => s.tab);
@@ -52,7 +60,10 @@ export function UsageView() {
   const paired = useComputers((s) => s.status?.computers.length ?? 0) > 0;
   const profiles = useProfiles((s) => s.profiles);
   const profile = profiles.find((p) => p.id === profileId);
-  const entry = useUsageFor(profileId);
+  /** A profile of another provider (GitHub Copilot): its premium requests, not Claude Code's limits and tokens. */
+  const provider = profile && profile.provider !== 'claude' ? profile.provider : null;
+  const [quotaAsked, setQuotaAsked] = useState(0);
+  const entry = useUsageFor(provider ? null : profileId);
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -87,6 +98,7 @@ export function UsageView() {
   }, []);
 
   const refresh = () => {
+    if (provider) return setQuotaAsked((n) => n + 1);
     if (!client || refreshing) return;
     setRefreshing(true);
     void fetchUsage(client, profileId, true).finally(() => setRefreshing(false));
@@ -105,7 +117,7 @@ export function UsageView() {
       (p): MenuEntry => ({
         label: p.name,
         detail: [p.account?.email, p.configDir].filter(Boolean).join(' · '),
-        icon: <ProfileDot color={p.color} size={8} />,
+        icon: <ProfileMark provider={p.provider} color={p.color} />,
         checked: p.id === profileId,
         data: { 'data-usage-profile-item': p.id },
         onSelect: () => setProfile(p.id),
@@ -135,14 +147,14 @@ export function UsageView() {
             }}
             data-usage-profile-menu
           >
-            {profile && <ProfileDot color={profile.color} size={8} />}
+            {profile && <ProfileMark provider={profile.provider} color={profile.color} />}
             {/* The name stays whole; the email gives way first. */}
             <span className="max-w-40 shrink-0 truncate">{profile?.name ?? 'Claude'}</span>
             {profile?.account?.email && <span className="min-w-0 truncate text-faint">{profile.account.email}</span>}
             <ChevronDown size={13} className="shrink-0 text-muted" aria-hidden />
           </button>
           <div className="no-drag ml-auto flex shrink-0 items-center gap-2">
-            {fetchedAt && (
+            {fetchedAt && !provider && (
               <span className="text-meta text-muted @max-[700px]:hidden" data-usage-updated>
                 Plan usage updated {ago(fetchedAt, now)}
               </span>
@@ -152,7 +164,7 @@ export function UsageView() {
               size="md"
               iconOnly
               icon={<RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} aria-hidden />}
-              aria-label="Refresh plan usage"
+              aria-label={provider ? 'Refresh premium requests' : 'Refresh plan usage'}
               disabled={!client || refreshing}
               onClick={refresh}
               data-usage-refresh
@@ -162,7 +174,7 @@ export function UsageView() {
             </Button>
           </div>
         </div>
-        <div className="no-drag mt-2 flex items-end gap-3">
+        <div className={`no-drag mt-2 flex items-end gap-3 ${provider ? 'hidden' : ''}`}>
           <div role="tablist" aria-label="Usage" className="-mb-px flex gap-1" onKeyDown={onTabKey}>
             {TABS.map(({ id, label }) => (
               <button
@@ -210,7 +222,13 @@ export function UsageView() {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div role="tabpanel" id="usage-tab-panel" aria-labelledby={`usage-tab-${tab}`} className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 px-6 py-5">
-          {tab === 'limits' ? <LimitsTab profileId={profileId} period={period} /> : <TokensTab profileId={profileId} profileName={profile?.name ?? 'Claude'} period={period} />}
+          {provider ? (
+            <ProviderUsagePanel profileId={profileId} provider={provider} refresh={quotaAsked} />
+          ) : tab === 'limits' ? (
+            <LimitsTab profileId={profileId} period={period} />
+          ) : (
+            <TokensTab profileId={profileId} profileName={profile?.name ?? 'Claude'} period={period} />
+          )}
         </div>
       </div>
       {menu && <Menu x={menu.x} y={menu.y} width={320} entries={entries} onClose={() => setMenu(null)} anchor={menuButton} label="Profiles" />}

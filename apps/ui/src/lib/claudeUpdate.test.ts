@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ClaudeUpdateState } from '@seshboard/protocol/client';
-import { claudeInstallOptions, claudeUpdateStatusText, claudeUpdateToast } from './claudeUpdate.ts';
+import type { ClaudeUpdateState, ProviderUpdateState } from '@seshboard/protocol/client';
+import { claudeInstallOptions, claudeUpdateStatusText, claudeUpdateToast, providerUpdateCopy } from './claudeUpdate.ts';
 
 const base: ClaudeUpdateState = {
   status: 'available',
@@ -60,5 +60,19 @@ describe('claudeInstallOptions', () => {
     expect(claudeInstallOptions('win32')[0]!.command).toBe('irm https://claude.ai/install.ps1 | iex');
     expect(claudeInstallOptions('win32').map((o) => o.label)).toContain('WinGet');
     expect(claudeInstallOptions('linux').map((o) => o.label)).toEqual(['Native installer', 'npm (Node.js 18 or newer)']);
+  });
+});
+
+describe("a provider's CLI", () => {
+  const copilot: ProviderUpdateState = { ...base, provider: 'copilot', name: 'GitHub Copilot CLI', channel: null, installedVersion: '1.0.90', latestVersion: '1.0.105', command: 'copilot update' };
+
+  it('names its CLI, and says when Seshboard uses the new version', () => {
+    const copy = providerUpdateCopy(copilot);
+    expect(claudeUpdateToast(copilot, copy)).toMatchObject({ title: 'GitHub Copilot CLI v1.0.105 is available', action: { run: 'update' } });
+    expect(claudeUpdateToast({ ...copilot, status: 'updated', updatedTo: '1.0.105' }, copy)).toMatchObject({ title: 'GitHub Copilot CLI updated to v1.0.105', body: 'Seshboard uses it the next time it opens.' });
+    expect(claudeUpdateStatusText({ ...copilot, status: 'up-to-date' }, copy)).toBe('GitHub Copilot CLI is up to date.');
+    expect(claudeUpdateStatusText({ ...copilot, status: 'missing' }, copy)).toBe('GitHub Copilot CLI isn’t installed, or Seshboard can’t find it.');
+    // Copilot keeps its own channel, which isn't named.
+    expect(claudeUpdateStatusText(copilot, copy)).toBe('Version 1.0.105 is available.');
   });
 });

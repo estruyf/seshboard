@@ -40,6 +40,10 @@ export interface KeepAwakeOptions {
  * Settings › General › Keep awake, and the sessions set to Keep awake until done: holds sleep off while it is on. `apply` is called with the preference at launch and
  * after every change, so it does something only when the state really changes. A `caffeinate` that exits by itself
  * isn't restarted on the spot (no restart loop); the next `apply(true)` starts it again.
+ *
+ * On a Mac the sleep blocker runs next to `caffeinate`: `caffeinate`'s power assertion is its own process's, so with
+ * the display off macOS could still put Seshboard itself in App Nap, which slows its timers and sockets (Remote's
+ * phones then drop). An assertion Seshboard holds itself keeps it out of App Nap.
  */
 export class KeepAwake {
   #child: AwakeChild | null = null;
@@ -50,9 +54,13 @@ export class KeepAwake {
     this.#options = options;
   }
 
-  /** Whether sleep is held off right now, for the line under the switch. */
+  /** Whether sleep is held off right now, for the line under the switch: `caffeinate` on a Mac, the blocker elsewhere. */
   get active(): boolean {
-    return this.#child !== null || this.#blockerId !== null;
+    return this.#command() ? this.#child !== null : this.#blockerId !== null;
+  }
+
+  #command(): AwakeCommand | null {
+    return awakeCommand(this.#options.platform, this.#options.pid, this.#options.onBattery);
   }
 
   apply(on: boolean): void {
@@ -66,12 +74,9 @@ export class KeepAwake {
   }
 
   #start(): void {
-    if (this.active) return;
-    const command = awakeCommand(this.#options.platform, this.#options.pid, this.#options.onBattery);
-    if (!command) {
-      this.#blockerId = this.#options.blocker.start();
-      return;
-    }
+    if (this.#blockerId === null) this.#blockerId = this.#options.blocker.start();
+    const command = this.#command();
+    if (!command || this.#child) return;
     let child: AwakeChild;
     try {
       child = this.#options.spawn(command.file, command.args);

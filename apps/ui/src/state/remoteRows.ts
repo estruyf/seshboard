@@ -28,6 +28,8 @@ export interface RemoteRowInfo {
   offline: boolean;
   /** When the computer was last connected, while it is offline. */
   lastSeen: number | null;
+  /** The row it sits under: a pipeline step's sub-session under the session the run started from (`remoteRowId`). */
+  parentRowId?: string | null;
 }
 
 /** The filter's key for this computer's own sessions; other computers go by their id. */
@@ -92,6 +94,7 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
       profile: session.profile,
       offline: computer.state !== 'connected',
       lastSeen: computer.lastSeen,
+      parentRowId: session.parentId ? remoteRowId({ computerId: computer.id, sessionId: session.parentId }) : null,
     },
   };
 }

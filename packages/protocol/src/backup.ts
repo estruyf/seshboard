@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SESSION_PROVIDERS } from './providerConstants.ts';
 import { AbsolutePath, AnyAbsolutePath } from './absolutePath.ts';
 import { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT } from './backupConstants.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
@@ -38,6 +39,8 @@ export type ExportedProject = z.infer<typeof ExportedProject>;
  */
 export const ExportedProfile = z.object({
   dir: AnyAbsolutePath.nullable().default(null),
+  /** Who runs its sessions; files from before providers have none, and are Claude Code's. */
+  provider: z.enum(SESSION_PROVIDERS).catch('claude').default('claude'),
   name: z.string().trim().min(1).max(60),
   color: z.enum(PROFILE_COLORS).catch('gray'),
   /** Read field by field on import, like a project's defaults. */
@@ -98,6 +101,12 @@ export const SettingsFile = z.object({
       archived: z.array(z.object({ id: SessionId, at: z.number() })).max(100_000).default([]),
       owned: z.array(SessionId).max(100_000).default([]),
       continued: z.array(SessionId).max(100_000).default([]),
+      /** What's left in a session (phase 3 of session triage); left out by versions from before notes. */
+      notes: z.array(z.object({ id: SessionId, note: z.string().max(1000) })).max(100_000).optional(),
+      /** Sessions moved to Done by their merged pull request, with its number; left out by versions from before. */
+      donePrs: z.array(z.object({ id: SessionId, pr: z.number().int() })).max(100_000).optional(),
+      /** Remind me later: when each comes back, and when it came due; left out by versions from before. */
+      reminders: z.array(z.object({ id: SessionId, at: z.number(), remindedAt: z.number().nullable() })).max(100_000).optional(),
     })
     .optional(),
 });

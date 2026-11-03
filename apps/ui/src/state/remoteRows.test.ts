@@ -123,13 +123,12 @@ describe('local and remote sessions together', () => {
     // Another computer lists only what its sidebar does: never archived here, however old.
     expect(archived).toEqual([]);
     expect(isActive(remote[2]!, NOW, 7)).toBe(true);
-    const groups = groupsFor(active, NOW).map((g) => [g.group, g.rows.map((r) => r.id)]);
+    const groups = groupsFor(active).map((g) => [g.group, g.rows.map((r) => r.id)]);
     expect(groups).toEqual([
       ['needs-you', ['remote:m1:ask']],
       ['working', ['remote:m1:run']],
       ['pinned', ['pinned']],
-      ['today', ['here']],
-      ['earlier', ['remote:m1:old']],
+      ['open', ['here', 'remote:m1:old']],
     ]);
     const listRows = buildListRows(active, archived, { now: NOW, archivedOpen: false });
     expect(listRows.filter((r) => r.kind === 'session').length).toBe(5);
@@ -141,7 +140,7 @@ describe('local and remote sessions together', () => {
       prompts: [],
     };
     const both = remoteRows([mystic], new Map([['m1', working]]));
-    expect(groupsFor(both, NOW)[0]!.rows.map((r) => r.id)).toEqual(['remote:m1:second', 'remote:m1:first']);
+    expect(groupsFor(both)[0]!.rows.map((r) => r.id)).toEqual(['remote:m1:second', 'remote:m1:first']);
   });
 
   it('finds remote sessions by project and computer name', () => {

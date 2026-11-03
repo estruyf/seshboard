@@ -1,8 +1,8 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Blocks, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { pathInside, projectPrBase, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
@@ -20,7 +20,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { realBranch, useSessions } from '../../state/sessionsStore.ts';
 import { popOut, popoutSession, showInMain } from '../../state/popoutsStore.ts';
 import { currentPlatform } from '../../lib/platform.ts';
-import { runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
+import { openInProviderCli, runAndSendOutput, runInTerminal, useTerminals } from '../../state/terminalsStore.ts';
 import { sessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -79,8 +79,11 @@ import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx'
 import { AutoPickLine, AutoPickPopover, AutoSuggestNote, useSessionAutoPick } from '../session/AutoPick.tsx';
 import { UsageBand, useUsageLines } from '../UsageBand.tsx';
 import { SessionCost } from '../usage/SessionCost.tsx';
+import { openUsage } from '../../state/usageViewStore.ts';
+import { boxPlaceholder } from '../composer/trayFold.ts';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
-import { formatDuration, useTicker, WorkingDots } from './ActivityGroup.tsx';
+import { formatDuration, useTicker } from './ActivityGroup.tsx';
+import { WorkingPanel, type WorkingState } from '../ui/WorkingPanel.tsx';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
@@ -112,6 +115,12 @@ import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
 import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
+import { ProviderMark } from '../providers/ProviderMark.tsx';
+import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
+import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
+import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
+import { useProvider, useProviderQuota, useProviderReadiness } from '../../state/providersStore.ts';
 import { modPaneTab, paneOfTab, rightPanel, type RightTab } from '../ask/askWidth.ts';
 import { RightPanelTabs } from '../ask/RightPanelTabs.tsx';
 import { itemCount } from '../../state/ask.ts';
@@ -131,7 +140,7 @@ import { startNewSession } from '../newSession/startSession.ts';
 import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
-import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
 import { withRunStub } from '../pipelines/runView.ts';
 import { useRunOfParent } from '../../state/pipelinesStore.ts';
@@ -184,7 +193,11 @@ function SpinnerSlot({ sessionId, message, children }: { sessionId: string; mess
 
 function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: string; since: number | null; showIndicator: boolean; live: LiveTurnInfo }) {
   const block = useHosts((s) => s.streaming.get(sessionId));
-  const running = useHosts((s) => s.hosts.get(sessionId)?.state === 'running');
+  // Waiting on a permission or a question is still the turn: the line says so, with the panel in its waiting frame.
+  const running = useHosts((s) => {
+    const state = s.hosts.get(sessionId)?.state;
+    return state === 'running' || state === 'needs-you';
+  });
   // A new session on Auto: your message waits until Auto has picked its model.
   const choosing = useHosts((s) => s.hosts.get(sessionId)?.autoChoosing === true);
   // Claude Code is compacting: the host says so, so it shows after switching sessions and in pop-outs too.
@@ -195,7 +208,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
       <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-auto-choosing>
         <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
           <span className="flex w-4 shrink-0 justify-center">
-            <WorkingDots />
+            <WorkingPanel />
           </span>
           {since !== null && <span className="shrink-0 text-faint tabular-nums">{formatDuration(now - since)} ·</span>}
           <AutoWand />
@@ -215,12 +228,13 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   }
   if (!running || !showIndicator) return null;
   const label = live.waitingSince !== null ? 'Waiting for you' : compacting ? 'Compacting the conversation' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'still' : 'working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>
       <p className="flex min-w-0 items-center gap-2 text-ui text-muted">
         <span className="flex w-4 shrink-0 justify-center">
-          <WorkingDots />
+          <WorkingPanel state={panel} />
         </span>
         <span className="shrink-0">{label}</span>
         {/* The turn's time and tokens so far, as Settings › Conversation says. */}
@@ -354,6 +368,9 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  * panes, so its header has the handle to drag it by and a close for the pane, and an inactive one dims.
  * `leading`: it is the pane at the window's top left, which carries the sidebar toggle.
  */
+/** One empty list, so a session without a provider keeps the same one between renders. */
+const NO_FEATURES: readonly ProviderFeature[] = [];
+
 export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
@@ -361,6 +378,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const registryLive = useSessions((s) => s.live.get(sessionId) ?? null);
   const select = useSessions((s) => s.select);
   const host = useHosts((s) => s.hosts.get(sessionId));
+  /**
+   * Another provider's session (GitHub Copilot): Claude Code's own actions (fork, rewind, Ask, plan usage) don't apply.
+   * Seshboard runs it through the provider when the provider can start sessions; otherwise it is read-only.
+   */
+  const otherProvider = (summary ? otherProviderOf(summary) : null) ?? host?.provider ?? null;
+  const otherInfo = useProvider(otherProvider);
+  /** Claude Code's own features its provider has too (fork, rewind, rename, delete, effort). */
+  const supports = otherInfo?.supports ?? NO_FEATURES;
+  /** Ask about this session: Claude Code's, and another provider's that has it and can run here. */
+  const canAsk = otherProvider === null || (!!otherInfo?.canStart && supports.includes('ask'));
+  const readOnly = otherProvider !== null && !otherInfo?.canStart;
+  // The provider profile that runs it: its own login, models and commands.
+  const otherProfileId = otherProvider ? (host?.profileId ?? summary?.profileId ?? null) : null;
+  const otherReadiness = useProviderReadiness(!readOnly ? otherProfileId : null);
+  const agentName = otherProvider ? PROVIDER_NAMES[otherProvider] : 'Claude';
   const savedModel = useSavedSettings((s) => s.bySession[sessionId]?.model);
   const permissionMap = useHosts((s) => s.permissions);
   const commandsVersion = useHosts((s) => s.commandsVersion);
@@ -408,7 +440,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return first < 0 ? -1 : renderItems.findIndex((item, index) => index > first && item.kind !== 'user');
   }, [renderItems, autoPick]);
 
-  const projectRoot = summary?.projectRoot ?? registryLive?.projectRoot ?? null;
+  // Last, the host's folder: another provider's session (GitHub Copilot) has no entry in Claude Code's live registry,
+  // and isn't listed until it has a prompt (or is listed under "Unknown folder" when its file doesn't name one), so
+  // without it the session would have no project (and no actions).
+  const projectRoot =
+    [summary?.projectRoot, registryLive?.projectRoot, host ? hostAsLive(host)?.projectRoot : null].find((root) => !!root && isAbsolutePath(root)) ??
+    summary?.projectRoot ??
+    registryLive?.projectRoot ??
+    null;
   const project = useProjects((s) => (projectRoot ? s.projects.get(projectRoot) : undefined));
 
   // The catch-up: a briefing on the last turn, as a banner over the conversation.
@@ -596,7 +635,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
-  const usageLines = useUsageLines(profileId);
+  // While the terminal folds the footer: Claude Code's windows, or another provider's premium requests.
+  const claudeUsageLines = useUsageLines(otherProvider ? null : profileId, !otherProvider);
+  const quota = useProviderQuota(otherProvider ? otherProfileId : null);
+  const usageLines = useMemo(() => (otherProvider ? (quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []) : claudeUsageLines), [otherProvider, quota, claudeUsageLines]);
   // Opening Changes (⌘⇧D) while the terminal fills the view brings the view back, or Changes would open out of sight.
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
@@ -1089,10 +1131,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
   // Fork, edit and rewind from a message.
   const [actionError, setActionError] = useState<string | null>(null);
-  const [rewinding, setRewinding] = useState<{ uuid: string; preview: RewindResult | null; error: string | null } | null>(null);
+  const [rewinding, setRewinding] = useState<{ uuid: string; text: string; preview: RewindResult | null; error: string | null } | null>(null);
+  /** Another provider's rewind (Copilot's) takes the conversation back too, so it goes ahead with no file to restore. */
+  const rewindsConversation = otherProvider !== null;
   // The undo dialog opens while it is still checking, before its confirm button exists: give the
   // button focus when it appears, so Enter confirms as in every other confirmation.
-  const rewindReady = Boolean(rewinding && !rewinding.error && rewinding.preview?.canRewind && rewinding.preview.files.length > 0);
+  const rewindReady = Boolean(rewinding && !rewinding.error && rewinding.preview?.canRewind && (rewindsConversation || rewinding.preview.files.length > 0));
   useEffect(() => {
     if (!rewindReady) return;
     const frame = requestAnimationFrame(() => {
@@ -1123,8 +1167,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           select(r.sessionId);
         }, fail);
       },
-      rewind: (uuid) => {
-        setRewinding({ uuid, preview: null, error: null });
+      rewind: (uuid, text) => {
+        setRewinding({ uuid, text, preview: null, error: null });
         client.call('session.rewind', { sessionId, messageUuid: uuid, dryRun: true }).then(
           (preview) => setRewinding((r) => (r?.uuid === uuid ? { ...r, preview } : r)),
           (error: Error) => setRewinding((r) => (r?.uuid === uuid ? { ...r, error: error.message } : r)),
@@ -1132,13 +1176,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       },
       canEdit: (uuid) => previous.has(uuid),
       runCommand: cwd ? (command) => void runInTerminal(client, sessionId, cwd, command).catch(fail) : null,
-      runAndSend: cwd ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
+      runAndSend: cwd && !readOnly ? (command) => void runAndSendOutput(client, sessionId, cwd, command).catch(fail) : null,
       remember: (text, from) => usePaletteBus.getState().showDialog({ kind: 'remember', text, from, sessionId, root: projectRoot }),
       savePrompt: (text) => usePaletteBus.getState().showDialog({ kind: 'prompt-editor', editing: null, text, fromMessage: true, root: options.projectActions ? projectRoot : null }),
       read: (turnKey) => useReadMode.getState().openReply(sessionId, turnKey),
       readable,
+      // Another provider's session: only what its provider has, and only when Seshboard can run it.
+      canFork: otherProvider === null || (!readOnly && supports.includes('fork')),
+      canRewind: otherProvider === null || (!readOnly && supports.includes('rewind')),
+      rewindsConversation,
     };
-  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable]);
+  }, [client, items, sessionId, select, cwd, projectRoot, options.projectActions, readable, readOnly, otherProvider, supports, rewindsConversation]);
 
   // Quote and Remember this… from a selection or a whole message (right-click, or the buttons over a selection).
   const remember = useRememberLayer({
@@ -1187,7 +1235,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   useSessionRequests(active, (request) => {
     if (request.kind === 'branch-menu') setBranchMenuRequest((n) => n + 1);
     else if (request.kind === 'ask') void openAsk(client, sessionId);
-    else if (request.kind === 'rewind' && request.arg) messageActions?.rewind(request.arg);
+    else if (request.kind === 'rewind' && request.arg) {
+      const uuid = request.arg;
+      const prompt = items.find((item) => item.kind === 'user' && messageUuid(item.key) === uuid);
+      messageActions?.rewind(uuid, prompt?.kind === 'user' ? prompt.text : '');
+    }
     else if (request.kind === 'prompt-previous') stepPrompt(-1);
     else if (request.kind === 'prompt-next') stepPrompt(1);
     else if (request.kind === 'retry') void retry();
@@ -1313,7 +1365,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     .join('\n');
   const projectName = question ? QUESTION_LABEL : (project?.name ?? (projectRoot ? basename(projectRoot) : null));
   const failed = !activeHost && host?.state === 'error';
-  const statusLabel = live ? liveLabel(live) : failed ? 'Failed' : 'Not running';
+  const statusLabel = live ? liveLabel(live, agentName) : failed ? 'Failed' : 'Not running';
   const statusTone = live ? (live.status === 'idle' && live.background?.length ? 'text-ok' : STATUS_TONE[live.status]) : failed ? 'text-error' : 'text-muted';
   const gitActivity = `${items.length}:${live?.status ?? ''}:${branchSwitches}`;
   const contextLive =
@@ -1330,6 +1382,14 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const toRun = (text: string) => (parentRun ? withRunStub(text, parentRun.run) : text);
   const runPlaceholder = useRunPlaceholder(sessionId);
   const compact = activeHost ?() => void send('/compact', [], false, true).catch((e: Error) => setActionError(e.message)) : undefined;
+  /** The last reply, for another provider's ⋯ › Copy the last reply. */
+  const lastReply = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.kind === 'text' && !item.subagent) return item.text;
+    }
+    return null;
+  }, [items]);
   // One element for both docks: below it sits in the conversation's column, on the right next to it.
   const terminalPanel = (
     <Suspense fallback={<div className={`theme-dark shrink-0 bg-terminal ${terminalDock === 'right' ? 'w-90 border-l border-border' : 'h-40 border-t border-border'}`} />}>
@@ -1369,15 +1429,21 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         )}
         {/* With several panes this is the handle to drag the pane by (useTileDrag); it can't be part of the window's drag region, which takes the mouse. */}
         <div className={`min-w-24 flex-1 @max-[560px]:min-w-16 ${tiled ? 'no-drag cursor-grab select-none' : ''}`} data-pane-handle={tiled ? true : undefined}>
-          <h1 className="truncate text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
-            {title}
+          <h1 className="flex min-w-0 items-center gap-1.5 text-body leading-snug font-semibold" data-tooltip={titleTooltip}>
+            <span className="truncate">{title}</span>
           </h1>
           {/* Status · project · branch. In a narrow pane: the dot and the branch. */}
           <div className="flex min-w-0 items-center gap-1.5 text-meta text-muted" data-session-meta>
             {/* A pipeline step's parent, before its state: the way back to the run. */}
             <StepCrumb sessionId={sessionId} />
+            {/* Whose session it is first, as on its sidebar row. */}
+            <span className="flex shrink-0 items-center gap-1 text-muted" data-session-provider={otherProvider ?? 'claude'}>
+              <ProviderMark session={{ provider: otherProvider ?? 'claude' }} size={12} />
+              <span className="@max-[860px]:sr-only">{PROVIDER_NAMES[otherProvider ?? 'claude']}</span>
+            </span>
+            <Sep />
             <span className={`flex shrink-0 items-center gap-1.5 ${statusTone}`} data-session-status>
-              {live ? <StatusDot live={live} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
+              {live ? <StatusDot live={live} agent={agentName} /> : <span className={`inline-block size-2 shrink-0 rounded-full ${failed ? 'bg-error' : 'bg-faint'}`} aria-hidden />}
               <span className="@max-[860px]:sr-only" data-tooltip={failed ? (host?.error ?? undefined) : undefined}>
                 {statusLabel}
               </span>
@@ -1442,19 +1508,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   },
                 ]
               : []),
+            // Ask forks the session in its own tool: another provider's only when it can (Copilot can).
+            ...(!canAsk && !ask.open
+              ? []
+              : [
             {
               value: 'ask' as const,
               label: 'Ask',
               icon: <MessageCircleQuestion size={14} aria-hidden />,
               iconOnly: true,
               // An answer came in while the panel was closed.
-              dot: ask.ready && !ask.open ? 'link' : false,
+              dot: ask.ready && !ask.open ? ('link' as const) : false,
               tooltip: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ' · An answer is ready' : ''}`,
               ariaLabel: `${askFront === false ? 'Bring Ask to the front' : ask.open ? 'Hide Ask' : 'Ask about this session'}${ask.ready && !ask.open ? ', an answer is ready' : ''}`,
               front: askFront,
               expanded: ask.open && askFront !== false,
               data: { 'data-toggle-ask': true },
             },
+                ]),
             // Only a session that has started agents has this; the panel stays reachable while it is open.
             ...(agents.length > 0 || agentsState.open
               ? [
@@ -1553,6 +1624,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           profileId={profileId}
           title={summary ? title : null}
           onStop={activeHost ? () => void client?.call('session.close', { sessionId }) : null}
+          provider={
+            otherProvider && !readOnly
+              ? {
+                  id: otherProvider,
+                  supports: otherInfo?.supports ?? [],
+                  onCompact: compact ?? null,
+                  onTools: () => useOverlay.getState().show('tools'),
+                  lastReply,
+                  onOpenCli: activeHost || !client ? null : () => void openInProviderCli(client, sessionId).catch((e: Error) => setActionError(e.message)),
+                  onArchive: () => archiveSessions([{ id: sessionId, title }], () => void client?.call('sessions.setFlags', { sessionId, archived: true }).catch((e: Error) => setActionError(e.message))),
+                }
+              : null
+          }
         />
         {!inPopout ? (
           <Button
@@ -1632,6 +1716,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               focusNonce={findFocus}
             />
           )}
+          {/* Going through sessions, one without a catch-up still shows where you are, with Skip. */}
+          {!(catchUp && catchUpShow) && !terminalMaximized && <CatchUpPassBar rowId={sessionId} active={active} />}
           {catchUp && catchUpShow && !terminalMaximized && (
             <CatchUpSlot
               card={catchUp}
@@ -1771,16 +1857,16 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
             <ConfirmDialog
-              title="Undo file changes since this message?"
+              title={rewindsConversation ? 'Rewind to before this message?' : 'Undo file changes since this message?'}
               danger
-              confirmLabel="Undo changes"
+              confirmLabel={rewindsConversation ? 'Rewind' : 'Undo changes'}
               blockedReason={
                 rewinding.error ??
                 (!rewinding.preview
                   ? 'Checking what changed…'
                   : !rewinding.preview.canRewind
                     ? (rewinding.preview.error ?? 'Claude Code has no checkpoint for this message.')
-                    : rewinding.preview.files.length === 0
+                    : rewinding.preview.files.length === 0 && !rewindsConversation
                       ? 'Nothing to undo: no files changed after this message.'
                       : null)
               }
@@ -1788,7 +1874,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               blockedTone={!rewinding.error && (!rewinding.preview || (rewinding.preview.canRewind && rewinding.preview.files.length === 0)) ? 'info' : 'error'}
               body={
                 <>
-                  <p>Files go back to how they were before this message. The conversation stays as it is.</p>
+                  <p>
+                    {rewindsConversation
+                      ? `The conversation goes back to before this message, and the message goes back in the box. ${rewinding.preview && rewinding.preview.files.length === 0 ? 'No files changed after it.' : `Files ${agentName} changed go back to how they were.`}`
+                      : 'Files go back to how they were before this message. The conversation stays as it is.'}
+                  </p>
                   {rewinding.preview && rewinding.preview.files.length > 0 && (
                     <>
                       <ul className="mt-2 max-h-40 overflow-y-auto font-mono text-meta text-text" data-rewind-files>
@@ -1808,6 +1898,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               onConfirm={async () => {
                 const result = await client!.call('session.rewind', { sessionId, messageUuid: rewinding.uuid, dryRun: false });
                 if (!result.canRewind) throw new Error(result.error ?? 'Could not undo the changes');
+                // The message left the conversation: it waits in the box, to send again or change.
+                if (rewindsConversation && rewinding.text) useDrafts.getState().requestQuote(sessionId, rewinding.text, { plain: true });
               }}
               onClose={() => setRewinding(null)}
             />
@@ -1815,7 +1907,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
 
           <div className={`shrink-0 border-t border-border bg-bg ${terminalMaximized ? 'hidden' : ''}`}>
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
-            <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-1.5 @max-[860px]:px-4">
+            {/* The message box at the catch-up card's width, a size wider than the conversation. */}
+            <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">
               {(actionsMenu.openEditor || showTodos || backgroundTasks.length > 0 || keepAwake) && (
                 <div className="grid gap-1.5">
                   {/* The project's actions on the left; Claude's task list and its background tasks on the right, as small pills. The task list opens below them. */}
@@ -1898,7 +1991,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {/* Mods' bands: under Seshboard's own cards, above Up next. */}
               <ModBands sessionId={sessionId} profileId={profileId} working={running} />
-              {openElsewhere && (
+              {openElsewhere && otherProvider && (
+                // Another provider's session can't be forked: it continues here once its own app lets go of it.
+                <Notice role="note" data-open-elsewhere>
+                  This session is open in {PROVIDER_NAMES[otherProvider]} right now. Close it there to continue it here.
+                </Notice>
+              )}
+              {openElsewhere && !otherProvider && (
                 <Notice role="note" data-open-elsewhere>
                   This session is open in {ORIGIN_LABEL[registryLive.origin] || 'another Claude Code window'} right now. Sending here starts a{' '}
                   <strong className="font-medium text-text">fork</strong>: a new session that continues from this conversation, leaving the original untouched.
@@ -1931,12 +2030,15 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               {host?.state === 'error' && (
                 <RunFailedNotice host={host} retrying={retrying} retryError={retryError} onRetry={!restart && (host.unsent ?? 0) > 0 ? () => void retry() : null} />
               )}
-              {profileId && <SignInNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} />}
-              {profileId && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
+              {profileId && !otherProvider && <SignInNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} />}
+              {profileId && !otherProvider && <UsageLimitNotice sessionId={sessionId} profileId={profileId} busy={running || live?.status === 'running' || live?.status === 'needs-you'} held={upNext.length} resumeAllowed={resumeAllowed} />}
               {/* A queued item that starts by itself once this session finishes: next to Up next, under mods' bands. */}
               <StartsAfterBand sessionId={sessionId} />
               <UpNext queue={upNext} hold={upNextHold} limited={limitHeld} actions={upNextActions} />
               <StepStopNotice sessionId={sessionId} />
+              {otherProvider && readOnly ? (
+                <ReadOnlyNotice provider={otherProvider} sessionId={sessionId} />
+              ) : (
               <div className="relative">
                 <Composer
                   draftKey={sessionId}
@@ -1952,13 +2054,23 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   cwd={cwd}
                   commands={commands}
                   running={running}
-                  placeholder={replying && !running ? replyPlaceholder(title) : runPlaceholder && !running ? runPlaceholder : running ? (whileWorking === 'queue' ? `Message Claude. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.` : `Message Claude. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`) : activeHost ? 'Message Claude' : restart ? 'Message Claude to start this session again' : 'Message Claude to resume this session'}
-                  submitLabel={openElsewhere ? 'Fork and send' : undefined}
+                  placeholder={
+                    replying && !running && !otherProvider
+                      ? replyPlaceholder(title)
+                      : runPlaceholder && !running && !otherProvider
+                        ? runPlaceholder
+                        : running || activeHost || otherProvider
+                          ? boxPlaceholder({ agent: agentName, running, whileWorking, sendNow: formatKeys(keysFor('composer.send-now')) })
+                          : restart
+                            ? 'Message Claude to start this session again'
+                            : 'Message Claude to resume this session'
+                  }
+                  submitLabel={openElsewhere && !otherProvider ? 'Fork and send' : undefined}
                   dropHint={status === 'ready' && messages.length === 0}
-                  disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : null}
+                  disabledReason={!client ? 'Connecting to the engine…' : !cwd ? 'The folder for this session is unknown' : otherProvider && openElsewhere ? `Open in ${PROVIDER_NAMES[otherProvider]} right now` : null}
                   runningHint={
                     canSendNow
-                      ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : 'Messages go to Claude now'} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
+                      ? `${whileWorking === 'queue' ? 'Messages wait in Up next' : `Messages go to ${agentName} now`} · ${formatKeys(keysFor('composer.send-other'))} to ${otherMode} · ${formatKeys(keysFor('composer.send-now'))} sends now`
                       : undefined
                   }
                   onSubmit={(text, attachments) => send(toRun(text), attachments, openElsewhere, false, whileWorking)}
@@ -1981,7 +2093,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       : undefined
                   }
                   onInterrupt={() => void client?.call('session.interrupt', { sessionId })}
-                  ask={{ onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
+                  ask={!canAsk ? undefined : { onAsk: askHere, onOpen: () => void openAsk(client, sessionId), open: ask.open, ready: ask.ready }}
                   onEscape={() => {
                     // Esc after Reply leaves the message box and goes back to the catch-up.
                     if (useCatchUp.getState().replying !== sessionId) return false;
@@ -1990,10 +2102,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     return true;
                   }}
                   onCycleMode={
-                    activeHost ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
+                    activeHost && otherProvider && otherInfo?.modes.length
+                      ? () => {
+                          // The provider's own modes, in its order.
+                          const modes = otherInfo.modes.map((m) => m.value);
+                          const next = modes[(modes.indexOf(activeHost.permissionMode) + 1) % modes.length]!;
+                          void client?.call('session.setPermissionMode', { sessionId, mode: next });
+                        }
+                      : activeHost && !otherProvider ? () => void client?.call('session.setPermissionMode', { sessionId, mode: nextMode(activeHost.permissionMode) }) : undefined
                   }
                   controls={
-                    activeHost ? (
+                    otherProvider ? (
+                      <ProviderSessionControls provider={otherProvider} profileId={otherProfileId} sessionId={sessionId} host={activeHost} models={otherReadiness?.models ?? []} />
+                    ) : activeHost ? (
                       <SessionControls host={activeHost} />
                     ) : !restart && (!registryLive || leftover) ? (
                       // Not running here: the chips set what the next message resumes it with. The header already says it isn't running.
@@ -2011,34 +2132,30 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                       </span>
                     )
                   }
-                  meter={foldFooter && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />}
-                  actions={
-                    cwd && (
-                      <Button
-                        variant="quiet"
-                        size="sm"
-                        iconOnly
-                        icon={<Blocks size={15} aria-hidden />}
-                        data-open-tools
-                        onClick={() => useOverlay.getState().show('tools')}
-                        data-tooltip="Tools: the MCP servers, skills, agents and plugins this session can use"
-                        aria-label="Tools: MCP servers, skills, agents and plugins"
-                        aria-haspopup="dialog"
-                      />
+                  tools={cwd && !readOnly ? () => useOverlay.getState().show('tools') : null}
+                  // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
+                  // ring, with every number in its tooltip.
+                  info={
+                    foldFooter ? null : otherProvider ? (
+                      otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                    ) : (
+                      <>
+                        <UsageBand profileId={profileId} footer />
+                        <SessionCost sessionId={sessionId} profileId={profileId} />
+                      </>
+                    )
+                  }
+                  usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(otherProvider ? otherProfileId : profileId) } : null}
+                  meter={
+                    foldFooter ? (
+                      <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} compact usage={usageLines} />
+                    ) : (
+                      // Another provider's context shows once it reports it; Compact sends its /compact, as for Claude Code.
+                      (!otherProvider || contextLive) && <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
                     )
                   }
                 />
               </div>
-              {/* One quiet line: plan usage (of the session's profile, which is a chip in the box) and how full the context is. */}
-              {!foldFooter && (
-                <div className="flex min-h-6 items-center gap-3 px-1 text-meta text-muted" data-session-footer>
-                  {/* Its own container: the bars hide when this row is short of room, not when the pane is narrow. */}
-                  <div className="@container/meters flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
-                    <UsageBand profileId={profileId} footer />
-                  </div>
-                  <SessionCost sessionId={sessionId} profileId={profileId} />
-                  <ContextMeter sessionId={sessionId} live={contextLive} messages={messages} onCompact={compact} />
-                </div>
               )}
             </div>
           </div>

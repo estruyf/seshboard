@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { createEngine, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -84,6 +84,8 @@ const engine = createEngine({
   stubCatchUp: process.env.SESHBOARD_STUB_CATCHUP === '1',
   // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
   stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
+  // The smoke test and the screenshots: a made-up Copilot CLI, signed in, that never starts a session.
+  ...(process.env.SESHBOARD_STUB_COPILOT === '1' ? { copilot: demoCopilot() } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });
@@ -123,10 +125,21 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // The smoke run's menu bar step: New work starts a stand-in session instead of Claude Code.
+  if (data?.type === 'smokeStubCreate') {
+    engine.smokeStubCreate((data as { on?: unknown }).on === true);
+    return;
+  }
+  // The smoke run's quick start steps: a throwaway folder as a project, added and removed again.
+  if (data?.type === 'smokeProject') {
+    const { path, add } = data as { path?: unknown; add?: unknown };
+    if (typeof path === 'string') engine.smokeProject(path, add === true);
+    return;
+  }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
     const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };
-    if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'idle' || state === 'closed')) {
+    if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
       engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}) });
     }
     return;
@@ -178,6 +191,15 @@ process.parentPort.on('message', (event) => {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
     return;
   }
+  // Settings › General › Global model and Global effort, for sessions started from a phone.
+  if (data?.type === 'globalModel') {
+    const { model, effort } = data as { model?: unknown; effort?: unknown };
+    engine.setGlobalModel({
+      model: typeof model === 'string' && model ? model : null,
+      effort: effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max' ? effort : null,
+    });
+    return;
+  }
   // Settings › General › Global permission mode, for sessions started from a phone.
   if (data?.type === 'permissionMode') {
     const mode = (data as { mode?: unknown }).mode;
@@ -199,7 +221,7 @@ process.parentPort.on('message', (event) => {
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
     const afterDays = clampDays(data.deleteArchived?.afterDays, DELETE_AFTER_DAYS) ?? DELETE_AFTER_DAYS.default;
-    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays } });
+    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays }, doneOnMerge: (data as { doneOnMerge?: unknown }).doneOnMerge !== false });
     return;
   }
   if (data?.type === 'remote-identity-result' && typeof data.id === 'number') {

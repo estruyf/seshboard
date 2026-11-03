@@ -49,13 +49,13 @@ export function RunView({
     void client
       ?.call('runs.archive', { runId, archived: true })
       .then(() => {
-        toast(`Archived ${run?.title ?? 'the run'}`, { action: { label: 'Undo', run: () => void client.call('runs.archive', { runId, archived: false }).catch(() => {}) } });
+        toast(`Done: ${run?.title ?? 'the run'}`, { action: { label: 'Undo', run: () => void client.call('runs.archive', { runId, archived: false }).catch(() => {}) } });
         onLeave();
       })
       .catch((error: Error) => toast(error.message, { tone: 'error' }));
   const menu: MenuItem[] = [
     ...(going ? [{ label: 'Stop the run', disabled: !client || actions.busy, onSelect: () => void actions.stop() }] : []),
-    { label: steps ? `Archive with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Archive', disabled: !client || going, onSelect: archive },
+    { label: steps ? `Done, with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Done', disabled: !client || going, onSelect: archive },
   ];
   return (
     <div className="flex h-full flex-col bg-bg" data-remote-run-view={runId}>

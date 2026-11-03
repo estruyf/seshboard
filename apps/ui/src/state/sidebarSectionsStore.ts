@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useHosts } from './hostsStore.ts';
+import { keptSessionsNow } from './keptSessions.ts';
 import { usePipelineTree } from './pipelineTreeStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { toRows, useSessions } from './sessionsStore.ts';
@@ -70,7 +71,7 @@ export function useSidebarSectionsSync(): void {
       useSessions.subscribe((state, previous) => {
         const id = state.selectedId;
         if (!id || id === previous.selectedId) return;
-        const rows = toRows(state.sessions, state.live, useHosts.getState().hosts);
+        const rows = toRows(state.sessions, state.live, useHosts.getState().hosts, keptSessionsNow());
         const section = sectionOfSession(rows, id, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
         if (isSectionKey(section)) useSidebarSections.getState().setOpen(section, true);
         // A pipeline's sub-session opens its parent in the tree, so its row is in sight.

@@ -62,8 +62,8 @@ describe('gotoGroups', () => {
   const now = new Date(2026, 9, 8, 15, 0).getTime();
   const hour = 60 * 60 * 1000;
   const rows = [
-    row('yesterday', now - 20 * hour),
-    row('today', now - hour),
+    row('unread', now - 20 * hour, { unread: true }),
+    row('read', now - hour),
     row('asking', now - 3 * hour, { live: { status: 'needs-you', origin: 'app' } as LiveSession }),
     row('working', now - 2 * hour, { live: { status: 'running', origin: 'app' } as LiveSession }),
     row('old', now - 30 * 24 * hour),
@@ -71,18 +71,18 @@ describe('gotoGroups', () => {
 
   it('lists the groups and sessions in the sidebar order, without archived ones', () => {
     const groups = gotoGroups(rows, now, 2, 20);
-    expect(groups.map((g) => g.group)).toEqual(['needs-you', 'working', 'today', 'yesterday']);
+    expect(groups.map((g) => g.group)).toEqual(['needs-you', 'working', 'review', 'open']);
     const { active, archived } = buildSessionList(rows, { search: '', project: null, now, archiveAfterDays: 2 });
     const sidebar = buildListRows(active, archived, { now, archivedOpen: false }).flatMap((r) => (r.kind === 'group' ? [r.group] : []));
     expect(groups.map((g) => g.group)).toEqual(sidebar);
-    expect(groups.flatMap((g) => g.rows.map((r) => r.id))).toEqual(['asking', 'working', 'today', 'yesterday']);
+    expect(groups.flatMap((g) => g.rows.map((r) => r.id))).toEqual(['asking', 'working', 'unread', 'read']);
   });
 
   it('cuts the later groups first', () => {
     expect(gotoGroups(rows, now, 2, 3).map((g) => [g.group, g.rows.length])).toEqual([
       ['needs-you', 1],
       ['working', 1],
-      ['today', 1],
+      ['review', 1],
     ]);
   });
 });
@@ -106,7 +106,7 @@ describe('gotoWithDrafts', () => {
     expect(unsent.map((d) => d.key)).toEqual(['new:/work/app', 'today']);
     expect(groups.map((g) => [g.group, g.rows.map((r) => r.id)])).toEqual([
       ['needs-you', ['asking']],
-      ['today', ['other']],
+      ['open', ['other']],
     ]);
   });
 

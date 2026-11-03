@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardE
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -265,7 +266,8 @@ export function SidebarRail() {
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
-  const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
@@ -276,7 +278,7 @@ export function SidebarRail() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
   const runs = usePipelines((s) => s.runs);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS }), [listed, now, archiveAfterDays, sort, quick, runs]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS, kept }), [listed, now, archiveAfterDays, sort, quick, runs, kept]);
   // A sub-session in the main area: its parent's icon is the one that shows it.
   const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
   const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);

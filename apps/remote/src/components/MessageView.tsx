@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Check, ChevronRight, CircleDot, Copy, GitPullRequest, Link2 } from 'lucide-react';
+import { BookOpen, Check, ChevronRight, CircleDot, Copy, GitPullRequest, Link2, TextQuote } from 'lucide-react';
 import { parseBriefs, parseGithubBlocks, withoutContext, type RemoteMessage } from '@seshboard/protocol/remote-client';
 import { runLabel, stepText, type ToolUse, type TranscriptItem } from '../lib/steps.ts';
 import { editLines, type resultsByCall } from '../lib/transcript.ts';
@@ -9,9 +9,11 @@ import { toast } from './Toasts.tsx';
 /**
  * One item of the conversation. Your messages are cards; Claude's text (markdown, drawn as React elements, never HTML)
  * and tool runs are a quiet timeline (AGENTS.md, Surfaces). A run of calls is one line until you open it; the run
- * Claude is working on stays open. `onRead`: the reply ends a finished turn, so it can be read in full.
+ * Claude is working on stays open. `onRead`: the reply ends a finished turn, so it can be read in full. `onQuote`: Quote
+ * under a finished reply puts all of it in the message box; your messages and Claude's replies are `data-quote-source`,
+ * so a selection in them can be quoted too (`SelectionQuote`).
  */
-export function ItemView({ item, results, live, onRead }: { item: TranscriptItem; results: ReturnType<typeof resultsByCall>; live: boolean; onRead?: () => void }) {
+export function ItemView({ item, results, live, onRead, onQuote }: { item: TranscriptItem; results: ReturnType<typeof resultsByCall>; live: boolean; onRead?: () => void; onQuote?: (text: string) => void }) {
   switch (item.kind) {
     case 'message':
       return <UserMessage message={item.message} />;
@@ -20,10 +22,13 @@ export function ItemView({ item, results, live, onRead }: { item: TranscriptItem
     case 'text':
       return (
         <div className="flex flex-col gap-1">
-          <Markdown text={item.text} />
+          <div data-quote-source>
+            <Markdown text={item.text} />
+          </div>
           {!live && item.text && (
             <div className="-ml-1.5 flex flex-wrap items-center gap-1">
               <CopyButton text={item.text} label="Copy as Markdown" kind="reply" />
+              {onQuote && <QuoteButton onClick={() => onQuote(item.text)} />}
               {onRead && <ReadButton onClick={onRead} />}
             </div>
           )}
@@ -62,6 +67,16 @@ function CopyButton({ text, label, kind }: { text: string; label: string; kind: 
   );
 }
 
+/** Quote: the whole reply into the message box, as a quote. Quiet, beside Copy under a finished reply. */
+function QuoteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="Quote in message" className="flex min-h-8 w-fit items-center gap-1 rounded-md px-1.5 text-meta text-faint hover:bg-border/50 hover:text-text pointer-fine:min-h-6" data-remote-quote>
+      <TextQuote className="size-3.5" aria-hidden />
+      Quote
+    </button>
+  );
+}
+
 /** Read: the turn's replies in full, in a sheet (`ReadSheet`). Quiet, beside Copy under a finished reply. */
 function ReadButton({ onClick }: { onClick: () => void }) {
   return (
@@ -80,7 +95,7 @@ function UserMessage({ message }: { message: RemoteMessage }) {
   const linked = parseBriefs(attached.text).briefs;
   return (
     <div className="flex flex-col gap-1">
-      <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16">
+      <div className="ml-8 rounded-xl border border-border bg-card px-3 py-2 sm:ml-16" data-quote-source>
         {text && <p className="text-body break-words whitespace-pre-wrap">{text}</p>}
         {linked.map((brief) => (
           <p key={brief.sessionId} className="mt-1 flex items-center gap-1.5 border-t border-border pt-1 text-meta text-muted" data-linked-session={brief.sessionId}>

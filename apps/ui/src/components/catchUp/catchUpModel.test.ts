@@ -6,12 +6,15 @@ import {
   catchUpShow,
   chipsOf,
   escapeStep,
-  nextAfterArchive,
+  advancePass,
+  nextInPass,
+  passPosition,
   primaryAction,
   replyPlaceholder,
   reviewLabel,
   secondaryActions,
   stateLabel,
+  suggestedNote,
   type KeyLike,
   type ShowContext,
 } from './catchUpModel.ts';
@@ -125,13 +128,6 @@ describe('the actions', () => {
     expect(actionLabel('review', { changesOpen: true })).toBe('Hide changes');
   });
 
-  it('opens the next session after archiving, in the sidebar’s order', () => {
-    expect(nextAfterArchive(['a', 'b', 'c'], 'b')).toBe('c');
-    expect(nextAfterArchive(['a', 'b', 'c'], 'c')).toBe('b');
-    expect(nextAfterArchive(['a'], 'a')).toBeNull();
-    expect(nextAfterArchive(['a', 'b'], 'x')).toBe('a');
-  });
-
   it('puts the session’s title in the reply placeholder', () => {
     expect(replyPlaceholder('Needs review sort')).toBe('Reply to Claude about Needs review sort…');
     expect(replyPlaceholder('x'.repeat(80)).length).toBeLessThan(90);
@@ -149,6 +145,9 @@ describe('the keys', () => {
     expect(catchUpKey(key('r'), at('view'))).toEqual({ type: 'action', id: 'reply' });
     expect(catchUpKey(key('e'), at('view'))).toEqual({ type: 'action', id: 'archive' });
     expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'space' });
+    expect(catchUpKey(key('s'), at('view'))).toEqual({ type: 'skip' });
+    expect(catchUpKey(key('n'), at('view'))).toEqual({ type: 'note' });
+    expect(catchUpKey(key('l'), at('view'))).toEqual({ type: 'remind' });
     expect(catchUpKey(key('u'), at('view'))).toBeNull();
     expect(catchUpKey(key('x'), at('view'))).toBeNull();
   });
@@ -168,10 +167,13 @@ describe('the keys', () => {
     expect(catchUpKey(key('c'), at('control'))).toEqual({ type: 'action', id: 'commit' });
   });
 
-  it('in the strip, only shows the banner again or runs its primary action', () => {
+  it('in the strip, only shows the banner again, skips or runs its primary action', () => {
     expect(catchUpKey(key(' '), at('view', { show: 'strip' }))).toEqual({ type: 'space' });
     expect(catchUpKey(key('Enter'), at('view', { show: 'strip' }))).toEqual({ type: 'primary' });
+    expect(catchUpKey(key('s'), at('view', { show: 'strip' }))).toEqual({ type: 'skip' });
+    expect(catchUpKey(key('s'), at('elsewhere', { show: 'strip' }))).toBeNull();
     expect(catchUpKey(key('c'), at('view', { show: 'strip' }))).toBeNull();
+    expect(catchUpKey(key('n'), at('view', { show: 'strip' }))).toBeNull();
     expect(catchUpKey(key('c'), at('view', { show: null }))).toBeNull();
   });
 
@@ -183,5 +185,51 @@ describe('the keys', () => {
     expect(escapeStep({ ...all, replying: false, changesOpen: false, detailsOpen: false })).toBe('collapse');
     // Folded, Esc is left to the rest of the view.
     expect(escapeStep({ replying: false, changesOpen: false, detailsOpen: false, show: 'strip' })).toBeNull();
+  });
+});
+
+describe('going through sessions', () => {
+  // To review (r1, r2), then Open (o1, o2), in the sidebar's order.
+  const order = ['r1', 'r2', 'o1', 'o2'];
+
+  it('goes to the first session left, To review before Open, leaving out the current one and those skipped', () => {
+    expect(nextInPass(order, 'r1', new Set())).toBe('r2');
+    expect(nextInPass(order, 'r2', new Set(['r1']))).toBe('o1');
+    // Read, r1 moved down to Open: the next is still the first one at the top.
+    expect(nextInPass(['r2', 'o1', 'r1', 'o2'], 'r1', new Set())).toBe('r2');
+    expect(nextInPass(order, 'o2', new Set(['r1', 'r2', 'o1']))).toBeNull();
+    expect(nextInPass([], 'x', new Set())).toBeNull();
+  });
+
+  it('remembers skipped sessions for the pass, and counts what you skipped or archived', () => {
+    const first = advancePass(null, 'r1', 'skip', order);
+    expect(first).toEqual({ current: 'r2', skipped: new Set(['r1']), handled: 1 });
+    // Done on r2: it leaves the list, nothing more is skipped.
+    const second = advancePass(first, 'r2', 'done', order);
+    expect(second).toEqual({ current: 'o1', skipped: new Set(['r1']), handled: 2 });
+    expect(advancePass(second, 'o1', 'skip', ['r1', 'o1', 'o2'])).toMatchObject({ current: 'o2', handled: 3 });
+    // Nothing left: the pass ends.
+    expect(advancePass({ current: 'o2', skipped: new Set(['r1', 'r2', 'o1']), handled: 3 }, 'o2', 'skip', order)).toBeNull();
+  });
+
+  it('starts a new pass when you skip from a session the pass isn\'t on', () => {
+    expect(advancePass({ current: 'o2', skipped: new Set(['r1']), handled: 3 }, 'r2', 'skip', order)).toEqual({ current: 'r1', skipped: new Set(['r2']), handled: 1 });
+  });
+
+  it('says where you are: those done, this one, and those still to come', () => {
+    expect(passPosition({ current: 'r1', skipped: new Set(), handled: 0 }, 'r1', order)).toEqual({ position: 1, total: 4 });
+    expect(passPosition({ current: 'o1', skipped: new Set(['r1']), handled: 2 }, 'o1', ['r1', 'o1', 'o2'])).toEqual({ position: 3, total: 4 });
+    // Not on this session, or no pass: nothing to say.
+    expect(passPosition({ current: 'o1', skipped: new Set(), handled: 0 }, 'r1', order)).toBeNull();
+    expect(passPosition(null, 'r1', order)).toBeNull();
+  });
+});
+
+describe('Use as note', () => {
+  it('offers what the catch-up needs from you, never when it needs nothing or the note says it already', () => {
+    expect(suggestedNote(card(), null)).toBe('Commit the changes');
+    expect(suggestedNote(card({ need: { kind: 'reply', title: '  Answer\nthe question ', text: '' } }), 'old')).toBe('Answer the question');
+    expect(suggestedNote(card({ need: need('none') }), null)).toBeNull();
+    expect(suggestedNote(card(), 'Commit the changes')).toBeNull();
   });
 });

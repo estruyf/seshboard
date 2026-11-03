@@ -1,4 +1,4 @@
-import { inheritedPermissionMode, isBranchBase, type Effort, type NewSessionMode, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
+import { inheritedDefault, inheritedPermissionMode, isBranchBase, type Effort, type ModelOption, type NewSessionMode, type PermissionMode, type Preferences, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
 
 /** What a new session starts with. Empty strings mean "Claude Code's default" (model, effort) or "keep the checked-out branch". */
 export interface Choices {
@@ -12,7 +12,7 @@ export interface Choices {
 }
 
 /**
- * The global defaults: the choices last used for a field no project or profile decides. Branches belong to a repository,
+ * The global defaults: what a field starts with where no project or profile decides. Branches belong to a repository,
  * so they never become global: not the one to check out, and not the one a worktree starts from.
  */
 export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fresh' | 'head' };
@@ -21,6 +21,14 @@ export type GlobalChoices = Omit<Choices, 'branch' | 'baseRef'> & { baseRef: 'fr
 export const DEFAULTS_KEY = 'newSession.defaults';
 
 export const INITIAL_CHOICES: GlobalChoices = { model: '', permissionMode: 'default', effort: '', workspace: 'current', baseRef: 'fresh' };
+
+/**
+ * The global defaults set in Settings › General: its model and effort (empty leaves them to Claude Code). The permission
+ * mode goes through `globalMode`, which also knows Remember last.
+ */
+export function globalChoices(prefs: Pick<Preferences, 'newSessionModel' | 'newSessionEffort'>): GlobalChoices {
+  return { ...INITIAL_CHOICES, model: prefs.newSessionModel, effort: prefs.newSessionEffort };
+}
 
 const FIELDS = ['model', 'permissionMode', 'effort', 'workspace', 'baseRef', 'branch'] as const;
 
@@ -51,20 +59,23 @@ export function startingMode(setting: NewSessionMode, defaults: ProjectDefaults 
   return defaults?.permissionMode ?? globalMode(setting, last);
 }
 
-/** What New session and the palette's prompt start with: the project's and profile's defaults, and the global permission mode. */
-export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode): Choices {
-  return { ...startingChoices(INITIAL_CHOICES, defaults), permissionMode: startingMode(setting, defaults, last) };
+/**
+ * What New session and the palette's prompt start with: the project's and profile's defaults, else the global ones
+ * (`globals`, see `globalChoices`) and the global permission mode.
+ */
+export function newSessionChoices(defaults: ProjectDefaults | null | undefined, setting: NewSessionMode, last: PermissionMode, globals: GlobalChoices = INITIAL_CHOICES): Choices {
+  return { ...startingChoices(globals, defaults), permissionMode: startingMode(setting, defaults, last) };
 }
 
 /**
  * The defaults a new session starts from: the project's own, and its profile's where the project sets
- * nothing. Null when neither has any, so every field follows the global defaults.
+ * nothing and doesn't skip it for the global one. Null when neither has any, so every field follows the global defaults.
  */
 export function layeredDefaults(project: ProjectDefaults | null | undefined, profile: ProfileDefaults | null | undefined): ProjectDefaults | null {
   if (!profile || Object.values(profile).every((v) => v === null)) return project ?? null;
   return {
-    model: project?.model ?? profile.model,
-    effort: project?.effort ?? profile.effort,
+    model: inheritedDefault('model', project, profile),
+    effort: inheritedDefault('effort', project, profile),
     permissionMode: inheritedPermissionMode(project, profile),
     workspace: project?.workspace ?? profile.workspace,
     baseRef: project?.baseRef ?? profile.baseRef,
@@ -85,6 +96,37 @@ export function startingChoices(globals: GlobalChoices, project: ProjectDefaults
     workspace: project?.workspace ?? globals.workspace,
     baseRef: project?.baseRef ?? globals.baseRef,
     branch: project?.branch ?? '',
+  };
+}
+
+/** Another provider's (GitHub Copilot's) model, effort and mode for a new session. '' is its own default model, or the model's own effort. */
+export interface ProviderStart {
+  model: string;
+  effort: Effort | '';
+  permissionMode: PermissionMode;
+}
+
+/**
+ * What a new session with another provider's profile starts with: what was picked for it (null: nothing yet), else the
+ * project's and profile's defaults (`defaults`, see `layeredDefaults`) where the provider has them, else its own
+ * default model and the mode New session starts in (`mode`: those defaults' or the global one). Settings › General's
+ * model and effort are Claude Code's, so they never apply. A model the provider doesn't list (a Claude Code model saved
+ * before the project's profile changed) is left out, and so is an effort the model doesn't take.
+ */
+export function providerStart(
+  picked: { model: string | null; effort: Effort | '' | null; permissionMode: PermissionMode | null },
+  defaults: Pick<ProjectDefaults, 'model' | 'effort'> | null | undefined,
+  mode: PermissionMode,
+  provider: { models: readonly Pick<ModelOption, 'value' | 'supportsEffort' | 'efforts'>[]; modes: readonly { value: PermissionMode }[]; effort: boolean },
+): ProviderStart {
+  const model = picked.model ?? (defaults?.model && provider.models.some((m) => m.value === defaults.model) ? defaults.model : '');
+  // Picking another model starts it on its own effort, so the default's only goes with the default's model.
+  const effort = picked.effort ?? (picked.model === null ? (defaults?.effort ?? '') : '');
+  const takes = model && provider.effort ? provider.models.find((m) => m.value === model && m.supportsEffort) : undefined;
+  return {
+    model,
+    effort: takes && effort && (takes.efforts ?? [effort]).includes(effort) ? effort : '',
+    permissionMode: [picked.permissionMode, mode].find((m) => m && provider.modes.some((p) => p.value === m)) ?? provider.modes[0]?.value ?? 'default',
   };
 }
 

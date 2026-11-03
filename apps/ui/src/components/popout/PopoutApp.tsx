@@ -14,6 +14,8 @@ import { useTerminalsSync } from '../../state/terminalsStore.ts';
 import { useThemesSync } from '../../state/themeStore.ts';
 import { useUpNextSync } from '../../state/upNextStore.ts';
 import { useCatchUpSync } from '../../state/useCatchUpSync.ts';
+import { useLooseEndsSync } from '../../state/looseEndsStore.ts';
+import { useReminderClear } from '../../state/useReminderClear.ts';
 import { useDraftsSync } from '../../state/useDraftsSync.ts';
 import { usePopoutViewReport } from '../../state/useSessionViewSync.ts';
 import { useHostsSync } from '../../state/useHostsSync.ts';
@@ -23,6 +25,8 @@ import { useRemoteSync } from '../../state/useRemoteSync.ts';
 import { useSessionsSync } from '../../state/useSessionsSync.ts';
 import { AddContextDialogHost } from '../composer/AddContextDialog.tsx';
 import { ArchiveDraftDialog } from '../drafts/ArchiveDraftDialog.tsx';
+import { SessionNoteDialog } from '../notes/SessionNoteDialog.tsx';
+import { RemindDialog } from '../notes/RemindDialog.tsx';
 import { EngineStalledNotice } from '../EngineStalledNotice.tsx';
 import { RepoTrustDialog } from '../clone/CloneTrustDialog.tsx';
 import { FocusGateDialog } from '../focus/FocusGateDialog.tsx';
@@ -78,6 +82,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   usePreferencesSync();
   useThemesSync();
   useCatchUpSync();
+  useLooseEndsSync();
+  useReminderClear();
   useUpNextSync();
   useModsSync();
   useLimitsSync();
@@ -110,6 +116,8 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
       <FocusGateDialog />
       <RepoTrustDialog />
       <ArchiveDraftDialog />
+      <SessionNoteDialog />
+      <RemindDialog />
       <EngineStalledNotice />
       <ToastLayer />
       <TooltipLayer />

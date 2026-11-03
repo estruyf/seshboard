@@ -119,6 +119,8 @@ const PLANS: Record<string, Plan> = {
   'run-pipeline': 'here',
   pin: 'here',
   archive: 'here',
+  note: 'here',
+  remind: 'here',
   fork: 'here',
   rewind: 'here',
   compact: 'here',

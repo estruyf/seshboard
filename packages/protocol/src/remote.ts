@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isProviderFeature, OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
@@ -51,6 +52,11 @@ export const RemoteSession = z.object({
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
+  /**
+   * Another provider runs it (GitHub Copilot): Claude Code's model, effort and mode chips and Ask about this session
+   * don't apply. Null or left out: Claude Code.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
@@ -183,7 +189,10 @@ export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 
 /** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
-  /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
+  /**
+   * The profile to run with, for this session only; left out: the project's, else the default. A profile of another
+   * provider (GitHub Copilot) starts it with that provider: only `model` and `permissionMode` apply, both its own.
+   */
   profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
   effort: Effort.nullable().optional(),
@@ -202,8 +211,20 @@ export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
-/** A Claude profile (login) as a phone knows it: its name and colour, never its folder or account. */
-export const RemoteProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor, defaults: RemoteDefaults });
+/** A provider's own mode for one of Seshboard's (Copilot's, described in its words). */
+export const RemoteProviderMode = z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() });
+
+/**
+ * A profile (login) as a phone knows it: its name and colour, never its folder or account. A profile of another
+ * provider (GitHub Copilot) says so, with that provider's own modes; left out: Claude Code's.
+ */
+export const RemoteProfile = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: ProfileColor,
+  defaults: RemoteDefaults,
+  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode), /** Claude Code's features it has too; a computer from before says none, and ones this build doesn't know are left out. */ supports: z.array(z.string()).default([]).transform((list) => list.filter(isProviderFeature)) }).optional(),
+});
 export type RemoteProfile = z.infer<typeof RemoteProfile>;
 
 /**
@@ -431,6 +452,15 @@ export const remoteContract = {
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
     /**
+     * Whether a provider profile (one `options.get` lists with a `provider`) can start a session now (installed and
+     * signed in with its own CLI, which says how when it isn't), and its models. Asked when New session picks it: it
+     * starts the profile's runtime on the computer.
+     */
+    'providers.ready': {
+      params: z.object({ profileId: ProfileId }),
+      result: z.object({ problem: z.string().nullable(), models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })) }),
+    },
+    /**
      * Plan usage of every Claude profile, the default first. From the computer's last check when it is less than a
      * minute old; `refresh` checks now. `usage.changed` follows each new check.
      */
@@ -540,7 +570,15 @@ export const remoteContract = {
      * computer it is paired with), and `label`, what each push starts with (this computer's name, with more than one).
      */
     'push.subscribe': {
-      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean(), vapid: RemoteVapidKeys.optional(), label: z.string().trim().min(1).max(60).optional() }),
+      params: z.object({
+        subscription: RemotePushSubscription,
+        needsYou: z.boolean(),
+        finished: z.boolean(),
+        /** Reminders that come due (Remind me later); left out by a phone from before: it follows `finished`. */
+        reminders: z.boolean().optional(),
+        vapid: RemoteVapidKeys.optional(),
+        label: z.string().trim().min(1).max(60).optional(),
+      }),
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },
@@ -677,6 +715,11 @@ export const RemoteStatus = z.object({
   /** Paired devices: phones, browsers on a computer, and Seshboard on other computers. */
   devices: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['phone', 'browser', 'computer']).default('phone'), createdAt: z.number(), lastSeenAt: z.number().nullable() })),
   connections: z.array(z.object({ deviceId: z.string(), name: z.string(), since: z.number() })),
+  /**
+   * Addresses that wait after refused handshakes (a revoked device, a used pairing link), until `until`; `attempts` failed
+   * in a row. Behind one network every device shares its address, so a paired phone can wait too. Unblock clears them.
+   */
+  blocked: z.array(z.object({ address: z.string(), attempts: z.number(), until: z.number() })).default([]),
   /**
    * The tunnel came back with a new address that no paired device has used yet: a quick tunnel restarted (Cloudflare,
    * or ngrok without a domain). Settings › Remote then offers Reconnect a paired device. Never for an address that

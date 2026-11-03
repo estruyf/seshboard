@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
+import type { Effort, ProfileDefaults, ProjectDefaults, ProjectInfo } from '@seshboard/protocol/client';
 import { addedProjects, knownFolders, moveRoot } from '../../state/projectList.ts';
-import { globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
+import { globalChoices, globalMode, INITIAL_CHOICES, layeredDefaults, linkPermissionMode, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, startingChoices, startingMode, toProjectDefaults } from './choices.ts';
 
 const unset: ProjectDefaults = { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null };
 
@@ -122,6 +122,35 @@ describe('the permission mode for new sessions', () => {
   });
 });
 
+describe('the global model and effort', () => {
+  const project = (model: string | null, effort: ProjectDefaults['effort']): ProjectDefaults => ({ model, effort, permissionMode: null, workspace: null, baseRef: null, branch: null, defaultBranch: null });
+  const globals = globalChoices({ newSessionModel: 'opus', newSessionEffort: 'high' });
+
+  it('come from Settings, empty leaving them to Claude Code', () => {
+    expect(globals).toEqual({ ...INITIAL_CHOICES, model: 'opus', effort: 'high' });
+    expect(globalChoices({ newSessionModel: '', newSessionEffort: '' })).toEqual(INITIAL_CHOICES);
+  });
+
+  it("start a new session where neither project nor profile sets one", () => {
+    expect(newSessionChoices(null, 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'high' });
+    expect(newSessionChoices(project('haiku', null), 'default', 'default', globals)).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(newSessionChoices(layeredDefaults(null, { model: null, effort: 'low', permissionMode: null, workspace: null, baseRef: null }), 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'low' });
+  });
+
+  it("start a new session in a project that skips its profile's", () => {
+    const profile = { model: 'sonnet', effort: 'low' as const, permissionMode: null, workspace: null, baseRef: null };
+    expect(newSessionChoices(layeredDefaults(project(null, null), profile), 'default', 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'low' });
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalModel: true }, profile), 'default', 'default', globals)).toMatchObject({ model: 'opus', effort: 'low' });
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalEffort: true }, profile), 'default', 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
+    // Skipping to an empty global value leaves it to Claude Code, not to the profile.
+    expect(newSessionChoices(layeredDefaults({ ...project(null, null), globalModel: true }, profile), 'default', 'default')).toMatchObject({ model: '' });
+  });
+
+  it('start a session a link starts too', () => {
+    expect(linkStartingChoices(globals, null, 'default')).toMatchObject({ model: 'opus', effort: 'high', permissionMode: 'default' });
+  });
+});
+
 describe('project lists', () => {
   const map = new Map(
     [
@@ -145,5 +174,40 @@ describe('project lists', () => {
     expect(moveRoot(['a', 'b', 'c'], 'c', -1)).toEqual(['a', 'c', 'b']);
     expect(moveRoot(['a', 'b', 'c'], 'a', -1)).toEqual(['a', 'b', 'c']);
     expect(moveRoot(['a', 'b', 'c'], 'x', 1)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('providerStart', () => {
+  const copilot = {
+    models: [
+      { value: 'gpt-5', supportsEffort: true, efforts: ['low', 'medium', 'high'] satisfies Effort[] },
+      { value: 'gpt-5-mini', supportsEffort: false },
+    ],
+    modes: (['default', 'acceptEdits', 'plan', 'auto'] as const).map((value) => ({ value })),
+    effort: true,
+  };
+  const none = { model: null, effort: null, permissionMode: null };
+
+  it("starts on the defaults' model, effort and mode", () => {
+    expect(providerStart(none, { model: 'gpt-5', effort: 'high' }, 'plan', copilot)).toEqual({ model: 'gpt-5', effort: 'high', permissionMode: 'plan' });
+  });
+
+  it("leaves out a model the provider doesn't list, and an effort the model doesn't take", () => {
+    // A Claude Code model saved before the project moved to Copilot, or Copilot's list still being asked.
+    expect(providerStart(none, { model: 'opus', effort: 'high' }, 'default', copilot)).toEqual({ model: '', effort: '', permissionMode: 'default' });
+    expect(providerStart(none, { model: 'gpt-5', effort: 'max' }, 'default', copilot).effort).toBe('');
+    expect(providerStart(none, { model: 'gpt-5-mini', effort: 'high' }, 'default', copilot).effort).toBe('');
+    expect(providerStart(none, { model: 'gpt-5', effort: 'high' }, 'default', { ...copilot, effort: false }).effort).toBe('');
+  });
+
+  it('keeps what was picked, and a picked model on its own effort', () => {
+    expect(providerStart({ model: '', effort: null, permissionMode: 'auto' }, { model: 'gpt-5', effort: 'high' }, 'plan', copilot)).toEqual({ model: '', effort: '', permissionMode: 'auto' });
+    expect(providerStart({ model: 'gpt-5', effort: null, permissionMode: null }, { model: 'gpt-5-mini', effort: 'high' }, 'default', copilot).effort).toBe('');
+    expect(providerStart({ model: null, effort: 'low', permissionMode: null }, { model: 'gpt-5', effort: 'high' }, 'default', copilot).effort).toBe('low');
+  });
+
+  it("falls back to the provider's first mode for one it doesn't have", () => {
+    expect(providerStart(none, null, 'bypassPermissions', copilot).permissionMode).toBe('default');
+    expect(providerStart(none, null, 'plan', { ...copilot, modes: [{ value: 'acceptEdits' }] }).permissionMode).toBe('acceptEdits');
   });
 });

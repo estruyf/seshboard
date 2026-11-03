@@ -18,9 +18,9 @@ export function treeSessionCount(runs: readonly PipelineRunState[]): number {
 
 const steps = (count: number) => (count === 1 ? 'its step' : `its ${count} steps`);
 
-/** "Archive with its 4 steps", or "Archive" for a tree without sub-sessions yet. */
-export const archiveTreeLabel = (count: number) => (count ? `Archive with ${steps(count)}` : 'Archive');
-export const unarchiveTreeLabel = (count: number) => (count ? `Unarchive with ${steps(count)}` : 'Unarchive');
+/** "Done, with its 4 steps", or "Done" for a tree without sub-sessions yet. */
+export const archiveTreeLabel = (count: number) => (count ? `Done, with ${steps(count)}` : 'Done');
+export const unarchiveTreeLabel = (count: number) => (count ? `Reopen with ${steps(count)}` : 'Reopen');
 
 export type RunRowAction = 'open' | 'stop' | 'archive' | 'unarchive' | 'delete';
 

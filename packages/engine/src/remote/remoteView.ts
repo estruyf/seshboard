@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
   listedInMainList,
@@ -24,6 +25,7 @@ import {
   type RemoteUsageBreakdown,
   type UsageBreakdown,
   type WorktreeBase,
+  otherProviderOf,
 } from '@seshboard/protocol';
 import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
@@ -73,6 +75,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     workingSince: live.get(s.id)?.updatedAt ?? live.get(s.id)?.startedAt ?? null,
     unread: flags.get(s.id)?.unread ?? false,
     pinned: flags.get(s.id)?.pinned ?? false,
+    provider: (flags.get(s.id) ? otherProviderOf(flags.get(s.id)!) : null) ?? running.get(s.id)?.provider ?? null,
     model: running.get(s.id)?.model ?? null,
     effort: running.get(s.id)?.effort ?? null,
     permissionMode: running.get(s.id)?.permissionMode ?? null,
@@ -84,7 +87,7 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const prompts = promptsFor(sources.permissions ?? [], listed).map(remotePrompt);
   if (!options.runs) return { sessions, prompts };
   const now = options.now ?? Date.now();
-  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now });
+  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, ...(sources.kept ? { kept: sources.kept } : {}) });
   return { sessions, prompts, runs };
 }
 
@@ -96,12 +99,12 @@ export const REMOTE_RUN_LIMIT = 50;
  * run rows (runs started from New session) the sidebar lists. A run row is listed as a session is: while it works or
  * waits for you, until you archive it, and for `archiveAfterDays` after its last activity.
  */
-export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number }): RemoteRunState[] {
+export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number; kept?: ReadonlySet<string> }): RemoteRunState[] {
   const shown = runs.filter((state) => {
     const { run, steps } = state;
     if (run.parentSessionId) return listed.has(run.parentSessionId) || steps.some((s) => s.sessionId !== null && listed.has(s.sessionId));
     const goesOn = run.status === 'running' || run.status === 'waiting' || run.status === 'paused';
-    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false }, options.now, options.archiveAfterDays);
+    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false, keep: options.kept?.has(run.id) ?? false }, options.now, options.archiveAfterDays);
   });
   return shown
     .sort((a, b) => b.run.updatedAt - a.run.updatedAt)
@@ -253,12 +256,20 @@ export interface SessionChoice {
   checkoutBranch: string | null;
 }
 
-export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }, globalMode: PermissionMode = 'default'): SessionChoice {
+/** Settings › General › Global model and Global effort: null leaves them to Claude Code. */
+export interface GlobalModel {
+  model: string | null;
+  effort: Effort | null;
+}
+
+export const NO_GLOBAL_MODEL: GlobalModel = { model: null, effort: null };
+
+export function sessionChoice(options: RemoteSessionOptions, project: ProjectDefaults, profile: { id: string; defaults: ProfileDefaults }, globalMode: PermissionMode = 'default', globals: GlobalModel = NO_GLOBAL_MODEL): SessionChoice {
   const workspace = project.workspace ?? profile.defaults.workspace;
   return {
     profileId: profile.id,
-    model: options.model !== undefined ? options.model : (project.model ?? profile.defaults.model),
-    effort: options.effort !== undefined ? options.effort : (project.effort ?? profile.defaults.effort),
+    model: options.model !== undefined ? options.model : (inheritedDefault('model', project, profile.defaults) ?? globals.model),
+    effort: options.effort !== undefined ? options.effort : (inheritedDefault('effort', project, profile.defaults) ?? globals.effort),
     permissionMode: options.permissionMode ?? inheritedPermissionMode(project, profile.defaults) ?? globalMode,
     worktree: options.worktree ?? workspace === 'worktree',
     baseRef: project.baseRef ?? profile.defaults.baseRef ?? 'fresh',
@@ -268,11 +279,12 @@ export function sessionChoice(options: RemoteSessionOptions, project: ProjectDef
 
 /**
  * A project's or a profile's defaults as a phone gets them. The phone takes the project's mode, else the profile's, so
- * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's.
+ * the global mode comes in where it applies: a profile without a mode, and a project that skips its profile's. The
+ * global model and effort (`globals`) come in the same way; a project's unset ones fall to its profile.
  */
-export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'> & { globalPermissionMode?: boolean }, globalMode: PermissionMode | null) => ({
-  model: defaults.model,
-  effort: defaults.effort,
+export const remoteDefaults = (defaults: Pick<ProfileDefaults, 'model' | 'effort' | 'permissionMode' | 'workspace'>, globalMode: PermissionMode | null, globals: GlobalModel = NO_GLOBAL_MODEL) => ({
+  model: defaults.model ?? globals.model,
+  effort: defaults.effort ?? globals.effort,
   permissionMode: defaults.permissionMode ?? globalMode,
   worktree: defaults.workspace === null ? null : defaults.workspace === 'worktree',
 });

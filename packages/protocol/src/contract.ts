@@ -46,7 +46,8 @@ import { Capabilities } from './capabilities.ts';
 import { WorktreeList, WorktreePullRequest, WorktreeRemoveItem, WorktreeRemoveResult, WorktreeSize } from './worktrees.ts';
 import { BranchDeleteItem, BranchDeleteResult, BranchList } from './branches.ts';
 import { ProfileColor, ProfilesSnapshot } from './profiles.ts';
-import { ClaudeUpdateState } from './claudeUpdate.ts';
+import { OptionalProviderSchema, ProviderDetection, ProviderQuota, ProvidersSnapshot, ProviderStatus, SessionProviderSchema } from './providers.ts';
+import { ClaudeUpdateState, ProviderUpdateState } from './claudeUpdate.ts';
 import { BackupSectionSchema, FolderMapping, ImportMode, ImportPreview } from './backup.ts';
 import { LaterDraft, LaterItem, QueueAuto, QueueStarted, QueueWaitFor } from './later.ts';
 import { Schedule, ScheduleRunEvent, ScheduleSave, ScheduleSession } from './scheduleSchema.ts';
@@ -172,6 +173,16 @@ export const RouteResult = z.discriminatedUnion('ok', [
 export type RouteResult = z.infer<typeof RouteResult>;
 
 /** Every request the UI can make and every event the engine can push. */
+/** One thing a session left behind in git or on GitHub (`GitLooseEnd`). */
+const GitLooseEndSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('uncommitted'), files: z.number() }),
+  z.object({ kind: z.literal('unpushed'), commits: z.number() }),
+  z.object({ kind: z.literal('checks-failing'), pr: z.number(), failed: z.number() }),
+  z.object({ kind: z.literal('pr-closed'), pr: z.number() }),
+]);
+/** By session (or pipeline run row) id. */
+const LooseEndsMap = z.record(z.string(), z.array(GitLooseEndSchema));
+
 export const contract = {
   requests: {
     'system.info': {
@@ -198,6 +209,20 @@ export const contract = {
     /** Pin a session, or archive it (moves it to "Archived") until it has new activity. */
     'sessions.setFlags': {
       params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }),
+      result: z.object({}),
+    },
+    /** What sessions left behind in git and on GitHub, as last found (`sessions.looseEnds` follows). */
+    'sessions.listLooseEnds': { params: z.object({}), result: z.object({ looseEnds: LooseEndsMap }) },
+    /**
+     * Remind me later: these sessions leave the main list until `at` (ms), then come back under Reminders with a
+     * notification. Null cancels. `at` now or earlier reminds at once (Remind now in Upcoming).
+     */
+    'sessions.remind': { params: z.object({ sessionIds: z.array(SessionId).min(1).max(500), at: z.number().nullable() }), result: z.object({}) },
+    /** A reminder that came due was seen (the session was opened): it leaves Reminders. */
+    'sessions.clearReminder': { params: z.object({ sessionIds: z.array(SessionId).min(1).max(500) }), result: z.object({}) },
+    /** What's left in a session, in your words: one line (`cleanNote`), or null to clear it. */
+    'sessions.setNote': {
+      params: z.object({ sessionId: SessionId, note: z.string().max(1000).nullable() }),
       result: z.object({}),
     },
     /**
@@ -293,11 +318,14 @@ export const contract = {
      * in it (a session, a resume, a helper) fails with TRUST_NEEDED, with `{ root, brings }` as its details.
      */
     'projects.trustClone': { params: z.object({ root: AbsolutePath }), result: z.object({}) },
-    // --- Claude profiles (one login per config folder) --------------------------------------
+    // --- Profiles (one login per config folder, of Claude Code or another provider) -----------
     'profiles.list': { params: z.object({}), result: ProfilesSnapshot },
-    /** Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`. */
+    /**
+     * Adds a profile for a config folder (created when missing). Sign in there with `CLAUDE_CONFIG_DIR=<folder> claude`,
+     * or for GitHub Copilot `COPILOT_HOME=<folder> copilot login`.
+     */
     'profiles.add': {
-      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath }),
+      params: z.object({ name: ProfileName, color: ProfileColor, configDir: AbsolutePath, provider: SessionProviderSchema.default('claude') }),
       result: z.object({ id: z.string() }),
     },
     'profiles.update': { params: z.object({ id: ProfileId, name: ProfileName.optional(), color: ProfileColor.optional() }), result: z.object({}) },
@@ -306,6 +334,28 @@ export const contract = {
     'profiles.setDefault': { params: z.object({ id: ProfileId }), result: z.object({}) },
     /** Replaces a profile's defaults for new sessions (projects' own defaults still come first). */
     'profiles.setDefaults': { params: z.object({ id: ProfileId, defaults: ProfileDefaults }), result: z.object({}) },
+    // --- Providers: agents besides Claude Code that a profile can use -------------------------
+    'providers.list': { params: z.object({}), result: ProvidersSnapshot },
+    /** Whether a provider profile's CLI is installed and signed in there (it starts the profile's runtime to ask). */
+    'providers.status': { params: z.object({ profileId: ProfileId }), result: ProviderStatus },
+    /** The models a provider profile's account offers. */
+    'providers.models': { params: z.object({ profileId: ProfileId }), result: z.object({ models: z.array(ModelOption) }) },
+    /** The slash commands a new session with a provider profile has (New session's `/` list). */
+    'providers.commands': { params: z.object({ profileId: ProfileId }), result: z.object({ commands: z.array(SlashCommand) }) },
+    /** Opens a terminal that signs a provider profile in with its own CLI (`copilot login`), in its folder. */
+    'providers.signIn': { params: z.object({ profileId: ProfileId }), result: TerminalInfo },
+    /**
+     * Each provider's CLI on this computer, without a profile: installed, its own folder and sessions, signed in. Asked
+     * once and kept; `refresh` asks again (Check again).
+     */
+    'providers.detect': { params: z.object({ refresh: z.boolean().default(false) }), result: z.object({ providers: z.array(ProviderDetection) }) },
+    /**
+     * Opens another provider's session in its own CLI (`copilot --resume=…`), in the session's terminal, with its
+     * profile's folder. Refused while Seshboard runs it.
+     */
+    'providers.openInCli': { params: z.object({ sessionId: SessionId }), result: TerminalInfo },
+    /** A provider profile's premium requests this period; null when the provider doesn't say. */
+    'providers.quota': { params: z.object({ profileId: ProfileId }), result: z.object({ quota: ProviderQuota.nullable() }) },
     /** Forces a full rescan of ~/.claude/projects. */
     'sessions.refresh': {
       params: z.object({}),
@@ -516,7 +566,11 @@ export const contract = {
       result: z.object({}),
     },
     /** Starts a Claude Code process for a folder ahead of time so the first message answers faster. */
-    'session.prewarm': { params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null) }), result: z.object({}) },
+    'session.prewarm': {
+      // The effort the new session will start with: Claude Code reads it only at startup.
+      params: z.object({ cwd: AbsolutePath, profileId: ProfileId.nullable().default(null), effort: Effort.nullable().default(null) }),
+      result: z.object({}),
+    },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
      * Plan usage (5-hour and weekly limits) from Claude Code's /usage report. Cached for a minute;
@@ -1195,6 +1249,8 @@ export const contract = {
     'remote.pair.decide': { params: z.object({ requestId: z.string().min(1).max(100), allow: z.boolean() }), result: z.object({}) },
     /** Revoke: the device can't connect any more, and its open connections close at once. */
     'remote.revoke': { params: z.object({ deviceId: z.string().min(1).max(100) }), result: z.object({}) },
+    /** Lets addresses that wait after refused handshakes try again now (Settings › Remote, Unblock). */
+    'remote.unblock': { params: z.object({}), result: z.object({}) },
     /** Renames a paired device (Settings › Remote, Rename); `remote.changed` follows with the new name. */
     'remote.rename': { params: z.object({ deviceId: z.string().min(1).max(100), name: DeviceName }), result: z.object({}) },
     /** The theme the app shows now, resolved, for paired phones that look like this computer (`theme.get` there). */
@@ -1424,6 +1480,15 @@ export const contract = {
     'claudeUpdate.dismiss': { params: z.object({}), result: z.object({}) },
     /** Turns automatic checks on or off (remembered). */
     'claudeUpdate.setEnabled': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+
+    // --- Other providers' CLI updates (GitHub Copilot CLI): as Claude Code's, one per provider with a profile ---------
+    'providerUpdate.list': { params: z.object({}), result: z.object({ updates: z.array(ProviderUpdateState) }) },
+    /** Asks the provider's CLI whether a newer version is out. The result arrives through `providerUpdate.changed`. */
+    'providerUpdate.check': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    /** Runs its update command (NOT_FOUND without a profile of it; UNSUPPORTED and BUSY as for Claude Code). */
+    'providerUpdate.update': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    'providerUpdate.dismiss': { params: z.object({ provider: OptionalProviderSchema }), result: z.object({}) },
+    'providerUpdate.setEnabled': { params: z.object({ provider: OptionalProviderSchema, enabled: z.boolean() }), result: z.object({}) },
     /** What the mods of every running session show now (`mods.*` events follow). */
     'mods.snapshot': { params: z.object({}), result: z.object({ sessions: z.array(ModsSnapshot) }) },
     /**
@@ -1460,6 +1525,18 @@ export const contract = {
     'sessions.changed': SessionsChanged,
     /** Full replacement of the live-session list whenever the registry changes. */
     'sessions.live': z.object({ live: z.array(LiveSession) }),
+    /**
+     * Sessions moved to Done because their pull request merged, sent once a window has focus (the toast with Undo). A
+     * batch of them in one event.
+     */
+    'sessions.mergedDone': z.object({ sessions: z.array(z.object({ id: z.string(), title: z.string(), pr: z.number() })) }),
+    /**
+     * Reminders that came due, for the notification and the phone. `missed`: it was due while Seshboard was closed (or
+     * the computer slept), so it says when it was for.
+     */
+    'sessions.remindersDue': z.object({ reminders: z.array(z.object({ id: z.string(), title: z.string(), note: z.string().nullable(), remindAt: z.number(), missed: z.boolean() })) }),
+    /** Every session's loose ends, whenever one changes (sessions without any left out). */
+    'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,
     'session.host': SessionHostInfo,
     /** Claude Code reported a new model list (replaces the one from `models.list`). */
@@ -1482,6 +1559,8 @@ export const contract = {
     /** Full list whenever terminals start, exit or close. */
     'terminals.changed': z.object({ terminals: z.array(TerminalInfo) }),
     'claudeUpdate.changed': ClaudeUpdateState,
+    /** Every provider check, whenever one changes or a provider's first profile is added or its last removed. */
+    'providerUpdate.changed': z.object({ updates: z.array(ProviderUpdateState) }),
     /** Worktree sizes measured in the background (`worktrees.size`), as they finish. */
     'worktrees.sizes': z.object({ sizes: z.array(WorktreeSize) }),
     /** A `git.prCreate` moved on: pushing, creating, done or failed. */

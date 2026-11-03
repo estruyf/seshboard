@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { WebSocketServer } from 'ws';
 import { generateKeyPair, remoteLinkFragment, RpcError, type ComputerEvent, type ComputersStatus, type RemoteContract, type Handlers } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
-import { ComputerHub, offlineMessage, pairingMessage } from './computerHub.ts';
+import { ComputerHub, offlineMessage, pairingMessage, sameAddress } from './computerHub.ts';
 import { LinkError, retryDelay } from './computerLink.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, type PairingState } from './pairing.ts';
@@ -30,7 +31,7 @@ function tempDb() {
 /** Computer B: Remote with one session, which answers what the hub asks. */
 async function otherComputer(name = 'Studio Mac') {
   const db = tempDb();
-  const identity = generateKeyPair();
+  let identity = generateKeyPair();
   const devices = new DeviceStore(db);
   let onRequest: (state: PairingState) => void = () => {};
   const pairing = new Pairing((state) => state.request && onRequest(state));
@@ -64,7 +65,18 @@ async function otherComputer(name = 'Studio Mac') {
     pairLink: () => `https://switchboard.example/remote/#${remoteLinkFragment({ kind: 'pair', enginePublicKey: identity.publicKey, secret: pairing.start().secret, address })}`,
     connectLink: (at = address) => `https://switchboard.example/remote/#${remoteLinkFragment({ kind: 'connect', enginePublicKey: identity.publicKey, address: at })}`,
     answerNext: (allow: boolean) => (onRequest = (state) => pairing.decide(state.request!.id, allow)),
+    /** Remote gets a new key there, as when the keychain lost the old one (the rename to Seshboard did). */
+    newKey: () => void (identity = generateKeyPair()),
   };
+}
+
+/** An older Seshboard there: it closes every socket with 4400 once it reads the hello, as when the key it got was for another one. */
+async function olderComputerRefusing(): Promise<string> {
+  const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  server.on('connection', (ws) => ws.once('message', () => ws.close(CLOSE.refused)));
+  cleanups.push(() => server.close());
+  return `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 }
 
 /** Computer A: the hub, with its own database and device key. */
@@ -195,6 +207,53 @@ describe('Other computers', () => {
     expect(a.hub.status().computers).toEqual([]);
   });
 
+  it('stops trying, and says to pair again, once the other computer\'s Remote key changed', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    await a.until((s) => s.computers[0]?.state === 'connected');
+    b.newKey();
+    b.server.disconnect(b.devices.list()[0]!.id);
+    const status = await a.until((s) => s.computers[0]?.state === 'unpaired');
+    expect(status.computers[0]!.message).toBe('Studio Mac no longer knows this computer. Pair it again.');
+  });
+
+  it('replaces the earlier pairing when the computer at the same address is paired again with its new key', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const first = await a.until((s) => s.computers[0]?.state === 'connected');
+    b.newKey();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const status = await a.until((s) => s.computers.length === 1 && s.computers[0]!.id !== first.computers[0]!.id && s.computers[0]!.state === 'connected');
+    expect(status.computers[0]).toMatchObject({ address: b.address, state: 'connected' });
+  });
+
+  it('keeps a computer at another address when one is paired', async () => {
+    const b = await otherComputer();
+    const c = await otherComputer('Office Mac');
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    await a.until((s) => s.computers[0]?.state === 'connected');
+    c.answerNext(true);
+    await a.hub.add(c.pairLink());
+    await a.until((s) => s.computers.length === 2 && s.computers.every((computer) => computer.state === 'connected'));
+  });
+
+  it('stops trying when an older Seshboard there refuses the handshake, rather than every minute', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    await a.until((s) => s.computers[0]?.state === 'connected');
+    await a.hub.add(b.connectLink(await olderComputerRefusing()));
+    await a.until((s) => s.computers[0]?.state === 'unpaired');
+  });
+
   it('says it can’t reach a computer that is off, and tries again later', async () => {
     const b = await otherComputer();
     const a = thisComputer();
@@ -221,5 +280,14 @@ describe('Other computers’ wording', () => {
 
   it('waits longer each time, up to a minute', () => {
     expect([0, 1, 2, 3, 4, 5, 50].map(retryDelay)).toEqual([1_000, 2_000, 5_000, 10_000, 30_000, 60_000, 60_000]);
+  });
+});
+
+describe('the same address', () => {
+  it('is the same origin, whatever the path, and only that', () => {
+    expect(sameAddress('https://mac.example.com', 'https://mac.example.com/')).toBe(true);
+    expect(sameAddress('https://mac.example.com', 'https://other.example.com')).toBe(false);
+    expect(sameAddress('http://127.0.0.1:4000', 'http://127.0.0.1:4001')).toBe(false);
+    expect(sameAddress('not a url', 'not a url')).toBe(true);
   });
 });

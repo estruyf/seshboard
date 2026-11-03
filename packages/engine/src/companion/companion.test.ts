@@ -354,6 +354,12 @@ describe('which sessions are listed', () => {
     expect(ids(list, { archiveAfterDays: 7 })).toEqual(['two-days', 'five-days']);
   });
 
+  it('keeps a session with an unsent message or a queued prompt, however old, as the sidebar does', () => {
+    const list = [summary('kept', { updatedAt: now - 5 * RECENT_MS }), summary('old', { updatedAt: now - 5 * RECENT_MS }), summary('kept-archived', { updatedAt: now - 5 * RECENT_MS, archivedAt: now - RECENT_MS })];
+    const kept = new Set(['kept', 'kept-archived']);
+    expect(companionSessions({ summaries: list, live: [], hosts: [], kept }, { now, scope: 'all', archiveAfterDays: DAYS }).map((s) => s.id)).toEqual(['kept']);
+  });
+
   it('lists only sessions from Seshboard under its default scope', () => {
     const list = [summary('app'), summary('terminal', { inApp: false })];
     expect(ids(list, { scope: 'switchboard' })).toEqual(['app']);

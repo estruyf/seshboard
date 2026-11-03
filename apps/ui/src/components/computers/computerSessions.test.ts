@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Computer, RemoteMessage, RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
-import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, newProblems, NOT_STREAMING, prependMessages, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
+import { appendMessages, applyStream, applyUpdate, awayBanner, computerLine, inBackground, newProblems, NOT_STREAMING, prependMessages, remoteEditLines, remoteItems, remoteTurns, sessionGroups, toolLine, toolsSummary, visibleMessages, waitingCount } from './computerSessions.ts';
 
 const message = (uuid: string, text = uuid, extra: Partial<RemoteMessage> = {}): RemoteMessage => ({ uuid, role: 'assistant', timestamp: 1, parentToolUseId: null, blocks: [{ type: 'text', text }], ...extra });
 const session = (id: string, status: RemoteSession['status']): RemoteSession => ({
@@ -107,6 +107,27 @@ describe('the remote transcript', () => {
       ['t2', true],
       ['t3', false],
     ]);
+    // What each call gave back, for the opened step; none yet for one still running.
+    expect(first.kind === 'tools' && first.tools.map((t) => t.result)).toEqual([null, { text: 'no', isError: true, truncated: false }, null]);
+  });
+
+  it('turns an edit into the lines it takes away and adds', () => {
+    expect(remoteEditLines('Edit', { old_string: 'x', new_string: 'y\nz' })).toEqual([
+      { kind: '-', text: 'x' },
+      { kind: '+', text: 'y' },
+      { kind: '+', text: 'z' },
+    ]);
+    expect(remoteEditLines('Write', { content: 'a\nb' })).toEqual([
+      { kind: '+', text: 'a' },
+      { kind: '+', text: 'b' },
+    ]);
+    expect(remoteEditLines('MultiEdit', { edits: [{ old_string: 'a', new_string: 'b' }, { old_string: '', new_string: 'c' }] })).toEqual([
+      { kind: '-', text: 'a' },
+      { kind: '+', text: 'b' },
+      { kind: '+', text: 'c' },
+    ]);
+    expect(remoteEditLines('Bash', { command: 'ls' })).toBeNull();
+    expect(remoteEditLines('Edit', {})).toBeNull();
   });
 
   it('leaves out thinking, subagents and empty prompts', () => {

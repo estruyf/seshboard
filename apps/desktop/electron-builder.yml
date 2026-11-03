@@ -10,6 +10,11 @@ files:
   - package.json
   # Seshboard runs the user's installed `claude`; the SDK's bundled copy (~220 MB) is not shipped.
   - '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'
+  # The same for GitHub Copilot: Seshboard runs the user's installed `copilot`, so neither the SDK's bundled runtime nor
+  # koffi (only loaded to host that runtime in-process) is shipped.
+  - '!node_modules/@github/copilot-sdk-*/**'
+  - '!node_modules/koffi/**'
+  - '!node_modules/@koromix/**'
   # node-pty: only the JS and this platform's prebuilt binaries are needed at runtime (the platform's own
   # `files` below leave out the other one's), without their debug symbols.
   # A platform's `files` is a list of its own, and one with only `!` patterns means "everything else in

@@ -54,6 +54,17 @@ export const PROFILE_DOT: Record<RemoteProfile['color'], string> = {
   gray: 'bg-profile-gray',
 };
 
+/** The profile's colour for text and marks (the tool's mark on the profile chip). */
+export const PROFILE_TEXT: Record<RemoteProfile['color'], string> = {
+  yellow: 'text-profile-yellow',
+  blue: 'text-profile-blue',
+  green: 'text-profile-green',
+  purple: 'text-profile-purple',
+  red: 'text-profile-red',
+  orange: 'text-profile-orange',
+  gray: 'text-profile-gray',
+};
+
 /** What a new session starts with: the project's defaults, then its profile's, until you change one, for this session only. */
 export interface Choice {
   profileId: string;
@@ -132,4 +143,13 @@ export function autoFace(auto: RemoteSession['auto']): string | null {
   if (!auto) return null;
   if (auto.choosing) return 'Auto';
   return `Auto · ${auto.picked ? tierLabel(auto.picked) : 'Default model'}`;
+}
+
+/**
+ * Whether a session's provider (another one than Claude Code's: GitHub Copilot) has one of Claude Code's features on
+ * that computer, from its profiles' `supports`. Claude Code's own sessions always do; unknown until `options.get` answers.
+ */
+export function sessionCan(options: RemoteOptions | null, provider: string | null | undefined, feature: string): boolean {
+  if (!provider) return true;
+  return profilesOf(options).some((p) => p.provider?.id === provider && (p.provider.supports as readonly string[]).includes(feature));
 }

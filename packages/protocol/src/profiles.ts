@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROFILE_COLORS } from './profileConstants.ts';
+import { SESSION_PROVIDERS } from './providerConstants.ts';
 import { ProfileDefaults } from './sessions.ts';
 
 export { BUILTIN_PROFILE_ID, PROFILE_COLORS } from './profileConstants.ts';
@@ -13,6 +14,11 @@ export type ProfileColor = z.infer<typeof ProfileColor>;
  */
 export const ClaudeProfile = z.object({
   id: z.string(),
+  /**
+   * Who runs its sessions: Claude Code, or another provider (GitHub Copilot) with its own config folder and login
+   * (`COPILOT_HOME`). Claude Code's own settings (plan usage, plugins, memory) only apply to Claude Code's.
+   */
+  provider: z.enum(SESSION_PROVIDERS),
   name: z.string(),
   color: ProfileColor,
   /** The config folder this profile reads and runs Claude Code with. */

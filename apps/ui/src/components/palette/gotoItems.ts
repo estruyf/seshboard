@@ -57,7 +57,7 @@ export function matchProjects(roots: readonly string[], query: string, nameOf: (
 
 /**
  * ⌘P with nothing typed: sessions under the sidebar's own headings, in its order (Needs you, Working,
- * Pinned, Today, Yesterday, Earlier; archived ones left out), so it can stand in for the sidebar while that is
+ * Pinned, To review, Open; archived ones left out), so it can stand in for the sidebar while that is
  * closed. At most `limit` sessions; the urgent groups come first, so they are never the ones cut.
  */
 export function gotoGroups(rows: readonly SessionRowData[], now: number, archiveAfterDays: number, limit: number): { group: SessionGroup; rows: SessionRowData[] }[] {

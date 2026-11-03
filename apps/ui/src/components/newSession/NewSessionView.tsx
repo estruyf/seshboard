@@ -1,6 +1,9 @@
-import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Clock, Folder, FolderGit2, GitBranch, Info, Link2, ListEnd, MessageCircleQuestion, Play, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, projectOf, type ContextItem, type GithubIssueDetail, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
+import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
+import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { askWhat, offersProjectProfile, switchNoticeFor, type SwitchNoticeState } from './providerSwitch.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
@@ -14,6 +17,7 @@ import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
@@ -68,7 +72,8 @@ import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { OpenInButton } from '../OpenInButton.tsx';
 import { CatchUpButton } from '../git/CatchUpButton.tsx';
-import { UsageBand } from '../UsageBand.tsx';
+import { UsageBand, useUsageLines } from '../UsageBand.tsx';
+import { openUsage } from '../../state/usageViewStore.ts';
 import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
@@ -78,7 +83,7 @@ import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from './startSession.ts';
-import { DEFAULTS_KEY, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
+import { DEFAULTS_KEY, globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, linkStartingChoices, newSessionChoices, providerStart, readGlobals, readLastMode, sameDefaults, toProjectDefaults, type Choices } from './choices.ts';
 import { INITIAL_QUESTION_CHOICES, isQuestionsFolder, QUESTION_DEFAULTS_KEY, QUESTION_LABEL, questionPatch, questionStartingChoices, readQuestionChoices, sessionOptions, type QuestionChoices } from '../../lib/questions.ts';
 
 /**
@@ -115,12 +120,16 @@ function LocalNewSession() {
   const autoModel = usePreferences((s) => s.prefs.autoModel);
   const projectOrder = usePreferences((s) => s.prefs.projectOrder);
   const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
+  const newSessionModel = usePreferences((s) => s.prefs.newSessionModel);
+  const newSessionEffort = usePreferences((s) => s.prefs.newSessionEffort);
+  /** The model and effort Settings › General sets, where the project and profile set none. */
+  const globals = globalChoices({ newSessionModel, newSessionEffort });
   const view = useSessions((s) => s.view);
   const [cwd, setCwd] = useState<string | null>(null);
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
   // Before a folder is picked, the mode is already the one Settings sets.
-  const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode));
+  const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode, globals));
   /** The permission mode last picked here or in the palette, for Settings › General › Permission mode › Remember last. */
   const [lastMode, setLastMode] = useState<PermissionMode>(INITIAL_CHOICES.permissionMode);
   const [loaded, setLoaded] = useState(false);
@@ -144,6 +153,36 @@ function LocalNewSession() {
   const [savedNote, setSavedNote] = useState<string | null>(null);
   /** A profile chosen for this session only (null: the project's, else the default). */
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
+  /** Switching to another provider's profile turned something off: the notice in the box, with Back. */
+  const [switched, setSwitched] = useState<SwitchNoticeState | null>(null);
+  /** The project whose profile was just set from the hint's link: the hint says it now comes from its defaults. */
+  const [profileSavedFor, setProfileSavedFor] = useState<string | null>(null);
+  /**
+   * A profile asked for when New session opened (Copilot is ready's Start): picking a project or a draft loading after
+   * it doesn't undo it, until another profile is picked.
+   */
+  const pinnedProfile = useRef<string | null>(null);
+  // A provider profile's (GitHub Copilot's) own model and mode, picked here for this session. Null until picked: the
+  // project's and profile's defaults then decide ('' is the provider's own default model).
+  const [providerModel, setProviderModel] = useState<string | null>(null);
+  /** The effort for the provider's model, when it takes one ('' is the model's own). */
+  const [providerEffort, setProviderEffort] = useState<Effort | '' | null>(null);
+  const [providerMode, setProviderMode] = useState<PermissionMode | null>(null);
+  /**
+   * A queued item or a schedule opened here: its model, effort and mode for another provider's chips too. Which set
+   * applies follows its profile.
+   */
+  const restoreProviderChoices = (draft: { model?: string | null; effort?: Effort | null; permissionMode?: PermissionMode | null }) => {
+    setProviderModel(draft.model ?? '');
+    setProviderEffort(draft.effort ?? '');
+    setProviderMode(draft.permissionMode ?? null);
+  };
+  /** Back to the defaults for another provider's model, effort and mode. */
+  const forgetProviderChoices = () => {
+    setProviderModel(null);
+    setProviderEffort(null);
+    setProviderMode(null);
+  };
   /** Run as (#179): the pipeline Start runs with the prompt as its task, or null for one session. Kept with the draft. */
   const [runAsId, setRunAsId] = useState<string | null>(null);
   /** The steps line's Change: opens the Run as menu. */
@@ -243,18 +282,50 @@ function LocalNewSession() {
   const isProject = project?.added ?? false;
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
+  // Who runs the session follows from its profile: Claude Code, or another provider's (GitHub Copilot) with its own login.
+  const chosenProvider = profiles.find((p) => p.id === profileId)?.provider ?? 'claude';
+  const runWith: OptionalProvider | null = chosenProvider === 'claude' ? null : chosenProvider;
+  // The plan usage on the tray, in one line for its folded chip's menu (Claude Code's profiles only).
+  const usageLines = useUsageLines(runWith ? null : profileId, !runWith);
+  const runWithInfo = useProvider(runWith);
+  const readiness = useProviderReadiness(runWith ? profileId : null);
   /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
+  /** The provider's own modes (Copilot's). */
+  const runWithModes = runWithInfo?.modes ?? [];
+  /** The provider's model, effort and mode: the ones picked, else the defaults, with the mode New session starts in. */
+  const providerChoices = providerStart(
+    { model: providerModel, effort: providerEffort, permissionMode: providerMode },
+    sessionDefaults,
+    d.permissionMode,
+    { models: readiness?.models ?? [], modes: runWithModes, effort: runWithInfo?.supports.includes('effort') ?? false },
+  );
+  const runWithModel = providerChoices.model;
+  const runWithMode = providerChoices.permissionMode;
+  const providerEffortShown = providerChoices.effort;
+  /** The provider's model, when it takes an effort and its provider has the setting (its Auto never does). */
+  const providerEffortModel = runWithModel && runWithInfo?.supports.includes('effort') ? readiness?.models.find((m) => m.value === runWithModel && m.supportsEffort) : undefined;
+  /** Who works in the folder, in the copy around the box. */
+  const agent = runWith ? PROVIDER_SHORT_NAMES[runWith] : 'Claude';
+  const catalog = useProviders((s) => s.providers);
+  /** Why the provider can't start a session here: its own sign-in or install message, or that it is still being asked. */
+  /** Another provider doesn't have this one of Claude Code's features yet (a worktree, a branch, a pipeline). */
+  const lacks = (feature: ProviderFeature) => runWith !== null && !(runWithInfo?.supports.includes(feature) ?? false);
+  const noWorktree = lacks('worktree');
+  const noBranch = lacks('branch');
+  const noPipeline = lacks('pipeline');
+  const providerBlocked = runWith && readiness ? (readiness.error ?? readiness.status?.problem ?? (readiness.status ? null : `Checking ${PROVIDER_NAMES[runWith]}…`)) : null;
   const defaultsKey = JSON.stringify(sessionDefaults);
   /** What a session here starts from: a quick question's own choices, else the project's and profile's defaults, with the mode Settings says (a link's never skips permission prompts). */
   const firstChoices = (): Choices =>
-    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(INITIAL_CHOICES, sessionDefaults, newSessionMode) : newSessionChoices(sessionDefaults, newSessionMode, lastMode);
+    question ? questionStartingChoices(questionChoices) : autostarting ? linkStartingChoices(globals, sessionDefaults, newSessionMode) : newSessionChoices(sessionDefaults, newSessionMode, lastMode, globals);
   /** The picked folder's colour: the message box's frame, matching its tile. */
   const projectColor = useProjectColor(project, cwd);
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
   // The sessions the sidebar lists (sessions from other apps only when the scope shows them): the
   // tiles' status lines and "Pick up in" come from these.
-  const rows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const rows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   const activity = useMemo(() => activityByProject(rows), [rows]);
   const ordered = useMemo(
     () => orderProjects(folders, projectOrder, (root) => Math.max(projects.get(root)?.lastActivity ?? 0, activity.get(root)?.lastActivity ?? 0) || null),
@@ -309,6 +380,7 @@ function LocalNewSession() {
     setPreset(undefined);
     setDraftPrompt('');
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setD(firstChoices());
   };
@@ -328,6 +400,16 @@ function LocalNewSession() {
     useSchedules.setState({ scheduleFirst: false });
     setScheduleFirst(true);
   }, [scheduleFirstRequest]);
+
+  // Copilot is ready's Start a Copilot session: this profile, for this session only.
+  const newSessionProfile = useProjects((s) => s.newSessionProfile);
+  useEffect(() => {
+    if (!newSessionProfile) return;
+    pinnedProfile.current = newSessionProfile;
+    setProfileOverride(newSessionProfile);
+    setSwitched(null);
+    useProjects.getState().startWith(null);
+  }, [newSessionProfile]);
 
   // The palette or Projects view asked for a folder (a session's git menu: in a new worktree).
   /** The folder that should start on "New worktree", until its defaults are in or the user changes something. */
@@ -354,6 +436,7 @@ function LocalNewSession() {
     // The store has already turned a project name into its folder.
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setAddAsProject(true);
     setCwd(link.cwd);
@@ -397,6 +480,7 @@ function LocalNewSession() {
     if (fromLater || fromSchedule) leaveQueued();
     folderFromLink.current = true;
     touchedFor.current = undefined;
+    forgetProviderChoices();
     setProfileOverride(null);
     setPendingStart(null);
     setLinkRepo(null);
@@ -470,6 +554,7 @@ function LocalNewSession() {
     setProfileOverride(item.profileId);
     setCwd(item.cwd);
     setD({ model: item.model ?? '', permissionMode: item.permissionMode, effort: item.effort ?? '', workspace: item.workspace, baseRef: item.baseRef, branch: item.branch ?? '' });
+    restoreProviderChoices(item);
     setRestored(null);
     setPreset({ text: item.typed ?? item.prompt, attachments: item.attachments, context: item.context, seq: ++presets.current });
     setDraftPrompt(item.typed ?? item.prompt);
@@ -496,6 +581,7 @@ function LocalNewSession() {
     setProfileOverride(draft.profileId);
     setCwd(draft.cwd);
     setD({ model: draft.model ?? '', permissionMode: draft.permissionMode, effort: draft.effort ?? '', workspace: draft.workspace, baseRef: draft.baseRef, branch: draft.branch ?? '' });
+    restoreProviderChoices(draft);
     setRestored(null);
     setPreset({ text: draft.typed ?? draft.prompt, attachments: draft.attachments, context: draft.context, seq: ++presets.current });
     setDraftPrompt(draft.typed ?? draft.prompt);
@@ -633,7 +719,7 @@ function LocalNewSession() {
     if (!draft.form) return;
     touchedFor.current = cwd;
     setD(draft.form.choices);
-    setProfileOverride(draft.form.profileId);
+    if (pinnedProfile.current === null) setProfileOverride(draft.form.profileId);
     setRunAsId(draft.form.runAs ?? null);
   };
   const onPromptChange = useCallback((text: string) => {
@@ -647,9 +733,10 @@ function LocalNewSession() {
   // A new folder starts from its project's defaults (again when they arrive or change, until the user changes something).
   useEffect(() => {
     if (!loaded || touchedFor.current === cwd) return;
+    forgetProviderChoices();
     const choices = firstChoices();
     setD(worktreeFor.current === cwd && !question ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, cwd, defaultsKey, newSessionMode, lastMode, autostarting, question, questionChoices]);
+  }, [loaded, cwd, defaultsKey, newSessionMode, newSessionModel, newSessionEffort, lastMode, autostarting, question, questionChoices]);
 
   // Inspect the folder (git? branch?), load its branches, and pre-warm Claude Code there.
   useEffect(() => {
@@ -697,16 +784,24 @@ function LocalNewSession() {
     };
   }, [client, cwd, profileId, commandsVersion]);
   useEffect(() => {
-    if (client && cwd && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId });
-  }, [client, cwd, d.workspace, d.branch, profileId]);
+    // Claude Code is warmed up only when it is what starts.
+    if (client && cwd && !runWith && shouldPrewarm(d)) void client.call('session.prewarm', { cwd, profileId, effort: d.effort || null });
+  }, [client, cwd, d.workspace, d.branch, d.effort, profileId, runWith]);
 
   const persist = (folder: string | null) => void client?.call('appState.set', { key: DEFAULTS_KEY, value: { cwd: folder } });
 
   // A change applies to this session only; a project's own defaults are set in its configuration. Only the mode is
   // kept, for Remember last. Always build on the latest state: two quick changes (folder, then model) must not undo each other.
+  /** A choice made in another provider's chips: it stays when the project's defaults change, as `update`'s. */
+  const pickForProvider = () => {
+    touchedFor.current = cwd;
+    setSavedNote(null);
+    setSwitched(null);
+  };
   const update = (patch: Partial<Choices>) => {
     touchedFor.current = cwd;
     setSavedNote(null);
+    setSwitched(null);
     setD((current) => ({ ...current, ...patch }));
     if (patch.permissionMode && !question) {
       setLastMode(patch.permissionMode);
@@ -727,11 +822,15 @@ function LocalNewSession() {
   };
   const changeFolder = (folder: string) => {
     touchedFor.current = undefined;
+    forgetProviderChoices();
     if (folder !== fromGithub?.request.root) setFromGithub(null);
     setLinkRepo(null);
     setLinkNoFolder(false);
     setPendingStart(null);
-    setProfileOverride(null);
+    // A profile asked for when New session opened (Start a Copilot session) stays through picking the project.
+    if (pinnedProfile.current === null) setProfileOverride(null);
+    setSwitched(null);
+    setProfileSavedFor(null);
     setQueueWait(null);
     setQueueAuto(null);
     setStartAfterId(null);
@@ -764,10 +863,16 @@ function LocalNewSession() {
   /** A branch kept from before (a draft, the project's default) can since be checked out in another worktree. */
   const branchTaken = branchBlocked(checkoutBranch, gitBranches.checkedOutElsewhere);
   const branchOptions = d.branch && !gitBranches.branches.includes(d.branch) ? [d.branch, ...gitBranches.branches] : gitBranches.branches;
-  const asDefaults = toProjectDefaults({ ...d, workspace: useWorktree ? 'worktree' : d.workspace }, isProject ? project!.defaults.defaultBranch : null);
-  const unsaved = isProject && !sameDefaults(asDefaults, project!.defaults);
+  // With another provider, its own model, effort and mode are what the project saves.
+  const asDefaults = toProjectDefaults(
+    { ...d, workspace: useWorktree ? 'worktree' : d.workspace, ...(runWith ? { model: runWithModel, effort: providerEffortShown, permissionMode: runWithMode } : {}) },
+    isProject ? project!.defaults.defaultBranch : null,
+  );
+  // Only for a profile of the project's provider: another's models would mean nothing to the project's sessions.
+  const projectProvider = profiles.find((p) => p.id === (projectProfile ?? defaultProfile))?.provider ?? 'claude';
+  const unsaved = isProject && chosenProvider === projectProvider && !sameDefaults(asDefaults, project!.defaults);
   const trayBranch = branchLabel({
-    worktree: useWorktree,
+    worktree: useWorktree && !noWorktree,
     baseRef: d.baseRef,
     remote: gitStatus?.pushRemote ?? null,
     baseBranch: gitStatus?.baseBranch ?? null,
@@ -836,12 +941,13 @@ function LocalNewSession() {
           attachments,
           typed: parts?.typed ?? null,
           context: parts?.context ?? [],
-          model: d.model || null,
-          effort: d.effort || null,
-          permissionMode: d.permissionMode,
-          workspace: useWorktree ? 'worktree' : 'current',
+          // Another provider's own model, effort and mode; no worktree or branch for it yet.
+          model: (runWith ? runWithModel : d.model) || null,
+          effort: (runWith ? providerEffortShown : d.effort) || null,
+          permissionMode: runWith ? runWithMode : d.permissionMode,
+          workspace: useWorktree && !noWorktree ? 'worktree' : 'current',
           baseRef: d.baseRef,
-          branch: !useWorktree && d.branch ? d.branch : null,
+          branch: !noBranch && !useWorktree && d.branch ? d.branch : null,
           profileId: profileOverride,
         }
       : null;
@@ -856,7 +962,7 @@ function LocalNewSession() {
     forgetUnsavedQueued();
     if (!draft || draft.prompt === '' || sameDraft(queuedNow, draft)) return;
     unsavedQueued.current = { id: fromLater.id, draft, timer: setTimeout(saveQueued, 600) };
-  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride]);
+  }, [fromLater, queuedNow, inspection, cwd, draftPrompt, draftAttachments, draftContext, d, useWorktree, profileOverride, runWith, runWithModel, providerEffortShown, runWithMode]);
   // Started or removed somewhere else while open here: back to New session.
   useEffect(() => {
     if (fromLater && queueLoaded && !queuedNow) leaveQueued();
@@ -985,8 +1091,9 @@ function LocalNewSession() {
         cwd: folder,
         prompt: text,
         attachments,
-        choices: fresh ? { ...d, branch: '', workspace: 'current' } : d,
-        worktree: fresh ? false : worktree,
+        // What the provider doesn't have yet stays out (its controls are off too).
+        choices: fresh ? { ...d, branch: '', workspace: 'current' } : noBranch ? { ...d, branch: '' } : d,
+        worktree: fresh || noWorktree ? false : worktree,
         worktreeName: effectiveName,
         currentBranch: gitBranches.current,
         checkedOutElsewhere: gitBranches.checkedOutElsewhere,
@@ -996,7 +1103,8 @@ function LocalNewSession() {
         addProject: !cloned && options.addAsProject && !isProject && addAsProject && !!inspection?.exists,
         saveForLater: () => parkInQueue(text, attachments, parts),
         autoEnabled: autoModel.enabled,
-        github: fresh ? undefined : githubStart(worktree),
+        github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
+        provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1051,40 +1159,94 @@ function LocalNewSession() {
   // Saved as Auto while Auto is off: the default model, and the note under the box says so.
   const shownModel = effectiveModel(d.model, autoModel.enabled);
   const autoOff = d.model === AUTO_MODEL && !autoModel.enabled;
+  /**
+   * Another profile for this session. One of another provider (GitHub Copilot) keeps the prompt and attachments, takes
+   * its own model and mode, and says what it turned off that was on (a worktree, a pipeline), with the way back.
+   */
+  const pickProfile = (id: string) => {
+    pinnedProfile.current = null;
+    const to = profiles.find((p) => p.id === id)?.provider ?? 'claude';
+    const supports = to === 'claude' ? [] : (catalog.find((p) => p.id === to)?.supports ?? []);
+    setSwitched(
+      switchNoticeFor(
+        {
+          profileOverride,
+          provider: chosenProvider,
+          worktree: useWorktree,
+          checkoutBranch: d.branch ? checkoutBranch : null,
+          runAsId: runAs?.id ?? null,
+          later: fromLater !== null || startAfterId !== null,
+          schedule: fromSchedule !== null || scheduleFirst,
+        },
+        to,
+        supports,
+      ),
+    );
+    setProfileOverride(id);
+  };
+  const switchedBack = switched ? (profiles.find((p) => p.id === (switched.back ?? projectProfile ?? defaultProfile))?.name ?? 'the profile before') : null;
+  // Making the picked profile the project's own, from the hint under the box.
+  const pickedProfile = profiles.find((p) => p.id === profileId);
+  const linkProject = !question && !!cwd && offersProjectProfile({ isProject, profileId, projectProfile, defaultProfile });
+  const useProfileForProject = async () => {
+    if (!client || !cwd) return;
+    await client.call('projects.setProfile', { root: cwd, profileId });
+    reloadProjects();
+    setProfileSavedFor(cwd);
+    setSwitched(null);
+  };
+
   // The same chip row as in a session.
   const controls = (
     <ComposerChipRow
+      // The profile picks who runs it too: one of another provider (GitHub Copilot) leaves only that provider's options.
       profile={{
         value: profileId,
-        onChange: (id) => setProfileOverride(id),
+        onChange: pickProfile,
         labelFor: (p) => `${p.name}${p.id === (projectProfile ?? defaultProfile) ? (projectProfile ? ' (project)' : ' (default)') : ''}`,
       }}
-      model={{
-        value: shownModel,
-        label: modelLabel(models, shownModel),
-        onChange: (model) => update({ model }),
-        choices: modelChoices(models, autoModel, <AutoWand />),
-      }}
-      effort={{ value: d.effort, onChange: (effort) => update({ effort }) }}
-      mode={{ value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
-      pipeline={runAs ? boxChoiceUse(runAs) : null}
+      model={
+        runWith
+          ? {
+              value: runWithModel,
+              label: runWithModel ? (readiness?.models.find((m) => m.value === runWithModel)?.displayName ?? runWithModel) : 'Default model',
+              // Another model starts on its own effort.
+              onChange: (model) => (pickForProvider(), setProviderModel(model), setProviderEffort('')),
+              choices: [{ value: '', label: 'Default model', description: `What ${PROVIDER_NAMES[runWith]} picks` }, ...(readiness?.models ?? []).map((m) => ({ value: m.value, label: m.displayName }))],
+            }
+          : {
+              value: shownModel,
+              label: modelLabel(models, shownModel),
+              onChange: (model) => update({ model }),
+              choices: modelChoices(models, autoModel, <AutoWand />),
+            }
+      }
+      effort={
+        runWith
+          ? providerEffortModel
+            ? { value: providerEffortShown, onChange: (effort) => (pickForProvider(), setProviderEffort(effort)), ...(providerEffortModel.efforts ? { levels: providerEffortModel.efforts } : {}), defaultDescription: 'The model’s own level' }
+            : null
+          : { value: d.effort, onChange: (effort) => update({ effort }) }
+      }
+      mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (pickForProvider(), setProviderMode(mode)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
+      pipeline={runAs && !noPipeline ? boxChoiceUse(runAs) : null}
     />
   );
 
   const folderProblem = !cwd
     ? cloning
       ? cloneJob.plan
-        ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
+        ? `${agent} works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.`
         : 'Paste a GitHub repository to clone.'
       : linkNoFolder
-      ? "The link doesn't say which project. Pick where Claude should work."
+      ? `The link doesn't say which project. Pick where ${agent} should work.`
       : linkRepo
       ? linkRepo.state === 'looking'
         ? `Looking for a checkout of ${linkRepo.repo}…`
-        : `None of your folders is a checkout of ${linkRepo.repo}. Pick where Claude should work.`
+        : `None of your folders is a checkout of ${linkRepo.repo}. Pick where ${agent} should work.`
       : folders.length
-      ? 'Pick where Claude should work.'
-      : 'Pick where Claude should work. Folders you add as projects are listed here.'
+      ? `Pick where ${agent} should work.`
+      : `Pick where ${agent} should work. Folders you add as projects are listed here.`
     : !inspection
       ? inspectError
         ? `Couldn't check this folder: ${inspectError}`
@@ -1130,6 +1292,17 @@ function LocalNewSession() {
     ) : savedNote ? (
       <span role="status" className="min-w-0 truncate text-accent-ink" data-saved-note>
         {savedNote}
+      </span>
+    ) : linkProject && pickedProfile ? (
+      <span className="min-w-0 truncate" data-profile-hint>
+        Changes here are for this session only.{' '}
+        <button type="button" className="text-link hover:underline" onClick={() => void useProfileForProject()} data-use-profile-for-project>
+          Use {pickedProfile.name} for {projectName} from now on
+        </button>
+      </span>
+    ) : profileSavedFor === cwd && cwd ? (
+      <span role="status" className="min-w-0 truncate" data-profile-hint>
+        From {projectName}'s defaults.
       </span>
     ) : null;
 
@@ -1318,15 +1491,11 @@ function LocalNewSession() {
 
           {!fromLater && <PromptChips root={cwd && !question ? cwd : null} draftKey={draftKey} />}
 
-          {/* The message box with its route strip on top: the strip's bottom edge is the card's top border.
-              With a folder picked, the whole card takes its project's colour, with a faint ring around it. */}
-          <div
-            className="rounded-xl transition-shadow [&>div>.rounded-xl]:rounded-t-none"
-            style={projectColor ? { boxShadow: `0 0 0 4px color-mix(in srgb, ${projectColor} 14%, transparent)` } : undefined}
-            data-project-color={projectColor ?? undefined}
-          >
+          {/* The message box with its route strip on top: the strip's bottom edge is the card's top border, so the
+              card's top corners are square. With a folder picked, the strip and the card take its project's colour. */}
+          <div className="[&_[data-composer-card]]:rounded-t-none" data-project-color={projectColor ?? undefined}>
             <div
-              className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-xl border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
+              className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
               style={projectColor ? { borderColor: projectColor } : undefined}
               data-route-tray
             >
@@ -1362,7 +1531,7 @@ function LocalNewSession() {
                     /
                   </span>
                   <span className="min-w-0 truncate px-1.5 text-ui text-muted" data-tooltip={cwd} data-route-question-note>
-                    No project or git. Claude works in a scratch folder.
+                    No project or git. {agent} works in a scratch folder.
                   </span>
                 </>
               ) : (
@@ -1383,9 +1552,11 @@ function LocalNewSession() {
                   </span>
                   <ChoiceMenu
                     name="workspace"
-                    value={useWorktree ? 'worktree' : 'current'}
+                    value={useWorktree && !noWorktree ? 'worktree' : 'current'}
                     onChange={(workspace) => update({ workspace })}
-                    title={routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
+                    // Worktrees and branches are Claude Code's options: another provider works in the folder as it is.
+                    disabled={noWorktree}
+                    title={runWith && noWorktree ? notWithYet(runWith) : routeHint({ worktree: useWorktree, isGitRepo: canWorktree, branch: githubPr ? prBranch(githubPr) : (checkoutBranch ?? branch), name: effectiveName })}
                     heading={githubPr ? `Work on #${githubPr.number} in` : 'Where'}
                     chevron
                     width={githubPr ? 340 : 300}
@@ -1438,8 +1609,8 @@ function LocalNewSession() {
                         : undefined
                     }
                   >
-                    {useWorktree ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
-                    <span>{useWorktree ? 'New worktree' : 'Current checkout'}</span>
+                    {useWorktree && !noWorktree ? <FolderGit2 size={14} className="shrink-0" aria-hidden /> : <Folder size={14} className="shrink-0" aria-hidden />}
+                    <span>{useWorktree && !noWorktree ? 'New worktree' : 'Current checkout'}</span>
                   </ChoiceMenu>
 
                   {githubPr ? (
@@ -1449,12 +1620,13 @@ function LocalNewSession() {
                         {useWorktree ? prBranch(githubPr) : githubPr.headRefName}
                       </span>
                     </span>
-                  ) : useWorktree ? (
+                  ) : useWorktree && !noWorktree ? (
                     <ChoiceMenu
                       name="base"
+                      disabled={noWorktree}
                       value={d.baseRef}
                       onChange={(baseRef) => update({ baseRef })}
-                      title="The branch the new worktree starts from"
+                      title={runWith && noWorktree ? notWithYet(runWith) : 'The branch the new worktree starts from'}
                       heading="Branch from"
                       chevron
                       mono
@@ -1477,9 +1649,10 @@ function LocalNewSession() {
                   ) : gitBranches.branches.length > 0 ? (
                     <ChoiceMenu
                       name="branch"
+                      disabled={noBranch}
                       value={checkoutBranch ?? gitBranches.current ?? ''}
                       onChange={(b) => update({ branch: b === gitBranches.current ? '' : b })}
-                      title="Check out a branch before the session starts. Git keeps uncommitted changes, or refuses when they conflict."
+                      title={runWith && noBranch ? notWithYet(runWith) : 'Check out a branch before the session starts. Git keeps uncommitted changes, or refuses when they conflict.'}
                       heading="Branch"
                       chevron
                       mono
@@ -1507,11 +1680,11 @@ function LocalNewSession() {
                   <span className="flex-1" />
                   {/* The quick way to the most common route change; the menu has the details (base, name). */}
                   <label
-                    className={`flex shrink-0 items-center gap-2 px-1.5 text-ui ${canWorktree ? 'cursor-pointer text-muted' : 'text-faint'}`}
-                    data-tooltip={canWorktree ? 'Work in an isolated copy of the repository' : 'Needs a git repository'}
+                    className={`flex shrink-0 items-center gap-2 px-1.5 text-ui ${canWorktree && !noWorktree ? 'cursor-pointer text-muted' : 'text-faint'}`}
+                    data-tooltip={runWith && noWorktree ? notWithYet(runWith) : canWorktree ? 'Work in an isolated copy of the repository' : 'Needs a git repository'}
                   >
                     Worktree
-                    <Switch checked={useWorktree} disabled={!canWorktree} onChange={(on) => update({ workspace: on ? 'worktree' : 'current' })} dataAttrs={{ 'data-worktree-switch': true }} />
+                    <Switch checked={useWorktree && !noWorktree} disabled={!canWorktree || noWorktree} onChange={(on) => update({ workspace: on ? 'worktree' : 'current' })} dataAttrs={{ 'data-worktree-switch': true }} />
                   </label>
                 </>
               )}
@@ -1530,8 +1703,9 @@ function LocalNewSession() {
               onTextChange={onPromptChange}
               onAttachmentsChange={setDraftAttachments}
               cwd={cwd}
-              commands={commands}
-              placeholder={question ? 'Ask Claude anything' : savedPromptCount > 0 ? 'What should Claude work on? Type / for saved prompts.' : 'What should Claude work on?'}
+              // Another provider's own slash commands: Claude Code's would mean nothing to it.
+              commands={runWith ? (readiness?.commands ?? []) : commands}
+              placeholder={question ? 'Ask Claude anything' : runWith ? askWhat(runWith) : savedPromptCount > 0 ? 'What should Claude work on? Type / for saved prompts.' : 'What should Claude work on?'}
               large
               frameColor={projectColor}
               autoFocus
@@ -1541,8 +1715,32 @@ function LocalNewSession() {
               localContext
               onContextChange={setDraftContext}
               controls={controls}
+              // Claude Code's plan usage for the profile; another provider's, its premium requests.
+              info={runWith ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
+              usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(profileId) } : null}
+              above={
+                <div role="status" aria-live="polite" className="empty:hidden">
+                  {switched && switchedBack && (
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-accent/10 px-2 py-1 text-meta text-text" data-provider-switch-notice>
+                      <Info size={12} className="shrink-0 text-accent-ink" aria-hidden />
+                      <span className="min-w-0 flex-1">{switched.text}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 text-link hover:underline"
+                        onClick={() => {
+                          setProfileOverride(switched.back);
+                          setSwitched(null);
+                        }}
+                        data-provider-switch-back
+                      >
+                        Back to {switchedBack}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              }
               onCycleMode={() => update({ permissionMode: nextMode(d.permissionMode) })}
-              disabledReason={!client ? 'Connecting to the engine…' : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
+              disabledReason={!client ? 'Connecting to the engine…' : providerBlocked ? providerBlocked : cloning ? (canClone(cloneJob.plan) || cloneJob.stage === 'running' ? null : (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, null).text : 'Paste a GitHub repository first'))) : !cwd ? 'Choose a folder first' : inspection && !inspection.exists ? (inspection.isFile ? 'That is a file, not a folder' : 'That folder no longer exists') : null}
               onSubmit={(text, attachments, requested, parts) => {
                 // Scheduling, Enter opens the dialog rather than starting a session; the text stays in the box.
                 if (scheduleFirst && !question && !fromLater && !runAs) {
@@ -1550,14 +1748,18 @@ function LocalNewSession() {
                   return false;
                 }
                 // A pipeline picked in Run as: Enter runs it, with the text as its task.
-                if (runAs) return runPipelineWith(runAs.id, text, attachments);
+                if (runAs && !noPipeline) return runPipelineWith(runAs.id, text, attachments);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
-              secondary={{ shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
+              // The queue starts Claude Code sessions: not with another provider yet.
+              secondary={runWith && !runWithInfo?.supports.includes('later') ? undefined : { shortcut: 'new-session.queue', onSubmit: (text, attachments, parts) => queuePrompt(text, attachments, parts) }}
               submitControl={(box) => (
                 <>
                   {canPipeline && !question && !fromSchedule && projectPipelines.length > 0 && (
-                    <RunAsChip pipelines={projectPipelines} value={runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending} />
+                    // Shown with another provider too, off, so it says why rather than going missing.
+                    <span className="inline-flex" data-tooltip={runWith && noPipeline ? notWithYet(runWith) : undefined}>
+                      <RunAsChip pipelines={projectPipelines} value={noPipeline ? null : runAs} onChange={setRunAsId} root={pipelineRoot} openRequest={runAsMenu} disabled={box.sending || noPipeline} />
+                    </span>
                   )}
                   <StartButton
                     state={startButtonState({
@@ -1575,6 +1777,7 @@ function LocalNewSession() {
                       runAs,
                       scheduleFirst: scheduleFirst && !fromLater,
                       editingSchedule: fromSchedule !== null,
+                      provider: runWith ? { reason: notWithYet(runWith), supports: runWithInfo?.supports ?? [] } : null,
                     })}
                     onAction={(action) =>
                       action === 'queue'
@@ -1601,13 +1804,11 @@ function LocalNewSession() {
           {/* What Start will run: a pipeline's steps, once there is a task. */}
           {runAs && draftPrompt.trim() !== '' && <RunAsSteps name={runAs.name} steps={runAsSteps(runAs, modelWord(shownModel === AUTO_MODEL ? null : shownModel || null))} onChange={() => setRunAsMenu((n) => n + 1)} />}
 
-          {/* A container: as the column narrows, the usage drops its reset times, then its bars. */}
-          <div className="@container -mt-2 flex min-h-5 items-center justify-between gap-4 px-2 text-meta text-muted" data-tray-footer>
-            <span className="flex min-w-0 items-center">{notice}</span>
-            <span className="min-w-0 shrink-0">
-              <UsageBand tray profileId={profileId} />
-            </span>
-          </div>
+          {notice && (
+            <div className="-mt-2 flex min-h-5 items-center px-2 text-meta text-muted" data-tray-footer>
+              <span className="flex min-w-0 items-center">{notice}</span>
+            </div>
+          )}
 
           {/* Its own line, so it is read whole: what starting from an issue or pull request does, and doesn't. */}
           {githubItem && (
@@ -1630,7 +1831,8 @@ function LocalNewSession() {
               <SectionHeader as="h2" className="px-2">
                 Pick up in {projectName}
               </SectionHeader>
-              <ul className="mt-1 grid">
+              {/* One column no wider than the view, so a long title truncates instead of widening the list. */}
+              <ul className="mt-1 grid grid-cols-[minmax(0,1fr)]">
                 {pickUp.map((row) => {
                   const status = rowStatus(row);
                   const dot = status === 'needs-you' ? 'bg-warn' : status === 'running' ? 'bg-accent-ink animate-pulse' : status === 'unread' ? 'bg-unread' : 'bg-faint/50';

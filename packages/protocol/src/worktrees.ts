@@ -10,6 +10,8 @@ export const WorktreePullRequest = z.object({
   draft: z.boolean().optional(),
   /** The branch it merges into. */
   base: z.string().optional(),
+  /** When it was merged (ms), for a merged one; left out by an engine from before. */
+  mergedAt: z.number().nullable().optional(),
 });
 export type WorktreePullRequest = z.infer<typeof WorktreePullRequest>;
 

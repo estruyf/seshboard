@@ -1,4 +1,4 @@
-import { archivedSince as archivedSinceOf, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@seshboard/protocol/bridge';
+import { archivedSince as archivedSinceOf, isSnoozed, listedInMainList, type ListingState, type SessionScope, type SidebarSort, type StartupView } from '@seshboard/protocol/bridge';
 import type { QueueEntry } from './queue.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SectionKey } from './sidebarSections.ts';
@@ -32,7 +32,10 @@ export function rowStatus(row: SessionRowData): RowStatus {
   return null;
 }
 
-/** Whether the sidebar (and the palette) list a session under the chosen scope. */
+/**
+ * Whether the sidebar (and the palette) list a session under the chosen scope. Another provider's sessions follow the
+ * same rule as Claude Code's: started elsewhere, they show only under all sessions.
+ */
 export const inScope = (row: SessionRowData, scope: SessionScope) => scope === 'all' || row.inApp;
 
 /**
@@ -59,6 +62,8 @@ export function rowListing(row: SessionRowData): ListingState {
     // Open in Seshboard counts; a process idling elsewhere doesn't (Claude desktop reopens many old sessions at
     // launch, and they shouldn't all come back).
     openInApp: row.live?.origin === 'app',
+    keep: row.kept ?? false,
+    snoozed: !row.remote && isSnoozed(row.summary ?? {}),
   };
 }
 
@@ -77,6 +82,31 @@ export function isActive(row: SessionRowData, now: number, archiveAfterDays: num
 
 /** When an archived row went to Archived (by hand, or its last activity plus the archive days); null while it is listed. */
 export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => archivedSinceOf(rowListing(row), now, archiveAfterDays);
+
+/**
+ * Why a session is in Done, for its row: you marked it done, or it was inactive for the days set in Settings › Sessions.
+ * Phase by phase more reasons join (a merged pull request), so the row reads one value instead of the flags.
+ */
+export type DoneReason = { kind: 'done' } | { kind: 'merged'; pr: number } | { kind: 'inactive'; days: number };
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The reason a row is in Done, or null while it is listed. */
+export function doneReason(row: SessionRowData, now: number, archiveAfterDays: number): DoneReason | null {
+  const listing = rowListing(row);
+  if (row.remote || archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
+  // The same test as the archive rule: marked done after its last activity, or while it was still working.
+  if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) {
+    // Moved by its merged pull request (the engine, `mergedDone.ts`): the number says which.
+    const pr = row.summary?.donePr;
+    return pr != null ? { kind: 'merged', pr } : { kind: 'done' };
+  }
+  return { kind: 'inactive', days: Math.max(archiveAfterDays, Math.floor((now - row.updatedAt) / DAY)) };
+}
+
+/** "Done", "Merged #123", or "Inactive 3 days". */
+export const doneReasonLabel = (reason: DoneReason): string =>
+  reason.kind === 'done' ? 'Done' : reason.kind === 'merged' ? `Merged #${reason.pr}` : `Inactive ${reason.days} ${reason.days === 1 ? 'day' : 'days'}`;
 
 /**
  * Whether a middle-click on the row archives it: an indexed session in the main list that has finished
@@ -102,71 +132,82 @@ export interface SessionListOptions {
 
 const matches = (row: SessionRowData, needle: string) =>
   row.title.toLowerCase().includes(needle) ||
+  (row.summary?.note?.toLowerCase().includes(needle) ?? false) ||
   (row.remote
     ? row.remote.projectName.toLowerCase().includes(needle) || row.remote.computerName.toLowerCase().includes(needle)
     : row.projectRoot.toLowerCase().includes(needle)) ||
   (row.branch?.toLowerCase().includes(needle) ?? false);
 
-/** Splits sessions into the main list (pinned first, then newest) and the archived list (newest first). */
+/**
+ * Splits sessions into the main list (pinned first, then newest), the archived list (newest first), and the snoozed ones
+ * (Remind me later, soonest first), which are in neither: they come back by themselves.
+ */
 export function buildSessionList(
   rows: readonly SessionRowData[],
   options: SessionListOptions,
-): { active: SessionRowData[]; archived: SessionRowData[] } {
+): { active: SessionRowData[]; archived: SessionRowData[]; snoozed: SessionRowData[] } {
   const needle = options.search.trim().toLowerCase();
   const active: SessionRowData[] = [];
   const archived: SessionRowData[] = [];
+  const snoozed: SessionRowData[] = [];
   for (const row of rows) {
     if (options.scope && !inScope(row, options.scope)) continue;
     if (options.project && row.projectRoot !== options.project) continue;
     if (needle && !matches(row, needle) && !options.children?.get(row.id)?.some((child) => matches(child, needle))) continue;
-    (isActive(row, options.now, options.archiveAfterDays) ? active : archived).push(row);
+    if (isActive(row, options.now, options.archiveAfterDays)) active.push(row);
+    else if (rowListing(row).snoozed) snoozed.push(row);
+    else archived.push(row);
   }
   active.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
   archived.sort((a, b) => b.updatedAt - a.updatedAt);
-  return { active, archived };
+  snoozed.sort((a, b) => (a.summary?.remindAt ?? 0) - (b.summary?.remindAt ?? 0));
+  return { active, archived, snoozed };
 }
 
 /**
- * The sections of the main list, in the order they show. Recent: what needs attention first, then pinned, then by time.
- * Quickest to unblock: what needs you or a review (quickest first), then what you've read, then what is still working.
+ * The sections of the main list, in the order they show. Recent: what needs attention first, then pinned, then what you
+ * haven't looked at (To review) and what you looked at but haven't finished (Open). Quickest to unblock: what needs you
+ * or a review (quickest first, under the same To review), then what you've read, then what is still working.
  */
-export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'today' | 'yesterday' | 'earlier' | 'review' | 'read' | 'still-working';
+export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'reminders' | 'review' | 'open' | 'read' | 'still-working' | 'snoozed';
 
 export const GROUP_LABEL: Record<SessionGroup, string> = {
   'needs-you': 'Needs you',
   working: 'Working',
   pinned: 'Pinned',
-  today: 'Today',
-  yesterday: 'Yesterday',
-  earlier: 'Earlier',
-  review: 'Needs review · quickest first',
+  reminders: 'Reminders',
+  review: 'To review',
+  open: 'Open',
   read: 'Read',
   'still-working': 'Still working',
+  snoozed: 'Snoozed',
 };
 
-const GROUP_ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'today', 'yesterday', 'earlier'];
-
-/** Local midnight of the day `now` falls on, so "Today" matches the calendar rather than the last 24 hours. */
-export function startOfDay(now: number): number {
-  const date = new Date(now);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
+const GROUP_ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'reminders', 'review', 'open'];
 
 /**
- * Which section a main-list session sits in. A pinned session that waits on you or is working shows
- * there, like any other, and goes back to Pinned when it's done.
+ * Which section a main-list session sits in. A pinned session that waits on you or is working shows there, like any
+ * other, and goes back to Pinned when it's done. A finished one you haven't read (or one that failed) is To review;
+ * the rest is Open until you archive it or it ages out.
  */
-export function sessionGroup(row: SessionRowData, now: number): SessionGroup {
+export function sessionGroup(row: SessionRowData): SessionGroup {
   const status = rowStatus(row);
   if (status === 'needs-you') return 'needs-you';
   if (status === 'running') return 'working';
   if (row.pinned) return 'pinned';
-  const today = startOfDay(now);
-  if (row.updatedAt >= today) return 'today';
-  // The day before today; a day can be 23 or 25 hours long across a clock change, hence the second midnight.
-  if (row.updatedAt >= startOfDay(today - 1)) return 'yesterday';
-  return 'earlier';
+  // A reminder that came due waits there until you open it, mark it done or snooze it again.
+  if (!row.remote && row.summary?.remindedAt != null) return 'reminders';
+  if (status === 'unread' || status === 'error') return 'review';
+  return 'open';
+}
+
+/**
+ * The sessions to go through in catch-up, and the footer's "N open": Reminders that came due, To review, then Open, each in the order given (the
+ * sidebar's, so Quickest to unblock puts the quickest review first).
+ */
+export function triageOrder<R extends SessionRowData>(rows: readonly R[]): R[] {
+  const of = (group: SessionGroup) => rows.filter((row) => sessionGroup(row) === group);
+  return [...of('reminders'), ...of('review'), ...of('open')];
 }
 
 /**
@@ -183,10 +224,10 @@ export const byWorkingSince = (a: SessionRowData, b: SessionRowData): number => 
  * order given (buildSessionList puts pinned sessions first, then newest), so pins stay on top of Needs you.
  * Working is the exception: it keeps the order you started its sessions in (`byWorkingSince`).
  */
-export function groupSessions(active: readonly SessionRowData[], now: number): { group: SessionGroup; rows: SessionRowData[] }[] {
+export function groupSessions(active: readonly SessionRowData[]): { group: SessionGroup; rows: SessionRowData[] }[] {
   const buckets = new Map<SessionGroup, SessionRowData[]>();
   for (const row of active) {
-    const group = sessionGroup(row, now);
+    const group = sessionGroup(row);
     const bucket = buckets.get(group);
     if (bucket) bucket.push(row);
     else buckets.set(group, [row]);
@@ -239,8 +280,8 @@ export function quickestGroups(active: readonly SessionRowData[], quick: Readonl
 }
 
 /** The main list's sections in the chosen order. */
-export function groupsFor(active: readonly SessionRowData[], now: number, sort: SidebarSort = 'recent', quick: ReadonlyMap<string, QuickInfo> = new Map()) {
-  return sort === 'quickest' ? quickestGroups(active, quick) : groupSessions(active, now);
+export function groupsFor(active: readonly SessionRowData[], sort: SidebarSort = 'recent', quick: ReadonlyMap<string, QuickInfo> = new Map()) {
+  return sort === 'quickest' ? quickestGroups(active, quick) : groupSessions(active);
 }
 
 /**
@@ -280,6 +321,8 @@ export interface ListRowOptions {
   /** The pipelines tree: each parent's sub-sessions, and the parents that are open (closed by default). */
   children?: ReadonlyMap<string, readonly SessionRowData[]>;
   openParents?: ReadonlySet<string>;
+  /** Snoozed sessions (Remind me later) to list under Snoozed, before Archived: the ones a search finds. */
+  snoozed?: readonly SessionRowData[];
 }
 
 /**
@@ -316,13 +359,13 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     if (open) for (const entry of queue.entries) list.push({ kind: 'queue', entry });
   };
   let queued = false;
-  for (const { group, rows } of groupsFor(active, options.now, options.sort, options.quick)) {
+  for (const { group, rows } of groupsFor(active, options.sort, options.quick)) {
     // The queue goes under Working, or where Working would be.
     if (!queued && group !== 'needs-you' && group !== 'working') {
       pushQueue();
       queued = true;
     }
-    const open = group === 'needs-you' || group === 'review' || !closed.has(group);
+    const open = group === 'needs-you' || group === 'review' || group === 'reminders' || group === 'snoozed' || !closed.has(group);
     const unread = rows.filter((row) => rowStatus(row) === 'unread').length;
     list.push({ kind: 'group', group, count: rows.length, first: list.length === 0, open, unread });
     if (open) {
@@ -341,6 +384,10 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     }
   }
   if (!queued) pushQueue();
+  if (options.snoozed?.length) {
+    list.push({ kind: 'group', group: 'snoozed', count: options.snoozed.length, first: list.length === 0, open: true, unread: 0 });
+    for (const data of options.snoozed) pushSession(data, false, false);
+  }
   if (archived.length && options.archivedOpen) {
     list.push({ kind: 'archived', count: archived.length, open: true });
     for (const data of archived) pushSession(data, true, false);
@@ -369,7 +416,7 @@ export function archivedRevealTop(headerTop: number, view: { scrollTop: number; 
 /** What a closed (or the Queue's) header says next to its count, in the state's colour: "1 ready", "2 unread". */
 export function headerSummary(row: Extract<SidebarListRow, { kind: 'group' | 'queue-header' }>): { text: string; tone: 'ok' | 'unread' } | null {
   if (row.kind === 'queue-header') return row.ready > 0 ? { text: `${row.ready} ready`, tone: 'ok' } : null;
-  if (row.open || row.group === 'working' || row.group === 'still-working' || row.group === 'needs-you' || row.group === 'review' || row.unread === 0) return null;
+  if (row.open || row.group === 'working' || row.group === 'still-working' || row.group === 'needs-you' || row.group === 'review' || row.group === 'reminders' || row.group === 'snoozed' || row.unread === 0) return null;
   return { text: `${row.unread} unread`, tone: 'unread' };
 }
 
@@ -381,7 +428,7 @@ export function sectionOfSession(rows: readonly SessionRowData[], id: string, no
   const own = rows.find((r) => r.id === id);
   const parentId = own?.summary?.parentId;
   const row = (parentId && rows.find((r) => r.id === parentId)) || own;
-  return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row, now) : null;
+  return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row) : null;
 }
 
 /** What a waiting session asks for, in a few words for its row: the question, a plan, or the tool it wants to run. */

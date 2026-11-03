@@ -10,6 +10,7 @@ import { findModelOption } from '../../lib/models.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { describe as describeRule } from '@seshboard/protocol/client';
@@ -192,7 +193,8 @@ export function CommandPalette() {
   const remoteRows = useRemoteRows();
   const remoteNames = useMemo(() => new Map(remoteRows.flatMap((row) => (row.remote ? [[row.projectRoot, `${row.remote.projectName} · ${row.remote.computerName}`] as const] : []))), [remoteRows]);
   const nameOf = (root: string) => remoteNames.get(root) ?? projects.get(root)?.name ?? basename(root);
-  const localRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const localRows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   const sessionRows = useMemo(() => [...localRows, ...remoteRows], [localRows, remoteRows]);
   const activity = useMemo(() => activityByProject(localRows), [localRows]);
   const branches = useMemo(() => latestBranches(sessions.values()), [sessions]);

@@ -176,6 +176,8 @@ export function pipelineIssues(pipeline: { steps: readonly PipelineStep[] }): Pi
       if (from < 0) issues.push({ step: i, message: `${name} forks ${step.start.fork}, and there is no step called that.` });
       else if (from >= i) issues.push({ step: i, message: `${name} forks ${step.start.fork}, which doesn’t come before it.` });
       else if (steps[from]!.kind === 'push') issues.push({ step: i, message: `${name} can’t fork ${step.start.fork}: it isn’t a session.` });
+      // A fork keeps its session's tool: Claude Code can't carry on a Copilot session, nor the other way round.
+      else if ((steps[from] as { provider?: string }).provider !== step.provider) issues.push({ step: i, message: `${name} can’t fork ${step.start.fork}: another tool runs it. Start it fresh, or pick the same tool.` });
     }
     if (step.verdict) {
       const to = indexOf(step.verdict.sendTo);

@@ -47,7 +47,7 @@ function putAway(parentId: string, title: string, runId: string, then?: () => vo
   archiveSessions(treeTargets(parentId, title), () =>
     void archiveRunTree(runId, true).then(
       () => then?.(),
-      (error: unknown) => toast(`Couldn't archive the run: ${describe(error)}`),
+      (error: unknown) => toast(`Couldn't mark the run done: ${describe(error)}`),
     ),
   );
 }
@@ -67,7 +67,7 @@ export function archiveTree(parentId: string, archived: boolean, title: string, 
   else
     void archiveRunTree(runs[0]!.run.id, false).then(
       () => then?.(),
-      (error: unknown) => toast(`Couldn't unarchive the run: ${describe(error)}`),
+      (error: unknown) => toast(`Couldn't reopen the run: ${describe(error)}`),
     );
   return true;
 }
@@ -91,9 +91,9 @@ function StopAndArchive({ ask, onClose }: { ask: Ask; onClose(): void }) {
   const sessions = treeSize(ask.parentId);
   return (
     <ConfirmDialog
-      title="Stop the run and archive it?"
-      body={`“${ask.title}” is still going. It is stopped first, then archived${sessions ? ` with ${sessions === 1 ? 'its step' : `its ${sessions} steps`}` : ''}.`}
-      confirmLabel="Stop and archive"
+      title="Stop the run and mark it done?"
+      body={`“${ask.title}” is still going. It is stopped first, then moved to Done${sessions ? ` with ${sessions === 1 ? 'its step' : `its ${sessions} steps`}` : ''}.`}
+      confirmLabel="Stop and mark done"
       data={{ 'data-run-archive-confirm': true }}
       onConfirm={async () => {
         const runs = runsOf(ask.parentId);

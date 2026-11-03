@@ -83,6 +83,32 @@ export async function makeWorktreeFrom(root: string, name: string, base: Worktre
 }
 
 /**
+ * Makes a worktree the way Claude Code's `--worktree` does, for an agent without it (GitHub Copilot): `head` starts it
+ * from the commit checked out now, `fresh` from origin's default branch (fetched first; this checkout's HEAD when there
+ * is no origin, or it doesn't say which branch is its default). Same folder, branch (`worktree-<name>`, tracking
+ * nothing) and copied files as `makeWorktreeFrom`.
+ */
+export async function makeWorktree(root: string, name: string, baseRef: 'fresh' | 'head', options: { env?: Record<string, string> } = {}): Promise<{ path: string; branch: string }> {
+  if (baseRef === 'fresh') {
+    // `origin/main`: what origin's HEAD points at, as the last fetch or clone recorded it.
+    const head = (await git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { allowExitCodes: [1, 128] }).catch(() => '')).trim();
+    const branch = head.startsWith('origin/') ? head.slice('origin/'.length) : '';
+    if (branch) return makeWorktreeFrom(root, name, { branch, remote: 'origin' }, options);
+  }
+  const path = worktreePath(root, name);
+  if (existsSync(path)) throw new WorktreeFromError(`There is a worktree named ${name} already. Give this one another name.`);
+  const branch = `worktree-${name}`;
+  try {
+    await git(root, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, 'HEAD'], { env: { ...options.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 20_000 });
+  } catch (error) {
+    const message = error instanceof GitError ? error.message : String(error);
+    throw new WorktreeFromError(firstUsefulLine(message) || message);
+  }
+  await copyIncluded(root, path);
+  return { path, branch };
+}
+
+/**
  * Copies the untracked files that match `.worktreeinclude` (gitignore syntax) and are git-ignored too, such as `.env`,
  * into a new worktree, as Claude Code does for the worktrees it makes. A file that can't be copied is skipped.
  */

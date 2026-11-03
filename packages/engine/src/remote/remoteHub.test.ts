@@ -37,7 +37,7 @@ import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub, remoteAppOrigins, type RemoteFromDevice, type RemotePipelines } from './remoteHub.ts';
-import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteSessions, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
 
@@ -108,7 +108,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
+async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -168,6 +168,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appUrl: `${APP_ORIGIN}/remote/`,
     previewApp: options.previewApp ?? false,
     filesDir: join(dir, 'remote-files'),
+    logFile: join(dir, 'remote.log'),
     identity: async () => identity,
     sources: () => ({ summaries: [summary(SESSION, true), summary(HIDDEN, false)].map((s) => (options.archived?.has(s.id) ? { ...s, archivedAt: Date.now() } : s)), live: [], hosts: options.hosts ?? [], permissions }),
     archiveAfterDays: () => 7,
@@ -182,6 +183,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       profiles: [
         { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, account: 'a'.repeat(64) },
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
+        // A GitHub Copilot profile, for the tests that ask for one.
+        ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
       ],
       defaultId: 'default',
     }),
@@ -198,6 +201,9 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
+    // The Copilot profile is GitHub Copilot's, with its own modes.
+    providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
+    providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
     branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
@@ -208,6 +214,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
     globalPermissionMode: () => 'default',
+    globalModel: () => options.globalModel ?? { model: null, effort: null },
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -280,7 +287,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
@@ -321,6 +328,23 @@ describe('Remote hub', () => {
     await hub.configure({ enabled: false });
     expect(hub.status()).toMatchObject({ address: null, tunnel: { state: 'off' } });
     expect(() => hub.startPairing()).toThrow('not reachable');
+  });
+
+  it('writes Remote\'s log to its file, and says when an address waits until Unblock', async () => {
+    const { hub, dir, on, port } = await setup({ tools: false });
+    await on({ tunnel: 'custom', customUrl: 'https://remote.example.com' });
+    for (let i = 0; i < 3; i++) await handshake(port, 'connect', generateKeyPair(), generateKeyPair().publicKey);
+    await until(() => hub.status().blocked.length === 1);
+    expect(hub.status().blocked).toMatchObject([{ address: '127.0.0.1', attempts: 3 }]);
+    hub.unblock();
+    expect(hub.status().blocked).toEqual([]);
+    await hub.configure({ enabled: false });
+    const log = readFileSync(join(dir, 'remote.log'), 'utf8');
+    expect(log).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z info Remote: listening on 127\.0\.0\.1:\d+, version 1\.2\.3$/m);
+    expect(log).toContain('info Remote: your tunnel forwards https://remote.example.com here');
+    expect(log).toContain('warn Remote: 127.0.0.1 waits 1 s before it may try again, after 3 refused attempts in a row');
+    expect(log).toContain('info Remote: unblocked every address (Settings › Remote)');
+    expect(log).toMatch(/info Remote: turned off\n$/);
   });
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
@@ -413,6 +437,36 @@ describe('Remote hub', () => {
     // A paired phone learns a new address from a connect link, which holds no secret.
     const link = parseRemoteLink(new URL(hub.connectLink().url).hash);
     expect(link).toMatchObject({ kind: 'connect', address: 'https://quiet-river.trycloudflare.com' });
+  });
+
+  it('starts a session with a provider profile, in its own modes and models', async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    expect(options.profiles.find((p) => p.id === 'copilot')?.provider).toEqual({ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })], supports: [] });
+    expect(options.profiles.find((p) => p.id === 'work')?.provider).toBeUndefined();
+    expect(await remote.call('providers.ready', { profileId: 'copilot' })).toEqual({ problem: null, models: [expect.objectContaining({ value: 'gpt-5-mini' })] });
+    await expect(remote.call('providers.ready', { profileId: 'work' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // The profile decides: the engine starts Copilot for it (`createSession`).
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test', profileId: 'copilot', model: 'gpt-5-mini', permissionMode: 'auto' });
+    expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
+    // A mode the provider doesn't have is refused, not passed on.
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it("starts a provider profile's session on its own default model, not the global one", async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true, globalModel: { model: 'haiku', effort: 'high' } });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    // The global model and effort are Claude Code's: its profiles get them, Copilot's doesn't.
+    expect(options.profiles.find((p) => p.id === 'default')?.defaults).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(options.profiles.find((p) => p.id === 'copilot')?.defaults).toMatchObject({ model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'copilot' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'copilot', model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'default' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default', model: 'haiku', effort: 'high' });
   });
 
   it('says which device sent a prompt, answered or started a session, by its id', async () => {
@@ -1125,6 +1179,23 @@ describe('what a phone sees', () => {
     expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
     expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');
     expect(sessionChoice({}, { ...NO_DEFAULTS, globalPermissionMode: true }, work, 'auto').permissionMode).toBe('auto');
+    // The global model and effort where neither sets one; what the phone picks still wins, Default model included.
+    const globals = { model: 'haiku', effort: 'max' as const };
+    expect(sessionChoice({}, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(sessionChoice({}, NO_DEFAULTS, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
+    expect(sessionChoice({ model: null, effort: null }, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: null, effort: null });
+    // A project that skips its profile's model or effort gets the global one.
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalEffort: true }, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'max' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work)).toMatchObject({ model: null });
+  });
+
+  it("shows a phone the global model and effort under a profile, and leaves a project's unset ones to its profile", () => {
+    const globals = { model: 'haiku', effort: 'max' as const };
+    const unset = { model: null, effort: null, permissionMode: null, workspace: null };
+    expect(remoteDefaults(unset, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(remoteDefaults({ ...unset, model: 'opus' }, 'default', globals)).toMatchObject({ model: 'opus', effort: 'max' });
+    expect(remoteDefaults(unset, null)).toMatchObject({ model: null, effort: null });
   });
 });
 

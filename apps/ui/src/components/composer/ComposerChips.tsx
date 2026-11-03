@@ -1,7 +1,8 @@
 import { Cpu, WandSparkles } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { ClaudeProfile, Effort, PermissionMode } from '@seshboard/protocol/client';
+import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
+import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -9,8 +10,12 @@ import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
 import { EFFORT_LABEL, EFFORTS, MODE_DESCRIPTION } from '../newSession/route.ts';
-import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
+import { PROFILE_DOT, PROFILE_TEXT } from '../profiles/ProfileBadge.tsx';
+import { byTool } from '../newSession/providerSwitch.ts';
 import { chipShape, effortBars, FOOTER_LEVELS, footerLevel, MODE_SHORT, modelFamily, shortModelName, type FooterLevel } from './chipFaces.ts';
+import { TrayContext } from './ComposerTray.tsx';
+import { FoldedChip, type FoldedSection } from './FoldedChip.tsx';
+import { foldedFace, foldedLabel } from './trayFold.ts';
 
 /** Test hooks: each chip gets `data-<name>-select` and its menu `data-menu="<name>"`. */
 export interface ChipNames {
@@ -23,16 +28,26 @@ export interface ChipNames {
 const NEW_SESSION_NAMES: ChipNames = { profile: 'profile', model: 'model', effort: 'effort', mode: 'mode' };
 
 export interface ComposerChipRowProps {
-  /** The Claude profile. Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings. */
-  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string };
+  /**
+   * The profile, which also says who runs it: a profile of another provider (GitHub Copilot) shows that provider's mark.
+   * Without `onChange` it can't change (a running session keeps its profile): the menu shows it and links to Settings.
+   */
+  profile: { value: string; onChange?(id: string): void; labelFor?(profile: ClaudeProfile): string } | null;
   /**
    * `auto`: a session on the model Auto picked ("Sonnet", or "Default model" when picking failed); the chip reads
    * "Auto · Sonnet". `actions` go under the models (the session's "Why Auto picked Sonnet").
    */
   model: { value: string; label: string; choices: Array<Choice<string>>; onChange(model: string): void; auto?: string | null; actions?: ChoiceAction[] };
-  /** Null when the model has no effort setting. */
-  effort: { value: Effort | ''; onChange(effort: Effort | ''): void } | null;
-  mode: { value: PermissionMode; onChange(mode: PermissionMode): void };
+  /**
+   * Null when the model has no effort setting. `levels`: the ones the model takes (another provider's model says);
+   * every level otherwise. `defaultDescription`: what Default means, in its provider's words.
+   */
+  effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
+  /**
+   * The permission mode. `choices`: the modes another provider has, in its words (Copilot's); without them,
+   * Claude Code's. Null when there is no mode to pick.
+   */
+  mode: { value: PermissionMode; onChange(mode: PermissionMode): void; choices?: readonly ProviderMode[] } | null;
   disabled?: boolean;
   names?: ChipNames;
   /**
@@ -40,6 +55,11 @@ export interface ComposerChipRowProps {
    * their own. A chip no step uses is dimmed (still usable); each says why in its tooltip.
    */
   pipeline?: Record<'model' | 'effort' | 'permissionMode', BoxChoiceUse> | null;
+  /**
+   * What goes before the chips and never shrinks or folds: a session on another computer puts that computer's chip
+   * and its profile there. The levels are measured in the room it leaves.
+   */
+  lead?: ReactNode;
 }
 
 /** Auto's wand, in the accent: always with the model chip's "Auto", since the permission mode can read "Auto" too. */
@@ -65,69 +85,92 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
 /**
  * The message box's chip row, the same in a session, in New session and in the palette's prompt step:
  * profile · model · effort · permission mode as quiet buttons that show only the value ("Personal",
- * "Opus 4.5", "Medium", "Auto"), each opening its menu above it. The profile chip shows only with more
- * than one profile, like the profile badges elsewhere.
+ * "Opus 4.5", "Medium", "Auto"), each opening its menu below it, or above it when there is no room below. The
+ * profile chip shows only with more than one profile, like the profile badges elsewhere. In a folded tray
+ * (`TrayContext`), model, effort and mode are one chip (`FoldedChip`).
  *
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
+export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
-  const current = profiles.find((p) => p.id === profile.value);
-  const fixed = !profile.onChange;
+  const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
+  const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
-  const modes = [...new Set([...MODE_CHOICES, mode.value])];
+  const modes = mode ? [...new Set([...(mode.choices ? mode.choices.map((c) => c.value) : MODE_CHOICES), mode.value])] : [];
+  const modeChoice = (m: PermissionMode) => mode?.choices?.find((c) => c.value === m);
+  const modeShort = mode ? (modeChoice(mode.value)?.label ?? MODE_SHORT[mode.value]) : '';
   const [level, setLevel] = useState<FooterLevel>(0);
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const leadRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const row = rowRef.current;
     const copies = measureRef.current;
     if (!row || !copies) return;
-    const measure = () => setLevel(footerLevel(row.getBoundingClientRect().width, [...copies.children].map((copy) => copy.getBoundingClientRect().width)));
+    // The lead and the gap after it are taken out of the room the chips have.
+    const leadWidth = () => (leadRef.current ? leadRef.current.getBoundingClientRect().width + 2 : 0);
+    const measure = () => setLevel(footerLevel(row.getBoundingClientRect().width - leadWidth(), [...copies.children].map((copy) => copy.getBoundingClientRect().width)));
     measure();
     // The row follows the window; each copy follows its own content (another model, a font that loaded).
     const observer = new ResizeObserver(measure);
     observer.observe(row);
+    if (leadRef.current) observer.observe(leadRef.current);
     for (const copy of copies.children) observer.observe(copy);
     return () => observer.disconnect();
   }, []);
 
   const modelName = shortModelName(model.label);
   const effortLabel = effort ? (effort.value ? EFFORT_LABEL[effort.value] : 'Default effort') : '';
-  const modeDot = MODE_DOT[mode.value] ?? 'bg-faint';
+  const modeDot = mode ? (MODE_DOT[mode.value] ?? 'bg-faint') : 'bg-faint';
+  const effortChoices: Array<Choice<Effort | ''>> = effort ? [{ value: '', label: 'Default', description: effort.defaultDescription ?? 'What Claude Code would pick' }, ...(effort.levels ?? EFFORTS).map((e) => ({ value: e, label: EFFORT_LABEL[e] }))] : [];
+  const modeChoices: Array<Choice<PermissionMode>> = modes.map((m) => ({ value: m, label: modeChoice(m)?.label ?? MODE_LABEL[m], description: modeChoice(m)?.description ?? MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }));
+  // In a tray too narrow for every chip, model, effort and mode are one chip (the profile keeps its own).
+  const tray = useContext(TrayContext);
 
   /** Each chip's face at a level: what the real chip shows, and what the hidden copies measure. */
   const chips: Array<{ key: string; face(level: FooterLevel): ReactNode; menu(face: ReactNode): ReactNode }> = [];
-  if (profiles.length > 1) {
+  if (profile && profiles.length > 1) {
     const profileName = current?.name ?? 'Profile';
+    const mixed = new Set(profiles.map((p) => p.provider)).size > 1;
     chips.push({
       key: 'profile',
-      face: (l) => (
-        <>
-          <Dot className={current ? PROFILE_DOT[current.color] : 'bg-faint'} />
-          {chipShape(l).profileName && <span>{profileName}</span>}
-        </>
-      ),
+      face: (l) => {
+        const Icon = current ? PROVIDER_ICONS[current.provider] : null;
+        return (
+          <>
+            {/* The tool's mark in the profile's colour says both whose it is and which profile, so it needs no dot. */}
+            {Icon ? <Icon size={13} aria-hidden className={`shrink-0 ${PROFILE_TEXT[current!.color]}`} data-chip-provider={current!.provider} /> : <Dot className="bg-faint" />}
+            {chipShape(l).profileName && <span>{profileName}</span>}
+          </>
+        );
+      },
       menu: (face) => (
         <ChoiceMenu
           name={names.profile}
           value={profile.value}
           onChange={(id) => profile.onChange?.(id)}
           disabled={disabled && !fixed}
-          label={`Claude profile: ${profileName}`}
-          title={`Claude profile: ${profileName}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
+          label={`Profile: ${profileName}${current && current.provider !== 'claude' ? ` (${PROVIDER_NAMES[current.provider]})` : ''}`}
+          title={`Profile: ${profileName}${current && current.provider !== 'claude' ? `, runs with ${PROVIDER_NAMES[current.provider]}` : ''}${current?.account?.email ? ` · signed in as ${current.account.email}` : ''}${fixed ? '. A session keeps its profile; a new one can use another.' : ''}`}
           heading="Profile"
-          placement="up"
-          choices={profiles.map((p) => ({
+          placement="auto"
+          choices={byTool(profiles).map((p) => ({
             value: p.id,
             label: profile.labelFor?.(p) ?? p.name,
-            description: p.account?.email ?? undefined,
+            // Another provider's profile says who runs it; a Claude Code one, its account.
+            description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],
             disabled: fixed && p.id !== profile.value,
+            // Headers by tool, only once profiles use more than one.
+            ...(mixed ? { group: PROVIDER_NAMES[p.provider] } : {}),
           }))}
-          actions={fixed ? [{ label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }] : undefined}
+          actions={[
+            fixed
+              ? { label: 'Manage profiles…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-manage-profiles': true } }
+              : { label: 'Add profile…', onSelect: () => useSessions.getState().openSettings('profiles'), data: { 'data-add-profile-from-menu': true } },
+          ]}
           width={260}
         >
           {face}
@@ -171,7 +214,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         label={modelTitle}
         title={withNote(modelTitle, pipeline?.model)}
         heading="Model"
-        placement="up"
+        placement="auto"
         choices={model.choices}
         actions={model.actions}
         width={isAuto || model.choices.some((c) => c.value === AUTO_MODEL) ? 300 : 260}
@@ -198,8 +241,8 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           label={`Effort: ${effortLabel}`}
           title={withNote(`Effort: ${effortLabel}`, pipeline?.effort)}
           heading="Effort"
-          placement="up"
-          choices={[{ value: '' as const, label: 'Default', description: 'What Claude Code would pick' }, ...EFFORTS.map((e) => ({ value: e, label: EFFORT_LABEL[e] }))]}
+          placement="auto"
+          choices={effortChoices}
           width={200}
         >
           {face}
@@ -207,12 +250,12 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       ),
     });
   }
-  chips.push({
+  if (mode) chips.push({
     key: 'mode',
     face: (l) => (
       <>
         <Dot className={modeDot} />
-        {chipShape(l).modeLabel && <span>{MODE_SHORT[mode.value]}</span>}
+        {chipShape(l).modeLabel && <span>{modeShort}</span>}
       </>
     ),
     menu: (face) => (
@@ -221,11 +264,11 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
         value={mode.value}
         onChange={mode.onChange}
         disabled={disabled}
-        label={`Permission mode: ${MODE_SHORT[mode.value]}`}
-        title={withNote(`Permission mode: ${MODE_SHORT[mode.value]} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
+        label={`Permission mode: ${modeShort}`}
+        title={withNote(`Permission mode: ${modeShort} (${formatKeys(keysFor('mode.cycle'))} in the message box)`, pipeline?.permissionMode)}
         heading="Permissions"
-        placement="up"
-        choices={modes.map((m) => ({ value: m, label: MODE_LABEL[m], description: MODE_DESCRIPTION[m], dot: MODE_DOT[m] ?? 'bg-faint' }))}
+        placement="auto"
+        choices={modeChoices}
         width={280}
       >
         {face}
@@ -238,9 +281,22 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
     return use?.dim ?? false;
   };
 
+  const modelShown = autoPicked !== null ? `Auto · ${shortModelName(autoPicked)}` : isAuto ? 'Auto' : modelName;
+  const sections: FoldedSection[] = [
+    { key: 'model', heading: 'Model', shown: modelShown, value: model.value, choices: model.choices, onChange: model.onChange, actions: model.actions, name: names.model },
+    ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), name: names.effort }] : []),
+    ...(mode ? [{ key: 'mode' as const, heading: 'Mode', shown: modeShort, value: mode.value, choices: modeChoices, onChange: (v: string) => mode.onChange(v as PermissionMode), name: names.mode }] : []),
+  ];
+  const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile') : chips;
+
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>
-      {chips.map((chip) => (
+      {lead && (
+        <div ref={leadRef} className="flex shrink-0 items-center gap-0.5" data-composer-chips-lead>
+          {lead}
+        </div>
+      )}
+      {shownChips.map((chip) => (
         <div
           key={chip.key}
           className={`shrink-0 transition-opacity ${dimmed(chip.key) ? 'opacity-50 hover:opacity-100 focus-within:opacity-100' : ''}`}
@@ -251,6 +307,18 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
           {chip.menu(chip.face(level))}
         </div>
       ))}
+      {tray.folded && (
+        <div className="min-w-0" data-chip="folded" {...{ 'data-model-chip': isAuto ? 'auto' : model.value || 'default' }}>
+          <FoldedChip
+            sections={sections}
+            face={foldedFace(sections.map((s) => s.shown))}
+            label={foldedLabel({ model: modelShown, effort: sections.find((s) => s.key === 'effort')?.shown, mode: sections.find((s) => s.key === 'mode')?.shown })}
+            disabled={disabled}
+            tools={tray.tools}
+            usage={tray.usage}
+          />
+        </div>
+      )}
       {/* The row at every level, out of sight and out of the way of clicks, screen readers and the layout around it. */}
       <div ref={measureRef} aria-hidden className="pointer-events-none invisible absolute top-0 left-0 size-0 overflow-hidden">
         {FOOTER_LEVELS.map((l) => (

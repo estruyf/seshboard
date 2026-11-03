@@ -3,7 +3,7 @@ import type { LaterItem, LiveSession, SessionHostInfo } from '@seshboard/protoco
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startOfDay, startupSession, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, doneReason, doneReasonLabel, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startupSession, triageOrder, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -145,6 +145,13 @@ describe('buildSessionList', () => {
     expect(inScope(row('cli'), 'switchboard')).toBe(false);
   });
 
+  it('lists another provider\'s sessions started elsewhere only under all sessions', () => {
+    const copilot = row('copilot');
+    copilot.summary = { provider: 'copilot' } as NonNullable<typeof copilot.summary>;
+    expect(inScope(copilot, 'switchboard')).toBe(false);
+    expect(inScope(copilot, 'all')).toBe(true);
+  });
+
   it('filters by project and by search', () => {
     expect(ids(buildSessionList(rows, { search: '', project: '/p/b', now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['newest']);
     const found = buildSessionList(rows, { search: 'LOGIN', project: null, now: NOW, archiveAfterDays: DAYS });
@@ -152,51 +159,68 @@ describe('buildSessionList', () => {
   });
 });
 
+describe('doneReason', () => {
+  const DAY = 24 * HOUR;
+  it('says why a session is in Done: marked done by you, or inactive for so many days', () => {
+    expect(doneReason(row('listed'), NOW, DAYS)).toBeNull();
+    expect(doneReason(row('done', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR }), NOW, DAYS)).toEqual({ kind: 'done' });
+    expect(doneReason(row('merged', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR, summary: { donePr: 123 } as SessionRowData['summary'] }), NOW, DAYS)).toEqual({ kind: 'merged', pr: 123 });
+    expect(doneReason(row('quiet', { updatedAt: NOW - 5 * DAY - HOUR }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 5 });
+    // Marked done before its last activity, it came back; once that ages out it is inactive, not done by you.
+    expect(doneReason(row('back', { archivedAt: NOW - 10 * DAY, updatedAt: NOW - 3 * DAY }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 3 });
+    // Another computer's sessions are never in Done here.
+    expect(doneReason(row('remote', { archivedAt: NOW, remote: { computerId: 'm', computerName: 'M', sessionId: 's', status: 'idle', offline: false } as SessionRowData['remote'] }), NOW, DAYS)).toBeNull();
+  });
+
+  it('reads as the row says it', () => {
+    expect(doneReasonLabel({ kind: 'done' })).toBe('Done');
+    expect(doneReasonLabel({ kind: 'merged', pr: 123 })).toBe('Merged #123');
+    expect(doneReasonLabel({ kind: 'inactive', days: 1 })).toBe('Inactive 1 day');
+    expect(doneReasonLabel({ kind: 'inactive', days: 4 })).toBe('Inactive 4 days');
+  });
+});
+
 describe('groupSessions', () => {
-  // Relative to local midnight, so the tests hold in any time zone.
-  const midnight = startOfDay(NOW);
   const rows = [
-    row('pinned-yesterday', { updatedAt: midnight - HOUR, pinned: true }),
-    row('today', { updatedAt: midnight + HOUR }),
-    row('waiting', { updatedAt: midnight - 3 * 24 * HOUR, live: live('needs-you') }),
+    row('pinned-yesterday', { updatedAt: NOW - 20 * HOUR, pinned: true }),
+    row('read', { updatedAt: NOW - HOUR }),
+    row('waiting', { updatedAt: NOW - 3 * 24 * HOUR, live: live('needs-you') }),
     row('busy', { updatedAt: NOW, live: live('running') }),
-    row('yesterday', { updatedAt: midnight - 2 * HOUR }),
-    row('earlier', { updatedAt: midnight - 30 * HOUR }),
-    row('failed-today', { updatedAt: NOW - 60_000, error: true }),
+    row('unread', { updatedAt: NOW - 2 * HOUR, unread: true }),
+    row('read-earlier', { updatedAt: NOW - 30 * HOUR }),
+    row('failed', { updatedAt: NOW - 60_000, error: true }),
   ];
 
-  it('puts needs-you and working first, then the rest by the day of their last activity', () => {
-    expect(sessionGroup(rows[2]!, NOW)).toBe('needs-you');
-    expect(sessionGroup(rows[3]!, NOW)).toBe('working');
-    expect(sessionGroup(rows[1]!, NOW)).toBe('today');
-    expect(sessionGroup(row('x', { updatedAt: midnight }), NOW)).toBe('today');
-    expect(sessionGroup(row('x', { updatedAt: midnight - 1 }), NOW)).toBe('yesterday');
-    expect(sessionGroup(rows[5]!, NOW)).toBe('earlier');
-    // A failed run is news, but not a section of its own: its badge shows it.
-    expect(sessionGroup(rows[6]!, NOW)).toBe('today');
+  it('puts needs-you and working first, then what you haven\'t read, then what you have', () => {
+    expect(sessionGroup(rows[2]!)).toBe('needs-you');
+    expect(sessionGroup(rows[3]!)).toBe('working');
+    expect(sessionGroup(rows[4]!)).toBe('review');
+    expect(sessionGroup(rows[1]!)).toBe('open');
+    expect(sessionGroup(rows[5]!)).toBe('open');
+    // A failed run is something to look at, as an unread one is.
+    expect(sessionGroup(rows[6]!)).toBe('review');
     // Idle with a background task isn't "Working": nothing for you to watch in the conversation.
-    expect(sessionGroup(row('x', { live: { ...live('idle'), background: ['npm test'] } }), NOW)).toBe('today');
+    expect(sessionGroup(row('x', { live: { ...live('idle'), background: ['npm test'] } }))).toBe('open');
   });
 
   it('puts pinned sessions in Pinned, unless they wait on you or are working', () => {
-    expect(sessionGroup(rows[0]!, NOW)).toBe('pinned');
-    expect(sessionGroup(row('x', { pinned: true, live: live('needs-you') }), NOW)).toBe('needs-you');
-    expect(sessionGroup(row('x', { pinned: true, live: live('running') }), NOW)).toBe('working');
-    expect(sessionGroup(row('x', { pinned: true, unread: true }), NOW)).toBe('pinned');
+    expect(sessionGroup(rows[0]!)).toBe('pinned');
+    expect(sessionGroup(row('x', { pinned: true, live: live('needs-you') }))).toBe('needs-you');
+    expect(sessionGroup(row('x', { pinned: true, live: live('running') }))).toBe('working');
+    expect(sessionGroup(row('x', { pinned: true, unread: true }))).toBe('pinned');
   });
 
   it('keeps the given order inside a section and skips empty sections', () => {
-    const groups = groupSessions(rows, NOW);
+    const groups = groupSessions(rows);
     expect(groups.map((g) => [g.group, ids(g.rows)])).toEqual([
       ['needs-you', ['waiting']],
       ['working', ['busy']],
       ['pinned', ['pinned-yesterday']],
-      ['today', ['today', 'failed-today']],
-      ['yesterday', ['yesterday']],
-      ['earlier', ['earlier']],
+      ['review', ['unread', 'failed']],
+      ['open', ['read', 'read-earlier']],
     ]);
-    expect(groupSessions([rows[1]!], NOW).map((g) => g.group)).toEqual(['today']);
-    expect(groupSessions([], NOW)).toEqual([]);
+    expect(groupSessions([rows[1]!]).map((g) => g.group)).toEqual(['open']);
+    expect(groupSessions([])).toEqual([]);
   });
 
   it('orders Working by when you set each session going, not by its last write', () => {
@@ -204,28 +228,60 @@ describe('groupSessions', () => {
     // 'first' was started before 'second' but wrote more recently: it stays below.
     const rows = [working('first', NOW - 10 * 60_000, NOW), working('second', NOW - 5 * 60_000, NOW - 60_000), working('pin', NOW - HOUR, NOW - HOUR, true)];
     const list = buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
-    expect(groupSessions(list.active, NOW).map((g) => ids(g.rows))).toEqual([['pin', 'second', 'first']]);
+    expect(groupSessions(list.active).map((g) => ids(g.rows))).toEqual([['pin', 'second', 'first']]);
   });
 
-  it('lists pinned sessions above the days, newest first', () => {
+  it('lists pinned sessions above To review and Open, each newest first', () => {
     const list = buildSessionList(
-      [row('new', { updatedAt: NOW - 60_000 }), row('pin', { updatedAt: midnight + 1, pinned: true }), row('old-pin', { updatedAt: old, pinned: true })],
+      [row('new', { updatedAt: NOW - 60_000 }), row('older', { updatedAt: NOW - 5 * HOUR }), row('fresh', { updatedAt: NOW - 3 * HOUR, unread: true }), row('pin', { updatedAt: NOW - 2 * HOUR, pinned: true }), row('old-pin', { updatedAt: old, pinned: true })],
       { search: '', project: null, now: NOW, archiveAfterDays: DAYS },
     );
-    expect(groupSessions(list.active, NOW).map((g) => [g.group, ids(g.rows)])).toEqual([
+    expect(groupSessions(list.active).map((g) => [g.group, ids(g.rows)])).toEqual([
       ['pinned', ['pin', 'old-pin']],
-      ['today', ['new']],
+      ['review', ['fresh']],
+      ['open', ['new', 'older']],
     ]);
   });
 
   it('keeps pinned sessions at the top of Needs you', () => {
     const list = buildSessionList([row('ask', { updatedAt: NOW, live: live('needs-you') }), row('pin', { updatedAt: old, pinned: true, live: live('needs-you') })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
-    expect(groupSessions(list.active, NOW).map((g) => ids(g.rows))).toEqual([['pin', 'ask']]);
+    expect(groupSessions(list.active).map((g) => ids(g.rows))).toEqual([['pin', 'ask']]);
+  });
+
+  it('lists the sessions to go through: To review, then Open, in the order given', () => {
+    expect(ids(triageOrder([rows[1]!, rows[2]!, rows[4]!, rows[0]!, rows[5]!, rows[6]!, rows[3]!]))).toEqual(['unread', 'failed', 'read', 'read-earlier']);
+  });
+
+  it('puts snoozed sessions in neither list, and a due reminder under Reminders above To review', () => {
+    const snoozed = row('later', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], unread: true, pinned: true });
+    const busy = row('busy', { summary: { remindAt: NOW + HOUR, remindedAt: null } as SessionRowData['summary'], live: live('running') });
+    const due = row('due', { summary: { remindAt: NOW - HOUR, remindedAt: NOW } as SessionRowData['summary'] });
+    const list = buildSessionList([snoozed, busy, due, row('unread', { unread: true })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
+    expect([ids(list.active), ids(list.archived), ids(list.snoozed)]).toEqual([['busy', 'due', 'unread'], [], ['later']]);
+    expect(groupSessions(list.active).map((g) => [g.group, ids(g.rows)])).toEqual([
+      ['working', ['busy']],
+      ['reminders', ['due']],
+      ['review', ['unread']],
+    ]);
+    expect(ids(triageOrder(list.active))).toEqual(['due', 'unread']);
+    // Searching, the snoozed ones are listed under Snoozed, before Done.
+    const rows = buildListRows(list.active, [], { now: NOW, archivedOpen: false, snoozed: list.snoozed });
+    expect(rows.filter((r) => r.kind === 'group').map((r) => r.kind === 'group' && r.group)).toEqual(['working', 'reminders', 'review', 'snoozed']);
+  });
+
+  it('finds a session by its note', () => {
+    const noted = row('noted', { summary: { note: 'waiting on Jan' } as SessionRowData['summary'] });
+    expect(ids(buildSessionList([noted, row('other')], { search: 'jan', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['noted']);
+  });
+
+  it('keeps a session with an unsent message or a queued prompt listed, however old', () => {
+    const list = buildSessionList([row('kept', { updatedAt: old, kept: true }), row('gone', { updatedAt: old })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
+    expect([ids(list.active), ids(list.archived)]).toEqual([['kept'], ['gone']]);
   });
 });
 
 describe('buildListRows', () => {
-  const midnight = startOfDay(NOW);
+  const midnight = NOW - 6 * HOUR;
   const active = [row('busy', { live: live('running') }), row('a', { updatedAt: midnight + HOUR }), row('b', { updatedAt: midnight + 2 * HOUR })];
   const archived = [row('old', { updatedAt: old })];
   const shape = (rows: ReturnType<typeof buildListRows>) =>
@@ -275,9 +331,9 @@ describe('buildListRows', () => {
 
   it('puts a header above each section and an open Archived last', () => {
     // Closed, its header is docked under the list rather than in it.
-    expect(shape(buildListRows(active, archived, { now: NOW, archivedOpen: false }))).toEqual(['[working 1 first]', 'busy', '[today 2]', 'a', 'b']);
+    expect(shape(buildListRows(active, archived, { now: NOW, archivedOpen: false }))).toEqual(['[working 1 first]', 'busy', '[open 2]', 'a', 'b']);
     const open = buildListRows(active, archived, { now: NOW, archivedOpen: true });
-    expect(shape(open)).toEqual(['[working 1 first]', 'busy', '[today 2]', 'a', 'b', '[archived 1 open]', 'old']);
+    expect(shape(open)).toEqual(['[working 1 first]', 'busy', '[open 2]', 'a', 'b', '[archived 1 open]', 'old']);
     expect(open.at(-1)).toMatchObject({ kind: 'session', archived: true });
   });
 
@@ -297,15 +353,15 @@ describe('buildListRows', () => {
       'queue:Speaker notes',
       '[pinned 1]',
       'pin',
-      '[today 2]',
+      '[open 2]',
       'a',
       'b',
     ]);
     // Without Working, it takes Working's place: after Needs you, before the rest.
     const waiting = row('ask', { live: live('needs-you') });
-    expect(shape(buildListRows([waiting, active[1]!], [], { now: NOW, archivedOpen: false, queue }))).toEqual(['[needs-you 1 first]', 'ask', '[queue 2 open]', 'queue:Monthly export', 'queue:Speaker notes', '[today 1]', 'a']);
+    expect(shape(buildListRows([waiting, active[1]!], [], { now: NOW, archivedOpen: false, queue }))).toEqual(['[needs-you 1 first]', 'ask', '[queue 2 open]', 'queue:Monthly export', 'queue:Speaker notes', '[open 1]', 'a']);
     expect(shape(buildListRows([], [], { now: NOW, archivedOpen: false, queue }))).toEqual(['[queue 2 open first]', 'queue:Monthly export', 'queue:Speaker notes']);
-    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: { entries: [], ready: 0 } }))).toEqual(['[working 1 first]', 'busy', '[today 2]', 'a', 'b']);
+    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: { entries: [], ready: 0 } }))).toEqual(['[working 1 first]', 'busy', '[open 2]', 'a', 'b']);
   });
 
   it('in Quickest to unblock, ranks what needs you, then what you read, then what still works, without the Queue or Pinned', () => {
@@ -356,27 +412,28 @@ describe('buildListRows', () => {
 
   it('never offers queued prompts to Select all', () => {
     const rows = buildListRows(active, archived, { now: NOW, archivedOpen: true, queue: queueOf('Idea') });
-    expect([...sessionsByHeader(rows)]).toEqual([['working', ['busy']], ['today', ['a', 'b']], ['archived', ['old']]]);
+    expect([...sessionsByHeader(rows)]).toEqual([['working', ['busy']], ['open', ['a', 'b']], ['archived', ['old']]]);
   });
 
   it('skips the rows of closed sections and keeps their headers and counts', () => {
-    const closed = new Set(['working', 'today', 'queue'] as const);
-    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: queueOf('Idea'), closed }))).toEqual(['[working 1 first closed]', '[queue 1 closed]', '[today 2 closed]']);
+    const closed = new Set(['working', 'open', 'queue'] as const);
+    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, queue: queueOf('Idea'), closed }))).toEqual(['[working 1 first closed]', '[queue 1 closed]', '[open 2 closed]']);
     // Needs you never closes.
     const waiting = row('ask', { live: live('needs-you') });
     expect(shape(buildListRows([waiting], [], { now: NOW, archivedOpen: false, closed: new Set(['working']) }))).toEqual(['[needs-you 1 first]', 'ask']);
   });
 
   it('keeps the open session under its closed header, with how many are hidden', () => {
-    const closed = new Set(['today'] as const);
-    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, closed, selectedId: 'b' }))).toEqual(['[working 1 first]', 'busy', '[today 2 closed]', 'b (kept)', '+1 hidden']);
+    const closed = new Set(['open'] as const);
+    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, closed, selectedId: 'b' }))).toEqual(['[working 1 first]', 'busy', '[open 2 closed]', 'b (kept)', '+1 hidden']);
     // The only session in it: nothing else is hidden.
-    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, closed: new Set(['working']), selectedId: 'busy' }))).toEqual(['[working 1 first closed]', 'busy (kept)', '[today 2]', 'a', 'b']);
+    expect(shape(buildListRows(active, [], { now: NOW, archivedOpen: false, closed: new Set(['working']), selectedId: 'busy' }))).toEqual(['[working 1 first closed]', 'busy (kept)', '[open 2]', 'a', 'b']);
   });
 
   it('sums up a header: ready items on the Queue, unread sessions on a closed section', () => {
-    const unread = [row('u1', { unread: true, updatedAt: midnight + HOUR }), row('u2', { unread: true, updatedAt: midnight + 2 * HOUR }), row('r', { updatedAt: midnight + 3 * HOUR })];
-    const rows = buildListRows(unread, [], { now: NOW, archivedOpen: false, queue: { entries: [entry('Idea', 'ready')], ready: 1 }, closed: new Set(['today']) });
+    // Unread pinned sessions stay in Pinned, so a closed Pinned has something to say.
+    const unread = [row('u1', { unread: true, pinned: true, updatedAt: midnight + HOUR }), row('u2', { unread: true, pinned: true, updatedAt: midnight + 2 * HOUR }), row('r', { pinned: true, updatedAt: midnight + 3 * HOUR })];
+    const rows = buildListRows(unread, [], { now: NOW, archivedOpen: false, queue: { entries: [entry('Idea', 'ready')], ready: 1 }, closed: new Set(['pinned']) });
     const headers = rows.filter((r) => r.kind === 'group' || r.kind === 'queue-header');
     expect(headers.map((h) => headerSummary(h))).toEqual([
       { text: '1 ready', tone: 'ok' },
@@ -390,14 +447,14 @@ describe('buildListRows', () => {
   it('finds the section a session sits in', () => {
     const all = [...active, ...archived];
     expect(sectionOfSession(all, 'busy', NOW, DAYS)).toBe('working');
-    expect(sectionOfSession(all, 'a', NOW, DAYS)).toBe('today');
+    expect(sectionOfSession(all, 'a', NOW, DAYS)).toBe('open');
     expect(sectionOfSession(all, 'old', NOW, DAYS)).toBeNull();
     expect(sectionOfSession(all, 'missing', NOW, DAYS)).toBeNull();
   });
 
   it('lists the sessions under each header, for Select all', () => {
     const open = sessionsByHeader(buildListRows(active, archived, { now: NOW, archivedOpen: true }));
-    expect([...open]).toEqual([['working', ['busy']], ['today', ['a', 'b']], ['archived', ['old']]]);
+    expect([...open]).toEqual([['working', ['busy']], ['open', ['a', 'b']], ['archived', ['old']]]);
     expect(sessionsByHeader(buildListRows(active, archived, { now: NOW, archivedOpen: false })).has('archived')).toBe(false);
   });
 
@@ -423,24 +480,31 @@ describe('buildListRows', () => {
 });
 
 describe('sidebar sections', () => {
-  it('starts with Earlier closed and reads the saved state leniently', () => {
+  it('starts with every section open and reads the saved state leniently', () => {
     expect(parseSections(null)).toEqual(DEFAULT_SECTIONS);
-    expect(DEFAULT_SECTIONS.earlier).toBe(false);
-    expect(parseSections({ open: { today: false, earlier: true, 'needs-you': false, queue: 'no' } })).toEqual({ ...DEFAULT_SECTIONS, today: false, earlier: true });
+    expect(Object.values(DEFAULT_SECTIONS).every(Boolean)).toBe(true);
+    expect(parseSections({ open: { open: false, pinned: true, 'needs-you': false, queue: 'no' } })).toEqual({ ...DEFAULT_SECTIONS, open: false });
     expect(parseSections('garbage')).toEqual(DEFAULT_SECTIONS);
   });
 
+  it('reads the sections by day saved before Open: closed only when all three were', () => {
+    expect(parseSections({ open: { today: true, yesterday: true, earlier: false } }).open).toBe(true);
+    expect(parseSections({ open: { today: false, yesterday: false, earlier: false, pinned: false } })).toEqual({ ...DEFAULT_SECTIONS, open: false, pinned: false });
+    // Once Open is stored, the old keys say nothing.
+    expect(parseSections({ open: { open: true, today: false, yesterday: false, earlier: false } }).open).toBe(true);
+  });
+
   it('shows every section while searching or filtering by project, then the saved state again', () => {
-    const open = { ...DEFAULT_SECTIONS, today: false };
-    expect([...closedSections(open, { search: '', project: null })].sort()).toEqual(['earlier', 'today']);
+    const open = { ...DEFAULT_SECTIONS, open: false, pinned: false };
+    expect([...closedSections(open, { search: '', project: null })].sort()).toEqual(['open', 'pinned']);
     expect([...closedSections(open, { search: 'export', project: null })]).toEqual([]);
     expect([...closedSections(open, { search: '', project: '/p/a' })]).toEqual([]);
-    expect([...closedSections(open, { search: '  ', project: null })].sort()).toEqual(['earlier', 'today']);
+    expect([...closedSections(open, { search: '  ', project: null })].sort()).toEqual(['open', 'pinned']);
   });
 
   it('opens or closes every section at once from one header', () => {
-    expect(Object.values(toggleAllSections(DEFAULT_SECTIONS, 'today')).every((on) => !on)).toBe(true);
-    expect(Object.values(toggleAllSections(DEFAULT_SECTIONS, 'earlier')).every((on) => on)).toBe(true);
+    expect(Object.values(toggleAllSections(DEFAULT_SECTIONS, 'open')).every((on) => !on)).toBe(true);
+    expect(Object.values(toggleAllSections({ ...DEFAULT_SECTIONS, pinned: false }, 'pinned')).every((on) => on)).toBe(true);
   });
 });
 

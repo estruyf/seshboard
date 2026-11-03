@@ -1,4 +1,4 @@
-import { Archive, GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, Users } from 'lucide-react';
+import { Check, GitPullRequest, Globe, ListEnd, Monitor, Puzzle, Smartphone, X, Users } from 'lucide-react';
 import { TOAST_MS, useToasts, type Toast } from '../../state/toastStore.ts';
 import { UpdateToasts } from '../updates/UpdateToasts.tsx';
 import { Button } from './Button.tsx';
@@ -18,7 +18,7 @@ function ToastCard({ toast }: { toast: Toast }) {
       {toast.icon === 'browser' && <Globe size={14} className="shrink-0 text-ok" aria-hidden />}
       {toast.icon === 'computer' && <Monitor size={14} className="shrink-0 text-ok" aria-hidden />}
       {toast.icon === 'shared' && <Users size={14} className="shrink-0 text-link" aria-hidden />}
-      {toast.icon === 'archive' && <Archive size={14} className="shrink-0 text-muted" aria-hidden />}
+      {toast.icon === 'archive' && <Check size={14} className="shrink-0 text-muted" aria-hidden />}
       {toast.dot && <span className="size-2 shrink-0 rounded-full" style={{ background: toast.dot }} aria-hidden />}
       {toast.tone === 'ok' && <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />}
       {toast.tone === 'error' && <span className="size-2 shrink-0 rounded-full bg-error" aria-hidden />}

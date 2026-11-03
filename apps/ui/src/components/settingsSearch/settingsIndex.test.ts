@@ -87,6 +87,23 @@ describe('the settings index', () => {
     }
   });
 
+  it('finds the menu bar settings by menu bar, tray, notification area and dock', () => {
+    const found = (query: string, platform: string) => searchSettings(query, entries, (page) => page, platform).map((match) => match.entry.id);
+    for (const query of ['menu bar', 'tray', 'notification area', 'dock']) {
+      expect(found(query, 'darwin'), query).toEqual(expect.arrayContaining(['menu-bar', 'keep-running', 'hide-dock']));
+      expect(found(query, 'win32'), query).toEqual(expect.arrayContaining(['menu-bar', 'keep-running']));
+    }
+    // Hiding the Dock icon is a Mac's only.
+    expect(found('dock', 'win32')).not.toContain('hide-dock');
+  });
+
+  it('finds quick start by quick start, launcher, global shortcut and raycast', () => {
+    const found = (query: string) => searchSettings(query, entries, (page) => page, 'darwin').map((match) => match.entry.id);
+    for (const query of ['quick start', 'launcher', 'global shortcut', 'raycast']) {
+      expect(found(query), query).toEqual(expect.arrayContaining(['quick-start-shortcut', 'quick-start-background', 'quick-start-needs-you']));
+    }
+  });
+
   it('writes like the app: no em dashes', () => {
     expect(entries.filter((entry) => `${entry.label} ${entry.detail ?? ''}`.includes('—')).map((entry) => entry.id)).toEqual([]);
   });

@@ -21,6 +21,11 @@ import { AutoModelSettings } from './session/AutoModelSettings.tsx';
 import { CatchUpSettings } from './catchUp/CatchUpSettings.tsx';
 import { CloneSettings } from './clone/CloneSettings.tsx';
 import { FocusSettings } from './focus/FocusSettings.tsx';
+import { GlobalModelSettings } from './general/GlobalModelSettings.tsx';
+import { MenuBarSettings } from './general/MenuBarSettings.tsx';
+import { menuBarTitle } from './general/menuBarCopy.ts';
+import { QuickStartSettings } from './general/QuickStartSettings.tsx';
+import { QUICK_START_TITLE } from './general/quickStartCopy.ts';
 import { KeepAwakeSetting } from './general/KeepAwakeSetting.tsx';
 import { OpenAtLoginSetting } from './general/OpenAtLoginSetting.tsx';
 import { ShellCommandSetting } from './general/ShellCommandSetting.tsx';
@@ -241,14 +246,14 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard."
+            detail="Also list sessions from Terminal, Claude desktop, your editor and GitHub Copilot. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
           />
           <Toggle
             label="Quick actions on hover"
-            detail="Mark read, Pin and Archive appear on a row under the pointer."
+            detail="Mark read, Pin and Done appear on a row under the pointer."
             checked={prefs.quickActions}
             attr="data-quick-actions-setting"
             onChange={(quickActions) => update({ quickActions })}
@@ -265,8 +270,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 value={prefs.quickActionsShow}
                 onChange={(quickActionsShow) => update({ quickActionsShow })}
                 segments={[
-                  { value: 'archive', label: 'Archive only', data: { 'data-quick-actions-show': 'archive' } },
-                  { value: 'all', label: 'Read · Pin · Archive', data: { 'data-quick-actions-show': 'all' } },
+                  { value: 'archive', label: 'Done only', data: { 'data-quick-actions-show': 'archive' } },
+                  { value: 'all', label: 'Read · Pin · Done', data: { 'data-quick-actions-show': 'all' } },
                 ]}
                 className="shrink-0"
               />
@@ -394,8 +399,8 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
     case 'profiles':
       return (
         <Section
-          title="Claude profiles"
-          description="Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login. Link a project to a profile from its menu or the Projects view; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
+          title="Profiles"
+          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code or GitHub Copilot with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>
@@ -448,6 +453,12 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           <Section title="Sleep">
             <KeepAwakeSetting />
           </Section>
+          <Section title={menuBarTitle()}>
+            <MenuBarSettings />
+          </Section>
+          <Section title={QUICK_START_TITLE}>
+            <QuickStartSettings />
+          </Section>
           <Section title="Terminal">
             <ShellCommandSetting />
           </Section>
@@ -467,6 +478,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 dataAttrs={{ 'data-new-session-mode': true }}
               />
             </div>
+            <GlobalModelSettings />
             <Toggle
               label="Use Claude in Chrome"
               detail="Sessions get the browser tools of the Claude in Chrome extension, which needs to be installed in Chrome. Applies to sessions you start or resume after you change it."

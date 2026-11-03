@@ -116,19 +116,24 @@ function toBytes(data: unknown): Uint8Array {
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
-/** Opens a socket and runs the handshake; rejects with a `closed` failure when the other engine refuses. */
+/**
+ * Opens a socket and runs the handshake; rejects with a `closed` failure when the other engine refuses. A reconnect
+ * refused before the answer (4400 from an older Seshboard there) or whose answer doesn't decrypt was made for another
+ * key than the computer has now (its Remote key changed): that is "pair again" (4403), not a reason to retry forever,
+ * which would also make its address wait there.
+ */
 async function handshake(dial: Dial, address: string, mode: HandshakeMode, device: KeyPair, enginePublicKey: Uint8Array, psk?: Uint8Array): Promise<OpenSocket & { session: NoiseSession }> {
   const socket = await dial(address);
   const noise = initiatorHandshake({ mode, staticKey: device, remoteStatic: enginePublicKey, ...(psk ? { psk } : {}) });
   socket.frames.send(helloFrame(mode, noise.writeMessage1()));
   const answer = await Promise.race([socket.first, socket.closed]);
-  if (typeof answer === 'number') throw new LinkError({ kind: 'closed', code: answer });
+  if (typeof answer === 'number') throw new LinkError({ kind: 'closed', code: mode === 'connect' && answer === CLOSE.refused ? CLOSE.unknownDevice : answer });
   try {
     return { ...socket, session: noise.readMessage2(answer).session };
   } catch {
     // The answer doesn't decrypt: not the computer whose key the link has (or not its pairing secret).
     socket.close();
-    throw new LinkError({ kind: 'closed', code: CLOSE.refused });
+    throw new LinkError({ kind: 'closed', code: mode === 'connect' ? CLOSE.unknownDevice : CLOSE.refused });
   }
 }
 
