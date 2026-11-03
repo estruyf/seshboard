@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { COMPUTER_COLORS, COMPUTER_NOTIFY, fromBase64Url, toBase64Url, type ComputerColor, type ComputerNotify } from '@seshboard/protocol';
+import { COMPUTER_COLORS, COMPUTER_NOTIFY, COMPUTER_STARTED_MAX, fromBase64Url, toBase64Url, type ComputerColor, type ComputerNotify } from '@seshboard/protocol';
 
 /** Another computer this app paired with, as a phone pairs with it. */
 export interface PairedComputer {
@@ -41,7 +41,7 @@ interface Row {
  * device key is in the system's keychain, so a copy of the database connects to nothing.
  */
 export class ComputerStore {
-  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'notify' | 'remove', StatementSync>;
+  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'notify' | 'remove' | 'started' | 'addStarted' | 'trimStarted' | 'removeStarted', StatementSync>;
 
   constructor(
     db: DatabaseSync,
@@ -58,6 +58,13 @@ export class ComputerStore {
       color: db.prepare('UPDATE remote_computers SET color = ? WHERE id = ?'),
       notify: db.prepare('UPDATE remote_computers SET notify = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM remote_computers WHERE id = ?'),
+      started: db.prepare('SELECT session_id FROM remote_started_sessions WHERE computer_id = ? ORDER BY started_at, rowid'),
+      addStarted: db.prepare('INSERT OR REPLACE INTO remote_started_sessions (computer_id, session_id, started_at) VALUES (?, ?, ?)'),
+      // Only the newest: older sessions are long done, and their news with them.
+      trimStarted: db.prepare(
+        'DELETE FROM remote_started_sessions WHERE computer_id = ? AND rowid NOT IN (SELECT rowid FROM remote_started_sessions WHERE computer_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?)',
+      ),
+      removeStarted: db.prepare('DELETE FROM remote_started_sessions WHERE computer_id = ?'),
     };
   }
 
@@ -105,7 +112,19 @@ export class ComputerStore {
     this.statements.notify.run(notify === 'all' ? null : notify, id);
   }
 
+  /** The sessions this computer started on that one, oldest first. */
+  startedOn(id: string): string[] {
+    return (this.statements.started.all(id) as unknown as Array<{ session_id: string }>).map((row) => row.session_id);
+  }
+
+  /** Remembers a session this computer started there (`session.create`), keeping the newest `COMPUTER_STARTED_MAX`. */
+  addStarted(id: string, sessionId: string): void {
+    this.statements.addStarted.run(id, sessionId, this.now());
+    this.statements.trimStarted.run(id, id, COMPUTER_STARTED_MAX);
+  }
+
   remove(id: string): boolean {
+    this.statements.removeStarted.run(id);
     return Number(this.statements.remove.run(id).changes) > 0;
   }
 }

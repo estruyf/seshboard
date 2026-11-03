@@ -41,6 +41,8 @@ export const Computer = z.object({
   color: ComputerColorSchema,
   /** Which of its notifications show here. */
   notify: ComputerNotifySchema,
+  /** The sessions this computer started there (New session, Run on), newest last: what `started-here` keeps. */
+  startedHere: z.array(z.string()).default([]),
   /** Where it is: its tunnel's `https://` address. */
   address: z.string(),
   pairedAt: z.number(),

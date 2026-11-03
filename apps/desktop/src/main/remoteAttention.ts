@@ -19,29 +19,36 @@ const askWords = (toolName: string) => (toolName === 'AskUserQuestion' ? 'Claude
  * Notifications for the sessions of paired computers (docs/remote-access.md, Other computers), from each computer's
  * session list as it changes: a new prompt is needs you, a turn that ended is finished (or failed), as for a session
  * here. The first list of a computer only sets what was already so. A pipeline step's turn gives no Finished: the run
- * is its news, as here. The computer's notifications choice (Settings › Remote, Other computers) keeps only needs
- * you, or nothing; what it leaves out is still seen, so turning them on later doesn't bring old news. Pure, so it is
- * tested without Electron.
+ * is its news, as here. The computer's notifications choice (Settings › Remote, Other computers) keeps only the
+ * sessions this computer started there (and their sub-sessions), only needs you, or nothing; what it leaves out is
+ * still seen, so turning them on later doesn't bring old news. Pure, so it is tested without Electron.
  */
 export class RemoteAttention {
   private readonly seen = new Map<string, Seen>();
 
   /** A computer's list, now: the events since the last one. */
-  onList(computer: { id: string; name: string; notify?: ComputerNotify }, list: Pick<RemoteSessions, 'sessions' | 'prompts'>): AttentionEvent[] {
+  onList(computer: { id: string; name: string; notify?: ComputerNotify; startedHere?: ReadonlySet<string> }, list: Pick<RemoteSessions, 'sessions' | 'prompts'>): AttentionEvent[] {
     const before = this.seen.get(computer.id);
     const now: Seen = { status: new Map(list.sessions.map((s) => [s.id, s.status])), prompts: new Set(list.prompts.map((p) => p.requestId)) };
     this.seen.set(computer.id, now);
     if (!before || computer.notify === 'off') return [];
     const titles = new Map(list.sessions.map((s) => [s.id, s.title]));
+    const parents = new Map(list.sessions.map((s) => [s.id, s.parentId ?? null]));
+    // Started here: a session this computer started, or a sub-session of one (a pipeline's step, a fork's agent).
+    const kept = (sessionId: string) => {
+      if (computer.notify !== 'started-here') return true;
+      const parent = parents.get(sessionId);
+      return !!computer.startedHere?.has(sessionId) || (!!parent && !!computer.startedHere?.has(parent));
+    };
     const where = (sessionId: string) => `${titles.get(sessionId) ?? 'A session'} · on ${computer.name}`;
     const events: AttentionEvent[] = [];
     for (const prompt of list.prompts) {
-      if (before.prompts.has(prompt.requestId)) continue;
+      if (before.prompts.has(prompt.requestId) || !kept(prompt.sessionId)) continue;
       events.push({ kind: 'needs-you', sessionId: remoteRowId(computer.id, prompt.sessionId), title: askWords(prompt.toolName), body: where(prompt.sessionId) });
     }
     if (computer.notify === 'needs-you') return events;
     for (const session of list.sessions) {
-      if (before.status.get(session.id) !== 'working') continue;
+      if (before.status.get(session.id) !== 'working' || !kept(session.id)) continue;
       if (session.status === 'error') events.push({ kind: 'failed', sessionId: remoteRowId(computer.id, session.id), title: 'Claude Code stopped with an error', body: where(session.id) });
       else if ((session.status === 'unread' || session.status === 'idle') && !session.parentId) {
         events.push({ kind: 'finished', sessionId: remoteRowId(computer.id, session.id), title: 'Claude finished', body: where(session.id) });

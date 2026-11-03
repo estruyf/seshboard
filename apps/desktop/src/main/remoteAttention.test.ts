@@ -42,6 +42,19 @@ describe('RemoteAttention', () => {
     expect(attention.onList(studio, list([session('a', 'idle')])).map((e) => e.kind)).toEqual(['finished']);
   });
 
+  it('keeps only the sessions this computer started there, and their sub-sessions, for Started here', () => {
+    const attention = new RemoteAttention();
+    const startedHere = { ...studio, notify: 'started-here' as const, startedHere: new Set(['mine']) };
+    const working = [session('mine', 'working'), session('step', 'working', 'mine'), session('theirs', 'working')];
+    attention.onList(startedHere, list(working));
+    const events = attention.onList(startedHere, list([session('mine', 'unread'), session('step', 'error', 'mine'), session('theirs', 'unread')], [prompt('p1', 'step'), prompt('p2', 'theirs')]));
+    expect(events.map((e) => [e.kind, e.sessionId])).toEqual([
+      ['needs-you', 'remote:c1:step'],
+      ['finished', 'remote:c1:mine'],
+      ['failed', 'remote:c1:step'],
+    ]);
+  });
+
   it('starts over, silently, after a computer was away', () => {
     const attention = new RemoteAttention();
     attention.onList(studio, list([session('a', 'working')]));

@@ -831,4 +831,15 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE remote_computers ADD COLUMN notify TEXT;
   `,
+
+  // v50: The sessions this computer started on a paired computer, for its "Started here" notifications: only this
+  // computer knows them. Keep them.
+  `
+  CREATE TABLE remote_started_sessions (
+    computer_id TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    PRIMARY KEY (computer_id, session_id)
+  );
+  `,
 ];

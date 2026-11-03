@@ -62,14 +62,14 @@ describe('another computer’s list', () => {
   });
 
   it('says how the connection is', () => {
-    const computer: Computer = { id: 'c', name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet', notify: 'all', address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, features: [], lastSeen: null, problem: null };
+    const computer: Computer = { id: 'c', name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet', notify: 'all', startedHere: [], address: 'https://x', pairedAt: 1, state: 'offline', message: 'Studio Mac doesn’t answer.', retryAt: 31_000, version: null, features: [], lastSeen: null, problem: null };
     expect(computerLine(computer, 1_000)).toBe('Studio Mac doesn’t answer. Trying again in 30s.');
     expect(computerLine({ ...computer, retryAt: 120_000 }, 0)).toBe('Studio Mac doesn’t answer. Trying again in 2 min.');
     expect(computerLine({ ...computer, state: 'connected', message: null, problem: 'Studio Mac sent data this version of Seshboard can’t read.' })).toBe('Studio Mac sent data this version of Seshboard can’t read.');
   });
 
   it('tells a computer’s problem once', () => {
-    const computer: Computer = { id: 'c', name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet', notify: 'all', address: 'https://x', pairedAt: 1, state: 'connected', message: null, retryAt: null, version: '1.0.0', features: [], lastSeen: null, problem: null };
+    const computer: Computer = { id: 'c', name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet', notify: 'all', startedHere: [], address: 'https://x', pairedAt: 1, state: 'connected', message: null, retryAt: null, version: '1.0.0', features: [], lastSeen: null, problem: null };
     const bad = { ...computer, problem: 'Studio Mac sent data.' };
     expect(newProblems(undefined, [computer])).toEqual([]);
     expect(newProblems([computer], [bad])).toEqual([bad]);

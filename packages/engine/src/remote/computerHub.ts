@@ -171,6 +171,12 @@ export class ComputerHub {
     const result = await entry.link.call(method, params);
     const checked = this.checked(id, entry, method, checkResult(method, result));
     if (!checked.ok) throw new RpcError('UNREADABLE', unreadableLine(this.nameOf(id), null));
+    // A session started from here: its notifications are the ones "Started here" keeps.
+    const started = method === 'session.create' ? (checked.value as { sessionId?: unknown } | null)?.sessionId : undefined;
+    if (typeof started === 'string') {
+      this.store.addStarted(id, started);
+      this.changed();
+    }
     return checked.value;
   }
 
@@ -238,7 +244,7 @@ export class ComputerHub {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
     const name = shownName(computer);
-    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
+    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, startedHere: this.store.startedOn(computer.id), address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
         return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };

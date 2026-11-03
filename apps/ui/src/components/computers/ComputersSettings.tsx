@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, BellOff, BellRing, Link2, Monitor, Pencil } from 'lucide-react';
+import { Bell, BellDot, BellOff, BellRing, Link2, Monitor, Pencil } from 'lucide-react';
 import { COMPUTER_COLORS, COMPUTER_NOTIFY, type Computer, type ComputerColor, type ComputerNotify } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -224,14 +224,20 @@ function ColourStrip({ computer, onPick, onClose }: { computer: Computer; onPick
   );
 }
 
-const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'needs-you': 'Needs you', off: 'Off' };
-const NOTIFY_HINT: Record<ComputerNotify, string> = { all: 'Needs you, finished and failed', 'needs-you': 'Only when a session waits for you', off: 'None. Its sessions still show here.' };
+const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'started-here': 'Started here', 'needs-you': 'Needs you', off: 'Off' };
+const NOTIFY_HINT: Record<ComputerNotify, string> = {
+  all: 'Needs you, finished and failed',
+  'started-here': 'All of them, for sessions you started there from this computer',
+  'needs-you': 'Only when a session waits for you',
+  off: 'None. Its sessions still show here.',
+};
 /** In the row's status line, when it isn't all of them. */
-const NOTIFY_STATUS: Record<ComputerNotify, string> = { all: '', 'needs-you': 'Notifies only when it needs you', off: 'Notifications off' };
+const NOTIFY_STATUS: Record<ComputerNotify, string> = { all: '', 'started-here': 'Notifies for sessions started here', 'needs-you': 'Notifies only when it needs you', off: 'Notifications off' };
 
 function NotifyIcon({ notify }: { notify: ComputerNotify }) {
   if (notify === 'off') return <BellOff size={14} aria-hidden />;
   if (notify === 'needs-you') return <BellRing size={14} aria-hidden />;
+  if (notify === 'started-here') return <BellDot size={14} aria-hidden />;
   return <Bell size={14} aria-hidden />;
 }
 

@@ -1593,7 +1593,7 @@
     },
     {
       "id": "feature:computer-notifications",
-      "name": "Pick which notifications a paired computer shows here: all, only needs you, or off",
+      "name": "Pick which notifications a paired computer shows here: all, only for sessions started here, only needs you, or off",
       "page": "other-computers"
     },
     {

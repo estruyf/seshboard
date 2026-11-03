@@ -11,7 +11,8 @@ import { DeviceStore } from './devices.ts';
 import { Pairing, type PairingState } from './pairing.ts';
 import { CLOSE, RemoteServer } from './remoteServer.ts';
 import { APP_ORIGIN } from './testPhone.ts';
-import { REMOTE_DESKTOP_ORIGIN } from '@seshboard/protocol';
+import { COMPUTER_STARTED_MAX, REMOTE_DESKTOP_ORIGIN } from '@seshboard/protocol';
+import { ComputerStore } from './computerStore.ts';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -34,6 +35,7 @@ async function otherComputer(name = 'Studio Mac') {
   let identity = generateKeyPair();
   const devices = new DeviceStore(db);
   let onRequest: (state: PairingState) => void = () => {};
+  let created = 0;
   const pairing = new Pairing((state) => state.request && onRequest(state));
   const server = new RemoteServer({
     identity: () => identity,
@@ -46,7 +48,9 @@ async function otherComputer(name = 'Studio Mac') {
     handlers: (device) =>
       ({
         'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
-        'session.create': () => {
+        'session.create': ({ projectId }: { projectId: string }) => {
+          // One project there, for the sessions this computer starts (Started here).
+          if (projectId === 'fedcba9876543210') return { sessionId: `started-${++created}` };
           throw new RpcError('NOT_FOUND', 'No such project');
         },
       }) as unknown as Omit<Handlers<RemoteContract>, 'hello'>,
@@ -250,6 +254,41 @@ describe('Other computers', () => {
     expect(again.hub.status().computers[0]).toMatchObject({ id, notify: 'off' });
     again.hub.update(id, { notify: 'all' });
     expect(again.hub.status().computers[0]!.notify).toBe('all');
+  });
+
+  it('remembers the sessions it started on a computer, through a restart, and forgets them with the computer', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]!.startedHere).toEqual([]);
+
+    await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'one' });
+    await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'two' });
+    // One that failed there started nothing.
+    await expect(first.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(first.hub.status().computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
+    expect(first.statuses.at(-1)!.computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
+    first.hub.stop();
+
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    expect(again.hub.status().computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
+    again.hub.forget(id);
+    expect(new ComputerStore(first.db).startedOn(id)).toEqual([]);
+  });
+
+  it('keeps only the newest sessions it started on a computer', () => {
+    let now = 0;
+    const store = new ComputerStore(tempDb(), () => ++now);
+    for (let i = 1; i <= COMPUTER_STARTED_MAX + 5; i++) store.addStarted('c1', `s${i}`);
+    store.addStarted('c2', 'other');
+    const kept = store.startedOn('c1');
+    expect(kept).toHaveLength(COMPUTER_STARTED_MAX);
+    expect(kept[0]).toBe('s6');
+    expect(kept.at(-1)).toBe(`s${COMPUTER_STARTED_MAX + 5}`);
+    expect(store.startedOn('c2')).toEqual(['other']);
   });
 
   it('stops trying once the other computer revoked this one', async () => {

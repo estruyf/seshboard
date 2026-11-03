@@ -4760,9 +4760,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-color="green"]')`, 3_000))) return 'picking green did not colour the computer';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-computer-colours]')", 3_000))) return 'Esc did not close the colours';
-  // The bell: Off says so on the row, Esc closes the choices, and All again keeps its notifications for what follows.
+  // The bell: Started here and Off say so on the row, Esc closes the choices, and All again keeps its notifications
+  // for what follows.
   await click(`${settingsRow} [data-computer-notify]`);
   if (!(await waitInPage(win, `document.querySelector('[data-computer-notify-options] [data-computer-notify-option="off"]')`, 3_000))) return 'the bell did not show the notification choices';
+  await click('[data-computer-notify-options] [data-computer-notify-option="started-here"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="started-here"]') && document.querySelector('${settingsRow} [data-computer-notify-status]')?.textContent.includes('started here')`, 3_000))) return 'picking Started here did not show on the computer’s row';
   await click('[data-computer-notify-options] [data-computer-notify-option="off"]');
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="off"]') && document.querySelector('${settingsRow} [data-computer-notify-status]')?.textContent.includes('Notifications off')`, 3_000))) return 'picking Off did not turn the computer’s notifications off';
   pressKey(win, 'Escape');
