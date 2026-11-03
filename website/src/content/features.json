@@ -3647,6 +3647,21 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sidebar-review-open",
+      "name": "To review and Open: finished sessions you haven't read, then the ones you read but haven't archived",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-open-count",
+      "name": "\"N open\" in the sidebar footer: a click goes through them in catch-up, To review first",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:keep-unsent-listed",
+      "name": "A session with an unsent message or a queued prompt stays listed, however old",
+      "page": "sessions/archived"
+    },
+    {
       "id": "feature:sidebar-style",
       "name": "Sidebar style",
       "page": "settings"
@@ -4222,6 +4237,11 @@
       "page": "sessions/catch-up"
     },
     {
+      "id": "feature:catch-up-skip",
+      "name": "Catch-up Skip: on to the next session to review, with \"2 of 7\" while you go through them",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "palette:why-request",
       "name": "Why is Claude asking?",
       "page": "permissions"
@@ -4284,6 +4304,11 @@
     {
       "id": "shortcut:catchup.archive",
       "name": "catchup.archive",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.skip",
+      "name": "catchup.skip",
       "page": "sessions/catch-up"
     },
     {

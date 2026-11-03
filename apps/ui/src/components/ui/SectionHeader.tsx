@@ -38,7 +38,7 @@ interface SectionHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'child
 }
 
 /**
- * The small capitals over a group of rows: the sidebar's Needs you, Working, Today and Archived,
+ * The small capitals over a group of rows: the sidebar's Needs you, Working, Open and Archived,
  * Home's sections, and the lists in dialogs. Same size and tracking everywhere; the tone is the status.
  */
 export function SectionHeader({ children, tone = 'neutral', count, as, level = 2, headingId, toggle, action, className = '', ...rest }: SectionHeaderProps) {

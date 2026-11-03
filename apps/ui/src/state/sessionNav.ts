@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { quickInfoOf, useCatchUp } from './catchUpStore.ts';
 import { useHosts } from './hostsStore.ts';
+import { keptSessionsNow } from './keptSessions.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { toRows, useSessions } from './sessionsStore.ts';
@@ -37,7 +38,7 @@ export const useHud = create<HudState>()((set) => ({
 export function currentOrder() {
   const { sessions, live, filter } = useSessions.getState();
   const { sessionScope: scope, archiveAfterDays, sidebarSort: sort } = usePreferences.getState().prefs;
-  const local = toRows(sessions, live, useHosts.getState().hosts).filter((row) => inScope(row, scope));
+  const local = toRows(sessions, live, useHosts.getState().hosts, keptSessionsNow()).filter((row) => inScope(row, scope));
   const rows = filterBySource([...local, ...currentRemoteRows()], useComputers.getState().hidden);
   const open = useSidebar.getState().state === 'open';
   const quick = quickInfoOf(useCatchUp.getState().cards);

@@ -62,6 +62,7 @@ export function rowListing(row: SessionRowData): ListingState {
     // Open in Seshboard counts; a process idling elsewhere doesn't (Claude desktop reopens many old sessions at
     // launch, and they shouldn't all come back).
     openInApp: row.live?.origin === 'app',
+    keep: row.kept ?? false,
   };
 }
 
@@ -130,46 +131,44 @@ export function buildSessionList(
 }
 
 /**
- * The sections of the main list, in the order they show. Recent: what needs attention first, then pinned, then by time.
- * Quickest to unblock: what needs you or a review (quickest first), then what you've read, then what is still working.
+ * The sections of the main list, in the order they show. Recent: what needs attention first, then pinned, then what you
+ * haven't looked at (To review) and what you looked at but haven't finished (Open). Quickest to unblock: what needs you
+ * or a review (quickest first, under the same To review), then what you've read, then what is still working.
  */
-export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'today' | 'yesterday' | 'earlier' | 'review' | 'read' | 'still-working';
+export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'review' | 'open' | 'read' | 'still-working';
 
 export const GROUP_LABEL: Record<SessionGroup, string> = {
   'needs-you': 'Needs you',
   working: 'Working',
   pinned: 'Pinned',
-  today: 'Today',
-  yesterday: 'Yesterday',
-  earlier: 'Earlier',
-  review: 'Needs review · quickest first',
+  review: 'To review',
+  open: 'Open',
   read: 'Read',
   'still-working': 'Still working',
 };
 
-const GROUP_ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'today', 'yesterday', 'earlier'];
-
-/** Local midnight of the day `now` falls on, so "Today" matches the calendar rather than the last 24 hours. */
-export function startOfDay(now: number): number {
-  const date = new Date(now);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
+const GROUP_ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'review', 'open'];
 
 /**
- * Which section a main-list session sits in. A pinned session that waits on you or is working shows
- * there, like any other, and goes back to Pinned when it's done.
+ * Which section a main-list session sits in. A pinned session that waits on you or is working shows there, like any
+ * other, and goes back to Pinned when it's done. A finished one you haven't read (or one that failed) is To review;
+ * the rest is Open until you archive it or it ages out.
  */
-export function sessionGroup(row: SessionRowData, now: number): SessionGroup {
+export function sessionGroup(row: SessionRowData): SessionGroup {
   const status = rowStatus(row);
   if (status === 'needs-you') return 'needs-you';
   if (status === 'running') return 'working';
   if (row.pinned) return 'pinned';
-  const today = startOfDay(now);
-  if (row.updatedAt >= today) return 'today';
-  // The day before today; a day can be 23 or 25 hours long across a clock change, hence the second midnight.
-  if (row.updatedAt >= startOfDay(today - 1)) return 'yesterday';
-  return 'earlier';
+  if (status === 'unread' || status === 'error') return 'review';
+  return 'open';
+}
+
+/**
+ * The sessions to go through in catch-up, and the footer's "N open": To review, then Open, each in the order given (the
+ * sidebar's, so Quickest to unblock puts the quickest review first).
+ */
+export function triageOrder<R extends SessionRowData>(rows: readonly R[]): R[] {
+  return [...rows.filter((row) => sessionGroup(row) === 'review'), ...rows.filter((row) => sessionGroup(row) === 'open')];
 }
 
 /**
@@ -186,10 +185,10 @@ export const byWorkingSince = (a: SessionRowData, b: SessionRowData): number => 
  * order given (buildSessionList puts pinned sessions first, then newest), so pins stay on top of Needs you.
  * Working is the exception: it keeps the order you started its sessions in (`byWorkingSince`).
  */
-export function groupSessions(active: readonly SessionRowData[], now: number): { group: SessionGroup; rows: SessionRowData[] }[] {
+export function groupSessions(active: readonly SessionRowData[]): { group: SessionGroup; rows: SessionRowData[] }[] {
   const buckets = new Map<SessionGroup, SessionRowData[]>();
   for (const row of active) {
-    const group = sessionGroup(row, now);
+    const group = sessionGroup(row);
     const bucket = buckets.get(group);
     if (bucket) bucket.push(row);
     else buckets.set(group, [row]);
@@ -242,8 +241,8 @@ export function quickestGroups(active: readonly SessionRowData[], quick: Readonl
 }
 
 /** The main list's sections in the chosen order. */
-export function groupsFor(active: readonly SessionRowData[], now: number, sort: SidebarSort = 'recent', quick: ReadonlyMap<string, QuickInfo> = new Map()) {
-  return sort === 'quickest' ? quickestGroups(active, quick) : groupSessions(active, now);
+export function groupsFor(active: readonly SessionRowData[], sort: SidebarSort = 'recent', quick: ReadonlyMap<string, QuickInfo> = new Map()) {
+  return sort === 'quickest' ? quickestGroups(active, quick) : groupSessions(active);
 }
 
 /**
@@ -319,7 +318,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     if (open) for (const entry of queue.entries) list.push({ kind: 'queue', entry });
   };
   let queued = false;
-  for (const { group, rows } of groupsFor(active, options.now, options.sort, options.quick)) {
+  for (const { group, rows } of groupsFor(active, options.sort, options.quick)) {
     // The queue goes under Working, or where Working would be.
     if (!queued && group !== 'needs-you' && group !== 'working') {
       pushQueue();
@@ -384,7 +383,7 @@ export function sectionOfSession(rows: readonly SessionRowData[], id: string, no
   const own = rows.find((r) => r.id === id);
   const parentId = own?.summary?.parentId;
   const row = (parentId && rows.find((r) => r.id === parentId)) || own;
-  return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row, now) : null;
+  return row && isActive(row, now, archiveAfterDays) ? sessionGroup(row) : null;
 }
 
 /** What a waiting session asks for, in a few words for its row: the question, a plan, or the tool it wants to run. */

@@ -929,8 +929,8 @@ describe('engine over a MessagePort', () => {
       expect((await client.call('sessions.list', {})).sessions.map((s) => s.id).sort()).toEqual([PINNED_ID, DRAFT_ID, QUEUED_ID].sort());
       expect(trashed.flat().filter((p) => p.endsWith('.jsonl'))).toHaveLength(2);
       await new Promise((resolve) => setTimeout(resolve, 20));
-      // Pinned isn't archived at all; the draft and the queued prompt keep theirs.
-      expect(logs.find((line) => line.startsWith('Deleting archived sessions'))).toMatch(/moved 2 to the Trash \(.+\); kept 2 \(has an unsent message, has a queued prompt\)|moved 2 to the Trash \(.+\); kept 2 \(has a queued prompt, has an unsent message\)/);
+      // Pinned isn't archived at all, and neither are the draft and the queued prompt: they stay listed however old.
+      expect(logs.find((line) => line.startsWith('Deleting archived sessions'))).toMatch(/moved 2 to the Trash \(.+\); kept 0$/);
     });
   });
 

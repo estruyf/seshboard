@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, Inbox, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -17,6 +17,8 @@ import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { SidebarNav } from './SidebarNav.tsx';
 import { useSidebarSections } from '../../state/sidebarSectionsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
+import { startPass } from '../../state/catchUpPass.ts';
 import { closedSections, isSectionKey, type SectionKey } from '../../state/sidebarSections.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -29,7 +31,7 @@ import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
-import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
@@ -626,7 +628,8 @@ export function Sidebar() {
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
-  const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
   const remoteRows = useRemoteRows();
   const hidden = useComputers((s) => s.hidden);
@@ -670,7 +673,7 @@ export function Sidebar() {
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.computerName.localeCompare(b.computerName));
   }, [remoteRows]);
 
-  // Sections (Needs you, Working, the Queue, Pinned, Today, Yesterday, Earlier), then Archived while it's open. Closed
+  // Sections (Needs you, Working, the Queue, Pinned, To review, Open), then Archived while it's open. Closed
   // sections keep their header (and the open session's row). Closed, Archived is docked under the list; while
   // searching, its matches are listed under the rest.
   const searching = search.trim() !== '';
@@ -1106,6 +1109,8 @@ export function Sidebar() {
   }, []);
   const running = useMemo(() => pipelinesRunning(runs.values()), [runs]);
   const liveCount = all.filter((row) => row.live !== null && isActive(row, now, archiveAfterDays)).length;
+  // What is still yours to go through: To review and Open, as listed (search and the project filter apply).
+  const openCount = useMemo(() => triageOrder(active).length, [active]);
   const waitingNotice = useWaitingAnnouncement(all, loaded);
   const deviceNotice = useDeviceAnnouncement();
   const remoteFooterShown = useRemoteFooterShown();
@@ -1373,12 +1378,24 @@ export function Sidebar() {
         <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
         <button type="button" onClick={() => openSessionManager()} className="min-w-0 flex-1 truncate rounded text-left hover:text-text" data-tooltip="Manage sessions" data-footer-sessions>
-          {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} open`}
+          {all.length} {all.length === 1 ? 'session' : 'sessions'}{liveCount > 0 && ` · ${liveCount} running`}
           {running && <span data-footer-pipelines>{` · ${running}`}</span>}
           {queue.entries.length > 0 && <span data-footer-queued>{` · ${queue.entries.length} queued`}</span>}
           {waiting > 0 && <span className="text-warn">{` · ${waiting} waiting`}</span>}
           {!complete && loaded && ' · scanning…'}
         </button>
+        {openCount > 0 && (
+          <Pill
+            icon={<Inbox size={11} className="shrink-0" aria-hidden />}
+            onClick={() => startPass()}
+            aria-label={`${openCount} open ${openCount === 1 ? 'session' : 'sessions'}. Go through them`}
+            data-tooltip="Go through them in catch-up: To review first, then Open"
+            data-footer-open={openCount}
+            className="shrink-0"
+          >
+            {openCount} open
+          </Pill>
+        )}
         {unsent.length > 0 && (
           <Pill
             icon={<PencilLine size={11} className="shrink-0" aria-hidden />}

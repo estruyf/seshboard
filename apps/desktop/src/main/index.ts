@@ -9024,17 +9024,23 @@ async function runTriggerPipelineStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
- * Collapsible sections: a click on Today's header (or the first section that can close) hides its rows and keeps
- * the header with its count; ← and → on the focused header close and open it. Earlier starts closed. Back as it was.
+ * Collapsible sections: the sections are Needs you, Working, the Queue, Pinned, To review and Open (no days any more),
+ * in that order. A click on Open's header (or the first section that can close) hides its rows and keeps the header with
+ * its count; ← and → on the focused header close and open it. To review never closes. Back as it was.
  */
 async function runSectionsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   if (!(await js("!!document.querySelector('[data-sidebar-open]')"))) return 'the sidebar is not open';
-  const earlier = (await js("document.querySelector('[data-section-toggle=\"earlier\"]')?.dataset.open ?? 'none'")) as string;
-  // Earlier starts closed (unit-tested with DEFAULT_SECTIONS), but opening a session in it opens it, and earlier steps
-  // (search, the palette) open real sessions, so here it may legitimately be open.
-  const group = (await js("['today', 'yesterday', 'pinned', 'working'].find((g) => document.querySelector(`[data-section-toggle=\"${g}\"][data-open=\"true\"]`)) ?? null")) as string | null;
-  if (!group) return `ok: no open section to collapse (Earlier ${earlier === 'none' ? 'not shown' : 'closed'})`;
+  // The headers in list order: the sections by day are gone, and To review comes before Open.
+  const groups = (await js("[...document.querySelectorAll('[data-session-list] [data-session-group]')].map((h) => h.dataset.sessionGroup)")) as string[];
+  const stale = groups.filter((g) => ['today', 'yesterday', 'earlier'].includes(g));
+  if (stale.length) return `sections by day still listed: ${stale.join(', ')}`;
+  const order = ['needs-you', 'working', 'pinned', 'review', 'open'];
+  const known = groups.filter((g) => order.includes(g));
+  if (known.some((g, i) => i > 0 && order.indexOf(g) < order.indexOf(known[i - 1]!))) return `sections out of order: ${groups.join(', ')}`;
+  if (await js("!!document.querySelector('[data-section-toggle=\"review\"]')")) return 'To review can be closed';
+  const group = (await js("['open', 'pinned', 'working'].find((g) => document.querySelector(`[data-section-toggle=\"${g}\"][data-open=\"true\"]`)) ?? null")) as string | null;
+  if (!group) return `ok: no open section to collapse (${groups.join(', ') || 'no sections'})`;
   const toggle = `document.querySelector('[data-section-toggle="${group}"]')`;
   const rowsUnder = `(() => { const rows = [...document.querySelectorAll('[data-session-list] [data-list-row]')]; const at = rows.findIndex((r) => r.querySelector('[data-section-toggle="${group}"]')); const out = []; for (const r of rows.slice(at + 1)) { if (r.querySelector('[data-section-toggle], [data-session-group], [data-archived-toggle]')) break; const s = r.querySelector('[data-session-id]'); if (s) out.push(s.dataset.sessionId); } return out; })()`;
   const before = (await js(`${rowsUnder}.length`)) as number;
@@ -9054,7 +9060,7 @@ async function runSectionsStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${toggle}.dataset.open === 'false'`, 2_000))) return `← did not close ${group}`;
   pressKey(win, 'Right');
   if (!(await waitInPage(win, `${toggle}.dataset.open === 'true'`, 2_000))) return `could not open ${group} again`;
-  return `ok: closed ${group} (${before} ${before === 1 ? 'row' : 'rows'} hidden, header "${header}"${summary ? `, summary "${summary}"` : ''}), ← → on the header, Earlier ${earlier === 'none' ? 'not shown' : earlier === 'true' ? 'open' : 'closed'}`;
+  return `ok: closed ${group} (${before} ${before === 1 ? 'row' : 'rows'} hidden, header "${header}"${summary ? `, summary "${summary}"` : ''}), ← → on the header, sections ${groups.join(', ')}`;
 }
 
 /**
@@ -9429,12 +9435,87 @@ async function runCatchUpStep(win: BrowserWindow): Promise<string> {
   await blur();
 
   await js("document.querySelector('[data-sort-quick]')?.click()");
-  const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"today\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
+  const grouped = await waitInPage(win, "document.querySelector('[data-session-group=\"review\"], [data-session-group=\"read\"], [data-session-group=\"still-working\"]') && !document.querySelector('[data-session-group=\"open\"], [data-session-group=\"pinned\"], [data-queue-header]')", 3_000);
   if (grouped) await shot(win, 'sidebar-quickest.png');
   await js("document.querySelector('[data-sort-recent]')?.click()");
   if (!grouped) return 'Quickest to unblock did not regroup the sidebar';
   if (!(await waitInPage(win, "!document.querySelector('[data-session-group=\"read\"], [data-session-group=\"still-working\"]')", 3_000))) return 'Recent did not come back';
   return `ok: banner (needs ${need}) over the conversation, ${changesOpen ? 'Esc closed the Changes panel first, then ' : ''}Details open at first, Space closed and opened them, Esc closed Details then folded the banner, Space opened it again with Details, Esc in the message box left it, Quickest to unblock regrouped the sidebar`;
+}
+
+/**
+ * Going through sessions: the footer's "N open" opens the first session to go through, with "1 of N" in its catch-up;
+ * Skip (the button, then S) goes on to the next one and leaves the skipped one listed; Done (E, on a catch-up banner)
+ * goes on as Skip does. The archived session is unarchived again (search, then the palette), so later steps find it.
+ */
+async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const footer = "document.querySelector('[data-footer-open]')";
+  if (!(await waitInPage(win, `!!${footer}`, 3_000))) return 'ok: skipped, nothing to go through (no "N open" in the footer)';
+  const total = Number(await js(`${footer}.dataset.footerOpen`));
+  const label = (await js(`${footer}.innerText.trim()`)) as string;
+  if (label !== `${total} open`) return `the footer says "${label}" for ${total}`;
+  // Where the pass is: the session showing a position, and the position.
+  const at = "(() => { const el = document.querySelector('[data-pane-active=\"true\"] [data-catchup-position]') ?? document.querySelector('[data-catchup-position]'); return el ? { id: el.closest('[data-current-session]')?.dataset.currentSession ?? null, position: el.dataset.catchupPosition } : null; })()";
+  const where = () => js(at) as Promise<{ id: string | null; position: string } | null>;
+  // Keys go to the view, never a message box: nothing is typed into a session.
+  const blur = () => js('document.activeElement?.blur?.(); true');
+  await js(`${footer}.click()`);
+  if (!(await waitInPage(win, `${at}?.position === '1/${total}'`, 5_000))) return `the footer did not open the first session with "1 of ${total}" (${JSON.stringify(await where())})`;
+  await shot(win, 'catch-up-pass.png');
+  const done: string[] = [];
+  let position = 1;
+  // Done (E) goes on as Skip does: only on a banner, the catch-up of a session that has one. Its turn first, while the
+  // session the footer opened shows its banner.
+  const current = (await where())!;
+  const banner = `document.querySelector('[data-current-session="${current.id}"] [data-catchup-banner]')`;
+  if (current.id && total >= 2 && (await js(`!!${banner}`))) {
+    const title = (await js(`document.querySelector('[data-session-list] [data-session-id="${current.id}"]')?.querySelector('.text-body')?.textContent?.trim() ?? ''`)) as string;
+    await blur();
+    pressKey(win, 'E');
+    if (!(await waitInPage(win, `${at}?.position === '2/${total}' && ${at}?.id !== ${JSON.stringify(current.id)}`, 5_000))) return `E did not go on to the next session (${JSON.stringify(await where())})`;
+    done.push('E archived it and went to 2');
+    position = 2;
+    // Back as it was: find it with the search and unarchive it from the palette. That ends the pass, so it starts again.
+    if (title) {
+      await setFieldValue(win, 'input[placeholder="Search sessions"]', title);
+      if (await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${current.id}"]')`, 3_000)) {
+        await js(`document.querySelector('[data-session-list] [data-session-id="${current.id}"]').click()`);
+        await waitInPage(win, `!!document.querySelector('[data-current-session="${current.id}"]')`, 3_000);
+        if (await openPalette(win, 'K', ['meta'], 'commands')) {
+          await setFieldValue(win, '[data-palette-input]', 'Unarchive');
+          if (await waitInPage(win, "!!document.querySelector('[data-palette-command=\"archive\"]')", 2_000)) await js("document.querySelector('[data-palette-command=\"archive\"]').click()");
+          else await closePalette(win);
+        }
+      }
+      await setFieldValue(win, 'input[placeholder="Search sessions"]', '');
+      if (!(await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${current.id}"][data-archived]')`, 3_000))) return 'the archived session did not come back';
+    }
+    await js(`${footer}.click()`);
+    if (!(await waitInPage(win, `${at}?.position === '1/${total}'`, 5_000))) return `the footer did not start again (${JSON.stringify(await where())})`;
+    position = 1;
+  }
+  if (total < 2) return `ok: "${label}" opened the only session with 1 of 1`;
+  const first = (await where())!.id;
+  // Skip with the button.
+  await js("(document.querySelector('[data-pane-active=\"true\"] [data-catchup-skip]') ?? document.querySelector('[data-catchup-skip]')).click()");
+  if (!(await waitInPage(win, `${at}?.position === '${position + 1}/${total}' && ${at}?.id !== ${JSON.stringify(first)}`, 5_000))) return `Skip did not go on to the next session (${JSON.stringify(await where())})`;
+  done.push(`Skip went to ${++position}`);
+  const second = (await where())!.id;
+  // The skipped session is still listed, outside Archived.
+  if (first && (await js(`!!document.querySelector('[data-session-list] [data-session-id="${first}"][data-archived]')`))) return 'the skipped session went to Archived';
+  if (total > position) {
+    await blur();
+    pressKey(win, 'S');
+    if (!(await waitInPage(win, `${at}?.position === '${position + 1}/${total}' && ${at}?.id !== ${JSON.stringify(second)}`, 5_000))) return `S did not go on to the next session (${JSON.stringify(await where())})`;
+    done.push(`S went to ${++position}`);
+  }
+  // Leave the pass where later steps expect it: on the smoke session.
+  if (smokeSessionId) {
+    await js("document.querySelector('[data-session-list]').scrollTop = 0");
+    await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  }
+  return `ok: "${label}" opened the first with 1 of ${total}, ${done.join(', ')}`;
 }
 
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
@@ -10048,9 +10129,8 @@ async function runSplitEdgeStep(win: BrowserWindow): Promise<string> {
 type DragTarget = { pane: string; zone: 'left' | 'right' | 'top' | 'bottom' | 'center' } | { edge: 'left' | 'right' | 'top' | 'bottom' } | { at: { x: number; y: number } };
 
 /**
- * Opens every closed section of the sidebar, so its rows are in the page. Earlier starts closed, and which demo
- * sessions fall in it depends on the time of day the run starts: after midnight the sessions of a few hours ago are
- * there, and steps that pick rows from the sidebar found too few.
+ * Opens every closed section of the sidebar, so its rows are in the page: an earlier step (or the saved state) may have
+ * closed one, and steps that pick rows from the sidebar would find too few.
  */
 async function openSidebarSections(win: BrowserWindow): Promise<void> {
   const closed = "document.querySelector('[data-section-list], [data-sidebar]')?.querySelectorAll('[data-section-toggle][data-open=\"false\"]') ?? []";
@@ -11626,6 +11706,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });
   await step('collapsible sections', () => runSectionsStep(win));
   await step('archived dock', () => runArchivedDockStep(win));
+  await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {

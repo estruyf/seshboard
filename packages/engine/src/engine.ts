@@ -2386,6 +2386,9 @@ export function createEngine(options: EngineOptions): Engine {
     return { sessionId };
   };
 
+  /** Sessions with an unsent message or a queued prompt (Up next too): the sidebar's lists keep them whatever their age. */
+  const keptSessions = (): Set<string> => new Set([...sessionsWithDrafts(appState.get(DRAFTS_KEY)), ...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]);
+
   if (options.companion) {
     companion = new CompanionHub({
       infoDir: join(options.dataDir, COMPANION_DIR),
@@ -2393,7 +2396,7 @@ export function createEngine(options: EngineOptions): Engine {
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       // Another provider's sessions (Copilot) take no context from the editor: Seshboard can't send to them.
-      sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)), live: liveList(), ...hosts.list() }),
+      sources: () => ({ summaries: sessions.snapshot().sessions.filter((s) => !isOtherProviderSession(s)), live: liveList(), ...hosts.list(), kept: keptSessions() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       windows: () => servers.size,
       respond: async (requestId, decision, acceptEdits) => {
@@ -2427,7 +2430,7 @@ export function createEngine(options: EngineOptions): Engine {
       filesDir: join(options.dataDir, 'remote-files'),
       logFile: join(options.dataDir, REMOTE_LOG_FILE),
       identity: options.remote.identity,
-      sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list() }),
+      sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),

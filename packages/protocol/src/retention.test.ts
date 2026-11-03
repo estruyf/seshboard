@@ -11,6 +11,7 @@ const listing = (over: Partial<ListingState> = {}): ListingState => ({
   unread: false,
   updatedAt: NOW,
   openInApp: false,
+  keep: false,
   ...over,
 });
 const free: DeletionState = { pinned: false, working: false, needsYou: false, openElsewhere: false, queued: false, draft: false };
@@ -30,6 +31,13 @@ describe('listedInMainList', () => {
     expect(listedInMainList(listing({ updatedAt: old, unread: true }), NOW, 3)).toBe(true);
     expect(listedInMainList(listing({ updatedAt: old, openInApp: true }), NOW, 3)).toBe(true);
     expect(listedInMainList(listing({ updatedAt: old, working: true }), NOW, 3)).toBe(true);
+  });
+
+  it('keeps a session with an unsent message or a queued prompt, however old, unless you archived it', () => {
+    const old = NOW - 100 * DAY_MS;
+    expect(listedInMainList(listing({ updatedAt: old, keep: true }), NOW, 3)).toBe(true);
+    expect(archivedSince(listing({ updatedAt: old, keep: true }), NOW, 3)).toBeNull();
+    expect(listedInMainList(listing({ updatedAt: old, keep: true, archivedAt: old + DAY_MS }), NOW, 3)).toBe(false);
   });
 
   it('counts unarchiving by hand as activity until there is something newer', () => {
