@@ -35,6 +35,10 @@ describe('sessionRowLabel', () => {
     );
   });
 
+  it('reads a due reminder', () => {
+    expect(sessionRowLabel({ ...base, reminder: 'Reminder (from 09:00)' })).toBe('Fix the login bug, switchboard, reminder (from 09:00), updated 5 minutes ago');
+  });
+
   it('reads what it left behind', () => {
     expect(sessionRowLabel({ ...base, left: ['3 files not committed', 'A queued prompt'] })).toBe('Fix the login bug, switchboard, left: 3 files not committed, a queued prompt, updated 5 minutes ago');
   });

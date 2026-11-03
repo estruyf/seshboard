@@ -273,6 +273,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
       continued: ids('SELECT id FROM continued_sessions ORDER BY id'),
       notes: stores.db.prepare('SELECT id, note FROM session_flags WHERE note IS NOT NULL ORDER BY id').all() as Array<{ id: string; note: string }>,
       donePrs: stores.db.prepare('SELECT id, done_pr AS pr FROM session_flags WHERE done_pr IS NOT NULL ORDER BY id').all() as Array<{ id: string; pr: number }>,
+      reminders: stores.db.prepare('SELECT id, remind_at AS at, reminded_at AS remindedAt FROM session_flags WHERE remind_at IS NOT NULL ORDER BY id').all() as Array<{ id: string; at: number; remindedAt: number | null }>,
     };
   }
   return file;
@@ -804,7 +805,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
 
   // --- Sessions (only ever added) -------------------------------------------------------------
   if (has('sessions')) {
-    const { pinned, settled, archived, owned, continued, notes, donePrs } = file.sessions!;
+    const { pinned, settled, archived, owned, continued, notes, donePrs, reminders } = file.sessions!;
     const ids = (sql: string) => new Set((stores.db.prepare(sql).all() as Array<{ id: string }>).map((r) => r.id));
     const groups = [
       { label: 'pinned', ids: pinned, have: ids('SELECT id FROM session_flags WHERE pinned = 1'), sql: 'INSERT INTO session_flags (id, pinned) VALUES (?, 1) ON CONFLICT (id) DO UPDATE SET pinned = 1' },
@@ -861,6 +862,19 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
       writes.push(() => {
         const statement = stores.db.prepare('INSERT INTO session_flags (id, done_pr) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET done_pr = COALESCE(session_flags.done_pr, excluded.done_pr)');
         for (const { id, pr } of newDone) statement.run(id, pr);
+      });
+    }
+    // Reminders: added where a session has none; yours wins.
+    const reminding = ids('SELECT id FROM session_flags WHERE remind_at IS NOT NULL');
+    const newReminders = (reminders ?? []).filter(({ id }) => !reminding.has(id));
+    unchanged += (reminders ?? []).length - newReminders.length;
+    if (newReminders.length > 0) {
+      note('sessions', `${newReminders.length} ${newReminders.length === 1 ? 'reminder' : 'reminders'}`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare(
+          'INSERT INTO session_flags (id, remind_at, reminded_at) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET remind_at = COALESCE(session_flags.remind_at, excluded.remind_at), reminded_at = CASE WHEN session_flags.remind_at IS NULL THEN excluded.reminded_at ELSE session_flags.reminded_at END',
+        );
+        for (const { id, at, remindedAt } of newReminders) statement.run(id, at, remindedAt);
       });
     }
   }

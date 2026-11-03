@@ -241,6 +241,25 @@ describe('settings export and import', () => {
     ]);
   });
 
+  it('carries reminders, and keeps yours', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, remind_at, reminded_at) VALUES ('s1', 100, NULL), ('s2', 200, 250)").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.reminders).toEqual([
+      { id: 's1', at: 100, remindedAt: null },
+      { id: 's2', at: 200, remindedAt: 250 },
+    ]);
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, remind_at) VALUES ('s2', 999)").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toContain('1 reminder');
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, remind_at, reminded_at FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', remind_at: 100, reminded_at: null },
+      { id: 's2', remind_at: 999, reminded_at: null },
+    ]);
+  });
+
   it('only exports and imports the chosen sections', () => {
     const before = mac();
     const folder = tempDir();

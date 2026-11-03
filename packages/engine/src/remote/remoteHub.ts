@@ -90,6 +90,8 @@ type PushEntry = {
   subscription: RemotePushSubscription;
   needsYou: boolean;
   finished: boolean;
+  /** Reminders that come due; left out by a phone from before, which follows `finished`. */
+  reminders?: boolean;
   /** The device's own VAPID key (`REMOTE_FEATURE_PUSH_KEY`), which its subscription was made with; else the engine's. */
   vapid?: VapidKeys;
   /** What its pushes start with: this computer's name, for a device paired with more than one. */
@@ -740,6 +742,14 @@ export class RemoteHub {
     this.options.appState.set(PUSH_KEY, entry ? [...rest, { deviceId, ...entry }] : rest);
   }
 
+  /** Reminders that came due (Remind me later): one push each, to the devices that want them. */
+  pushReminders(reminders: readonly { id: string; title: string; note: string | null }[]): void {
+    for (const reminder of reminders) {
+      const session = this.list().sessions.find((s) => s.id === reminder.id);
+      this.push({ kind: 'reminder', sessionId: reminder.id, title: `Reminder: ${reminder.title}`, project: session?.projectName ?? '', ...(session ? profileOf(session) : {}), line: reminder.note ?? 'You asked to be reminded.' });
+    }
+  }
+
   private sendFinished(sessionId: string): void {
     clearTimeout(this.finishing.get(sessionId));
     this.finishing.delete(sessionId);
@@ -1176,11 +1186,11 @@ export class RemoteHub {
         return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
-      'push.subscribe': ({ subscription, needsYou, finished, vapid, label }) => {
+      'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {
         // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
         if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
         if (vapid && !validVapidKeys(vapid)) throw new RpcError('INVALID_PARAMS', 'Not a VAPID key pair');
-        this.setPush(device.id, { subscription, needsYou, finished, ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
+        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
         return {};
       },
       'push.unsubscribe': () => {

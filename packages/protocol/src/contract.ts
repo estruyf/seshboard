@@ -213,6 +213,13 @@ export const contract = {
     },
     /** What sessions left behind in git and on GitHub, as last found (`sessions.looseEnds` follows). */
     'sessions.listLooseEnds': { params: z.object({}), result: z.object({ looseEnds: LooseEndsMap }) },
+    /**
+     * Remind me later: these sessions leave the main list until `at` (ms), then come back under Reminders with a
+     * notification. Null cancels. `at` now or earlier reminds at once (Remind now in Upcoming).
+     */
+    'sessions.remind': { params: z.object({ sessionIds: z.array(SessionId).min(1).max(500), at: z.number().nullable() }), result: z.object({}) },
+    /** A reminder that came due was seen (the session was opened): it leaves Reminders. */
+    'sessions.clearReminder': { params: z.object({ sessionIds: z.array(SessionId).min(1).max(500) }), result: z.object({}) },
     /** What's left in a session, in your words: one line (`cleanNote`), or null to clear it. */
     'sessions.setNote': {
       params: z.object({ sessionId: SessionId, note: z.string().max(1000).nullable() }),
@@ -1523,6 +1530,11 @@ export const contract = {
      * batch of them in one event.
      */
     'sessions.mergedDone': z.object({ sessions: z.array(z.object({ id: z.string(), title: z.string(), pr: z.number() })) }),
+    /**
+     * Reminders that came due, for the notification and the phone. `missed`: it was due while Seshboard was closed (or
+     * the computer slept), so it says when it was for.
+     */
+    'sessions.remindersDue': z.object({ reminders: z.array(z.object({ id: z.string(), title: z.string(), note: z.string().nullable(), remindAt: z.number(), missed: z.boolean() })) }),
     /** Every session's loose ends, whenever one changes (sessions without any left out). */
     'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,

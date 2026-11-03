@@ -157,12 +157,16 @@ export type CatchUpKey =
   | { type: 'skip' }
   /** N: write what's left in the session (banner only). */
   | { type: 'note' }
+  /** L: remind me later, then on to the next session (banner only). */
+  | { type: 'remind' }
   | { type: 'action'; id: CatchUpActionId };
 
 /** The letter that skips to the next session, in the banner and the strip. */
 export const SKIP_KEY = 's';
 /** The letter that opens the session's note, in the banner. */
 export const NOTE_KEY = 'n';
+/** The letter for Remind me later, in the banner. */
+export const REMIND_KEY = 'l';
 
 const LETTERS: Record<string, CatchUpActionId> = Object.fromEntries(Object.entries(ACTION_KEYS).map(([id, key]) => [key, id as CatchUpActionId]));
 
@@ -184,6 +188,7 @@ export function catchUpKey(event: KeyLike, ctx: { target: KeyTarget; overlay: bo
   if (ctx.show === 'strip') return key === 'Enter' && ctx.target !== 'control' ? { type: 'primary' } : null;
   if (key === 'Enter') return ctx.target === 'control' ? null : { type: 'primary' };
   if (key.toLowerCase() === NOTE_KEY) return { type: 'note' };
+  if (key.toLowerCase() === REMIND_KEY) return { type: 'remind' };
   const id = LETTERS[key.toLowerCase()];
   return id ? { type: 'action', id } : null;
 }

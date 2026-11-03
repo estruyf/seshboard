@@ -148,6 +148,7 @@ describe('the keys', () => {
     expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'space' });
     expect(catchUpKey(key('s'), at('view'))).toEqual({ type: 'skip' });
     expect(catchUpKey(key('n'), at('view'))).toEqual({ type: 'note' });
+    expect(catchUpKey(key('l'), at('view'))).toEqual({ type: 'remind' });
     expect(catchUpKey(key('x'), at('view'))).toBeNull();
   });
 

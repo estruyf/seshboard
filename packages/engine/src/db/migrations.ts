@@ -811,4 +811,11 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE session_flags ADD COLUMN done_pr INTEGER;
   `,
+
+  // v47: Remind me later (session triage): when a session comes back, and when its reminder came due (it shows under
+  // Reminders until you open it). A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN remind_at INTEGER;
+  ALTER TABLE session_flags ADD COLUMN reminded_at INTEGER;
+  `,
 ];

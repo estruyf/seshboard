@@ -22,9 +22,12 @@ interface Flags {
   note: string | null;
   /** The pull request whose merge moved it to Done (`mergedDone.ts`); kept after Reopen, so the merge stays handled. */
   donePr: number | null;
+  /** Remind me later: when it comes back, and when that reminder came due (it shows under Reminders then). */
+  remindAt: number | null;
+  remindedAt: number | null;
 }
 
-const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null, donePr: null };
+const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null, donePr: null, remindAt: null, remindedAt: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
 
@@ -112,13 +115,13 @@ export class SessionIndex {
           jsonl_path = excluded.jsonl_path, jsonl_mtime = excluded.jsonl_mtime,
           entrypoint = excluded.entrypoint, summary_json = excluded.summary_json`),
       remove: db.prepare('DELETE FROM sessions WHERE id = ?'),
-      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr FROM session_flags'),
+      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr, remind_at, reminded_at FROM session_flags'),
       flagsDelete: db.prepare('DELETE FROM session_flags WHERE id = ?'),
       flagsUpsert: db.prepare(`
-        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr, remind_at, reminded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at,
-          hidden_at = excluded.hidden_at, note = excluded.note, done_pr = excluded.done_pr`),
+          hidden_at = excluded.hidden_at, note = excluded.note, done_pr = excluded.done_pr, remind_at = excluded.remind_at, reminded_at = excluded.reminded_at`),
     };
     this.loadFlags();
     this.loadCache();
@@ -126,8 +129,8 @@ export class SessionIndex {
 
   private loadFlags(): void {
     this.flags.clear();
-    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null; note: string | null; done_pr: number | null }>) {
-      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at, note: row.note, donePr: row.done_pr });
+    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null; note: string | null; done_pr: number | null; remind_at: number | null; reminded_at: number | null }>) {
+      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at, note: row.note, donePr: row.done_pr, remindAt: row.remind_at, remindedAt: row.reminded_at });
     }
   }
 
@@ -211,6 +214,8 @@ export class SessionIndex {
       ...current,
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
       ...(change.archived !== undefined ? { archivedAt: change.archived ? now : null, restoredAt: change.archived ? null : now } : {}),
+      // Done takes the reminder away: it is settled.
+      ...(change.archived === true ? { remindAt: null, remindedAt: null } : {}),
     };
     this.writeFlags(sessionId, next);
   }
@@ -252,6 +257,32 @@ export class SessionIndex {
     this.writeFlags(sessionId, { ...current, archivedAt: null });
   }
 
+  /** Remind me later (`at`), or no reminder (null), for several sessions in one change. A new time starts over. */
+  setReminder(sessionIds: readonly string[], at: number | null): void {
+    for (const id of sessionIds) this.storeFlags(id, { ...(this.flags.get(id) ?? NO_FLAGS), remindAt: at, remindedAt: null });
+    this.publish(this.known(sessionIds), []);
+  }
+
+  /** Reminders due by `now` that haven't come yet, in the order they were for. */
+  dueReminders(now: number): Array<{ sessionId: string; remindAt: number }> {
+    return [...this.flags]
+      .filter(([, f]) => f.remindAt !== null && f.remindedAt === null && f.remindAt <= now)
+      .map(([sessionId, f]) => ({ sessionId, remindAt: f.remindAt! }))
+      .sort((a, b) => a.remindAt - b.remindAt);
+  }
+
+  /** The sessions snoozed now (a reminder set and not due yet). */
+  snoozed(): string[] {
+    return [...this.flags].filter(([, f]) => f.remindAt !== null && f.remindedAt === null).map(([id]) => id);
+  }
+
+  /** These reminders came due at `now`: the sessions go under Reminders, in one change. */
+  markReminded(sessionIds: readonly string[], now = Date.now()): void {
+    if (sessionIds.length === 0) return;
+    for (const id of sessionIds) this.storeFlags(id, { ...(this.flags.get(id) ?? NO_FLAGS), remindedAt: now });
+    this.publish(this.known(sessionIds), []);
+  }
+
   /** Moves sessions whose pull request merged to Done (`mergedDone.ts` decided), in one change. */
   markMerged(moves: readonly { sessionId: string; pr: number }[], now = Date.now()): void {
     if (moves.length === 0) return;
@@ -282,7 +313,7 @@ export class SessionIndex {
 
   private storeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
-    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt, flags.note, flags.donePr);
+    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt, flags.note, flags.donePr, flags.remindAt, flags.remindedAt);
   }
 
   /** Reads one session again now, rather than when the file watcher notices (after a rename). */

@@ -27,6 +27,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "palette:remind",
+      "name": "remind",
+      "page": "sessions/upcoming"
+    },
+    {
       "id": "palette:branches",
       "name": "Branches…",
       "page": "projects/branches"
@@ -1340,6 +1345,11 @@
       "id": "shortcut:sidebar.note",
       "name": "Write what's left in the session",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.remind",
+      "name": "Remind me about the session later",
+      "page": "sessions/upcoming"
     },
     {
       "id": "shortcut:sidebar.quick-pin",
@@ -3687,6 +3697,21 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:remind-me-later",
+      "name": "Remind me later: In 1 hour, This evening, Tomorrow, Monday or a time you pick; the session leaves the list and comes back under Reminders with a notification",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-reminders",
+      "name": "Upcoming: a Reminders filter, with Edit, Remind now and Cancel; the sidebar's Upcoming counts reminders and says the next one",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:reminder-settings",
+      "name": "Settings › Notifications: Reminders, and Count reminders in the badge",
+      "page": "settings/notifications"
+    },
+    {
       "id": "feature:done-reason",
       "name": "Done: each row says why (Done, or Inactive 3 days), inactive ones dimmed",
       "page": "sessions/archived"
@@ -4354,6 +4379,11 @@
     {
       "id": "shortcut:catchup.note",
       "name": "catchup.note",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.remind",
+      "name": "catchup.remind",
       "page": "sessions/catch-up"
     },
     {

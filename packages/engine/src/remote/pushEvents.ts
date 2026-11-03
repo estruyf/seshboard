@@ -8,7 +8,8 @@ import type { CatchUp, HostState, PermissionRequest } from '@seshboard/protocol'
 
 /** What a push carries: small, and encrypted for the phone's browser. */
 export interface PushPayload {
-  kind: 'needs-you' | 'finished';
+  /** `reminder`: Remind me later came due (a phone from before shows it like a finished turn). */
+  kind: 'needs-you' | 'finished' | 'reminder';
   sessionId: string;
   title: string;
   project: string;
@@ -84,6 +85,8 @@ export class TurnEnds {
 }
 
 /** Which devices get a push: subscribed to that kind, and without the app open on screen right now. */
-export function pushTargets<T extends { deviceId: string; needsYou: boolean; finished: boolean }>(subscriptions: readonly T[], kind: PushPayload['kind'], visible: ReadonlySet<string>, known: ReadonlySet<string>): T[] {
-  return subscriptions.filter((s) => known.has(s.deviceId) && !visible.has(s.deviceId) && (kind === 'needs-you' ? s.needsYou : s.finished));
+export function pushTargets<T extends { deviceId: string; needsYou: boolean; finished: boolean; reminders?: boolean }>(subscriptions: readonly T[], kind: PushPayload['kind'], visible: ReadonlySet<string>, known: ReadonlySet<string>): T[] {
+  // A phone from before has no reminders setting: it gets them with finished turns.
+  const wants = (s: T) => (kind === 'needs-you' ? s.needsYou : kind === 'reminder' ? (s.reminders ?? s.finished) : s.finished);
+  return subscriptions.filter((s) => known.has(s.deviceId) && !visible.has(s.deviceId) && wants(s));
 }

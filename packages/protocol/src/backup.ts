@@ -105,6 +105,8 @@ export const SettingsFile = z.object({
       notes: z.array(z.object({ id: SessionId, note: z.string().max(1000) })).max(100_000).optional(),
       /** Sessions moved to Done by their merged pull request, with its number; left out by versions from before. */
       donePrs: z.array(z.object({ id: SessionId, pr: z.number().int() })).max(100_000).optional(),
+      /** Remind me later: when each comes back, and when it came due; left out by versions from before. */
+      reminders: z.array(z.object({ id: SessionId, at: z.number(), remindedAt: z.number().nullable() })).max(100_000).optional(),
     })
     .optional(),
 });
