@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
+import { triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -74,6 +74,7 @@ import { FindBar } from '../transcript/FindBar.tsx';
 import { remoteSessionEntries } from './remoteActions.ts';
 import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerView.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
+import { RemoteTriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
 
 const PAGE = 100;
 /** Test hooks of the tray's chips: `data-remote-model-select`, `data-menu="remote-model"`. */
@@ -252,7 +253,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     setMenu({
       ...at,
       entries: [
-        ...remoteSessionEntries(client, computer, session, { open: false }),
+        // Done takes the run's tree with it, as from the sidebar.
+        ...remoteSessionEntries(client, computer, { ...session, treeRunId: ownRun?.run.id ?? null }, { open: false }),
         ...pipelineEntries,
         { label: 'Copy last reply', disabled: !lastReply, onSelect: () => void navigator.clipboard.writeText(lastReply ?? '').then(() => toast('Copied the last reply'), () => toast("Couldn't copy")), data: { 'data-remote-copy-last-reply': true } },
         'separator',
@@ -451,6 +453,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         />
         <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip={`Close session and go Home (it keeps running on ${name})`} />
       </header>
+      {/* A trigger there started it: which, and the link to the CI run or the issue. */}
+      <RemoteTriggerOriginBar origin={triggerOriginOf(session.trigger)} />
 
       {/* The conversation and the message box, with Ask (or Changes) on the right. */}
       <div className="flex min-h-0 flex-1">

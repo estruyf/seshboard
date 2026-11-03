@@ -2,7 +2,7 @@ import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { AppWindow, Archive, Check, Clock, Ellipsis, EyeOff, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
-import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
+import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { basename, shortAge } from '../../lib/format.ts';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
@@ -60,7 +60,7 @@ import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '.
 import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, markFromOthers, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
-import { openRow, useRemoteRowSplit, useShownRowId } from '../../state/useRemoteRows.ts';
+import { openRow, useRemoteRowSplit, useRemoteTreeRuns, useShownRowId } from '../../state/useRemoteRows.ts';
 import { StatusIcon } from './StatusIcon.tsx';
 import { ProviderMark } from '../providers/ProviderMark.tsx';
 import { ARCHIVE, useSessionMenu, type FlagChange } from './useSessionMenu.tsx';
@@ -334,9 +334,11 @@ export const SessionRow = memo(function SessionRow({
   const agent = agentNameOf(whose);
   // A pipeline (#179): a run row stands for its run; a session a run started from says where the run is while it goes
   // on, or while its sub-sessions are listed under it.
-  const runRow = isRunRowId(data.id);
+  // Another computer's run row and runs come from its list, by its own ids.
+  const runRow = isRunRowId(data.id) || !!remote?.runRow;
   const runs = usePipelines((s) => s.runs);
-  const run = useMemo(() => (remote ? null : runOfParent(runs, data.id)), [runs, data.id, remote]);
+  const remoteRuns = useComputers((s) => (remote ? s.lists.get(remote.computerId)?.runs : undefined));
+  const run = useMemo<RunView | null>(() => (remote ? (remoteRuns ? protocolRunOfParent(remoteRuns, remote.sessionId) : null) : runOfParent(runs, data.id)), [runs, remoteRuns, data.id, remote]);
   const runShown = run && (runRow || expanded !== undefined || runIsActive(run)) ? run : null;
   // Quick actions on hover (Settings › Sidebar): small buttons take the age's place while the pointer is on the row, or
   // once Tab moves into them, and the lines make room for them only then, so titles don't jump. None while picking.
@@ -351,7 +353,9 @@ export const SessionRow = memo(function SessionRow({
   /** A schedule started it (#173): the repeat icon before its second line. */
   const scheduled = useSchedules((s) => !remote && s.bySession.has(data.id));
   /** A trigger started it (#180): the bolt, in the trigger colour, before its status. */
-  const triggered = useTriggers((s) => (remote ? null : (s.bySession.get(data.id)?.triggerName ?? null)));
+  const localTrigger = useTriggers((s) => (remote ? null : (s.bySession.get(data.id)?.triggerName ?? null)));
+  // Another computer says which of its triggers started it.
+  const triggered = remote ? (remote.trigger ?? null) : localTrigger;
   // A usage limit stopped it: it waits for the limit (or for you to resume), which its second line and tooltip say.
   const limit = useLimits((s) => stoppedBy(s.state, data.id, data.profileId));
   const limitText = limit && status !== 'running' && status !== 'needs-you' ? rowLimitLabel(limit, now) : null;
@@ -717,7 +721,8 @@ export function Sidebar() {
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept), [merged, runs, now, archiveAfterDays, kept]);
+  const remoteRuns = useRemoteTreeRuns();
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept, remoteRuns), [merged, runs, now, archiveAfterDays, kept, remoteRuns]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived, snoozed } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),

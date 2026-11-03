@@ -55,8 +55,8 @@ async function onPhone(run: (js: (code: string) => Promise<unknown>, win: Browse
   if (typeof win === 'string') return win;
   const js = (code: string) => win.webContents.executeJavaScript(code);
   await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click()");
-  // A session or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
-  if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-new-session]'))")) {
+  // A session, a run or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
+  if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-run-view], [data-remote-new-session]'))")) {
     await js("history.replaceState({ kind: 'list' }, ''); location.reload()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 15_000))) return 'the phone did not come back to Home';
   }
@@ -145,6 +145,29 @@ export function runPhoneMoreStep(): Promise<string> {
     await js('history.back()');
     if (!(await waitInPage(win, "!document.querySelector('[data-remote-settings]')", 3_000))) return 'Back did not leave Settings';
     return `ok: ⋯ has ${items.replaceAll(',', ', ')}; All settings opened Settings`;
+  });
+}
+
+/**
+ * What a trigger started on the computer (the demo's: failing CI started "Fix the flaky upload test", a new issue the
+ * webhook run): the bolt on both rows, and "Started by …" with the link under the run's header.
+ */
+export function runPhoneTriggerStep(shot?: (win: BrowserWindow, name: string) => Promise<void>): Promise<string> {
+  return onPhone(async (js, win) => {
+    const row = (title: string) => `[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    // It waits for you: its card under Needs you has the bolt.
+    const card = `[...document.querySelectorAll('[data-remote-prompt-card]')].find((c) => c.innerText.includes('Fix the flaky upload test'))`;
+    if (!(await waitInPage(win, `Boolean(${card}?.querySelector('[data-remote-row-triggered]'))`, 5_000))) return 'the session failing CI started has no bolt on its card';
+    if (!(await js(`Boolean(${row('Retry failed webhook deliveries')}?.querySelector('[data-remote-row-triggered]'))`))) return 'the run an issue started has no bolt on its row';
+    await shot?.(win, 'phone-triggered-rows.png');
+    await js(`${row('Retry failed webhook deliveries')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-run-view] [data-remote-trigger-origin]')", 5_000))) return 'the run an issue started does not say which trigger started it';
+    const line = (await js("document.querySelector('[data-remote-run-view] [data-remote-trigger-origin]').innerText.replace(/\\s+/g, ' ')")) as string;
+    if (!line.includes('Started by New bug issues') || !line.includes('#212')) return `the run's trigger line says "${line}"`;
+    if ((await js("document.querySelector('[data-remote-trigger-link]')?.href")) !== 'https://github.com/acme/harbor-api/issues/212') return 'the trigger line has no link to the issue';
+    if (!(await js("document.querySelector('[data-remote-run-meta]')?.innerText.includes('without stopping for you')"))) return 'the run a trigger started does not say it runs without stopping for you';
+    await shot?.(win, 'phone-triggered-run.png');
+    return `ok: the bolt on the Needs you card and the run's row, and "${line}" under the run's header`;
   });
 }
 

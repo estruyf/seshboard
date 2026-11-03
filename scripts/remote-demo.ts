@@ -513,7 +513,7 @@ const runs: PipelineRunState[] = [
     ],
   },
   {
-    run: demoRun(ROW_RUN, null, '/demo/harbor-api', { title: 'Retry failed webhook deliveries', task: 'Retry failed webhook deliveries with a backoff, and stop after five tries.', step: 1, createdAt: ago(16) }),
+    run: demoRun(ROW_RUN, null, '/demo/harbor-api', { title: 'Retry failed webhook deliveries', task: 'Retry failed webhook deliveries with a backoff, and stop after five tries.', step: 1, createdAt: ago(16), unattended: true }),
     steps: [stepRow(ROW_RUN, 0, 'a0000000-0000-4000-8000-00000000000d', 'done', 16, 14, { reason: 'plan approved' }), stepRow(ROW_RUN, 1, 'a0000000-0000-4000-8000-00000000000e', 'working', 14, null)],
   },
 ];
@@ -745,6 +745,11 @@ const hub: RemoteHub = new RemoteHub({
     return { ok: true, sha: '9b8e7d2c4f1a6b3e5d7c9a0b1c2d3e4f5a6b7c8d' };
   },
   pipelines: demoPipelines,
+  // Triggers (#180, #185): failing CI started the flaky test's fix, and a new issue started the webhook run.
+  triggerSessions: () => [
+    { sessionId: 'a0000000-0000-4000-8000-000000000002', triggerId: 'demo-ci', eventId: 'demo-ci-4512', triggerName: 'CI fails on main', kind: 'ci', ref: 'CI #4512', url: 'https://github.com/acme/harbor-api/actions/runs/4512', at: ago(7) },
+    { sessionId: ROW_RUN, triggerId: 'demo-issues', eventId: 'demo-issue-212', triggerName: 'New bug issues', kind: 'issue', ref: '#212', url: 'https://github.com/acme/harbor-api/issues/212', at: ago(16) },
+  ],
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),
 });

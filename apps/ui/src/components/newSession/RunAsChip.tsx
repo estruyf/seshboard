@@ -10,10 +10,14 @@ import { CHOICE_PILL } from './ChoiceMenu.tsx';
 
 const MENU_WIDTH = 320;
 
+/** What Run as lists of a pipeline: this computer's, or one another computer can run (`RemotePipeline`). */
+export type RunAsPipeline = Pick<Pipeline, 'id' | 'name' | 'builtIn' | 'steps'>;
+
 /**
  * Run as, before New session's Start (#179): one session, or a pipeline with the prompt as its task. A picked pipeline
  * tints the chip, Start becomes Run pipeline, and its steps show under the box. `openRequest`: the steps line's Change
- * opens the menu from here. The pipeline last run in the project (`root`) is listed first.
+ * opens the menu from here. The pipeline last run in the project (`root`, or another computer's `remoteProjectKey`) is
+ * listed first. Another computer's pipelines (`editable` false) are edited there, so the menu has no Edit pipelines.
  */
 export function RunAsChip({
   pipelines,
@@ -22,13 +26,15 @@ export function RunAsChip({
   root,
   openRequest,
   disabled,
+  editable = true,
 }: {
-  pipelines: readonly Pipeline[];
-  value: Pipeline | null;
+  pipelines: readonly RunAsPipeline[];
+  value: RunAsPipeline | null;
   onChange(pipelineId: string | null): void;
   root: string | null;
   openRequest: number;
   disabled?: boolean;
+  editable?: boolean;
 }) {
   const menu = useMenu();
   const [above, setAbove] = useState(false);
@@ -64,8 +70,7 @@ export function RunAsChip({
     ...runAsOrder(pipelines, lastPipelineIn(root)).map(
       (pipeline): MenuEntry => ({ label: pipeline.name, detail: pipelineMeta(pipeline), checked: value?.id === pipeline.id, onSelect: () => pick(pipeline.id), data: { 'data-run-as-option': pipeline.id } }),
     ),
-    'separator',
-    { label: 'Edit pipelines…', onSelect: () => openPipelinesSettings(null), data: { 'data-edit-pipelines': true } },
+    ...(editable ? (['separator', { label: 'Edit pipelines…', onSelect: () => openPipelinesSettings(null), data: { 'data-edit-pipelines': true } }] satisfies MenuEntry[]) : []),
   ];
   const label = value?.name ?? 'One session';
   return (

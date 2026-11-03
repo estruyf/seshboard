@@ -128,6 +128,24 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
   });
 
+  it('says which trigger started a session or a run, and nothing for the rest', () => {
+    const link = (sessionId: string) => ({ sessionId, triggerId: 't1', eventId: 'e1', triggerName: 'CI fails on main', kind: 'ci' as const, ref: 'CI #4512', url: 'https://github.com/acme/web/actions/runs/4512', at: NOW - 60_000 });
+    const row = runState({ id: 'run-row', parentSessionId: null, task: 'Fix CI', unattended: true });
+    const list = remoteSessions({ summaries: [summary('parent', null), summary('fixer', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), runs: [runState(), row], triggers: [link('fixer'), link('run-row')], now: NOW });
+    const origin = { name: 'CI fails on main', kind: 'ci', ref: 'CI #4512', url: 'https://github.com/acme/web/actions/runs/4512', at: NOW - 60_000 };
+    expect(list.sessions.find((s) => s.id === 'fixer')?.trigger).toEqual(origin);
+    expect(list.sessions.find((s) => s.id === 'parent')).not.toHaveProperty('trigger');
+    expect(list.runs?.find((r) => r.run.id === 'run-row')?.run).toMatchObject({ trigger: origin, unattended: true });
+    expect(list.runs?.find((r) => r.run.id === 'run-1')?.run).not.toHaveProperty('trigger');
+    // The app's contract reads it, and so does the phone's own check.
+    const parsed = RemoteSessions.parse(JSON.parse(JSON.stringify(list)));
+    expect(parsed.sessions.find((s) => s.id === 'fixer')?.trigger).toEqual(origin);
+    expect(checkRemoteSessions(JSON.parse(JSON.stringify(list)))).toMatchObject({ dropped: 0 });
+    // One a later version sends in another shape is left out, not the session.
+    const odd = RemoteSessions.parse({ ...parsed, sessions: parsed.sessions.map((s) => ({ ...s, trigger: { name: 1 } })) });
+    expect(odd.sessions.map((s) => s.trigger)).toEqual([undefined, undefined]);
+  });
+
   it('sends no runs from an engine without pipelines', () => {
     const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW });
     expect(list).not.toHaveProperty('runs');

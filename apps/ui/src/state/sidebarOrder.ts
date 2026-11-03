@@ -1,8 +1,8 @@
 import type { SessionRowData } from './sessionsStore.ts';
 import type { SidebarSort } from '@seshboard/protocol/bridge';
-import type { PipelineRunState } from '@seshboard/protocol/client';
+import type { PipelineRunState, RunView } from '@seshboard/protocol/client';
 import { sidebarForest } from './pipelineTree.ts';
-import { treeRuns, usePipelineTree } from './pipelineTreeStore.ts';
+import { remoteTreeRunsNow, treeRuns, usePipelineTree } from './pipelineTreeStore.ts';
 import { buildSessionList, groupsFor, quickestGroups, rowStatus, type QuickInfo, type RowStatus, type SessionGroup } from './sidebarRows.ts';
 
 /** A permission or question a session waits on, as far as the rail's tooltip and the needs-you pill care. */
@@ -32,12 +32,14 @@ export function sidebarGroups(
     sort?: SidebarSort;
     quick?: ReadonlyMap<string, QuickInfo>;
     runs?: Iterable<PipelineRunState>;
+    /** Other computers' runs in their rows' ids (`remoteTreeRuns`); this window's by default. */
+    remoteRuns?: readonly RunView[];
     openParents?: ReadonlySet<string>;
     /** Run rows with loose ends (`keptSessions.ts`): listed as a session with them is. */
     kept?: ReadonlySet<string>;
   },
 ): { group: SessionGroup; rows: SessionRowData[] }[] {
-  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays, options.kept);
+  const forest = sidebarForest(rows, options.runs ?? treeRuns(), options.now, options.archiveAfterDays, options.kept, options.remoteRuns ?? remoteTreeRunsNow());
   const { active } = buildSessionList(forest.roots, { search: options.search ?? '', project: options.project ?? null, now: options.now, archiveAfterDays: options.archiveAfterDays, children: forest.children });
   const open = options.openParents ?? usePipelineTree.getState().open;
   return groupsFor(active, options.sort, options.quick).map(({ group, rows: inGroup }) => ({ group, rows: withOpenChildren(inGroup, forest.children, open) }));

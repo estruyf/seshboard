@@ -8,6 +8,7 @@ import { MenuButton, type MenuItem } from './Menu.tsx';
 import { StepTree, useRunActions } from './RunParts.tsx';
 import { toast } from './Toasts.tsx';
 import { Button, ComputerTag } from './ui.tsx';
+import { TriggerOrigin } from './TriggerOrigin.tsx';
 
 /**
  * A run row (#179): a pipeline run started from New session, which has no session of its own yet. Its header names
@@ -76,6 +77,7 @@ export function RunView({
         </div>
         {state && <MenuButton label="Run actions" items={menu} />}
       </header>
+      <TriggerOrigin value={run?.trigger} now={Date.now()} />
       {banner}
       {!state ? (
         <p className="p-8 text-center text-ui text-muted" role="status">

@@ -26,8 +26,7 @@ import { reminderWhen } from '../../state/reminders.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
-import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
-import { callComputer } from '../computers/callComputer.ts';
+import { archiveRemote, remoteSessionEntries, setRemoteFlags, stopRemote } from '../computers/remoteActions.ts';
 import { stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
 import { archiveTreeLabel, runGoesOn, runRowMenu, treeRunsOf, unarchiveTreeLabel } from '../../state/runTree.ts';
@@ -118,7 +117,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     }
     if (!archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) return;
     // A session on another computer is archived there, through its own contract.
-    if (data.remote) return setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    if (data.remote) return archiveRemote(client, data.remote, true);
     flagAll([data], ARCHIVE);
   };
 
@@ -143,7 +142,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   /** Stop, as the session's own Stop does: Claude's turn, or a pipeline's run that goes on. */
   const stop = async (data: SessionRowData) => {
-    if (data.remote) return void (await (client ? callComputer(client, data.remote.computerId, 'session.interrupt', { sessionId: data.remote.sessionId }) : null));
+    if (data.remote) return stopRemote(client, data.remote);
     for (const state of treeRunsOf(usePipelines.getState().runs.values(), data.id).filter(runGoesOn)) await stopRun(state.run.id);
     if (!isRunRowId(data.id) && isActiveHost(useHosts.getState().hosts.get(data.id))) await client?.call('session.interrupt', { sessionId: data.id });
   };
@@ -163,11 +162,12 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   /** Archives without asking: a finished session, or one Stop and archive has stopped. */
   const archiveNow = (data: SessionRowData, then?: () => void) => {
     if (!data.remote) return flagAll([data], ARCHIVE, then);
-    setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    archiveRemote(client, data.remote, true);
     then?.();
   };
 
   const unarchive = (data: SessionRowData, then?: () => void) => {
+    if (data.remote) return (archiveRemote(client, data.remote, false), then?.());
     if (archiveTree(data.id, false, data.title, then)) return;
     flagAll([data], { archived: false }, then);
   };
@@ -211,11 +211,11 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
     // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
     if (data.remote) {
-      const { computerId, computerName, offline, sessionId, projectId, projectName } = data.remote;
+      const { computerId, computerName, offline, sessionId, projectId, projectName, runRow, treeRunId } = data.remote;
       const features = useComputers.getState().status?.computers.find((c) => c.id === computerId)?.features ?? [];
       const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const), features };
-      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName };
-      setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName, runRow: runRow ?? false, treeRunId: treeRunId ?? null };
+      setMenu({ ...at, label: `${runRow ? 'Pipeline run' : 'Session'} “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
       return;
     }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
