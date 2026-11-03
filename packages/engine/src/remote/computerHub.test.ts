@@ -227,6 +227,31 @@ describe('Other computers', () => {
     expect(() => again.hub.update('nope', { name: 'x' })).toThrow(RpcError);
   });
 
+  it('keeps which notifications show for a computer, through a restart and pairing again', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]!.notify).toBe('all');
+
+    first.hub.update(id, { notify: 'needs-you' });
+    expect(first.hub.status().computers[0]).toMatchObject({ notify: 'needs-you', color: 'violet', renamed: false });
+    first.hub.update(id, { notify: 'off' });
+    first.hub.stop();
+
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    await again.until((s) => s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]!.notify).toBe('off');
+    b.answerNext(true);
+    await again.hub.add(b.pairLink());
+    await again.until((s) => s.pairing === null && s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ id, notify: 'off' });
+    again.hub.update(id, { notify: 'all' });
+    expect(again.hub.status().computers[0]!.notify).toBe('all');
+  });
+
   it('stops trying once the other computer revoked this one', async () => {
     const b = await otherComputer();
     const a = thisComputer();

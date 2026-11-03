@@ -825,4 +825,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE remote_computers ADD COLUMN label TEXT;
   ALTER TABLE remote_computers ADD COLUMN color TEXT;
   `,
+
+  // v49: Which of a paired computer's notifications show here (Settings › Remote, Other computers); null is all of
+  // them. A user choice: keep it.
+  `
+  ALTER TABLE remote_computers ADD COLUMN notify TEXT;
+  `,
 ];

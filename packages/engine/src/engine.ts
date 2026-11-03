@@ -4315,8 +4315,8 @@ export function createEngine(options: EngineOptions): Engine {
       requireComputers().forget(id);
       return {};
     },
-    'computers.update': ({ id, name, color }) => {
-      requireComputers().update(id, { ...(name !== undefined ? { name } : {}), ...(color !== undefined ? { color } : {}) });
+    'computers.update': ({ id, name, color, notify }) => {
+      requireComputers().update(id, { ...(name !== undefined ? { name } : {}), ...(color !== undefined ? { color } : {}), ...(notify !== undefined ? { notify } : {}) });
       return {};
     },
     'computers.retry': ({ id }) => {

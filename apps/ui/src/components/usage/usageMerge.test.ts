@@ -129,6 +129,7 @@ describe('computersToAsk', () => {
     ownName: id[0]!.toUpperCase() + id.slice(1),
     renamed: false,
     color: 'violet',
+    notify: 'all',
     address: 'https://example.trycloudflare.com',
     pairedAt: 1,
     state,

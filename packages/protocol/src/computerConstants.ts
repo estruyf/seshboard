@@ -17,6 +17,14 @@ export const REMOTE_DESKTOP_ORIGIN = 'switchboard-desktop://switchboard';
 export const COMPUTER_COLORS = ['violet', 'blue', 'green', 'yellow', 'orange', 'red', 'gray'] as const;
 export type ComputerColor = (typeof COMPUTER_COLORS)[number];
 
+/**
+ * Which of a paired computer's notifications this one shows (Settings › Remote, Other computers): `all` (needs you,
+ * finished and failed, as for a session here), `needs-you` (only a session that waits for you), or `off`. Its sessions
+ * still show in the sidebar either way.
+ */
+export const COMPUTER_NOTIFY = ['all', 'needs-you', 'off'] as const;
+export type ComputerNotify = (typeof COMPUTER_NOTIFY)[number];
+
 /** The longest name you can give a paired computer here. */
 export const COMPUTER_NAME_MAX = 60;
 

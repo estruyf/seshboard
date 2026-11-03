@@ -1592,6 +1592,11 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computer-notifications",
+      "name": "Pick which notifications a paired computer shows here: all, only needs you, or off",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:computers-filter",
       "name": "Computers strip and Show sessions from: filter the sidebar by computer",
       "page": "other-computers"

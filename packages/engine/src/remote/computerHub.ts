@@ -6,6 +6,7 @@ import {
   RpcError,
   type Computer,
   type ComputerColor,
+  type ComputerNotify,
   type ComputerEvent,
   type ComputerMethod,
   type ComputerPairing,
@@ -149,12 +150,13 @@ export class ComputerHub {
     if (this.store.remove(id)) this.changed();
   }
 
-  /** Names or colours a computer here only; an empty name goes back to its own. */
-  update(id: string, changes: { name?: string; color?: ComputerColor }): void {
+  /** Names or colours a computer here only, or picks which of its notifications show; an empty name goes back to its own. */
+  update(id: string, changes: { name?: string; color?: ComputerColor; notify?: ComputerNotify }): void {
     const computer = this.store.list().find((c) => c.id === id);
     if (!computer) throw new RpcError('NOT_FOUND', 'This computer isn’t paired');
     if (changes.name !== undefined) this.store.setLabel(id, changes.name.trim() === computer.name ? '' : changes.name);
     if (changes.color !== undefined) this.store.setColor(id, changes.color);
+    if (changes.notify !== undefined) this.store.setNotify(id, changes.notify);
     this.changed();
   }
 
@@ -236,7 +238,7 @@ export class ComputerHub {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
     const name = shownName(computer);
-    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
+    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
         return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };

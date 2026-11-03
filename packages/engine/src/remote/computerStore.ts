@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { COMPUTER_COLORS, fromBase64Url, toBase64Url, type ComputerColor } from '@seshboard/protocol';
+import { COMPUTER_COLORS, COMPUTER_NOTIFY, fromBase64Url, toBase64Url, type ComputerColor, type ComputerNotify } from '@seshboard/protocol';
 
 /** Another computer this app paired with, as a phone pairs with it. */
 export interface PairedComputer {
@@ -17,6 +17,8 @@ export interface PairedComputer {
   label: string | null;
   /** The colour you gave it here (`violet` until you pick one). */
   color: ComputerColor;
+  /** Which of its notifications show here (`all` until you pick another). */
+  notify: ComputerNotify;
 }
 
 /** The name a computer shows here: the one you gave it, else its own. */
@@ -31,6 +33,7 @@ interface Row {
   paired_at: number;
   label: string | null;
   color: string | null;
+  notify: string | null;
 }
 
 /**
@@ -38,7 +41,7 @@ interface Row {
  * device key is in the system's keychain, so a copy of the database connects to nothing.
  */
 export class ComputerStore {
-  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'remove', StatementSync>;
+  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'notify' | 'remove', StatementSync>;
 
   constructor(
     db: DatabaseSync,
@@ -53,6 +56,7 @@ export class ComputerStore {
       name: db.prepare('UPDATE remote_computers SET name = ? WHERE id = ?'),
       label: db.prepare('UPDATE remote_computers SET label = ? WHERE id = ?'),
       color: db.prepare('UPDATE remote_computers SET color = ? WHERE id = ?'),
+      notify: db.prepare('UPDATE remote_computers SET notify = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM remote_computers WHERE id = ?'),
     };
   }
@@ -67,17 +71,17 @@ export class ComputerStore {
     return row ? toComputer(row) : null;
   }
 
-  /** Stores a computer after it allowed this one. Pairing again with one already here keeps its id, name and colour. */
-  add(computer: Omit<PairedComputer, 'id' | 'pairedAt' | 'label' | 'color'>): PairedComputer {
+  /** Stores a computer after it allowed this one. Pairing again with one already here keeps its id, name, colour and notifications. */
+  add(computer: Omit<PairedComputer, 'id' | 'pairedAt' | 'label' | 'color' | 'notify'>): PairedComputer {
     const at = this.now();
     const existing = this.find(computer.enginePublicKey);
     if (existing) {
       this.statements.replace.run(computer.name, computer.address, computer.deviceId, at, existing.id);
-      return { ...computer, id: existing.id, pairedAt: at, label: existing.label, color: existing.color };
+      return { ...computer, id: existing.id, pairedAt: at, label: existing.label, color: existing.color, notify: existing.notify };
     }
     const id = randomUUID();
     this.statements.insert.run(id, computer.name, toBase64Url(computer.enginePublicKey), computer.address, computer.deviceId, at);
-    return { ...computer, id, pairedAt: at, label: null, color: 'violet' };
+    return { ...computer, id, pairedAt: at, label: null, color: 'violet', notify: 'all' };
   }
 
   setAddress(id: string, address: string): void {
@@ -97,6 +101,10 @@ export class ComputerStore {
     this.statements.color.run(color === 'violet' ? null : color, id);
   }
 
+  setNotify(id: string, notify: ComputerNotify): void {
+    this.statements.notify.run(notify === 'all' ? null : notify, id);
+  }
+
   remove(id: string): boolean {
     return Number(this.statements.remove.run(id).changes) > 0;
   }
@@ -105,8 +113,11 @@ export class ComputerStore {
 function toComputer(row: Row): PairedComputer | null {
   const enginePublicKey = fromBase64Url(row.engine_key);
   if (!enginePublicKey) return null;
-  return { id: row.id, name: row.name, enginePublicKey, address: row.address, deviceId: row.device_id, pairedAt: row.paired_at, label: row.label || null, color: toColor(row.color) };
+  return { id: row.id, name: row.name, enginePublicKey, address: row.address, deviceId: row.device_id, pairedAt: row.paired_at, label: row.label || null, color: toColor(row.color), notify: toNotify(row.notify) };
 }
 
 // A colour a newer version saved, which this one doesn't know, shows as the default.
 const toColor = (value: string | null): ComputerColor => (COMPUTER_COLORS as readonly string[]).includes(value ?? '') ? (value as ComputerColor) : 'violet';
+
+// So does a notifications choice it doesn't know: all of them.
+const toNotify = (value: string | null): ComputerNotify => (COMPUTER_NOTIFY as readonly string[]).includes(value ?? '') ? (value as ComputerNotify) : 'all';

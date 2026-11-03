@@ -1,13 +1,13 @@
-import { useRef, useState } from 'react';
-import { Link2, Monitor, Pencil } from 'lucide-react';
-import { COMPUTER_COLORS, type Computer, type ComputerColor } from '@seshboard/protocol/client';
+import { useEffect, useRef, useState } from 'react';
+import { Bell, BellOff, BellRing, Link2, Monitor, Pencil } from 'lucide-react';
+import { COMPUTER_COLORS, COMPUTER_NOTIFY, type Computer, type ComputerColor, type ComputerNotify } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { ConfirmStrip, ConnectedNow, ListRow, RenameField } from '../remote/RemoteRows.tsx';
 import { remoteAge } from '../remote/remoteText.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
-import { RadioGroup } from '../ui/Radio.tsx';
+import { Radio, RadioGroup } from '../ui/Radio.tsx';
 import { COMPUTER_COLOR_NAME, COMPUTER_COLOR_VAR, computerTint } from './computerColor.ts';
 import { computerLine } from './computerSessions.ts';
 
@@ -15,7 +15,7 @@ const field = 'h-7 min-w-0 flex-1 rounded-md border border-edge bg-card px-2 fon
 
 /**
  * Settings › Remote, Other computers: the computers this one paired with, in the same rows as the paired devices
- * (Rename and Colour change how it shows here only, Open shows its sessions, Remove forgets it here), then the field for the link from another computer's Pair a
+ * (Rename and Colour change how it shows here only, the bell picks which of its notifications show, Open shows its sessions, Remove forgets it here), then the field for the link from another computer's Pair a
  * device. It also takes a link from Reconnect a paired device, for a computer whose quick tunnel got a new address.
  */
 export function ComputersSettings() {
@@ -27,12 +27,13 @@ export function ComputersSettings() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [colouring, setColouring] = useState<string | null>(null);
+  const [notifying, setNotifying] = useState<string | null>(null);
   const removeButtons = useRef(new Map<string, HTMLButtonElement | null>());
   if (!status || !client) return <p className="text-ui text-muted">Checking…</p>;
   if (!status.available) return <Notice>Other computers aren't available in this build of Seshboard.</Notice>;
   const { pairing, computers } = status;
 
-  const update = (id: string, changes: { name?: string; color?: ComputerColor }) => {
+  const update = (id: string, changes: { name?: string; color?: ComputerColor; notify?: ComputerNotify }) => {
     setError(null);
     void client.call('computers.update', { id, ...changes }).catch((e: Error) => setError(e.message));
   };
@@ -82,6 +83,7 @@ export function ComputersSettings() {
                 <>
                   {computer.state === 'connected' ? <ConnectedNow /> : computerLine(computer)}
                   {` · paired ${remoteAge(computer.pairedAt)}`}
+                  {computer.notify !== 'all' && <span data-computer-notify-status>{` · ${NOTIFY_STATUS[computer.notify]}`}</span>}
                 </>
               }
               actions={
@@ -99,11 +101,28 @@ export function ComputersSettings() {
                     variant="quiet"
                     icon={<span aria-hidden className="size-2.5 rounded-full" style={{ background: COMPUTER_COLOR_VAR[computer.color] }} />}
                     aria-expanded={colouring === computer.id}
-                    onClick={() => setColouring(colouring === computer.id ? null : computer.id)}
+                    onClick={() => {
+                      setNotifying(null);
+                      setColouring(colouring === computer.id ? null : computer.id);
+                    }}
                     data-computer-colour
                   >
                     Colour
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    iconOnly
+                    icon={<NotifyIcon notify={computer.notify} />}
+                    aria-label={`Notifications from ${computer.name}`}
+                    data-tooltip={`Notifications: ${NOTIFY_LABEL[computer.notify]}`}
+                    aria-expanded={notifying === computer.id}
+                    onClick={() => {
+                      setColouring(null);
+                      setNotifying(notifying === computer.id ? null : computer.id);
+                    }}
+                    data-computer-notify={computer.notify}
+                  />
                   <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
                     Open
                   </Button>
@@ -125,7 +144,8 @@ export function ComputersSettings() {
                     }}
                   />
                 ) : (
-                  colouring === computer.id && <ColourStrip computer={computer} onPick={(color) => update(computer.id, { color })} onClose={() => setColouring(null)} />
+                  (colouring === computer.id && <ColourStrip computer={computer} onPick={(color) => update(computer.id, { color })} onClose={() => setColouring(null)} />) ||
+                  (notifying === computer.id && <NotifyStrip computer={computer} onPick={(notify) => update(computer.id, { notify })} onClose={() => setNotifying(null)} />)
                 )
               }
             />
@@ -197,6 +217,53 @@ function ColourStrip({ computer, onPick, onClose }: { computer: Computer; onPick
           </button>
         ))}
       </RadioGroup>
+      <Button size="sm" onClick={onClose}>
+        Done
+      </Button>
+    </div>
+  );
+}
+
+const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'needs-you': 'Needs you', off: 'Off' };
+const NOTIFY_HINT: Record<ComputerNotify, string> = { all: 'Needs you, finished and failed', 'needs-you': 'Only when a session waits for you', off: 'None. Its sessions still show here.' };
+/** In the row's status line, when it isn't all of them. */
+const NOTIFY_STATUS: Record<ComputerNotify, string> = { all: '', 'needs-you': 'Notifies only when it needs you', off: 'Notifications off' };
+
+function NotifyIcon({ notify }: { notify: ComputerNotify }) {
+  if (notify === 'off') return <BellOff size={14} aria-hidden />;
+  if (notify === 'needs-you') return <BellRing size={14} aria-hidden />;
+  return <Bell size={14} aria-hidden />;
+}
+
+/**
+ * Which of a computer's notifications show here, in a strip under its row, like its colour. Its sessions stay in the
+ * sidebar whatever you pick. Esc or Done closes it.
+ */
+function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick(notify: ComputerNotify): void; onClose(): void }) {
+  const strip = useRef<HTMLDivElement>(null);
+  // Focus starts on the choice it has, as in the colours, so the arrows and Esc work at once.
+  useEffect(() => strip.current?.querySelector<HTMLButtonElement>('[role=radio][aria-checked=true]')?.focus(), []);
+  return (
+    <div
+      ref={strip}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-text/4 px-4 py-2.5"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        event.preventDefault();
+        onClose();
+      }}
+      data-computer-notify-options={computer.id}
+    >
+      <span className="text-ui text-muted">Notifications from {computer.name}</span>
+      <RadioGroup label={`Notifications from ${computer.name}`} className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+        {COMPUTER_NOTIFY.map((notify) => (
+          <Radio key={notify} checked={computer.notify === notify} onSelect={() => computer.notify !== notify && onPick(notify)} dataAttrs={{ 'data-computer-notify-option': notify }}>
+            <span className="text-ui">{NOTIFY_LABEL[notify]}</span>
+          </Radio>
+        ))}
+      </RadioGroup>
+      <span className="text-meta text-muted">{NOTIFY_HINT[computer.notify]}</span>
       <Button size="sm" onClick={onClose}>
         Done
       </Button>

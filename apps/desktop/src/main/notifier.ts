@@ -1,6 +1,6 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@seshboard/protocol/bridge';
-import { createRpcClient, promptLabel, type ComputersStatus, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RemoteSessions, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { createRpcClient, promptLabel, type ComputerNotify, type ComputersStatus, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RemoteSessions, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { RemoteAttention } from './remoteAttention.ts';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
@@ -75,9 +75,9 @@ export class Notifier {
   private readonly cache: CacheReminder;
   /** Sessions whose reminder came due and that you haven't opened yet: the badge counts them when Settings says so. */
   private readonly reminded = new Set<string>();
-  /** The sessions of paired computers, and their names, for their notifications. */
+  /** The sessions of paired computers, and their names and notifications choice, for their notifications. */
   private remote = new RemoteAttention();
-  private computerNames = new Map<string, string>();
+  private computerInfo = new Map<string, { name: string; notify: ComputerNotify }>();
 
   constructor(private readonly options: NotifierOptions) {
     this.attention = new Attention({ external: options.showAllSessions });
@@ -183,14 +183,15 @@ export class Notifier {
     // Other computers' sessions: their lists come as events; a computer that goes away starts over when it is back.
     this.remote = new RemoteAttention();
     const computers = (status: ComputersStatus) => {
-      this.computerNames = new Map(status.computers.map((c) => [c.id, c.name]));
+      this.computerInfo = new Map(status.computers.map((c) => [c.id, { name: c.name, notify: c.notify }]));
       for (const computer of status.computers) if (computer.state !== 'connected') this.remote.forget(computer.id);
     };
     client.on('computers.changed', computers);
     void client.call('computers.status', {}).then(computers, () => {});
     client.on('computers.event', ({ computerId, name, payload }) => {
       if (name !== 'sessions.changed') return;
-      this.handle(this.remote.onList({ id: computerId, name: this.computerNames.get(computerId) ?? 'another computer' }, payload as unknown as RemoteSessions));
+      const info = this.computerInfo.get(computerId);
+      this.handle(this.remote.onList({ id: computerId, name: info?.name ?? 'another computer', notify: info?.notify ?? 'all' }, payload as unknown as RemoteSessions));
     });
 
     // Seed state silently: only changes from here on deserve a notification.

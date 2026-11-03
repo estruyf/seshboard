@@ -525,6 +525,7 @@ export function settingsIndex(): SettingEntry[] {
     },
     { id: 'computers-list', page: 'remote', label: 'Paired computers', detail: 'Open its sessions, or Remove it.', keywords: 'forget remove computers machines offline open', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
     { id: 'computers-rename', page: 'remote', label: 'Rename or colour a computer', detail: 'Give a paired computer a name and a colour of its own here, to tell it apart.', keywords: 'rename name label colour color computer machine violet purple', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
+    { id: 'computers-notify', page: 'remote', label: 'Notifications from a computer', detail: 'Show all of a paired computer’s notifications, only when it needs you, or none.', keywords: 'notifications notify bell mute silence alerts computer machine needs you finished', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
 
     // Backup
     { id: 'backup-export', page: 'backup', label: 'Export settings', detail: 'Choose what to include and save it to a file.', keywords: 'backup save move another computer', target: '[data-backup-export]' },

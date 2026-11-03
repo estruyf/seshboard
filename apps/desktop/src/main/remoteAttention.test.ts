@@ -28,6 +28,20 @@ describe('RemoteAttention', () => {
     ]);
   });
 
+  it('shows only needs you, or nothing, as the computer\'s notifications say, and keeps up while they are off', () => {
+    const attention = new RemoteAttention();
+    const needsYou = { ...studio, notify: 'needs-you' as const };
+    attention.onList(needsYou, list([session('a', 'working'), session('b', 'working')]));
+    const events = attention.onList(needsYou, list([session('a', 'unread'), session('b', 'error')], [prompt('p1', 'a')]));
+    expect(events.map((e) => e.kind)).toEqual(['needs-you']);
+
+    const off = { ...studio, notify: 'off' as const };
+    expect(attention.onList(off, list([session('a', 'working')], [prompt('p1', 'a'), prompt('p2', 'a')]))).toEqual([]);
+    // Back on: what happened while they were off is not news.
+    expect(attention.onList(studio, list([session('a', 'working')], [prompt('p1', 'a'), prompt('p2', 'a')]))).toEqual([]);
+    expect(attention.onList(studio, list([session('a', 'idle')])).map((e) => e.kind)).toEqual(['finished']);
+  });
+
   it('starts over, silently, after a computer was away', () => {
     const attention = new RemoteAttention();
     attention.onList(studio, list([session('a', 'working')]));
