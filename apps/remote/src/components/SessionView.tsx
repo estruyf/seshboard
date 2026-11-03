@@ -225,13 +225,13 @@ export function SessionView({
     ...(takesPipelines && session && !runs.step ? [{ label: 'Run pipeline…', disabled: !client, onSelect: () => setPipelineSheet(true) }] : []),
   ];
   const archiveItem: MenuItem = {
-    label: treeSteps ? `Archive with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Archive',
+    label: treeSteps ? `Done, with ${treeSteps === 1 ? 'its step' : `its ${treeSteps} steps`}` : 'Done',
     disabled: !client,
     hook: 'archive',
     onSelect: () =>
       void setArchived(true)
         .then(() => {
-          toast(`Archived ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
+          toast(`Done: ${session?.title ?? 'the session'}`, { action: { label: 'Undo', run: () => void setArchived(false).catch(fail) } });
           onLeave();
         })
         .catch(fail),

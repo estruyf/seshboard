@@ -104,16 +104,16 @@ export function settingsIndex(): SettingEntry[] {
       id: 'quick-actions',
       page: 'sidebar',
       label: 'Quick actions on hover',
-      detail: 'Mark read, Pin and Archive appear on a row under the pointer.',
-      keywords: 'hover archive quick actions mark as read unread pin unpin stop buttons row one click',
+      detail: 'Mark read, Pin and Done appear on a row under the pointer.',
+      keywords: 'hover archive done quick actions mark as read unread pin unpin stop buttons row one click',
       target: '[data-quick-actions-setting]',
     },
     {
       id: 'quick-actions-show',
       page: 'sidebar',
       label: 'Show',
-      detail: 'Quick actions on hover: Archive only, or Read · Pin · Archive.',
-      keywords: 'hover archive quick actions mark as read pin buttons archive only',
+      detail: 'Quick actions on hover: Done only, or Read · Pin · Done.',
+      keywords: 'hover archive done quick actions mark as read pin buttons done only',
       target: '[data-quick-actions-show]',
       // Only while Quick actions on hover is on.
       fallback: '[data-quick-actions-setting]',
@@ -131,16 +131,16 @@ export function settingsIndex(): SettingEntry[] {
     {
       id: 'auto-archive',
       page: 'sessions',
-      label: 'Archive finished sessions after',
+      label: 'Move finished sessions to Done after',
       detail: 'Working, needs you, unread and pinned sessions stay in the list. New activity brings a session back.',
-      keywords: 'archived days old clean up',
+      keywords: 'archive archived done inactive days old clean up',
       target: '[data-auto-archive-value]',
     },
     {
       id: 'auto-delete',
       page: 'sessions',
-      label: 'Delete archived sessions',
-      detail: `An archived session goes to the ${trash} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`,
+      label: 'Delete Done sessions',
+      detail: `A session in Done goes to the ${trash} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`,
       keywords: 'remove trash recycle bin clean up disk space old',
       target: '[data-auto-delete]',
     },
@@ -153,7 +153,7 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-claude-cleanup]',
       fallback: '[data-sessions-settings]',
     },
-    { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
+    { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Reopen them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
 
     // Projects
     {

@@ -60,7 +60,7 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
         // The parent of a pipeline run archives with its sub-sessions (asking first while the run goes on).
         if (!archiveTree(sessionId, true, useSessions.getState().sessions.get(sessionId)?.title ?? '')) {
           useSessions.getState().patchSummary(sessionId, { archivedAt: Date.now(), unread: false });
-          void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('archive it'));
+          void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('mark it done'));
         }
         // On to the next one, as Skip does; Home when none is left.
         moveOn(sessionId, 'done', order);

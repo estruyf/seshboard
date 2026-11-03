@@ -34,8 +34,8 @@ It uses the Claude Code you already have installed, with your login, settings, c
 ## What you can do
 
 **Keep track of every session**
-- One list of all your sessions, newest first, across every project. Sessions you haven't touched for a while move to **Archived**, out of the way. You can archive one yourself too, even while it works: it comes back when it needs you or has finished. Nothing is deleted; to remove a session for good, delete it (it goes to the Trash).
-- Select several sessions with ⌘-click or ⇧-click to archive or unarchive them together.
+- One list of all your sessions, newest first, across every project. Sessions you haven't touched for a while move to **Done**, out of the way, and each says why ("Done" or "Inactive 3 days"). You can mark one done yourself too, even while it works: it comes back when it needs you or has finished. Nothing is deleted; to remove a session for good, delete it (it goes to the Trash).
+- Select several sessions with ⌘-click or ⇧-click to mark them done or reopen them together.
 - See at a glance which sessions are **working**, **waiting for you**, **finished** or **unread**. Sort the sidebar by **Quickest to unblock** to see the sessions that wait for you first, then the unread ones by how long they take to review.
 - **Catch-up:** when a session finishes, a short briefing says what you asked, the one thing it needs from you next, whether the tests passed and how much changed, with a key for every action.
 - Filter by one of your projects, filter by title, and pin the sessions you keep coming back to.
@@ -252,8 +252,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | F2 | Rename the session (in the sidebar) |
 | ⌘⌫ | Delete the session (in the sidebar, to the Trash) |
 | ⌥-click | Open beside the current session (in the sidebar; Dragging the session onto a pane opens it there) |
-| Middle-click | Archive a finished session (in the sidebar) |
-| E | Archive the session, or unarchive it (in the sidebar, on the focused or hovered session; A working session asks first) |
+| Middle-click | Mark a finished session done (in the sidebar) |
+| E | Mark the session done, or reopen it (in the sidebar, on the focused or hovered session; A working session asks first) |
 | U | Mark the session read or unread (in the sidebar, on the focused or hovered session) |
 | P | Pin or unpin the session (in the sidebar, on the focused or hovered session) |
 | ⌘Z | Undo the last quick action (in the sidebar) |
@@ -339,13 +339,13 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 
 | Shortcut | What it does |
 |---|---|
-| ↩ | Run the catch-up's main action (Commit, Reply, Review changes or Archive) |
+| ↩ | Run the catch-up's main action (Commit, Reply, Review changes or Done) |
 | Esc | Close the reply, the Changes panel, Details, then the catch-up (One at a time, the nearest first) |
 | D | Review changes (Opens or closes the Changes panel) |
 | C | Commit |
 | R | Reply to Claude (Puts you in the message box) |
 | U | Mark as read |
-| E | Archive, and go to the next session to review |
+| E | Mark it done, and go to the next session to review |
 | S | Skip to the next session to review (To review first, then Open; The skipped session stays as it is) |
 | Space | Open or close Details, or show the folded catch-up |
 
@@ -379,7 +379,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 
 In the command palette, the first character picks what it lists: `>` commands, `+` a new session (pick a project, then write the prompt), `!` the session's project actions, `?` help. *Quick question…* goes straight to the prompt, without a project. Commands that ask for more end in **…**: ⌫ in an empty field goes back a step, Esc closes. In the prompt step, ⌘↵ starts the session, ⌘E moves it to the full New session view, and Esc keeps what you wrote for next time.
 
-Right-click a session for more: rename it, open it beside, pin, archive, open its folder, copy its ID, or delete it. Middle-click a finished session to archive it in one go. With several sessions selected, right-click one of them to archive or unarchive them all at once.
+Right-click a session for more: rename it, open it beside, pin, mark it done, open its folder, copy its ID, or delete it. Middle-click a finished session to mark it done in one go. With several sessions selected, right-click one of them to mark them done or reopen them all at once.
 
 Drag the sidebar's right edge to make it wider or narrower; double-click the edge to reset it. Drag it further in and it snaps to a narrow rail with one project icon per session (hover one to see its title and what it's doing), and further still to hide it. Drag the edge out again to open it. ⌘B, the sidebar button at the left of the header, and the command palette do the same; Settings → Sidebar chooses whether collapsing shows the rail or hides the sidebar. Seshboard remembers the width and the state. With the sidebar hidden, a pill in the header says when sessions need you, and ⌃⇥, ⌘⇧U and ⌘P take you between sessions.
 
@@ -426,13 +426,13 @@ AI makes starting work easy, and every session you start is one more thing to ke
 
 Turn it on in **Settings → Focus** and choose a number (1 to 10). A counter at the bottom of the sidebar shows how many sessions are going, for example `2 / 3`: neutral under the limit, yellow at it, pink over it. Click it to see which ones, sessions that need you first, and open one.
 
-**What counts.** A session counts while it's on your mind: Claude is **working** on it, it **needs you** (a question or a permission), or it **finished something you haven't read**. Reading the result or archiving the session frees its place; stopped sessions never count. By default only sessions you started or continued in Seshboard count. Turn on *Count terminal and IDE sessions* to also count Claude Code running in your terminal or editor.
+**What counts.** A session counts while it's on your mind: Claude is **working** on it, it **needs you** (a question or a permission), or it **finished something you haven't read**. Reading the result or marking the session done frees its place; stopped sessions never count. By default only sessions you started or continued in Seshboard count. Turn on *Count terminal and IDE sessions* to also count Claude Code running in your terminal or editor.
 
 **At the limit**, New session lists the sessions that count, each with **Open**, and Start asks first:
 - **Nudge** (the default): you can start anyway.
-- **Strict**: finish, read or archive a session first, or add the prompt to the [queue](#queue).
+- **Strict**: finish, read or mark a session done first, or add the prompt to the [queue](#queue).
 
-Everything that starts work asks the same way: a message that brings back a session that isn't counted, a fork, a prompt action, or Claude in the terminal. Answering a session that already counts, stopping, archiving, reviewing changes and committing are never held up.
+Everything that starts work asks the same way: a message that brings back a session that isn't counted, a fork, a prompt action, or Claude in the terminal. Answering a session that already counts, stopping, marking done, reviewing changes and committing are never held up.
 
 ## Queue
 
@@ -583,7 +583,7 @@ What you type in a message box and don't send stays there: in a session, and in 
 
 **Finding them all.** The sidebar's footer says how many there are ("2 unsent"); click it for the list, newest first, and pick one (or use ↑, ↓ and ↩) to go there with the cursor at the end of the text. The same list is at the top of ⌘P, under *Unsent*, on Home, and behind *Unsent messages…* in the command palette. The quit prompt counts them too, with **Show unsent**.
 
-Sending, starting the session, adding the prompt to the queue, **Discard** or deleting the session removes the message. Archiving a session with an unsent message asks first, because it discards the message.
+Sending, starting the session, adding the prompt to the queue, **Discard** or deleting the session removes the message. Marking a session done with an unsent message asks first, because it discards the message.
 
 ## VS Code companion
 
@@ -610,7 +610,7 @@ How the connection works: [VS Code companion](docs/vscode-companion.md).
 
 To move to a new Mac, restore your setup after a reset, or share a set of actions with someone, use **Settings → Backup** (or *Export settings…* and *Import settings…* in the command palette).
 
-- **Export** saves the parts you tick to one `.json` file: preferences, themes you imported, projects (in your order, with their names, icons and defaults), project actions (global and per project, with shortcuts and worktree setup), and app choices such as your default editor. Pinned and archived sessions are left out unless you tick them; they're only useful on the same Mac, or when you copy `~/.claude` too. Your sessions themselves are never in the file.
+- **Export** saves the parts you tick to one `.json` file: preferences, themes you imported, projects (in your order, with their names, icons and defaults), project actions (global and per project, with shortcuts and worktree setup), and app choices such as your default editor. Pinned and Done sessions are left out unless you tick them; they're only useful on the same Mac, or when you copy `~/.claude` too. Your sessions themselves are never in the file.
 - **Import** shows what the file would add, change or skip before anything happens. *Merge* (the default) adds what's missing and keeps your own values; *Replace* makes your projects, actions and preferences match the file. A project folder that doesn't exist on this Mac (a different user name, say) can be pointed at another folder, or skipped.
 - Imported shell actions ask for your approval the first time they run, even if you approved them on the other Mac, so a settings file can't run a command you haven't seen.
 - Before importing, Seshboard saves your current settings in the `backups` folder of its app data. To undo an import, import that file with *Replace*.

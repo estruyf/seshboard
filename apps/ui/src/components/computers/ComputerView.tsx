@@ -122,7 +122,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
 }
 
 function emptyLine(computer: Computer, hasSessions: boolean, missing: boolean): string {
-  if (missing) return `This session is no longer listed on ${computer.name}. It may be archived there.`;
+  if (missing) return `This session is no longer listed on ${computer.name}. It may be in Done there.`;
   if (computer.state === 'unpaired') return `${computer.name} no longer knows this computer. Pair it again in Settings › Remote.`;
   if (computer.state !== 'connected') return `Its sessions show in the sidebar once ${computer.name} is connected.`;
   if (hasSessions) return `Its sessions are in the sidebar, marked with ${computer.name}. Claude keeps running there.`;

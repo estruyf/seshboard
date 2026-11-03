@@ -78,7 +78,7 @@ describe('quickActionsFor', () => {
     expect(quickActionsFor(row({ status: 'unread', unread: true }), ALL).map((a) => [a.kind, a.label, a.shortcut])).toEqual([
       ['read', 'Mark as read', 'sidebar.quick-read'],
       ['pin', 'Pin', 'sidebar.quick-pin'],
-      ['archive', 'Archive', 'sidebar.quick-archive'],
+      ['archive', 'Done', 'sidebar.quick-archive'],
     ]);
     expect(quickActionsFor(row({ status: 'running', canStop: true }), ALL).find((a) => a.kind === 'stop')).toMatchObject({ label: 'Stop', shortcut: null });
   });
@@ -101,7 +101,7 @@ describe('quickActionForKey', () => {
 
 describe('toasts and undo', () => {
   it('says what was done', () => {
-    expect(quickActionToast('archive', 'Slide transitions')).toBe('Archived “Slide transitions”');
+    expect(quickActionToast('archive', 'Slide transitions')).toBe('Done: “Slide transitions”');
     expect(quickActionToast('markRead', 'x')).toBe('Marked as read');
     expect(quickActionToast('pin', 'x')).toBe('Pinned');
     expect(quickActionToast('stop', 'x')).toBeNull();

@@ -157,8 +157,13 @@ export async function closeRemotePhone(): Promise<void> {
 
 /** Opens the demo's finished session from Home ("Add rate limits to the webhooks"), on its catch-up. */
 async function openFinished(js: (code: string) => Promise<unknown>, win: BrowserWindow): Promise<string | null> {
-  await js("[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((row) => row.innerText.startsWith('Add rate limits'))?.click()");
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view]')", 3_000))) return 'the finished session did not open';
+  // A row moves between To review and Open when the computer marks it read, which can replace it under the click: try again.
+  let opened = false;
+  for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+    await js("[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((row) => row.innerText.startsWith('Add rate limits'))?.click()");
+    opened = await waitInPage(win, "document.querySelector('[data-remote-session-view]')", 2_000);
+  }
+  if (!opened) return 'the finished session did not open';
   if (!(await waitInPage(win, "document.querySelector('[data-remote-catchup-title]')", 5_000))) return 'the finished session has no catch-up';
   return null;
 }

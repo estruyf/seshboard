@@ -126,7 +126,7 @@ export function actionLabel(id: CatchUpActionId, ctx: { changesOpen: boolean }):
     case 'read':
       return 'Mark as read';
     case 'archive':
-      return 'Archive';
+      return 'Done';
   }
 }
 

@@ -258,19 +258,19 @@ export function ProjectSessions({ root, name }: { root: string; name: string }) 
         ))
       )}
       {archived.length > 0 && (
-        <section aria-label="Archived" className="grid gap-1" data-project-archived>
+        <section aria-label="Done" className="grid gap-1" data-project-archived>
           <SectionHeader
             count={archived.length}
             toggle={{
               expanded: showArchived,
               onToggle: () => setArchivedOpen(!showArchived),
               leading: true,
-              tooltip: `Quiet for ${archiveAfterDays === 1 ? 'a day' : `${archiveAfterDays} days`}, or archived by you. They come back when there is something new.`,
+              tooltip: `Marked done by you, or inactive for ${archiveAfterDays === 1 ? 'a day' : `${archiveAfterDays} days`}. They come back when there is something new.`,
               data: { 'data-archived-toggle': true, 'data-open': showArchived },
             }}
             className="h-[22px] px-3"
           >
-            Archived
+            Done
           </SectionHeader>
           {showArchived && <div className="grid gap-1">{archived.map((r) => row(r, true))}</div>}
         </section>

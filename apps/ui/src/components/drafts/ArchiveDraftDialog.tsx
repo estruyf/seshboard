@@ -30,15 +30,15 @@ export function ArchiveDraftDialog() {
   const one = prompt.ids.length === 1;
   return (
     <ConfirmDialog
-      title={one ? 'Archive and discard the unsent message?' : `Archive and discard ${prompt.ids.length} unsent messages?`}
+      title={one ? 'Mark it done and discard the unsent message?' : `Mark them done and discard ${prompt.ids.length} unsent messages?`}
       body={
         one ? (
-          <>“{shortTitle(prompt.titles[0] ?? '')}” has a message you haven't sent. Archiving discards it.</>
+          <>“{shortTitle(prompt.titles[0] ?? '')}” has a message you haven't sent. Marking it done discards it.</>
         ) : (
-          <>{prompt.ids.length} of these sessions have messages you haven't sent. Archiving discards them.</>
+          <>{prompt.ids.length} of these sessions have messages you haven't sent. Marking them done discards them.</>
         )
       }
-      confirmLabel="Archive"
+      confirmLabel="Mark done"
       onConfirm={async () => {
         prompt.archive();
         useDrafts.getState().removeDrafts(prompt.ids);

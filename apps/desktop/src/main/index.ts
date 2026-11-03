@@ -3128,7 +3128,7 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     );
     await shot(win, 'copilot-session-menu.png');
     pressKey(win, 'Escape');
-    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Archive, with no Claude Code only line)";
+    if (!menuOk) return "the Copilot session's ⋯ menu isn't Copilot's (Open in Copilot CLI, Rename, Agents and Done, with no Claude Code only line)";
     // Copilot's own fork and rewind on its messages (in its words), and Rename… and Delete… in its row's menu. Nothing is
     // picked: the demo's Copilot can't run them.
     const toolbar = (await js(
@@ -8043,7 +8043,7 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the run row is not in the sidebar';
   await openMenu();
   const archiveItem = "document.querySelector('[role=menu] [data-run-row-action=\"archive\"]')";
-  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Archive with its 2 steps')`, 2_000))) return `the run row menu has no Archive with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
+  if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Done, with its 2 steps')`, 2_000))) return `the run row menu has no Done, with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;
   if (await js("!!document.querySelector('[role=menu] [data-rename-session]')")) return 'the run row menu offers Rename';
   await js(`${archiveItem}.click()`);
   // Archived, closed by default: open it to see the tree.
@@ -8067,7 +8067,7 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-run-delete-confirm] [data-confirm]').click()");
   if (!(await waitInPage(win, `!${row}`, 5_000))) return 'Delete did not take the run row away';
   if (opened) await js("document.querySelector('[data-archived-toggle]')?.click()");
-  return `ok: Stop the run, then Archive with its 2 steps moved ${runId} with Execute and Validate to Archived; Delete… asked (with Keep the sub-sessions) and took it away`;
+  return `ok: Stop the run, then Done, with its 2 steps moved ${runId} with Execute and Validate to Done; Delete… asked (with Keep the sub-sessions) and took it away`;
 }
 
 /**
@@ -9483,7 +9483,7 @@ async function runCatchUpPassStep(win: BrowserWindow): Promise<string> {
         await js(`document.querySelector('[data-session-list] [data-session-id="${current.id}"]').click()`);
         await waitInPage(win, `!!document.querySelector('[data-current-session="${current.id}"]')`, 3_000);
         if (await openPalette(win, 'K', ['meta'], 'commands')) {
-          await setFieldValue(win, '[data-palette-input]', 'Unarchive');
+          await setFieldValue(win, '[data-palette-input]', 'Reopen');
           if (await waitInPage(win, "!!document.querySelector('[data-palette-command=\"archive\"]')", 2_000)) await js("document.querySelector('[data-palette-command=\"archive\"]').click()");
           else await closePalette(win);
         }
@@ -11094,7 +11094,7 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
   // In the main list: rendered and above the "Archived" header. The list is virtualised, so check from the top.
   const toTop = "document.querySelector('[data-session-list]').scrollTop = 0";
   const inMainList = `(() => { const row = document.querySelector('[data-session-id="${id}"]'); if (!row) return false; const header = document.querySelector('[data-archived-toggle]'); return !header || row.getBoundingClientRect().top < header.getBoundingClientRect().top; })()`;
-  if (!(await menu('Archive'))) return 'no Archive item';
+  if (!(await menu('Done'))) return 'no Done item';
   // A working session asks first: Archive while it works? for one in another app (the demo's), Stop and archive for one
   // the smoke started here.
   if (working) {
@@ -11121,11 +11121,11 @@ async function runArchiveStep(win: BrowserWindow): Promise<string> {
     );
     return `archived session not found under Archived: ${seen}`;
   }
-  if (!(await menu('Unarchive'))) return 'no Unarchive item';
+  if (!(await menu('Reopen'))) return 'no Reopen item';
   // Scroll to the top on every check: opening Archived above slides the list down to it for 200ms, which would undo a
   // single scroll made while it runs and leave the unarchived row out of the virtualised list.
   if (!(await waitInPage(win, `(${toTop}, ${inMainList})`, 3_000))) return 'unarchiving did nothing';
-  return `ok: archived ${working ? 'a working session' : 'a session'} and unarchived it`;
+  return `ok: marked ${working ? 'a working session' : 'a session'} done and reopened it`;
 }
 
 /**
@@ -11202,13 +11202,13 @@ async function runQuickActionsStep(win: BrowserWindow): Promise<string> {
   if (!(await hover(id))) return 'hovering a finished session showed no buttons';
   await shot(win, 'sidebar-quick-actions.png');
   const shown = await actions(id);
-  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Archive`;
+  if (!/^(read,)?pin,archive$/.test(shown)) return `a finished session shows ${shown || 'nothing'}, not Mark read, Pin and Done`;
   const label = (await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').dataset.tooltip`)) as string;
-  if (!/^Archive \(E\)$/.test(label)) return `the Archive tooltip says “${label}”`;
+  if (!/^Done \(E\)$/.test(label)) return `the Done tooltip says “${label}”`;
   await js(`${toolbar(id)}.querySelector('[data-row-action="archive"]').click()`);
   await js(`${list}.scrollTop = 0`);
   if (!(await waitInPage(win, `!${inMainList(id)}`, 3_000))) return 'Archive did not move the session out of the main list';
-  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-quick-action-toast]')].some((t) => t.innerText.startsWith('Archived') && t.querySelector('[data-toast-undo]'))", 2_000))) return 'no “Archived …” toast with Undo';
+  if (!(await waitInPage(win, "[...document.querySelectorAll('[data-quick-action-toast]')].some((t) => t.innerText.startsWith('Done: ') && t.querySelector('[data-toast-undo]'))", 2_000))) return 'no “Done: …” toast with Undo';
 
   // 2. Undo puts it back.
   await js("[...document.querySelectorAll('[data-quick-action-toast]')].at(-1).querySelector('[data-toast-undo]').click()");
@@ -11293,11 +11293,11 @@ async function runArchiveManyStep(win: BrowserWindow): Promise<string> {
   if (!(await js(`${row(a)}?.querySelector('[data-pick-box]')?.dataset.pickBox === 'true' && !!${row(a)}?.closest('[data-list-row]')?.querySelector('[data-pick-block]')`))) return 'the picked row has no ticked checkbox or tinted block';
   await shot(win, 'multi-select.png');
   await js(`(() => { const r = ${row(a)}.getBoundingClientRect(); ${row(a)}.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 20 })); })()`);
-  const item = "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.innerText.startsWith('Archive 2 sessions'))";
+  const item = "[...document.querySelectorAll('[role=menuitem]')].find((b) => b.innerText.startsWith('Done: 2 sessions'))";
   if (!(await waitInPage(win, `!!${item}`, 3_000))) {
     const seen = await js("JSON.stringify([...document.querySelectorAll('[role=menuitem]')].map((b) => b.innerText))");
     await js("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
-    return `no "Archive 2 sessions" item in the menu: ${seen}`;
+    return `no "Done: 2 sessions" item in the menu: ${seen}`;
   }
   await js(`${item}.click()`);
   await js(`${list}.scrollTop = 0`);

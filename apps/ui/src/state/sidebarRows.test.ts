@@ -3,7 +3,7 @@ import type { LaterItem, LiveSession, SessionHostInfo } from '@seshboard/protoco
 import { toRows, useSessions, type SessionRowData } from './sessionsStore.ts';
 import { useTilingArea } from './tilingArea.ts';
 import type { QueueEntry } from './queue.ts';
-import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startupSession, triageOrder, waitingLabel } from './sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, archivesOnMiddleClick, buildListRows, buildSessionList, doneReason, doneReasonLabel, groupSessions, headerSummary, inScope, isActive, quickestGroups, rowStatus, sectionOfSession, sessionGroup, sessionsByHeader, startupSession, triageOrder, waitingLabel } from './sidebarRows.ts';
 import { closedSections, DEFAULT_SECTIONS, parseSections, toggleAllSections } from './sidebarSections.ts';
 
 const NOW = Date.UTC(2026, 9, 5, 12);
@@ -156,6 +156,25 @@ describe('buildSessionList', () => {
     expect(ids(buildSessionList(rows, { search: '', project: '/p/b', now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['newest']);
     const found = buildSessionList(rows, { search: 'LOGIN', project: null, now: NOW, archiveAfterDays: DAYS });
     expect([...ids(found.active), ...ids(found.archived)]).toEqual(['old']);
+  });
+});
+
+describe('doneReason', () => {
+  const DAY = 24 * HOUR;
+  it('says why a session is in Done: marked done by you, or inactive for so many days', () => {
+    expect(doneReason(row('listed'), NOW, DAYS)).toBeNull();
+    expect(doneReason(row('done', { archivedAt: NOW - HOUR, updatedAt: NOW - 2 * HOUR }), NOW, DAYS)).toEqual({ kind: 'done' });
+    expect(doneReason(row('quiet', { updatedAt: NOW - 5 * DAY - HOUR }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 5 });
+    // Marked done before its last activity, it came back; once that ages out it is inactive, not done by you.
+    expect(doneReason(row('back', { archivedAt: NOW - 10 * DAY, updatedAt: NOW - 3 * DAY }), NOW, DAYS)).toEqual({ kind: 'inactive', days: 3 });
+    // Another computer's sessions are never in Done here.
+    expect(doneReason(row('remote', { archivedAt: NOW, remote: { computerId: 'm', computerName: 'M', sessionId: 's', status: 'idle', offline: false } as SessionRowData['remote'] }), NOW, DAYS)).toBeNull();
+  });
+
+  it('reads as the row says it', () => {
+    expect(doneReasonLabel({ kind: 'done' })).toBe('Done');
+    expect(doneReasonLabel({ kind: 'inactive', days: 1 })).toBe('Inactive 1 day');
+    expect(doneReasonLabel({ kind: 'inactive', days: 4 })).toBe('Inactive 4 days');
   });
 });
 

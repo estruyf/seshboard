@@ -605,7 +605,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.archive",
     keys: ["middleclick"],
-    action: "Archive a finished session",
+    action: "Mark a finished session done",
     section: "sessions",
     context: "In the sidebar",
     where: "sidebar",
@@ -613,7 +613,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.quick-archive",
     keys: ["e"],
-    action: "Archive the session, or unarchive it",
+    action: "Mark the session done, or reopen it",
     section: "sessions",
     context: "In the sidebar, on the focused or hovered session",
     note: "A working session asks first",
@@ -1218,7 +1218,7 @@ export const SHORTCUTS = [
     keys: ["enter"],
     action: "Run the catch-up's main action",
     section: "catch-up",
-    context: "Commit, Reply, Review changes or Archive",
+    context: "Commit, Reply, Review changes or Done",
     when: withCatchUp,
     where: "view",
   },
@@ -1268,7 +1268,7 @@ export const SHORTCUTS = [
   {
     id: "catchup.archive",
     keys: ["e"],
-    action: "Archive, and go to the next session to review",
+    action: "Mark it done, and go to the next session to review",
     section: "catch-up",
     when: catchUpCard,
     where: "view",

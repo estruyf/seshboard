@@ -75,7 +75,7 @@ const working = (status: RowStatus) => status === 'running' || status === 'needs
 export function quickActionsFor(row: QuickActionRow, prefs: QuickActionPrefs): QuickAction[] {
   if (!prefs.quickActions) return [];
   const canArchive = row.flags || row.tree;
-  if (row.archived) return canArchive ? [{ kind: 'unarchive', method: 'unarchive', label: 'Unarchive', shortcut: 'sidebar.quick-archive' }] : [];
+  if (row.archived) return canArchive ? [{ kind: 'unarchive', method: 'unarchive', label: 'Reopen', shortcut: 'sidebar.quick-archive' }] : [];
   const all = prefs.quickActionsShow === 'all';
   const busy = working(row.status);
   const read: QuickAction[] =
@@ -84,7 +84,7 @@ export function quickActionsFor(row: QuickActionRow, prefs: QuickActionPrefs): Q
       : [];
   const pin: QuickAction[] = all && row.flags ? [row.pinned ? { kind: 'pin', method: 'unpin', label: 'Unpin', shortcut: 'sidebar.quick-pin' } : { kind: 'pin', method: 'pin', label: 'Pin', shortcut: 'sidebar.quick-pin' }] : [];
   const stop: QuickAction[] = busy && row.canStop ? [{ kind: 'stop', method: 'stop', label: 'Stop', shortcut: null }] : [];
-  const archive: QuickAction[] = canArchive ? [{ kind: 'archive', method: 'archive', label: 'Archive', shortcut: 'sidebar.quick-archive' }] : [];
+  const archive: QuickAction[] = canArchive ? [{ kind: 'archive', method: 'archive', label: 'Done', shortcut: 'sidebar.quick-archive' }] : [];
   return [...read, ...pin, ...stop, ...archive];
 }
 
@@ -111,9 +111,9 @@ export function quickActionToast(method: QuickActionMethod, title: string): stri
     case 'unpin':
       return 'Unpinned';
     case 'archive':
-      return `Archived “${title}”`;
+      return `Done: “${title}”`;
     case 'unarchive':
-      return `Unarchived “${title}”`;
+      return `Reopened “${title}”`;
     case 'stop':
       return null;
   }

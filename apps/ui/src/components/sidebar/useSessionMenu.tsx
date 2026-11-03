@@ -250,8 +250,8 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           : []),
         { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => setPinned(data, !data.pinned), disabled: !data.summary },
         archivedNow
-          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
-          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
+          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Reopen', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
+          : { label: tree !== null ? archiveTreeLabel(tree) : 'Done', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
         'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
@@ -388,9 +388,9 @@ function StopAndArchive({ data, hosted, stop, archive, onClose }: { data: Sessio
   const stoppable = hosted || !!data.remote;
   return (
     <ConfirmDialog
-      title={stoppable ? 'Stop and archive?' : 'Archive while it works?'}
-      body={stoppable ? `“${title}” is ${state}. It is stopped first, then archived.` : `“${title}” is ${state} in another app. It keeps running there after you archive it.`}
-      confirmLabel={stoppable ? 'Stop and archive' : 'Archive'}
+      title={stoppable ? 'Stop it and mark it done?' : 'Mark it done while it works?'}
+      body={stoppable ? `“${title}” is ${state}. It is stopped first, then moved to Done.` : `“${title}” is ${state} in another app. It keeps running there after you mark it done.`}
+      confirmLabel={stoppable ? 'Stop and mark done' : 'Mark done'}
       data={{ 'data-stop-archive-confirm': stoppable ? 'stop' : 'archive' }}
       onConfirm={async () => {
         if (stoppable) {

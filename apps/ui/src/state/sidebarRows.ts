@@ -83,6 +83,26 @@ export function isActive(row: SessionRowData, now: number, archiveAfterDays: num
 export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays: number): number | null => archivedSinceOf(rowListing(row), now, archiveAfterDays);
 
 /**
+ * Why a session is in Done, for its row: you marked it done, or it was inactive for the days set in Settings › Sessions.
+ * Phase by phase more reasons join (a merged pull request), so the row reads one value instead of the flags.
+ */
+export type DoneReason = { kind: 'done' } | { kind: 'inactive'; days: number };
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The reason a row is in Done, or null while it is listed. */
+export function doneReason(row: SessionRowData, now: number, archiveAfterDays: number): DoneReason | null {
+  const listing = rowListing(row);
+  if (row.remote || archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
+  // The same test as the archive rule: marked done after its last activity, or while it was still working.
+  if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) return { kind: 'done' };
+  return { kind: 'inactive', days: Math.max(archiveAfterDays, Math.floor((now - row.updatedAt) / DAY)) };
+}
+
+/** "Done", or "Inactive 3 days". */
+export const doneReasonLabel = (reason: DoneReason): string => (reason.kind === 'done' ? 'Done' : `Inactive ${reason.days} ${reason.days === 1 ? 'day' : 'days'}`);
+
+/**
  * Whether a middle-click on the row archives it: an indexed session in the main list that has finished
  * (idle, unread or closed). Work in progress, a question, a failure or an archived row stay as they are.
  */

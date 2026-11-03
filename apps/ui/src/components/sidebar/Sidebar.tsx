@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, ArchiveRestore, Check, Clock, Ellipsis, FolderCog, GitBranch, Inbox, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Inbox, ListEnd, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, type CatchUp } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -31,7 +31,7 @@ import { rowLimitLabel, stoppedBy } from '../../lib/usageLimit.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { openSessionManager } from '../../state/sessionManagerStore.ts';
-import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
+import { archivedPlacement, archivedRevealTop, buildListRows, buildSessionList, GROUP_LABEL, doneReason, doneReasonLabel, headerSummary, inScope, isActive, rowStatus, sessionsByHeader, triageOrder, waitingLabel, type HeaderKey, type RowStatus, type SidebarListRow } from '../../state/sidebarRows.ts';
 import { NO_PICKS, pickGroup, rangePick, stepPick, togglePick, visiblePicks, type Picks } from '../../state/sessionPicks.ts';
 import { FocusCounter } from '../focus/FocusCounter.tsx';
 import type { MenuEntry } from '../Menu.tsx';
@@ -158,7 +158,7 @@ function GroupHeader({ row, selectAll, onToggle }: { row: Extract<SidebarListRow
   );
 }
 
-/** The Archived header, docked under the list while closed and in the list while open: the same toggle in both places. */
+/** The Done header, docked under the list while closed and in the list while open: the same toggle in both places. */
 function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: number; open: boolean; onToggle(): void; onMenu(at: { x: number; y: number }): void; action?: ReactNode }) {
   const days = usePreferences((s) => s.prefs.archiveAfterDays);
   return (
@@ -168,7 +168,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
         expanded: open,
         onToggle,
         leading: true,
-        tooltip: `Quiet for ${days === 1 ? 'a day' : `${days} days`}, or archived by you. They come back when there is something new.`,
+        tooltip: `Marked done by you, or inactive for ${days === 1 ? 'a day' : `${days} days`}. They come back when there is something new.`,
         data: { 'data-archived-toggle': true, 'data-open': open },
       }}
       action={
@@ -179,7 +179,7 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
             size="sm"
             iconOnly
             icon={<Ellipsis size={13} aria-hidden />}
-            aria-label="Archived options"
+            aria-label="Done options"
             aria-haspopup="menu"
             className="ml-auto tracking-normal normal-case"
             onClick={(e) => {
@@ -192,18 +192,18 @@ function ArchivedHeader({ count, open, onToggle, onMenu, action }: { count: numb
       }
       className="h-[22px] flex-1"
     >
-      Archived
+      Done
     </SectionHeader>
   );
 }
 
-/** The Archived header's menu: every session in Settings › Sessions (showing Archived), or the archive settings. */
+/** The Done header's menu: every session in Settings › Sessions (showing Done), or the settings for Done. */
 const archivedMenu = (at: { x: number; y: number }): { x: number; y: number; entries: MenuEntry[]; label: string } => ({
   ...at,
-  label: 'Archived',
+  label: 'Done',
   entries: [
     { label: 'Manage sessions…', icon: <Archive size={13} aria-hidden />, onSelect: () => openSessionManager({ status: 'archived' }), data: { 'data-archived-manage': true } },
-    { label: 'Archive settings…', icon: <Settings size={13} aria-hidden />, onSelect: () => openSessionManager({ focus: 'archive' }), data: { 'data-archived-settings': true } },
+    { label: 'Done settings…', icon: <Settings size={13} aria-hidden />, onSelect: () => openSessionManager({ focus: 'archive' }), data: { 'data-archived-settings': true } },
   ],
 });
 
@@ -350,6 +350,10 @@ export const SessionRow = memo(function SessionRow({
   const ageTone = (status && AGE_TONE[status]) ?? 'text-faint';
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const titleTone = emphasised || selected ? 'font-semibold text-text' : archived ? 'text-muted' : 'text-text/85';
+  // In Done: why ("Done", "Inactive 3 days"). Inactive rows are dimmed, so they don't read as finished by you.
+  const archiveAfterDays = usePreferences((s) => s.prefs.archiveAfterDays);
+  const done = archived ? doneReason(data, now, archiveAfterDays) : null;
+  const doneText = done ? doneReasonLabel(done) : null;
   const age = <span className={`shrink-0 text-meta tabular-nums ${ageTone} ${hideForActions}`}>{shortAge(status === 'running' && data.workingSince != null ? data.workingSince : data.updatedAt, now)}</span>;
   // The line at the row's left edge. With more than one Claude profile it is the profile's colour, on
   // every row, so you see whose account a session uses at a glance; the status then shows in the age's
@@ -406,9 +410,10 @@ export const SessionRow = memo(function SessionRow({
     // Indexed sessions have a transcript, so they can be pinned and archived.
     'data-indexed': data.summary !== null,
     'data-archived': archived || undefined,
+    'data-done-reason': done?.kind,
     'data-picked': picked || undefined,
     'data-has-draft': draft !== null || undefined,
-    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
+    'aria-label': [sessionRowLabel({ title: data.title, project: projectName, status, pinned: data.pinned, archived: doneText, picked, beside, ownWindow, draft: draft !== null, agent, pipeline: runShown ? (runRow ? runRowLine(runShown, null) : parentRunLine(runShown, null)) : null, updatedAt: data.updatedAt, now }), scheduled ? 'from a schedule' : null, data.summary && isOtherProviderSession(data.summary) ? `${PROVIDER_NAMES[providerOf(data.summary)]} session` : null, triggered !== null ? `started by ${triggered || 'a trigger'}` : null, limitText].filter(Boolean).join(', '),
     onClick: (e: MouseEvent) => onClick(e, data),
     // A middle-click archives a finished session, as closing a tab would.
     onAuxClick: (e: MouseEvent) => {
@@ -435,6 +440,7 @@ export const SessionRow = memo(function SessionRow({
     'data-remote-offline': remote?.offline || undefined,
     'data-tooltip': [
       data.title,
+      style === 'compact' ? doneText : null,
       style === 'compact' ? projectName : null,
       style === 'compact' ? waitingFor : null,
       limitText,
@@ -448,7 +454,7 @@ export const SessionRow = memo(function SessionRow({
   };
   // A remote session's computer, at the end of its second line.
   const chip = remote && <ComputerChip name={remote.computerName} offline={remote.offline} className="ml-auto max-w-[45%]" />;
-  const dim = away ? 'opacity-55' : '';
+  const dim = away || (done?.kind === 'inactive' && !selected) ? 'opacity-55' : '';
   // Selection is a neutral fill (a yellow tint vanishes on the light sidebar). Picked rows sit on a
   // tinted block the list draws behind them, so they need no fill of their own.
   const surface = picked
@@ -538,6 +544,12 @@ export const SessionRow = memo(function SessionRow({
           </span>
         ) : (
           <>
+            {/* In Done, why comes first, before the branch. */}
+            {doneText && status !== 'unread' && (
+              <span className="shrink-0" data-row-done={done?.kind}>
+                {doneText} ·
+              </span>
+            )}
             {status !== 'unread' && branch && <GitBranch size={11} className={`shrink-0 ${data.isWorktree ? 'text-accent-ink/80' : ''}`} aria-hidden />}
             {/* Finished with something you haven't read: say so where the branch would be. */}
             <span className="min-w-0 flex-1 truncate">{(status === 'unread' ? ['Finished, unread', filtered ? null : projectName].filter(Boolean) : place).join(' · ')}</span>
@@ -1075,8 +1087,8 @@ export function Sidebar() {
   const pickedMenu = (at: { x: number; y: number }) => {
     const count = (rows: SessionRowData[]) => `${rows.length} ${rows.length === 1 ? 'session' : 'sessions'}`;
     const entries: MenuEntry[] = [{ heading: `${picked.size} selected` }];
-    if (pickActive.length) entries.push({ label: `Archive ${count(pickActive)}`, hint: 'until new activity', onSelect: actOnPicks(pickActive, ARCHIVE) });
-    if (pickArchived.length) entries.push({ label: `Unarchive ${count(pickArchived)}`, onSelect: actOnPicks(pickArchived, { archived: false }) });
+    if (pickActive.length) entries.push({ label: `Done: ${count(pickActive)}`, hint: 'until new activity', onSelect: actOnPicks(pickActive, ARCHIVE) });
+    if (pickArchived.length) entries.push({ label: `Reopen ${count(pickArchived)}`, onSelect: actOnPicks(pickArchived, { archived: false }) });
     if (pickTargets.length) entries.push({ label: `${allPinned ? 'Unpin' : 'Pin'} ${count(pickTargets)}`, onSelect: actOnPicks(pickTargets, { pinned: !allPinned }) });
     entries.push('separator', { label: 'Clear selection', hint: 'Esc', onSelect: () => setPicks(NO_PICKS) });
     if (pickTargets.length) entries.push('separator', { label: `Delete ${count(pickTargets)}…`, hint: '⌘⌫', danger: true, onSelect: () => setDeleting(pickTargets) });
@@ -1328,12 +1340,12 @@ export function Sidebar() {
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             {pickActive.length > 0 || pickArchived.length === 0 ? (
-              <Button icon={<Archive size={13} className="shrink-0" aria-hidden />} data-archive-selected disabled={pickActive.length === 0} onClick={actOnPicks(pickActive, ARCHIVE)} className={pickButton}>
-                <span className="truncate">Archive</span>
+              <Button icon={<Check size={13} className="shrink-0" aria-hidden />} data-archive-selected disabled={pickActive.length === 0} onClick={actOnPicks(pickActive, ARCHIVE)} className={pickButton}>
+                <span className="truncate">Done</span>
               </Button>
             ) : (
-              <Button icon={<ArchiveRestore size={13} className="shrink-0" aria-hidden />} data-unarchive-selected onClick={actOnPicks(pickArchived, { archived: false })} className={pickButton}>
-                <span className="truncate">Unarchive</span>
+              <Button icon={<RotateCcw size={13} className="shrink-0" aria-hidden />} data-unarchive-selected onClick={actOnPicks(pickArchived, { archived: false })} className={pickButton}>
+                <span className="truncate">Reopen</span>
               </Button>
             )}
             <Button

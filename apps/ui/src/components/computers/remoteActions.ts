@@ -52,7 +52,7 @@ export function remoteSessionEntries(client: RpcClient<Contract> | null, compute
       : []),
     ...read,
     { label: session.pinned ? 'Unpin' : 'Pin', disabled: away, onSelect: () => setRemoteFlags(client, computer.id, session.id, { pinned: !session.pinned }) },
-    { label: 'Archive', hint: `on ${computer.name}`, disabled: away, onSelect: () => setRemoteFlags(client, computer.id, session.id, { archived: true, pinned: false }), data: { 'data-remote-archive': true } },
+    { label: 'Done', hint: `on ${computer.name}`, disabled: away, onSelect: () => setRemoteFlags(client, computer.id, session.id, { archived: true, pinned: false }), data: { 'data-remote-archive': true } },
     { label: 'Copy title', onSelect: () => void navigator.clipboard.writeText(session.title) },
     'separator',
     { label: `New session in ${session.projectName}`, disabled: away, onSelect: () => newSessionOn(computer.id, session.projectId), data: { 'data-remote-new-session': true } },

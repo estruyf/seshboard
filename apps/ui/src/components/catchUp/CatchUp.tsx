@@ -175,7 +175,7 @@ function CatchUpBanner({ card, actions, unread, committed, changesOpen, details,
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 pl-4">
           <span className={`shrink-0 text-ui font-semibold ${TEXT[tone]}`}>{committed ? 'Committed' : card.need.title}</span>
-          <span className="min-w-0 flex-1 basis-48 text-ui text-muted">{committed ? 'Archive it to clear it from your list.' : card.need.text}</span>
+          <span className="min-w-0 flex-1 basis-48 text-ui text-muted">{committed ? 'Mark it done to clear it from your list.' : card.need.text}</span>
           <Chips card={card} />
         </div>
         {details && (
