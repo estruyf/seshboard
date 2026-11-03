@@ -104,7 +104,7 @@ export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySe
     const { run, steps } = state;
     if (run.parentSessionId) return listed.has(run.parentSessionId) || steps.some((s) => s.sessionId !== null && listed.has(s.sessionId));
     const goesOn = run.status === 'running' || run.status === 'waiting' || run.status === 'paused';
-    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false }, options.now, options.archiveAfterDays);
+    return listedInMainList({ attention: run.status === 'waiting', working: goesOn, pinned: false, archivedAt: run.archivedAt, restoredAt: run.restoredAt, unread: false, updatedAt: run.updatedAt, openInApp: false, keep: false }, options.now, options.archiveAfterDays);
   });
   return shown
     .sort((a, b) => b.run.updatedAt - a.run.updatedAt)

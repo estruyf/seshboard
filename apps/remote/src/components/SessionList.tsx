@@ -26,9 +26,9 @@ import { Button, ComputerTag, Kbd, Logo, PROFILE_RAIL, RoundButton, SectionHeade
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
   working: 'text-accent-ink',
-  today: 'text-faint',
-  yesterday: 'text-faint',
-  earlier: 'text-faint',
+  pinned: 'text-faint',
+  review: 'text-faint',
+  open: 'text-faint',
 };
 
 /** The chip picked, for this tab (it survives a reload). */
@@ -43,7 +43,7 @@ function savedFilter(): ListFilter {
   }
 }
 
-/** Re-renders every minute, so ages and Today/Yesterday stay right on a page left open. */
+/** Re-renders every minute, so ages stay right on a page left open. */
 export function useNow(): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -346,7 +346,7 @@ export function SessionList({
     </header>
   );
 
-  const groups = groupSessions(shown.sessions, now);
+  const groups = groupSessions(shown.sessions);
   const recent = recentOf(groups);
   const needsYouRows = groups.find((g) => g.group === 'needs-you')?.sessions.length ?? 0;
   const empty = sessions.sessions.length === 0;

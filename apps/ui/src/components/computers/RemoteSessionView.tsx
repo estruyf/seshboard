@@ -9,7 +9,7 @@ import { useDrafts } from '../../state/draftsStore.ts';
 import { askThrough, closeAsk, newAskThread, openAskThrough, pickAskThread, retryAskThrough, useAsk, useSessionAsk, type AskBackend } from '../../state/askStore.ts';
 import { useRightPanel } from '../../state/rightPanelStore.ts';
 import { AskPanel } from '../ask/AskPanel.tsx';
-import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { catchUpShow } from '../catchUp/catchUpModel.ts';
 import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { RemoteChangesPanel, type RemoteChanges } from './RemoteChangesPanel.tsx';
@@ -448,7 +448,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
       <div className="flex min-w-0 flex-1 flex-col">
       {/* The conversation, with Find over its top right corner. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-      {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, unread: session.unread }} />}
+      {!(catchUp && show) && <CatchUpPassBar rowId={rowId} active={pane.active} />}
+      {catchUp && show && <CatchUpSlot card={catchUp} show={show} cwd={null} changes={null} active={pane.active} changesOpen={changesOpen} remote={{ actions: catchUpActions, unread: session.unread, rowId }} />}
       {find.query !== null && <FindBar query={find.query} onQuery={find.setQuery} count={find.count} current={find.current} onStep={find.step} onClose={find.close} focusNonce={find.focusNonce} />}
       <div
         ref={scroller}

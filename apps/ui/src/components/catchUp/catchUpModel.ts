@@ -153,7 +153,12 @@ export type CatchUpKey =
   | { type: 'escape' }
   /** Space: Details in the banner, or the banner from the strip. */
   | { type: 'space' }
+  /** S: on to the next session to go through, leaving this one as it is. */
+  | { type: 'skip' }
   | { type: 'action'; id: CatchUpActionId };
+
+/** The letter that skips to the next session, in the banner and the strip. */
+export const SKIP_KEY = 's';
 
 const LETTERS: Record<string, CatchUpActionId> = Object.fromEntries(Object.entries(ACTION_KEYS).map(([id, key]) => [key, id as CatchUpActionId]));
 
@@ -169,7 +174,9 @@ export function catchUpKey(event: KeyLike, ctx: { target: KeyTarget; overlay: bo
   if (key === 'Escape') return { type: 'escape' };
   if (event.shiftKey) return null;
   if (key === ' ') return ctx.target === 'control' ? null : { type: 'space' };
-  // Folded into the strip, only Space (show it) and its primary action work; the letters are for the banner.
+  // Skip works folded too: going through Open sessions, which are read, meets their strips.
+  if (key.toLowerCase() === SKIP_KEY) return { type: 'skip' };
+  // Folded into the strip, only Space (show it), Skip and its primary action work; the other letters are for the banner.
   if (ctx.show === 'strip') return key === 'Enter' && ctx.target !== 'control' ? { type: 'primary' } : null;
   if (key === 'Enter') return ctx.target === 'control' ? null : { type: 'primary' };
   const id = LETTERS[key.toLowerCase()];
@@ -190,11 +197,37 @@ export function escapeStep(state: { replying: boolean; changesOpen: boolean; det
 /** "Reply to Claude about <title>…", the message box's placeholder after Reply. */
 export const replyPlaceholder = (title: string) => `Reply to Claude about ${title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title}…`;
 
-/** The session to open after archiving one: the next in the sidebar's order, else the one before, else none. */
-export function nextAfterArchive(order: readonly string[], archived: string): string | null {
-  const at = order.indexOf(archived);
-  const rest = order.filter((id) => id !== archived);
-  if (rest.length === 0) return null;
-  if (at === -1) return rest[0]!;
-  return rest[Math.min(at, rest.length - 1)]!;
+/** Where you are in a pass through the sessions to go through (Skip and Done move it on). */
+export interface PassState {
+  /** The session the pass is on. */
+  current: string;
+  /** The ones you skipped: the pass doesn't come back to them. */
+  skipped: ReadonlySet<string>;
+  /** How many you skipped or archived so far. */
+  handled: number;
+}
+
+/**
+ * The session a pass goes to next: the first in `order` (To review, then Open, in the sidebar's order) that isn't the
+ * current one and that you haven't skipped. From the top each time, because reading a session moves it from To review
+ * to Open, further down. Null when there is none left.
+ */
+export function nextInPass(order: readonly string[], current: string, skipped: ReadonlySet<string>): string | null {
+  return order.find((id) => id !== current && !skipped.has(id)) ?? null;
+}
+
+/** The pass after skipping or archiving the current session, on `next`; null when there is nothing left. */
+export function advancePass(pass: PassState | null, from: string, how: 'skip' | 'done', order: readonly string[]): PassState | null {
+  // Skipping from a session the pass isn't on starts a new pass there.
+  const base = pass?.current === from ? pass : { current: from, skipped: new Set<string>(), handled: 0 };
+  const skipped = how === 'skip' ? new Set([...base.skipped, from]) : base.skipped;
+  const next = nextInPass(order, from, skipped);
+  return next ? { current: next, skipped, handled: base.handled + 1 } : null;
+}
+
+/** "2 of 7" while a pass is on this session: those handled, this one, and those still to come. Null outside a pass. */
+export function passPosition(pass: PassState | null, sessionId: string, order: readonly string[]): { position: number; total: number } | null {
+  if (!pass || pass.current !== sessionId) return null;
+  const left = order.filter((id) => id !== sessionId && !pass.skipped.has(id)).length;
+  return { position: pass.handled + 1, total: pass.handled + 1 + left };
 }

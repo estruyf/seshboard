@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { CatchUp, Computer, Contract, RpcClient } from '@seshboard/protocol/client';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
-import { useSessions } from '../../state/sessionsStore.ts';
+import { moveOn, passOrderNow } from '../../state/catchUpPass.ts';
+import { remoteRowId } from '../../state/remoteSelection.ts';
 import type { CatchUpActions } from '../catchUp/useCatchUpActions.tsx';
 import { CommitDialog } from '../git/CommitDialog.tsx';
 import { callComputer } from './callComputer.ts';
@@ -48,10 +49,13 @@ export function useRemoteCatchUpActions({
         return useDrafts.getState().requestFocus(draftKey);
       case 'read':
         return setRemoteUnread(client, computer.id, sessionId, false);
-      case 'archive':
+      case 'archive': {
+        // As here: on to the next session to go through, worked out while this one is still listed.
+        const order = passOrderNow();
         setRemoteFlags(client, computer.id, sessionId, { archived: true, pinned: false });
-        useSessions.getState().goHome();
+        moveOn(remoteRowId({ computerId: computer.id, sessionId }), 'done', order);
         return;
+      }
     }
   };
 

@@ -53,6 +53,7 @@ export function retentionCandidates(sources: SessionSources & { drafts: Readonly
         unread: summary.unread,
         updatedAt,
         openInApp: hosted || l?.origin === 'app',
+        keep: sources.queued.has(summary.id) || sources.drafts.has(summary.id),
       },
       deletion: {
         pinned: summary.pinned,

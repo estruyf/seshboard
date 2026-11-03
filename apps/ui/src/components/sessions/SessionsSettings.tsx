@@ -70,13 +70,14 @@ function useManagerRows(now: number, archiveAfterDays: number): ManagerRow[] {
   const items = useLater((s) => s.items);
   const drafts = useDrafts((s) => s.drafts);
   return useMemo(() => {
-    const rows = toRows(sessions, live, hosts);
     const holds: Holds = {
       queued: new Set(items.flatMap((item) => (item.waitFor.kind === 'session' ? [item.waitFor.sessionId] : []))),
       drafts: new Set(sessionsWithDrafts(Object.keys(drafts), drafts)),
       // A Claude Code process this app doesn't run: a terminal, an editor or Claude desktop has it open.
       elsewhere: new Set([...live.keys()].filter((id) => !isActiveHost(hosts.get(id)))),
     };
+    // What the sidebar keeps listed (`keep`), so a session isn't counted as archived here while it is listed there.
+    const rows = toRows(sessions, live, hosts, new Set([...holds.queued, ...holds.drafts]));
     return managerRows(rows, holds, now, archiveAfterDays);
   }, [sessions, live, hosts, items, drafts, now, archiveAfterDays]);
 }

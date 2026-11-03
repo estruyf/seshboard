@@ -140,7 +140,7 @@ import { startNewSession } from '../newSession/startSession.ts';
 import { GIT_POLL_MS, sameChanges } from './gitChangesRefresh.ts';
 import { restartAsNew } from './restartAsNew.ts';
 import { formatKeys, keysFor, matches as isShortcut } from '../../lib/shortcuts.ts';
-import { CatchUpSlot } from '../catchUp/CatchUp.tsx';
+import { CatchUpPassBar, CatchUpSlot } from '../catchUp/CatchUp.tsx';
 import { BackToRunButton, ParentRunRows, ParentStepTree, StepCrumb, StepStopNotice, StepTopLines, StepVerdictCard, useRunPlaceholder } from '../pipelines/RunParts.tsx';
 import { withRunStub } from '../pipelines/runView.ts';
 import { useRunOfParent } from '../../state/pipelinesStore.ts';
@@ -1716,6 +1716,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               focusNonce={findFocus}
             />
           )}
+          {/* Going through sessions, one without a catch-up still shows where you are, with Skip. */}
+          {!(catchUp && catchUpShow) && !terminalMaximized && <CatchUpPassBar rowId={sessionId} active={active} />}
           {catchUp && catchUpShow && !terminalMaximized && (
             <CatchUpSlot
               card={catchUp}

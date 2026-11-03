@@ -197,7 +197,7 @@ export function ProjectOverview({ project }: { project: ProjectInfo }) {
 }
 
 /**
- * Sessions: the project's sessions with the sidebar's rows and grouping (Needs you, Working, then by day), its queue,
+ * Sessions: the project's sessions with the sidebar's rows and grouping (Needs you, Working, Pinned, To review, Open), its queue,
  * its schedules,
  * and its archived sessions in their own section at the end, closed unless nothing else is listed.
  */

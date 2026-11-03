@@ -72,7 +72,7 @@ describe('sidebarForest', () => {
     const forest = sidebarForest(rows, [], NOW);
     const parent = forest.roots[0]!;
     expect(rowStatus(parent)).toBe('needs-you');
-    expect(groupSessions(forest.roots, NOW)[0]).toMatchObject({ group: 'needs-you' });
+    expect(groupSessions(forest.roots)[0]).toMatchObject({ group: 'needs-you' });
     // The child itself is unchanged.
     expect(rowStatus(forest.children.get('parent')![1]!)).toBe('running');
   });
@@ -168,7 +168,7 @@ describe('the tree in the list', () => {
   });
 
   it('keeps the parent of the open sub-session in a closed section', () => {
-    const list = buildListRows(forest.roots, [], { now: NOW, archivedOpen: false, children: forest.children, closed: new Set(['today']), selectedId: 'exec' });
+    const list = buildListRows(forest.roots, [], { now: NOW, archivedOpen: false, children: forest.children, closed: new Set(['open']), selectedId: 'exec' });
     expect(list.flatMap((r) => (r.kind === 'session' ? [r.data.id] : []))).toEqual(['parent']);
   });
 

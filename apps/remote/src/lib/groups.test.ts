@@ -7,37 +7,35 @@ const HOUR = 3_600_000;
 const session = (id: string, status: RemoteSession['status'], updatedAt: number, projectId = 'aaaaaaaaaaaaaaaa'): RemoteSession => ({ id, title: id, projectId, projectName: 'Web', branch: null, status, updatedAt, unread: status === 'unread', pinned: false, model: null, permissionMode: null, profile: null });
 
 describe('groupSessions', () => {
-  it('puts what needs you and what works first, then the rest by calendar day, newest first', () => {
+  it('puts what needs you and what works first, then pinned, then what you haven\'t read and what you have, newest first', () => {
     const today = startOfDay(NOW);
-    const groups = groupSessions(
-      [
-        session('old', 'idle', today - 3 * 24 * HOUR),
-        session('morning', 'unread', today + HOUR),
-        session('noon', 'idle', today + 4 * HOUR),
-        session('last-night', 'idle', today - HOUR),
-        session('asks', 'needs-you', today - 5 * 24 * HOUR),
-        session('busy', 'working', today),
-      ],
-      NOW,
-    );
+    const groups = groupSessions([
+      session('old', 'idle', today - 3 * 24 * HOUR),
+      session('morning', 'unread', today + HOUR),
+      session('noon', 'idle', today + 4 * HOUR),
+      session('failed', 'error', today - HOUR),
+      session('asks', 'needs-you', today - 5 * 24 * HOUR),
+      session('busy', 'working', today),
+      { ...session('pin', 'unread', today - 2 * HOUR), pinned: true },
+    ]);
     expect(groups.map((g) => [g.group, g.sessions.map((s) => s.id)])).toEqual([
       ['needs-you', ['asks']],
       ['working', ['busy']],
-      ['today', ['noon', 'morning']],
-      ['yesterday', ['last-night']],
-      ['earlier', ['old']],
+      ['pinned', ['pin']],
+      ['review', ['morning', 'failed']],
+      ['open', ['noon', 'old']],
     ]);
   });
 
   it('orders Working by when you set each session going, not by its last write', () => {
     const working = (id: string, workingSince: number | null, updatedAt: number) => ({ ...session(id, 'working', updatedAt), workingSince });
-    const groups = groupSessions([working('first', NOW - 10 * 60_000, NOW), working('second', NOW - 5 * 60_000, NOW - 60_000), working('older-app', null, NOW - HOUR)], NOW);
+    const groups = groupSessions([working('first', NOW - 10 * 60_000, NOW), working('second', NOW - 5 * 60_000, NOW - 60_000), working('older-app', null, NOW - HOUR)]);
     expect(groups[0]!.sessions.map((s) => s.id)).toEqual(['second', 'first', 'older-app']);
   });
 
   it('leaves out empty sections', () => {
-    expect(groupSessions([session('a', 'idle', NOW)], NOW).map((g) => g.group)).toEqual(['today']);
-    expect(groupSessions([], NOW)).toEqual([]);
+    expect(groupSessions([session('a', 'idle', NOW)]).map((g) => g.group)).toEqual(['open']);
+    expect(groupSessions([])).toEqual([]);
   });
 });
 

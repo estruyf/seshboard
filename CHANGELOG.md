@@ -6,6 +6,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **To review and Open.** The sidebar now says what is still yours instead of grouping by day: **To review** has the finished sessions you haven't read, **Open** the ones you read but haven't archived, newest first. Today, Yesterday and Earlier are gone; each row still shows its age. A session with an unsent message or a queued prompt stays listed however old it is, here, in VS Code and on your phone, so it never slips into Archived. On your phone the list has the same sections.
+- **Go through your sessions one by one.** The sidebar footer counts what is open ("7 open"). Click it to open the first session to review with its catch-up. **Skip** (S) goes on to the next one, To review first, then Open, and leaves the one you skipped as it was. **Archive** (E) goes on to the same next one. The catch-up says where you are ("2 of 7"), and when there is nothing left you're back Home.
 - **Quick start from anywhere.** Press ⌃⌥Space in any app to start a session: pick a project, type the task, and it runs in the background without bringing Seshboard forward. ⌘↩ starts it and opens Seshboard, and ⌘K has more: start in a new worktree, change the model, mode or profile, attach the clipboard, or add it to Later instead. What needs you is listed on top, and Esc keeps what you typed for five minutes. On Windows and Linux the shortcut is Ctrl+Alt+Space. Change it, or turn off starting in the background, in **Settings › General › Quick start**.
 - **Defaults for GitHub Copilot sessions.** A Copilot profile now has **New session defaults** in **Settings › Profiles**, as Claude profiles do: its model and effort (from Copilot's own models), its permission mode and its workspace (current folder or a new worktree). A project on a Copilot profile sets the same in its **Settings**. New session starts Copilot sessions with them. The global model and effort in **Settings › General** are Claude's, so Copilot sessions without a model start on Copilot's default; the global permission mode applies to both.
 - **Copilot CLI updates, like Claude Code's.** With a GitHub Copilot profile, **Settings › About** shows GitHub Copilot CLI too: the version you have, whether a newer one is out, and **Update**. A toast says when a new version is available, as it does for Claude Code. Seshboard uses the new version the next time it opens.
@@ -33,6 +35,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- The sidebar footer's count of running Claude Code processes says "2 running" instead of "2 open", now that "open" counts the sessions you haven't finished.
 - The message box is bigger, with the model, effort, mode and profile on a tray under it, together with context and usage.
 - The working line under a reply shows the patch panel from the app icon, its free jacks lighting up in turn, like the Dock. It takes the colours of your theme: its light is the theme's accent, and the themes named after an app icon have that icon's cables.
 

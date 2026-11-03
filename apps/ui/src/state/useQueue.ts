@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { basename } from '../lib/format.ts';
 import { useHosts } from './hostsStore.ts';
+import { useKeptSessions } from './keptSessions.ts';
 import { startQueued, useLater } from './laterStore.ts';
 import { usePreferences } from './preferencesStore.ts';
 import { useProjects } from './projectsStore.ts';
@@ -21,7 +22,8 @@ export function useListedRows(): SessionRowData[] {
   const live = useSessions((s) => s.live);
   const hosts = useHosts((s) => s.hosts);
   const scope = usePreferences((s) => s.prefs.sessionScope);
-  return useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  return useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
 }
 
 /** A project's name for a folder: its own name, else the folder's. */

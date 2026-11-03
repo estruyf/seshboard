@@ -40,20 +40,22 @@ export interface ListingState {
   updatedAt: number;
   /** Open in Seshboard (a process idling elsewhere doesn't count). */
   openInApp: boolean;
+  /** Holds an unsent message or a queued prompt waits for it: work you left there, so it never ages out. */
+  keep: boolean;
 }
 
 /**
  * Main list or Archived? Anything that needs you or is pinned stays up. Archiving by hand hides a session until it has
  * new activity (one that is still working stays archived until it finishes). Unarchiving by hand keeps it up until it
- * has new activity. Otherwise what works, is open in the app or is unread stays, and the rest after `archiveAfterDays`
- * without activity.
+ * has new activity. Otherwise what works, is open in the app, is unread or holds something you left (`keep`) stays, and the
+ * rest after `archiveAfterDays` without activity.
  */
 export function listedInMainList(s: ListingState, now: number, archiveAfterDays: number): boolean {
   if (s.attention || s.pinned) return true;
   if (s.archivedAt !== null && (s.archivedAt >= s.updatedAt || s.working)) return false;
   if (s.working) return true;
   if (s.restoredAt !== null && s.restoredAt >= s.updatedAt) return true;
-  return s.openInApp || s.unread || now - s.updatedAt < archiveAfterDays * DAY_MS;
+  return s.openInApp || s.unread || s.keep || now - s.updatedAt < archiveAfterDays * DAY_MS;
 }
 
 /**

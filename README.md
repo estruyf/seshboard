@@ -39,7 +39,7 @@ It uses the Claude Code you already have installed, with your login, settings, c
 - See at a glance which sessions are **working**, **waiting for you**, **finished** or **unread**. Sort the sidebar by **Quickest to unblock** to see the sessions that wait for you first, then the unread ones by how long they take to review.
 - **Catch-up:** when a session finishes, a short briefing says what you asked, the one thing it needs from you next, whether the tests passed and how much changed, with a key for every action.
 - Filter by one of your projects, filter by title, and pin the sessions you keep coming back to.
-- Close a section of the sidebar (Working, Queue, Pinned, Today, Yesterday, Earlier) by clicking its header, or ← and → on it; ⌥-click closes or opens them all. A closed section keeps its count and says what's unread, and the session you have open stays visible under it.
+- Close a section of the sidebar (Working, Queue, Pinned, Open) by clicking its header, or ← and → on it; ⌥-click closes or opens them all. A closed section keeps its count and says what's unread, and the session you have open stays visible under it.
 - **Search every conversation** (⌘⇧F): your prompts and Claude's replies across all sessions, with the matching words highlighted. Pick a result to jump straight to that message.
 - **Find in a conversation** (⌘F): every match in the session you're reading is highlighted; ↩ and ⇧↩ step through them.
 - Give each project an icon. Seshboard picks one up from the repo when it can (a logo or favicon).
@@ -345,7 +345,8 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | C | Commit |
 | R | Reply to Claude (Puts you in the message box) |
 | U | Mark as read |
-| E | Archive, and go to the next session |
+| E | Archive, and go to the next session to review |
+| S | Skip to the next session to review (To review first, then Open; The skipped session stays as it is) |
 | Space | Open or close Details, or show the folded catch-up |
 
 **New session**

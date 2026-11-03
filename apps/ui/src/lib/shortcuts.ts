@@ -303,7 +303,7 @@ const withTerminal = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
-/** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
+/** A catch-up is on screen; folded into its strip, only Space, ↩ and S work. */
 const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
 const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
 /** The Projects view: the list of projects and the open one. */
@@ -1268,9 +1268,19 @@ export const SHORTCUTS = [
   {
     id: "catchup.archive",
     keys: ["e"],
-    action: "Archive, and go to the next session",
+    action: "Archive, and go to the next session to review",
     section: "catch-up",
     when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.skip",
+    keys: ["s"],
+    action: "Skip to the next session to review",
+    section: "catch-up",
+    context: "To review first, then Open",
+    note: "The skipped session stays as it is",
+    when: withCatchUp,
     where: "view",
   },
   {

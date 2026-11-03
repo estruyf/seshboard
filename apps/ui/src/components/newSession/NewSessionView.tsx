@@ -17,6 +17,7 @@ import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { addToQueue, removeFromQueue, setAutoStart, setWaitFor, updateQueued, useLater } from '../../state/laterStore.ts';
 import { useSchedules } from '../../state/schedulesStore.ts';
 import { ScheduleDialog } from '../schedules/ScheduleDialog.tsx';
@@ -323,7 +324,8 @@ function LocalNewSession() {
   const lastBranches = useMemo(() => latestBranches(sessions.values()), [sessions]);
   // The sessions the sidebar lists (sessions from other apps only when the scope shows them): the
   // tiles' status lines and "Pick up in" come from these.
-  const rows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const rows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   const activity = useMemo(() => activityByProject(rows), [rows]);
   const ordered = useMemo(
     () => orderProjects(folders, projectOrder, (root) => Math.max(projects.get(root)?.lastActivity ?? 0, activity.get(root)?.lastActivity ?? 0) || null),
