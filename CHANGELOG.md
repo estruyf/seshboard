@@ -41,6 +41,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Changed
 
 - The sidebar footer's count of running Claude Code processes says "2 running" instead of "2 open", now that "open" counts the sessions you haven't finished.
+- **Sessions on another computer have the new message box.** A session there and New session there now look and work like they do here: the box, with the profile, model, effort and mode chips on the tray under it (and the session's cost on the right), folding the same way in a narrow pane. New session there has the route strip on top, with Where, the branch and the Worktree switch.
 - The message box is bigger, with the model, effort, mode and profile on a tray under it, together with context and usage.
 - The working line under a reply shows the patch panel from the app icon, its free jacks lighting up in turn, like the Dock. It takes the colours of your theme: its light is the theme's accent, and the themes named after an app icon have that icon's cables.
 - Claude Code sessions started by Seshboard use the `seshboard` entrypoint label instead of inheriting their launcher's label.

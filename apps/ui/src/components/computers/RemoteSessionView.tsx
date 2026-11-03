@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDown, ArrowUp, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { type Computer, type Contract, type PermissionDecision, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
+import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
+import { type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -50,8 +50,10 @@ import { ComputerChip } from './ComputerChip.tsx';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
 import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteDisplay, remoteItems, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
-import { RemoteEffortChip, RemoteModeChip, RemoteModelChip, useRemoteOptions } from './RemoteChips.tsx';
-import { remoteAutoFace, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
+import { useRemoteOptions } from './RemoteChips.tsx';
+import { remoteModelChoice, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
+import { ComposerChipRow } from '../composer/ComposerChips.tsx';
+import { ComposerTray } from '../composer/ComposerTray.tsx';
 import { RemoteText } from './RemoteText.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { RemoteSessionCost } from '../usage/SessionCost.tsx';
@@ -71,6 +73,8 @@ import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerVi
 import { PaneClose } from '../split/PaneClose.tsx';
 
 const PAGE = 100;
+/** Test hooks of the tray's chips: `data-remote-model-select`, `data-menu="remote-model"`. */
+const REMOTE_CHIP_NAMES = { profile: 'remote-profile', model: 'remote-model', effort: 'remote-effort', mode: 'remote-mode' };
 const NO_RUNS: RemoteRunState[] = [];
 
 const DOT_TONE = { warn: 'bg-warn', accent: 'bg-accent-ink animate-pulse', unread: 'bg-unread', ok: 'bg-ok', error: 'bg-error', faint: 'bg-faint' } as const;
@@ -574,7 +578,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
       {remember.overlay}
       {readingReply && createPortal(<ReadMode sessionId={rowId} title={session.title} live={null} cwd={null} reply={readingReply} remote={{ draftKey, ask: connected ? askBackend : null }} />, document.body)}
 
-      <div className="mx-auto grid w-full max-w-3xl shrink-0 gap-2 px-6 pb-4">
+      <div className="mx-auto grid w-full max-w-4xl shrink-0 grid-cols-[minmax(0,1fr)] gap-2 px-6 pb-3 @max-[860px]:px-4">
         {away && (
           <Notice
             tone="caution"
@@ -625,10 +629,6 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
         {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
         <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
-        {/* What the session would cost at API prices, as that computer counts it; the quiet line under a local session's box. */}
-        <div className="-mt-1 flex min-h-6 items-center justify-end px-1 text-meta text-muted empty:hidden" data-remote-session-footer>
-          <RemoteSessionCost client={client} computer={computer} sessionId={session.id} working={working} />
-        </div>
       </div>
       </div>
       {panel === 'changes' && (
@@ -714,10 +714,11 @@ function ToolRun({ tools }: { tools: RemoteTool[] }) {
 }
 
 /**
- * The message box, in the local layout: the computer's chip where the profile chip is, the session's profile (it keeps
- * it, as a local one does), and model, effort and mode chips that change them there while it runs in Seshboard, as
- * in the remote app. A computer too old for `options.get` shows them as text. Stop while Claude works, and a `remote` border. Images and files go with the
- * message (`RemoteAttachments.tsx`): files only to a computer whose Seshboard takes them.
+ * The message box, as a local session's (the box, and the tray under it): on the tray, the computer's chip and the
+ * session's profile (it keeps it, as a local one does) before the model, effort and mode chips, which change them there
+ * while it runs in Seshboard; a computer too old for `options.get` shows them as text. The cost, as that computer
+ * counts it, is on the right. Stop while Claude works, and a `remote` frame. Images and files go with the message
+ * (`RemoteAttachments.tsx`): files only to a computer whose Seshboard takes them.
  */
 function RemoteComposer({ client, computer, session, working, onSent, onStop }: { client: RpcClient<Contract>; computer: Computer; session: RemoteSession; working: boolean; onSent(): void; onStop(): void }) {
   const localProfiles = useProfiles((s) => s.profiles);
@@ -727,6 +728,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
   const [draft, setDraft] = useState(saved.text);
   const [sending, setSending] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const connected = computer.state === 'connected';
   const savedPrompts = useRemoteSavedPrompts({ key: draftKey, draft, setDraft, areaRef, initialFill: saved.fill, disabled: !connected });
@@ -753,7 +755,7 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
     applyEdit(el, edit, setDraft);
     el.scrollTop = el.scrollHeight;
     // The frame lights up once, so you see where the quote went.
-    const card = root.current;
+    const card = cardRef.current;
     if (card) {
       card.classList.remove('composer-flash');
       void card.offsetWidth;
@@ -803,92 +805,127 @@ function RemoteComposer({ client, computer, session, working, onSent, onStop }: 
       onStop();
     }
   };
+  const sendNow = formatKeys(keysFor('composer.send-now'));
   const placeholder = !connected
     ? `${name} is not connected`
     : working
       ? whileWorking === 'queue'
-        ? `Message Claude on ${name}. It goes in Up next until Claude finishes, or ${formatKeys(keysFor('composer.send-now'))} sends it now.`
-        : `Message Claude on ${name}. Claude reads it at its next step, or ${formatKeys(keysFor('composer.send-now'))} stops Claude and sends it now.`
+        ? `Message Claude on ${name}. It waits in Up next, or ${sendNow} sends it now.`
+        : `Message Claude on ${name}. Claude reads it at its next step, or ${sendNow} sends it now.`
       : `Message Claude on ${name}`;
   const blocked = !connected ? `${name} is not connected` : attachments.reading ? 'Reading the attachments' : null;
+  // Where it runs and whose login, before the chips: neither changes for a running session.
+  const lead = (
+    <>
+      <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
+      {session.profile && (
+        <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude profile: ${session.profile.name}. A running session keeps its profile.`} data-remote-session-profile={session.profile.id}>
+          <span className={`size-2 rounded-full ${PROFILE_DOT[remoteProfileColor(session.profile, localProfiles)]}`} aria-hidden />
+          {session.profile.name}
+        </span>
+      )}
+    </>
+  );
+  const model = options ? remoteModelChoice(options.models, session) : null;
+  const controls =
+    running && options && model ? (
+      <ComposerChipRow
+        lead={lead}
+        profile={null}
+        model={{ ...model, onChange: (value) => void callComputer(client, computer.id, 'session.setModel', { sessionId: session.id, model: value || null }).catch(fail) }}
+        effort={
+          // Only from a Seshboard that sends the effort, and for a model that takes one.
+          session.effort !== undefined && options.efforts.length > 0 && remoteTakesEffort(options.models, session.model)
+            ? { value: session.effort ?? '', levels: options.efforts, onChange: (effort) => void callComputer(client, computer.id, 'session.setEffort', { sessionId: session.id, effort: effort || null }).catch(fail) }
+            : null
+        }
+        mode={{
+          value: session.permissionMode!,
+          // Bypass shows when that computer set it, but only it can pick it.
+          onChange: (mode) => {
+            if ((options.modes as PermissionMode[]).includes(mode)) void callComputer(client, computer.id, 'session.setPermissionMode', { sessionId: session.id, mode: mode as RemotePermissionMode }).catch(fail);
+          },
+        }}
+        disabled={!connected}
+        names={REMOTE_CHIP_NAMES}
+      />
+    ) : (
+      <div className="flex min-w-0 flex-1 items-center gap-0.5">
+        {lead}
+        {session.model && (
+          <span className="truncate px-1.5 text-ui text-muted" data-tooltip={`Model: ${session.model}`} data-remote-model>
+            {options ? remoteModelLabel(options.models, session.model) : session.model}
+          </span>
+        )}
+        {session.permissionMode && (
+          <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Mode: ${MODE_LABEL[session.permissionMode]}`} data-remote-mode>
+            <span className={`size-2 rounded-full ${MODE_DOT[session.permissionMode] ?? 'bg-faint'}`} aria-hidden />
+            {MODE_LABEL[session.permissionMode]}
+          </span>
+        )}
+      </div>
+    );
   return (
-    <div ref={root} className={`relative rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${connected ? 'border-remote/45' : 'border-border'}`} data-remote-composer>
+    <div ref={root} className="@container/box relative" data-remote-composer>
       <DropOverlay drop={attachments.drop} />
       {menu && <SavedPromptMenu menu={menu} onChoose={choose} projectName={name} />}
-      {fillState && (
-        <>
-          <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={() => send()} onLeave={() => areaRef.current?.focus()} />
-          <div aria-hidden className="my-2 border-t border-dashed border-edge" />
-        </>
-      )}
-      <RemoteAttachmentList state={attachments} className="mb-2" />
-      <textarea
-        ref={areaRef}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          updateMenu(event.target.value, event.target.selectionStart);
-        }}
-        onBlur={() => setTimeout(() => setMenu(null), 100)}
-        onKeyDown={onKeyDown}
-        onPaste={attachments.onPaste}
-        rows={1}
-        disabled={!connected}
-        placeholder={fillState ? 'Add more context… (optional, sent after the prompt)' : placeholder}
-        aria-label={`Message Claude on ${name}`}
-        aria-keyshortcuts={working ? formatKeys(keysFor('claude.stop')) : undefined}
-        className="block field-sizing-content max-h-80 w-full min-w-0 resize-none bg-transparent text-body leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60"
-        data-computer-composer
-      />
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <div className="-ml-1.5 flex min-w-0 flex-1 items-center gap-1">
-          <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
-          <ComputerChip name={name} size="header" offline={!connected} data-tooltip={`Claude runs on ${name}, with its Claude profile.`} />
-          {session.profile && (
-            <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Claude profile: ${session.profile.name}. A running session keeps its profile.`} data-remote-session-profile={session.profile.id}>
-              <span className={`size-1.5 rounded-full ${PROFILE_DOT[remoteProfileColor(session.profile, localProfiles)]}`} aria-hidden />
-              {session.profile.name}
-            </span>
-          )}
-          {running && options ? (
-            <>
-              <RemoteModelChip options={options} value={session.model} autoFace={remoteAutoFace(session.auto)} disabled={!connected} onPick={(model) => void callComputer(client, computer.id, 'session.setModel', { sessionId: session.id, model }).catch(fail)} />
-              {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
-              {session.effort !== undefined && options.efforts.length > 0 && remoteTakesEffort(options.models, session.model) && (
-                <RemoteEffortChip options={options} value={session.effort} disabled={!connected} onPick={(effort) => void callComputer(client, computer.id, 'session.setEffort', { sessionId: session.id, effort }).catch(fail)} />
-              )}
-              <RemoteModeChip options={options} value={session.permissionMode!} disabled={!connected} onPick={(mode) => void callComputer(client, computer.id, 'session.setPermissionMode', { sessionId: session.id, mode }).catch(fail)} />
-            </>
-          ) : (
-            <>
-              {session.model && (
-                <span className="truncate px-1.5 text-ui text-muted" data-tooltip={`Model: ${session.model}`} data-remote-model>
-                  {options ? remoteModelLabel(options.models, session.model) : session.model}
-                </span>
-              )}
-              {session.permissionMode && (
-                <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-ui text-muted" data-tooltip={`Mode: ${MODE_LABEL[session.permissionMode]}`} data-remote-mode>
-                  <span className={`size-1.5 rounded-full ${MODE_DOT[session.permissionMode] ?? 'bg-faint'}`} aria-hidden />
-                  {MODE_LABEL[session.permissionMode]}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {working && connected && <span className="text-meta text-muted @max-[860px]:hidden">Claude is working on {name}</span>}
-          {working && (
-            <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-computer-stop>
-              Stop
-            </Button>
-          )}
-          {working ? (
-            <QueueButton state={queueButtonState({ blocked, sending, hasMessage, whileWorking })} onAction={(action) => send(action === 'send-now' ? 'now' : action)} />
-          ) : (
-            <Button variant="primary" size="lg" iconOnly icon={<ArrowUp size={15} aria-hidden />} aria-label="Send" disabled={!connected || sending || attachments.reading || !hasMessage} onClick={() => send()} data-computer-send />
-          )}
+      <div
+        ref={cardRef}
+        onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
+        className={`relative z-[1] rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${connected ? 'border-remote/45 focus-within:border-remote/80' : 'border-border'}`}
+        data-composer-card
+      >
+        {fillState && (
+          <>
+            <PromptFiller ref={fillerRef} state={fillState} onChange={setFill} projectName={name} root={null} cwd={null} disabled={!connected} onClear={clearFill} onSend={() => send()} onLeave={() => areaRef.current?.focus()} />
+            <div aria-hidden className="my-2 border-t border-dashed border-edge" />
+          </>
+        )}
+        <RemoteAttachmentList state={attachments} className="mb-2" />
+        <textarea
+          ref={areaRef}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            updateMenu(event.target.value, event.target.selectionStart);
+          }}
+          onBlur={() => setTimeout(() => setMenu(null), 100)}
+          onKeyDown={onKeyDown}
+          onPaste={attachments.onPaste}
+          rows={1}
+          disabled={!connected}
+          placeholder={fillState ? 'Add more context… (optional, sent after the prompt)' : placeholder}
+          aria-label={`Message Claude on ${name}`}
+          aria-keyshortcuts={working ? formatKeys(keysFor('claude.stop')) : undefined}
+          className="block field-sizing-content max-h-[10lh] min-h-[3lh] w-full min-w-0 resize-none bg-transparent px-1 text-body leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60"
+          data-computer-composer
+        />
+        {/* The box's own row: what goes into the message on the left, what sends it on the right. How it runs is on the tray. */}
+        <div className="mt-1.5 flex items-center gap-x-2" data-composer-footer>
+          <div className="-ml-1 flex shrink-0 items-center gap-0.5" data-composer-footer-start>
+            <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+            {working && (
+              <Button variant="danger" size="lg" icon={<span className="size-2 rounded-[2px] bg-current" aria-hidden />} shortcut="claude.stop" kbdHideNarrow disabled={!connected} onClick={onStop} data-tooltip={`Stop Claude on ${name} (${formatKeys(keysFor('claude.stop'))})`} data-computer-stop>
+                Stop
+              </Button>
+            )}
+            {working ? (
+              <QueueButton state={queueButtonState({ blocked, sending, hasMessage, whileWorking })} onAction={(action) => send(action === 'send-now' ? 'now' : action)} />
+            ) : (
+              // A disabled button gets no hover, so the reason it's unavailable sits on this wrapper.
+              <span className="flex" data-tooltip={!sending ? (blocked ?? (!hasMessage ? 'Type a message first' : undefined)) : undefined}>
+                <Button variant="primary" size="lg" disabled={!!blocked || sending || !hasMessage} onClick={() => send()} className="disabled:pointer-events-none" data-composer-submit data-computer-send>
+                  {sending ? 'Sending…' : 'Send'}
+                </Button>
+              </span>
+            )}
+          </div>
         </div>
       </div>
+      {/* What the session would cost at API prices, as that computer counts it, where a local session shows its own. */}
+      <ComposerTray controls={controls} info={<RemoteSessionCost client={client} computer={computer} sessionId={session.id} working={working} />} />
     </div>
   );
 }

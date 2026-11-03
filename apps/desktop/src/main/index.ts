@@ -4775,8 +4775,10 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (chip !== 'on Smoke Mac') return `the header chip says "${chip}", not "on Smoke Mac"`;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.getAttribute('aria-current') === 'true')`))) return 'the opened remote session is not selected in the sidebar';
   if (!(await waitInPage(win, "document.querySelector('[data-transcript] [data-prompt-bubble], [data-transcript] [data-remote-tools]')", 10_000))) return 'the remote conversation did not load';
-  // Its cost, as that computer counts it, under the message box (while the estimate is on).
-  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-remote-session-footer] [data-session-cost]')?.innerText.includes('≈')", 5_000))) return 'the remote session shows no cost under its message box';
+  // Its message box is a local one's: the box, and the tray under it with the computer's chip and, as that computer
+  // counts it, the cost (while the estimate is on).
+  if (!(await js("Boolean(document.querySelector('[data-remote-composer] [data-composer-card] [data-computer-composer]') && document.querySelector('[data-remote-composer] [data-composer-tray] [data-computer-chip]'))"))) return 'the remote message box has no box and tray, or no computer chip on the tray';
+  if (preferences.get().showCost && !(await waitInPage(win, "document.querySelector('[data-remote-composer] [data-composer-tray] [data-session-cost]')?.innerText.includes('≈')", 5_000))) return 'the remote session shows no cost on the tray under its message box';
 
   // 3. The terminal is on that computer: its button stays, disabled, with the reason.
   if (!(await js("document.querySelector('[data-remote-terminal]')?.disabled === true"))) return 'the terminal button of a remote session is not disabled';

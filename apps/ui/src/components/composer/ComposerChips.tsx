@@ -55,6 +55,11 @@ export interface ComposerChipRowProps {
    * their own. A chip no step uses is dimmed (still usable); each says why in its tooltip.
    */
   pipeline?: Record<'model' | 'effort' | 'permissionMode', BoxChoiceUse> | null;
+  /**
+   * What goes before the chips and never shrinks or folds: a session on another computer puts that computer's chip
+   * and its profile there. The levels are measured in the room it leaves.
+   */
+  lead?: ReactNode;
 }
 
 /** Auto's wand, in the accent: always with the model chip's "Auto", since the permission mode can read "Auto" too. */
@@ -87,7 +92,7 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline }: ComposerChipRowProps) {
+export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
@@ -98,16 +103,20 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
   const [level, setLevel] = useState<FooterLevel>(0);
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const leadRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const row = rowRef.current;
     const copies = measureRef.current;
     if (!row || !copies) return;
-    const measure = () => setLevel(footerLevel(row.getBoundingClientRect().width, [...copies.children].map((copy) => copy.getBoundingClientRect().width)));
+    // The lead and the gap after it are taken out of the room the chips have.
+    const leadWidth = () => (leadRef.current ? leadRef.current.getBoundingClientRect().width + 2 : 0);
+    const measure = () => setLevel(footerLevel(row.getBoundingClientRect().width - leadWidth(), [...copies.children].map((copy) => copy.getBoundingClientRect().width)));
     measure();
     // The row follows the window; each copy follows its own content (another model, a font that loaded).
     const observer = new ResizeObserver(measure);
     observer.observe(row);
+    if (leadRef.current) observer.observe(leadRef.current);
     for (const copy of copies.children) observer.observe(copy);
     return () => observer.disconnect();
   }, []);
@@ -282,6 +291,11 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
 
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>
+      {lead && (
+        <div ref={leadRef} className="flex shrink-0 items-center gap-0.5" data-composer-chips-lead>
+          {lead}
+        </div>
+      )}
       {shownChips.map((chip) => (
         <div
           key={chip.key}

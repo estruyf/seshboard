@@ -21,6 +21,8 @@ export const TrayContext = createContext<TrayState>({ folded: false });
 
 /** The smallest level of the chip row, which the row keeps rendered out of sight for measuring. */
 const SMALLEST_ROW = '[data-composer-chips] > [aria-hidden] > div:last-child';
+/** What the chip row keeps before its chips (`lead`), which doesn't fold. */
+const ROW_LEAD = '[data-composer-chips-lead]';
 
 export interface ComposerTrayProps {
   /** The options: the chip row (profile, model, effort, mode), or a line saying why there are none. */
@@ -56,13 +58,14 @@ export function ComposerTray({ controls, tools, info, usage, meter }: ComposerTr
       const style = getComputedStyle(tray);
       const available = tray.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       // What folds is measured whether it shows or not: folded, it stays laid out out of sight.
-      setFolded(trayFolds(available, { chips: width(start.querySelector(SMALLEST_ROW)), info: width(foldableRef.current), ring: width(meterRef.current) }));
+      const lead = start.querySelector(ROW_LEAD);
+      setFolded(trayFolds(available, { chips: width(start.querySelector(SMALLEST_ROW)) + (lead ? width(lead) + 2 : 0), info: width(foldableRef.current), ring: width(meterRef.current) }));
     };
     measure();
     const resize = new ResizeObserver(measure);
     const observe = () => {
       resize.disconnect();
-      for (const el of [tray, start.querySelector(SMALLEST_ROW), foldableRef.current, meterRef.current]) if (el) resize.observe(el);
+      for (const el of [tray, start.querySelector(SMALLEST_ROW), start.querySelector(ROW_LEAD), foldableRef.current, meterRef.current]) if (el) resize.observe(el);
     };
     observe();
     // A chip row, Tools or a ring that mounts or changes after this runs (a session that starts, another model).

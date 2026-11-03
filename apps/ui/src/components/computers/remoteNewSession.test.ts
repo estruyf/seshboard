@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteOptions, RemoteSession } from '@seshboard/protocol/client';
-import { remoteAutoFace, remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteProviderCreate, remoteTakesEffort } from './remoteNewSession.ts';
+import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefaultChoice, remoteModelChoice, remoteModelChoices, remoteModelLabel, remoteProfiles, remoteProjectProfile, remoteProjectTiles, remoteProviderCreate, remoteTakesEffort } from './remoteNewSession.ts';
 
 const project = (id: string, name: string) => ({ id: id.padEnd(16, '0'), name });
 const session = (id: string, projectId: string, status: RemoteSession['status'], updatedAt = 1): RemoteSession => ({
@@ -102,12 +102,24 @@ describe('New session choices on another computer', () => {
     expect(remoteTakesEffort(options.models, 'unknown')).toBe(true);
   });
 
-  it("say what Auto picked for a running session", () => {
-    expect(remoteAutoFace(null)).toBeNull();
-    expect(remoteAutoFace(undefined)).toBeNull();
-    expect(remoteAutoFace({ picked: null, choosing: true })).toBe('Auto');
-    expect(remoteAutoFace({ picked: 'sonnet', choosing: false })).toBe('Auto · Sonnet');
-    expect(remoteAutoFace({ picked: null, choosing: false })).toBe('Auto · Default model');
+  it('give a running session the model chip of the message box', () => {
+    const plain = remoteModelChoice(options.models, { model: 'haiku', auto: null });
+    expect(plain).toMatchObject({ value: 'haiku', label: 'Haiku', auto: null });
+    expect(plain.choices.map((c) => c.value)).toEqual(['', 'opus', 'haiku']);
+    // A model the list doesn't know stays in it, checked; the default is ''.
+    expect(remoteModelChoice(options.models, { model: 'claude-sonnet-5-5', auto: null }).choices[0]).toEqual({ value: 'claude-sonnet-5-5', label: 'Sonnet' });
+    expect(remoteModelChoice(options.models, { model: null, auto: null })).toMatchObject({ value: '', label: 'Default model' });
+    // A list with its own default doesn't get a second one.
+    expect(remoteModelChoice([{ value: 'default', displayName: 'Default (Opus)', description: '', supportsEffort: true }], { model: null, auto: null }).choices).toEqual([{ value: '', label: 'Default (Opus)' }]);
+    expect(remoteModelChoice(options.models, { model: null, auto: { picked: null, choosing: true } })).toMatchObject({ value: 'auto', label: 'Auto', auto: null });
+    expect(remoteModelChoice(options.models, { model: 'claude-sonnet-5-5', auto: { picked: 'sonnet', choosing: false } }).auto).toBe('Sonnet');
+  });
+
+  it('offer Auto first in New session there, and word the default for another provider', () => {
+    const choices = remoteModelChoices(options.models, 'auto', { auto: { allowed: ['sonnet', 'opus'] } });
+    expect(choices.map((c) => c.value)).toEqual(['auto', '', 'opus', 'haiku']);
+    expect(choices[0]!.separatorAfter).toBe(true);
+    expect(remoteModelChoices([], '', { defaultDescription: 'What GitHub Copilot picks' })).toEqual([{ value: '', label: 'Default model', description: 'What GitHub Copilot picks' }]);
   });
 });
 
