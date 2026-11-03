@@ -301,6 +301,8 @@ export type SidebarListRow =
     }
   | { kind: 'group'; group: SessionGroup; count: number; first: boolean; open: boolean; unread: number }
   | { kind: 'hidden'; group: SessionGroup; count: number }
+  /** The others' sessions a computer's Mine filter leaves out of this section: "+4 from others on mystic", and Show. */
+  | { kind: 'others'; group: SessionGroup; computerId: string; computerName: string; count: number }
   | { kind: 'queue-header'; count: number; ready: number; open: boolean; first: boolean }
   | { kind: 'queue'; entry: QueueEntry }
   | { kind: 'archived'; count: number; open: boolean };
@@ -323,6 +325,11 @@ export interface ListRowOptions {
   openParents?: ReadonlySet<string>;
   /** Snoozed sessions (Remind me later) to list under Snoozed, before Archived: the ones a search finds. */
   snoozed?: readonly SessionRowData[];
+  /**
+   * Active sessions on other computers that their Mine filter leaves out (`splitByScope`): not listed, but counted at
+   * the end of the section they would be in, one "+N from others" row per computer, so nothing vanishes silently.
+   */
+  others?: readonly SessionRowData[];
 }
 
 /**
@@ -359,7 +366,21 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     if (open) for (const entry of queue.entries) list.push({ kind: 'queue', entry });
   };
   let queued = false;
-  for (const { group, rows } of groupsFor(active, options.sort, options.quick)) {
+  // The others' sessions are grouped with the rest, so a section only they would fill still says they are there.
+  const others = options.others ?? [];
+  const otherIds = new Set(others.map((row) => row.id));
+  const pushOthers = (group: SessionGroup, rows: readonly SessionRowData[]) => {
+    const byComputer = new Map<string, { name: string; count: number }>();
+    for (const row of rows) {
+      if (!row.remote) continue;
+      const entry = byComputer.get(row.remote.computerId) ?? { name: row.remote.computerName, count: 0 };
+      entry.count++;
+      byComputer.set(row.remote.computerId, entry);
+    }
+    for (const [computerId, { name, count }] of byComputer) list.push({ kind: 'others', group, computerId, computerName: name, count });
+  };
+  for (const { group, rows: grouped } of groupsFor(others.length ? [...active, ...others] : active, options.sort, options.quick)) {
+    const rows = otherIds.size ? grouped.filter((row) => !otherIds.has(row.id)) : grouped;
     // The queue goes under Working, or where Working would be.
     if (!queued && group !== 'needs-you' && group !== 'working') {
       pushQueue();
@@ -370,6 +391,7 @@ export function buildListRows(active: readonly SessionRowData[], archived: reado
     list.push({ kind: 'group', group, count: rows.length, first: list.length === 0, open, unread });
     if (open) {
       for (const data of rows) pushSession(data, false, false);
+      if (otherIds.size) pushOthers(group, grouped.filter((row) => otherIds.has(row.id)));
     } else {
       // The open session, or the parent of the open sub-session.
       const kept = rows.find((row) => row.id === options.selectedId || children.get(row.id)?.some((child) => child.id === options.selectedId));

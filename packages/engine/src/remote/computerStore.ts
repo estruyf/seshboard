@@ -41,7 +41,7 @@ interface Row {
  * device key is in the system's keychain, so a copy of the database connects to nothing.
  */
 export class ComputerStore {
-  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'notify' | 'remove' | 'started' | 'addStarted' | 'trimStarted' | 'removeStarted', StatementSync>;
+  private readonly statements: Record<'list' | 'byKey' | 'insert' | 'replace' | 'address' | 'name' | 'label' | 'color' | 'notify' | 'remove' | 'mine' | 'hasMine' | 'addMine' | 'trimMine' | 'removeMine', StatementSync>;
 
   constructor(
     db: DatabaseSync,
@@ -58,13 +58,14 @@ export class ComputerStore {
       color: db.prepare('UPDATE remote_computers SET color = ? WHERE id = ?'),
       notify: db.prepare('UPDATE remote_computers SET notify = ? WHERE id = ?'),
       remove: db.prepare('DELETE FROM remote_computers WHERE id = ?'),
-      started: db.prepare('SELECT session_id FROM remote_started_sessions WHERE computer_id = ? ORDER BY started_at, rowid'),
-      addStarted: db.prepare('INSERT OR REPLACE INTO remote_started_sessions (computer_id, session_id, started_at) VALUES (?, ?, ?)'),
+      hasMine: db.prepare('SELECT 1 FROM remote_started_sessions WHERE computer_id = ? AND session_id = ?'),
+      mine: db.prepare('SELECT session_id FROM remote_started_sessions WHERE computer_id = ? ORDER BY started_at, rowid'),
+      addMine: db.prepare('INSERT OR REPLACE INTO remote_started_sessions (computer_id, session_id, started_at) VALUES (?, ?, ?)'),
       // Only the newest: older sessions are long done, and their news with them.
-      trimStarted: db.prepare(
+      trimMine: db.prepare(
         'DELETE FROM remote_started_sessions WHERE computer_id = ? AND rowid NOT IN (SELECT rowid FROM remote_started_sessions WHERE computer_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?)',
       ),
-      removeStarted: db.prepare('DELETE FROM remote_started_sessions WHERE computer_id = ?'),
+      removeMine: db.prepare('DELETE FROM remote_started_sessions WHERE computer_id = ?'),
     };
   }
 
@@ -112,19 +113,27 @@ export class ComputerStore {
     this.statements.notify.run(notify === 'all' ? null : notify, id);
   }
 
-  /** The sessions this computer started on that one, oldest first. */
-  startedOn(id: string): string[] {
-    return (this.statements.started.all(id) as unknown as Array<{ session_id: string }>).map((row) => row.session_id);
+  /**
+   * The sessions that are mine on that computer (`isMine`), the least recent first. `remote_started_sessions` keeps
+   * the ones this computer started there and, since "mine" took in more, the ones it acted on from here.
+   */
+  mineOn(id: string): string[] {
+    return (this.statements.mine.all(id) as unknown as Array<{ session_id: string }>).map((row) => row.session_id);
   }
 
-  /** Remembers a session this computer started there (`session.create`), keeping the newest `COMPUTER_STARTED_MAX`. */
-  addStarted(id: string, sessionId: string): void {
-    this.statements.addStarted.run(id, sessionId, this.now());
-    this.statements.trimStarted.run(id, id, COMPUTER_STARTED_MAX);
+  /**
+   * Remembers a session as mine there, or as mine again just now, keeping the most recent `COMPUTER_STARTED_MAX`.
+   * Whether it is new, so the windows only hear of a change.
+   */
+  addMine(id: string, sessionId: string): boolean {
+    const known = this.statements.hasMine.get(id, sessionId) !== undefined;
+    this.statements.addMine.run(id, sessionId, this.now());
+    this.statements.trimMine.run(id, id, COMPUTER_STARTED_MAX);
+    return !known;
   }
 
   remove(id: string): boolean {
-    this.statements.removeStarted.run(id);
+    this.statements.removeMine.run(id);
     return Number(this.statements.remove.run(id).changes) > 0;
   }
 }

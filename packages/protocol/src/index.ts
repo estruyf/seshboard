@@ -41,6 +41,7 @@ export * from './computers.ts';
 export * from './clone.ts';
 export * from './githubRepo.ts';
 export * from './computerConstants.ts';
+export * from './computerMine.ts';
 export * from './remoteConstants.ts';
 export * from './remoteNoise.ts';
 export * from './remoteChannel.ts';

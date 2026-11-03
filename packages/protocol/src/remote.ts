@@ -79,6 +79,11 @@ export const RemoteSession = z.object({
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
    */
   parentId: z.string().nullable().optional(),
+  /**
+   * The paired device (phone, browser or computer) that started it from afar, by its name there, or that of the
+   * session it sits under; null when it was started on this computer itself. With `REMOTE_FEATURE_STARTED_BY`.
+   */
+  startedBy: z.string().max(200).nullable().optional(),
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 

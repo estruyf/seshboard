@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { generateKeyPair, remoteLinkFragment, RpcError, type ComputerEvent, type ComputersStatus, type RemoteContract, type Handlers } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
-import { ComputerHub, offlineMessage, pairingMessage, sameAddress } from './computerHub.ts';
+import { ComputerHub, mineOf, offlineMessage, pairingMessage, sameAddress } from './computerHub.ts';
 import { LinkError, retryDelay } from './computerLink.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, type PairingState } from './pairing.ts';
@@ -48,6 +48,11 @@ async function otherComputer(name = 'Studio Mac') {
     handlers: (device) =>
       ({
         'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
+        // What this computer does to a session there that makes it mine (`mineOf`).
+        'session.send': () => ({ queued: true }),
+        'session.respond': () => ({}),
+        'limits.resume': () => ({}),
+        'limits.arm': () => ({}),
         'session.create': ({ projectId }: { projectId: string }) => {
           // One project there, for the sessions this computer starts (Started here).
           if (projectId === 'fedcba9876543210') return { sessionId: `started-${++created}` };
@@ -254,6 +259,8 @@ describe('Other computers', () => {
     expect(again.hub.status().computers[0]).toMatchObject({ id, notify: 'off' });
     again.hub.update(id, { notify: 'all' });
     expect(again.hub.status().computers[0]!.notify).toBe('all');
+    // Which sessions show is the chip's filter, not a setting here: a computer has no such field.
+    expect(again.hub.status().computers[0]).not.toHaveProperty('show');
   });
 
   it('remembers the sessions it started on a computer, through a restart, and forgets them with the computer', async () => {
@@ -262,33 +269,65 @@ describe('Other computers', () => {
     b.answerNext(true);
     await first.hub.add(b.pairLink());
     const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
-    expect(first.hub.status().computers[0]!.startedHere).toEqual([]);
+    expect(first.hub.status().computers[0]!.mineHere).toEqual([]);
 
     await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'one' });
     await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'two' });
     // One that failed there started nothing.
     await expect(first.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    expect(first.hub.status().computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
-    expect(first.statuses.at(-1)!.computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
+    expect(first.hub.status().computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
+    expect(first.statuses.at(-1)!.computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
     first.hub.stop();
 
     const again = thisComputer(first.db, first.secret);
     await again.hub.start();
-    expect(again.hub.status().computers[0]!.startedHere).toEqual(['started-1', 'started-2']);
+    expect(again.hub.status().computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
     again.hub.forget(id);
-    expect(new ComputerStore(first.db).startedOn(id)).toEqual([]);
+    expect(new ComputerStore(first.db).mineOn(id)).toEqual([]);
+  });
+
+  it('makes a session mine when this computer acts on it there: a message, an answer, a resume', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const { id } = (await a.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    // Its list has prompt r1 for s1: answering it names only the prompt.
+    await a.hub.call(id, 'sessions.list', {});
+    await a.hub.call(id, 'session.respond', { requestId: 'r1', decision: { behavior: 'allow' } });
+    await a.hub.call(id, 'session.send', { sessionId: 'theirs-sent-to', text: 'hi' });
+    await a.hub.call(id, 'limits.resume', { sessionId: 'resumed' });
+    await a.hub.call(id, 'limits.arm', { sessionId: 'not-armed', armed: false });
+    expect(a.hub.status().computers[0]!.mineHere).toEqual(['s1', 'theirs-sent-to', 'resumed']);
+    // Acting on one again keeps it once, as the most recent.
+    await a.hub.call(id, 'session.send', { sessionId: 's1', text: 'again' });
+    expect(a.hub.status().computers[0]!.mineHere).toEqual(['theirs-sent-to', 'resumed', 's1']);
+  });
+
+  it('says which session a request makes mine', () => {
+    const list = { prompts: [{ requestId: 'r1', sessionId: 's1' }] } as unknown as Parameters<typeof mineOf>[3];
+    expect(mineOf('session.create', {}, { sessionId: 'new' }, undefined)).toBe('new');
+    expect(mineOf('session.send', { sessionId: 's2' }, { queued: false }, undefined)).toBe('s2');
+    expect(mineOf('session.queue.sendNow', { sessionId: 's3', id: 'q' }, {}, undefined)).toBe('s3');
+    expect(mineOf('limits.arm', { sessionId: 's4', armed: true }, {}, undefined)).toBe('s4');
+    expect(mineOf('limits.arm', { sessionId: 's4', armed: false }, {}, undefined)).toBeNull();
+    expect(mineOf('session.respond', { requestId: 'r1' }, {}, list)).toBe('s1');
+    expect(mineOf('session.respond', { requestId: 'gone' }, {}, list)).toBeNull();
+    // Reading or marking isn't acting on it.
+    expect(mineOf('transcript.get', { sessionId: 's5' }, {}, undefined)).toBeNull();
+    expect(mineOf('session.markRead', { sessionId: 's5' }, {}, undefined)).toBeNull();
   });
 
   it('keeps only the newest sessions it started on a computer', () => {
     let now = 0;
     const store = new ComputerStore(tempDb(), () => ++now);
-    for (let i = 1; i <= COMPUTER_STARTED_MAX + 5; i++) store.addStarted('c1', `s${i}`);
-    store.addStarted('c2', 'other');
-    const kept = store.startedOn('c1');
+    for (let i = 1; i <= COMPUTER_STARTED_MAX + 5; i++) store.addMine('c1', `s${i}`);
+    store.addMine('c2', 'other');
+    const kept = store.mineOn('c1');
     expect(kept).toHaveLength(COMPUTER_STARTED_MAX);
     expect(kept[0]).toBe('s6');
     expect(kept.at(-1)).toBe(`s${COMPUTER_STARTED_MAX + 5}`);
-    expect(store.startedOn('c2')).toEqual(['other']);
+    expect(store.mineOn('c2')).toEqual(['other']);
   });
 
   it('stops trying once the other computer revoked this one', async () => {

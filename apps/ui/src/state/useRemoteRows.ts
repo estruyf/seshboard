@@ -2,22 +2,31 @@ import { useMemo } from 'react';
 import type { Computer } from '@seshboard/protocol/client';
 import { useComputers } from './computersStore.ts';
 import { selectionOf } from './remoteSelection.ts';
-import { remoteRows, THIS_COMPUTER } from './remoteRows.ts';
+import { remoteRows, splitByScope, THIS_COMPUTER } from './remoteRows.ts';
 import { useSessions, type SessionRowData } from './sessionsStore.ts';
 
 const NONE: Computer[] = [];
 
-/** Every remote session as a sidebar row (`remoteRows`), from the computers' last lists. */
-export function useRemoteRows(): SessionRowData[] {
+/**
+ * The remote sessions as sidebar rows (`remoteRows`), from the computers' last lists, split by each computer's Mine /
+ * All filter (`splitByScope`): `shown` is what the sidebar, search, the counts and the keys list; `hidden` the others'.
+ */
+export function useRemoteRowSplit(): { shown: SessionRowData[]; hidden: SessionRowData[] } {
   const computers = useComputers((s) => s.status?.computers ?? NONE);
   const lists = useComputers((s) => s.lists);
-  return useMemo(() => remoteRows(computers, lists), [computers, lists]);
+  const scopes = useComputers((s) => s.scopes);
+  return useMemo(() => splitByScope(remoteRows(computers, lists), scopes), [computers, lists, scopes]);
+}
+
+/** The remote sessions the Mine / All filters show, as sidebar rows. */
+export function useRemoteRows(): SessionRowData[] {
+  return useRemoteRowSplit().shown;
 }
 
 /** The same, read once (for keys and palette commands). */
 export function currentRemoteRows(): SessionRowData[] {
-  const { status, lists } = useComputers.getState();
-  return remoteRows(status?.computers ?? NONE, lists);
+  const { status, lists, scopes } = useComputers.getState();
+  return splitByScope(remoteRows(status?.computers ?? NONE, lists), scopes).shown;
 }
 
 /** What the sidebar's filter can choose from: this computer, then each paired one. Only this computer without a pairing. */

@@ -73,6 +73,7 @@ import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
+import { SessionOrigins } from './sessionOrigins.ts';
 import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
@@ -298,6 +299,8 @@ interface Watch {
  */
 export class RemoteHub {
   readonly devices: DeviceStore;
+  /** Which device started each session from afar, for `startedBy`. */
+  private readonly origins: SessionOrigins;
   private readonly pairing: Pairing;
   private readonly server: RemoteServer;
   private identity: KeyPair | null = null;
@@ -355,6 +358,7 @@ export class RemoteHub {
       file?.write(level, message);
     };
     this.devices = new DeviceStore(options.db);
+    this.origins = new SessionOrigins(options.db);
     this.pairing = new Pairing(() => this.statusChanged());
     const saved = RemoteSettings.safeParse(options.appState.get(SETTINGS_KEY));
     this.settings = saved.success ? saved.data : DEFAULT_SETTINGS;
@@ -791,7 +795,8 @@ export class RemoteHub {
   private list(): RemoteSessions {
     const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
     const runs = this.options.pipelines?.runs();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, ...(runs ? { runs } : {}) });
+    const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}) });
   }
 
   private projectName(root: string): string {
@@ -958,6 +963,7 @@ export class RemoteHub {
         if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
         const choice = await this.choiceFor(project, options);
         const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        this.origins.add(created.sessionId, device);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
@@ -990,6 +996,8 @@ export class RemoteHub {
           profileId: profile,
           choices,
         });
+        // A run row's steps sit under it, so they say who started them too.
+        if (!parentSessionId) this.origins.add(state.run.id, device);
         this.log('info', `Remote: ${device.name} ran the pipeline ${state.run.pipeline.name}`);
         return { state: this.toRemote(state) };
       },

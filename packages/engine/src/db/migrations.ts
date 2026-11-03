@@ -842,4 +842,15 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (computer_id, session_id)
   );
   `,
+
+  // v51: Remote, on the computer others reach: which paired device started a session (or a pipeline run) from afar, so
+  // a computer sharing this one can say whose it is (`RemoteSession.startedBy`). Nothing else has it: keep it.
+  `
+  CREATE TABLE remote_session_origins (
+    session_id  TEXT PRIMARY KEY,
+    device_id   TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    started_at  INTEGER NOT NULL
+  );
+  `,
 ];

@@ -1,4 +1,4 @@
-import type { CompanionStatus, ComputerNotify, RemoteSessions } from '@seshboard/protocol/client';
+import { isMine, type CompanionStatus, type ComputerNotify, type RemoteSessions } from '@seshboard/protocol/client';
 import type { AttentionEvent } from './attention.ts';
 
 /**
@@ -20,26 +20,23 @@ const askWords = (toolName: string) => (toolName === 'AskUserQuestion' ? 'Claude
  * session list as it changes: a new prompt is needs you, a turn that ended is finished (or failed), as for a session
  * here. The first list of a computer only sets what was already so. A pipeline step's turn gives no Finished: the run
  * is its news, as here. The computer's notifications choice (Settings › Remote, Other computers) keeps only the
- * sessions this computer started there (and their sub-sessions), only needs you, or nothing; what it leaves out is
+ * sessions that are mine there (Only mine: `isMine`, as the sidebar's Mine filter), only needs you, or nothing; what it leaves out is
  * still seen, so turning them on later doesn't bring old news. Pure, so it is tested without Electron.
  */
 export class RemoteAttention {
   private readonly seen = new Map<string, Seen>();
 
   /** A computer's list, now: the events since the last one. */
-  onList(computer: { id: string; name: string; notify?: ComputerNotify; startedHere?: ReadonlySet<string> }, list: Pick<RemoteSessions, 'sessions' | 'prompts'>): AttentionEvent[] {
+  onList(computer: { id: string; name: string; notify?: ComputerNotify; mineHere?: readonly string[] }, list: Pick<RemoteSessions, 'sessions' | 'prompts'>): AttentionEvent[] {
     const before = this.seen.get(computer.id);
     const now: Seen = { status: new Map(list.sessions.map((s) => [s.id, s.status])), prompts: new Set(list.prompts.map((p) => p.requestId)) };
     this.seen.set(computer.id, now);
     if (!before || computer.notify === 'off') return [];
     const titles = new Map(list.sessions.map((s) => [s.id, s.title]));
     const parents = new Map(list.sessions.map((s) => [s.id, s.parentId ?? null]));
-    // Started here: a session this computer started, or a sub-session of one (a pipeline's step, a fork's agent).
-    const kept = (sessionId: string) => {
-      if (computer.notify !== 'started-here') return true;
-      const parent = parents.get(sessionId);
-      return !!computer.startedHere?.has(sessionId) || (!!parent && !!computer.startedHere?.has(parent));
-    };
+    // Only mine: started or acted on from here, or a sub-session of one (a pipeline's step, a fork's agent).
+    const mine = { mineHere: computer.mineHere ?? [] };
+    const kept = (sessionId: string) => computer.notify !== 'started-here' || isMine(sessionId, parents.get(sessionId), mine);
     const where = (sessionId: string) => `${titles.get(sessionId) ?? 'A session'} · on ${computer.name}`;
     const events: AttentionEvent[] = [];
     for (const prompt of list.prompts) {

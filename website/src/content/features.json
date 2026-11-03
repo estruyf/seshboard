@@ -1593,7 +1593,12 @@
     },
     {
       "id": "feature:computer-notifications",
-      "name": "Pick which notifications a paired computer shows here: all, only for sessions started here, only needs you, or off",
+      "name": "Pick which notifications a paired computer shows here: all, only mine, only needs you, or off",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computer-scope",
+      "name": "Mine or All on a paired computer's chip: only your sessions on a shared computer, +N from others in each section, who started the others' sessions",
       "page": "other-computers"
     },
     {

@@ -116,6 +116,18 @@ describe('remoteSessions with runs', () => {
     expect(list.runs?.map((r) => r.run.id)).toEqual(['run-1']);
   });
 
+  it('says who started each session from afar, and its steps, and nobody for one started here', () => {
+    const list = remoteSessions(
+      { summaries: [summary('parent', null), summary('plan', 'parent'), summary('here', null)], live: [], hosts: [] },
+      { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), starters: new Map([['parent', 'Dmitriy’s iPhone']]), now: NOW },
+    );
+    expect(Object.fromEntries(list.sessions.map((s) => [s.id, s.startedBy]))).toEqual({ parent: 'Dmitriy’s iPhone', plan: 'Dmitriy’s iPhone', here: null });
+    // What another computer reads keeps it.
+    expect(RemoteSessions.parse(list).sessions[0]!.startedBy).toBe('Dmitriy’s iPhone');
+    // Without starters (an engine that doesn't know), nothing is said.
+    expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
+  });
+
   it('sends no runs from an engine without pipelines', () => {
     const list = remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW });
     expect(list).not.toHaveProperty('runs');

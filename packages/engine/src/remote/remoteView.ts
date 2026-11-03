@@ -49,6 +49,8 @@ export interface ListOptions {
   profiles?: readonly RemoteSessionProfile[];
   /** Every pipeline run: a step's sub-session sits under its parent, and the runs of what is listed go along. */
   runs?: readonly PipelineRunState[];
+  /** Who started each session or run from afar (`SessionOrigins`), by id: each session says so (`startedBy`). */
+  starters?: ReadonlyMap<string, string>;
   now?: number;
 }
 
@@ -84,6 +86,11 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     background: running.get(s.id)?.backgroundTasks ?? [],
     parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
+  // Who started it: the device that did, or the one that started what it sits under (a pipeline's step, an agent).
+  if (options.starters) {
+    const starters = options.starters;
+    for (const session of sessions) session.startedBy = starters.get(session.id) ?? (session.parentId ? starters.get(session.parentId) : undefined) ?? null;
+  }
   const prompts = promptsFor(sources.permissions ?? [], listed).map(remotePrompt);
   if (!options.runs) return { sessions, prompts };
   const now = options.now ?? Date.now();

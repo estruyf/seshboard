@@ -7,6 +7,7 @@ import {
   type Computer,
   type ComputerColor,
   type ComputerNotify,
+  type RemoteSessions,
   type ComputerEvent,
   type ComputerMethod,
   type ComputerPairing,
@@ -171,12 +172,10 @@ export class ComputerHub {
     const result = await entry.link.call(method, params);
     const checked = this.checked(id, entry, method, checkResult(method, result));
     if (!checked.ok) throw new RpcError('UNREADABLE', unreadableLine(this.nameOf(id), null));
-    // A session started from here: its notifications are the ones "Started here" keeps.
-    const started = method === 'session.create' ? (checked.value as { sessionId?: unknown } | null)?.sessionId : undefined;
-    if (typeof started === 'string') {
-      this.store.addStarted(id, started);
-      this.changed();
-    }
+    if (method === 'sessions.list') entry.lastList = checked.value as RemoteSessions;
+    // A session started from here, or one acted on from here: mine (`isMine`), for the Mine filter and Only mine.
+    const mine = mineOf(method, params, checked.value, entry.lastList);
+    if (mine && this.store.addMine(id, mine)) this.changed();
     return checked.value;
   }
 
@@ -225,6 +224,8 @@ export class ComputerHub {
           entry.state = state;
           // Connected again: it may have been updated since.
           if (state.kind === 'connected') entry.problem = entry.listProblem = null;
+          // Away: its list is out of date; it sends a new one when it is back.
+          if (state.kind !== 'connected') delete entry.lastList;
           if (state.kind === 'connected' && state.name && state.name !== this.store.find(computer.enginePublicKey)?.name) this.store.setName(computer.id, state.name);
           if (state.kind === 'unpaired') this.options.log('info', `Other computers: ${computer.address} no longer knows this computer`);
           this.changed();
@@ -232,7 +233,9 @@ export class ComputerHub {
         onEvent: (name, payload) => {
           const event = checkEvent(name, payload);
           const checked = event && this.checked(computer.id, entry, name, event);
-          if (checked?.ok) this.options.onEvent({ computerId: computer.id, name, payload: checked.value as ComputerEvent['payload'] });
+          if (!checked?.ok) return;
+          if (name === 'sessions.changed') entry.lastList = checked.value as RemoteSessions;
+          this.options.onEvent({ computerId: computer.id, name, payload: checked.value as ComputerEvent['payload'] });
         },
       }),
     };
@@ -244,7 +247,7 @@ export class ComputerHub {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
     const name = shownName(computer);
-    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, startedHere: this.store.startedOn(computer.id), address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
+    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, mineHere: this.store.mineOn(computer.id), address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
         return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };
@@ -275,6 +278,8 @@ interface LinkEntry {
   problem: string | null;
   /** What its last session list had that this version can't read. */
   listProblem: string | null;
+  /** Its last session list: which session an answered prompt was for (`session.respond` only names the prompt). */
+  lastList?: RemoteSessions;
 }
 
 /** Two addresses of one computer's Remote: the same origin (`https://mac.example.com` and `…/`). */
@@ -321,4 +326,32 @@ export function pairingMessage(error: unknown): string {
     return 'Can’t reach the other computer. Check that Remote is on there, and that its link is new.';
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The session a request from here makes mine there (`isMine`): the one New session or Run on started, or the one it
+ * acted on: a message sent (or one sent now from its queue), a prompt answered, a session resumed or set to resume
+ * after a limit. Null for what doesn't, or failed. `session.respond` names only the prompt: its session is in the last list.
+ */
+export function mineOf(method: ComputerMethod, params: unknown, result: unknown, lastList: Pick<RemoteSessions, 'prompts'> | undefined): string | null {
+  const id = (value: unknown, key: string): string | null => {
+    const found = value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+    return typeof found === 'string' ? found : null;
+  };
+  switch (method) {
+    case 'session.create':
+      return id(result, 'sessionId');
+    case 'session.send':
+    case 'session.queue.sendNow':
+    case 'limits.resume':
+      return id(params, 'sessionId');
+    case 'limits.arm':
+      return (params as { armed?: unknown } | null)?.armed === true ? id(params, 'sessionId') : null;
+    case 'session.respond': {
+      const requestId = id(params, 'requestId');
+      return lastList?.prompts.find((p) => p.requestId === requestId)?.sessionId ?? null;
+    }
+    default:
+      return null;
+  }
 }

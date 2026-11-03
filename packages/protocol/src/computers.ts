@@ -41,8 +41,11 @@ export const Computer = z.object({
   color: ComputerColorSchema,
   /** Which of its notifications show here. */
   notify: ComputerNotifySchema,
-  /** The sessions this computer started there (New session, Run on), newest last: what `started-here` keeps. */
-  startedHere: z.array(z.string()).default([]),
+  /**
+   * The sessions that are mine there, the most recent last: started there from this computer (New session, Run on) or
+   * acted on from here (a message, an answer, a resume). `isMine` reads it, for the sidebar's Mine filter and Only mine.
+   */
+  mineHere: z.array(z.string()).default([]),
   /** Where it is: its tunnel's `https://` address. */
   address: z.string(),
   pairedAt: z.number(),

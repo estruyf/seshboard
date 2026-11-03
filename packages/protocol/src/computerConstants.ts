@@ -19,13 +19,13 @@ export type ComputerColor = (typeof COMPUTER_COLORS)[number];
 
 /**
  * Which of a paired computer's notifications this one shows (Settings › Remote, Other computers): `all` (needs you,
- * finished and failed, as for a session here), `started-here` (all of them, for the sessions this computer started
- * there and their sub-sessions), `needs-you` (only a session that waits for you), or `off`. Its sessions still show in
- * the sidebar either way.
+ * finished and failed, as for a session here), `started-here` ("Only mine": all of them, for the sessions that are
+ * mine there, `isMine`), `needs-you` (only a session that waits for you), or `off`. Its sessions still show in the
+ * sidebar either way: which of them show is the Mine / All filter on its chip there, not this.
  */
 export const COMPUTER_NOTIFY = ['all', 'started-here', 'needs-you', 'off'] as const;
 
-/** How many of the sessions this computer started on another one it remembers, for `started-here`: the newest. */
+/** How many of the sessions that are mine on another computer this one remembers (`isMine`): the most recent. */
 export const COMPUTER_STARTED_MAX = 200;
 export type ComputerNotify = (typeof COMPUTER_NOTIFY)[number];
 

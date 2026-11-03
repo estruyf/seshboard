@@ -29,6 +29,16 @@ export function ComputersSettings() {
   const [colouring, setColouring] = useState<string | null>(null);
   const [notifying, setNotifying] = useState<string | null>(null);
   const removeButtons = useRef(new Map<string, HTMLButtonElement | null>());
+  // Notifications in a computer's chip menu opens here at it: its choices open under its row, in view.
+  const notifyFor = useComputers((s) => s.notifyFor);
+  const known = !!status?.computers.some((c) => c.id === notifyFor);
+  useEffect(() => {
+    if (!notifyFor || !known) return;
+    setColouring(null);
+    setNotifying(notifyFor);
+    useComputers.getState().clearNotifyFor();
+    requestAnimationFrame(() => document.querySelector(`[data-computer="${CSS.escape(notifyFor)}"]`)?.scrollIntoView({ block: 'center' }));
+  }, [notifyFor, known]);
   if (!status || !client) return <p className="text-ui text-muted">Checking…</p>;
   if (!status.available) return <Notice>Other computers aren't available in this build of Seshboard.</Notice>;
   const { pairing, computers } = status;
@@ -217,10 +227,10 @@ function ColourStrip({ computer, onPick, onClose }: { computer: Computer; onPick
   );
 }
 
-const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'started-here': 'Started here', 'needs-you': 'Needs you', off: 'Off' };
+const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'started-here': 'Only mine', 'needs-you': 'Needs you', off: 'Off' };
 const NOTIFY_HINT: Record<ComputerNotify, string> = {
   all: 'Needs you, finished and failed',
-  'started-here': 'The same, only for sessions you started there from this computer',
+  'started-here': 'The same, only for sessions you started there or acted on from this computer',
   'needs-you': 'Only when a session waits for you',
   off: 'None. Its sessions still show here.',
 };
@@ -233,7 +243,7 @@ function NotifyIcon({ notify }: { notify: ComputerNotify }) {
 }
 
 /**
- * The row's bell. With all of them it is only the bell; otherwise it says which (Off, Needs you, Started here), so
+ * The row's bell. With all of them it is only the bell; otherwise it says which (Off, Needs you, Only mine), so
  * the choice shows without cutting the status line short.
  */
 function NotifyButton({ computer, open, onClick }: { computer: Computer; open: boolean; onClick(): void }) {
@@ -283,6 +293,10 @@ function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick
           </Radio>
         ))}
       </RadioGroup>
+      {/* Which sessions show is a filter where you look (ComputersStrip), not a setting: say where it went. */}
+      <p className="text-meta text-muted" data-computer-notify-filter-note>
+        Which sessions show in the sidebar is a filter on {computer.name}’s chip there.
+      </p>
     </div>
   );
 }

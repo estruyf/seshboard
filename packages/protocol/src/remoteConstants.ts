@@ -61,3 +61,9 @@ export const REMOTE_FEATURE_PIPELINES = 'pipelines';
 export const REMOTE_FEATURE_QUEUE_SEND_NOW = 'session.queue.sendNow';
 /** In `hello`'s `features`: `theme.get` answers and `theme.changed` follows, so the phone can look like this computer. */
 export const REMOTE_FEATURE_THEME = 'theme';
+
+/**
+ * In `hello`'s `features`: each listed session says who started it (`RemoteSession.startedBy`), so another computer
+ * sharing this one can name the other people's sessions. Without it, a session's starter isn't known.
+ */
+export const REMOTE_FEATURE_STARTED_BY = 'sessions.startedBy';

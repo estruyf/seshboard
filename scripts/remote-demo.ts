@@ -24,6 +24,7 @@ import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
+import { SessionOrigins } from '../packages/engine/src/remote/sessionOrigins.ts';
 
 const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -377,6 +378,11 @@ const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
 const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
 const appState = createAppStateStore(cache.db);
+// Other people share this computer: two of its sessions were started from their devices, so a computer set to All
+// says whose they are (`startedBy`); the rest were started here.
+const origins = new SessionOrigins(cache.db);
+origins.add('a0000000-0000-4000-8000-000000000006', { id: 'demo-dmitriy', name: 'Dmitriy' });
+origins.add('a0000000-0000-4000-8000-000000000005', { id: 'demo-sarah', name: 'Sarah’s MacBook' });
 const watchers = new Map<string, Set<(update: TranscriptUpdate) => void>>();
 
 /** The answer to a message from the phone, written a few words at a time as Claude would, then put in the transcript. */

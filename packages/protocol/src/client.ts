@@ -59,6 +59,7 @@ export type * from './computers.ts';
 export type * from './clone.ts';
 export * from './githubRepo.ts';
 export * from './computerConstants.ts';
+export * from './computerMine.ts';
 export * from './remoteConstants.ts';
 export type * from './mods.ts';
 export * from './modsConstants.ts';

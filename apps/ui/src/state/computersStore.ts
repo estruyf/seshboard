@@ -1,9 +1,31 @@
 import { create } from 'zustand';
 import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
+import type { ComputerScope } from './remoteRows.ts';
 import { parseRemoteRowId, remoteRowId, type RemoteRef } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
 
 const HIDDEN_KEY = 'ui.computersHidden';
+const SCOPES_KEY = 'ui.computerScopes';
+
+// Each computer's Mine / All: kept with the UI's own choices (localStorage), so it survives a restart; each window reads
+// it when it opens and keeps its own from then on.
+function readScopes(): Map<string, ComputerScope> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SCOPES_KEY) ?? '{}');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return new Map();
+    return new Map(Object.entries(value).filter((entry): entry is [string, ComputerScope] => entry[1] === 'mine' || entry[1] === 'all'));
+  } catch {
+    return new Map();
+  }
+}
+
+function writeScopes(scopes: ReadonlyMap<string, ComputerScope>): void {
+  try {
+    localStorage.setItem(SCOPES_KEY, JSON.stringify(Object.fromEntries(scopes)));
+  } catch {
+    // Remembering is a convenience.
+  }
+}
 
 // The filter is per window: kept in sessionStorage, so a reload keeps it and another window has its own.
 function readHidden(): Set<string> {
@@ -37,6 +59,10 @@ interface ComputersState {
    * Computers strip and "Show sessions from".
    */
   hidden: ReadonlySet<string>;
+  /** Each computer's Mine / All filter (its chip's menu), by computer id; a computer not in it shows Mine. */
+  scopes: ReadonlyMap<string, ComputerScope>;
+  /** The computer whose notifications Settings › Remote opens on (from its chip's menu), until it has. */
+  notifyFor: string | null;
   setStatus(status: ComputersStatus): void;
   setList(computerId: string, list: RemoteSessions): void;
   /**
@@ -47,6 +73,10 @@ interface ComputersState {
   /** Shows a computer's page: what is wrong, or that it has no sessions. */
   openPage(computerId: string): void;
   setHidden(hidden: ReadonlySet<string>): void;
+  setScope(computerId: string, scope: ComputerScope): void;
+  /** Opens Settings › Remote at a computer's notifications. */
+  openNotifications(computerId: string): void;
+  clearNotifyFor(): void;
 }
 
 /** Other computers this app paired with (docs/remote-access.md): their state and sessions, for the sidebar and their sessions' panes. */
@@ -56,6 +86,8 @@ export const useComputers = create<ComputersState>()((set) => ({
   pageId: null,
   starting: null,
   hidden: readHidden(),
+  scopes: readScopes(),
+  notifyFor: null,
   setStatus: (status) => {
     // A forgotten computer's list (and its rows, its panes and its place in the filter) goes with it.
     const ids = new Set(status.computers.map((c) => c.id));
@@ -86,4 +118,15 @@ export const useComputers = create<ComputersState>()((set) => ({
     writeHidden(hidden);
     set({ hidden: new Set(hidden) });
   },
+  setScope: (computerId, scope) =>
+    set((s) => {
+      const scopes = new Map(s.scopes).set(computerId, scope);
+      writeScopes(scopes);
+      return { scopes };
+    }),
+  openNotifications: (computerId) => {
+    set({ notifyFor: computerId });
+    useSessions.getState().openSettings('remote');
+  },
+  clearNotifyFor: () => set({ notifyFor: null }),
 }));

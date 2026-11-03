@@ -4760,12 +4760,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-color="green"]')`, 3_000))) return 'picking green did not colour the computer';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-computer-colours]')", 3_000))) return 'Esc did not close the colours';
-  // The bell: Started here and Off say so on it, Esc closes the choices, and All again keeps its notifications
+  // The bell: Only mine and Off say so on it, the strip says where the sessions filter went, Esc closes the choices, and All again keeps its notifications
   // for what follows.
   await click(`${settingsRow} [data-computer-notify]`);
   if (!(await waitInPage(win, `document.querySelector('[data-computer-notify-options] [data-computer-notify-option="off"]')`, 3_000))) return 'the bell did not show the notification choices';
   await click('[data-computer-notify-options] [data-computer-notify-option="started-here"]');
-  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="started-here"]')?.textContent.includes('Started here')`, 3_000))) return 'picking Started here did not show on the computer’s row';
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="started-here"]')?.textContent.includes('Only mine') && document.querySelector('[data-computer-notify-options] [data-computer-notify-filter-note]')?.textContent.includes('chip')`, 3_000))) return 'picking Only mine did not show on the computer’s row, or the strip does not say where the sessions filter is';
   await shot(win, 'computer-notifications.png');
   await click('[data-computer-notify-options] [data-computer-notify-option="off"]');
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="off"]')?.textContent.includes('Off')`, 3_000))) return 'picking Off did not turn the computer’s notifications off';
@@ -4793,8 +4793,32 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
 
+  // Shared computers: its chip shows Mine at first, and nothing there is this computer's yet, so none of its sessions
+  // are listed, only "+N from others" rows; Settings › Remote only sets its notifications (the sessions choice is the
+  // chip's). Show switches it to All, which names who started the others' sessions, and All is kept with the UI's
+  // choices for the next window and launch (a reload can't be tried here: the runner reads a second ready as the restart).
+  const remoteRow = `[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]`;
+  const othersRow = `[data-session-list] [data-hidden-from-others=${JSON.stringify(computerId)}]`;
+  const scopeChip = (scope: string) => `[data-computers-strip] [data-computer-scope=${JSON.stringify(scope)}]`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))}) && document.querySelector(${JSON.stringify(othersRow)})`, 10_000))) return `the other computer’s chip does not say Mine, or no "+N from others" row shows (${await js(`document.querySelector('[data-computers-strip]')?.innerText.replace(/\\s+/g, ' ')`)})`;
+  if (await js(`document.querySelectorAll(${JSON.stringify(remoteRow)}).length`)) return 'Mine lists sessions this computer neither started nor acted on';
+  if (!(await js(`/^\\+\\d+ from others on Smoke Mac/.test(document.querySelector(${JSON.stringify(othersRow)}).innerText) && document.querySelector(${JSON.stringify(othersRow)}).getAttribute('aria-label').startsWith('Show ')`))) return `the "+N from others" row says "${await js(`document.querySelector(${JSON.stringify(othersRow)}).innerText`)}"`;
+  if (await js("Boolean(document.querySelector('[data-computer-show-button], [data-computer-show-options]'))")) return 'Settings › Remote still has a sessions choice for the computer';
+  await click(`[data-computers-strip] [data-computer-scope]`);
+  if (!(await waitInPage(win, `document.querySelector('[data-computer-scope-menu] [role=radiogroup][aria-label="Sessions in the sidebar"]') && /others? (is|are) hidden/.test(document.querySelector('[data-computer-scope-menu] [data-computer-scope-line]')?.innerText ?? '')`, 3_000))) return `the chip’s menu has no Mine / All or does not say how many are hidden (${await js("document.querySelector('[data-computer-scope-menu]')?.innerText.replace(/\\s+/g, ' ')")})`;
+  await shot(win, 'computers-scope-menu.png');
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-computer-scope-menu]')", 3_000))) return 'Esc did not close the chip’s menu';
+  await click(othersRow);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))}) && document.querySelector(${JSON.stringify(remoteRow)}) && !document.querySelector(${JSON.stringify(othersRow)})`, 5_000))) return 'Show on "+N from others" did not switch the computer to All';
+  const starters = (await js(`[...document.querySelectorAll(${JSON.stringify(`${remoteRow} [data-row-started-by]`)})].map((el) => el.innerText)`)) as string[];
+  // A person's device for the two started from afar, that computer's name for the rest (the list is virtualised: the
+  // rows on screen show at least one of each).
+  if (!starters.some((name) => name === 'Dmitriy' || name === 'Sarah’s MacBook') || !starters.includes('Smoke Mac')) return `All does not say who started the others’ sessions (${starters.join(', ') || 'nobody'})`;
+  if ((await js(`JSON.parse(localStorage.getItem('ui.computerScopes') ?? '{}')[${JSON.stringify(computerId)}]`)) !== 'all') return 'All for the computer is not kept for the next window and launch';
+
   // 1. Its sessions are in the sidebar, each with the computer's chip; the strip shows the computer.
-  const row = `[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]`;
+  const row = remoteRow;
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(row)})`, 10_000))) return 'no session of the other computer in the sidebar';
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(row)}).length`)) as number;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].every((r) => r.querySelector('[data-computer-chip="Smoke Mac"]'))`))) return 'a remote row has no chip with the computer’s name';
@@ -4843,6 +4867,24 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (quoted) return quoted;
   const extras = await remoteSessionExtras(win, row);
   if (extras) return extras;
+
+  // 3d. Someone else's session, sent a message from here, is mine: it stays when the computer goes back to Mine.
+  const theirs = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Explain the tile renderer'))`;
+  if (!(await waitInPage(win, `Boolean(${theirs}?.querySelector('[data-row-started-by]'))`, 5_000))) return 'the other computer’s own session does not say who started it';
+  await js(`${theirs}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-composer] [data-computer-composer]') && !document.querySelector('[data-remote-composer] [data-computer-composer]').disabled", 5_000))) return 'someone else’s session on the other computer has no message box';
+  await js("document.querySelector('[data-remote-composer] [data-computer-composer]').focus()");
+  await win.webContents.insertText('Smoke: what does the tile renderer cache?');
+  if (!(await waitInPage(win, "document.querySelector('[data-computer-send]') && !document.querySelector('[data-computer-send]').disabled", 3_000))) return 'Send stayed disabled in someone else’s session';
+  await click('[data-computer-send]');
+  if (!(await waitInPage(win, `!${theirs}?.querySelector('[data-row-started-by]')`, 5_000))) return 'sending a message did not make someone else’s session mine';
+  await click('[data-computers-strip] [data-computer-scope]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"mine\"]')", 3_000))) return 'the chip’s menu did not open again';
+  await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))}) && Boolean(${theirs})`, 5_000))) return 'the session sent a message from here went with Mine';
+  await click(`[data-session-list] [data-hidden-from-others=${JSON.stringify(computerId)}]`);
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 3_000))) return 'Show did not bring All back';
 
   // 4. New session with Run on set to it starts a session there, which opens here.
   await click('[data-new-session]');

@@ -1,4 +1,4 @@
-import type { ClaudeProfile, Computer, ProfileColor, RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
+import { isMine, REMOTE_FEATURE_STARTED_BY, type ClaudeProfile, type Computer, type ProfileColor, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteRowId } from './remoteSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -30,6 +30,31 @@ export interface RemoteRowInfo {
   lastSeen: number | null;
   /** The row it sits under: a pipeline step's sub-session under the session the run started from (`remoteRowId`). */
   parentRowId?: string | null;
+  /** Started or acted on from here (`isMine`): what the computer's Mine filter keeps. */
+  mine?: boolean;
+  /** Who started it, for a session that isn't mine: a person's device, that computer itself, or "another device". */
+  startedBy?: string | null;
+  /** One of the others' sessions its computer's Mine filter leaves out, listed because a search found it. */
+  fromOthers?: boolean;
+}
+
+/**
+ * Which of a computer's sessions the sidebar shows (its chip's menu, `ComputersStrip`): `mine` (started or acted on
+ * from here, `isMine`) or `all` (everyone's, on a computer other people use too). Kept per computer; `mine` at first.
+ */
+export type ComputerScope = 'mine' | 'all';
+export const DEFAULT_SCOPE: ComputerScope = 'mine';
+
+/** What a row needs to know of its computer. Without `mineHere` nothing there is mine yet. */
+export type RowComputer = Pick<Computer, 'id' | 'name' | 'state' | 'lastSeen'> & Partial<Pick<Computer, 'mineHere' | 'ownName' | 'features'>>;
+
+/**
+ * Who started a session that isn't mine, after its branch in All: the device that did (a person's phone or computer),
+ * that computer itself when it says nobody did from afar, or "another device" when it doesn't say (an older version).
+ */
+export function startedByOf(session: Pick<RemoteSession, 'startedBy'>, computer: RowComputer): string {
+  if (session.startedBy) return session.startedBy;
+  return session.startedBy === null && computer.features?.includes(REMOTE_FEATURE_STARTED_BY) ? (computer.ownName ?? computer.name) : 'another device';
 }
 
 /** The filter's key for this computer's own sessions; other computers go by their id. */
@@ -61,9 +86,10 @@ export function remoteRowStatus(session: Pick<RemoteSession, 'status' | 'unread'
 }
 
 /** One remote session as a sidebar row. */
-export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'lastSeen'>, session: RemoteSession, prompts: RemoteSessions['prompts']): SessionRowData {
+export function remoteRow(computer: RowComputer, session: RemoteSession, prompts: RemoteSessions['prompts']): SessionRowData {
   const asking = prompts.filter((p) => p.sessionId === session.id).sort((a, b) => a.createdAt - b.createdAt);
   const status = remoteRowStatus(session, asking.length > 0);
+  const mine = isMine(session.id, session.parentId, { mineHere: computer.mineHere ?? [] });
   return {
     id: remoteRowId({ computerId: computer.id, sessionId: session.id }),
     title: session.title,
@@ -95,6 +121,8 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
       offline: computer.state !== 'connected',
       lastSeen: computer.lastSeen,
       parentRowId: session.parentId ? remoteRowId({ computerId: computer.id, sessionId: session.parentId }) : null,
+      mine,
+      startedBy: mine ? null : startedByOf(session, computer),
     },
   };
 }
@@ -103,7 +131,7 @@ export function remoteRow(computer: Pick<Computer, 'id' | 'name' | 'state' | 'la
  * Every remote session as sidebar rows, from each computer's last list. A computer that went offline keeps its last
  * list (its rows dimmed); one that was forgotten has no list any more, so its rows go.
  */
-export function remoteRows(computers: readonly Pick<Computer, 'id' | 'name' | 'state' | 'lastSeen'>[], lists: ReadonlyMap<string, RemoteSessions>): SessionRowData[] {
+export function remoteRows(computers: readonly RowComputer[], lists: ReadonlyMap<string, RemoteSessions>): SessionRowData[] {
   return computers.flatMap((computer) => {
     const list = lists.get(computer.id);
     return list ? list.sessions.map((session) => remoteRow(computer, session, list.prompts)) : [];
@@ -117,6 +145,34 @@ export function remoteRows(computers: readonly Pick<Computer, 'id' | 'name' | 's
 export function remoteProfileColor(profile: NonNullable<RemoteSession['profile']>, local: readonly Pick<ClaudeProfile, 'name' | 'color'>[]): ProfileColor {
   const name = profile.name.trim().toLowerCase();
   return local.find((p) => p.name.trim().toLowerCase() === name)?.color ?? profile.color;
+}
+
+/** The Mine / All filter of a computer: what was picked for it, else Mine. */
+export const scopeOf = (scopes: ReadonlyMap<string, ComputerScope>, computerId: string): ComputerScope => scopes.get(computerId) ?? DEFAULT_SCOPE;
+
+/**
+ * Splits remote rows by each computer's Mine / All filter: `shown`, and `hidden`, the others' sessions on a computer
+ * set to Mine (for the "+4 from others" rows and search). A session that isn't mine stays shown while one of mine
+ * sits under it, so a sub-session never loses its parent.
+ */
+export function splitByScope<T extends Pick<SessionRowData, 'id' | 'remote'>>(rows: readonly T[], scopes: ReadonlyMap<string, ComputerScope>): { shown: T[]; hidden: T[] } {
+  const filtered = (row: T) => !!row.remote && scopeOf(scopes, row.remote.computerId) === 'mine';
+  const parents = new Set(rows.flatMap((row) => (filtered(row) && row.remote?.mine && row.remote.parentRowId ? [row.remote.parentRowId] : [])));
+  const shown: T[] = [];
+  const hidden: T[] = [];
+  for (const row of rows) (filtered(row) && !row.remote?.mine && !parents.has(row.id) ? hidden : shown).push(row);
+  return { shown, hidden };
+}
+
+/** A remote row a search found among the others' sessions its computer's Mine filter leaves out: marked as theirs. */
+export const markFromOthers = <T extends Pick<SessionRowData, 'remote'>>(row: T): T => (row.remote ? { ...row, remote: { ...row.remote, fromOthers: true } } : row);
+
+/** A computer's list as its Mine / All filter shows it, for its chip's count of sessions that need you. */
+export function shownList(list: RemoteSessions, computer: Pick<Computer, 'mineHere'>, scope: ComputerScope): RemoteSessions {
+  if (scope === 'all') return list;
+  const kept = new Set(list.sessions.filter((s) => isMine(s.id, s.parentId, computer)).map((s) => s.id));
+  for (const s of list.sessions) if (s.parentId && kept.has(s.id)) kept.add(s.parentId);
+  return { ...list, sessions: list.sessions.filter((s) => kept.has(s.id)), prompts: list.prompts.filter((p) => kept.has(p.sessionId)) };
 }
 
 /** Leaves out the rows of the computers the filter hides (`THIS_COMPUTER` for this one's own). */

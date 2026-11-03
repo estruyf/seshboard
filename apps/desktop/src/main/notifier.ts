@@ -77,7 +77,7 @@ export class Notifier {
   private readonly reminded = new Set<string>();
   /** The sessions of paired computers, and their names and notifications choice, for their notifications. */
   private remote = new RemoteAttention();
-  private computerInfo = new Map<string, { name: string; notify: ComputerNotify; startedHere: ReadonlySet<string> }>();
+  private computerInfo = new Map<string, { name: string; notify: ComputerNotify; mineHere: readonly string[] }>();
 
   constructor(private readonly options: NotifierOptions) {
     this.attention = new Attention({ external: options.showAllSessions });
@@ -183,7 +183,7 @@ export class Notifier {
     // Other computers' sessions: their lists come as events; a computer that goes away starts over when it is back.
     this.remote = new RemoteAttention();
     const computers = (status: ComputersStatus) => {
-      this.computerInfo = new Map(status.computers.map((c) => [c.id, { name: c.name, notify: c.notify, startedHere: new Set(c.startedHere) }]));
+      this.computerInfo = new Map(status.computers.map((c) => [c.id, { name: c.name, notify: c.notify, mineHere: c.mineHere }]));
       for (const computer of status.computers) if (computer.state !== 'connected') this.remote.forget(computer.id);
     };
     client.on('computers.changed', computers);
@@ -191,7 +191,7 @@ export class Notifier {
     client.on('computers.event', ({ computerId, name, payload }) => {
       if (name !== 'sessions.changed') return;
       const info = this.computerInfo.get(computerId);
-      this.handle(this.remote.onList({ id: computerId, name: info?.name ?? 'another computer', notify: info?.notify ?? 'all', startedHere: info?.startedHere }, payload as unknown as RemoteSessions));
+      this.handle(this.remote.onList({ id: computerId, name: info?.name ?? 'another computer', notify: info?.notify ?? 'all', mineHere: info?.mineHere ?? [] }, payload as unknown as RemoteSessions));
     });
 
     // Seed state silently: only changes from here on deserve a notification.
