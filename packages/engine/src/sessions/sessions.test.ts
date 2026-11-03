@@ -180,6 +180,21 @@ describe('SessionIndex', () => {
     expect(again.index.get(ID_A)).toMatchObject({ note: null });
   });
 
+  it('moves sessions to Done for a merged pull request in one change, and keeps the merge handled after Reopen', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A), info(ID_B)], db);
+    await t.index.refresh();
+    const before = t.changes.length;
+    t.index.markMerged([{ sessionId: ID_A, pr: 12 }, { sessionId: ID_B, pr: 13 }]);
+    expect(t.changes).toHaveLength(before + 1);
+    expect(t.index.get(ID_A)).toMatchObject({ donePr: 12, restoredAt: null });
+    expect(t.index.get(ID_A)!.archivedAt).toBeGreaterThan(0);
+    t.index.setFlags(ID_A, { archived: false });
+    expect(t.index.get(ID_A)).toMatchObject({ donePr: 12, archivedAt: null });
+    t.index.stop();
+    expect(setup([], db).index.get(ID_B)).toMatchObject({ donePr: 13 });
+  });
+
   it('archives a pipeline tree in one change, and hides sessions until they have new activity', async () => {
     const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
     const t = setup([info(ID_A), info(ID_B)], db);

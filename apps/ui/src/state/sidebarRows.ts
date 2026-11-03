@@ -86,7 +86,7 @@ export const archivedSince = (row: SessionRowData, now: number, archiveAfterDays
  * Why a session is in Done, for its row: you marked it done, or it was inactive for the days set in Settings › Sessions.
  * Phase by phase more reasons join (a merged pull request), so the row reads one value instead of the flags.
  */
-export type DoneReason = { kind: 'done' } | { kind: 'inactive'; days: number };
+export type DoneReason = { kind: 'done' } | { kind: 'merged'; pr: number } | { kind: 'inactive'; days: number };
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -95,12 +95,17 @@ export function doneReason(row: SessionRowData, now: number, archiveAfterDays: n
   const listing = rowListing(row);
   if (row.remote || archivedSinceOf(listing, now, archiveAfterDays) === null) return null;
   // The same test as the archive rule: marked done after its last activity, or while it was still working.
-  if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) return { kind: 'done' };
+  if (listing.archivedAt !== null && (listing.archivedAt >= listing.updatedAt || listing.working)) {
+    // Moved by its merged pull request (the engine, `mergedDone.ts`): the number says which.
+    const pr = row.summary?.donePr;
+    return pr != null ? { kind: 'merged', pr } : { kind: 'done' };
+  }
   return { kind: 'inactive', days: Math.max(archiveAfterDays, Math.floor((now - row.updatedAt) / DAY)) };
 }
 
-/** "Done", or "Inactive 3 days". */
-export const doneReasonLabel = (reason: DoneReason): string => (reason.kind === 'done' ? 'Done' : `Inactive ${reason.days} ${reason.days === 1 ? 'day' : 'days'}`);
+/** "Done", "Merged #123", or "Inactive 3 days". */
+export const doneReasonLabel = (reason: DoneReason): string =>
+  reason.kind === 'done' ? 'Done' : reason.kind === 'merged' ? `Merged #${reason.pr}` : `Inactive ${reason.days} ${reason.days === 1 ? 'day' : 'days'}`;
 
 /**
  * Whether a middle-click on the row archives it: an indexed session in the main list that has finished

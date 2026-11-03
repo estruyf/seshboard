@@ -128,7 +128,8 @@ import { readExport } from './memory/memoryImport.ts';
 import { findSecrets } from './memory/secrets.ts';
 import { PERSONAL_DIR_KEY } from './settings/settingsTransfer.ts';
 import { repoFacts } from './sessions/looseEndsFacts.ts';
-import { isCandidate, type BranchSession } from './sessions/looseEnds.ts';
+import { mergedMoves } from './sessions/mergedDone.ts';
+import { isCandidate, type BranchSession, type RepoFacts } from './sessions/looseEnds.ts';
 import { LooseEndsStore, LooseEndsWatcher, type RepoToCheck } from './sessions/looseEndsWatcher.ts';
 import { DEFAULT_RETENTION, DRAFTS_KEY, megabytes, retentionCandidates, sessionsWithDrafts, sessionsWithQueuedPrompts, type RetentionPolicy } from './sessions/retention.ts';
 import { readProfileCleanup, settingsPathOf, writeProfileCleanup } from './profiles/cleanupPeriod.ts';
@@ -2653,28 +2654,75 @@ export function createEngine(options: EngineOptions): Engine {
     }
     return [...byRoot].filter(([root, e]) => e.candidate && resolver.resolve(root).gitDir).map(([root, e]) => ({ root, sessions: e.sessions }));
   };
+  // --- PR merged moves to Done ------------------------------------------------------------------------------------
+  /** Sessions moved to Done by a merge since a window last had focus: the toast (with Undo) goes out then, in one. */
+  const mergedPending: Array<{ id: string; title: string; pr: number }> = [];
+  let foregroundNow = true;
+  const flushMerged = () => {
+    if (!foregroundNow || mergedPending.length === 0) return;
+    broadcast('sessions.mergedDone', { sessions: mergedPending.splice(0) });
+  };
+  /** After a look at a repository: its merged pull requests move their session to Done (Settings › Sessions). */
+  const moveMerged = (repo: RepoToCheck, facts: RepoFacts, loose: ReadonlySet<string>) => {
+    // Not before main sent Settings › Sessions: the switch may be off.
+    if (!policyReceived || !retention.doneOnMerge) return;
+    const ids = new Set(repo.sessions.map((s) => s.id));
+    const now = Date.now();
+    const candidates = retentionCandidates({
+      summaries: sessions.snapshot().sessions.filter((s) => ids.has(s.id)),
+      live: liveList(),
+      ...hosts.list(),
+      drafts: sessionsWithDrafts(appState.get(DRAFTS_KEY)),
+      queued: new Set([...sessionsWithQueuedPrompts(later.list()), ...upNext.all().map((q) => q.sessionId)]),
+      looseEnds: loose,
+    }).map(({ summary, listing }) => ({
+      id: summary.id,
+      branch: summary.worktree?.branch ?? summary.gitBranch,
+      updatedAt: listing.updatedAt,
+      listed: listedInMainList(listing, now, retention.archiveAfterDays),
+      pinned: listing.pinned,
+      working: listing.working,
+      attention: listing.attention,
+      openInApp: listing.openInApp,
+      restoredAt: listing.restoredAt,
+      donePr: summary.donePr ?? null,
+      looseEnds: loose.has(summary.id),
+    }));
+    const moves = mergedMoves(facts, candidates, looseEndsOwner);
+    if (moves.length === 0) return;
+    sessions.markMerged(moves);
+    for (const { sessionId, pr } of moves) {
+      // As Done by hand: a trigger's issue loses its labels, and the checks stop being followed.
+      triggerWatcher?.released(sessionId);
+      checksWatcher.release(sessionId);
+      mergedPending.push({ id: sessionId, title: sessions.get(sessionId)?.title ?? 'Untitled session', pr });
+      log('info', `Moved session ${sessionId} to Done: pull request #${pr} merged`);
+    }
+    flushMerged();
+  };
+  const looseEndsOwner = (() => {
+    let owners: Map<string, string> | null = null;
+    let at = 0;
+    // Read once per look, not per session.
+    return (id: string) => {
+      if (!owners || Date.now() - at > 1_000) {
+        owners = runOwner();
+        at = Date.now();
+      }
+      return owners.get(id) ?? id;
+    };
+  })();
   looseEnds = new LooseEndsWatcher(
     {
       repos: looseEndRepos,
       facts: async (root) => repoFacts(root, { env: (await shell.ready).env, pullRequests: pullRequestsFor(root, false) }),
-      ownerOf: (() => {
-        let owners: Map<string, string> | null = null;
-        let at = 0;
-        // Read once per look, not per session.
-        return (id: string) => {
-          if (!owners || Date.now() - at > 1_000) {
-            owners = runOwner();
-            at = Date.now();
-          }
-          return owners.get(id) ?? id;
-        };
-      })(),
+      ownerOf: looseEndsOwner,
+      merged: moveMerged,
       emit: (map) => broadcast('sessions.looseEnds', { looseEnds: Object.fromEntries([...map].map(([owner, ends]) => [owner, [...ends]])) }),
       log: (message) => log('warn', message),
     },
     new LooseEndsStore(cache.db),
   );
-  looseEnds.start();
   // Questions about a session (Ask about this session, /btw) are kept per session, apart from the transcript;
   // answers go to every window, and their tokens count on the session's profile.
   const askStore = new AskStore(cache.db);
@@ -2779,6 +2827,8 @@ export function createEngine(options: EngineOptions): Engine {
   scanCompleteHook = () => {
     scanned = true;
     maybeRunOnLaunch();
+    // Loose ends need the sessions: the first look waits for the first full scan.
+    looseEnds?.start();
   };
   const dailyCleanup = setInterval(cleanupInBackground, DAY_MS);
   dailyCleanup.unref?.();
@@ -4377,6 +4427,8 @@ export function createEngine(options: EngineOptions): Engine {
     setForeground: (foreground) => {
       checksWatcher.setForeground(foreground);
       looseEnds?.setForeground(foreground);
+      foregroundNow = foreground;
+      flushMerged();
     },
     startModsSmoke: async () => {
       const spec = JSON.parse(process.env.SESHBOARD_SMOKE_MODS ?? 'null') as { pluginDir: string; configDir: string; cwd: string; out: string; prompt?: string; profileName?: string } | null;

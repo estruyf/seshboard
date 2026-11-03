@@ -44,6 +44,8 @@ export const SessionSummary = z.object({
   viewedAt: z.number().nullable(),
   /** Changed since the user last looked at it. */
   unread: z.boolean(),
+  /** The pull request whose merge moved it to Done ("Merged #123"); also how a merge is known to be handled. */
+  donePr: z.number().nullable().optional(),
   /** What's left to do, in your words ("push after review"), one line. Kept in Seshboard's database; null or left out: none. */
   note: z.string().max(SESSION_NOTE_MAX).nullable().optional(),
   /** Started, forked or continued in Seshboard (the default sidebar shows only these). */

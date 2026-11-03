@@ -29,7 +29,7 @@ export interface RepoFacts {
   baseBranch: string | null;
   checkouts: readonly RepoCheckout[];
   /** The newest pull request of each branch; null when unknown (gh offline or failing). Empty without gh or GitHub. */
-  pullRequests: ReadonlyMap<string, { number: number; state: 'open' | 'merged' | 'closed' }> | null;
+  pullRequests: ReadonlyMap<string, { number: number; state: 'open' | 'merged' | 'closed'; mergedAt?: number | null }> | null;
   /** Open pull requests with failing checks, by branch; null when unknown. */
   failing: ReadonlyMap<string, { pr: number; failed: number }> | null;
 }

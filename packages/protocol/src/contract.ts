@@ -1518,6 +1518,11 @@ export const contract = {
     'sessions.changed': SessionsChanged,
     /** Full replacement of the live-session list whenever the registry changes. */
     'sessions.live': z.object({ live: z.array(LiveSession) }),
+    /**
+     * Sessions moved to Done because their pull request merged, sent once a window has focus (the toast with Undo). A
+     * batch of them in one event.
+     */
+    'sessions.mergedDone': z.object({ sessions: z.array(z.object({ id: z.string(), title: z.string(), pr: z.number() })) }),
     /** Every session's loose ends, whenever one changes (sessions without any left out). */
     'sessions.looseEnds': z.object({ looseEnds: LooseEndsMap }),
     'transcript.updated': TranscriptUpdate,

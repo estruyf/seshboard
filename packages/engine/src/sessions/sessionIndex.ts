@@ -20,9 +20,11 @@ interface Flags {
   hiddenAt: number | null;
   /** What's left, in your words (`cleanNote`). */
   note: string | null;
+  /** The pull request whose merge moved it to Done (`mergedDone.ts`); kept after Reopen, so the merge stays handled. */
+  donePr: number | null;
 }
 
-const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null };
+const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null, donePr: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
 
@@ -110,13 +112,13 @@ export class SessionIndex {
           jsonl_path = excluded.jsonl_path, jsonl_mtime = excluded.jsonl_mtime,
           entrypoint = excluded.entrypoint, summary_json = excluded.summary_json`),
       remove: db.prepare('DELETE FROM sessions WHERE id = ?'),
-      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at, note FROM session_flags'),
+      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr FROM session_flags'),
       flagsDelete: db.prepare('DELETE FROM session_flags WHERE id = ?'),
       flagsUpsert: db.prepare(`
-        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at, note, done_pr) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at,
-          hidden_at = excluded.hidden_at, note = excluded.note`),
+          hidden_at = excluded.hidden_at, note = excluded.note, done_pr = excluded.done_pr`),
     };
     this.loadFlags();
     this.loadCache();
@@ -124,8 +126,8 @@ export class SessionIndex {
 
   private loadFlags(): void {
     this.flags.clear();
-    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null; note: string | null }>) {
-      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at, note: row.note });
+    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null; note: string | null; done_pr: number | null }>) {
+      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at, note: row.note, donePr: row.done_pr });
     }
   }
 
@@ -250,6 +252,13 @@ export class SessionIndex {
     this.writeFlags(sessionId, { ...current, archivedAt: null });
   }
 
+  /** Moves sessions whose pull request merged to Done (`mergedDone.ts` decided), in one change. */
+  markMerged(moves: readonly { sessionId: string; pr: number }[], now = Date.now()): void {
+    if (moves.length === 0) return;
+    for (const { sessionId, pr } of moves) this.storeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), archivedAt: now, restoredAt: null, donePr: pr });
+    this.publish(this.known(moves.map((m) => m.sessionId)), []);
+  }
+
   /** Sets what's left in a session (`cleanNote` first), or clears it with null. Done keeps it. */
   setNote(sessionId: string, note: string | null): void {
     this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), note });
@@ -273,7 +282,7 @@ export class SessionIndex {
 
   private storeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
-    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt, flags.note);
+    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt, flags.note, flags.donePr);
   }
 
   /** Reads one session again now, rather than when the file watcher notices (after a rename). */

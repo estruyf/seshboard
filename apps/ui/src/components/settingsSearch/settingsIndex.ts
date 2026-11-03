@@ -145,6 +145,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-auto-delete]',
     },
     {
+      id: 'done-on-merge',
+      page: 'sessions',
+      label: 'Move to Done when its pull request merges',
+      detail: 'A session whose pull request merged goes to Done, unless it is pinned, working, open in Seshboard or active since.',
+      keywords: 'merged pull request pr github done archive automatically',
+      target: '[data-done-on-merge]',
+    },
+    {
       id: 'claude-cleanup',
       page: 'sessions',
       label: 'Claude Code’s own cleanup',
