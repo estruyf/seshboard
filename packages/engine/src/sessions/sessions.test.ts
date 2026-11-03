@@ -163,6 +163,23 @@ describe('SessionIndex', () => {
     expect(again.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
   });
 
+  it('keeps a note on a session, through Done and a restart, until you clear it', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A)], db);
+    await t.index.refresh();
+    expect(t.index.get(ID_A)).toMatchObject({ note: null });
+    t.index.setNote(ID_A, 'push after review');
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ id: ID_A, note: 'push after review' });
+    t.index.setFlags(ID_A, { archived: true });
+    t.index.setArchivedMany([ID_A], false);
+    expect(t.index.get(ID_A)).toMatchObject({ note: 'push after review' });
+    t.index.stop();
+    const again = setup([], db);
+    expect(again.index.get(ID_A)).toMatchObject({ note: 'push after review' });
+    again.index.setNote(ID_A, null);
+    expect(again.index.get(ID_A)).toMatchObject({ note: null });
+  });
+
   it('archives a pipeline tree in one change, and hides sessions until they have new activity', async () => {
     const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
     const t = setup([info(ID_A), info(ID_B)], db);

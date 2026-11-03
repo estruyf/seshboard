@@ -18,9 +18,11 @@ interface Flags {
   viewedAt: number | null;
   /** Taken out of Seshboard with its pipeline run (#179): left out of the list until it has new activity. */
   hiddenAt: number | null;
+  /** What's left, in your words (`cleanNote`). */
+  note: string | null;
 }
 
-const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null };
+const NO_FLAGS: Flags = { pinned: false, archivedAt: null, restoredAt: null, viewedAt: null, hiddenAt: null, note: null };
 /** Writes that land right after the user looked are not "new" for them. */
 const UNREAD_SLACK_MS = 2_000;
 
@@ -108,13 +110,13 @@ export class SessionIndex {
           jsonl_path = excluded.jsonl_path, jsonl_mtime = excluded.jsonl_mtime,
           entrypoint = excluded.entrypoint, summary_json = excluded.summary_json`),
       remove: db.prepare('DELETE FROM sessions WHERE id = ?'),
-      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at FROM session_flags'),
+      flagsAll: db.prepare('SELECT id, pinned, archived_at, restored_at, viewed_at, hidden_at, note FROM session_flags'),
       flagsDelete: db.prepare('DELETE FROM session_flags WHERE id = ?'),
       flagsUpsert: db.prepare(`
-        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at) VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO session_flags (id, pinned, archived_at, restored_at, viewed_at, hidden_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           pinned = excluded.pinned, archived_at = excluded.archived_at, restored_at = excluded.restored_at, viewed_at = excluded.viewed_at,
-          hidden_at = excluded.hidden_at`),
+          hidden_at = excluded.hidden_at, note = excluded.note`),
     };
     this.loadFlags();
     this.loadCache();
@@ -122,8 +124,8 @@ export class SessionIndex {
 
   private loadFlags(): void {
     this.flags.clear();
-    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null }>) {
-      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at });
+    for (const row of this.statements.flagsAll.all() as Array<{ id: string; pinned: number; archived_at: number | null; restored_at: number | null; viewed_at: number | null; hidden_at: number | null; note: string | null }>) {
+      this.flags.set(row.id, { pinned: row.pinned === 1, archivedAt: row.archived_at, restoredAt: row.restored_at, viewedAt: row.viewed_at, hiddenAt: row.hidden_at, note: row.note });
     }
   }
 
@@ -248,6 +250,11 @@ export class SessionIndex {
     this.writeFlags(sessionId, { ...current, archivedAt: null });
   }
 
+  /** Sets what's left in a session (`cleanNote` first), or clears it with null. Done keeps it. */
+  setNote(sessionId: string, note: string | null): void {
+    this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), note });
+  }
+
   markViewed(sessionId: string): void {
     this.writeFlags(sessionId, { ...(this.flags.get(sessionId) ?? NO_FLAGS), viewedAt: Date.now() });
   }
@@ -266,7 +273,7 @@ export class SessionIndex {
 
   private storeFlags(sessionId: string, flags: Flags): void {
     this.flags.set(sessionId, flags);
-    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt);
+    this.statements.flagsUpsert.run(sessionId, flags.pinned ? 1 : 0, flags.archivedAt, flags.restoredAt, flags.viewedAt, flags.hiddenAt, flags.note);
   }
 
   /** Reads one session again now, rather than when the file watcher notices (after a rename). */

@@ -20,6 +20,7 @@ import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -243,6 +244,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
       label: `Session “${data.title}”`,
       entries: [
         { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || !canRename, data: { 'data-rename-session': true } },
+        { label: data.summary?.note ? 'Edit note…' : 'Note…', hint: formatKeys(keysFor('sidebar.note')), onSelect: () => openNoteEditor(data.id), disabled: !data.summary || isRunRowId(data.id), data: { 'data-session-note': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)

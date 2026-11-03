@@ -1,4 +1,4 @@
-import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
+import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, NotebookPen, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
 import { claudeOnlyLine, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderFeature } from '@seshboard/protocol/client';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -15,6 +15,7 @@ import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -198,6 +199,13 @@ export function MoreMenu({
       disabled: title === null,
       onSelect: () => setRenaming(true),
       data: { 'data-rename-session': true },
+    },
+    {
+      label: 'Note…',
+      icon: <NotebookPen size={13} />,
+      disabled: title === null,
+      onSelect: () => openNoteEditor(sessionId),
+      data: { 'data-session-note': true },
     },
     ...(onAgents
       ? [

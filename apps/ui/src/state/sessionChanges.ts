@@ -58,7 +58,7 @@ export function createBatcher<T>(apply: (items: T[]) => void, schedule: Schedule
 export function patchedSessions(
   sessions: Map<string, SessionSummary>,
   id: string,
-  patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt'>>,
+  patch: Partial<Pick<SessionSummary, 'unread' | 'viewedAt' | 'archivedAt' | 'note'>>,
 ): Map<string, SessionSummary> {
   const summary = sessions.get(id);
   return summary ? new Map(sessions).set(id, { ...summary, ...patch }) : sessions;

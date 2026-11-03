@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   BACKUP_SECTIONS,
+  cleanNote,
   DEFAULT_PREFERENCES,
   Schedule,
   Trigger,
@@ -269,6 +270,7 @@ export function exportSettings(stores: SettingsStores, options: ExportOptions): 
       archived: stores.db.prepare('SELECT id, archived_at AS at FROM session_flags WHERE archived_at IS NOT NULL ORDER BY id').all() as Array<{ id: string; at: number }>,
       owned: ids('SELECT id FROM owned_sessions ORDER BY id'),
       continued: ids('SELECT id FROM continued_sessions ORDER BY id'),
+      notes: stores.db.prepare('SELECT id, note FROM session_flags WHERE note IS NOT NULL ORDER BY id').all() as Array<{ id: string; note: string }>,
     };
   }
   return file;
@@ -800,7 +802,7 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
 
   // --- Sessions (only ever added) -------------------------------------------------------------
   if (has('sessions')) {
-    const { pinned, settled, archived, owned, continued } = file.sessions!;
+    const { pinned, settled, archived, owned, continued, notes } = file.sessions!;
     const ids = (sql: string) => new Set((stores.db.prepare(sql).all() as Array<{ id: string }>).map((r) => r.id));
     const groups = [
       { label: 'pinned', ids: pinned, have: ids('SELECT id FROM session_flags WHERE pinned = 1'), sql: 'INSERT INTO session_flags (id, pinned) VALUES (?, 1) ON CONFLICT (id) DO UPDATE SET pinned = 1' },
@@ -832,6 +834,20 @@ export function planImport(stores: SettingsStores, file: SettingsFile, options: 
           'INSERT INTO session_flags (id, archived_at) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET archived_at = COALESCE(session_flags.archived_at, excluded.archived_at)',
         );
         for (const [id, at] of add) statement.run(id, at);
+      });
+    }
+    // Notes: added where a session has none; yours wins where it has one.
+    const noted = ids('SELECT id FROM session_flags WHERE note IS NOT NULL');
+    const newNotes = (notes ?? []).flatMap(({ id, note }) => {
+      const clean = cleanNote(note);
+      return clean && !noted.has(id) ? [{ id, note: clean }] : [];
+    });
+    unchanged += (notes ?? []).length - newNotes.length;
+    if (newNotes.length > 0) {
+      note('sessions', `${newNotes.length} ${newNotes.length === 1 ? 'note' : 'notes'} on sessions`, 'add', 'shows only where their transcripts are');
+      writes.push(() => {
+        const statement = stores.db.prepare('INSERT INTO session_flags (id, note) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET note = COALESCE(session_flags.note, excluded.note)');
+        for (const { id, note: text } of newNotes) statement.run(id, text);
       });
     }
   }

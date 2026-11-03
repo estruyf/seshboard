@@ -22,6 +22,11 @@
       "page": "sessions/archived"
     },
     {
+      "id": "palette:note",
+      "name": "note",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "palette:branches",
       "name": "Branches…",
       "page": "projects/branches"
@@ -1329,6 +1334,11 @@
     {
       "id": "shortcut:sidebar.quick-archive",
       "name": "Mark the session done, or reopen it",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.note",
+      "name": "Write what's left in the session",
       "page": "sessions/sidebar"
     },
     {
@@ -3657,6 +3667,11 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:session-note",
+      "name": "What's left: a one-line note under a session's title (N, Note… in its menu or the palette), found by search",
+      "page": "sessions/sidebar"
+    },
+    {
       "id": "feature:done-reason",
       "name": "Done: each row says why (Done, or Inactive 3 days), inactive ones dimmed",
       "page": "sessions/archived"
@@ -4247,6 +4262,11 @@
       "page": "sessions/catch-up"
     },
     {
+      "id": "feature:catch-up-use-as-note",
+      "name": "Catch-up: Use as note puts what it needs from you under the session's title, in one click",
+      "page": "sessions/catch-up"
+    },
+    {
       "id": "palette:why-request",
       "name": "Why is Claude asking?",
       "page": "permissions"
@@ -4314,6 +4334,11 @@
     {
       "id": "shortcut:catchup.skip",
       "name": "catchup.skip",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.note",
+      "name": "catchup.note",
       "page": "sessions/catch-up"
     },
     {

@@ -201,6 +201,11 @@ export const contract = {
       params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }),
       result: z.object({}),
     },
+    /** What's left in a session, in your words: one line (`cleanNote`), or null to clear it. */
+    'sessions.setNote': {
+      params: z.object({ sessionId: SessionId, note: z.string().max(1000).nullable() }),
+      result: z.object({}),
+    },
     /**
      * What a linked session's chip shows (session linking): its branch, its pull request, and whether it is gone. Also
      * warms what the engine needs to write the brief when the message is sent (the project's pull requests, the

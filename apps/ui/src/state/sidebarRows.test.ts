@@ -250,6 +250,11 @@ describe('groupSessions', () => {
     expect(ids(triageOrder([rows[1]!, rows[2]!, rows[4]!, rows[0]!, rows[5]!, rows[6]!, rows[3]!]))).toEqual(['unread', 'failed', 'read', 'read-earlier']);
   });
 
+  it('finds a session by its note', () => {
+    const noted = row('noted', { summary: { note: 'waiting on Jan' } as SessionRowData['summary'] });
+    expect(ids(buildSessionList([noted, row('other')], { search: 'jan', project: null, now: NOW, archiveAfterDays: DAYS }).active)).toEqual(['noted']);
+  });
+
   it('keeps a session with an unsent message or a queued prompt listed, however old', () => {
     const list = buildSessionList([row('kept', { updatedAt: old, kept: true }), row('gone', { updatedAt: old })], { search: '', project: null, now: NOW, archiveAfterDays: DAYS });
     expect([ids(list.active), ids(list.archived)]).toEqual([['kept'], ['gone']]);

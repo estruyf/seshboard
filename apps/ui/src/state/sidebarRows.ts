@@ -126,6 +126,7 @@ export interface SessionListOptions {
 
 const matches = (row: SessionRowData, needle: string) =>
   row.title.toLowerCase().includes(needle) ||
+  (row.summary?.note?.toLowerCase().includes(needle) ?? false) ||
   (row.remote
     ? row.remote.projectName.toLowerCase().includes(needle) || row.remote.computerName.toLowerCase().includes(needle)
     : row.projectRoot.toLowerCase().includes(needle)) ||

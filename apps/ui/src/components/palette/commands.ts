@@ -70,6 +70,7 @@ import {
   PanelRight,
   PanelsTopLeft,
   Pencil,
+  NotebookPen,
   Pin,
   PinOff,
   Play,
@@ -186,6 +187,8 @@ export interface PaletteApi {
   /** Opens "Why Claude asks" beside the session for its oldest open permission or question. */
   showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
+  /** Opens the note of the session on screen: what's left in it, one line under its title. */
+  editNote(): void;
   compact(): void;
   /** Keep awake until done, on or off, for the session on screen. */
   setKeepAwake(on: boolean): void;
@@ -750,6 +753,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'archive unarchive reopen settle hide done finished',
     when: indexed,
     run: (api, ctx) => api.setFlags(ctx.session!.archived ? { archived: false } : { archived: true, pinned: false }),
+  },
+  {
+    id: 'note',
+    title: 'Note…',
+    group: 'session',
+    icon: NotebookPen,
+    keywords: "what's left todo to do remember reminder later comment",
+    when: indexed,
+    run: (api) => api.editNote(),
   },
   {
     id: 'fork',

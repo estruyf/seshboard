@@ -12,6 +12,7 @@ import {
   type Effort,
   isOtherProviderSession,
   otherProviderOf,
+  cleanNote,
   COMPANION_DIR,
   REMOTE_LOG_FILE,
   contract,
@@ -2781,6 +2782,10 @@ export function createEngine(options: EngineOptions): Engine {
         triggerWatcher?.released(sessionId);
         checksWatcher.release(sessionId);
       }
+      return {};
+    },
+    'sessions.setNote': ({ sessionId, note }) => {
+      sessions.setNote(sessionId, note === null ? null : cleanNote(note));
       return {};
     },
     'session.delete': async ({ sessionId }) => {

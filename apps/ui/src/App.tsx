@@ -11,6 +11,7 @@ import { otherModalOpen, overlayOpen } from './lib/modalGuards.ts';
 import { LinkError } from './components/LinkError.tsx';
 import { QuitPrompt } from './components/QuitPrompt.tsx';
 import { ArchiveDraftDialog } from './components/drafts/ArchiveDraftDialog.tsx';
+import { SessionNoteDialog } from './components/notes/SessionNoteDialog.tsx';
 import { UnsentList } from './components/drafts/UnsentList.tsx';
 import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
@@ -299,6 +300,7 @@ export function App() {
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />
+      <SessionNoteDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
       {cloning && <CloneProjectDialog />}
       <BackupDialogs />

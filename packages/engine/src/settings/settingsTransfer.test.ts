@@ -202,6 +202,26 @@ describe('settings export and import', () => {
     ]);
   });
 
+  it('carries notes on sessions, and keeps yours where a session has one', () => {
+    const before = mac();
+    before.stores.db.prepare("INSERT INTO session_flags (id, note) VALUES ('s1', 'push after review'), ('s2', 'waiting on Jan')").run();
+    const file = roundTrip(before.stores, DEFAULT_PREFERENCES);
+    expect(file.sessions?.notes).toEqual([
+      { id: 's1', note: 'push after review' },
+      { id: 's2', note: 'waiting on Jan' },
+    ]);
+
+    const after = mac();
+    after.stores.db.prepare("INSERT INTO session_flags (id, note) VALUES ('s2', 'mine')").run();
+    const plan = planImport(after.stores, file, ALL);
+    expect(plan.preview.changes.filter((c) => c.section === 'sessions').map((c) => c.label)).toEqual(['1 note on sessions']);
+    plan.apply();
+    expect(after.stores.db.prepare('SELECT id, note FROM session_flags ORDER BY id').all()).toEqual([
+      { id: 's1', note: 'push after review' },
+      { id: 's2', note: 'mine' },
+    ]);
+  });
+
   it('only exports and imports the chosen sections', () => {
     const before = mac();
     const folder = tempDir();

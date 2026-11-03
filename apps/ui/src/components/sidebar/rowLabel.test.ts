@@ -35,6 +35,10 @@ describe('sessionRowLabel', () => {
     );
   });
 
+  it('reads the note after the state', () => {
+    expect(sessionRowLabel({ ...base, note: 'push after review' })).toBe('Fix the login bug, switchboard, note: push after review, updated 5 minutes ago');
+  });
+
   it('says when a session is open in its own window', () => {
     expect(sessionRowLabel({ ...base, ownWindow: true })).toBe('Fix the login bug, switchboard, open in its own window, updated 5 minutes ago');
   });

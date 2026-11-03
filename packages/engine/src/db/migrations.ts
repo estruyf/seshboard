@@ -787,4 +787,10 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX provider_notes_session ON provider_notes (session_id, at);
   `,
+
+  // v44: What's left in a session, in your words (session triage): one line, shown under its title. A user choice:
+  // keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN note TEXT;
+  `,
 ];

@@ -49,6 +49,8 @@ export function sessionRowLabel(row: {
   pinned: boolean;
   /** In Done: true, or why ("Inactive 3 days"). */
   archived: boolean | string | null;
+  /** What's left, in your words. */
+  note?: string | null;
   /** One of several sessions picked with ⌘- or ⇧-click. */
   picked?: boolean;
   beside: boolean;
@@ -67,6 +69,7 @@ export function sessionRowLabel(row: {
   if (row.project) parts.push(row.project);
   if (row.status) parts.push(statusLabel(row.status, row.agent));
   if (row.pipeline) parts.push(`pipeline at ${row.pipeline.replace(/ · /g, ', ')}`);
+  if (row.note) parts.push(`note: ${row.note}`);
   if (row.pinned) parts.push('pinned');
   // In Done: why, in the row's words ("Done", "Inactive 3 days").
   if (row.archived) parts.push(typeof row.archived === 'string' ? row.archived.toLowerCase() : 'done');
