@@ -1,4 +1,4 @@
-import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@seshboard/protocol/client';
+import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type RunView, type TreeStatus } from '@seshboard/protocol/client';
 import { isRunRow, runIsActive, runTreeStatus } from './pipelines.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
@@ -61,10 +61,21 @@ export interface SidebarForest {
  * A tree is archived as one (`archiveAfterDays`, and Archive on the parent): the parent carries the newest activity in
  * its tree, so it goes to Archived once the whole tree is quiet, never while its run works or waits, and its
  * sub-sessions go with it. A sub-session archived on its own leaves the tree while the parent stays up.
+ *
+ * `remoteRuns`: other computers' runs with their rows' ids (`remoteTreeRuns`), for the order of their steps and their
+ * parents' state; their run rows are in `rows` already (`remoteRunRow`).
  */
-export function sidebarForest(rows: readonly SessionRowData[], runs: Iterable<PipelineRunState>, now: number, archiveAfterDays = Number.POSITIVE_INFINITY, kept: ReadonlySet<string> = new Set()): SidebarForest {
-  const all = [...runs];
-  const runRows = all.filter(isRunRow);
+export function sidebarForest(
+  rows: readonly SessionRowData[],
+  runs: Iterable<PipelineRunState>,
+  now: number,
+  archiveAfterDays = Number.POSITIVE_INFINITY,
+  kept: ReadonlySet<string> = new Set(),
+  remoteRuns: readonly RunView[] = [],
+): SidebarForest {
+  const local = [...runs];
+  const runRows = local.filter(isRunRow);
+  const all: RunView[] = [...local, ...remoteRuns];
   // A step's session goes under its run's parent before its transcript says so (a session still starting).
   const stepParent = new Map<string, string>();
   for (const { run, steps } of all) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);

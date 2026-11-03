@@ -47,6 +47,7 @@ export function runRowSession(computer: string, { run }: RemoteRunState): Listed
     permissionMode: null,
     profile: null,
     parentId: null,
+    ...(run.trigger ? { trigger: run.trigger } : {}),
   };
 }
 

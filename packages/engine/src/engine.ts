@@ -2442,6 +2442,7 @@ export function createEngine(options: EngineOptions): Engine {
       logFile: join(options.dataDir, REMOTE_LOG_FILE),
       identity: options.remote.identity,
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
+      triggerSessions: () => triggers.sessions(),
       archiveAfterDays: () => retention.archiveAfterDays,
       scope: () => sidebarScope,
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),

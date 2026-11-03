@@ -1658,7 +1658,7 @@
     },
     {
       "id": "feature:computers-pipelines",
-      "name": "Other computers: Run a pipeline, a run's steps in the sidebar, and its card with Continue, Skip, Stop and Push",
+      "name": "Other computers: Run a pipeline, Run as in New session there, its run rows and steps in the sidebar, its card with Continue, Skip, Stop and Push, and which trigger started it",
       "page": "other-computers"
     },
     {

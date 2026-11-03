@@ -39,6 +39,7 @@ import { withQuote } from '../lib/ask.ts';
 import { SEND_MODES, SEND_MODES_NOTE, sendKey } from '../lib/sendMode.ts';
 import { keys, MAC } from '../lib/platform.ts';
 import { Button, ComputerTag, RoundButton, STATUS_LABEL, StatusDot } from './ui.tsx';
+import { TriggerOrigin } from './TriggerOrigin.tsx';
 
 const PAGE = 50;
 
@@ -389,6 +390,7 @@ export function SessionView({
             </AnchoredMenu>
           </header>
         )}
+        <TriggerOrigin value={session?.trigger} now={Date.now()} />
         {banner}
         {runState && (
           <RunBar

@@ -331,9 +331,12 @@ export function pairingMessage(error: unknown): string {
 /**
  * The session a request from here makes mine there (`isMine`): the one New session or Run on started, or the one it
  * acted on: a message sent (or one sent now from its queue), a prompt answered, a session resumed or set to resume
- * after a limit. Null for what doesn't, or failed. `session.respond` names only the prompt: its session is in the last list.
+ * after a limit. A pipeline counts as its tree's head: the run row a run from New session is (its steps sit under its
+ * id), or the session a run started from, and so does a run's button pressed here (Continue, Push, Stop…) and what
+ * you write in a run row (its new session). Null for what doesn't, or failed. `session.respond` and the run buttons
+ * name only the prompt or the run: its session is in the last list.
  */
-export function mineOf(method: ComputerMethod, params: unknown, result: unknown, lastList: Pick<RemoteSessions, 'prompts'> | undefined): string | null {
+export function mineOf(method: ComputerMethod, params: unknown, result: unknown, lastList: Pick<RemoteSessions, 'prompts' | 'runs'> | undefined): string | null {
   const id = (value: unknown, key: string): string | null => {
     const found = value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
     return typeof found === 'string' ? found : null;
@@ -350,6 +353,19 @@ export function mineOf(method: ComputerMethod, params: unknown, result: unknown,
     case 'session.respond': {
       const requestId = id(params, 'requestId');
       return lastList?.prompts.find((p) => p.requestId === requestId)?.sessionId ?? null;
+    }
+    case 'pipelines.run':
+      return id(params, 'parentSessionId') ?? id((result as { state?: { run?: unknown } } | null)?.state?.run, 'id');
+    case 'runs.write':
+      return id(result, 'sessionId');
+    case 'runs.continue':
+    case 'runs.retryStep':
+    case 'runs.anotherRound':
+    case 'runs.skipStep':
+    case 'runs.stop': {
+      const runId = id(params, 'runId');
+      const run = lastList?.runs?.find((state) => state.run.id === runId)?.run;
+      return run ? (run.parentSessionId ?? run.id) : runId;
     }
     default:
       return null;

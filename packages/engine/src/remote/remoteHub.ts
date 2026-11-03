@@ -61,6 +61,7 @@ import {
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
   type RemoteProfile,
+  type TriggerSession,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -179,6 +180,8 @@ export interface RemoteHubOptions {
    */
   identity(): Promise<Uint8Array | null>;
   sources(): SessionSources;
+  /** The sessions and runs triggers started, for the bolt and "Started by …" on the phone. */
+  triggerSessions?(): readonly TriggerSession[];
   archiveAfterDays(): number;
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
@@ -796,7 +799,8 @@ export class RemoteHub {
     const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}) });
+    const triggers = this.options.triggerSessions?.();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}) });
   }
 
   private projectName(root: string): string {

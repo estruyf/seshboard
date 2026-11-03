@@ -16,6 +16,7 @@ import type { Client } from './Connected.tsx';
 import { ConnectionLine } from './ConnectionStatus.tsx';
 import { ContextMenu, MenuButton, menuPoint, type MenuItem, type MenuPoint } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
+import { TriggerBolt } from './TriggerOrigin.tsx';
 import { promptShort } from '../lib/prompts.ts';
 import { PullToRefresh } from './PullToRefresh.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
@@ -669,6 +670,7 @@ function SessionRow({
           <span className={`flex min-w-0 items-center gap-1.5 text-body ${session.unread || asks ? 'font-semibold' : ''}`}>
             {session.runRow && <ListTree className="size-3.5 shrink-0 text-pipeline" aria-label="Pipeline run" role="img" />}
             <span className="truncate">{session.title}</span>
+            <TriggerBolt value={session.trigger} />
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
             {computer && <ComputerTag name={computer} />}

@@ -82,6 +82,8 @@ export const COMPUTER_METHODS = [
   'runs.anotherRound',
   'runs.skipStep',
   'runs.stop',
+  'runs.archive',
   'runs.pushPreview',
+  'runs.write',
 ] as const satisfies ReadonlyArray<MethodName<RemoteContract>>;
 export type ComputerMethod = (typeof COMPUTER_METHODS)[number];

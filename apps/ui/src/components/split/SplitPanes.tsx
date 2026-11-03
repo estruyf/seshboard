@@ -143,7 +143,10 @@ function DropPreview({ drag, area }: { drag: TileDrag; area: React.RefObject<HTM
   const local = useSessions((s) => s.sessions.get(drag.id)?.title ?? s.live.get(drag.id)?.name ?? null);
   const remote = useComputers((s) => {
     const ref = parseRemoteRowId(drag.id);
-    return ref ? (s.lists.get(ref.computerId)?.sessions.find((session) => session.id === ref.sessionId)?.title ?? null) : null;
+    if (!ref) return null;
+    const list = s.lists.get(ref.computerId);
+    // A run row there is keyed by its run's id.
+    return list?.sessions.find((session) => session.id === ref.sessionId)?.title ?? list?.runs?.find((state) => state.run.id === ref.sessionId)?.run.title ?? null;
   });
   const run = usePipelines((s) => (isRunRowId(drag.id) ? (s.runs.get(drag.id)?.run.title ?? null) : null));
   const title = local ?? remote ?? run ?? 'Session';

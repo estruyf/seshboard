@@ -1,6 +1,6 @@
 import { Folder, FolderDown, FolderGit2, GitBranch } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { bringsAnything, REMOTE_FEATURE_BRANCHES, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
+import { AUTO_MODEL, bringsAnything, keptRunAs, modelWord, REMOTE_FEATURE_BRANCHES, REMOTE_FEATURE_PIPELINES, runAsSteps, type Computer, type Contract, type RemoteBranches, type PermissionMode, type RemoteOptions, type RemotePermissionMode, type RemotePipeline, type RemoteProject, type RpcClient } from '@seshboard/protocol/client';
 import { matches } from '../../lib/shortcuts.ts';
 import { letterColor } from '../../lib/projectColor.ts';
 import { useComputers } from '../../state/computersStore.ts';
@@ -18,7 +18,10 @@ import { useRunOn } from '../../state/runOnStore.ts';
 import { toast } from '../../state/toastStore.ts';
 import { DropOverlay } from '../composer/Attachments.tsx';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
+import { RunAsChip } from '../newSession/RunAsChip.tsx';
+import { RunAsSteps } from '../newSession/RunAsSteps.tsx';
 import { RunOnSwitch } from '../newSession/RunOnSwitch.tsx';
+import { rememberPipeline } from '../../state/lastPipeline.ts';
 import { moveInGrid, NEW_SESSION_COLUMN, PROJECT_GRID, ProjectListFooter, ProjectRow } from '../newSession/ProjectRow.tsx';
 import { COLUMN_BREAKPOINTS, quickCount, quickTiles } from '../newSession/projectTiles.ts';
 import { useColumns } from '../ui/useColumns.ts';
@@ -48,7 +51,9 @@ import { remoteBranchChoices, remoteChanges, remoteCheckoutBranch, remoteDefault
  * checked out before the session starts (`REMOTE_FEATURE_BRANCHES`). Queue for later puts the prompt in that
  * computer's queue (`later.add`), to start there. Folders there can't be picked from here, and Quick question and the
  * focus limit are this computer's. Clone from GitHub (on here) clones on that computer, into its own Clone into folder
- * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there.
+ * (`REMOTE_FEATURE_CLONE`), and the session starts in the clone there. Run as lists the pipelines the project can run
+ * there (`REMOTE_FEATURE_PIPELINES`): picked, Start runs it on that computer with the prompt as its task, and its run
+ * row opens here.
  */
 export function RemoteNewSession({ client, computer }: { client: RpcClient<Contract> | null; computer: Computer }) {
   const [projects, setProjects] = useState<RemoteProject[] | null>(null);
@@ -217,6 +222,31 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   }, [client, computer.id, connected, takesBranch, projectId]);
   const checkoutBranch = remoteCheckoutBranch(branch, branches, worktree);
 
+  // Run as: the pipelines the project can run there (its own, every project's and the built-ins, as that computer has
+  // them). The one picked stays while the next project can run it too.
+  const takesPipelines = computer.features.includes(REMOTE_FEATURE_PIPELINES);
+  const [pipelines, setPipelines] = useState<RemotePipeline[]>([]);
+  const [runAsId, setRunAsId] = useState<string | null>(null);
+  /** The steps line's Change opens the Run as menu. */
+  const [runAsMenu, setRunAsMenu] = useState(0);
+  useEffect(() => {
+    if (!client || !connected || !takesPipelines || !projectId) return setPipelines([]);
+    let current = true;
+    void callComputer(client, computer.id, 'pipelines.list', { projectId }).then(
+      (result) => {
+        if (!current) return;
+        setPipelines(result.pipelines);
+        setRunAsId((id) => keptRunAs(id, result.pipelines));
+      },
+      () => current && setPipelines([]),
+    );
+    return () => {
+      current = false;
+    };
+  }, [client, computer.id, connected, takesPipelines, projectId]);
+  // A pipeline's steps are Claude Code's (none with another provider), and a clone has no project to run in yet.
+  const runAs = !provider && !cloneForm ? (pipelines.find((p) => p.id === runAsId) ?? null) : null;
+
   const cloneBlocked = cloning && !canClone(cloneJob.plan) && cloneJob.stage !== 'running' ? (cloneJob.problem ?? (cloneJob.plan ? planLine(cloneJob.plan, name).text : 'Paste a GitHub repository first')) : null;
   const blocked = !client ? 'Connecting to the engine…' : !connected ? `${name} is not connected` : cloneBlocked ? cloneBlocked : !project && !cloning ? 'Choose a project first' : providerBlocked ? providerBlocked : !prompt.trim() && !fill ? 'Type a message first' : null;
   const start = async () => {
@@ -242,6 +272,20 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
         if (bringsAnything(fresh.brings) && !(await trust.ask(`${computer.id}:${fresh.projectId}`, fresh.brings))) return;
       }
       const projectId = fresh?.projectId ?? project!.id;
+      if (runAs) {
+        // The prompt is the run's task; the box's choices go to the steps that don't set their own (the run makes its own worktree).
+        const { worktree: _worktree, ...choices } = options ? remoteChanges(choice, defaults, baseProfile) : {};
+        const { state } = await callComputer(client, computer.id, 'pipelines.run', { pipelineId: runAs.id, projectId, task: text, images, files, ...choices });
+        rememberPipeline(remoteProjectKey(computer.id, projectId), runAs.id);
+        clearRemoteDraft(draftKey);
+        setPrompt('');
+        savedPrompts.sent(sentFill);
+        setChanges({});
+        setRunAsId(null);
+        attachments.clear();
+        useComputers.getState().openSession({ computerId: computer.id, sessionId: state.run.id }, { starting: true });
+        return;
+      }
       // A fresh clone runs in the clone, on the branch it checked out: no worktree, no other branch.
       const inClone = fresh !== null && !fresh.reused;
       const { sessionId } = await callComputer(client, computer.id, 'session.create', {
@@ -268,7 +312,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
       attachments.clear();
       useComputers.getState().openSession({ computerId: computer.id, sessionId }, { starting: true });
     } catch (e) {
-      toast((e as Error).message, { body: `It didn’t start on ${name}.` });
+      toast((e as Error).message, { body: runAs ? `The pipeline didn’t start on ${name}.` : `It didn’t start on ${name}.` });
     } finally {
       setStarting(false);
     }
@@ -277,7 +321,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
   // Queue for later: the prompt waits in that computer's queue (Later) until someone starts it there. Images and files
   // can't wait with it, and a clone has nothing to queue in yet.
   const attached = attachments.images.length + attachments.files.length > 0;
-  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : attached ? 'Images and files can’t wait in the queue' : null);
+  const queueBlocked = blocked ?? (cloning ? 'Start a clone with Start' : runAs ? 'A pipeline starts now, not from the queue' : attached ? 'Images and files can’t wait in the queue' : null);
   const queueLater = async () => {
     if (queueBlocked || starting || queuing || !client || !project) return;
     const sentFill = fill;
@@ -421,7 +465,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   {cloning ? (cloneJob.plan ? `Claude works in the clone of ${cloneJob.plan.repo.owner}/${cloneJob.plan.repo.name}.` : 'Paste a GitHub repository to clone.') : `Choose a project on ${name}`}
                 </span>
               )}
-              {options && project && !cloning && (
+              {options && project && !cloning && !runAs && (
                 <>
                   <span aria-hidden className="text-faint">
                     /
@@ -506,15 +550,23 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   <RemoteAttachButton state={attachments} computer={computer} disabled={!connected} />
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
+                  {pipelines.length > 0 && project && !cloning && (
+                    // Another provider's steps can't run a pipeline: the chip stays, with why.
+                    <span className="inline-flex" data-tooltip={provider ? `${provider.name} can’t run a pipeline yet` : undefined}>
+                      <RunAsChip pipelines={pipelines} value={provider ? null : runAs} onChange={setRunAsId} root={remoteProjectKey(computer.id, project.id)} openRequest={runAsMenu} disabled={starting || !connected || !!provider} editable={false} />
+                    </span>
+                  )}
+                  {!runAs && (
                   <span className="flex" data-tooltip={!queuing ? (queueBlocked ?? `Wait in the queue on ${name}`) : undefined}>
                     <Button variant="secondary" size="lg" disabled={!!queueBlocked || starting || queuing} aria-busy={queuing || undefined} onClick={() => void queueLater()} className="disabled:pointer-events-none" data-remote-queue-later>
                       <span className="@max-[600px]/box:hidden">{queuing ? 'Queueing…' : 'Queue for later'}</span>
                       <span className="hidden @max-[600px]/box:inline">{queuing ? 'Queueing…' : 'Queue'}</span>
                     </Button>
                   </span>
+                  )}
                   <span className="flex" data-tooltip={!starting ? (blocked ?? undefined) : undefined}>
-                    <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} aria-busy={starting || undefined} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start>
-                      {starting ? 'Starting…' : `Start on ${name}`}
+                    <Button variant="primary" size="lg" shortcut="new-session.start" disabled={!!blocked || starting || attachments.reading} aria-busy={starting || undefined} onClick={() => void start()} className="disabled:pointer-events-none" data-composer-submit data-remote-start={runAs ? 'pipeline' : 'session'}>
+                      {runAs ? (starting ? 'Starting the run…' : 'Run pipeline') : starting ? 'Starting…' : `Start on ${name}`}
                     </Button>
                   </span>
                 </div>
@@ -549,7 +601,8 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                             value: choice.model ?? '',
                             label: remoteModelLabel(options.models, choice.model),
                             onChange: (model) => change({ model: model || null }),
-                            choices: remoteModelChoices(options.models, choice.model ?? '', { auto: options.auto?.enabled ? { allowed: options.auto.allowed, icon: <AutoWand /> } : null }),
+                            // A pipeline's steps don't pick a model with Auto.
+                            choices: remoteModelChoices(options.models, choice.model ?? '', { auto: options.auto?.enabled && !runAs ? { allowed: options.auto.allowed, icon: <AutoWand /> } : null }),
                           }
                     }
                     effort={!provider && options.efforts.length > 0 && remoteTakesEffort(options.models, choice.model) ? { value: choice.effort ?? '', levels: options.efforts, onChange: (effort) => change({ effort: effort || null }) } : null}
@@ -571,8 +624,10 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
               />
             )}
           </div>
+          {/* What Run pipeline will run there: a pill per step with who does it, once there is a task. */}
+          {runAs && prompt.trim() !== '' && <RunAsSteps name={runAs.name} steps={runAsSteps(runAs, modelWord(choice.model === AUTO_MODEL ? null : choice.model))} onChange={() => setRunAsMenu((n) => n + 1)} />}
           <p className="-mt-2 text-center text-meta text-muted" data-remote-start-note>
-            Claude runs on {name}, in its folders and with its Claude profile. You follow it from here.
+            {runAs ? `The run goes on ${name}, in its folders and with its Claude profile. You follow it from here.` : `Claude runs on ${name}, in its folders and with its Claude profile. You follow it from here.`}
           </p>
         </div>
       </div>

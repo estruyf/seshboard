@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { Computer } from '@seshboard/protocol/client';
+import type { Computer, RemoteRunState } from '@seshboard/protocol/client';
 import { useComputers } from './computersStore.ts';
 import { selectionOf } from './remoteSelection.ts';
-import { remoteRows, splitByScope, THIS_COMPUTER } from './remoteRows.ts';
+import { remoteRows, remoteTreeRuns, splitByScope, THIS_COMPUTER } from './remoteRows.ts';
 import { useSessions, type SessionRowData } from './sessionsStore.ts';
 
 const NONE: Computer[] = [];
@@ -27,6 +27,19 @@ export function useRemoteRows(): SessionRowData[] {
 export function currentRemoteRows(): SessionRowData[] {
   const { status, lists, scopes } = useComputers.getState();
   return splitByScope(remoteRows(status?.computers ?? NONE, lists), scopes).shown;
+}
+
+/** Every computer's pipeline runs in the ids of their sidebar rows (`remoteTreeRuns`), for the sidebar's tree. */
+export function useRemoteTreeRuns(): RemoteRunState[] {
+  const computers = useComputers((s) => s.status?.computers ?? NONE);
+  const lists = useComputers((s) => s.lists);
+  return useMemo(() => remoteTreeRuns(computers, lists), [computers, lists]);
+}
+
+/** The same, read once. */
+export function currentRemoteTreeRuns(): RemoteRunState[] {
+  const { status, lists } = useComputers.getState();
+  return remoteTreeRuns(status?.computers ?? NONE, lists);
 }
 
 /** What the sidebar's filter can choose from: this computer, then each paired one. Only this computer without a pairing. */

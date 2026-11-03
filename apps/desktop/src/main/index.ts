@@ -22,7 +22,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -4716,10 +4716,58 @@ async function remoteSessionExtras(win: BrowserWindow, row: string): Promise<str
 }
 
 /**
+ * Pipelines on the other computer (the demo computer's runs are made up): its run row (a run started from New session
+ * there) is in the sidebar and opens with its task, its steps and a message box; what a trigger started there has the
+ * bolt and "Started by …" with its link. New session there lists its pipelines
+ * in Run as (without Edit pipelines, which is that computer's), and Run pipeline starts one there whose run row opens here.
+ */
+async function remoteRunRows(win: BrowserWindow, row: string, computerId: string): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const runRow = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.dataset.runRow && r.innerText.includes('Retry failed webhook deliveries'))`;
+  if (!(await waitInPage(win, `Boolean(${runRow})`, 5_000))) return 'the other computer’s run row is not in the sidebar';
+  await js(`${runRow}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-run-row] [data-remote-run] [data-remote-run-step]')", 5_000))) return 'the other computer’s run row did not open with its steps';
+  if (!(await js("Boolean(document.querySelector('[data-remote-run-row] [data-run-task]') && document.querySelector('[data-remote-run-row] [data-remote-run-write]'))"))) return 'the other computer’s run row has no task or no message box';
+  // A trigger there started it (an issue, without stopping for you): the bolt on its row, and "Started by …" with the issue's link.
+  if (!(await js(`Boolean(${runRow}.querySelector('[data-row-triggered]'))`))) return 'the run row a trigger started has no bolt';
+  const origin = (await js("document.querySelector('[data-remote-run-row] [data-trigger-origin]')?.innerText.replace(/\\s+/g, ' ')")) as string | undefined;
+  if (!origin?.includes('Started by New bug issues') || !origin.includes('#212')) return `the run row a trigger started does not say which (${origin})`;
+  if (!(await js("document.querySelector('[data-remote-run-row] [data-trigger-origin-link]')?.href === 'https://github.com/acme/harbor-api/issues/212' && document.querySelector('[data-remote-run-row] [data-run-row-meta]')?.innerText.includes('without stopping for you')"))) return 'the run row a trigger started has no link to its issue, or does not say it runs without stopping';
+  await shot(win, 'computers-run-row.png');
+  // A session a trigger started there (failing CI): the bolt, and the same line under its header.
+  const fixer = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Fix the flaky upload test'))`;
+  if (!(await js(`Boolean(${fixer}?.querySelector('[data-row-triggered]'))`))) return 'the session a trigger started on the other computer has no bolt';
+  await js(`${fixer}.click()`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-session] [data-trigger-origin]')?.innerText.includes('CI fails on main')", 5_000))) return 'the session a trigger started on the other computer does not say which';
+
+  await click('[data-new-session]');
+  if (!(await waitInPage(win, `document.querySelector('[data-run-on-option=${JSON.stringify(computerId)}]')`, 5_000))) return 'New session has no Run on switch with the other computer';
+  await click(`[data-run-on-option=${JSON.stringify(computerId)}]`);
+  const tideline = '[data-remote-new-session] [data-remote-project][data-tooltip="tideline"]';
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(tideline)})`, 10_000))) return 'New session on the other computer has no tideline tile';
+  await click(tideline);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-new-session] [data-run-as]')", 5_000))) return 'New session on the other computer has no Run as';
+  await click('[data-remote-new-session] [data-run-as]');
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-run-as-option=\"demo-execute-validate\"]')", 3_000))) return 'Run as does not list the other computer’s own pipeline';
+  if (await js("Boolean(document.querySelector('[role=menu] [data-edit-pipelines]'))")) return 'Run as on the other computer offers Edit pipelines, which are that computer’s';
+  await click('[role=menu] [data-run-as-option="demo-execute-validate"]');
+  const task = `Smoke remote run ${Date.now()}`;
+  await js("document.querySelector('[data-remote-new-session] textarea').focus()");
+  await win.webContents.insertText(task);
+  // Start's text has its keys after it (⌘↵).
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-start=\"pipeline\"]')?.innerText.startsWith('Run pipeline') && document.querySelector('[data-remote-new-session] [data-run-as-steps]') && !document.querySelector('[data-remote-new-session] [data-remote-queue-later]')", 3_000))) return `picking a pipeline did not turn Start into Run pipeline with its steps, without Queue for later (${await js("document.querySelector('[data-remote-start]')?.innerText")})`;
+  await shot(win, 'computers-run-as.png');
+  await click('[data-remote-start="pipeline"]');
+  if (!(await waitInPage(win, `document.querySelector('[data-remote-run-row] h1')?.innerText === ${JSON.stringify(task)}`, 10_000))) return `the run started on the other computer did not open its run row here (${await js("document.querySelector('[data-computer-empty]')?.innerText ?? document.querySelector('[data-remote-run-row] h1')?.innerText")})`;
+  return null;
+}
+
+/**
  * Other computers in the same app: pairs with the second computer the smoke script starts (scripts/remote-demo.ts, the
  * real Remote hub over made-up sessions, in a throwaway folder), through the link field in Settings › Remote. Then its
  * sessions are in the sidebar with the computer's chip and the Computers strip; one opens in the session view with the
- * violet line and "on Smoke Mac", its terminal button disabled with the reason; a background task there stops from
+ * violet line and "on Smoke Mac", its terminal button disabled with the reason; its pipelines (`remoteRunRows`); a background task there stops from
  * its pill; Quote and Read work on its finished session (`remoteQuoteAndRead`); and New session with Run on set to it
  * starts a session there, which opens here. Run on goes back to this
  * computer and the computer is removed again.
@@ -4867,6 +4915,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (quoted) return quoted;
   const extras = await remoteSessionExtras(win, row);
   if (extras) return extras;
+  const pipelines = await remoteRunRows(win, row, computerId);
+  if (pipelines) return pipelines;
 
   // 3d. Someone else's session, sent a message from here, is mine: it stays when the computer goes back to Mine.
   const theirs = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Explain the tile renderer'))`;
@@ -4957,7 +5007,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const removed = await waitInPage(win, "!document.querySelector('[data-computer]') && !document.querySelector('[data-remote-row]')", 5_000);
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
-  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
+  return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
 }
 
 /**
@@ -12032,6 +12082,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: New session from the drawer in a session', runPhoneDrawerNewStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Settings switches the theme, Back returns to Home in it', runPhoneSettingsThemeStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: what a trigger started has the bolt and says which trigger', () => runPhoneTriggerStep(shot), { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Quote under a reply, over a selection and in Read', runPhoneQuoteStep, { timeoutMs: 75_000 });
