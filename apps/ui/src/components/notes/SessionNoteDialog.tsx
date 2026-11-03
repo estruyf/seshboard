@@ -1,18 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { cleanNote, SESSION_NOTE_MAX } from '@seshboard/protocol/client';
+import { SESSION_NOTE_MAX } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useNoteEditor } from '../../state/noteEditorStore.ts';
+import { saveNote } from '../../state/sessionNotes.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 
-/** Sets a session's note at once (the row follows) and tells the engine; null clears it. */
-export async function saveNote(client: { call(method: 'sessions.setNote', params: { sessionId: string; note: string | null }): Promise<unknown> } | null, sessionId: string, text: string | null): Promise<void> {
-  const note = text === null ? null : cleanNote(text);
-  useSessions.getState().patchSummary(sessionId, { note });
-  if (!client) throw new Error('Not connected to the engine');
-  await client.call('sessions.setNote', { sessionId, note });
-}
 
 /**
  * What's left in a session, in your words: one line under its title in the sidebar ("push after review"). Mounted

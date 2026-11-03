@@ -6,7 +6,7 @@ import { turnKey, useCatchUp } from '../../state/catchUpStore.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
 import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
-import { saveNote } from '../notes/SessionNoteDialog.tsx';
+import { saveNote } from '../../state/sessionNotes.ts';
 import { toast } from '../../state/toastStore.ts';
 import { closeChanges } from '../../state/changesPanelStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
