@@ -19,6 +19,8 @@ import {
   type RemoteSessionProfile,
   type RemoteSessionOptions,
   type RemoteSessions,
+  type RemoteTriggerOrigin,
+  type TriggerSession,
   type SessionHostInfo,
   type TranscriptBlock,
   type TranscriptMessage,
@@ -51,7 +53,14 @@ export interface ListOptions {
   runs?: readonly PipelineRunState[];
   /** Who started each session or run from afar (`SessionOrigins`), by id: each session says so (`startedBy`). */
   starters?: ReadonlyMap<string, string>;
+  /** The sessions and runs triggers started (by session or run id): the bolt and "Started by …" on the phone too. */
+  triggers?: readonly TriggerSession[];
   now?: number;
+}
+
+/** What a phone gets of the trigger that started a session or a run, by its id. */
+export function triggerOrigins(links: readonly TriggerSession[] = []): Map<string, RemoteTriggerOrigin> {
+  return new Map(links.map((l) => [l.sessionId, { name: l.triggerName, kind: l.kind, ref: l.ref, url: l.url, at: l.at }]));
 }
 
 /** The sidebar's sessions (needs you first, then working, then the most recent) and their prompts. */
@@ -92,9 +101,14 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     for (const session of sessions) session.startedBy = starters.get(session.id) ?? (session.parentId ? starters.get(session.parentId) : undefined) ?? null;
   }
   const prompts = promptsFor(sources.permissions ?? [], listed).map(remotePrompt);
+  const origins = triggerOrigins(options.triggers);
+  for (const session of sessions) {
+    const origin = origins.get(session.id);
+    if (origin) session.trigger = origin;
+  }
   if (!options.runs) return { sessions, prompts };
   const now = options.now ?? Date.now();
-  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, ...(sources.kept ? { kept: sources.kept } : {}) });
+  const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
   return { sessions, prompts, runs };
 }
 
@@ -106,7 +120,7 @@ export const REMOTE_RUN_LIMIT = 50;
  * run rows (runs started from New session) the sidebar lists. A run row is listed as a session is: while it works or
  * waits for you, until you archive it, and for `archiveAfterDays` after its last activity.
  */
-export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number; kept?: ReadonlySet<string> }): RemoteRunState[] {
+export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySet<string>, options: { projectNames: ReadonlyMap<string, string>; archiveAfterDays: number; now: number; kept?: ReadonlySet<string>; origins?: ReadonlyMap<string, RemoteTriggerOrigin> }): RemoteRunState[] {
   const shown = runs.filter((state) => {
     const { run, steps } = state;
     if (run.parentSessionId) return listed.has(run.parentSessionId) || steps.some((s) => s.sessionId !== null && listed.has(s.sessionId));
@@ -116,15 +130,18 @@ export function remoteRuns(runs: readonly PipelineRunState[], listed: ReadonlySe
   return shown
     .sort((a, b) => b.run.updatedAt - a.run.updatedAt)
     .slice(0, REMOTE_RUN_LIMIT)
-    .map((state) => remoteRun(state, options.projectNames));
+    .map((state) => remoteRun(state, options.projectNames, options.origins?.get(state.run.id)));
 }
 
-/** A run for a phone: its project as an id and a name, without its folders, its profile, the plan and the actions' output. */
-export function remoteRun(state: PipelineRunState, projectNames: ReadonlyMap<string, string>): RemoteRunState {
+/**
+ * A run for a phone: its project as an id and a name, without its folders, its profile, the plan and the actions'
+ * output; with the trigger that started it, when one did.
+ */
+export function remoteRun(state: PipelineRunState, projectNames: ReadonlyMap<string, string>, trigger?: RemoteTriggerOrigin): RemoteRunState {
   const { pipeline, projectRoot, cwd, profileId: _profile, ...run } = state.run;
   const { scope: _scope, ...saved } = pipeline;
   return {
-    run: { ...run, pipeline: saved, projectId: projectIdOf(projectRoot), projectName: projectNames.get(projectRoot) ?? lastSegment(projectRoot), worktree: cwd !== projectRoot },
+    run: { ...run, pipeline: saved, projectId: projectIdOf(projectRoot), projectName: projectNames.get(projectRoot) ?? lastSegment(projectRoot), worktree: cwd !== projectRoot, ...(trigger ? { trigger } : {}) },
     steps: state.steps.map(({ plan: _plan, actions: _actions, ...step }) => step),
   };
 }

@@ -36,6 +36,12 @@ export const DeviceName = z.string().trim().min(1).max(REMOTE_DEVICE_NAME_MAX);
 export const RemoteSessionProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor });
 export type RemoteSessionProfile = z.infer<typeof RemoteSessionProfile>;
 
+/** Which trigger started a session or a run (`triggerOrigin.ts`); one this version can't read is left out, not the session. */
+export const RemoteTriggerOriginSchema = z
+  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
+  .optional()
+  .catch(undefined);
+
 export const RemoteSession = z.object({
   id: z.string(),
   title: z.string(),
@@ -84,6 +90,8 @@ export const RemoteSession = z.object({
    * session it sits under; null when it was started on this computer itself. With `REMOTE_FEATURE_STARTED_BY`.
    */
   startedBy: z.string().max(200).nullable().optional(),
+  /** The trigger that started it (#180): the bolt on its row and "Started by …" under its header. Left out when none did. */
+  trigger: RemoteTriggerOriginSchema,
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -98,6 +106,8 @@ export const RemoteRun = PipelineRun.omit({ pipeline: true, projectRoot: true, c
   projectName: z.string(),
   /** Its steps work in a worktree, not the project's folder. */
   worktree: z.boolean(),
+  /** The trigger that started it (#185), as a session's. Left out when none did. */
+  trigger: RemoteTriggerOriginSchema,
 });
 export type RemoteRun = z.infer<typeof RemoteRun>;
 

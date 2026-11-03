@@ -1,4 +1,4 @@
-import { isMine, REMOTE_FEATURE_STARTED_BY, type ClaudeProfile, type Computer, type ProfileColor, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
+import { isMine, REMOTE_FEATURE_STARTED_BY, runOfParent, triggerOriginOf, type ClaudeProfile, type Computer, type ProfileColor, type RemoteRun, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteRowId } from './remoteSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -28,7 +28,10 @@ export interface RemoteRowInfo {
   offline: boolean;
   /** When the computer was last connected, while it is offline. */
   lastSeen: number | null;
-  /** The row it sits under: a pipeline step's sub-session under the session the run started from (`remoteRowId`). */
+  /**
+   * The row it sits under (`remoteRowId`): a pipeline step's sub-session under the session the run started from, or
+   * under its run row.
+   */
   parentRowId?: string | null;
   /** Started or acted on from here (`isMine`): what the computer's Mine filter keeps. */
   mine?: boolean;
@@ -36,6 +39,12 @@ export interface RemoteRowInfo {
   startedBy?: string | null;
   /** One of the others' sessions its computer's Mine filter leaves out, listed because a search found it. */
   fromOthers?: boolean;
+  /** A pipeline run started from New session there: `sessionId` is the run's id, and no session is behind it yet. */
+  runRow?: boolean;
+  /** The run whose tree this row heads (a run row's own, or the newest started from the session): Done archives it with `runs.archive`. */
+  treeRunId?: string | null;
+  /** The name of the trigger that started it there (the bolt on its row); null when none did. */
+  trigger?: string | null;
 }
 
 /**
@@ -85,8 +94,8 @@ export function remoteRowStatus(session: Pick<RemoteSession, 'status' | 'unread'
   return null;
 }
 
-/** One remote session as a sidebar row. */
-export function remoteRow(computer: RowComputer, session: RemoteSession, prompts: RemoteSessions['prompts']): SessionRowData {
+/** One remote session as a sidebar row; `runs`, that computer's, give the run whose tree it heads. */
+export function remoteRow(computer: RowComputer, session: RemoteSession, prompts: RemoteSessions['prompts'], runs: readonly RemoteRunState[] = []): SessionRowData {
   const asking = prompts.filter((p) => p.sessionId === session.id).sort((a, b) => a.createdAt - b.createdAt);
   const status = remoteRowStatus(session, asking.length > 0);
   const mine = isMine(session.id, session.parentId, { mineHere: computer.mineHere ?? [] });
@@ -123,6 +132,64 @@ export function remoteRow(computer: RowComputer, session: RemoteSession, prompts
       parentRowId: session.parentId ? remoteRowId({ computerId: computer.id, sessionId: session.parentId }) : null,
       mine,
       startedBy: mine ? null : startedByOf(session, computer),
+      treeRunId: runOfParent(runs, session.id)?.run.id ?? null,
+      trigger: triggerOriginOf(session.trigger)?.name ?? null,
+    },
+  };
+}
+
+/** A run row's state as a row's: waiting for you (a stop, a confirm, Push) is needs you, running is working. */
+export function remoteRunRowStatus(run: Pick<RemoteRun, 'status'>): RowStatus {
+  if (run.status === 'waiting') return 'needs-you';
+  if (run.status === 'running') return 'running';
+  return null;
+}
+
+/**
+ * A run started from New session on another computer as a sidebar row, as this computer's run rows are
+ * (`runRowData`): keyed by the run's id on that computer, with no session behind it until you write in it there.
+ */
+export function remoteRunRow(computer: RowComputer, { run }: RemoteRunState): SessionRowData {
+  const status = remoteRunRowStatus(run);
+  // Started (or acted on) from here: the run's id is what this computer remembers.
+  const mine = isMine(run.id, null, { mineHere: computer.mineHere ?? [] });
+  const trigger = triggerOriginOf(run.trigger)?.name ?? null;
+  return {
+    id: remoteRowId({ computerId: computer.id, sessionId: run.id }),
+    title: run.title,
+    projectRoot: remoteProjectKey(computer.id, run.projectId),
+    updatedAt: run.updatedAt,
+    workingSince: status === 'running' ? run.createdAt : null,
+    branch: null,
+    isWorktree: run.worktree,
+    live: null,
+    summary: null,
+    pinned: false,
+    archivedAt: null,
+    restoredAt: null,
+    unread: false,
+    inApp: true,
+    error: false,
+    profileId: '',
+    remote: {
+      computerId: computer.id,
+      computerName: computer.name,
+      sessionId: run.id,
+      projectId: run.projectId,
+      projectName: run.projectName,
+      status,
+      waitingTool: null,
+      workingSince: status === 'running' ? run.createdAt : null,
+      profile: null,
+      offline: computer.state !== 'connected',
+      lastSeen: computer.lastSeen,
+      parentRowId: null,
+      runRow: true,
+      treeRunId: run.id,
+      trigger,
+      mine,
+      // A run says who started it only when a trigger did.
+      startedBy: mine ? null : trigger,
     },
   };
 }
@@ -134,7 +201,24 @@ export function remoteRow(computer: RowComputer, session: RemoteSession, prompts
 export function remoteRows(computers: readonly RowComputer[], lists: ReadonlyMap<string, RemoteSessions>): SessionRowData[] {
   return computers.flatMap((computer) => {
     const list = lists.get(computer.id);
-    return list ? list.sessions.map((session) => remoteRow(computer, session, list.prompts)) : [];
+    if (!list) return [];
+    const runs = list.runs ?? [];
+    return [...list.sessions.map((session) => remoteRow(computer, session, list.prompts, runs)), ...runs.filter((state) => !state.run.parentSessionId).map((state) => remoteRunRow(computer, state))];
+  });
+}
+
+/**
+ * Every computer's runs with their ids as the sidebar's rows have them (`remoteRowId`: the run, its parent and its
+ * steps' sessions), so the sidebar's tree puts a run's steps in order under their parent and lifts the parent while
+ * its run works or waits for you, as for a run here.
+ */
+export function remoteTreeRuns(computers: readonly Pick<Computer, 'id'>[], lists: ReadonlyMap<string, RemoteSessions>): RemoteRunState[] {
+  return computers.flatMap((computer) => {
+    const key = (sessionId: string) => remoteRowId({ computerId: computer.id, sessionId });
+    return (lists.get(computer.id)?.runs ?? []).map((state) => ({
+      run: { ...state.run, id: key(state.run.id), parentSessionId: state.run.parentSessionId ? key(state.run.parentSessionId) : null },
+      steps: state.steps.map((step) => (step.sessionId ? { ...step, sessionId: key(step.sessionId) } : step)),
+    }));
   });
 }
 

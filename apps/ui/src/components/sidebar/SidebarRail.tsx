@@ -25,7 +25,7 @@ import { ProjectIcon } from '../ProjectIcon.tsx';
 import { useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
-import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
+import { openRow, useRemoteRows, useRemoteTreeRuns, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
@@ -273,6 +273,7 @@ export function SidebarRail() {
   const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
   const remoteRows = useRemoteRows();
+  const remoteRuns = useRemoteTreeRuns();
   const hidden = useComputers((s) => s.hidden);
   const listed = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
   const shownId = useShownRowId();
@@ -281,7 +282,7 @@ export function SidebarRail() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
   const runs = usePipelines((s) => s.runs);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS, kept }), [listed, now, archiveAfterDays, sort, quick, runs, kept]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), remoteRuns, openParents: NO_OPEN_PARENTS, kept }), [listed, now, archiveAfterDays, sort, quick, runs, remoteRuns, kept]);
   // A sub-session in the main area: its parent's icon is the one that shows it.
   const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
   const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);

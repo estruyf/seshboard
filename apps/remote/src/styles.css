@@ -32,6 +32,8 @@
   --sb-caution: #b35900;
   /* Pipelines (#179): the run row's icon and the step kinds, as on the computer; never a state. */
   --sb-pipeline: #6741d9;
+  /* Triggers (#180): the bolt on what a trigger started, as on the computer; never a state. */
+  --sb-trigger: #6f42c1;
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;
   --sb-overlay-shadow: 0 2px 6px rgb(21 24 31 / 0.08), 0 12px 32px -4px rgb(21 24 31 / 0.2);
@@ -82,6 +84,7 @@
     --sb-focus-ring: #ffd43b8c;
     --sb-caution: #ffa94d;
     --sb-pipeline: #9775fa;
+    --sb-trigger: #b197fc;
     --sb-popover: #2a3244;
     --sb-overlay-border: #414861;
     --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
@@ -126,6 +129,7 @@
   --sb-focus-ring: #ffd43b8c;
   --sb-caution: #ffa94d;
   --sb-pipeline: #9775fa;
+  --sb-trigger: #b197fc;
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
   --sb-overlay-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 10px rgb(0 0 0 / 0.35), 0 16px 40px -6px rgb(0 0 0 / 0.7);
@@ -172,6 +176,7 @@
   --color-unread: var(--sb-unread);
   --color-caution: var(--sb-caution);
   --color-pipeline: var(--sb-pipeline);
+  --color-trigger: var(--sb-trigger);
   --color-popover: var(--sb-popover);
   --color-selected: var(--sb-selected);
   --color-code: var(--sb-code-bg);

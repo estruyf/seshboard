@@ -6,6 +6,7 @@ import { age } from '../lib/groups.ts';
 import { DECLINED, promptFitsLine, promptKind, promptLine, promptSubject, promptTag } from '../lib/prompts.ts';
 import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
+import { TriggerBolt } from './TriggerOrigin.tsx';
 import { Button, ComputerTag } from './ui.tsx';
 
 /**
@@ -42,7 +43,10 @@ export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, o
               {session?.projectName} · {age(prompt.createdAt, now)}
             </span>
           </span>
-          <span className="block truncate text-body font-semibold">{title}</span>
+          <span className="flex min-w-0 items-center gap-1.5 text-body font-semibold">
+            <span className="truncate">{title}</span>
+            <TriggerBolt value={session?.trigger} />
+          </span>
           {line && <span className="block truncate text-ui text-muted">{line}</span>}
         </span>
         <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
@@ -60,9 +64,12 @@ export function NeedsYouCard({ prompt, session, client, computer, now, onOpen, o
           {session?.projectName} · {age(prompt.createdAt, now)}
         </span>
       </div>
-      <button type="button" onClick={onOpen} className="-my-0.5 truncate text-left text-body font-semibold">
-        {title}
-      </button>
+      <span className="-my-0.5 flex min-w-0 items-center gap-1.5">
+        <button type="button" onClick={onOpen} className="truncate text-left text-body font-semibold">
+          {title}
+        </button>
+        <TriggerBolt value={session?.trigger} />
+      </span>
       <code className="block rounded-lg bg-code px-2.5 py-2 font-mono text-ui break-words whitespace-pre-wrap">{promptSubject(prompt)}</code>
       <div className="grid grid-cols-3 gap-2 pt-1">
         <Button variant="danger" disabled={busy || !client} onClick={() => void respond({ behavior: 'deny', message: DECLINED })} data-remote-deny>

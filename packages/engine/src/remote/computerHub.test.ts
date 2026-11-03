@@ -313,6 +313,14 @@ describe('Other computers', () => {
     expect(mineOf('limits.arm', { sessionId: 's4', armed: false }, {}, undefined)).toBeNull();
     expect(mineOf('session.respond', { requestId: 'r1' }, {}, list)).toBe('s1');
     expect(mineOf('session.respond', { requestId: 'gone' }, {}, list)).toBeNull();
+    // A pipeline: the run row a run from New session is, or the session it started from; a run's button; writing in a run row.
+    const runs = { prompts: [], runs: [{ run: { id: 'run-row', parentSessionId: null } }, { run: { id: 'run-2', parentSessionId: 'p1' } }] } as unknown as Parameters<typeof mineOf>[3];
+    expect(mineOf('pipelines.run', { pipelineId: 'x', projectId: 'p', task: 't' }, { state: { run: { id: 'run-new' } } }, undefined)).toBe('run-new');
+    expect(mineOf('pipelines.run', { pipelineId: 'x', parentSessionId: 'p1' }, { state: { run: { id: 'run-3' } } }, undefined)).toBe('p1');
+    expect(mineOf('runs.continue', { runId: 'run-row' }, {}, runs)).toBe('run-row');
+    expect(mineOf('runs.stop', { runId: 'run-2' }, {}, runs)).toBe('p1');
+    expect(mineOf('runs.write', { runId: 'run-row', text: 'hi' }, { sessionId: 'adopted' }, runs)).toBe('adopted');
+    expect(mineOf('runs.pushPreview', { runId: 'run-row' }, {}, runs)).toBeNull();
     // Reading or marking isn't acting on it.
     expect(mineOf('transcript.get', { sessionId: 's5' }, {}, undefined)).toBeNull();
     expect(mineOf('session.markRead', { sessionId: 's5' }, {}, undefined)).toBeNull();

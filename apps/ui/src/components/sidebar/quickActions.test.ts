@@ -136,4 +136,11 @@ describe('quickRowOf', () => {
     expect(quickRowOf(remote(false), false, { hosted: false, runs: [] })).toMatchObject({ flags: true, readable: false, canStop: true, status: 'running' });
     expect(quickRowOf(remote(true), false, { hosted: false, runs: [] })).toMatchObject({ flags: false, canStop: false });
   });
+
+  it('a run row on another computer: no Pin, Done with its tree', () => {
+    const runRow = data({ remote: { offline: false, status: 'needs-you', runRow: true, treeRunId: 'run-1' } as unknown as SessionRowData['remote'] });
+    const row = quickRowOf(runRow, false, { hosted: false, runs: [] });
+    expect(row).toMatchObject({ flags: false, tree: true, canStop: true });
+    expect(quickActionsFor(row, { quickActions: true, quickActionsShow: 'all' }).map((a) => a.kind)).toEqual(['stop', 'archive']);
+  });
 });

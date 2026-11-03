@@ -27,6 +27,7 @@ export const PHONE_TOKENS: Readonly<Record<string, string>> = {
   unread: 'unread',
   caution: 'caution',
   pipeline: 'pipeline',
+  trigger: 'trigger',
   selected: 'selected',
   'code-bg': 'code-bg',
   'diff-added': 'diff-added',

@@ -57,9 +57,10 @@ export function quickRowOf(data: SessionRowData, archived: boolean, context: { h
     archived,
     pinned: data.pinned,
     unread: data.unread,
-    flags: remote ? !remote.offline : data.summary !== null,
+    // Another computer's run row has no flags of its own: Done archives its tree there (`runs.archive`).
+    flags: remote ? !remote.offline && !remote.runRow : data.summary !== null,
     readable: !remote && data.summary !== null,
-    tree: tree.length > 0,
+    tree: remote ? !remote.offline && !!remote.treeRunId : tree.length > 0,
     canStop: remote ? !remote.offline : context.hosted || tree.some(runGoesOn),
   };
 }
