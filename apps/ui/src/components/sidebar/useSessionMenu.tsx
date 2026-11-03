@@ -34,6 +34,9 @@ import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
 import { QUICK_UNDO, quickActionToast, type QuickActionMethod } from './quickActions.ts';
 import { quickActionDone } from './quickUndo.ts';
+import { useLooseEnds } from '../../state/looseEndsStore.ts';
+import { leftBehind, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -189,7 +192,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
     if (method === 'stop') return runMethod(method, data);
-    const message = quickActionToast(method, data.title);
+    // Done with something left behind says what (an unsent message asks first, elsewhere).
+    const queued = useLater.getState().items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id);
+    const left = method === 'archive' ? leftBehind(rowLooseEnds(useLooseEnds.getState().byOwner.get(data.id) ?? [], { draft: false, queued })) : null;
+    const message = quickActionToast(method, data.title, left);
     runMethod(method, data, () => {
       if (!message) return;
       quickActionDone(message, () => {

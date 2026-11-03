@@ -9555,6 +9555,25 @@ async function runSessionNoteStep(win: BrowserWindow): Promise<string> {
   return 'ok: N opened the note, it showed under the title and in the row\'s label, search found it, Clear from the menu took it away';
 }
 
+/**
+ * Loose ends: the demo's dark mode session left three files uncommitted in acme-store, so its row has the marker, with
+ * the files in its tooltip and its label. The engine looks a few seconds after it starts. Read-only: git is only read.
+ */
+async function runLooseEndsStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: skipped, only the demo home has a session with known loose ends';
+  const row = "[...document.querySelectorAll('[data-session-list] [data-session-id]')].find((r) => r.innerText.startsWith('Add dark mode toggle to settings'))";
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the dark mode session has no row';
+  if (!(await waitInPage(win, `(${row}?.querySelector('[data-row-loose-ends]')?.dataset.rowLooseEnds ?? '').includes('uncommitted')`, 20_000))) return 'the dark mode session has no loose ends marker';
+  const tooltip = (await js(`${row}.querySelector('[data-row-loose-ends]').dataset.tooltip`)) as string;
+  await shot(win, 'loose-ends.png');
+  if (!/\d+ files? not committed/.test(tooltip)) return `the marker's tooltip says "${tooltip}"`;
+  const label = (await js(`${row}.getAttribute('aria-label') ?? ''`)) as string;
+  if (!label.includes('left: ')) return `the row's label doesn't say what is left ("${label}")`;
+  return `ok: the marker on the dark mode session says "${tooltip.replace(/\n/g, '; ')}"`;
+}
+
 async function openPalette(win: BrowserWindow, keyCode: string, modifiers: Array<'meta' | 'shift'>, mode: string): Promise<boolean> {
   pressKey(win, keyCode, modifiers);
   return waitInPage(win, `${PALETTE_MODE} === ${JSON.stringify(mode)} && document.activeElement?.matches('[data-palette-input]')`, 3_000);
@@ -11745,6 +11764,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('archived dock', () => runArchivedDockStep(win));
   await step('catch-up pass: "N open" in the footer, Skip and Done go on to the next session', () => runCatchUpPassStep(win));
   await step("session note: N, shown under the title, found by search, cleared", () => runSessionNoteStep(win));
+  await step('loose ends: the marker on a session with uncommitted files', () => runLooseEndsStep(win));
   await step('star on GitHub', () => runStarStep(win));
   await step('quick question', () => runQuickQuestionStep(win));
   await step('usage band above the composer', async () => {

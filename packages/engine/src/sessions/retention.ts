@@ -30,7 +30,7 @@ export type SessionCandidate = RetentionCandidate & { summary: SessionSummary };
  * Every indexed session with what the archive rule and the keep rules need: its listing (as the sidebar sees it) and
  * why it might have to stay. A process in another Claude Code window counts as open elsewhere, idle or not.
  */
-export function retentionCandidates(sources: SessionSources & { drafts: ReadonlySet<string>; queued: ReadonlySet<string> }): SessionCandidate[] {
+export function retentionCandidates(sources: SessionSources & { drafts: ReadonlySet<string>; queued: ReadonlySet<string>; looseEnds?: ReadonlySet<string> }): SessionCandidate[] {
   const live = new Map(sources.live.map((l) => [l.sessionId, l]));
   const hosts = new Map(sources.hosts.map((h) => [h.sessionId, h]));
   return sources.summaries.map((summary) => {
@@ -53,7 +53,8 @@ export function retentionCandidates(sources: SessionSources & { drafts: Readonly
         unread: summary.unread,
         updatedAt,
         openInApp: hosted || l?.origin === 'app',
-        keep: sources.queued.has(summary.id) || sources.drafts.has(summary.id),
+        // Loose ends in git or on GitHub keep it listed too (never Done by inactivity), but they aren't a reason to keep it from the Trash.
+        keep: sources.queued.has(summary.id) || sources.drafts.has(summary.id) || (sources.looseEnds?.has(summary.id) ?? false),
       },
       deletion: {
         pinned: summary.pinned,

@@ -14,6 +14,7 @@ import { useTerminalsSync } from '../../state/terminalsStore.ts';
 import { useThemesSync } from '../../state/themeStore.ts';
 import { useUpNextSync } from '../../state/upNextStore.ts';
 import { useCatchUpSync } from '../../state/useCatchUpSync.ts';
+import { useLooseEndsSync } from '../../state/looseEndsStore.ts';
 import { useDraftsSync } from '../../state/useDraftsSync.ts';
 import { usePopoutViewReport } from '../../state/useSessionViewSync.ts';
 import { useHostsSync } from '../../state/useHostsSync.ts';
@@ -79,6 +80,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   usePreferencesSync();
   useThemesSync();
   useCatchUpSync();
+  useLooseEndsSync();
   useUpNextSync();
   useModsSync();
   useLimitsSync();
