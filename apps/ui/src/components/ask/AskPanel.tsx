@@ -199,7 +199,7 @@ export function AskPanel(props: AskPanelProps) {
       aria-label="Ask about this session"
       tabIndex={-1}
       onKeyDown={onPanelKey}
-      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg outline-none"
+      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
       style={{ width: props.width }}
       data-ask-panel
     >
@@ -223,7 +223,7 @@ export function AskPanel(props: AskPanelProps) {
           <div className="flex h-7 shrink-0 items-center border-b border-border px-3">{notInConversation}</div>
         </>
       ) : (
-        <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 pt-2.5 pb-2">
+        <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
           <MessageCircleQuestion size={16} aria-hidden className="mt-0.5 shrink-0 text-link" />
           <div className="grid min-w-0 flex-1">
             <h2 className="truncate text-ui font-semibold text-text">Ask about this session</h2>

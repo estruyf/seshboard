@@ -105,7 +105,7 @@ export function RemoteChangesPanel({
   const added = files.reduce((sum, f) => sum + f.additions, 0);
   const removed = files.reduce((sum, f) => sum + f.deletions, 0);
   return (
-    <aside aria-label="Changes" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg outline-none" style={{ width }} data-remote-changes-panel>
+    <aside aria-label="Changes" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width }} data-remote-changes-panel>
       <div
         role="separator"
         aria-orientation="vertical"
@@ -119,7 +119,7 @@ export function RemoteChangesPanel({
         className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize hover:bg-link/40 focus-visible:bg-link/40"
         data-tooltip="Drag (or use ← →) to resize"
       />
-      <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 pt-2.5 pb-2">
+      <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
         <FileDiff size={16} aria-hidden className="mt-0.5 shrink-0 text-muted" />
         <div className="grid min-w-0 flex-1">
           <h2 className="truncate text-ui font-semibold text-text">Changes</h2>
@@ -154,8 +154,8 @@ export function RemoteChangesPanel({
             const isOpen = open.has(file.path);
             const diffId = `${idBase}-diff-${index}`;
             return (
-              <div key={file.path} className="border-b border-border" data-remote-changed-file={file.path}>
-                <button type="button" onClick={() => toggle(file.path)} aria-expanded={isOpen} aria-controls={isOpen ? diffId : undefined} className="flex h-8 w-full min-w-0 items-center gap-1.5 px-2 text-left text-ui hover:bg-border/30" data-remote-file-toggle>
+              <div key={file.path} data-remote-changed-file={file.path}>
+                <button type="button" onClick={() => toggle(file.path)} aria-expanded={isOpen} aria-controls={isOpen ? diffId : undefined} className={`mx-1 flex h-8 w-[calc(100%-0.5rem)] min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-ui ${isOpen ? 'bg-selected' : 'hover:bg-border/45'}`} data-remote-file-toggle>
                   <ChevronRight size={13} aria-hidden className={`shrink-0 text-faint transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                   <span aria-label={status.label} className={`w-3 shrink-0 font-mono text-meta font-semibold ${status.tone}`}>
                     {status.letter}
@@ -176,7 +176,7 @@ export function RemoteChangesPanel({
       </div>
 
       <form
-        className="grid shrink-0 gap-2 border-t border-border p-3"
+        className="grid shrink-0 gap-2 p-3"
         onSubmit={(event) => {
           event.preventDefault();
           void commit();
@@ -237,7 +237,7 @@ function RemoteFileDiff({ id, client, computerId, sessionId, path, version }: { 
     };
   }, [client, computerId, sessionId, path, version]);
   return (
-    <div id={id} className="overflow-x-auto bg-code py-1 font-mono text-meta" data-remote-file-diff>
+    <div id={id} className="mx-1 mb-1 overflow-x-auto rounded-md bg-bg py-1 font-mono text-meta" data-remote-file-diff>
       {state === null ? (
         <p className="px-3 py-1 font-sans text-muted">Loading…</p>
       ) : 'error' in state ? (

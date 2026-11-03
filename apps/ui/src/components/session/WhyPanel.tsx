@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -8,6 +8,7 @@ import { useWhy } from '../../state/whyStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { permissionTitle } from './PermissionCard.tsx';
 
 function Part({ title, children, data }: { title: string; children: ReactNode; data: string }) {
@@ -29,6 +30,9 @@ export function WhyPanel({ request, cwd }: { request: PermissionRequest; cwd: st
   const client = connection.status === 'connected' ? connection.client : null;
   const result = useWhy((s) => s.results.get(request.requestId));
   const summaries = usePreferences((s) => s.prefs.catchUpSummaries);
+  // The header's hairline shows only while the answer scrolls under it.
+  const scroller = useRef<HTMLDivElement>(null);
+  const edge = useScrollEdge(scroller);
   const command = request.toolName === 'Bash' ? (request.input as { command?: string }).command : undefined;
 
   useEffect(() => {
@@ -43,12 +47,12 @@ export function WhyPanel({ request, cwd }: { request: PermissionRequest; cwd: st
 
   const why = result?.status === 'done' ? result.why : null;
   return (
-    <aside aria-label="Why Claude asks" className="flex w-80 max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg" data-why-panel>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
+    <aside aria-label="Why Claude asks" className="flex w-80 max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar forced-colors:border-l" data-why-panel>
+      <div className="edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!edge.atTop || undefined}>
         <h2 className="min-w-0 flex-1 truncate text-ui font-semibold">Why Claude asks</h2>
         <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close (Esc)" data-tooltip="Close (Esc)" onClick={() => useWhy.getState().close()} data-why-close />
       </div>
-      <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-3 text-body select-text">
+      <div ref={scroller} className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-3 text-body select-text">
         <Part title="The request" data="request">
           <p className="font-medium text-text">{permissionTitle(request, cwd)}</p>
           {command && <pre className="max-h-32 overflow-auto rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-ui whitespace-pre-wrap">{command}</pre>}

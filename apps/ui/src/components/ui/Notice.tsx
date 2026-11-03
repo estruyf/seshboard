@@ -4,18 +4,20 @@ import { Button } from './Button.tsx';
 
 export type NoticeTone = 'neutral' | 'info' | 'accent' | 'caution' | 'warn' | 'error' | 'success';
 
+// Tinted, never outlined (a card holds a decision or input; a notice only says something). The tints work on the
+// app's background, the sidebar, cards and dialogs alike. High contrast drops tints, so there the border comes back.
 const BOX: Record<NoticeTone, string> = {
-  // The edge colour, so the quiet box stays visible on dialogs as well as on the app's background.
-  neutral: 'border-edge bg-card text-muted',
+  // A neutral grey from the text colour, so the quiet box shows on white dialogs as well as on the app's background.
+  neutral: 'bg-text/6 text-muted',
   // Something worth reading that you didn't ask about: tinted, so it stands out on a card too.
-  info: 'border-link/40 bg-link/8 text-text',
-  // A limit reached (the focus limit in New session): the readable yellow frame, not a warning.
-  accent: 'border-accent-ink/45 bg-accent/6 text-text',
+  info: 'bg-link/10 text-text',
+  // A limit reached (the focus limit in New session): the yellow tint, not a warning.
+  accent: 'bg-accent/15 text-text',
   // Something outside Seshboard stops a feature (notifications turned off in the system's settings).
-  caution: 'border-caution/40 bg-caution/8 text-text',
-  warn: 'border-warn/40 bg-warn/10 text-text',
-  error: 'border-error/40 bg-error/10 text-error',
-  success: 'border-ok/40 bg-ok/10 text-text',
+  caution: 'bg-caution/10 text-text',
+  warn: 'bg-warn/10 text-text',
+  error: 'bg-error/10 text-error',
+  success: 'bg-ok/10 text-text',
 };
 const ICON: Record<NoticeTone, string> = { neutral: 'text-muted', info: 'text-link', accent: 'text-accent-ink', caution: 'text-caution', warn: 'text-warn', error: 'text-error', success: 'text-ok' };
 
@@ -57,7 +59,7 @@ export function Notice({ tone = 'neutral', icon, actions, onDismiss, inline = fa
     );
   }
   return (
-    <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex flex-wrap items-start gap-x-2 gap-y-1.5 rounded-lg border px-3 py-2 text-ui ${BOX[tone]} ${className}`} {...rest}>
+    <div role={role ?? (tone === 'error' ? 'alert' : 'status')} className={`flex flex-wrap items-start gap-x-2 gap-y-1.5 rounded-lg px-3 py-2 text-ui forced-colors:border ${BOX[tone]} ${className}`} {...rest}>
       {icon && <span className={`flex shrink-0 pt-0.5 ${ICON[tone]}`}>{icon}</span>}
       <div className="min-w-0 flex-1 break-words select-text">{children}</div>
       {(actions || dismiss) && (

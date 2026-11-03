@@ -139,7 +139,7 @@ function CatchUpStrip({ card, actions, committed, changesOpen, position, skip }:
   // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it.
   return (
     <div className="mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
-      <div role="region" aria-label="Catch-up" className="flex h-10 min-w-0 items-center gap-2.5 rounded-lg border border-border bg-card px-3" data-catchup-strip data-catchup-need={card.need.kind}>
+      <div role="region" aria-label="Catch-up" className="flex h-10 min-w-0 items-center gap-2.5 rounded-lg bg-card px-3 shadow-overlay forced-colors:border" data-catchup-strip data-catchup-need={card.need.kind}>
         <StateLabel card={card} committed={committed} />
         <span className="min-w-0 flex-1 truncate text-ui text-text/85">{committed ? 'Committed' : card.need.title}</span>
         <PassPosition position={position} />
@@ -165,7 +165,7 @@ function CatchUpBanner({ card, actions, committed, changesOpen, details, positio
   // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it.
   return (
     <div className="mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
-      <section aria-label="Catch-up" className="grid gap-1.5 rounded-[14px] border border-border bg-card px-4 py-2.5 shadow-overlay" data-catchup data-catchup-banner data-catchup-need={card.need.kind} data-catchup-source={card.source}>
+      <section aria-label="Catch-up" className="grid gap-1.5 rounded-[14px] bg-card px-4 py-2.5 shadow-overlay forced-colors:border" data-catchup data-catchup-banner data-catchup-need={card.need.kind} data-catchup-source={card.source}>
         <div className="flex min-w-0 items-center gap-2.5">
           <StateLabel card={card} committed={committed} />
           <span className="min-w-0 flex-1 truncate text-body text-text" data-catchup-ask>
@@ -341,7 +341,7 @@ export function CatchUpPassBar({ rowId, active }: { rowId: string; active: boole
   if (!shown) return null;
   return (
     <div ref={ref} className="mx-auto w-full max-w-4xl shrink-0 px-6 pt-3 @max-[860px]:px-4">
-      <div role="region" aria-label="Catch-up" className="flex h-10 min-w-0 items-center gap-2.5 rounded-lg border border-border bg-card px-3" data-catchup-pass-bar>
+      <div role="region" aria-label="Catch-up" className="flex h-10 min-w-0 items-center gap-2.5 rounded-lg bg-card px-3 shadow-overlay forced-colors:border" data-catchup-pass-bar>
         <span className="min-w-0 flex-1 truncate text-ui text-muted">No catch-up for this session.</span>
         <PassPosition position={position} />
         <SkipButton skip={() => moveOn(rowId, 'skip')} size="sm" />

@@ -58,6 +58,8 @@ import { RemoteText } from './RemoteText.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { RemoteSessionCost } from '../usage/SessionCost.tsx';
 import { useWidth } from '../ui/useWidth.ts';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { sentLine } from '../transcript/turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, TurnMetaLine, type LiveTurnInfo, type TurnMetaValue } from '../transcript/TurnMeta.tsx';
 import { MessageToolbar, REVEAL_IN_REPLY_ROW } from '../transcript/messageActions.tsx';
@@ -114,6 +116,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const [catchUp, setCatchUp] = useState<CatchUp | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  // The header's hairline shows only while the conversation scrolls under it.
+  const edge = useScrollEdge(scroller);
   const atBottom = useRef(true);
   /** Scrolled up far enough to show Jump to latest. */
   const [scrolledUp, setScrolledUp] = useState(false);
@@ -369,7 +373,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
-      <header className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 ${remoteLine(pane)} @max-[860px]:gap-2 @max-[860px]:px-4`} data-remote-header {...paneHeader(pane)}>
+      <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
         {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
         {pane.leading && <SidebarToggle />}
         <span className="flex shrink-0 @max-[400px]:hidden">
@@ -402,7 +406,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
           on {name}
         </ComputerChip>
         {/* Changes | Terminal stay where they are in a local session, disabled: they only work on that computer. */}
-        <div className="no-drag flex shrink-0 items-center gap-0.5 rounded-lg bg-border/40 p-0.5" role="group" aria-label="Panels">
+        <div className="no-drag flex shrink-0 items-center gap-0.5" role="group" aria-label="Panels">
           <Button
             variant="quiet"
             size="sm"
@@ -578,7 +582,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
       {remember.overlay}
       {readingReply && createPortal(<ReadMode sessionId={rowId} title={session.title} live={null} cwd={null} reply={readingReply} remote={{ draftKey, ask: connected ? askBackend : null }} />, document.body)}
 
-      <div className="mx-auto grid w-full max-w-4xl shrink-0 grid-cols-[minmax(0,1fr)] gap-2 px-6 pb-3 @max-[860px]:px-4">
+      <div className="relative mx-auto grid w-full max-w-4xl shrink-0 grid-cols-[minmax(0,1fr)] gap-2 px-6 pb-3 @max-[860px]:px-4" data-composer-area>
+        <div className="composer-fade absolute inset-x-0 bottom-full" aria-hidden data-composer-fade />
         {away && (
           <Notice
             tone="caution"

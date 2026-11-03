@@ -265,7 +265,7 @@ export function CommandsPanel(props: CommandsPanelProps) {
     );
 
   return (
-    <aside aria-label="Commands" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg outline-none" style={{ width: props.width }} data-commands-panel>
+    <aside aria-label="Commands" tabIndex={-1} onKeyDown={onPanelKey} className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l" style={{ width: props.width }} data-commands-panel>
       <div
         role="separator"
         aria-orientation="vertical"
@@ -283,7 +283,7 @@ export function CommandsPanel(props: CommandsPanelProps) {
       {props.tabs ? (
         props.tabs(actions)
       ) : (
-        <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 pt-2.5 pb-2">
+        <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
           <ScrollText size={16} aria-hidden className="mt-0.5 shrink-0 text-accent-ink" />
           <div className="grid min-w-0 flex-1">
             <h2 className="truncate text-ui font-semibold text-text">Commands</h2>

@@ -15,6 +15,7 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { CHANGES_DEFAULT_WIDTH, CHANGES_MAX_SHARE, CHANGES_MIN_WIDTH, changesWidthForKey, clampChangesWidth } from './changesWidth.ts';
 
 const WIDTH_KEY = 'ui.changesWidth';
@@ -111,9 +112,11 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
     );
   // Unwrapped, the inner block is as wide as the longest line, so every row's colour runs the full
   // width while scrolling sideways; the line numbers stay put.
-  const gutter = 'sticky left-0 z-[1] flex shrink-0 self-stretch bg-code';
+  // The diff sits on the conversation's surface, inset in the panel's darker one (the code surface is the panel's own
+  // colour in dark mode): set apart without a line.
+  const gutter = 'sticky left-0 z-[1] flex shrink-0 self-stretch bg-bg';
   return (
-    <div id={id} className="overflow-x-auto overscroll-x-contain border-t border-border bg-code font-mono text-ui select-text" data-file-diff data-diff-wrap={wrap}>
+    <div id={id} className="mx-1 mb-1 overflow-x-auto overscroll-x-contain rounded-md bg-bg font-mono text-ui select-text" data-file-diff data-diff-wrap={wrap}>
       <div className={wrap ? '' : 'w-max min-w-full'}>
         {rows.map((row, i) =>
           row.kind === 'hunk' ? (
@@ -199,6 +202,9 @@ export function ChangesPanel({
   const load = useMemo(() => ++changesLoads, [changes]);
   // File paths have spaces and slashes, which don't make good ids for aria-controls.
   const idBase = useId();
+  // The header's and footer's hairlines show only while files scroll under them.
+  const listRef = useRef<HTMLDivElement>(null);
+  const listEdge = useScrollEdge(listRef);
 
   /**
    * Paths being staged or unstaged right now. A second click (a double click on a box, Stage all twice) waits
@@ -268,7 +274,8 @@ export function ChangesPanel({
     <aside
       aria-label="Changes"
       // Expanded, it fills the session view; otherwise its own width, leaving the conversation some room in a narrow pane.
-      className={`relative flex min-w-0 flex-col border-l border-border bg-bg ${expanded ? 'flex-1' : 'max-w-[85%] shrink-0'}`}
+      // The sidebar's darker surface sets it apart from the conversation, without a line (it comes back in high contrast).
+      className={`relative flex min-w-0 flex-col bg-sidebar forced-colors:border-l ${expanded ? 'flex-1' : 'max-w-[85%] shrink-0'}`}
       style={expanded ? undefined : { width }}
       data-changes-panel
       data-changes-expanded={expanded}
@@ -290,7 +297,7 @@ export function ChangesPanel({
         />
       )}
       {tabs?.(<Button variant="quiet" size="sm" iconOnly icon={<X size={13} />} shortcut="changes.toggle" onClick={onClose} aria-label="Close changes" />)}
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!listEdge.atTop || undefined} data-changes-header>
         {/* Arrow keys move between the two, like any radio group; only the chosen one is a Tab stop. */}
         <SegmentedControl
           mode="radio"
@@ -345,12 +352,12 @@ export function ChangesPanel({
         </Notice>
       )}
       {(error ?? changes?.error) && (
-        <p role="alert" className="border-b border-border px-3 py-2 text-meta text-error">
+        <p role="alert" className="px-3 py-2 text-meta text-error">
           {error ?? changes?.error}
         </p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-1">
         {changes === null ? (
           <p className="p-4 text-ui text-muted">Loading…</p>
         ) : files.length === 0 ? (
@@ -363,8 +370,14 @@ export function ChangesPanel({
             const name = file.path.slice(slash + 1);
             const diffId = `${idBase}-diff-${index}`;
             return (
-              <div key={file.path} className={`border-b border-border ${outsideSet.has(file.path) ? 'bg-caution/10' : ''}`} data-changed-file={file.path} data-outside-plan={outsideSet.has(file.path) || undefined}>
-                <div className="group flex h-8 items-center gap-2 pr-2 pl-1.5 text-ui hover:bg-border/30">
+              <div key={file.path} data-changed-file={file.path} data-outside-plan={outsideSet.has(file.path) || undefined}>
+                {/* Rows like the sidebar's: a hover and an open background instead of a line between them; files outside the plan keep their caution tint. */}
+                <div
+                  className={`group mx-1 flex h-8 items-center gap-2 rounded-md pr-1 pl-0.5 text-ui ${
+                    outsideSet.has(file.path) ? (isOpen ? 'bg-caution/20' : 'bg-caution/10 hover:bg-caution/15') : isOpen ? 'bg-selected' : 'hover:bg-border/45'
+                  }`}
+                  data-file-open={isOpen || undefined}
+                >
                   {editable && (
                     <Checkbox
                       checked={file.staged}
@@ -426,8 +439,8 @@ export function ChangesPanel({
       </div>
 
       {editable && files.length > 0 && client && (
-        <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3 text-ui">
-          <Button size="sm" onClick={() => stage(files.map((f) => f.path), !allStaged, allStaged ? 'unstage the files' : 'stage the files')} aria-busy={staging.size > 0 || undefined} data-stage-all>
+        <div className="edge-t flex h-10 shrink-0 items-center gap-2 px-3 text-ui" data-scrolled={!listEdge.atBottom || undefined} data-changes-footer>
+          <Button variant="quiet" size="sm" onClick={() => stage(files.map((f) => f.path), !allStaged, allStaged ? 'unstage the files' : 'stage the files')} aria-busy={staging.size > 0 || undefined} data-stage-all>
             {allStaged ? 'Unstage all' : 'Stage all'}
           </Button>
           <span className="flex-1" />

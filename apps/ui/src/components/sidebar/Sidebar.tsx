@@ -12,6 +12,7 @@ import { Pill } from '../ui/Pill.tsx';
 import { useCheckoutBranches } from '../../state/checkoutBranchesStore.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { queueInList } from '../../state/queue.ts';
 import { useQueue } from '../../state/useQueue.ts';
@@ -795,6 +796,8 @@ export function Sidebar() {
   };
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The bottom block's hairline shows only while sessions scroll under it.
+  const listEdge = useScrollEdge(scrollRef);
   const archivedIndex = rows.findIndex((row) => row.kind === 'archived');
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -1194,7 +1197,7 @@ export function Sidebar() {
 
   return (
     // Drawn at the open width even while the frame around it eases narrower or wider, so it slides rather than reflows.
-    <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col border-r border-border bg-sidebar" style={{ width }} data-sidebar-open>
+    <aside aria-label="Sidebar" className="relative flex h-full shrink-0 flex-col bg-sidebar forced-colors:border-r" style={{ width }} data-sidebar-open>
       {/* Traffic lights on the left (macOS); the bar doubles as a window drag handle. */}
       <div className={`drag flex h-13 shrink-0 items-center gap-2 ${currentPlatform() === 'darwin' ? 'pl-24' : 'pl-4.5'}`}>
         <span className="text-body font-semibold text-text/90">Seshboard</span>
@@ -1436,9 +1439,11 @@ export function Sidebar() {
       )}
       </div>
 
+      {/* One block under the list: Done, the remote footer, Star on GitHub and the footer, with space between them instead of lines. */}
+      <div className="edge-t flex shrink-0 flex-col gap-2" data-scrolled={!listEdge.atBottom || undefined} data-sidebar-bottom>
       {/* Closed, Archived is docked under the list, so a short list never scrolls and a long one keeps it in sight. */}
       {archivedAt === 'dock' && (
-        <div ref={dockRef} onKeyDown={onDockKeyDown} className="relative z-10 flex h-9 shrink-0 items-center border-t border-border bg-sidebar px-4.5" data-archived-dock>
+        <div ref={dockRef} onKeyDown={onDockKeyDown} className="relative z-10 flex h-9 shrink-0 items-center bg-sidebar px-4.5" data-archived-dock>
           <ArchivedHeader count={archived.length} open={false} onToggle={toggleArchivedSection} onMenu={(at) => setMenu(archivedMenu(at))} />
         </div>
       )}
@@ -1449,7 +1454,7 @@ export function Sidebar() {
 
       <StarOnGithub sessions={all.length} />
 
-      <footer className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3 text-meta text-muted">
+      <footer className="flex h-10 shrink-0 items-center gap-2 px-3 text-meta text-muted">
         {/* The focus limit, while it's on: how many sessions are going, out of how many. */}
         <FocusCounter />
         {/* The count opens every session, in Settings › Sessions. */}
@@ -1507,6 +1512,7 @@ export function Sidebar() {
           onClick={() => (view === 'settings' ? useSessions.getState().closeSettings() : useSessions.getState().openSettings())}
         />
       </footer>
+      </div>
 
       <p className="sr-only" aria-live="polite" data-waiting-announcement>
         {[waitingNotice, deviceNotice].filter(Boolean).join(' ')}

@@ -10,6 +10,7 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { ProjectList } from './ProjectList.tsx';
 import { ProjectPage } from './ProjectPage.tsx';
@@ -154,7 +155,7 @@ export function ProjectsView() {
       <div className="flex min-w-0 flex-1 flex-col">
         {empty ? (
           <div className="flex h-full min-h-0 flex-col" data-project-page>
-            <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6">{narrow && <SidebarToggle />}</header>
+            <header className={PANE_HEADER}>{narrow && <SidebarToggle />}</header>
             <div className="mx-auto grid max-w-md justify-items-center gap-2 px-6 py-16 text-center" data-no-projects>
               <p className="text-title font-semibold">No projects yet</p>
               <p className="text-ui text-muted">Add the folders you want to start Claude Code sessions in. Folders you have used Claude Code in are suggested.</p>

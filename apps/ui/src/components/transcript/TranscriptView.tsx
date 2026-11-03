@@ -58,6 +58,8 @@ import { ContextMeter } from '../session/ContextMeter.tsx';
 import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
 import { inWorktree } from '../worktree/branchMenu.ts';
@@ -759,6 +761,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [client, sessionId, cwd, activeHost?.state === 'idle', commandsVersion]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The header's hairline shows only while the conversation scrolls under it.
+  const transcriptEdge = useScrollEdge(scrollRef);
   const virtualizer = useVirtualizer({
     count: renderItems.length,
     getScrollElement: () => scrollRef.current,
@@ -1413,7 +1417,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     <div className="@container flex h-full min-h-0 flex-col" data-current-session={sessionId} data-project-root={projectRoot ?? undefined} data-cwd={cwd ?? undefined} data-drop-zone>
       {/* With two panes, the active one has an accent line along the top. */}
       <header
-        className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 @max-[860px]:gap-2 @max-[860px]:px-4 ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
+        className={`${PANE_HEADER} ${tiled && active ? 'shadow-[inset_0_2px_0_var(--sb-accent)]' : ''}`}
+        data-scrolled={!transcriptEdge.atTop || undefined}
+        data-session-header
         data-pane={tiled ? sessionId : undefined}
         data-pane-active={tiled ? active : undefined}
       >
@@ -1484,6 +1490,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
         <SegmentedControl
           mode="toggle"
           label="Panels"
+          quiet
           className="no-drag"
           data-panel-toggles
           pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
@@ -1905,7 +1912,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             />
           )}
 
-          <div className={`shrink-0 border-t border-border bg-bg ${terminalMaximized ? 'hidden' : ''}`}>
+          {/* No line over the composer: the conversation fades out under a soft gradient, and the box floats on its shadow. */}
+          <div className={`group/composer relative shrink-0 bg-bg forced-colors:border-t ${terminalMaximized ? 'hidden' : ''}`} data-composer-area>
+            <div className="composer-fade absolute inset-x-0 bottom-full" aria-hidden data-composer-fade />
             {/* minmax(0,1fr): the column stays as wide as the pane, so long lines truncate instead of pushing it wider. */}
             {/* The message box at the catch-up card's width, a size wider than the conversation. */}
             <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-2 px-6 pt-3 pb-3 @max-[860px]:px-4">

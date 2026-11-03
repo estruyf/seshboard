@@ -84,7 +84,7 @@ export function ConnectedDevices() {
   const title = sectionTitle(currentPlatform());
 
   if (footer === 'hidden') return null;
-  const frame = 'shrink-0 border-t border-border px-3 pt-1.5 pb-1';
+  const frame = 'shrink-0 px-3 pt-1.5 pb-1';
 
   if (footer === 'problem') {
     return (

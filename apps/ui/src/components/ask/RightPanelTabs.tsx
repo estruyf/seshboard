@@ -37,7 +37,7 @@ export function RightPanelTabs({
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-right-tab="${next}"][aria-selected="true"]`)?.focus());
   };
   return (
-    <div className="flex h-10 shrink-0 items-end gap-2 border-b border-border pr-3 pl-1.5" data-right-tabs>
+    <div className="flex h-10 shrink-0 items-end gap-2 pr-3 pl-1.5" data-right-tabs>
       <div role="tablist" aria-label="Right panel" className="-mb-px flex min-w-0 gap-1" onKeyDown={onKey}>
         {open.map((id) => {
           const active = id === tab;

@@ -56,7 +56,7 @@ export function ComputersStrip({ localWaiting, joined = false }: { localWaiting:
 
   const here = thisComputerName();
   return (
-    <div className={`shrink-0 px-3 pb-2 ${joined ? 'pt-0.5' : 'border-t border-border pt-1.5'}`} data-computers-strip>
+    <div className={`shrink-0 px-3 pb-2 ${joined ? 'pt-0.5' : 'pt-1.5'}`} data-computers-strip>
       <p className="px-0.5 pb-1 text-meta font-medium text-faint">Computers</p>
       <div className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="Show sessions from">
         {chip(THIS_COMPUTER, here, {

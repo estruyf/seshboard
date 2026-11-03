@@ -329,6 +329,82 @@
 }
 
 /*
+ * The hairline of a fixed header (`edge-b`, along its bottom) or footer (`edge-t`, along its top) that shows
+ * only while content scrolls beneath it: set `data-scrolled` from `useScrollEdge`. A pseudo-element, so it
+ * leaves the element's own border and shadow alone (a tiled pane's accent line). Windows high contrast
+ * flattens surfaces, so there the line stays, as a real border.
+ */
+@utility edge-b {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--sb-border);
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+    pointer-events: none;
+  }
+  &[data-scrolled]::after {
+    opacity: 1;
+  }
+  @media (forced-colors: active) {
+    border-bottom: 1px solid CanvasText;
+    &::after {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      transition: none;
+    }
+  }
+}
+@utility edge-t {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: var(--sb-border);
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+    pointer-events: none;
+  }
+  &[data-scrolled]::before {
+    opacity: 1;
+  }
+  @media (forced-colors: active) {
+    border-top: 1px solid CanvasText;
+    &::before {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before {
+      transition: none;
+    }
+  }
+}
+
+/*
+ * The soft fade above the message box: the conversation scrolls under it instead of under a line. It sits
+ * over the end of the conversation and takes no clicks.
+ */
+@utility composer-fade {
+  pointer-events: none;
+  height: 2rem;
+  background: linear-gradient(to bottom, transparent, var(--sb-bg));
+  @media (forced-colors: active) {
+    display: none;
+  }
+}
+
+/*
  * A range slider (`Slider`): a thin grey track, filled in yellow up to the value (`--fill`, set by the component),
  * and a round knob like the one on a switch. The native look ignores the theme.
  */
