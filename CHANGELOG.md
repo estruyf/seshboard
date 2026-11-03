@@ -40,6 +40,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- Sessions look calmer: panels are set apart by their background instead of lines, and headers only show a line while something scrolls under them.
 - **No Mark as read in the catch-up.** The catch-up no longer has a Mark as read button or the U key: a session you look at is marked read after a few seconds by itself (**Settings › Sessions › Mark as read after**).
 - The sidebar footer's count of running Claude Code processes says "2 running" instead of "2 open", now that "open" counts the sessions you haven't finished.
 - **Sessions on another computer have the new message box.** A session there and New session there now look and work like they do here: the box, with the profile, model, effort and mode chips on the tray under it (and the session's cost on the right), folding the same way in a narrow pane. New session there has the route strip on top, with Where, the branch and the Worktree switch.

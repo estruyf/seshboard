@@ -7,6 +7,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { computerLine } from './computerSessions.ts';
 import { newSessionOn } from './remoteActions.ts';
 
@@ -69,7 +70,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
   if (!computer) {
     return (
       <div className="flex h-full flex-col">
-        <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6" {...paneHeader(pane)}>
+        <header className={PANE_HEADER} {...paneHeader(pane)}>
           {toggle && <SidebarToggle />}
           <div className={`min-w-0 flex-1 self-stretch ${handle.className}`} data-pane-handle={handle['data-pane-handle']} />
           {pane && <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip="Close and go Home" />}
@@ -81,7 +82,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
 
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-computer-view={computer.id}>
-      <header className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 ${remoteLine(pane)} @max-[860px]:gap-2 @max-[860px]:px-4`} {...paneHeader(pane)}>
+      <header className={`${PANE_HEADER} ${remoteLine(pane)}`} {...paneHeader(pane)}>
         {toggle && <SidebarToggle />}
         <Monitor size={16} aria-hidden className="shrink-0 text-remote" />
         <div className={`min-w-0 flex-1 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>

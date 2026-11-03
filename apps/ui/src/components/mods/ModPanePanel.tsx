@@ -118,7 +118,7 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
       onKeyDown={onKey}
       onFocus={onFocus}
       onBlur={onBlur}
-      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg outline-none"
+      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
       style={{ width }}
       data-mod-pane={pane.id}
       data-mod-frame={pane.plugin}
@@ -139,7 +139,7 @@ export function ModPanePanel({ sessionId, pane, width, onWidth, tabs, onClose, f
       {tabs ? (
         tabs(actions)
       ) : (
-        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
+        <header className="flex h-10 shrink-0 items-center gap-2 px-3">
           <Puzzle size={14} aria-hidden className="shrink-0 text-muted" />
           <h2 className="min-w-0 flex-1 truncate text-ui font-semibold text-text">{pane.title}</h2>
           {actions}

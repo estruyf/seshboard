@@ -71,7 +71,7 @@ export function FilePreviewPanel({ sessionId, target, width, onWidth, tabs }: Fi
       aria-label={`Preview of ${name}`}
       tabIndex={-1}
       onKeyDown={onKey}
-      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col border-l border-border bg-bg outline-none"
+      className="relative flex max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar outline-none forced-colors:border-l"
       style={{ width }}
       data-file-preview=""
       data-file-preview-kind={kind}
@@ -93,10 +93,10 @@ export function FilePreviewPanel({ sessionId, target, width, onWidth, tabs }: Fi
       {tabs ? (
         <>
           {tabs(actions)}
-          <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">{title}</header>
+          <header className="flex shrink-0 items-center gap-2 px-3 py-1.5">{title}</header>
         </>
       ) : (
-        <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 pt-2.5 pb-2">
+        <header className="flex shrink-0 items-start gap-2 px-3 pt-2.5 pb-2">
           <Eye size={16} aria-hidden className="mt-0.5 shrink-0 text-accent-ink" />
           {title}
           <div className="flex shrink-0 items-center">{actions}</div>

@@ -184,12 +184,12 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 
 | Token | Where it shows | Light | Dark |
 |---|---|---|---|
-| `bg` | the conversation, the window behind everything, fields | `#ffffff` | `#15181f` |
-| `sidebar` | the sidebar and side panels | `#f4f6fa` | `#202736` |
+| `bg` | the conversation, the window behind everything, fields, diffs in the Changes panel | `#ffffff` | `#15181f` |
+| `sidebar` | the sidebar and side panels; with no borders between them, keep it apart from `bg` | `#f4f6fa` | `#202736` |
 | `card` | cards: your prompt, plans, permission and question cards, the message box, theme cards | `#ffffff` | `#202736` |
 | `popover` | menus, popovers, dialogs, toasts | `#ffffff` | `#2a3244` |
-| `code-bg` | code blocks, tool output, inline and Changes diffs | `#f4f6fa` | `#202736` |
-| `border` | lines between areas, card edges | `#e1e4e8` | `#2d3142` |
+| `code-bg` | code blocks, tool output, inline diffs | `#f4f6fa` | `#202736` |
+| `border` | card edges, the hairline under a header while content scrolls under it | `#e1e4e8` | `#2d3142` |
 | `overlay-border` | edges of menus and dialogs, and of fields, chips and secondary buttons inside them | `#d1d5da` | `#414861` |
 | `overlay-shadow` | the shadow under menus and dialogs (one colour; the app builds the layers) | `#15181f33` | `#000000b3` |
 | `text` | text | `#202736` | `#d9dbe1` |

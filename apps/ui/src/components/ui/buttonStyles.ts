@@ -88,17 +88,20 @@ export interface PillLook {
   tone: PillTone;
   /** A button (it reacts to hover) rather than a label. */
   interactive: boolean;
+  /** A dashed outline: a pill that adds something in an editor (Add step). */
   dashed: boolean;
+  /** No border, in faint text: a pill that adds something beside the message box ("+ Add action"), quiet until you go for it. */
+  ghost: boolean;
   selected: boolean;
   /** May shrink below its content (it truncates its label) instead of keeping its width. */
   shrink: boolean;
 }
 
 /** The classes for a pill. `count` is the small tinted number next to a group heading; its tint comes from the caller. */
-export function pillClass({ tone, interactive, dashed, selected, shrink }: PillLook): string {
+export function pillClass({ tone, interactive, dashed, ghost, selected, shrink }: PillLook): string {
   if (tone === 'count') return 'inline-flex items-center rounded-full px-1.5 tabular-nums tracking-normal';
-  const muted = dashed || tone === 'muted';
-  const look = selected ? 'border-border bg-selected text-text' : dashed ? 'border-dashed border-border text-muted' : PILL_TONE[tone];
+  const muted = dashed || ghost || tone === 'muted';
+  const look = selected ? 'border-border bg-selected text-text' : ghost ? 'border-transparent text-faint' : dashed ? 'border-dashed border-border text-muted' : PILL_TONE[tone];
   const hover = interactive ? `hover:bg-border/50 ${muted && !selected ? 'hover:text-text' : ''}` : '';
   return `inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-meta whitespace-nowrap ${shrink ? 'min-w-0' : 'shrink-0'} ${look} ${hover}`;
 }

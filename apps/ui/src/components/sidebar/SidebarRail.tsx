@@ -364,7 +364,7 @@ export function SidebarRail() {
   }, []);
 
   return (
-    <nav aria-label="Sidebar" className="flex h-full w-20 shrink-0 flex-col border-r border-border bg-sidebar" data-sidebar-rail>
+    <nav aria-label="Sidebar" className="flex h-full w-20 shrink-0 flex-col bg-sidebar forced-colors:border-r" data-sidebar-rail>
       {/* The traffic lights sit in this strip, which doubles as a window drag handle. */}
       <div className="drag h-13 shrink-0" />
       <div className="flex shrink-0 flex-col items-center gap-1 pb-2">
@@ -453,7 +453,7 @@ export function SidebarRail() {
         </div>
       </div>
 
-      <footer className="flex shrink-0 flex-col items-center gap-1.5 border-t border-border py-2">
+      <footer className="flex shrink-0 flex-col items-center gap-1.5 py-2">
         <RailDevices />
         <FocusCounter compact />
         <RailStarButton

@@ -5230,6 +5230,98 @@ async function runChangesStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Read-only: fewer lines in a session. The header's hairline shows only while the conversation scrolls under it;
+ * Changes sits on the sidebar's surface without an edge, its file rows have no lines between them, and the composer
+ * area has a fade instead of a line over it. The sidebar has no edge and its bottom is one block. Takes the window in
+ * light and dark for the pull request (fewer-lines-light.png, fewer-lines-dark.png).
+ */
+async function runFewerLinesStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = `[data-current-session="${smokeSessionId}"]`;
+  const header = `document.querySelector('${view} [data-session-header]')`;
+  const scroller = `document.querySelector('${view} [data-transcript]')`;
+  const scheme = nativeTheme.themeSource;
+  const notes: string[] = [];
+  let changesOpened = false;
+  try {
+    if (!smokeSessionId || !(await waitInPage(win, `!!${header} && !!${scroller}`, 5_000))) return 'no session view';
+    const borders = (await js(`(() => {
+      const width = (el, side) => (el ? getComputedStyle(el)['border' + side + 'Width'] : 'none');
+      return {
+        header: width(${header}, 'Bottom'),
+        composer: width(document.querySelector('${view} [data-composer-area]'), 'Top'),
+        tray: width(document.querySelector('${view} [data-composer-tray]'), 'Bottom'),
+        sidebar: width(document.querySelector('[data-sidebar-open]'), 'Right'),
+        footer: width(document.querySelector('[data-sidebar-bottom] footer'), 'Top'),
+      };
+    })()`)) as Record<string, string>;
+    const lined = Object.entries(borders).filter(([, w]) => w !== '0px' && w !== 'none');
+    if (lined.length) return `still a line on ${lined.map(([k, w]) => `${k} (${w})`).join(', ')}`;
+    if (!(await js("!!document.querySelector('[data-sidebar-bottom]')"))) return 'the sidebar has no bottom block';
+    const fade = (await js(`(() => { const f = document.querySelector('${view} [data-composer-fade]'); if (!f) return null; const s = getComputedStyle(f); return { height: Math.round(f.getBoundingClientRect().height), events: s.pointerEvents, image: s.backgroundImage }; })()`)) as { height: number; events: string; image: string } | null;
+    if (!fade) return 'no fade above the composer';
+    if (fade.height !== 32 || fade.events !== 'none' || !fade.image.includes('gradient')) return `the fade is ${fade.height}px, pointer-events ${fade.events}, ${fade.image}`;
+
+    // The header's line: none at the top of the conversation, there once it scrolls under the header. A wheel first,
+    // so the view counts it as your scroll and stops following the end.
+    const room = (await js(`${scroller}.scrollHeight - ${scroller}.clientHeight`)) as number;
+    if (room < 40) notes.push('conversation too short to scroll');
+    else {
+      await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })); el.scrollTop = 0; })()`);
+      if (!(await waitInPage(win, `${scroller}.scrollTop === 0 && !${header}.hasAttribute('data-scrolled')`, 3_000))) return 'the header has data-scrolled at the top of the conversation';
+      await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true })); el.scrollTop = 200; })()`);
+      if (!(await waitInPage(win, `${header}.hasAttribute('data-scrolled')`, 3_000))) return 'the header has no data-scrolled while the conversation scrolls under it';
+      notes.push('header line only while scrolled');
+    }
+
+    // Changes: the sidebar's surface, no edge, no lines between files, the header's and footer's lines from the list.
+    if (await waitInPage(win, `!!document.querySelector('${view} [data-toggle-changes]')`, 3_000)) {
+      if (!(await js(`!!document.querySelector('${view} [data-changes-panel]')`))) {
+        await js(`document.querySelector('${view} [data-toggle-changes]').click()`);
+        changesOpened = true;
+      }
+      if (!(await waitInPage(win, `!!document.querySelector('${view} [data-changes-panel] [data-changes-header]') && !document.querySelector('${view} [data-changes-panel]').innerText.includes('Loading')`, 5_000))) return 'the Changes panel did not load';
+      const panel = (await js(`(() => {
+        const panel = document.querySelector('${view} [data-changes-panel]');
+        const bg = (el) => (el ? getComputedStyle(el).backgroundColor : null);
+        const probe = document.createElement('div');
+        probe.className = 'bg-sidebar';
+        document.body.append(probe);
+        const sidebar = bg(probe);
+        probe.remove();
+        const rows = [...panel.querySelectorAll('[data-changed-file]')];
+        return {
+          bg: bg(panel), sidebar, conversation: bg(document.querySelector('${view} [data-composer-area]')),
+          edge: getComputedStyle(panel).borderLeftWidth,
+          header: getComputedStyle(panel.querySelector('[data-changes-header]')).borderBottomWidth,
+          rows: rows.length,
+          lined: rows.filter((r) => [r, r.firstElementChild].some((el) => el && getComputedStyle(el).borderBottomWidth !== '0px')).length,
+        };
+      })()`)) as { bg: string; sidebar: string; conversation: string | null; edge: string; header: string; rows: number; lined: number };
+      if (panel.bg !== panel.sidebar) return `the Changes panel is ${panel.bg}, not the sidebar's ${panel.sidebar}`;
+      if (panel.bg === panel.conversation) return `the Changes panel and the conversation are both ${panel.bg}`;
+      if (panel.edge !== '0px' || panel.header !== '0px') return `the Changes panel still has an edge (${panel.edge}) or a header line (${panel.header})`;
+      if (panel.lined) return `${panel.lined} of ${panel.rows} file rows still have a line`;
+      notes.push(`Changes on the sidebar's surface, ${panel.rows} file rows without lines`);
+    } else notes.push('no Changes (not a git checkout)');
+
+    // The window in light and dark, for the pull request; the two surfaces stay apart in both.
+    for (const mode of ['light', 'dark'] as const) {
+      nativeTheme.themeSource = mode;
+      if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: dark)').matches === ${mode === 'dark'}`, 3_000))) return `the window did not switch to ${mode}`;
+      const [bg, sidebar] = (await js("(() => { const s = getComputedStyle(document.documentElement); return [s.getPropertyValue('--sb-bg').trim(), s.getPropertyValue('--sb-sidebar').trim()]; })()")) as [string, string];
+      if (bg === sidebar) return `in ${mode} the sidebar and the conversation are both ${bg}`;
+      await shot(win, `fewer-lines-${mode}.png`);
+    }
+    return `ok: no lines on the header, the composer, the tray or the sidebar; a 32px fade over the composer; ${notes.join('; ')}`;
+  } finally {
+    nativeTheme.themeSource = scheme;
+    if (changesOpened) await js(`document.querySelector('${view} [data-toggle-changes]')?.click()`).catch(() => {});
+    await js(`(() => { const el = ${scroller}; if (el) el.scrollTop = el.scrollHeight; })()`).catch(() => {});
+  }
+}
+
+/**
  * Read-only: the header's branch button on a session in its project's checkout shows the branch git
  * has checked out, and its menu lists the local branches; Escape closes it. While Claude works in the
  * session (often the one running this test) it is disabled and says why; then the step tries the next
@@ -11731,6 +11823,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return activity.steps ? `ok: ${summary}` : `failed: ${summary}`;
   });
   await step('changes panel', () => runChangesStep(win));
+  await step('fewer lines: the header line only while scrolled, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
   await step('branch button', () => runBranchStep(win));
   await step('open in menu', () => runOpenInStep(win));
   await step('check transcript', () => runCheckTranscriptStep(win));

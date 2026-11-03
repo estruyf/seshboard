@@ -87,8 +87,8 @@ export function ComposerTray({ controls, tools, info, usage, meter }: ComposerTr
         ref={trayRef}
         role="group"
         aria-label="Options for the next message"
-        // One step darker than the box: the card's surface half over what is behind it.
-        className="relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl border border-t-0 border-border bg-card/55 px-1.5 py-1 text-ui text-muted"
+        // Tinted, not outlined, so it hangs under the box: a grey from the text colour shows on white (light) as on dark.
+        className="relative mx-4 flex min-h-9 items-center gap-1 rounded-b-xl bg-text/6 px-1.5 py-1 text-ui text-muted forced-colors:border forced-colors:border-t-0"
         data-composer-tray
         data-composer-tray-folded={folded || undefined}
       >
