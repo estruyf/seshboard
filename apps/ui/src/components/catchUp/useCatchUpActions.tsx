@@ -24,8 +24,7 @@ export interface CatchUpActions {
 
 /**
  * What the catch-up's buttons and keys do. Review changes opens the Changes panel; Commit opens the Commit dialog; Reply
- * puts you in the message box; Mark as read and Archive change the session at once (so the focus counter follows) and
- * tell the engine.
+ * puts you in the message box; Archive changes the session at once (so the focus counter follows) and tells the engine.
  */
 export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: string | null; changes: GitChanges | null }): CatchUpActions {
   const connection = useEngineConnection();
@@ -50,10 +49,6 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
       case 'reply':
         store.setReplying(sessionId);
         useDrafts.getState().requestFocus(sessionId);
-        return;
-      case 'read':
-        useSessions.getState().patchSummary(sessionId, { unread: false, viewedAt: Date.now() });
-        void client?.call('sessions.markViewed', { sessionId }).catch(fail('mark it as read'));
         return;
       case 'archive': {
         // The next session in the sidebar's order, worked out before this one leaves it.

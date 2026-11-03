@@ -38,6 +38,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Installing the `seshboard` command on a Mac** writes the commands directly with the administrator's password, instead of copying them from a temporary folder.
 - **Theme colours with long runs of spaces are refused at once,** instead of slowing down a theme import.
 
+### Changed
+
+- **No Mark as read in the catch-up.** The catch-up no longer has a Mark as read button or the U key: a session you look at is marked read after a few seconds by itself (**Settings › Sessions › Mark as read after**).
+
 ## [1.2.0] - 2026-10-28
 
 **Updating from Switchboard? Switchboard is now Seshboard.** After the update, pair your phones and other computers again in Settings › Remote, and put the app back in the Dock (on Windows and Linux, pin it again): a shortcut to Switchboard no longer opens it.

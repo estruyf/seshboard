@@ -15,7 +15,7 @@ interface CatchUpState {
   cards: Map<string, CatchUp>;
   /** Turns whose card you folded into the strip (true) or opened from it (false), for this run of the app only. */
   collapsed: ReadonlyMap<string, boolean>;
-  /** Turns whose banner you closed Details on: it shows them unless the turn is here, so Mark as read and the other actions are in sight. */
+  /** Turns whose banner you closed Details on: it shows them unless the turn is here, so its other actions are in sight. */
   detailsClosed: ReadonlySet<string>;
   /** Turns you committed from the card: it says Committed and offers Archive. */
   committed: ReadonlySet<string>;

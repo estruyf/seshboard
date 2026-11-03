@@ -1126,14 +1126,6 @@ export const SHORTCUTS = [
     where: "view",
   },
   {
-    id: "catchup.read",
-    keys: ["u"],
-    action: "Mark as read",
-    section: "catch-up",
-    when: catchUpCard,
-    where: "view",
-  },
-  {
     id: "catchup.archive",
     keys: ["e"],
     action: "Archive, and go to the next session",

@@ -35,7 +35,6 @@ const PILL = { ok: 'ok', error: 'error', caution: 'caution', warn: 'warn', neutr
 interface Shared {
   card: CatchUpCardData;
   actions: CatchUpActions;
-  unread: boolean;
   committed: boolean;
   changesOpen: boolean;
 }
@@ -121,10 +120,10 @@ function CatchUpStrip({ card, actions, committed, changesOpen }: Shared) {
  * The banner over the conversation: the state, your ask, the review time and the primary action, then what it needs and
  * the signals. Details (Space) opens what Claude did and skipped, and the other actions.
  */
-function CatchUpBanner({ card, actions, unread, committed, changesOpen, details }: Shared & { details: boolean }) {
+function CatchUpBanner({ card, actions, committed, changesOpen, details }: Shared & { details: boolean }) {
   const tone = committed ? 'ok' : NEED_TONE[card.need.kind];
   const primary = primaryAction(card.need.kind, committed);
-  const secondary = secondaryActions(card, { unread, committed });
+  const secondary = secondaryActions(card, { committed });
   // A size wider than the conversation (max-w-3xl), so the text scrolling under the card stays hidden behind it.
   return (
     <div className="mx-auto w-full max-w-4xl px-6 pt-3 @max-[860px]:px-4">
@@ -199,14 +198,13 @@ export interface CatchUpSlotProps {
  */
 export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen }: CatchUpSlotProps) {
   const sessionId = card.sessionId;
-  const unread = useSessions((s) => s.sessions.get(sessionId)?.unread ?? false);
   const key = turnKey(card);
   const committed = useCatchUp((s) => s.committed.has(key));
   const details = useCatchUp((s) => !s.detailsClosed.has(key));
   const replying = useCatchUp((s) => s.replying === sessionId);
   const actions = useCatchUpActions({ card, cwd, changes });
   const ref = useRef<HTMLDivElement>(null);
-  const shared: Shared = { card, actions, unread, committed, changesOpen };
+  const shared: Shared = { card, actions, committed, changesOpen };
 
   const latest = useRef({ show, details, replying, changesOpen, actions, committed });
   latest.current = { show, details, replying, changesOpen, actions, committed };
@@ -235,12 +233,12 @@ export function CatchUpSlot({ card, show, cwd, changes, active, changesOpen }: C
       if (action.type === 'primary') return s.actions.run(primaryAction(card.need.kind, s.committed));
       // Space opens and closes Details in the banner, and opens the banner from the strip.
       if (action.type === 'space') return s.show === 'full' ? useCatchUp.getState().setDetails(card, !s.details) : s.actions.fold(false);
-      const offered = [primaryAction(card.need.kind, s.committed), ...secondaryActions(card, { unread, committed: s.committed })];
+      const offered = [primaryAction(card.need.kind, s.committed), ...secondaryActions(card, { committed: s.committed })];
       if (offered.includes(action.id)) s.actions.run(action.id);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, card, unread]);
+  }, [active, card]);
 
   return (
     <div ref={ref} className="shrink-0" data-catchup-slot={show === 'full' ? 'banner' : 'strip'}>

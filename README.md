@@ -330,7 +330,6 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | D | Review changes (Opens or closes the Changes panel) |
 | C | Commit |
 | R | Reply to Claude (Puts you in the message box) |
-| U | Mark as read |
 | E | Archive, and go to the next session |
 | Space | Open or close Details, or show the folded catch-up |
 

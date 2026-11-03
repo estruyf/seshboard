@@ -275,7 +275,6 @@ describe('the shortcut registry', () => {
       'catchup.review': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
       'catchup.commit': [{ ...SESSION, catchUp: 'full' }, { ...SESSION, catchUp: 'strip' }],
       'catchup.reply': [{ ...SESSION, catchUp: 'full' }, SESSION],
-      'catchup.read': [{ ...SESSION, catchUp: 'full' }, SESSION],
       'catchup.archive': [{ ...SESSION, catchUp: 'full' }, SESSION],
       'catchup.expand': [{ ...SESSION, catchUp: 'strip' }, SESSION],
       'new-session.pick': [at({ view: 'new-session' }), SESSION],

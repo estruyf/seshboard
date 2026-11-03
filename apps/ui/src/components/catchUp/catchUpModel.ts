@@ -78,10 +78,10 @@ export function chipsOf(card: CatchUp): Chip[] {
 }
 
 /** Everything the banner can do. */
-export type CatchUpActionId = 'commit' | 'review' | 'reply' | 'read' | 'archive';
+export type CatchUpActionId = 'commit' | 'review' | 'reply' | 'archive';
 
 /** The letter that runs each action; ↩ runs the primary one too. */
-export const ACTION_KEYS: Record<CatchUpActionId, string> = { commit: 'c', review: 'd', reply: 'r', read: 'u', archive: 'e' };
+export const ACTION_KEYS: Record<CatchUpActionId, string> = { commit: 'c', review: 'd', reply: 'r', archive: 'e' };
 
 /** The primary action for what the turn needs; after a commit there is only archiving left. */
 export function primaryAction(kind: CatchUpNeedKind, committed: boolean): CatchUpActionId {
@@ -99,19 +99,19 @@ export function primaryAction(kind: CatchUpNeedKind, committed: boolean): CatchU
 }
 
 export interface ActionContext {
-  unread: boolean;
   committed: boolean;
 }
 
 /**
  * The quieter actions after the primary one, in a fixed order, leaving out the primary and what doesn't apply: Review
- * changes and Commit only with a diff (Commit not after a commit), Mark as read only while unread.
+ * changes and Commit only with a diff (Commit not after a commit). There is no Mark as read: looking at the session marks
+ * it read after a few seconds (Settings › Sessions).
  */
 export function secondaryActions(card: CatchUp, ctx: ActionContext): CatchUpActionId[] {
   const primary = primaryAction(card.need.kind, ctx.committed);
   const hasDiff = (card.signals.diff?.files ?? 0) > 0;
-  const applies: Record<CatchUpActionId, boolean> = { review: hasDiff, commit: hasDiff && !ctx.committed, reply: true, read: ctx.unread, archive: true };
-  return (['review', 'commit', 'reply', 'read', 'archive'] as const).filter((id) => applies[id] && id !== primary);
+  const applies: Record<CatchUpActionId, boolean> = { review: hasDiff, commit: hasDiff && !ctx.committed, reply: true, archive: true };
+  return (['review', 'commit', 'reply', 'archive'] as const).filter((id) => applies[id] && id !== primary);
 }
 
 /** A button's label: Review changes says Hide changes while the panel is open. */
@@ -123,8 +123,6 @@ export function actionLabel(id: CatchUpActionId, ctx: { changesOpen: boolean }):
       return ctx.changesOpen ? 'Hide changes' : 'Review changes';
     case 'reply':
       return 'Reply';
-    case 'read':
-      return 'Mark as read';
     case 'archive':
       return 'Archive';
   }

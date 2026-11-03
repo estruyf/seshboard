@@ -52,7 +52,7 @@ export function createBatcher<T>(apply: (items: T[]) => void, schedule: Schedule
 }
 
 /**
- * The sessions with one summary changed here, ahead of the engine (Mark as read, Archive from the catch-up), or the same
+ * The sessions with one summary changed here, ahead of the engine (Mark as read in the sidebar, Archive from the catch-up), or the same
  * map when the session isn't known.
  */
 export function patchedSessions(

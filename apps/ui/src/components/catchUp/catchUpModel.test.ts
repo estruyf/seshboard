@@ -113,11 +113,11 @@ describe('the actions', () => {
   });
 
   it('lists the others in order, without the primary and what doesn’t apply', () => {
-    expect(secondaryActions(card(), { unread: true, committed: false })).toEqual(['review', 'reply', 'read', 'archive']);
-    expect(secondaryActions(card({ need: need('review') }), { unread: false, committed: false })).toEqual(['commit', 'reply', 'archive']);
-    expect(secondaryActions(card({ need: need('none') }, { diff: { files: 0, add: 0, del: 0 } }), { unread: true, committed: false })).toEqual(['reply', 'read']);
-    expect(secondaryActions(card({ need: need('reply') }, { diff: null }), { unread: false, committed: false })).toEqual(['archive']);
-    expect(secondaryActions(card(), { unread: false, committed: true })).toEqual(['review', 'reply']);
+    expect(secondaryActions(card(), { committed: false })).toEqual(['review', 'reply', 'archive']);
+    expect(secondaryActions(card({ need: need('review') }), { committed: false })).toEqual(['commit', 'reply', 'archive']);
+    expect(secondaryActions(card({ need: need('none') }, { diff: { files: 0, add: 0, del: 0 } }), { committed: false })).toEqual(['reply']);
+    expect(secondaryActions(card({ need: need('reply') }, { diff: null }), { committed: false })).toEqual(['archive']);
+    expect(secondaryActions(card(), { committed: true })).toEqual(['review', 'reply']);
   });
 
   it('says Hide changes while the panel is open', () => {
@@ -147,9 +147,9 @@ describe('the keys', () => {
     expect(catchUpKey(key('d'), at('view'))).toEqual({ type: 'action', id: 'review' });
     expect(catchUpKey(key('c'), at('view'))).toEqual({ type: 'action', id: 'commit' });
     expect(catchUpKey(key('r'), at('view'))).toEqual({ type: 'action', id: 'reply' });
-    expect(catchUpKey(key('u'), at('view'))).toEqual({ type: 'action', id: 'read' });
     expect(catchUpKey(key('e'), at('view'))).toEqual({ type: 'action', id: 'archive' });
     expect(catchUpKey(key(' '), at('view'))).toEqual({ type: 'space' });
+    expect(catchUpKey(key('u'), at('view'))).toBeNull();
     expect(catchUpKey(key('x'), at('view'))).toBeNull();
   });
 

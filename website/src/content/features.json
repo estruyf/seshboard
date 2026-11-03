@@ -4053,7 +4053,7 @@
     },
     {
       "id": "feature:catch-up-details",
-      "name": "Catch-up banner: Details open when it shows, with Mark as read and the other actions",
+      "name": "Catch-up banner: Details open when it shows, with the other actions",
       "page": "sessions/catch-up"
     },
     {
@@ -4109,11 +4109,6 @@
     {
       "id": "shortcut:catchup.reply",
       "name": "catchup.reply",
-      "page": "sessions/catch-up"
-    },
-    {
-      "id": "shortcut:catchup.read",
-      "name": "catchup.read",
       "page": "sessions/catch-up"
     },
     {
