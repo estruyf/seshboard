@@ -4933,6 +4933,9 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))}) && Boolean(${theirs})`, 5_000))) return 'the session sent a message from here went with Mine';
+  // The pipeline run started from here (`remoteRunRows`) is mine too; the run a trigger started there is not.
+  const runRowOf = (title: string) => `[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.dataset.runRow && r.innerText.includes(${JSON.stringify(title)}))`;
+  if (!(await js(`${runRowOf('Smoke remote run')} && !${runRowOf('Retry failed webhook deliveries')}`))) return 'with Mine, the run started from here is not listed, or the run a trigger started there still is';
   await click(`[data-session-list] [data-hidden-from-others=${JSON.stringify(computerId)}]`);
   if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 3_000))) return 'Show did not bring All back';
 
