@@ -83,7 +83,6 @@ export function ComputersSettings() {
                 <>
                   {computer.state === 'connected' ? <ConnectedNow /> : computerLine(computer)}
                   {` · paired ${remoteAge(computer.pairedAt)}`}
-                  {computer.notify !== 'all' && <span data-computer-notify-status>{` · ${NOTIFY_STATUS[computer.notify]}`}</span>}
                 </>
               }
               actions={
@@ -109,19 +108,13 @@ export function ComputersSettings() {
                   >
                     Colour
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    iconOnly
-                    icon={<NotifyIcon notify={computer.notify} />}
-                    aria-label={`Notifications from ${computer.name}`}
-                    data-tooltip={`Notifications: ${NOTIFY_LABEL[computer.notify]}`}
-                    aria-expanded={notifying === computer.id}
+                  <NotifyButton
+                    computer={computer}
+                    open={notifying === computer.id}
                     onClick={() => {
                       setColouring(null);
                       setNotifying(notifying === computer.id ? null : computer.id);
                     }}
-                    data-computer-notify={computer.notify}
                   />
                   <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
                     Open
@@ -227,12 +220,10 @@ function ColourStrip({ computer, onPick, onClose }: { computer: Computer; onPick
 const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'started-here': 'Started here', 'needs-you': 'Needs you', off: 'Off' };
 const NOTIFY_HINT: Record<ComputerNotify, string> = {
   all: 'Needs you, finished and failed',
-  'started-here': 'All of them, for sessions you started there from this computer',
+  'started-here': 'The same, only for sessions you started there from this computer',
   'needs-you': 'Only when a session waits for you',
   off: 'None. Its sessions still show here.',
 };
-/** In the row's status line, when it isn't all of them. */
-const NOTIFY_STATUS: Record<ComputerNotify, string> = { all: '', 'started-here': 'Notifies for sessions started here', 'needs-you': 'Notifies only when it needs you', off: 'Notifications off' };
 
 function NotifyIcon({ notify }: { notify: ComputerNotify }) {
   if (notify === 'off') return <BellOff size={14} aria-hidden />;
@@ -242,8 +233,23 @@ function NotifyIcon({ notify }: { notify: ComputerNotify }) {
 }
 
 /**
- * Which of a computer's notifications show here, in a strip under its row, like its colour. Its sessions stay in the
- * sidebar whatever you pick. Esc or Done closes it.
+ * The row's bell. With all of them it is only the bell; otherwise it says which (Off, Needs you, Started here), so
+ * the choice shows without cutting the status line short.
+ */
+function NotifyButton({ computer, open, onClick }: { computer: Computer; open: boolean; onClick(): void }) {
+  const shared = { size: 'sm', variant: 'quiet', icon: <NotifyIcon notify={computer.notify} />, 'aria-expanded': open, onClick, 'data-computer-notify': computer.notify } as const;
+  if (computer.notify === 'all') return <Button {...shared} iconOnly aria-label={`Notifications from ${computer.name}`} data-tooltip="Notifications: All" />;
+  return (
+    <Button {...shared} aria-label={`Notifications from ${computer.name}: ${NOTIFY_LABEL[computer.notify]}`} data-tooltip={NOTIFY_HINT[computer.notify]}>
+      {NOTIFY_LABEL[computer.notify]}
+    </Button>
+  );
+}
+
+/**
+ * Which of a computer's notifications show here, in a strip under its row, like its colour: the title and Done on
+ * one line, then one choice a line with what it shows next to it (under it, in a narrow window). Its sessions stay in
+ * the sidebar whatever you pick. Esc or Done closes it.
  */
 function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick(notify: ComputerNotify): void; onClose(): void }) {
   const strip = useRef<HTMLDivElement>(null);
@@ -252,7 +258,7 @@ function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick
   return (
     <div
       ref={strip}
-      className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-text/4 px-4 py-2.5"
+      className="grid gap-2 bg-text/4 px-4 py-3"
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
         event.stopPropagation();
@@ -261,18 +267,22 @@ function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick
       }}
       data-computer-notify-options={computer.id}
     >
-      <span className="text-ui text-muted">Notifications from {computer.name}</span>
-      <RadioGroup label={`Notifications from ${computer.name}`} className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-ui text-muted">Notifications from {computer.name}</span>
+        <Button size="sm" onClick={onClose}>
+          Done
+        </Button>
+      </div>
+      <RadioGroup label={`Notifications from ${computer.name}`} className="grid gap-1.5">
         {COMPUTER_NOTIFY.map((notify) => (
-          <Radio key={notify} checked={computer.notify === notify} onSelect={() => computer.notify !== notify && onPick(notify)} dataAttrs={{ 'data-computer-notify-option': notify }}>
-            <span className="text-ui">{NOTIFY_LABEL[notify]}</span>
+          <Radio key={notify} checked={computer.notify === notify} onSelect={() => computer.notify !== notify && onPick(notify)} className="w-full" dataAttrs={{ 'data-computer-notify-option': notify }}>
+            <span className="flex flex-wrap items-baseline gap-x-2">
+              <span className="whitespace-nowrap text-ui text-text">{NOTIFY_LABEL[notify]}</span>
+              <span className="text-meta text-muted">{NOTIFY_HINT[notify]}</span>
+            </span>
           </Radio>
         ))}
       </RadioGroup>
-      <span className="text-meta text-muted">{NOTIFY_HINT[computer.notify]}</span>
-      <Button size="sm" onClick={onClose}>
-        Done
-      </Button>
     </div>
   );
 }
