@@ -674,7 +674,7 @@ export function Sidebar() {
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
-  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays), [merged, runs, now, archiveAfterDays]);
+  const forest = useMemo(() => sidebarForest(merged, runs.values(), now, archiveAfterDays, kept), [merged, runs, now, archiveAfterDays, kept]);
   const openParents = usePipelineTree((s) => s.open);
   const { active, archived } = useMemo(
     () => buildSessionList(forest.roots, { search, project: projectFilter, now, archiveAfterDays, children: forest.children }),

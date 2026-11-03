@@ -38,11 +38,12 @@ export const useHud = create<HudState>()((set) => ({
 export function currentOrder() {
   const { sessions, live, filter } = useSessions.getState();
   const { sessionScope: scope, archiveAfterDays, sidebarSort: sort } = usePreferences.getState().prefs;
-  const local = toRows(sessions, live, useHosts.getState().hosts, keptSessionsNow()).filter((row) => inScope(row, scope));
+  const kept = keptSessionsNow();
+  const local = toRows(sessions, live, useHosts.getState().hosts, kept).filter((row) => inScope(row, scope));
   const rows = filterBySource([...local, ...currentRemoteRows()], useComputers.getState().hidden);
   const open = useSidebar.getState().state === 'open';
   const quick = quickInfoOf(useCatchUp.getState().cards);
-  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null, sort, quick }));
+  return sidebarOrder(sidebarGroups(rows, { now: Date.now(), archiveAfterDays, search: open ? filter : '', project: open ? useProjects.getState().filter : null, sort, quick, kept }));
 }
 
 function land(id: string, order: readonly { id: string }[]) {
