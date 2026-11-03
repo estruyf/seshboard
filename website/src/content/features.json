@@ -1587,6 +1587,11 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computer-name-colour",
+      "name": "Rename a paired computer and give it a colour, for its chips, badges and the line over its sessions",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:computers-filter",
       "name": "Computers strip and Show sessions from: filter the sidebar by computer",
       "page": "other-computers"

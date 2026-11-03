@@ -19,7 +19,7 @@ import { RenameProjectDialog } from '../projects/RenameProjectDialog.tsx';
 import { isQuestionsFolder } from '../../lib/questions.ts';
 import { Button } from '../ui/Button.tsx';
 import { Popover } from '../ui/Popover.tsx';
-import { ComputerChip } from '../computers/ComputerChip.tsx';
+import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { toggleSource } from '../../state/remoteRows.ts';
 
@@ -260,6 +260,7 @@ export interface SourceSummary {
 export interface RemoteProjectSummary {
   key: string;
   name: string;
+  computerId: string;
   computerName: string;
   offline: boolean;
 }
@@ -341,9 +342,9 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
         }}
         className="no-drag flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left text-ui text-muted hover:bg-border/50 hover:text-text"
       >
-        {filter ? <ProjectIcon project={current} root={filter} name={remoteCurrent?.name} remote={!!remoteCurrent} /> : <Layers size={14} className="shrink-0" aria-hidden />}
+        {filter ? <ProjectIcon project={current} root={filter} name={remoteCurrent?.name} remote={remoteCurrent?.computerId ?? false} /> : <Layers size={14} className="shrink-0" aria-hidden />}
         <span className="min-w-0 flex-1 truncate">{currentName}</span>
-        {remoteCurrent && <ComputerChip name={remoteCurrent.computerName} offline={remoteCurrent.offline} />}
+        {remoteCurrent && <ComputerChip name={remoteCurrent.computerName} computerId={remoteCurrent.computerId} offline={remoteCurrent.offline} />}
         <ChevronDown size={13} className={`shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       <Button variant="quiet" iconOnly icon={<FolderPlus size={15} aria-hidden />} aria-label="Add a project" data-add-project onClick={() => showAdd(true)} className="no-drag" />
@@ -391,9 +392,9 @@ export function ProjectFilter({ counts, sources = [], remoteProjects = [] }: { c
               key={project.key}
               selected={filter === project.key}
               onSelect={() => choose(() => setFilter(project.key))}
-              icon={<ProjectIcon project={undefined} root={project.key} name={project.name} remote />}
+              icon={<ProjectIcon project={undefined} root={project.key} name={project.name} remote={project.computerId} />}
               label={project.name}
-              chip={<ComputerChip name={project.computerName} offline={project.offline} />}
+              chip={<ComputerChip name={project.computerName} computerId={project.computerId} offline={project.offline} />}
               count={counts.get(project.key)?.total ?? 0}
             />
           ))}
@@ -464,6 +465,7 @@ function FilterPopover({
 
 /** A checkbox row in "Show sessions from": a computer, ticked while its sessions are listed. */
 function SourceRow({ source, checked, onToggle }: { source: SourceSummary; checked: boolean; onToggle(): void }) {
+  const tint = useComputerTint(source.remote ? source.source : null);
   const detail = source.offline ? `offline · ${source.total}` : source.waiting > 0 ? `${source.total} · ${source.waiting} ${source.waiting === 1 ? 'needs' : 'need'} you` : `${source.total} ${source.total === 1 ? 'session' : 'sessions'}`;
   return (
     <div role="none" className="flex items-center pr-1 hover:bg-accent/10 focus-within:bg-accent/10">
@@ -480,7 +482,7 @@ function SourceRow({ source, checked, onToggle }: { source: SourceSummary; check
         <span className="w-3 shrink-0" aria-hidden>
           {checked && <Check size={12} className="text-accent-ink" />}
         </span>
-        <Monitor size={13} aria-hidden className={`shrink-0 ${source.remote && !source.offline ? 'text-remote' : 'text-muted'}`} />
+        <Monitor size={13} aria-hidden style={source.remote ? tint : undefined} className={`shrink-0 ${source.remote && !source.offline ? 'text-remote' : 'text-muted'}`} />
         <span className={`min-w-0 flex-1 truncate ${source.offline ? 'text-muted' : ''}`}>{source.label}</span>
         <span className="shrink-0 text-meta text-muted tabular-nums">{detail}</span>
       </button>

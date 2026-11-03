@@ -5,6 +5,7 @@ import { basename } from '../lib/format.ts';
 import { accentFromPixels, letterColor } from '../lib/projectColor.ts';
 import { isQuestionsFolder } from '../lib/questions.ts';
 import { useProjects } from '../state/projectsStore.ts';
+import { useComputerTint } from './computers/ComputerChip.tsx';
 import { projectInitials } from './projectInitials.ts';
 
 /** Sampled icon colours by icon (null: no clear colour), so each icon is drawn and read once. */
@@ -69,20 +70,24 @@ export function useProjectColor(project: ProjectInfo | undefined, root: string |
  * A project's icon: its image, its emoji, or its first letter on a coloured tile (`letters={2}`: two, for a project on
  * another computer, which has no icon here). Quick questions have their own, in neutral colours. `remote` marks a
  * project on another computer (named by `name`, its `root` is only a key): a 13px badge with a monitor at the bottom
- * right, where it shows next to this computer's sessions and projects.
+ * right, where it shows next to this computer's sessions and projects. As that computer's id, the badge takes its
+ * colour; `true` leaves the colour to an element around it (`useComputerTint`).
  */
-export function ProjectIcon({ project, root, size = 14, name: given, remote = false, letters = 1 }: { project: ProjectInfo | undefined; root: string; size?: number; name?: string; remote?: boolean; letters?: 1 | 2 }) {
-  if (remote) {
-    return (
-      <span className="relative flex shrink-0" data-remote-badge>
-        <ProjectTile project={undefined} root={root} size={size} name={given} letters={letters} />
-        <span className="absolute -right-1 -bottom-1 flex size-[13px] items-center justify-center rounded-[4px] bg-sidebar text-remote ring-1 ring-sidebar" aria-hidden>
-          <Monitor size={9} strokeWidth={2.5} />
-        </span>
-      </span>
-    );
-  }
+export function ProjectIcon({ project, root, size = 14, name: given, remote = false, letters = 1 }: { project: ProjectInfo | undefined; root: string; size?: number; name?: string; remote?: boolean | string; letters?: 1 | 2 }) {
+  if (remote) return <RemoteProjectIcon root={root} size={size} name={given} letters={letters} computerId={typeof remote === 'string' ? remote : undefined} />;
   return <ProjectTile project={project} root={root} size={size} name={given} letters={letters} />;
+}
+
+function RemoteProjectIcon({ root, size, name, letters, computerId }: { root: string; size: number; name: string | undefined; letters: 1 | 2; computerId: string | undefined }) {
+  const tint = useComputerTint(computerId);
+  return (
+    <span className="relative flex shrink-0" style={tint} data-remote-badge>
+      <ProjectTile project={undefined} root={root} size={size} name={name} letters={letters} />
+      <span className="absolute -right-1 -bottom-1 flex size-[13px] items-center justify-center rounded-[4px] bg-sidebar text-remote ring-1 ring-sidebar" aria-hidden>
+        <Monitor size={9} strokeWidth={2.5} />
+      </span>
+    </span>
+  );
 }
 
 function ProjectTile({ project, root, size, name: given, letters }: { project: ProjectInfo | undefined; root: string; size: number; name?: string; letters: 1 | 2 }) {

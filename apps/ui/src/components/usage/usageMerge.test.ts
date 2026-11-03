@@ -126,6 +126,9 @@ describe('computersToAsk', () => {
   const computer = (id: string, state: Computer['state'], features: string[] = [REMOTE_FEATURE_USAGE_TOKENS]): Computer => ({
     id,
     name: id[0]!.toUpperCase() + id.slice(1),
+    ownName: id[0]!.toUpperCase() + id.slice(1),
+    renamed: false,
+    color: 'violet',
     address: 'https://example.trycloudflare.com',
     pairedAt: 1,
     state,

@@ -5,6 +5,7 @@ import {
   REMOTE_DESKTOP_ORIGIN,
   RpcError,
   type Computer,
+  type ComputerColor,
   type ComputerEvent,
   type ComputerMethod,
   type ComputerPairing,
@@ -14,7 +15,7 @@ import {
 } from '@seshboard/protocol';
 import { checkEvent, checkResult, type CheckedData } from './computerData.ts';
 import { ComputerLink, dialWebSocket, LinkError, pairComputer, type Dial, type LinkFailure, type LinkState } from './computerLink.ts';
-import { ComputerStore, type PairedComputer } from './computerStore.ts';
+import { ComputerStore, shownName, type PairedComputer } from './computerStore.ts';
 import { computerName } from './computerName.ts';
 import { CLOSE } from './remoteServer.ts';
 
@@ -148,6 +149,15 @@ export class ComputerHub {
     if (this.store.remove(id)) this.changed();
   }
 
+  /** Names or colours a computer here only; an empty name goes back to its own. */
+  update(id: string, changes: { name?: string; color?: ComputerColor }): void {
+    const computer = this.store.list().find((c) => c.id === id);
+    if (!computer) throw new RpcError('NOT_FOUND', 'This computer isn’t paired');
+    if (changes.name !== undefined) this.store.setLabel(id, changes.name.trim() === computer.name ? '' : changes.name);
+    if (changes.color !== undefined) this.store.setColor(id, changes.color);
+    this.changed();
+  }
+
   retry(id: string): void {
     this.links.get(id)?.link.retryNow();
   }
@@ -178,7 +188,8 @@ export class ComputerHub {
   }
 
   private nameOf(id: string): string {
-    return this.store.list().find((computer) => computer.id === id)?.name ?? '';
+    const computer = this.store.list().find((c) => c.id === id);
+    return computer ? shownName(computer) : '';
   }
 
   private async deviceKey(): Promise<KeyPair | null> {
@@ -224,16 +235,17 @@ export class ComputerHub {
   private view(computer: PairedComputer): Computer {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
-    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
+    const name = shownName(computer);
+    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
         return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };
       case 'connecting':
         return { ...base, state: 'connecting', message: null, retryAt: null, version: null, features: [] };
       case 'offline':
-        return { ...base, state: 'offline', message: offlineMessage(state.failure, computer.name), retryAt: state.retryAt, version: null, features: [] };
+        return { ...base, state: 'offline', message: offlineMessage(state.failure, name), retryAt: state.retryAt, version: null, features: [] };
       case 'unpaired':
-        return { ...base, state: 'unpaired', message: `${computer.name} no longer knows this computer. Pair it again.`, retryAt: null, version: null, features: [] };
+        return { ...base, state: 'unpaired', message: `${name} no longer knows this computer. Pair it again.`, retryAt: null, version: null, features: [] };
     }
   }
 

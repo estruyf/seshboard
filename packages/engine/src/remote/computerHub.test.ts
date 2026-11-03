@@ -192,6 +192,41 @@ describe('Other computers', () => {
     expect(again.hub.status().computers[0]!.address).toBe(moved.address);
   });
 
+  it('keeps a name and a colour you give a computer here, through its hello, a restart and pairing again', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet' });
+
+    first.hub.update(id, { name: '  Office  ', color: 'green' });
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Office', ownName: 'Studio Mac', renamed: true, color: 'green' });
+    // Only one field changes when only one is sent.
+    first.hub.update(id, { color: 'blue' });
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Office', color: 'blue' });
+    first.hub.stop();
+
+    // A restart, and its hello again, keep them.
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    await again.until((s) => s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ name: 'Office', ownName: 'Studio Mac', color: 'blue' });
+    b.answerNext(true);
+    await again.hub.add(b.pairLink());
+    await again.until((s) => s.pairing === null && s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ id, name: 'Office', color: 'blue' });
+
+    // An empty name, or its own, goes back to its own.
+    again.hub.update(id, { name: '' });
+    expect(again.hub.status().computers[0]).toMatchObject({ name: 'Studio Mac', renamed: false });
+    again.hub.update(id, { name: 'Studio Mac' });
+    expect(again.hub.status().computers[0]!.renamed).toBe(false);
+    again.hub.update(id, { color: 'violet' });
+    expect(again.hub.status().computers[0]!.color).toBe('violet');
+    expect(() => again.hub.update('nope', { name: 'x' })).toThrow(RpcError);
+  });
+
   it('stops trying once the other computer revoked this one', async () => {
     const b = await otherComputer();
     const a = thisComputer();

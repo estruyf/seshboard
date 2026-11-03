@@ -11,6 +11,16 @@ import type { RemoteContract } from './remote.ts';
 export const REMOTE_DESKTOP_ORIGIN = 'switchboard-desktop://switchboard';
 
 /**
+ * The colours a paired computer can have, to tell computers apart (Settings › Remote, Other computers). `violet` is
+ * the `remote` token, what every computer has until you pick another; the others use the profile colours' tokens.
+ */
+export const COMPUTER_COLORS = ['violet', 'blue', 'green', 'yellow', 'orange', 'red', 'gray'] as const;
+export type ComputerColor = (typeof COMPUTER_COLORS)[number];
+
+/** The longest name you can give a paired computer here. */
+export const COMPUTER_NAME_MAX = 60;
+
+/**
  * What a window may ask another computer. Not `hello` (the engine says it once per connection), and not push
  * notifications or `device.visibility`, which are a browser's: this computer stays connected and tells you itself.
  */

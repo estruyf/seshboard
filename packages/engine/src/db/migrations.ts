@@ -818,4 +818,11 @@ export const migrations: readonly string[] = [
   ALTER TABLE session_flags ADD COLUMN remind_at INTEGER;
   ALTER TABLE session_flags ADD COLUMN reminded_at INTEGER;
   `,
+
+  // v48: A name and a colour you give a paired computer here (Settings › Remote, Other computers). `name` stays what
+  // it calls itself, updated from its `hello`. Your choices: keep them.
+  `
+  ALTER TABLE remote_computers ADD COLUMN label TEXT;
+  ALTER TABLE remote_computers ADD COLUMN color TEXT;
+  `,
 ];

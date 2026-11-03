@@ -57,7 +57,7 @@ import { agentNameOf, sessionRowLabel } from './rowLabel.ts';
 import { StarOnGithub } from './StarOnGithub.tsx';
 import { ComputersStrip } from '../computers/ComputersStrip.tsx';
 import { ConnectedDevices, useDeviceAnnouncement, useRemoteFooterShown } from '../remote/ConnectedDevices.tsx';
-import { ComputerChip } from '../computers/ComputerChip.tsx';
+import { ComputerChip, useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine, THIS_COMPUTER } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
@@ -316,6 +316,8 @@ export const SessionRow = memo(function SessionRow({
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   const style = usePreferences((s) => s.prefs.sidebarStyle);
   const remote = data.remote ?? null;
+  // Another computer's row takes its colour: the chip, the badge on the project's icon.
+  const tint = useComputerTint(remote?.computerId);
   // A computer that went offline keeps its last list: its rows are dimmed and say since when.
   const away = remote?.offline ? offlineLine(remote.computerName, remote.lastSeen, now) : null;
   // With a project filter on, every row is in that project: the name would only repeat.
@@ -491,7 +493,7 @@ export const SessionRow = memo(function SessionRow({
           : 'hover:bg-border/45';
   const room = actions.length ? 'group-hover/row:pr-(--row-actions-room) group-has-[:focus-visible]/row:pr-(--row-actions-room)' : '';
   // The buttons sit 6px from the row's right edge, with 4px between them and the lines.
-  const roomStyle = actions.length ? ({ '--row-actions-room': `${rowActionsWidth(actions.length) + 10}px` } as CSSProperties) : undefined;
+  const roomStyle = actions.length || tint ? ({ ...tint, ...(actions.length ? { '--row-actions-room': `${rowActionsWidth(actions.length) + 10}px` } : {}) } as CSSProperties) : undefined;
   const withActions = (row: ReactNode) =>
     onQuickAction ? (
       <div className="group/row relative" role="none" data-row-wrap>
@@ -717,7 +719,7 @@ export function Sidebar() {
   }, [computers, all, remoteRows, now, archiveAfterDays]);
   const remoteProjects = useMemo<RemoteProjectSummary[]>(() => {
     const seen = new Map<string, RemoteProjectSummary>();
-    for (const row of remoteRows) if (row.remote && !seen.has(row.projectRoot)) seen.set(row.projectRoot, { key: row.projectRoot, name: row.remote.projectName, computerName: row.remote.computerName, offline: row.remote.offline });
+    for (const row of remoteRows) if (row.remote && !seen.has(row.projectRoot)) seen.set(row.projectRoot, { key: row.projectRoot, name: row.remote.projectName, computerId: row.remote.computerId, computerName: row.remote.computerName, offline: row.remote.offline });
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.computerName.localeCompare(b.computerName));
   }, [remoteRows]);
 

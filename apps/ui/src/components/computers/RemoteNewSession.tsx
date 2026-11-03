@@ -28,6 +28,7 @@ import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
 import { callComputer } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
+import { computerTint } from './computerColor.ts';
 import { SavedPromptMenu, useRemoteSavedPrompts } from './useRemoteSavedPrompts.tsx';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
 import { RemoteProfileChip, useRemoteOptions } from './RemoteChips.tsx';
@@ -311,7 +312,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     }
   };
   return (
-    <div className="flex h-full min-h-0 flex-col" data-remote-new-session={computer.id} data-drop-zone>
+    <div className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
       <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
         <SidebarToggle />
       </div>

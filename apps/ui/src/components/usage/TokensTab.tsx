@@ -334,7 +334,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
         // Violet is only for another computer: this one is a plain name.
         cell: (r) =>
           r.computer ? (
-            <ComputerChip name={r.computer.name} data-usage-row-computer={r.computer.id} />
+            <ComputerChip name={r.computer.name} computerId={r.computer.id} data-usage-row-computer={r.computer.id} />
           ) : (
             <span className="flex min-w-0 items-center gap-1.5 font-medium" data-usage-this-computer>
               <Monitor size={13} className="shrink-0 text-muted" aria-hidden />

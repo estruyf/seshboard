@@ -22,6 +22,7 @@ import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
 import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
@@ -168,6 +169,7 @@ const RailRow = memo(function RailRow({
 }) {
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   const remote = data.remote ?? null;
+  const tint = useComputerTint(remote?.computerId);
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
   // A pipeline's run row, or a session a run started from: where the run is, in the tooltip.
@@ -195,6 +197,7 @@ const RailRow = memo(function RailRow({
       data-sidebar-rail-row={data.id}
       data-run-row={runRow || undefined}
       data-remote-row={remote?.computerId}
+      style={tint}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}

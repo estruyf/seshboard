@@ -1,9 +1,11 @@
 import { Monitor } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import type { Computer } from '@seshboard/protocol/client';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { offlineLine, showsOnly, THIS_COMPUTER, toggleOnly } from '../../state/remoteRows.ts';
 import { useSources } from '../../state/useRemoteRows.ts';
+import { computerTint } from './computerColor.ts';
 import { waitingCount } from './computerSessions.ts';
 
 const NONE: Computer[] = [];
@@ -27,7 +29,7 @@ export function ComputersStrip({ localWaiting, joined = false }: { localWaiting:
   if (!computers.length) return null;
 
   const toggle = (source: string) => useComputers.getState().setHidden(toggleOnly(sources, hidden, source));
-  const chip = (source: string, label: string, opts: { dot?: string; waiting: number; remote: boolean; offline?: boolean; tooltip: string; onClick(): void }) => {
+  const chip = (source: string, label: string, opts: { dot?: string; waiting: number; remote: boolean; offline?: boolean; tint?: CSSProperties; tooltip: string; onClick(): void }) => {
     const only = showsOnly(sources, hidden, source);
     const off = hidden.has(source);
     return (
@@ -39,6 +41,7 @@ export function ComputersStrip({ localWaiting, joined = false }: { localWaiting:
         data-tooltip={opts.tooltip}
         data-computer-filter={source}
         data-hidden={off || undefined}
+        style={opts.tint}
         className={`flex h-6 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-ui transition-colors ${
           opts.remote ? (opts.offline ? 'text-faint hover:bg-border/45' : 'bg-remote/13 text-remote hover:bg-remote/20') : 'bg-border/45 text-text hover:bg-border/70'
         } ${only ? 'ring-1 ring-current/40 ring-inset' : ''} ${off ? 'opacity-45' : ''}`}
@@ -85,6 +88,7 @@ export function ComputersStrip({ localWaiting, joined = false }: { localWaiting:
             waiting: waitingCount(list),
             remote: true,
             offline: computer.state !== 'connected',
+            tint: computerTint(computer.color),
             tooltip,
             onClick: () => (page ? useComputers.getState().openPage(computer.id) : toggle(computer.id)),
           });

@@ -8,6 +8,7 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { Button } from '../ui/Button.tsx';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
+import { computerTint } from './computerColor.ts';
 import { computerLine } from './computerSessions.ts';
 import { newSessionOn } from './remoteActions.ts';
 
@@ -81,7 +82,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
   }
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-computer-view={computer.id}>
+    <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-computer-view={computer.id}>
       <header className={`${PANE_HEADER} ${remoteLine(pane)}`} {...paneHeader(pane)}>
         {toggle && <SidebarToggle />}
         <Monitor size={16} aria-hidden className="shrink-0 text-remote" />

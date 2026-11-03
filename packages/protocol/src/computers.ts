@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMPUTER_METHODS } from './computerConstants.ts';
+import { COMPUTER_COLORS, COMPUTER_METHODS, COMPUTER_NAME_MAX } from './computerConstants.ts';
 
 /**
  * Other computers: this Seshboard pairs with Remote on another computer, as a phone does, and shows that
@@ -9,6 +9,12 @@ import { COMPUTER_METHODS } from './computerConstants.ts';
  */
 
 export const ComputerMethodSchema = z.enum(COMPUTER_METHODS);
+
+/** A paired computer's colour; one a newer version saved and this one doesn't know is the default violet. */
+export const ComputerColorSchema = z.enum(COMPUTER_COLORS).catch('violet');
+
+/** A name you give a paired computer here; empty goes back to what it calls itself. */
+export const ComputerNameSchema = z.string().trim().max(COMPUTER_NAME_MAX);
 
 /**
  * How the connection to a paired computer is:
@@ -22,8 +28,14 @@ export type ComputerState = z.infer<typeof ComputerState>;
 
 export const Computer = z.object({
   id: z.string(),
-  /** What the other computer calls itself ("Studio Mac"), from its last `hello`. */
+  /** Its name here: the one you gave it, else what it calls itself (`ownName`). */
   name: z.string(),
+  /** What the other computer calls itself ("Studio Mac"), from its last `hello`. */
+  ownName: z.string(),
+  /** Whether `name` is one you gave it here. */
+  renamed: z.boolean(),
+  /** Its colour on chips, rows and the line over its sessions. */
+  color: ComputerColorSchema,
   /** Where it is: its tunnel's `https://` address. */
   address: z.string(),
   pairedAt: z.number(),

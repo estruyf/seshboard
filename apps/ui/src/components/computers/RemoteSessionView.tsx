@@ -47,6 +47,7 @@ import { queueButtonState, sendKeyMode } from '../composer/queueButton.ts';
 import { Pill } from '../ui/Pill.tsx';
 import { callComputer, onComputerEvent } from './callComputer.ts';
 import { ComputerChip } from './ComputerChip.tsx';
+import { computerTint } from './computerColor.ts';
 import { ComputerPrompt } from './ComputerPrompt.tsx';
 import { applyStream, applyUpdate, awayBanner, inBackground, NOT_STREAMING, prependMessages, remoteDisplay, remoteItems, toolsSummary, type RemoteTool, type Streaming } from './computerSessions.ts';
 import { RemoteAttachButton, RemoteAttachmentList, useRemoteAttachments } from './RemoteAttachments.tsx';
@@ -372,7 +373,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
   const live = useMemo<LiveTurnInfo>(() => ({ turn: openTurn, waitingSince, mode: turnDetails }), [openTurn, waitingSince, turnDetails]);
 
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
+    <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-current-session={rowId} data-remote-session={session.id} data-remote-computer={id} data-drop-zone>
       <header className={`${PANE_HEADER} ${remoteLine(pane)}`} data-scrolled={!edge.atTop || undefined} data-remote-header {...paneHeader(pane)}>
         {/* The sidebar toggle belongs to the window's top left corner: of the panes, only the one there has it. */}
         {pane.leading && <SidebarToggle />}

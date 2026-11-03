@@ -4741,6 +4741,25 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
     return `the second computer did not connect: ${await js("document.querySelector('[data-computers-settings]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200)")}`;
   }
   const computerId = (await js("document.querySelector('[data-computer]').dataset.computer")) as string;
+  // Rename and Colour: a name of its own here (shown with its own name next to it), then back to its own by clearing
+  // it; and green, which its rows check below (1).
+  const settingsRow = `[data-computer=${JSON.stringify(computerId)}]`;
+  await click(`${settingsRow} [data-computer-rename]`);
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-rename-field]') === document.activeElement`, 3_000))) return 'Rename did not open a name field for the computer';
+  await setFieldValue(win, `${settingsRow} [data-rename-field]`, 'Smoke Studio');
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow}')?.innerText.includes('Smoke Studio · Smoke Mac')`, 3_000))) return `Rename did not show the new name with its own: ${await js(`document.querySelector('${settingsRow}')?.innerText.replace(/\\s+/g, ' ')`)}`;
+  await click(`${settingsRow} [data-computer-rename]`);
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-rename-field]') === document.activeElement`, 3_000))) return 'Rename did not open again';
+  await setFieldValue(win, `${settingsRow} [data-rename-field]`, '');
+  pressKey(win, 'Return');
+  if (!(await waitInPage(win, `!document.querySelector('${settingsRow}')?.innerText.includes('Smoke Studio')`, 3_000))) return 'clearing the name did not go back to the computer’s own';
+  await click(`${settingsRow} [data-computer-colour]`);
+  if (!(await waitInPage(win, `document.querySelector('[data-computer-colours] [data-computer-colour-option="green"]')`, 3_000))) return 'Colour did not show the colours';
+  await click('[data-computer-colours] [data-computer-colour-option="green"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-color="green"]')`, 3_000))) return 'picking green did not colour the computer';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-computer-colours]')", 3_000))) return 'Esc did not close the colours';
   // A saved prompt for every project, plain text, to use in New session on that computer (4).
   const savedText = `Smoke saved prompt ${Date.now()}`;
   const savedRow = '[data-saved-prompt-row="smoke-remote-prompt"]';
@@ -4764,6 +4783,13 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const rows = (await js(`document.querySelectorAll(${JSON.stringify(row)}).length`)) as number;
   if (!(await js(`[...document.querySelectorAll(${JSON.stringify(row)})].every((r) => r.querySelector('[data-computer-chip="Smoke Mac"]'))`))) return 'a remote row has no chip with the computer’s name';
   if (!(await js(`Boolean(document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]'))`))) return 'the Computers strip has no chip for the other computer';
+  // Green, picked in Settings: its rows and its strip chip draw the remote token in the profile green.
+  const tinted = (await js(`(() => {
+    const green = getComputedStyle(document.documentElement).getPropertyValue('--sb-profile-green').trim();
+    const of = (el) => el && getComputedStyle(el).getPropertyValue('--sb-remote').trim();
+    return of(document.querySelector(${JSON.stringify(row)})) === green && of(document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]')) === green;
+  })()`)) as boolean;
+  if (!tinted) return 'the computer’s rows or strip chip are not in the colour picked for it';
   await shot(win, 'computers-sidebar.png');
 
   // 2. One opens in the session view, with the violet line and "on Smoke Mac".

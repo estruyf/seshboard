@@ -63,7 +63,7 @@ import { PromptScope, SavedPrompt, SavedPromptId, SavedPromptInput } from './sav
 import { GithubIssueDetail, GithubOrigin, GithubPrDetail, GithubReason, GithubSearchResult } from './github.ts';
 import { CompanionTarget } from './companion.ts';
 import { DeviceName, RemoteSettings, RemoteStatus, RemoteTheme } from './remote.ts';
-import { ComputerEvent, ComputerMethodSchema, ComputersStatus } from './computers.ts';
+import { ComputerColorSchema, ComputerEvent, ComputerMethodSchema, ComputerNameSchema, ComputersStatus } from './computers.ts';
 import { ClonePlan, CloneProgress, CloneSettings } from './clone.ts';
 import { CONTINUE_EDITORS } from './companionConstants.ts';
 import { KEEP_REASONS } from './retention.ts';
@@ -1267,6 +1267,14 @@ export const contract = {
     'computers.cancelPairing': { params: z.object({}), result: z.object({}) },
     /** Forgets a paired computer here (that computer still lists this one until you revoke it there). */
     'computers.forget': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
+    /**
+     * Names or colours a paired computer here, only for this app (the other computer keeps its own name). An empty
+     * `name` goes back to what it calls itself; a field left out stays.
+     */
+    'computers.update': {
+      params: z.object({ id: z.string().min(1).max(100), name: ComputerNameSchema.optional(), color: ComputerColorSchema.optional() }),
+      result: z.object({}),
+    },
     /** Try again now to reach a computer that is offline. */
     'computers.retry': { params: z.object({ id: z.string().min(1).max(100) }), result: z.object({}) },
     /**
