@@ -828,6 +828,7 @@ export function createEngine(options: EngineOptions): Engine {
   const smokePluginDirs = new Map<string, string>();
   const envFor = async (profileId: string): Promise<Record<string, string>> => {
     const env = { ...(await shell.ready).env };
+    env.CLAUDE_CODE_ENTRYPOINT = 'seshboard';
     const { envDir } = profiles.runtime(profileId);
     if (envDir) env.CLAUDE_CONFIG_DIR = envDir;
     const pluginDirs = smokePluginDirs.get(profileId);

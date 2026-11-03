@@ -1224,15 +1224,15 @@ describe('Claude profiles', () => {
         startup: async () => ({ query: () => undefined, close() {} }),
       }) as never;
     // And the config folder each terminal gets.
-    const terminalEnvs: Array<{ configDir: string | undefined }> = [];
+    const terminalEnvs: Array<{ configDir: string | undefined; entrypoint: string | undefined }> = [];
     const engine = createEngine({
       dataDir,
       claudeConfigDir: personal,
-      shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
       claudeBinary: '/nonexistent/claude',
       sdk,
+      shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '', CLAUDE_CODE_ENTRYPOINT: 'claude-desktop' }, resolved: false, durationMs: 0 }),
       spawnPty: async () => (_file, _args, options) => {
-        terminalEnvs.push({ configDir: options.env.CLAUDE_CONFIG_DIR });
+        terminalEnvs.push({ configDir: options.env.CLAUDE_CONFIG_DIR, entrypoint: options.env.CLAUDE_CODE_ENTRYPOINT });
         return { pid: 1, onData: () => ({ dispose() {} }), onExit: () => ({ dispose() {} }), write() {}, resize() {}, kill() {} };
       },
     });
@@ -1276,11 +1276,13 @@ describe('Claude profiles', () => {
     // New processes in a project get the profile it is linked to, else the default.
     await client.call('session.commands', { cwd: resolve('/tmp') });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(personal);
+    expect(envs.at(-1)?.CLAUDE_CODE_ENTRYPOINT).toBe('seshboard');
     await client.call('projects.add', { path: project });
     await client.call('projects.setProfile', { root: project, profileId: workId });
     expect((await client.call('projects.list', {})).projects.find((p) => p.root === project)).toMatchObject({ profileId: workId });
     await client.call('session.commands', { cwd: project });
     expect(envs.at(-1)?.CLAUDE_CONFIG_DIR).toBe(work);
+    expect(envs.at(-1)?.CLAUDE_CODE_ENTRYPOINT).toBe('seshboard');
     await client.call('profiles.setDefault', { id: workId });
     expect((await client.call('profiles.list', {})).defaultId).toBe(workId);
     await client.call('session.commands', { cwd: resolve('/var') });
@@ -1288,7 +1290,7 @@ describe('Claude profiles', () => {
 
     // A terminal can be opened with a profile of its own (Settings signs a new profile in that way), whatever its folder's is.
     await client.call('terminal.open', { sessionId: null, kind: 'shell', cols: 80, rows: 24, profileId: 'default' });
-    expect(terminalEnvs.at(-1)?.configDir).toBe(personal);
+    expect(terminalEnvs.at(-1)).toEqual({ configDir: personal, entrypoint: undefined });
     await client.call('terminal.open', { sessionId: null, cwd: tmpdir(), kind: 'shell', cols: 80, rows: 24 });
     expect(terminalEnvs.at(-1)?.configDir).toBe(work);
     await expect(client.call('terminal.open', { sessionId: null, kind: 'claude', cols: 80, rows: 24, profileId: 'gone' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
