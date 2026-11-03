@@ -38,6 +38,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **GitHub Copilot's answers in Auto mode show as its reply.** In Auto mode, Copilot often ends a turn with its answer in a "task complete" step instead of a message, and Seshboard showed that step as a tool card with its raw input. The answer now shows as Copilot's reply.
 - **Project actions show up in GitHub Copilot sessions.** A Copilot session that was new, or whose file doesn't name its folder, had no actions above the message box and none in the ⋯ menu. It now takes its project from the folder Copilot runs in.
 - **Long GitHub Copilot sessions can be pinned, archived and renamed again.** A Copilot session whose history starts partway through (after autopilot kept it going) showed as "New session", with Rename, Pin, Archive and Delete greyed out. It now shows with your last prompt as its title, in its project, with every action.
 - **A long session title no longer makes New session scroll sideways.** In **Pick up in**, a title too long for the row is now cut off with an ellipsis instead of widening the view.

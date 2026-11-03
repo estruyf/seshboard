@@ -40,8 +40,14 @@ export function userText(content: string): string {
   return content.replace(/\s*<reminder>[\s\S]*?<\/reminder>\s*/g, '\n').replace(/\s*<attachments>[\s\S]*?<\/attachments>\s*/g, '\n').trim();
 }
 
-/** Copilot's tools that only report to Copilot's own UI, not work done: left out of the transcript. */
-const HIDDEN_TOOLS = new Set(['report_intent']);
+/** The tool Copilot ends an autopilot turn with, its reply in `summary`. */
+const REPLY_TOOL = 'task_complete';
+
+/**
+ * Copilot's tools that only report to Copilot's own UI, not work done: left out of the transcript. In autopilot,
+ * `task_complete` carries the turn's reply in its `summary` (the message itself is often empty): that shows as text.
+ */
+const HIDDEN_TOOLS = new Set(['report_intent', REPLY_TOOL]);
 export const isHiddenTool = (name: string) => HIDDEN_TOOLS.has(name);
 
 /**
@@ -133,6 +139,8 @@ export class CopilotConverter {
           const name = str(r.name) ?? 'unknown';
           if (isHiddenTool(name)) {
             this.hidden.add(id);
+            const summary = name === REPLY_TOOL ? str(obj(r.arguments).summary) : null;
+            if (summary?.trim() && summary.trim() !== text?.trim()) content.push({ type: 'text', text: summary });
             continue;
           }
           const tool = claudeTool(name, r.arguments);

@@ -84,6 +84,16 @@ describe('copilotMessages', () => {
     expect(messages[3]!.blocks).toEqual([{ type: 'text', text: 'It already exists.' }]);
   });
 
+  it('shows the reply of an autopilot turn, which Copilot writes in task_complete', () => {
+    const messages = copilotMessages([
+      { type: 'assistant.message', id: 'a1', data: { content: '', toolRequests: [{ toolCallId: 'done', name: 'task_complete', arguments: { summary: 'Yes, it is `sdk-ts`.' } }] } },
+      { type: 'tool.execution_complete', id: 'r1', data: { toolCallId: 'done', success: true, result: { content: 'Task completed: Yes, it is `sdk-ts`.' } } },
+      // A message that says the same as its summary shows it once.
+      { type: 'assistant.message', id: 'a2', data: { content: 'All done.', toolRequests: [{ toolCallId: 'done2', name: 'task_complete', arguments: { summary: 'All done.' } }] } },
+    ]).map((m) => normaliseMessage(m));
+    expect(messages.map((m) => m.blocks)).toEqual([[{ type: 'text', text: 'Yes, it is `sdk-ts`.' }], [{ type: 'text', text: 'All done.' }]]);
+  });
+
   it('maps Copilot tools onto the ones the transcript has cards for', () => {
     expect(claudeTool('bash', { command: 'ls', description: 'List' })).toEqual({ name: 'Bash', input: { command: 'ls', description: 'List' } });
     expect(claudeTool('edit', { path: '/a', old_str: 'x', new_str: 'y' })).toEqual({ name: 'Edit', input: { file_path: '/a', old_string: 'x', new_string: 'y' } });
