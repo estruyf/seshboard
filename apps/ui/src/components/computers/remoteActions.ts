@@ -1,4 +1,4 @@
-import { REMOTE_FEATURE_MARK_UNREAD, runIsActive, type Computer, type Contract, type RemoteRunState, type RemoteSession, type RpcClient } from '@seshboard/protocol/client';
+import { REMOTE_FEATURE_MARK_UNREAD, runIsActive, type Computer, type Contract, type PermissionDecision, type RemotePrompt, type RemoteRunState, type RemoteSession, type RpcClient } from '@seshboard/protocol/client';
 import { useComputers } from '../../state/computersStore.ts';
 import { useRunOn } from '../../state/runOnStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -44,6 +44,20 @@ export async function stopRemote(client: RpcClient<Contract> | null, target: Rem
   const run = target.treeRunId ? remoteRunState(target.computerId, target.treeRunId) : null;
   if (run && runIsActive(run)) await callComputer(client, target.computerId, 'runs.stop', { runId: run.run.id });
   if (!target.runRow) await callComputer(client, target.computerId, 'session.interrupt', { sessionId: target.sessionId });
+}
+
+/**
+ * Answers a prompt of a session on another computer (its session view and its computer's page): true once it is sent;
+ * false with a toast when it wasn't, "Already answered" when it was answered elsewhere first.
+ */
+export async function respondRemote(client: RpcClient<Contract>, computerId: string, prompt: Pick<RemotePrompt, 'requestId'>, decision: PermissionDecision): Promise<boolean> {
+  try {
+    await callComputer(client, computerId, 'session.respond', { requestId: prompt.requestId, decision });
+    return true;
+  } catch (e) {
+    toast((e as { code?: string }).code === 'NOT_FOUND' ? 'Already answered' : (e as Error).message);
+    return false;
+  }
 }
 
 /** Opens New session with another computer picked in Run on, and one of its projects when given. */

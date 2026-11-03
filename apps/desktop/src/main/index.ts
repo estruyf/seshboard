@@ -4772,6 +4772,36 @@ async function remoteRunRows(win: BrowserWindow, row: string, computerId: string
  * starts a session there, which opens here. Run on goes back to this
  * computer and the computer is removed again.
  */
+/**
+ * The computer's page, from Open in Settings › Remote (the computer is set to All): its version, what needs you with
+ * a prompt to answer there (not answered: later steps use it), what works, its recent sessions by project; Mine
+ * there switches the chip's filter and says how many are the others', Show goes back to All; a recent row opens its
+ * session. Null when all of it holds.
+ */
+async function computerPage(win: BrowserWindow, computerId: string, settingsRow: string): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  const view = `[data-computer-overview=${JSON.stringify(computerId)}]`;
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-open]')`, 5_000))) return 'the computer’s row in Settings › Remote has no Open';
+  await click(`${settingsRow} [data-computer-open]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-computer-page-recent]') && document.querySelector('${view} [data-computer-page-working]') && document.querySelector('${view} [data-computer-page-needs]')`, 5_000))) {
+    return `Open did not show the computer’s page with Needs you, Working and Recent (${await js("(document.querySelector('[data-computer-view]')?.innerText ?? 'no page').replace(/\\s+/g, ' ').slice(0, 200)")})`;
+  }
+  if (!(await js(`/Seshboard \\S/.test(document.querySelector('[data-computer-view] [data-computer-state]')?.innerText ?? '')`))) return 'the computer’s page does not say its Seshboard version';
+  if (!(await js(`Boolean(document.querySelector('${view} [data-computer-page-needs] [data-computer-prompt] [data-computer-allow]'))`))) return 'Needs you on the computer’s page has no prompt to answer';
+  await shot(win, 'computer-page.png');
+  await click(`${view} [data-computer-page-scope="mine"]`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-computer-page-others]')?.innerText.includes('from others') && !document.querySelector('${view} [data-computer-page-recent]') && document.querySelector('[data-computers-strip] [data-computer-scope="mine"]')`, 3_000))) return 'Mine on the computer’s page did not leave the others’ sessions out, say how many, or switch its chip';
+  await click(`${view} [data-computer-page-others] button`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-computer-page-recent]') && document.querySelector('[data-computers-strip] [data-computer-scope="all"]')`, 3_000))) return 'Show on the computer’s page did not go back to All';
+  await click(`${view} [data-computer-page-recent]`);
+  if (!(await waitInPage(win, "document.querySelector('[data-remote-header]')", 5_000))) return 'a recent session on the computer’s page did not open';
+  return null;
+}
+
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
   if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
@@ -4864,6 +4894,8 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // rows on screen show at least one of each).
   if (!starters.some((name) => name === 'Dmitriy' || name === 'Sarah’s MacBook') || !starters.includes('Smoke Mac')) return `All does not say who started the others’ sessions (${starters.join(', ') || 'nobody'})`;
   if ((await js(`JSON.parse(localStorage.getItem('ui.computerScopes') ?? '{}')[${JSON.stringify(computerId)}]`)) !== 'all') return 'All for the computer is not kept for the next window and launch';
+  const page = await computerPage(win, computerId, settingsRow);
+  if (page) return page;
 
   // 1. Its sessions are in the sidebar, each with the computer's chip; the strip shows the computer.
   const row = remoteRow;
@@ -12078,7 +12110,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
-  await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
+  await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
   await step('remote app on a phone: the menu button opens the drawer, no app icon, Settings and the computer at the bottom', runPhoneDrawerStep, { timeoutMs: 75_000 });

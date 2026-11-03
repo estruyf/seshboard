@@ -1592,6 +1592,11 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computer-page",
+      "name": "A paired computer's page: what needs you there with its prompt to answer, what works, its recent sessions by project",
+      "page": "other-computers"
+    },
+    {
       "id": "feature:computer-notifications",
       "name": "Pick which notifications a paired computer shows here: all, only mine, only needs you, or off",
       "page": "other-computers"

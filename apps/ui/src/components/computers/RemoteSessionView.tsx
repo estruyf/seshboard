@@ -71,7 +71,7 @@ import { appendQuote, applyEdit } from '../composer/editing.ts';
 import { RemoteToolList } from './RemoteToolList.tsx';
 import { useRemoteFind } from './useRemoteFind.ts';
 import { FindBar } from '../transcript/FindBar.tsx';
-import { remoteSessionEntries } from './remoteActions.ts';
+import { remoteSessionEntries, respondRemote } from './remoteActions.ts';
 import { paneHandle, paneHeader, remoteLine, type PaneProps } from './ComputerView.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { RemoteTriggerOriginBar } from '../triggers/TriggerOriginBar.tsx';
@@ -190,15 +190,7 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
     });
   };
 
-  const respond = async (prompt: RemotePrompt, decision: PermissionDecision): Promise<boolean> => {
-    try {
-      await callComputer(client, id, 'session.respond', { requestId: prompt.requestId, decision });
-      return true;
-    } catch (e) {
-      toast((e as { code?: string }).code === 'NOT_FOUND' ? 'Already answered' : (e as Error).message);
-      return false;
-    }
-  };
+  const respond = (prompt: RemotePrompt, decision: PermissionDecision): Promise<boolean> => respondRemote(client, id, prompt, decision);
 
   const stop = () => void callComputer(client, id, 'session.interrupt', { sessionId: session.id }).catch((e: Error) => toast(e.message));
   const stopTask = async (taskId: string) => {
