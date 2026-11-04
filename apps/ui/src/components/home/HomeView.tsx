@@ -80,7 +80,7 @@ export function HomeView() {
       </div>
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="grid w-full max-w-[1400px] grid-cols-[minmax(0,1fr)] gap-7 px-12 pt-2 pb-12 @max-[760px]:px-6" data-home>
+        <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[minmax(0,1fr)] gap-7 px-12 pt-2 pb-12 @max-[760px]:px-6" data-home>
           <header className="min-w-0">
             {/* The view's hero heading, a little larger than text-title. */}
             <h1 className="text-hero leading-tight font-semibold">{greeting(now)}</h1>
