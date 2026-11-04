@@ -4872,23 +4872,23 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
 
   // Shared computers: its chip shows Mine at first, and nothing there is this computer's yet, so none of its sessions
-  // are listed, only "+N from others" rows; Settings › Remote only sets its notifications (the sessions choice is the
-  // chip's). Show switches it to All, which names who started the others' sessions, and All is kept with the UI's
-  // choices for the next window and launch (a reload can't be tried here: the runner reads a second ready as the restart).
+  // are listed, and the sidebar says nothing of them (the chip's menu counts them); Settings › Remote only sets its
+  // notifications (the sessions choice is the chip's). All in the menu names who started the others' sessions, and
+  // is kept with the UI's choices for the next window and launch (a reload can't be tried here: the runner reads a
+  // second ready as the restart).
   const remoteRow = `[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]`;
-  const othersRow = `[data-session-list] [data-hidden-from-others=${JSON.stringify(computerId)}]`;
   const scopeChip = (scope: string) => `[data-computers-strip] [data-computer-scope=${JSON.stringify(scope)}]`;
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))}) && document.querySelector(${JSON.stringify(othersRow)})`, 10_000))) return `the other computer’s chip does not say Mine, or no "+N from others" row shows (${await js(`document.querySelector('[data-computers-strip]')?.innerText.replace(/\\s+/g, ' ')`)})`;
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('mine'))})`, 10_000))) return `the other computer’s chip does not say Mine (${await js(`document.querySelector('[data-computers-strip]')?.innerText.replace(/\\s+/g, ' ')`)})`;
   if (await js(`document.querySelectorAll(${JSON.stringify(remoteRow)}).length`)) return 'Mine lists sessions this computer neither started nor acted on';
-  if (!(await js(`/^\\+\\d+ from others on Smoke Mac/.test(document.querySelector(${JSON.stringify(othersRow)}).innerText) && document.querySelector(${JSON.stringify(othersRow)}).getAttribute('aria-label').startsWith('Show ')`))) return `the "+N from others" row says "${await js(`document.querySelector(${JSON.stringify(othersRow)}).innerText`)}"`;
+  if (await js(`/from others/.test(document.querySelector('[data-session-list]')?.innerText ?? '')`)) return 'the sidebar still says how many of the others’ sessions Mine hides';
   if (await js("Boolean(document.querySelector('[data-computer-show-button], [data-computer-show-options]'))")) return 'Settings › Remote still has a sessions choice for the computer';
   await click(`[data-computers-strip] [data-computer-scope]`);
   if (!(await waitInPage(win, `document.querySelector('[data-computer-scope-menu] [role=radiogroup][aria-label="Sessions in the sidebar"]') && /others? (is|are) hidden/.test(document.querySelector('[data-computer-scope-menu] [data-computer-scope-line]')?.innerText ?? '')`, 3_000))) return `the chip’s menu has no Mine / All or does not say how many are hidden (${await js("document.querySelector('[data-computer-scope-menu]')?.innerText.replace(/\\s+/g, ' ')")})`;
   await shot(win, 'computers-scope-menu.png');
+  await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))}) && document.querySelector(${JSON.stringify(remoteRow)})`, 5_000))) return 'All in the chip’s menu did not list the computer’s sessions';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-computer-scope-menu]')", 3_000))) return 'Esc did not close the chip’s menu';
-  await click(othersRow);
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))}) && document.querySelector(${JSON.stringify(remoteRow)}) && !document.querySelector(${JSON.stringify(othersRow)})`, 5_000))) return 'Show on "+N from others" did not switch the computer to All';
   const starters = (await js(`[...document.querySelectorAll(${JSON.stringify(`${remoteRow} [data-row-started-by]`)})].map((el) => el.innerText)`)) as string[];
   // A person's device for the two started from afar, that computer's name for the rest (the list is virtualised: the
   // rows on screen show at least one of each).
@@ -4968,8 +4968,11 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // The pipeline run started from here (`remoteRunRows`) is mine too; the run a trigger started there is not.
   const runRowOf = (title: string) => `[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.dataset.runRow && r.innerText.includes(${JSON.stringify(title)}))`;
   if (!(await js(`${runRowOf('Smoke remote run')} && !${runRowOf('Retry failed webhook deliveries')}`))) return 'with Mine, the run started from here is not listed, or the run a trigger started there still is';
-  await click(`[data-session-list] [data-hidden-from-others=${JSON.stringify(computerId)}]`);
-  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 3_000))) return 'Show did not bring All back';
+  await click('[data-computers-strip] [data-computer-scope]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu did not open again';
+  await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(scopeChip('all'))})`, 3_000))) return 'All in the chip’s menu did not come back';
 
   // 4. New session with Run on set to it starts a session there, which opens here.
   await click('[data-new-session]');
@@ -5441,6 +5444,16 @@ async function runFewerLinesStep(win: BrowserWindow): Promise<string> {
       await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true })); el.scrollTop = 200; })()`);
       if (!(await waitInPage(win, `${header}.hasAttribute('data-scrolled')`, 3_000))) return 'the header has no data-scrolled while the conversation scrolls under it';
       notes.push('header line only while scrolled');
+      // At the end, the conversation's last line (or the working line) ends above the fade, not under it.
+      await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true })); el.scrollTop = el.scrollHeight; })()`);
+      const clear = `(() => {
+        const el = ${scroller};
+        if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) return false;
+        const last = Math.max(...[...el.querySelectorAll('[data-transcript-item], [data-streaming]')].map((item) => item.getBoundingClientRect().bottom));
+        return last <= document.querySelector('${view} [data-composer-fade]').getBoundingClientRect().top + 1;
+      })()`;
+      if (!(await waitInPage(win, clear, 3_000))) return 'at the end of the conversation, its last line is under the fade over the composer';
+      notes.push('the last line clears the fade');
     }
 
     // Changes: the sidebar's surface, no edge, no lines between files, the header's and footer's lines from the list.

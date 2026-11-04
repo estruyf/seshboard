@@ -1603,7 +1603,7 @@
     },
     {
       "id": "feature:computer-scope",
-      "name": "Mine or All on a paired computer's chip: only your sessions on a shared computer, +N from others in each section, who started the others' sessions",
+      "name": "Mine or All on a paired computer's chip: only your sessions on a shared computer, how many it hides in the chip's menu, who started the others' sessions",
       "page": "other-computers"
     },
     {

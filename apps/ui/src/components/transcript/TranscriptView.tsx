@@ -1826,8 +1826,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
               )}
               {/* Seshboard's own rows of a run in its parent, and a step's verdict: after the conversation, never sent to Claude. */}
               {status === 'ready' && <ParentRunRows sessionId={sessionId} />}
+              {/* No padding of its own: empty, it would push the working line below where a step's line puts it. */}
               {status === 'ready' && (
-                <div className="mx-auto max-w-3xl px-6 pb-4">
+                <div className="mx-auto max-w-3xl px-6">
                   <StepVerdictCard sessionId={sessionId} items={items} working={running} />
                 </div>
               )}
@@ -1846,6 +1847,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   </div>
                 </div>
               )}
+              {/* Room for the fade over the composer, so the Working line and a reply's end aren't under it. */}
+              <div className="composer-fade-room" aria-hidden />
             </div>
             {showOutline && (
               <PromptOutline prompts={prompts} starts={outlineMeasure.starts} total={outlineMeasure.total} current={currentMark} right={outlineMeasure.gutter} onJump={onOutlineJump} />

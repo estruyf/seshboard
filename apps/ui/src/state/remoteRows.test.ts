@@ -326,24 +326,13 @@ describe('Mine and All on a shared computer', () => {
     expect(startedByOf({ startedBy: 'Sarah’s iPhone' }, mystic)).toBe('Sarah’s iPhone');
   });
 
-  it('counts the others’ sessions at the end of each section, one row per computer', () => {
+  it('leaves the others’ sessions out of the sections, without a word about them', () => {
     const rows = remoteRows([shared, { ...shared, id: 'm2', name: 'studio' }], new Map([['m1', list], ['m2', list]]));
-    const { shown, hidden } = splitByScope(rows, new Map());
+    const { shown } = splitByScope(rows, new Map());
     const roots = (r: typeof rows) => r.filter((row) => !row.remote?.parentRowId || !r.some((p) => p.id === row.remote!.parentRowId));
     const { active } = buildSessionList(roots(shown), { search: '', project: null, now: NOW, archiveAfterDays: 7 });
-    const others = buildSessionList(roots(hidden), { search: '', project: null, now: NOW, archiveAfterDays: 7 }).active;
-    const list2 = buildListRows(active, [], { now: NOW, archivedOpen: false, others });
-    const lines = list2.flatMap((r) => (r.kind === 'others' ? [`${r.group}: +${r.count} from others on ${r.computerName}`] : r.kind === 'group' ? [`[${r.group} ${r.count}]`] : []));
-    expect(lines).toEqual([
-      // Needs you only has the others' session: its header still says so, with none of yours.
-      '[needs-you 0]',
-      'needs-you: +1 from others on mystic',
-      'needs-you: +1 from others on studio',
-      '[working 2]',
-      '[open 4]',
-      'open: +1 from others on mystic',
-      'open: +1 from others on studio',
-    ]);
-    // The "+N" rows aren't sessions: nothing to select or archive under a header.
+    const list2 = buildListRows(active, [], { now: NOW, archivedOpen: false });
+    // Needs you only had the others' session: no empty header for it.
+    expect(list2.flatMap((r) => (r.kind === 'group' ? [`[${r.group} ${r.count}]`] : []))).toEqual(['[working 2]', '[open 4]']);
   });
 });

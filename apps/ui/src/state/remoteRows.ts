@@ -236,7 +236,7 @@ export const scopeOf = (scopes: ReadonlyMap<string, ComputerScope>, computerId: 
 
 /**
  * Splits remote rows by each computer's Mine / All filter: `shown`, and `hidden`, the others' sessions on a computer
- * set to Mine (for the "+4 from others" rows and search). A session that isn't mine stays shown while one of mine
+ * set to Mine (for the chip's count and search). A session that isn't mine stays shown while one of mine
  * sits under it, so a sub-session never loses its parent.
  */
 export function splitByScope<T extends Pick<SessionRowData, 'id' | 'remote'>>(rows: readonly T[], scopes: ReadonlyMap<string, ComputerScope>): { shown: T[]; hidden: T[] } {

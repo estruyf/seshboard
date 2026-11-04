@@ -105,7 +105,7 @@ export function StepVerdictCard({ sessionId, items, working }: { sessionId: stri
     <div aria-live="polite">
       {view && (
         <section
-          className={`mt-3 select-text rounded-xl border px-3.5 py-3 ${view.verdict.kind === 'pass' ? 'border-ok/50 bg-ok/5' : 'border-caution/50 bg-caution/5'}`}
+          className={`mt-3 mb-4 select-text rounded-xl border px-3.5 py-3 ${view.verdict.kind === 'pass' ? 'border-ok/50 bg-ok/5' : 'border-caution/50 bg-caution/5'}`}
           aria-label={view.verdict.kind === 'pass' ? 'Verdict: pass' : 'Verdict: changes needed'}
           data-verdict={view.verdict.kind}
         >

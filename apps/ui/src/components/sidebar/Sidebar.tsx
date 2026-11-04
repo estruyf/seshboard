@@ -1,6 +1,6 @@
 import { currentPlatform } from '../../lib/platform.ts';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { AppWindow, Archive, Check, Clock, Ellipsis, EyeOff, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { AppWindow, Archive, Check, Clock, Ellipsis, FolderCog, GitBranch, Bell, CircleDashed, Inbox, ListEnd, NotebookPen, ListTree, PencilLine, Pin, PinOff, Plus, Repeat, RotateCcw, Search, Settings, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import type { SidebarSort, SidebarStyle } from '@seshboard/protocol/bridge';
 import { isOtherProviderSession, PROVIDER_NAMES, providerOf, runOfParent as protocolRunOfParent, type CatchUp, type RunView } from '@seshboard/protocol/client';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
@@ -87,8 +87,6 @@ const ARCHIVED_HEADER_HEIGHT = 34;
 const GROUP_HEADER_HEIGHT = 34;
 /** The faint "+N hidden" line under a closed section's kept row. */
 const HIDDEN_ROW_HEIGHT = 18;
-/** "+4 from others on mystic" at the end of a section: a quiet row, shorter than a session. */
-const OTHERS_ROW_HEIGHT = 28;
 /** The space below each session button inside its row: picked rows fill it, so a run of picks reads as one block. */
 const SESSION_ROW_GAP: Record<SidebarStyle, number> = { large: 4, standard: 4, compact: 2 };
 
@@ -101,9 +99,7 @@ const rowHeight = (row: SidebarListRow, style: SidebarStyle) =>
       ? SESSION_ROW_HEIGHT[style]
       : row.kind === 'hidden'
         ? HIDDEN_ROW_HEIGHT
-        : row.kind === 'others'
-          ? OTHERS_ROW_HEIGHT
-          : row.kind === 'group' || row.kind === 'queue-header'
+        : row.kind === 'group' || row.kind === 'queue-header'
           ? GROUP_HEADER_HEIGHT - (row.first ? 6 : 0)
           : ARCHIVED_HEADER_HEIGHT;
 
@@ -702,8 +698,8 @@ export function Sidebar() {
   const kept = useKeptSessions();
   const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions sit in the same groups; the Computers filter can leave out any computer, this one too.
-  // A computer set to Mine leaves out the others' sessions there: counted at the end of their section instead, and
-  // found by a search, marked as theirs.
+  // A computer set to Mine leaves out the others' sessions there (its chip's menu counts them); a search still finds
+  // them, marked as theirs.
   const { shown: remoteRows, hidden: othersRows } = useRemoteRowSplit();
   const hidden = useComputers((s) => s.hidden);
   const searchingOthers = search.trim() !== '' && othersRows.length > 0;
@@ -711,13 +707,6 @@ export function Sidebar() {
     () => filterBySource([...all, ...remoteRows, ...(searchingOthers ? othersRows.map(markFromOthers) : [])], hidden),
     [all, remoteRows, othersRows, searchingOthers, hidden],
   );
-  const others = useMemo(() => {
-    if (searchingOthers || othersRows.length === 0) return [];
-    // One count per session: a sub-session counts with its parent.
-    const ids = new Set(othersRows.map((row) => row.id));
-    const roots = filterBySource(othersRows, hidden).filter((row) => !row.remote?.parentRowId || !ids.has(row.remote.parentRowId));
-    return buildSessionList(roots, { search: '', project: projectFilter, now, archiveAfterDays }).active;
-  }, [othersRows, searchingOthers, hidden, projectFilter, now, archiveAfterDays]);
   // Pipelines (#179): run rows join the list, sub-sessions nest under their parent, and a parent takes its children's
   // most urgent state. Parents start closed.
   const runs = usePipelines((s) => s.runs);
@@ -780,9 +769,8 @@ export function Sidebar() {
         openParents,
         // Snoozed sessions are out of the list; a search still finds them, under Snoozed.
         ...(searching ? { snoozed } : {}),
-        others,
       }),
-    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed, others],
+    [active, archived, archivedAt, now, queueEntries, queueReady, closed, listSelected, sort, quick, forest, openParents, searching, snoozed],
   );
   const queueMenus = useQueueMenu(queue.rows);
   const drag = useQueueDrag();
@@ -851,9 +839,7 @@ export function Sidebar() {
           ? `group-${row.group}`
           : row.kind === 'hidden'
             ? `hidden-${row.group}`
-            : row.kind === 'others'
-              ? `others-${row.group}-${row.computerId}`
-              : row.kind === 'queue'
+            : row.kind === 'queue'
               ? `queue-${row.entry.item.id}`
               : row.kind === 'queue-header'
                 ? 'queue-header'
@@ -1368,8 +1354,6 @@ export function Sidebar() {
                     <p className="flex h-full items-start justify-end px-3 text-meta text-faint" data-section-hidden={row.group}>
                       +{row.count} hidden
                     </p>
-                  ) : row.kind === 'others' ? (
-                    <OthersRow row={row} />
                   ) : row.kind === 'queue' ? (
                     <QueueRow
                       entry={row.entry}
@@ -1562,28 +1546,5 @@ export function Sidebar() {
       {menus.overlays}
       {queueMenus.overlay}
     </aside>
-  );
-}
-
-/**
- * The end of a section on a computer set to Mine: how many of the others' sessions there it leaves out, and Show,
- * which sets that computer to All. Not a session: it can't be picked, archived or pinned.
- */
-function OthersRow({ row }: { row: Extract<SidebarListRow, { kind: 'others' }> }) {
-  return (
-    <button
-      type="button"
-      onClick={() => useComputers.getState().setScope(row.computerId, 'all')}
-      aria-label={`Show ${row.count} ${row.count === 1 ? 'session' : 'sessions'} from others on ${row.computerName}`}
-      className="group mx-1.5 flex h-6 w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pl-3 pr-2 text-left text-meta text-faint hover:bg-border/45 hover:text-muted"
-      data-hidden-from-others={row.computerId}
-      data-hidden-group={row.group}
-    >
-      <EyeOff size={12} aria-hidden className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate">
-        +{row.count} from others on {row.computerName}
-      </span>
-      <span className="shrink-0 text-link group-hover:underline">Show</span>
-    </button>
   );
 }

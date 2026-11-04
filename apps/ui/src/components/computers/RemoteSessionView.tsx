@@ -573,6 +573,8 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
             </div>
           </div>
         )}
+        {/* Room for the fade over the composer, so the Working line and a reply's end aren't under it. */}
+        <div className="composer-fade-room" aria-hidden />
         </TurnMetaContext.Provider>
       </div>
       </div>

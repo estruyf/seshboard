@@ -393,15 +393,23 @@
 
 /*
  * The soft fade above the message box: the conversation scrolls under it instead of under a line. It sits
- * over the end of the conversation and takes no clicks.
+ * over the end of the conversation and takes no clicks; `composer-fade-room` ends the conversation with as much
+ * room, so the last line (Working, a reply's end) clears it once scrolled to the bottom.
  */
+@theme {
+  --spacing-composer-fade: 2rem;
+}
 @utility composer-fade {
   pointer-events: none;
-  height: 2rem;
+  height: var(--spacing-composer-fade);
   background: linear-gradient(to bottom, transparent, var(--sb-bg));
   @media (forced-colors: active) {
     display: none;
   }
+}
+@utility composer-fade-room {
+  flex-shrink: 0;
+  height: var(--spacing-composer-fade);
 }
 
 /*
