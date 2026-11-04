@@ -12,6 +12,8 @@ import { fileLinkChipLabel } from './fileLinkAction.ts';
 import { useFileLinkActions } from './useFileLinkActions.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ActivityGroupView } from './ActivityGroup.tsx';
+import { AnsweredQuestions } from './AnsweredQuestions.tsx';
+import { answeredQuestions } from './questionAnswers.ts';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
 import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
@@ -369,6 +371,10 @@ function BuiltInItem({
     case 'tool':
       if (item.name === 'TodoWrite') return <TodoRow item={item} className={indent} />;
       if (item.name === 'ExitPlanMode') return <PlanCard item={item} />;
+      if (item.name === 'AskUserQuestion') {
+        const answered = answeredQuestions(item);
+        if (answered) return <AnsweredQuestions questions={answered} />;
+      }
       return (
         <div className={indent}>
           <ToolOrMemory item={item} cwd={cwd} sessionId={sessionId} />

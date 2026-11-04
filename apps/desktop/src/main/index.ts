@@ -6567,6 +6567,60 @@ async function runTurnMetaStep(win: BrowserWindow): Promise<string> {
  * Read-only: it only clicks, scrolls and presses Esc, never types or sends, and a session found among the others is
  * never one that is running in Claude Code.
  */
+/**
+ * A question Claude asked and you answered shows as its own card, outside the summarised steps: each question, your
+ * picks marked, and what you typed yourself. Only the demo home has one for sure ("Speed up the checkout page").
+ */
+async function runAnsweredQuestionStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const transcript = `document.querySelector('${view} [data-transcript]')`;
+  const card = `document.querySelector('${view} [data-answered-question]')`;
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: needs the demo home, which has a session with an answered question (npm run smoke:demo)';
+  const row = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Speed up the checkout page'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!row) return 'failed: the demo session "Speed up the checkout page" is not in the sidebar';
+  const back = smokeSessionId;
+  try {
+    await js(`document.querySelector('[data-session-id="${row}"]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(row)} && document.querySelector('${view} [data-transcript-item]')`, 5_000))) return 'the demo session did not open';
+    // The list is virtualised: scroll up from the end until the card is rendered.
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    for (let page = 0; page < 25; page++) {
+      if (await waitInPage(win, `${card}`, page === 0 ? 1_500 : 300)) break;
+      const top = (await js(`(() => { const el = ${transcript}; if (!el || el.scrollTop === 0) return true; el.scrollTop -= el.clientHeight * 0.8; return false; })()`)) as boolean;
+      if (top) break;
+    }
+    if (!(await js(`!!${card}`))) return 'no answered question card in the demo session';
+    if (await js(`!!${card}.closest('[data-activity]')`)) return 'the answered question is inside a summarised run of steps';
+    const seen = (await js(`(() => {
+      const c = ${card};
+      return {
+        questions: [...c.querySelectorAll('[data-answered-question-item]')].length,
+        picked: [...c.querySelectorAll('[data-picked]')].map((p) => p.textContent.replace('(your answer)', '').trim()),
+        other: c.querySelector('[data-answered-question-other]')?.textContent ?? '',
+      };
+    })()`)) as { questions: number; picked: string[]; other: string };
+    if (seen.questions !== 2) return `the card shows ${seen.questions} questions, not 2`;
+    const want = ['A hook in src/cart (Recommended)', 'Request count', 'Total on the pay button'];
+    if (seen.picked.join('|') !== want.join('|')) return `the card marks ${JSON.stringify(seen.picked)} as picked, not ${JSON.stringify(want)}`;
+    if (!seen.other.includes('keep the old query behind a flag')) return `the card does not show what you typed (${JSON.stringify(seen.other)})`;
+    // The card in both schemes, to look at.
+    const scheme = preferences.get().colorScheme;
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await setColorScheme(win, colorScheme);
+      await js(`${card}.scrollIntoView({ block: 'center' })`);
+      await settle(win);
+      const rect = (await js(`(() => { const r = ${card}.getBoundingClientRect(); return { x: Math.round(r.x) - 12, y: Math.round(r.y) - 12, width: Math.round(r.width) + 24, height: Math.round(r.height) + 24 }; })()`)) as Electron.Rectangle;
+      writeFileSync(join(smokeOutDir!, `answered-question-${colorScheme}.png`), (await win.webContents.capturePage(rect)).toPNG());
+    }
+    updatePreferences({ colorScheme: scheme });
+    return `ok: ${seen.questions} questions with ${seen.picked.length} picks marked and your own text, outside the steps`;
+  } finally {
+    await js(`(() => { const el = ${transcript}; if (el) el.scrollTop = el.scrollHeight; })()`);
+    if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
 async function runReadModeStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const view = '[data-current-session]';
@@ -12118,6 +12172,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
+  await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));

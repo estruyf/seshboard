@@ -3102,6 +3102,11 @@
       "page": "permissions"
     },
     {
+      "id": "feature:answered-questions",
+      "name": "Answered questions stay in the conversation",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:plan-usage",
       "name": "Plan usage under the message box",
       "page": "sessions/conversation"

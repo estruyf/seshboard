@@ -531,6 +531,35 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     .tool('Grep', { pattern: 'fetchCart', path: `${acme}/src` }, 'Found 4 files')
     .say(READING_FIRST)
     .user('Go ahead with the shared cart query, and tell me how to check it.')
+    // A question you answered: it stays in the conversation as its own card (the smoke test's "answered question").
+    .tool(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            question: 'Where should the shared cart query live?',
+            header: 'Cart query',
+            multiSelect: false,
+            options: [
+              { label: 'A hook in src/cart (Recommended)', description: 'useCart(), next to the cart types. Any component can read it.' },
+              { label: 'In the checkout page', description: 'The page fetches once and passes the cart down as props.' },
+              { label: 'A context provider', description: 'A CartProvider around the checkout, read with useContext.' },
+            ],
+          },
+          {
+            question: 'What should I check after the change?',
+            header: 'Checks',
+            multiSelect: true,
+            options: [
+              { label: 'Request count', description: 'Count the requests on a cold load of the checkout.' },
+              { label: 'Total on the pay button', description: 'A test that the pay button and the summary show the same total.' },
+              { label: 'Load time on 3G', description: 'Time to first price with network throttling.' },
+            ],
+          },
+        ],
+      },
+      'The user answered: "Where should the shared cart query live?"="A hook in src/cart (Recommended)", "What should I check after the change?"="Request count, Total on the pay button, and keep the old query behind a flag for a week". Read the answers carefully and follow what they actually say.',
+    )
     .tool('Read', { file_path: `${acme}/src/components/Section.tsx` }, numbered('export function Section() {}'))
     .say(READING_SECOND);
   reading.write(configDir, 'Speed up the checkout page');
