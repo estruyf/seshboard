@@ -112,6 +112,21 @@ const otherComputer = spawn(process.execPath, ['--experimental-transform-types',
 });
 childEnv.SESHBOARD_SMOKE_COMPUTER_LINK = computerLink;
 
+// Two more for the Computers strip step, which pairs both to fill the strip's line: one with a long name, cut on its chip.
+const stripComputers = await Promise.all(
+  ['Studio Mac', 'Render workstation'].map(async (name) => {
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-strip-'));
+    const link = join(dir, 'link.txt');
+    const port = await freePortNow();
+    const proc = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
+      env: { ...process.env, SESHBOARD_DEMO_DIR: dir, SESHBOARD_DEMO_NAME: name, SESHBOARD_DEMO_LINK_FILE: link, PORT: String(port) },
+      stdio: 'ignore',
+    });
+    return { dir, link, proc };
+  }),
+);
+childEnv.SESHBOARD_SMOKE_STRIP_LINKS = JSON.stringify(stripComputers.map((c) => c.link));
+
 // The remote app on a phone: apps/remote served by Vite, and a made-up computer of its own ("Phone Mac") whose
 // pairing links point there. The app drives it in a phone-sized window (remotePhoneSmoke.ts).
 const [vitePort, phoneHubPort] = [await freePortNow(), await freePortNow()];
@@ -139,9 +154,11 @@ const child = spawn(command, packaged ? [] : [appDir], {
 
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
 otherComputer.kill();
+for (const c of stripComputers) c.proc.kill();
 phoneComputer.kill();
 remoteApp.kill();
 rmSync(computerDir, { recursive: true, force: true, maxRetries: 5 });
+for (const c of stripComputers) rmSync(c.dir, { recursive: true, force: true, maxRetries: 5 });
 rmSync(phoneDir, { recursive: true, force: true, maxRetries: 5 });
 rmSync(modsDir, { recursive: true, force: true, maxRetries: 5 });
 if (world) {
