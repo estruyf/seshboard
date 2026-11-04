@@ -55,6 +55,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - The message box is bigger, with the model, effort, mode and profile on a tray under it, together with context and usage.
 - The working line under a reply shows the patch panel from the app icon, its free jacks lighting up in turn, like the Dock. It takes the colours of your theme: its light is the theme's accent, and the themes named after an app icon have that icon's cables.
 - Claude Code sessions started by Seshboard use the `seshboard` entrypoint label instead of inheriting their launcher's label.
+- **Show or hide a pipeline's steps from its quick actions.** Hover a pipeline's row, on this computer or another one, and the first button opens or closes its steps, so the arrow no longer moves away under the pointer.
 
 ### Fixed
 

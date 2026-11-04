@@ -387,7 +387,12 @@ export const SessionRow = memo(function SessionRow({
     />
   );
   const pin = data.pinned && <Pin size={11} className="shrink-0 text-faint" aria-hidden />;
-  const chevron = expanded !== undefined && onToggleTree && <TreeChevron open={expanded} count={childCount} onToggle={() => onToggleTree(data.id)} />;
+  // With quick actions the steps toggle is the toolbar's first button, where the pointer already is; the chevron
+  // only shows while the pointer is elsewhere.
+  const tree = expanded !== undefined && onToggleTree ? { open: expanded, count: childCount, onToggle: () => onToggleTree(data.id) } : undefined;
+  const treeInActions = actions.length > 0 && tree !== undefined;
+  const buttons = actions.length + (treeInActions ? 1 : 0);
+  const chevron = tree && <TreeChevron open={tree.open} count={tree.count} className={hideForActions} onToggle={tree.onToggle} />;
   // An unsent message: a pen in the same corner, never in a status colour.
   const pen = draft !== null && <PencilLine size={11} className="shrink-0 text-faint" aria-hidden data-row-pen />;
   // Loose ends: what it left behind in git or on GitHub, or a queued prompt. The tooltip lists them, the unsent message too.
@@ -497,12 +502,12 @@ export const SessionRow = memo(function SessionRow({
           : 'hover:bg-border/45';
   const room = actions.length ? 'group-hover/row:pr-(--row-actions-room) group-has-[:focus-visible]/row:pr-(--row-actions-room)' : '';
   // The buttons sit 6px from the row's right edge, with 4px between them and the lines.
-  const roomStyle = actions.length || tint ? ({ ...tint, ...(actions.length ? { '--row-actions-room': `${rowActionsWidth(actions.length) + 10}px` } : {}) } as CSSProperties) : undefined;
+  const roomStyle = actions.length || tint ? ({ ...tint, ...(actions.length ? { '--row-actions-room': `${rowActionsWidth(buttons) + 10}px` } : {}) } as CSSProperties) : undefined;
   const withActions = (row: ReactNode) =>
     onQuickAction ? (
       <div className="group/row relative" role="none" data-row-wrap>
         {row}
-        {actions.length > 0 && <RowActions id={data.id} title={data.title} actions={actions} tabbable={tabbable} onAction={(action) => onQuickAction(action.method, data)} />}
+        {actions.length > 0 && <RowActions id={data.id} title={data.title} actions={actions} tree={treeInActions ? tree : undefined} tabbable={tabbable} onAction={(action) => onQuickAction(action.method, data)} />}
       </div>
     ) : (
       row

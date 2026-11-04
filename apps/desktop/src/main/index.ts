@@ -8473,6 +8473,18 @@ async function runArchiveRunStep(win: BrowserWindow): Promise<string> {
     await js(`(() => { const row = ${row}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
   };
   if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the run row is not in the sidebar';
+  // Under the pointer, the steps toggle is the quick actions' first button: it opens and closes the tree.
+  const toggle = `document.querySelector('[data-row-actions="${runId}"] [data-row-tree-toggle]')`;
+  const box = (await js(`(() => { const r = ${row}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 });
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: box.x, y: box.y });
+  if (!(await waitInPage(win, `!!${toggle} && getComputedStyle(${toggle}.parentElement).opacity === '1'`, 2_000))) return 'the run row\'s quick actions have no steps toggle under the pointer';
+  const wasOpen = (await js(`${row}.dataset.treeParent`)) as string;
+  await js(`${toggle}.click()`);
+  if (!(await waitInPage(win, `${row}?.dataset.treeParent !== ${JSON.stringify(wasOpen)}`, 2_000))) return 'the steps toggle in the quick actions did not open or close the tree';
+  await js(`${toggle}.click()`);
+  if (!(await waitInPage(win, `${row}?.dataset.treeParent === ${JSON.stringify(wasOpen)}`, 2_000))) return 'the steps toggle did not put the tree back';
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 1, y: 1 });
   await openMenu();
   const archiveItem = "document.querySelector('[role=menu] [data-run-row-action=\"archive\"]')";
   if (!(await waitInPage(win, `${archiveItem}?.innerText.includes('Done, with its 2 steps')`, 2_000))) return `the run row menu has no Done, with its 2 steps (${String(await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((b) => b.innerText).join(', ')"))})`;

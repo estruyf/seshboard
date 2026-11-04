@@ -2928,7 +2928,7 @@
     },
     {
       "id": "feature:sidebar-quick-actions",
-      "name": "Quick actions on hover: Mark as read, Pin and Done on a session row, with Undo",
+      "name": "Quick actions on hover: Mark as read, Pin and Done on a session row, with Undo, and a pipeline's Show steps",
       "page": "sessions/sidebar"
     },
     {
