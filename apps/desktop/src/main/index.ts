@@ -2385,6 +2385,21 @@ async function shot(win: BrowserWindow, name: string): Promise<void> {
 }
 
 /**
+ * Types `line` into the focused terminal and presses Return until `ran()` says it ran. A shell whose rc files still run
+ * can throw away what was typed by then (zsh plugins and prompt themes do), so the line is typed again, up to three times.
+ */
+async function typeInShell(win: BrowserWindow, line: string, ran: () => boolean): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await win.webContents.insertText(line);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    if (await until(ran, 4_000)) return true;
+  }
+  return false;
+}
+
+/**
  * Opens the terminal panel on the open session (which starts a shell by itself) and runs a harmless command in it:
  * the shell writes its folder to a file in the throwaway app profile, which shows it ran, in the session's folder.
  */
@@ -2397,18 +2412,13 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, "document.querySelector('[data-terminal-panel]')", 3_000))) return 'failed: the panel did not open';
     if (!(await waitInPage(win, "document.querySelector('[data-terminal] textarea')", 5_000))) return 'failed: no terminal in the panel';
     await js("document.querySelector('[data-terminal] textarea').focus()");
-    // Typed before the shell has started, the line waits in the terminal until it reads it. On Windows the
-    // shell is PowerShell, whose pwd prints a table: write the bare folder there.
+    // On Windows the shell is PowerShell, whose pwd prints a table: write the bare folder there.
     const line =
       process.platform === 'win32'
         ? `echo "terminal works: $env:TERM_PROGRAM"; (Get-Location).Path | Set-Content -NoNewline '${marker.replace(/'/g, "''")}'`
         : `echo "terminal works: $TERM_PROGRAM" && pwd > ${JSON.stringify(marker)}`;
-    await win.webContents.insertText(line);
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
-    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
     const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
-    if (!(await until(() => read() !== '', 10_000))) return 'failed: the shell did not run the command';
+    if (!(await typeInShell(win, line, () => read() !== ''))) return 'failed: the shell did not run the command';
     // The panel opens in the session's own folder, which is below the project's root when it was started in a subfolder.
     const folder = (await js("(() => { const view = document.querySelector('[data-current-session]'); return view?.dataset.cwd || view?.dataset.projectRoot || ''; })()")) as string;
     // .native also turns Windows' short names (RUNNER~1) into the long ones the shell prints.
@@ -2596,12 +2606,8 @@ async function runAppTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${panel}?.querySelector('[data-terminal] textarea')`, 5_000))) return "failed: ⌘J in Usage did not open the window's terminal";
     await js(`${panel}.querySelector('[data-terminal] textarea').focus()`);
     const line = process.platform === 'win32' ? `(Get-Location).Path | Set-Content -NoNewline '${marker.replace(/'/g, "''")}'` : `pwd > ${JSON.stringify(marker)}`;
-    await win.webContents.insertText(line);
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
-    win.webContents.sendInputEvent({ type: 'char', keyCode: '\r' });
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
     const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
-    if (!(await until(() => read() !== '', 10_000))) return 'failed: the shell did not run the command';
+    if (!(await typeInShell(win, line, () => read() !== ''))) return 'failed: the shell did not run the command';
     if (realpathSync.native(read()) !== realpathSync.native(homedir())) return `failed: the shell started in ${read()}, not the home folder`;
     const tab = (await js(`${panel}.querySelector('[role=tab][aria-selected=true]').innerText.trim()`)) as string;
     if (tab !== '~') return `failed: the tab is called "${tab}", not ~`;
@@ -5796,15 +5802,16 @@ async function runOpenInStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${menu}?.querySelector('[role="menuitem"]')`, 2_000))) return 'menu did not open';
   if (!(await js(`!!${menu}.querySelector('[data-open-in]')`))) return 'no Open in items in the More menu';
   const defaultHint = ((await js(`${menu}.querySelector('[data-open-in]').innerText`)) as string).replace(/\s+/g, ' ').trim();
-  // The middle of the menu's last item must hit the menu itself, not the transcript under the header.
-  const onTop = (await js(
-    `(() => { const menu = ${menu}; const r = [...menu.querySelectorAll('[role="menuitem"]')].at(-1).getBoundingClientRect(); return menu.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); })()`,
-  )) as boolean;
+  // The middle of the menu's last item must hit the menu itself, not the transcript under the header. A long menu
+  // scrolls, so the item is scrolled into view first. Null when it does, or what covers it.
+  const covered = (await js(
+    `(() => { const menu = ${menu}; const item = [...menu.querySelectorAll('[role="menuitem"]')].at(-1); item.scrollIntoView({ block: 'nearest' }); const r = item.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return menu.contains(hit) ? null : hit ? hit.tagName.toLowerCase() + [...hit.attributes].filter((a) => a.name !== 'style').map((a) => '[' + a.name + '="' + a.value.slice(0, 60) + '"]').join('') : 'nothing'; })()`,
+  )) as string | null;
   const github = (await js(`${menu}.querySelector('[data-open-github]')?.dataset.openGithub ?? null`)) as string | null;
   await shot(win, 'open-in-menu.png');
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-  if (!onTop) return 'menu is covered by the page below it';
+  if (covered) return `menu is covered by the page below it (${covered})`;
   const openKeys = process.platform === 'darwin' ? '⌘O' : 'Ctrl+O';
   if (!defaultHint.includes(openKeys)) return `the default app does not show ${openKeys} ("${defaultHint}")`;
   if (github !== null && !/^https:\/\/github\.com\/[^/]+\/[^/]+(\/tree\/.+)?$/.test(github)) return `odd GitHub link "${github}"`;
@@ -12261,15 +12268,17 @@ async function checkTranscriptEnd(win: BrowserWindow): Promise<string> {
   // Images in the last rows load after they're first measured, and a live session keeps growing:
   // read the position and the gap together, and give the view up to 4 s to settle at the end.
   const deadline = Date.now() + 4_000;
+  // The gap is the last row's own padding plus the room left for the fade over the composer (composer-fade-room, 32px).
+  const gapOk = (gap: number) => gap >= 16 && gap <= 72;
   let reading = { atEnd: false, gap: 0, fits: false };
   do {
     reading = (await win.webContents.executeJavaScript(`({ atEnd: ${atBottom}, gap: ${bottomGap}, fits: ${fits} })`)) as typeof reading;
-    if (reading.atEnd && (reading.fits || (reading.gap >= 16 && reading.gap <= 60))) break;
+    if (reading.atEnd && (reading.fits || gapOk(reading.gap))) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   } while (Date.now() < deadline);
   await shot(win, 'transcript.png');
   if (reading.fits) return 'ok: conversation shorter than the window';
-  if (reading.atEnd && reading.gap >= 16 && reading.gap <= 60) return `ok: ${reading.gap}px above the composer`;
+  if (reading.atEnd && gapOk(reading.gap)) return `ok: ${reading.gap}px above the composer`;
   const detail = await win.webContents.executeJavaScript(
     "(() => { const el = document.querySelector('[data-transcript]'); if (!el) return 'no transcript on screen'; const list = el.firstElementChild; return JSON.stringify({ scrollHeight: el.scrollHeight, scrollTop: Math.round(el.scrollTop), clientHeight: el.clientHeight, listHeight: list?.offsetHeight, streaming: !!el.querySelector('[data-streaming]'), lastKind: [...el.querySelectorAll('[data-transcript-item]')].at(-1)?.dataset.itemKind, gap: " + bottomGap + " }); })()",
   );
