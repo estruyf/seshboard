@@ -48,7 +48,7 @@ export function Pill({ tone = 'default', onClick, dashed = false, ghost = false,
   );
 }
 
-const COUNT_TINT = { 'needs-you': 'bg-warn/15', working: 'bg-accent/20', neutral: 'bg-border/60', ok: 'bg-ok/15', info: 'bg-link/15', caution: 'bg-caution/15', error: 'bg-error/15' } as const;
+const COUNT_TINT = { 'needs-you': 'bg-warn/15', working: 'bg-accent/20', unread: 'bg-unread/15', neutral: 'bg-border/60', ok: 'bg-ok/15', info: 'bg-link/15', caution: 'bg-caution/15', error: 'bg-error/15' } as const;
 
 /**
  * The count next to a group heading (Needs you, Working, Archived), tinted like the heading's status.

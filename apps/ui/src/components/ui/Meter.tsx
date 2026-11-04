@@ -6,8 +6,11 @@ interface MeterProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
   percent: number;
   /** `bar` for usage, `ring` where space is tight (the context window). */
   kind?: 'bar' | 'ring';
-  /** `sm`: a 48x4 bar or a 12px ring, inline. `md`: a full-width 6px bar under its caption (a 16px ring for `kind="ring"`). */
-  size?: 'sm' | 'md';
+  /**
+   * `sm`: a 48x4 bar or a 12px ring, inline. `md`: a full-width 6px bar under its caption (a 16px ring for `kind="ring"`).
+   * `compact`: the `md` bar at 5px, for cards in a narrow column (Home's usage).
+   */
+  size?: 'sm' | 'md' | 'compact';
   /** What it measures, read as one sentence ("5-hour limit: 6% used"). Without it the meter is decoration, for a control that names itself. */
   label?: string;
   /** Show the percentage after the graphic (`md`: at the end of the caption line). */
@@ -29,8 +32,11 @@ interface MeterProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
  * How full something is (plan usage, the context window), in the level's colour: green, orange from
  * 60%, red from 85% (`lib/levels.ts`). The track is `bg-selected`, which shows on every surface.
  */
-export function Meter({ percent, kind = 'bar', size = 'sm', label, showValue = false, hideTrackNarrow = false, level: forced, className = '', children, ...rest }: MeterProps) {
+export function Meter({ percent, kind = 'bar', size: requested = 'sm', label, showValue = false, hideTrackNarrow = false, level: forced, className = '', children, ...rest }: MeterProps) {
   const level = forced ?? levelOf(percent);
+  // A compact meter is the full-width one with a thinner track.
+  const size = requested === 'compact' ? 'md' : requested;
+  const track = requested === 'compact' ? 'h-[5px] w-full' : size === 'md' ? 'h-1.5 w-full' : 'h-1 w-12';
   const a11y = label
     ? { role: 'meter', 'aria-label': label, 'aria-valuenow': Math.round(clampPercent(percent)), 'aria-valuemin': 0, 'aria-valuemax': 100 }
     : { 'aria-hidden': true };
@@ -53,7 +59,7 @@ export function Meter({ percent, kind = 'bar', size = 'sm', label, showValue = f
   }
 
   const bar = (
-    <span className={`block shrink-0 overflow-hidden rounded-full bg-selected ${size === 'md' ? 'h-1.5 w-full' : 'h-1 w-12'} ${narrow}`} aria-hidden>
+    <span className={`block shrink-0 overflow-hidden rounded-full bg-selected ${track} ${narrow}`} aria-hidden>
       <span className={`block h-full rounded-full ${LEVEL_FILL[level]}`} style={{ width: barWidth(percent) }} />
     </span>
   );

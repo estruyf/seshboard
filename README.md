@@ -213,6 +213,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌘P | Go to a session or project (⌥↩ opens a session beside this one) |
 | ⌘⇧F | Search all conversations |
 | ⌘⇧H | Home |
+| ⌘1 to ⌘9 | Start in a project (on Home; with what you typed in the start box as the prompt) |
 | ⌘⇧Y | Upcoming: queued and scheduled |
 |  | Open usage (No key by default: use the command palette, or click a usage bar) |
 | ⌘, | Settings |
