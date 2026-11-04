@@ -4886,7 +4886,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (await js(`document.querySelectorAll(${JSON.stringify(remoteRow)}).length`)) return 'Mine lists sessions this computer neither started nor acted on';
   if (await js(`/from others/.test(document.querySelector('[data-session-list]')?.innerText ?? '')`)) return 'the sidebar still says how many of the others’ sessions Mine hides';
   if (await js("Boolean(document.querySelector('[data-computer-show-button], [data-computer-show-options]'))")) return 'Settings › Remote still has a sessions choice for the computer';
-  await click(`[data-computers-strip] [data-computer-scope]`);
+  await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, `document.querySelector('[data-computer-scope-menu] [role=radiogroup][aria-label="Sessions in the sidebar"]') && /others? (is|are) hidden/.test(document.querySelector('[data-computer-scope-menu] [data-computer-scope-line]')?.innerText ?? '')`, 3_000))) return `the chip’s menu has no Mine / All or does not say how many are hidden (${await js("document.querySelector('[data-computer-scope-menu]')?.innerText.replace(/\\s+/g, ' ')")})`;
   await shot(win, 'computers-scope-menu.png');
   await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
@@ -4964,7 +4964,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "document.querySelector('[data-computer-send]') && !document.querySelector('[data-computer-send]').disabled", 3_000))) return 'Send stayed disabled in someone else’s session';
   await click('[data-computer-send]');
   if (!(await waitInPage(win, `!${theirs}?.querySelector('[data-row-started-by]')`, 5_000))) return 'sending a message did not make someone else’s session mine';
-  await click('[data-computers-strip] [data-computer-scope]');
+  await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"mine\"]')", 3_000))) return 'the chip’s menu did not open again';
   await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
   pressKey(win, 'Escape');
@@ -4972,7 +4972,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // The pipeline run started from here (`remoteRunRows`) is mine too; the run a trigger started there is not.
   const runRowOf = (title: string) => `[...document.querySelectorAll(${JSON.stringify(row)})].some((r) => r.dataset.runRow && r.innerText.includes(${JSON.stringify(title)}))`;
   if (!(await js(`${runRowOf('Smoke remote run')} && !${runRowOf('Retry failed webhook deliveries')}`))) return 'with Mine, the run started from here is not listed, or the run a trigger started there still is';
-  await click('[data-computers-strip] [data-computer-scope]');
+  await click('[data-computers-strip] [data-computer-menu-button]');
   if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu did not open again';
   await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
   pressKey(win, 'Escape');
@@ -5050,6 +5050,104 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   if (!removed) return 'the other computer and its rows did not go after Remove';
   return `ok: paired, ${rows} remote rows with their chip, one opened with the line and "on Smoke Mac", terminal disabled, its run row opened and a pipeline run there, + on this computer with nothing typed and on Smoke Mac with a saved prompt picked with /, "${label}" started it there, removed again`;
+}
+
+/**
+ * The Computers strip with two paired computers (smoke.ts starts them: Studio Mac and Render workstation): one line,
+ * neutral chips with the colour on the name only, All with nothing after the name and Mine as a person without words,
+ * the menu from a right-click, and in a narrow sidebar the last chips folded into "+N" instead of a second line. Pairs
+ * both and removes them again; the sidebar goes back to the width it had.
+ */
+async function runComputersStripStep(win: BrowserWindow): Promise<string> {
+  const links = JSON.parse(process.env.SESHBOARD_SMOKE_STRIP_LINKS ?? '[]') as string[];
+  if (links.length < 2) return 'ok: skipped, no computers for the strip (run through npm run smoke)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  if (!(await until(() => links.every((link) => existsSync(link)), 20_000))) return 'the strip’s computers wrote no pairing link';
+
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  for (const [i, link] of links.entries()) {
+    if (!(await waitInPage(win, "document.querySelector('[data-computers-link]')", 5_000))) return 'Settings › Remote has no field for another computer’s link';
+    await setFieldValue(win, '[data-computers-link]', readFileSync(link, 'utf8').trim());
+    await click('[data-computers-add]');
+    // Its own two only: a computer an earlier step left paired doesn't count.
+    if (!(await waitInPage(win, `[...document.querySelectorAll('[data-computer][data-computer-state="connected"]')].filter((el) => /Studio Mac|Render workstation/.test(el.innerText)).length >= ${i + 1}`, 20_000))) return `computer ${i + 1} for the strip did not connect`;
+  }
+  const ids = (await js("[...document.querySelectorAll('[data-computer]')].filter((el) => /Studio Mac|Render workstation/.test(el.innerText)).map((el) => el.dataset.computer)")) as string[];
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
+  const width = () => js("Math.round(document.querySelector('[data-sidebar]').getBoundingClientRect().width)") as Promise<number>;
+  const drag = async (dx: number) => {
+    const { x, y } = (await js("(() => { const r = document.querySelector('[data-sidebar-resize]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()")) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 5; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: x + Math.round((dx * i) / 5), y, button: 'left' });
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: x + dx, y, button: 'left', clickCount: 1 });
+    await settle(win);
+  };
+  const before = await width();
+  const result = await (async () => {
+    if (ids.length !== 2) return `the strip’s two computers are not both in Settings › Remote (${ids.length})`;
+    const row = "document.querySelector('[data-computers-strip] [role=group]')";
+    // Every chip on the first line's top, and nothing wider than the row.
+    const oneLine = `(() => { const row = ${row}; const tops = [...row.children].map((c) => c.offsetTop); return tops.every((t) => t === tops[0]) && row.scrollWidth <= row.clientWidth + 1; })()`;
+    const chipOf = (id: string) => `document.querySelector('[data-computers-strip] [data-computer-chip-of=${JSON.stringify(id)}]')`;
+    const [studio, render] = ids as [string, string];
+
+    // 1. Wide: This Mac and both computers on one line, no "+N", every chip on the same neutral tint as This Mac.
+    await drag(400);
+    if (!(await waitInPage(win, `${chipOf(studio)} && ${chipOf(render)} && !document.querySelector('[data-computers-more]') && ${oneLine}`, 5_000))) return `the wide strip is not one line with both computers (${await js(`${row}?.innerText.replace(/\\s+/g, ' ')`)})`;
+    const neutral = (await js(`(() => { const bg = (el) => getComputedStyle(el).backgroundColor; const here = bg(document.querySelector('[data-computers-strip] [data-computer-filter="local"]')); return [${chipOf(studio)}, ${chipOf(render)}].every((c) => bg(c) === here); })()`)) as boolean;
+    if (!neutral) return 'a computer’s chip has a background of its own, not This Mac’s neutral one';
+
+    // 2. All: nothing after the name. Mine (from the menu a right-click opens): the person, and no words.
+    const rightClick = async (id: string) => {
+      await js(`(() => { const el = document.querySelector('[data-computers-strip] [data-computer-filter=${JSON.stringify(id)}]'); const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 8, clientY: r.top + 8 })); })()`);
+      return waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option]')", 3_000);
+    };
+    if (!(await rightClick(studio))) return 'a right-click on the computer’s chip did not open its menu';
+    await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'all' && !${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !document.querySelector('[data-computer-scope-menu]')`, 3_000))) return 'All on the chip still shows a filter icon, or Esc did not close the menu';
+    if (!(await rightClick(studio))) return 'a second right-click did not open the chip’s menu';
+    await click('[data-computer-scope-menu] [data-computer-scope-option="mine"]');
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `${chipOf(studio)}?.dataset.computerScope === 'mine' && ${chipOf(studio)}.querySelector('[data-computer-scope-icon]') && !/\\b(Mine|All)\\b/.test(${chipOf(studio)}.innerText)`, 3_000))) return `Mine on the chip is not the person alone (${await js(`${chipOf(studio)}?.innerText`)})`;
+    // The ▾ is the chip's second button, after it in the tab order, labelled for the computer.
+    if ((await js(`${chipOf(studio)}.querySelector('[data-computer-menu-button]')?.getAttribute('aria-label')`)) !== 'Options for Studio Mac') return 'the chip has no ▾ labelled Options for Studio Mac';
+    await shot(win, 'computers-strip.png');
+
+    // 3. Narrow: the computers fold into "+N" on the same line, and its menu lists them.
+    await drag(-280);
+    const narrow = await width();
+    if (!(await waitInPage(win, `document.querySelector('[data-computers-more]') && ${oneLine}`, 5_000))) return `at ${narrow}px the strip did not fold into "+N" on one line (${await js(`${row}?.innerText.replace(/\\s+/g, ' ')`)})`;
+    const folded = (await js("document.querySelector('[data-computers-more]').dataset.computersMore")) as string;
+    await click('[data-computers-more]');
+    if (!(await waitInPage(win, `document.querySelectorAll('[role=menu] [data-computers-more-item]').length === ${Number(folded)}`, 3_000))) return `"+${folded}" did not list the folded computers`;
+    pressKey(win, 'Escape');
+    await shot(win, 'computers-strip-narrow.png');
+    return `ok: one line wide with neutral chips, All without and Mine with the person alone, right-click opens the menu, +${folded} at ${narrow}px`;
+  })();
+
+  // Clean up: the sidebar back to the width it had, both computers removed.
+  await drag(before - (await width()));
+  await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
+  await click('[data-settings-section="remote"]');
+  for (const id of ids) {
+    const forget = `[data-computer=${JSON.stringify(id)}] [data-computer-forget]`;
+    if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(forget)})`, 3_000))) continue;
+    await click(forget);
+    await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
+    await click('[data-confirm-strip] [data-confirm]');
+    await waitInPage(win, `!document.querySelector(${JSON.stringify(`[data-computer=${JSON.stringify(id)}]`)})`, 5_000);
+  }
+  // Its own two only: the strip stays while a computer an earlier step paired is still there.
+  const removed = await waitInPage(win, `!${JSON.stringify(ids)}.some((id) => document.querySelector(\`[data-computer-chip-of="\${id}"]\`))`, 5_000);
+  pressKey(win, 'Escape');
+  if (result.startsWith('ok') && !removed) return 'the strip’s computers did not go after Remove';
+  return result;
 }
 
 /**
@@ -12293,6 +12391,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
+  await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" in a narrow sidebar', () => runComputersStripStep(win), { timeoutMs: 75_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
   await step('remote app on a phone: the menu button opens the drawer, no app icon, Settings and the computer at the bottom', runPhoneDrawerStep, { timeoutMs: 75_000 });
