@@ -18,6 +18,8 @@ export interface QuickProject {
   /** The branch its latest session had checked out, or null (not a repository, or no session yet). */
   branch: string | null;
   tone: TileTone;
+  /** What is going on in it: "1 working", "Idle · 2h". */
+  label: string;
   /** "main · 1 working", "dev · Idle · 2h". */
   meta: string;
 }
@@ -44,7 +46,7 @@ export function quickStartProjects(input: {
   return filterFolders(ordered, input.filter, nameOf, input.home).map((root) => {
     const status = tileStatus(activity.get(root), projects.get(root)?.lastActivity ?? null, input.now);
     const branch = branches.get(root) ?? null;
-    return { root, name: nameOf(root), branch, tone: status.tone, meta: [branch, status.label].filter(Boolean).join(' · ') };
+    return { root, name: nameOf(root), branch, tone: status.tone, label: status.label, meta: [branch, status.label].filter(Boolean).join(' · ') };
   });
 }
 

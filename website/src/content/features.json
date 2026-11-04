@@ -997,6 +997,11 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:home.pick",
+      "name": "Start in a project from Home by its number",
+      "page": "sessions/home"
+    },
+    {
       "id": "shortcut:memory.save",
       "name": "Save the memory or instructions you are editing",
       "page": "memory/adding-memory"
@@ -2683,17 +2688,17 @@
     },
     {
       "id": "feature:home-profiles",
-      "name": "Profiles and usage on Home",
+      "name": "Profiles and usage on Home, in a column on the right; quiet profiles take one line",
       "page": "sessions/home"
     },
     {
       "id": "feature:home-project-tiles",
-      "name": "Start in a project",
+      "name": "Start in a project: New session's rows with their ⌘ keys, in three columns",
       "page": "sessions/home"
     },
     {
       "id": "feature:home-view",
-      "name": "Home",
+      "name": "Home: a greeting, a start box, the lanes Needs you, Working and To review, then your projects, Up next and usage, using the whole window",
       "page": "sessions/home"
     },
     {

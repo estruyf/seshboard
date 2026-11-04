@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
-import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
+import type { ClaudeProfile, ProviderQuota, UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
 import type { EngineClient } from '../engine/connection.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useProfiles } from '../state/profilesStore.ts';
@@ -12,7 +12,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
 import { thisComputerName } from '../lib/platform.ts';
-import { ProviderUsage } from './providers/ProviderUsage.tsx';
+import { quotaSummary, resetDay } from './providers/quotaText.ts';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -71,6 +71,22 @@ export function useUsageFor(profileId: string | null): UsageEntry | undefined {
   return useUsage((s) => (profileId === null ? undefined : s.usage.get(profileId)));
 }
 
+/** `useUsageFor` for several Claude profiles at once (Home's usage column): each one's entry, loaded the first time it shows. */
+export function useUsageForAll(profileIds: readonly string[]): ReadonlyMap<string, UsageEntry> {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const key = profileIds.join('\0');
+  useEffect(() => {
+    if (!client) return;
+    const missing = profileIds.filter((id) => !useUsage.getState().usage.has(id));
+    if (missing.length === 0) return;
+    // Fetching starts a short-lived Claude Code process; let the window finish starting first.
+    const timer = setTimeout(() => missing.forEach((id) => void fetchUsage(client, id)), performance.now() < 10_000 ? 2_000 : 0);
+    return () => clearTimeout(timer);
+  }, [client, key]);
+  return useUsage((s) => s.usage);
+}
+
 /** A usage bar is a button that opens the Usage view: it keeps its look and lights up on hover. */
 const BAND_HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border/45';
 
@@ -78,7 +94,7 @@ const money = (minorUnits: number, currency: string | null) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency: currency ?? 'USD', maximumFractionDigits: 2 }).format(minorUnits / 100);
 
 /** The footer's short names: "5h" for the session window, "Week" for the weekly one (with its scope, such as a model). */
-function footerLabel(limit: UsageLimit): string {
+export function footerLabel(limit: UsageLimit): string {
   const label = limitLabel(limit);
   return label.startsWith('7d') ? `Week${label.slice(2)}` : label;
 }
@@ -214,35 +230,55 @@ export function UsageBand({ profileId, compact = false, footer = false }: { prof
   );
 }
 
+/** What Home's usage column knows of a profile: its plan usage (Claude Code's) or premium requests (another provider's). */
+export interface HomeProfileUsage {
+  profile: ClaudeProfile;
+  /** Claude Code's plan usage; undefined until it has loaded, and for another provider's profile. */
+  entry?: UsageEntry;
+  /** Another provider's premium requests (GitHub Copilot's); null while it hasn't said. */
+  quota?: ProviderQuota | null;
+}
+
+/** The limits a profile's line and bars show, by their short names ("5h", "Week", "Premium requests"). */
+export function homeLimits({ profile, entry, quota }: HomeProfileUsage): { label: string; percent: number }[] {
+  if (profile.provider !== 'claude') return quota && quota.entitlement !== null ? [{ label: 'Premium requests', percent: quota.percentUsed }] : [];
+  return entry?.usage ? visibleLimits(entry.usage.limits).map((limit) => ({ label: footerLabel(limit), percent: limit.percent })) : [];
+}
+
 /**
- * One Claude profile's plan usage as a card, for Home: its name and account, a full-width bar per
- * limit in the level's colour with the reset countdown, and any extra usage. `activity` is a line
- * about its sessions ("2 working · 5 today").
+ * A busy profile on Home (sessions today, or over half a limit): its name and account, what its sessions are doing
+ * ("2 working"), and a thin bar per limit in the level's colour with the reset countdown (premium requests for
+ * another provider), and any extra usage. The bars open Usage.
  */
-export function ProfileUsageCard({ profileId, activity }: { profileId: string; activity: string }) {
-  const profile = useProfiles((s) => s.profiles.find((p) => p.id === profileId));
-  /** A profile of another provider (GitHub Copilot): its premium requests, never Claude Code's plan usage. */
-  const provider = profile && profile.provider !== 'claude' ? profile.provider : null;
-  const entry = useUsageFor(provider ? null : profileId);
-  const usage = entry?.usage ?? null;
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-  const limits = usage ? visibleLimits(usage.limits) : [];
-  const extra = usage?.extraUsage;
+export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileUsage; activity: string; now: number }) {
+  const { profile, entry, quota } = usage;
+  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  const extra = entry?.usage?.extraUsage;
   return (
-    <article className="grid content-start gap-2.5 rounded-xl border border-border bg-card p-3" aria-label={`${profile?.name ?? 'Profile'}: usage`} data-home-profile={profileId}>
+    <article className="grid content-start gap-2 rounded-xl bg-text/6 px-3.5 py-3" aria-label={`${profile.name}: usage`} data-home-profile={profile.id}>
       <div className="flex min-w-0 items-center gap-2">
         {/* Always named here (the badge elsewhere hides itself while there is only one profile). */}
-        {profile && <ProfileDot color={profile.color} size={8} />}
-        <span className="truncate text-ui font-semibold">{profile?.name ?? 'Claude'}</span>
-        {profile?.account?.email && <span className="min-w-0 truncate text-meta text-faint">{profile.account.email}</span>}
+        <ProfileDot color={profile.color} size={7} />
+        <span className="shrink-0 truncate text-ui font-semibold">{profile.name}</span>
+        {profile.account?.email && <span className="min-w-0 truncate text-meta text-faint">{profile.account.email}</span>}
+        <span className="flex-1" />
+        <span className="shrink-0 text-meta text-muted">{activity}</span>
       </div>
-      <p className="text-meta text-muted">{activity}</p>
       {provider ? (
-        <ProviderUsage profileId={profileId} provider={provider} form="card" />
+        quota ? (
+          <button type="button" onClick={() => openUsage(profile.id)} aria-label={`${quotaSummary(quota)}. Open usage`} data-tooltip={quotaSummary(quota)} className={`-mx-1.5 grid gap-2 rounded-md px-1.5 py-1 text-left ${BAND_HOVER}`} data-provider-usage={provider}>
+            {quota.entitlement === null ? (
+              <span className="text-meta text-muted">{quota.used.toLocaleString()} premium requests used, no limit on this plan</span>
+            ) : (
+              <Meter percent={quota.percentUsed} size="compact" showValue>
+                <span className="text-muted">Premium requests</span>
+                <span className="flex-1" />
+                {quota.resetsAt && <span className="text-faint">resets {resetDay(quota.resetsAt)}</span>}
+              </Meter>
+            )}
+          </button>
+        ) : null
       ) : limits.length === 0 ? (
         <p className="text-meta text-faint" data-tooltip={entry?.error ?? undefined} data-usage-status>
           {usageMessage(entry)}
@@ -250,18 +286,18 @@ export function ProfileUsageCard({ profileId, activity }: { profileId: string; a
       ) : (
         <button
           type="button"
-          onClick={() => openUsage(profileId)}
+          onClick={() => openUsage(profile.id)}
           aria-label={`Plan usage: ${limits.map((l) => spokenLimit(l, now)).join('. ')}. Open usage`}
           data-tooltip={usageSummary(limits, now)}
           className={`-mx-1.5 grid gap-2 rounded-md px-1.5 py-1 text-left ${BAND_HOVER}`}
           data-usage-band
-          data-usage-profile={profileId}
+          data-usage-profile={profile.id}
         >
           {limits.map((limit) => (
-            <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} size="md" showValue>
+            <Meter key={`${limit.kind}:${limit.scope ?? ''}`} percent={limit.percent} size="compact" showValue>
               <span className="text-muted">{footerLabel(limit)}</span>
               <span className="flex-1" />
-              {limit.resetsAt && <span className="text-faint">resets in {countdown(limit.resetsAt, now)}</span>}
+              {limit.resetsAt && <span className="text-faint">{countdown(limit.resetsAt, now)}</span>}
             </Meter>
           ))}
         </button>
@@ -272,5 +308,34 @@ export function ProfileUsageCard({ profileId, activity }: { profileId: string; a
         </p>
       )}
     </article>
+  );
+}
+
+/**
+ * A quiet profile on Home (no sessions today, under half of every limit), as one line in the shared card: its dot, its
+ * name and its numbers ("5h 1% · Week 8%", "Premium requests 12%"). The line opens Usage, with the details on hover.
+ */
+export function QuietProfileLine({ usage, numbers, now }: { usage: HomeProfileUsage; numbers: string; now: number }) {
+  const { profile, entry, quota } = usage;
+  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  const summary = provider ? (quota ? quotaSummary(quota) : null) : limits.length ? usageSummary(limits, now) : null;
+  const text = numbers || (provider ? (quota ? `${quota.used.toLocaleString()} premium requests` : '') : usageMessage(entry));
+  return (
+    <li className="grid min-w-0" data-home-profile={profile.id}>
+      <button
+        type="button"
+        onClick={() => openUsage(profile.id)}
+        aria-label={`${profile.name}: ${summary ?? text}. Open usage`}
+        data-tooltip={summary ?? entry?.error ?? undefined}
+        className={`-mx-1.5 flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-ui ${BAND_HOVER}`}
+        data-provider-usage={provider ?? undefined}
+        data-usage-status={!provider && limits.length === 0 ? '' : undefined}
+      >
+        <ProfileDot color={profile.color} size={7} />
+        <span className="shrink-0 truncate text-muted">{profile.name}</span>
+        <span className="min-w-0 truncate text-meta text-faint tabular-nums">{text}</span>
+      </button>
+    </li>
   );
 }

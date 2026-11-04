@@ -86,6 +86,7 @@ import { boxPlaceholder } from '../composer/trayFold.ts';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker } from './ActivityGroup.tsx';
 import { WorkingPanel, type WorkingState } from '../ui/WorkingPanel.tsx';
+import { workingLabel } from './workingLabel.ts';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
@@ -229,7 +230,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
     );
   }
   if (!running || !showIndicator) return null;
-  const label = live.waitingSince !== null ? 'Waiting for you' : compacting ? 'Compacting the conversation' : block?.kind === 'tool' ? `Using ${block.text}` : block?.kind === 'thinking' ? 'Thinking' : 'Working';
+  const label = workingLabel({ waiting: live.waitingSince !== null, compacting, block });
   const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'still' : 'working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>

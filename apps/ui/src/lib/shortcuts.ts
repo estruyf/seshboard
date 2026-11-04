@@ -345,6 +345,16 @@ export const SHORTCUTS = [
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
   {
+    id: "home.pick",
+    keys: ["mod+1..9"],
+    action: "Start in a project",
+    section: "general",
+    context: "On Home",
+    note: "With what you typed in the start box as the prompt",
+    when: (ctx) => ctx.view === "home" && ctx.focus !== "terminal",
+    reserve: false,
+  },
+  {
     id: "upcoming",
     keys: ["mod+shift+y"],
     action: "Upcoming: queued and scheduled",
