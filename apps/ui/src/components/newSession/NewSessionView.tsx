@@ -417,8 +417,15 @@ function LocalNewSession() {
   useEffect(() => {
     if (!newSessionIn) return;
     if (fromLater || fromSchedule) leaveQueued();
-    worktreeFor.current = useProjects.getState().newSessionWorktree ? newSessionIn : null;
+    const { newSessionWorktree, newSessionPrompt } = useProjects.getState();
+    worktreeFor.current = newSessionWorktree ? newSessionIn : null;
     setCwd(newSessionIn);
+    // Home's start box: the text after the project's name is the prompt, for you to check and send.
+    if (newSessionPrompt) {
+      setRestored(null);
+      setPreset({ text: newSessionPrompt, seq: ++presets.current });
+      setDraftPrompt(newSessionPrompt);
+    }
     useProjects.getState().startIn(null);
   }, [newSessionIn]);
   useEffect(() => {

@@ -69,6 +69,30 @@ export function useProviderQuota(profileId: string | null): ProviderQuota | null
   return profileId && state?.profileId === profileId ? state.quota : null;
 }
 
+/** `useProviderQuota` for several provider profiles at once (Home's usage column), by profile id. */
+export function useProviderQuotas(profileIds: readonly string[]): ReadonlyMap<string, ProviderQuota | null> {
+  const connection = useEngineConnection();
+  const client = connection.status === 'connected' ? connection.client : null;
+  const [quotas, setQuotas] = useState<ReadonlyMap<string, ProviderQuota | null>>(new Map());
+  const key = profileIds.join('\0');
+  useEffect(() => {
+    if (!client || profileIds.length === 0) return;
+    let current = true;
+    const ask = () => {
+      for (const profileId of profileIds) {
+        void client.call('providers.quota', { profileId }).then((r) => current && setQuotas((m) => new Map(m).set(profileId, r.quota)), () => {});
+      }
+    };
+    ask();
+    const timer = setInterval(ask, 5 * 60_000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [client, key]);
+  return quotas;
+}
+
 export const useProvider = (id: OptionalProvider | null) => useProviders((s) => (id ? s.providers.find((p) => p.id === id) : undefined));
 
 /** The command that continues a session in its provider's CLI, from the provider's template. */

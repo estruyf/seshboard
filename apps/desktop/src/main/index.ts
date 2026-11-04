@@ -3713,6 +3713,10 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   // Here New session has a folder (the project just added), so starting while Auto chooses can be checked too.
   await smokeRun.step('auto model: menu, chip, Stop while choosing, Auto off, settings', () => runAutoModelStep(win), { cleanup: false });
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
+  // Home without projects is the way to add the first one: its lanes, projects and start box need this one.
+  await smokeRun.step('home: three lanes and usage on the right when wide, two lanes at 900px, one under 760px', () => runHomeLayoutStep(win), { cleanup: false, timeoutMs: 60_000 });
+  await smokeRun.step('home: a To review card opens its session with the catch-up', () => runHomeReviewStep(win), { cleanup: false });
+  await smokeRun.step('home: a project name and Enter in the start box open New session in it', () => runHomeStartStep(win), { cleanup: false });
 
   // Projects opens on the project last open; its Settings show the default saved from New session.
   await click('[data-open-projects]');
@@ -9740,6 +9744,171 @@ async function runUsageViewStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000))) return 'Esc did not leave the Usage view';
   return `ok: opened from ${opened[0]} for ${profile}, ${limits} limit card(s), every period, ${openedSession}, Esc went back`;
+}
+
+/** Home, from wherever the app is: ⌘⇧H, then its page. */
+async function goHome(win: BrowserWindow): Promise<boolean> {
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'H', modifiers: [MOD_MODIFIER, 'shift'] });
+  return waitInPage(win, "!!document.querySelector('[data-home]')", 3_000);
+}
+
+/** Sets the window so Home's view (the container beside the sidebar) is `width` wide; returns the width it got. */
+async function homeViewWidth(win: BrowserWindow, width: number): Promise<number> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = "document.querySelector('[data-home]').parentElement.clientWidth";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const now = (await js(view)) as number;
+    if (Math.abs(now - width) <= 2) return now;
+    const [current, height] = win.getContentSize();
+    win.setContentSize(Math.max(400, current! + width - now), height!);
+    await waitInPage(win, `Math.abs(${view} - ${width}) <= 2`, 1_500);
+  }
+  return (await js(view)) as number;
+}
+
+/**
+ * Home using the width (Round 59): wide, the three lanes side by side, and usage in a column on the right of the
+ * projects; at 900px, two lanes (an empty Needs you left out, the line under the greeting says so) and usage under the
+ * rest; under 760px, one column. Screenshots of Home 1600, 1000 and 700px wide, in light and dark. Read-only.
+ */
+async function runHomeLayoutStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!(await goHome(win))) return `Home did not open (${String(await js("document.body.innerText.slice(0, 400)"))})`;
+  const [width, height] = win.getContentSize();
+  const scheme = nativeTheme.themeSource;
+  /** The lanes on screen, by where they sit, and where the usage column is against the projects. */
+  const layout = `(() => {
+    const box = (el) => el && el.offsetParent ? el.getBoundingClientRect() : null;
+    const lanes = [...document.querySelectorAll('[data-home-lane]')].map((el) => ({ id: el.dataset.homeLane, r: box(el) })).filter((l) => l.r);
+    const usage = box(document.querySelector('[data-home-usage]'));
+    const projects = box(document.querySelector('[data-home-projects]'));
+    return {
+      lanes: lanes.map((l) => l.id),
+      rows: new Set(lanes.map((l) => Math.round(l.r.top))).size,
+      columns: new Set(lanes.map((l) => Math.round(l.r.left))).size,
+      usageRight: !!usage && !!projects && usage.left >= projects.right && Math.abs(usage.top - projects.top) < 40,
+      usageUnder: !!usage && !!projects && usage.top >= projects.bottom,
+      start: !!document.querySelector('[data-home-start] input[aria-label="Start a session"]'),
+      summary: document.querySelector('[data-home-summary]')?.textContent ?? '',
+      heading: document.querySelector('[data-home] h1')?.textContent ?? '',
+    };
+  })()`;
+  type Layout = { lanes: string[]; rows: number; columns: number; usageRight: boolean; usageUnder: boolean; start: boolean; summary: string; heading: string };
+  try {
+    const wide = await homeViewWidth(win, 1480);
+    if (!(await waitInPage(win, `(${layout}).columns === 3 && (${layout}).rows === 1`, 3_000))) return `at ${wide}px the lanes are not three side by side (${JSON.stringify(await js(layout))})`;
+    const atWide = (await js(layout)) as Layout;
+    if (!atWide.start) return 'no start box labelled "Start a session"';
+    if (!/^Good (morning|afternoon|evening)$/.test(atWide.heading)) return `the heading says "${atWide.heading}"`;
+    if (!/needs you/i.test(atWide.summary)) return `the summary doesn't say what needs you: "${atWide.summary}"`;
+    if (!(await waitInPage(win, `(${layout}).usageRight`, 3_000))) return `at ${wide}px usage is not on the right of the projects`;
+    if (!(await js("!!document.querySelector('[data-home-usage] [data-home-profile]')"))) return 'the usage column shows no profile';
+
+    const medium = await homeViewWidth(win, 900);
+    if (!(await waitInPage(win, `(${layout}).columns === 2 && (${layout}).usageUnder`, 3_000))) return `at ${medium}px there aren't two lanes with usage under the rest (${JSON.stringify(await js(layout))})`;
+    const atMedium = (await js(layout)) as Layout;
+    const needsShown = atMedium.lanes.includes('needs');
+    const needsEmpty = (await js("!!document.querySelector('[data-home-lane=\"needs\"] [data-home-lane-empty]')")) as boolean;
+    if (needsEmpty && needsShown) return 'at 900px an empty Needs you still shows';
+
+    const narrow = await homeViewWidth(win, 700);
+    if (!(await waitInPage(win, `(${layout}).columns === 1 && (${layout}).usageUnder`, 3_000))) return `at ${narrow}px Home is not one column (${JSON.stringify(await js(layout))})`;
+
+    // The pull request's pictures: Home 1600, 1000 and 700px wide (the window can't be narrower than 900), light and dark.
+    win.setContentSize(win.getContentSize()[0]!, Math.max(height!, 900));
+    for (const mode of ['light', 'dark'] as const) {
+      nativeTheme.themeSource = mode;
+      if (!(await waitInPage(win, `matchMedia('(prefers-color-scheme: dark)').matches === ${mode === 'dark'}`, 3_000))) return `the window did not switch to ${mode}`;
+      for (const shotWidth of [1600, 1000, 700]) {
+        await homeViewWidth(win, shotWidth);
+        await js('document.querySelector("[data-home]")?.parentElement?.scrollTo(0, 0)');
+        await shot(win, `home-${shotWidth}-${mode}.png`);
+      }
+    }
+    return `ok: three lanes and usage on the right at ${wide}px; ${atMedium.lanes.join(', ')} in two columns with usage under at ${medium}px${needsEmpty ? ' (empty Needs you left out)' : ''}; one column at ${narrow}px; "${atWide.summary}"`;
+  } finally {
+    nativeTheme.themeSource = scheme;
+    win.setContentSize(width!, height!);
+  }
+}
+
+/**
+ * Home's To review (Round 59): an idle session from the top of the sidebar, marked unread with a catch-up
+ * (built from its transcript with the stubbed summary, as the catch-up step does), is a card in To review; clicking it
+ * opens the session with the catch-up in full. Nothing is sent, committed or archived.
+ */
+async function runHomeReviewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  // An idle session at the top of the sidebar, other than the smoke session (earlier steps in a full run pop that one
+  // out or move it about); the list is virtualised, so from its top. Never one running in Claude Code.
+  const running = [...((await runningSessions())?.ids ?? [])];
+  const id = (await js(`(() => {
+    const list = document.querySelector('[data-session-list]');
+    if (!list) return null;
+    list.scrollTop = 0;
+    const rows = [...list.querySelectorAll('[data-session-id][data-indexed="true"]')].filter((r) => r.closest('[data-row-wrap]') && !/Claude is working|Waiting for you/.test(r.getAttribute('aria-label') ?? '') && !${JSON.stringify(running)}.includes(r.dataset.sessionId));
+    return (rows.find((r) => r.dataset.sessionId !== ${JSON.stringify(smokeSessionId)}) ?? rows[0])?.dataset.sessionId ?? null;
+  })()`)) as string | null;
+  if (!id) return 'no idle session in the sidebar to review';
+  const view = `[data-current-session="${id}"]`;
+  const row = `document.querySelector('[data-session-list] [data-session-id="${id}"]')`;
+  await js(`${row}.click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-transcript-item]')`, 5_000))) return `the session ${id} did not open`;
+  // A catch-up to open with: built now unless the session has one (its strip or banner shows).
+  const hasCard = `!!document.querySelector('${view} [data-catchup-strip], ${view} [data-catchup-banner]')`;
+  if (!(await js(hasCard)) && (await openPalette(win, 'K', ['meta'], 'commands'))) {
+    await setFieldValue(win, '[data-palette-input]', 'Catch up on this session');
+    if (await waitInPage(win, "!!document.querySelector('[data-palette-command=\"build-catch-up\"]')", 3_000)) await js("document.querySelector('[data-palette-command=\"build-catch-up\"]').click()");
+    else await closePalette(win);
+    await waitInPage(win, hasCard, 10_000);
+  }
+  const withCatchUp = (await js(hasCard)) as boolean;
+  // Unread from its row (U), then Home lists it under To review. The list scrolls until the row is drawn.
+  const revealed = await js(`(async () => {
+    const list = document.querySelector('[data-session-list]');
+    for (let top = 0; list && top <= list.scrollHeight; top += Math.max(100, list.clientHeight / 2)) {
+      list.scrollTop = top;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (${row}) return true;
+    }
+    return false;
+  })()`);
+  if (!revealed) return "the smoke session's row is not in the sidebar";
+  await js(`${row}.focus(); ${row}.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', bubbles: true }))`);
+  if (!(await waitInPage(win, `/New activity since you last looked/.test(${row}?.getAttribute('aria-label') ?? '')`, 2_000))) return 'U did not mark the smoke session unread';
+  if (!(await goHome(win))) return 'Home did not open';
+  const card = `document.querySelector('[data-home-lane="review"] [data-home-review="${id}"]')`;
+  if (!(await waitInPage(win, `!!${card}`, 3_000))) return `To review does not list the unread session (${String(await js("document.querySelector('[data-home-lane=\"review\"]')?.innerText ?? 'no lane'"))})`;
+  const label = (await js(`${card}.getAttribute('aria-label')`)) as string;
+  if (withCatchUp && !/min to review|Nothing to review/.test(label)) return `the card's label has no review time: "${label}"`;
+  await shot(win, 'home-review.png');
+  await js(`${card}.click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'the card did not open its session';
+  if (withCatchUp && !(await waitInPage(win, `!!document.querySelector('${view} [data-catchup-banner]')`, 3_000))) return 'the session opened without its catch-up';
+  return `ok: "${label}" in To review opened its session${withCatchUp ? ' with the catch-up in full' : ' (no catch-up to show)'}`;
+}
+
+/**
+ * Home's start box (Round 59): a project's name, a task, and ↩ open New session in that project with the task as its
+ * prompt, which is never sent; it is cleared again, so no unsent prompt is left behind.
+ */
+async function runHomeStartStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!(await goHome(win))) return 'Home did not open';
+  const project = (await js("(() => { const el = document.querySelector('[data-home-project]'); return el ? { root: el.dataset.homeProject, name: el.dataset.homeProjectName } : null; })()")) as { root: string; name: string } | null;
+  if (!project) return 'Home lists no project to start in';
+  const task = 'smoke check of the start box';
+  await setFieldValue(win, '[data-home-start-input]', `${project.name} ${task}`);
+  if (!(await waitInPage(win, `document.querySelector('[data-home-start-project]')?.dataset.homeStartProject === ${JSON.stringify(project.root)}`, 2_000))) return `typing "${project.name}" did not pick it`;
+  await js("document.querySelector('[data-home-start-input]').focus()");
+  pressKey(win, 'Return');
+  const prompt = "document.querySelector('[data-new-session-view] [data-composer]')";
+  const opened = await waitInPage(win, `document.querySelector('[data-folder-select]')?.dataset.value === ${JSON.stringify(project.root)} && ${prompt}?.value === ${JSON.stringify(task)}`, 5_000);
+  const seen = (await js(`({ folder: document.querySelector('[data-folder-select]')?.dataset.value ?? null, prompt: ${prompt}?.value ?? null })`)) as { folder: string | null; prompt: string | null };
+  if (await js(`!!${prompt}`)) await setFieldValue(win, '[data-new-session-view] [data-composer]', '');
+  await goHome(win);
+  if (!opened) return `New session did not open in ${project.name} with the task (${JSON.stringify(seen)})`;
+  return `ok: "${project.name} ${task}" and ↩ opened New session in ${project.name} with the task, not sent`;
 }
 
 /**
