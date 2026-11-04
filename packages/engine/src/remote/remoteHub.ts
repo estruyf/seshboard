@@ -10,6 +10,7 @@ import {
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
+  RemoteAppUpdate,
   RemoteTheme,
   RpcError,
   type Handlers,
@@ -73,6 +74,7 @@ import { nextFreePort } from './freePort.ts';
 import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
 import { SessionOrigins } from './sessionOrigins.ts';
 import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
@@ -84,7 +86,6 @@ const THEME_KEY = 'remote.theme';
 const VAPID_KEY = 'remote.vapid';
 /** Each paired device's push subscription and the moments it wants, by device id. */
 const PUSH_KEY = 'remote.push';
-/** How long a finished turn's push waits for its catch-up, which says what happened. */
 const CATCH_UP_WAIT_MS = 8_000;
 
 type PushEntry = {
@@ -259,6 +260,12 @@ export interface RemoteHubOptions {
   cancelClone(jobId: string): void;
   /** Pipelines: the runs in the list, and what a phone may do with them. Without it a phone sees no runs. */
   pipelines?: RemotePipelines;
+  /**
+   * Seshboard's updater, in main: `check`, or `install` (check, download and restart), for Seshboard on another paired
+   * computer, named by `by` (main says who started it). Without it (tests, a computer without the app)
+   * `app.update.get` answers null.
+   */
+  runAppUpdate?(command: 'check' | 'install', by: string): void;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
@@ -348,6 +355,17 @@ export class RemoteHub {
   private appIcon: string = DEFAULT_APP_ICON;
   /** The theme the app shows (`remote.setTheme`), for phones that look like this computer. */
   private theme: RemoteTheme | null;
+  /** Seshboard's updater as main last said (`setAppUpdate`); null until it did. */
+  private appUpdate: RemoteAppUpdate | null = null;
+  /** Update when it's idle, from another computer: it starts once no session here works. */
+  private readonly idleUpdate = new IdleUpdate({
+    working: () => this.list().sessions.filter((s) => s.status === 'working' || s.status === 'needs-you' || s.status === 'background').length,
+    start: (by) => {
+      this.log('info', `Remote: no session works now, so the update ${by} asked for starts`);
+      this.options.runAppUpdate?.('install', by);
+    },
+    changed: () => this.emitAppUpdate(),
+  });
 
   /** Every Remote log line: to the app's windows, and to `remote.log` when the engine keeps one. */
   private readonly log: RemoteHubOptions['log'];
@@ -488,6 +506,8 @@ export class RemoteHub {
     if (this.changeTimer || !this.server.listening) return;
     this.changeTimer = setTimeout(() => {
       this.changeTimer = undefined;
+      // Update when it's idle: this may be the change that leaves nothing working.
+      this.idleUpdate.check();
       const snapshot = this.list();
       // A session that left the list (archived, out of scope) is no longer a phone's to follow: its watch ends, so
       // nothing more of it is sent.
@@ -537,6 +557,28 @@ export class RemoteHub {
     if (enabled === this.previewApp) return;
     this.previewApp = enabled;
     if (!enabled && this.server.listening) this.server.closeRefused();
+  }
+
+  /**
+   * Seshboard's updater moved on, from main (also once after each start): paired computers hear it. Phones don't:
+   * only Seshboard on another computer may update this one.
+   */
+  setAppUpdate(update: RemoteAppUpdate): void {
+    if (JSON.stringify(update) === JSON.stringify(this.appUpdate)) return;
+    this.appUpdate = update;
+    this.emitAppUpdate();
+  }
+
+  /** The updater as the computers see it: main's, and whether an update waits for idle here. */
+  private shownAppUpdate(): RemoteAppUpdate | null {
+    return this.appUpdate && this.options.runAppUpdate ? { ...this.appUpdate, whenIdle: this.idleUpdate.waiting } : null;
+  }
+
+  private emitAppUpdate(): void {
+    const update = this.shownAppUpdate();
+    if (!update || !this.server.listening) return;
+    const computers = new Set(this.devices.list().flatMap((d) => (d.kind === 'computer' ? [d.id] : [])));
+    this.server.each((rpc, deviceId) => computers.has(deviceId) && rpc.emit('app.update.changed', update));
   }
 
   /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
@@ -879,6 +921,20 @@ export class RemoteHub {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
   }
 
+  /** The `app.update.*` methods are for Seshboard on another computer only: a phone or a browser is refused. */
+  private mayUpdate(device: RemoteDevice): void {
+    if (device.kind !== 'computer') throw new RpcError('FORBIDDEN', 'Only Seshboard on another computer can update this one');
+  }
+
+  /** Main's updater, for a computer that may use it; refused while it can't update (development, no feed, turned off). */
+  private updater(device: RemoteDevice): NonNullable<RemoteHubOptions['runAppUpdate']> {
+    this.mayUpdate(device);
+    const run = this.options.runAppUpdate;
+    if (!run || !this.appUpdate) throw new RpcError('UNAVAILABLE', 'Seshboard can’t be updated from here');
+    if (this.appUpdate.status === 'disabled') throw new RpcError('UNAVAILABLE', this.appUpdate.disabledReason ?? 'Updates are turned off on this computer');
+    return run;
+  }
+
   private handlers(device: RemoteDevice): Omit<Handlers<RemoteContract>, 'hello'> {
     const label = (sessionId: string, uuid: string) => {
       let map = this.sentFrom.get(sessionId);
@@ -1210,6 +1266,35 @@ export class RemoteHub {
         return {};
       },
       'theme.get': () => ({ theme: this.theme }),
+      // Only Seshboard on another paired computer, never a phone or a browser (docs/remote-access.md, the threat model).
+      // Each call is in the log with that computer's name, so whoever is on this one can see who updated it.
+      'app.update.get': () => {
+        this.mayUpdate(device);
+        return { update: this.shownAppUpdate() };
+      },
+      'app.update.check': () => {
+        const run = this.updater(device);
+        this.log('info', `Remote: ${device.name} checks for updates here`);
+        run('check', device.name);
+        return {};
+      },
+      'app.update.install': ({ when }) => {
+        const run = this.updater(device);
+        if (when === 'idle') {
+          this.log('info', `Remote: ${device.name} asked to update once no session works here`);
+          this.idleUpdate.wait(device.name);
+        } else {
+          this.log('info', `Remote: ${device.name} asked to update and restart now`);
+          this.idleUpdate.cancel();
+          run('install', device.name);
+        }
+        return {};
+      },
+      'app.update.cancel': () => {
+        this.mayUpdate(device);
+        if (this.idleUpdate.cancel()) this.log('info', `Remote: ${device.name} cancelled the update that waited for idle`);
+        return {};
+      },
       'device.visibility': ({ visible }, phone) => {
         if (!this.visible.has(phone) && visible) phone.onDispose(() => this.visible.delete(phone));
         if (visible) this.visible.set(phone, device.id);

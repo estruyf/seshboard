@@ -37,6 +37,7 @@ export * from './sideQuestionConstants.ts';
 export * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export * from './remote.ts';
+export * from './appUpdate.ts';
 export * from './computers.ts';
 export * from './clone.ts';
 export * from './githubRepo.ts';

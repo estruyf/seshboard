@@ -88,6 +88,7 @@ import {
   projectPrBase,
   type PipelineNotice,
   type ProviderDetection,
+  type RemoteAppUpdate,
 } from '@seshboard/protocol';
 import { LiveRegistry } from './claude/liveRegistry.ts';
 import { createProjectResolver } from './claude/projectResolver.ts';
@@ -253,7 +254,18 @@ export interface EngineOptions {
    * turns it on. `deviceKey` asks main for this app's own key for other computers (Other computers), kept the same
    * way; only called once one is paired. Without it, this app can't pair with another computer.
    */
-  remote?: { appVersion: string; appUrl?: string; previewApp?: boolean; identity(): Promise<Uint8Array | null>; deviceKey?(): Promise<Uint8Array | null> };
+  remote?: {
+    appVersion: string;
+    appUrl?: string;
+    previewApp?: boolean;
+    identity(): Promise<Uint8Array | null>;
+    deviceKey?(): Promise<Uint8Array | null>;
+    /**
+     * Seshboard's updater in main, for updating from another paired computer (`by`, its name, for the notification
+     * here); without it other computers can't update this one.
+     */
+    runAppUpdate?(command: 'check' | 'install', by: string): void;
+  };
   /**
    * Plan usage to report per config folder instead of asking Claude Code, with its % history: the website's
    * screenshots, whose made-up logins have no plan. Never set in normal use.
@@ -397,6 +409,8 @@ export interface Engine {
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
   setRemotePreview(enabled: boolean): void;
+  /** Seshboard's updater state, from main on each change: paired phones show it and can update this computer. */
+  setAppUpdate(update: RemoteAppUpdate): void;
   /** Whether a window has focus, from main: running pull request checks are read every 30 seconds then, else every 5 minutes. */
   setForeground(foreground: boolean): void;
   /**
@@ -2443,6 +2457,7 @@ export function createEngine(options: EngineOptions): Engine {
       filesDir: join(options.dataDir, 'remote-files'),
       logFile: join(options.dataDir, REMOTE_LOG_FILE),
       identity: options.remote.identity,
+      ...(options.remote.runAppUpdate ? { runAppUpdate: options.remote.runAppUpdate } : {}),
       sources: () => ({ summaries: sessions.snapshot().sessions, live: liveList(), ...hosts.list(), kept: keptSessions() }),
       triggerSessions: () => triggers.sessions(),
       archiveAfterDays: () => retention.archiveAfterDays,
@@ -4477,6 +4492,7 @@ export function createEngine(options: EngineOptions): Engine {
     setChrome: (enabled) => hosts.setChrome(enabled),
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
+    setAppUpdate: (update) => remote?.setAppUpdate(update),
     setForeground: (foreground) => {
       checksWatcher.setForeground(foreground);
       looseEnds?.setForeground(foreground);

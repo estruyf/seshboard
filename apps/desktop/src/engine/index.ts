@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { RemoteAppUpdate } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -69,6 +70,8 @@ const engine = createEngine({
           appVersion,
           identity: remoteKey('identity'),
           deviceKey: remoteKey('device'),
+          // Updating from another paired computer: Seshboard's updater lives in main, which says who started it.
+          runAppUpdate: (command: 'check' | 'install', by: string) => process.parentPort.postMessage({ type: 'app-update', command, by }),
           ...(process.env.SESHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SESHBOARD_REMOTE_APP_URL } : {}),
         },
       }),
@@ -179,6 +182,12 @@ process.parentPort.on('message', (event) => {
   // Settings › Theme › App icon, for paired phones.
   if (data?.type === 'appIcon') {
     engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
+    return;
+  }
+  // Seshboard's updater, on each change: paired phones show it.
+  if (data?.type === 'appUpdate') {
+    const update = RemoteAppUpdate.safeParse((data as { state?: unknown }).state);
+    if (update.success) engine.setAppUpdate(update.data);
     return;
   }
   // The preview's remote app: development and beta builds, or the Beta update channel (Settings › About).

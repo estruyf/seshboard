@@ -61,6 +61,7 @@ export * from './githubRepo.ts';
 export * from './computerConstants.ts';
 export * from './computerMine.ts';
 export * from './remoteConstants.ts';
+export * from './appUpdate.ts';
 export type * from './mods.ts';
 export * from './modsConstants.ts';
 export * from './savedPrompts.ts';

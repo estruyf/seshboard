@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ComputersStatus, RemoteSessions } from '@seshboard/protocol/client';
+import type { RowAsk } from '../components/computers/computerUpdate.ts';
 import type { ComputerScope } from './remoteRows.ts';
 import { parseRemoteRowId, remoteRowId, type RemoteRef } from './remoteSelection.ts';
 import { useSessions } from './sessionsStore.ts';
@@ -63,6 +64,13 @@ interface ComputersState {
   scopes: ReadonlyMap<string, ComputerScope>;
   /** The computer whose notifications Settings › Remote opens on (from its chip's menu), until it has. */
   notifyFor: string | null;
+  /**
+   * A check or an update this window asked a computer for (Settings › Remote), by computer id, until it is over or
+   * replaced: its row says how it goes.
+   */
+  updateAsks: ReadonlyMap<string, RowAsk>;
+  /** The version each computer updated to from here, for "Updated" on its row for the rest of the app session. */
+  updatedTo: ReadonlyMap<string, string>;
   setStatus(status: ComputersStatus): void;
   setList(computerId: string, list: RemoteSessions): void;
   /**
@@ -77,7 +85,17 @@ interface ComputersState {
   /** Opens Settings › Remote at a computer's notifications. */
   openNotifications(computerId: string): void;
   clearNotifyFor(): void;
+  setUpdateAsk(computerId: string, ask: RowAsk | null): void;
+  setUpdatedTo(computerId: string, version: string): void;
 }
+
+/** A map without `key`, or with it set to `value`. */
+const withEntry = <V>(map: ReadonlyMap<string, V>, key: string, value: V | null): ReadonlyMap<string, V> => {
+  const next = new Map(map);
+  if (value === null) next.delete(key);
+  else next.set(key, value);
+  return next;
+};
 
 /** Other computers this app paired with (docs/remote-access.md): their state and sessions, for the sidebar and their sessions' panes. */
 export const useComputers = create<ComputersState>()((set) => ({
@@ -88,6 +106,8 @@ export const useComputers = create<ComputersState>()((set) => ({
   hidden: readHidden(),
   scopes: readScopes(),
   notifyFor: null,
+  updateAsks: new Map(),
+  updatedTo: new Map(),
   setStatus: (status) => {
     // A forgotten computer's list (and its rows, its panes and its place in the filter) goes with it.
     const ids = new Set(status.computers.map((c) => c.id));
@@ -129,4 +149,6 @@ export const useComputers = create<ComputersState>()((set) => ({
     useSessions.getState().openSettings('remote');
   },
   clearNotifyFor: () => set({ notifyFor: null }),
+  setUpdateAsk: (computerId, ask) => set((s) => ({ updateAsks: withEntry(s.updateAsks, computerId, ask) })),
+  setUpdatedTo: (computerId, version) => set((s) => ({ updatedTo: withEntry(s.updatedTo, computerId, version) })),
 }));

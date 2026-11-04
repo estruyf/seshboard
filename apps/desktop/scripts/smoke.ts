@@ -107,7 +107,8 @@ const freePort = await freePortNow();
 const computerDir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-computer-'));
 const computerLink = join(computerDir, 'link.txt');
 const otherComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
-  env: { ...process.env, SESHBOARD_DEMO_DIR: computerDir, SESHBOARD_DEMO_NAME: 'Smoke Mac', SESHBOARD_DEMO_LINK_FILE: computerLink, PORT: String(freePort) },
+  // An older Seshboard than this app's, so Settings › Remote offers to update it.
+  env: { ...process.env, SESHBOARD_DEMO_DIR: computerDir, SESHBOARD_DEMO_NAME: 'Smoke Mac', SESHBOARD_DEMO_LINK_FILE: computerLink, SESHBOARD_DEMO_VERSION: '1.0.0', PORT: String(freePort) },
   stdio: 'ignore',
 });
 childEnv.SESHBOARD_SMOKE_COMPUTER_LINK = computerLink;

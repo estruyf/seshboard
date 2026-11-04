@@ -5,8 +5,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand } from '@seshboard/protocol/bridge';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
 import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
@@ -173,6 +173,9 @@ const updater = new Updater({
   ...(mockFeedUrl ? { mockFeedUrl } : {}),
   onState: (state) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IpcChannel.updateState, state);
+    // Paired computers show it, and can update this one from there (Settings › Remote there).
+    engine?.sendStanding({ type: 'appUpdate', state });
+    remoteUpdateNotice(state);
   },
   beforeInstall: () => engine?.stop(),
   // Squirrel didn't restart the app (run from the DMG, a read-only folder): bring the engine back.
@@ -182,6 +185,22 @@ const updater = new Updater({
 ipcMain.on(IpcChannel.getUpdateState, (event) => {
   event.returnValue = updater.state;
 });
+
+/** The computer that started the update from afar, until the notification here says so. */
+let remoteUpdateBy: string | null = null;
+
+/**
+ * An update another computer started: whoever is on this one hears it, once the download or the install starts
+ * ("Updating to 1.3.0, started from Elio's MacBook Pro."). Nothing when it found nothing or failed: that computer says so.
+ */
+function remoteUpdateNotice(state: UpdateState): void {
+  if (!remoteUpdateBy) return;
+  if (state.status === 'downloading' || state.status === 'installing') {
+    const version = state.downloadedVersion ?? state.availableVersion;
+    if (Notification.isSupported()) new Notification({ title: 'Seshboard', body: `Updating${version ? ` to ${version}` : ''}, started from ${remoteUpdateBy}.` }).show();
+    remoteUpdateBy = null;
+  } else if (state.status === 'up-to-date' || state.status === 'error' || state.status === 'disabled') remoteUpdateBy = null;
+}
 ipcMain.on(IpcChannel.updateCommand, (_event, command: unknown) => {
   if (command === 'check' || command === 'download' || command === 'install' || command === 'retry' || command === 'dismiss') updater.run(command satisfies UpdateCommand);
 });
@@ -522,6 +541,16 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
+    return undefined;
+  }
+  // Another paired computer asked: check, or update and restart (it asked about the sessions working here first).
+  if (request?.type === 'app-update') {
+    const { command, by } = request as { command?: unknown; by?: unknown };
+    if (command === 'check') void updater.check();
+    else if (command === 'install') {
+      remoteUpdateBy = typeof by === 'string' && by ? by : 'another computer';
+      void updater.updateAndRestart();
+    }
     return undefined;
   }
   // Remote's keys, only asked for once Remote is on or another computer is paired (so the keychain is left alone otherwise).
@@ -4806,6 +4835,80 @@ async function computerPage(win: BrowserWindow, computerId: string, settingsRow:
   return null;
 }
 
+/**
+ * Settings › Remote updates another computer: the demo computer runs an older Seshboard than this app and hasn't seen
+ * the new one (scripts/remote-demo.ts), so its row says this Mac knows it, with Update. Its sessions work, so Update
+ * asks first with Update when it's idle focused; that waits ("when idle"), and Cancel update stops it. ⋯ › Check for
+ * updates says it checks, then what it found. Rename, Colour and Remove are only in ⋯. It pairs the computer and
+ * removes it again.
+ */
+async function runComputerUpdateStep(win: BrowserWindow): Promise<string> {
+  const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
+  if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  if (!(await until(() => existsSync(linkFile), 20_000))) return 'the second computer wrote no pairing link';
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computers-link]')", 5_000))) return 'Settings › Remote has no field for another computer’s link';
+  await setFieldValue(win, '[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+  await click('[data-computers-add]');
+  const row = '[data-computer][data-computer-state="connected"]';
+  if (!(await waitInPage(win, `document.querySelector('${row}')`, 20_000))) return `the second computer did not connect: ${await js("document.querySelector('[data-computers-settings]')?.innerText.replace(/\\s+/g, ' ').slice(0, 200)")}`;
+  const state = `document.querySelector('${row} [data-computer-update-state]')`;
+  const line = () => js(`${state}?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`) as Promise<string>;
+
+  // 1. This Mac knows a newer version than the one it runs, and it hasn't seen it: Update.
+  if (!(await waitInPage(win, `${state}?.dataset.computerUpdateState === 'behind' && document.querySelector('${row} [data-computer-update="update"]')`, 10_000))) return `the row offers no update (${await line()})`;
+  const behind = await line();
+  await shot(win, 'computer-update-row.png');
+  if (!/is out · Smoke Mac hasn’t seen it yet/.test(behind) || !behind.includes('1.0.0')) return `the row says "${behind}"`;
+  const label = (await js(`document.querySelector('${row} [data-computer-update="update"]').getAttribute('aria-label')`)) as string;
+  if (!/^Update Smoke Mac to \d/.test(label)) return `Update is labelled "${label}"`;
+
+  // 2. Its sessions work: the panel asks, with Update when it's idle focused.
+  await click(`${row} [data-computer-update="update"]`);
+  if (!(await waitInPage(win, `document.querySelector('${row} [data-computer-update-panel][role=group]')`, 3_000))) return 'Update did not ask first with sessions working there';
+  const panel = (await js(`document.querySelector('${row} [data-computer-update-panel]').innerText.replace(/\\s+/g, ' ')`)) as string;
+  if (!/sessions? (is|are) working on Smoke Mac/.test(panel)) return `the panel says "${panel.slice(0, 160)}"`;
+  if (!(await waitInPage(win, "document.activeElement?.hasAttribute('data-computer-update-idle')", 2_000))) return 'Update when it’s idle does not have the focus';
+  await shot(win, 'computer-update-panel.png');
+
+  // 3. When idle: it waits, then Cancel update stops it.
+  await click('[data-computer-update-idle]');
+  if (!(await waitInPage(win, `${state}?.dataset.computerUpdateState === 'waiting'`, 5_000))) return `the row does not say it waits for idle (${await line()})`;
+  const waiting = await line();
+  if (!/updates to .+ when idle/.test(waiting)) return `the row says "${waiting}" while it waits`;
+  await click(`${row} [data-computer-update="cancel"]`);
+  if (!(await waitInPage(win, `${state}?.dataset.computerUpdateState === 'behind'`, 5_000))) return `Cancel update did not stop the wait (${await line()})`;
+
+  // 4. ⋯ › Check for updates: Checking for updates…, then what it found.
+  await click(`${row} [data-computer-more]`);
+  if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-computer-check]')", 3_000))) return '⋯ has no Check for updates';
+  const items = (await js("[...document.querySelectorAll('[role=menu] [role^=menuitem]')].map((el) => el.innerText.trim().split('\\n')[0])")) as string[];
+  await shot(win, 'computer-more-menu.png');
+  await click('[role=menu] [data-computer-check]');
+  if (!(await waitInPage(win, `${state}?.dataset.computerUpdateState === 'checking'`, 3_000))) return `Check for updates did not say it checks (${await line()})`;
+  if (!(await waitInPage(win, `['not-found', 'up-to-date', 'behind'].includes(${state}?.dataset.computerUpdateState)`, 5_000))) return `the check said nothing after (${await line()})`;
+  const checked = await line();
+
+  // 5. Rename, Colour and Remove are in ⋯, not on the row.
+  if (await js(`Boolean(document.querySelector('${row} [data-computer-rename], ${row} [data-computer-colour], ${row} [data-computer-forget]'))`)) return 'the row still has Rename, Colour or Remove buttons';
+  if (!['Rename…', 'Colour', 'Remove…'].every((item) => items.some((text) => text.startsWith(item)))) return `⋯ has ${items.join(', ')}`;
+
+  // Clean up: the computer removed, through ⋯ › Remove….
+  await click(`${row} [data-computer-more]`);
+  await waitInPage(win, "document.querySelector('[role=menu] [data-computer-forget]')", 3_000);
+  await click('[role=menu] [data-computer-forget]');
+  await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
+  await click('[data-confirm-strip] [data-confirm]');
+  const removed = await waitInPage(win, "!document.querySelector('[data-computer]')", 5_000);
+  pressKey(win, 'Escape');
+  if (!removed) return 'the computer did not go after Remove';
+  return `ok: "${behind}", Update asked first with Update when it’s idle focused, "${waiting}" then Cancel update, Check for updates then "${checked}"; ⋯ has ${items.join(', ')}; removed again`;
+}
+
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
   if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
@@ -4826,38 +4929,50 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   // Rename and Colour: a name of its own here (shown with its own name next to it), then back to its own by clearing
   // it; and green, which its rows check below (1).
   const settingsRow = `[data-computer=${JSON.stringify(computerId)}]`;
-  await click(`${settingsRow} [data-computer-rename]`);
+  // Rename, Colour and Remove are in the row's ⋯.
+  const fromMore = async (item: string) => {
+    await click(`${settingsRow} [data-computer-more]`);
+    if (!(await waitInPage(win, `document.querySelector('[role=menu] ${item}')`, 3_000))) return false;
+    await click(`[role=menu] ${item}`);
+    return true;
+  };
+  if (!(await fromMore('[data-computer-rename]'))) return 'the computer’s ⋯ has no Rename…';
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-rename-field]') === document.activeElement`, 3_000))) return 'Rename did not open a name field for the computer';
   await setFieldValue(win, `${settingsRow} [data-rename-field]`, 'Smoke Studio');
   pressKey(win, 'Return');
   if (!(await waitInPage(win, `document.querySelector('${settingsRow}')?.innerText.includes('Smoke Studio · Smoke Mac')`, 3_000))) return `Rename did not show the new name with its own: ${await js(`document.querySelector('${settingsRow}')?.innerText.replace(/\\s+/g, ' ')`)}`;
-  await click(`${settingsRow} [data-computer-rename]`);
+  await fromMore('[data-computer-rename]');
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-rename-field]') === document.activeElement`, 3_000))) return 'Rename did not open again';
   await setFieldValue(win, `${settingsRow} [data-rename-field]`, '');
   pressKey(win, 'Return');
   if (!(await waitInPage(win, `!document.querySelector('${settingsRow}')?.innerText.includes('Smoke Studio')`, 3_000))) return 'clearing the name did not go back to the computer’s own';
-  await click(`${settingsRow} [data-computer-colour]`);
+  await fromMore('[data-computer-colour]');
   if (!(await waitInPage(win, `document.querySelector('[data-computer-colours] [data-computer-colour-option="green"]')`, 3_000))) return 'Colour did not show the colours';
   await click('[data-computer-colours] [data-computer-colour-option="green"]');
   if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-color="green"]')`, 3_000))) return 'picking green did not colour the computer';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-computer-colours]')", 3_000))) return 'Esc did not close the colours';
-  // The bell: Only mine and Off say so on it, the strip says where the sessions filter went, Esc closes the choices, and All again keeps its notifications
-  // for what follows.
-  await click(`${settingsRow} [data-computer-notify]`);
-  if (!(await waitInPage(win, `document.querySelector('[data-computer-notify-options] [data-computer-notify-option="off"]')`, 3_000))) return 'the bell did not show the notification choices';
-  await click('[data-computer-notify-options] [data-computer-notify-option="started-here"]');
-  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="started-here"]')?.textContent.includes('Only mine') && document.querySelector('[data-computer-notify-options] [data-computer-notify-filter-note]')?.textContent.includes('chip')`, 3_000))) return 'picking Only mine did not show on the computer’s row, or the strip does not say where the sessions filter is';
+  // Notifications: the choice always shows its value, its menu says where the sessions filter went, Only mine and None
+  // show on the row, Esc closes the menu, and All again keeps its notifications for what follows.
+  const notifyMenu = async () => {
+    await click(`${settingsRow} [data-computer-notify]`);
+    return waitInPage(win, `document.querySelector('[role=menu] [data-computer-notify-option="off"]')`, 3_000);
+  };
+  if (!(await js(`document.querySelector('${settingsRow} [data-computer-notify="all"]')?.textContent.includes('All')`))) return 'the notifications choice does not say All';
+  if (!(await notifyMenu())) return 'the notifications choice did not open its menu';
+  if (!(await js("document.querySelector('[role=menu]')?.innerText.includes('chip')"))) return 'the notifications menu does not say where the sessions filter is';
   await shot(win, 'computer-notifications.png');
-  await click('[data-computer-notify-options] [data-computer-notify-option="off"]');
-  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="off"]')?.textContent.includes('Off')`, 3_000))) return 'picking Off did not turn the computer’s notifications off';
   pressKey(win, 'Escape');
-  if (!(await waitInPage(win, "!document.querySelector('[data-computer-notify-options]')", 3_000))) return 'Esc did not close the notification choices';
-  await click(`${settingsRow} [data-computer-notify]`);
-  if (!(await waitInPage(win, `document.querySelector('[data-computer-notify-options] [data-computer-notify-option="all"]')`, 3_000))) return 'the bell did not open again';
-  await click('[data-computer-notify-options] [data-computer-notify-option="all"]');
-  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="all"]')?.textContent.trim() === ''`, 3_000))) return 'picking All did not turn the computer’s notifications back on';
-  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[role=menu] [data-computer-notify-option]')", 3_000))) return 'Esc did not close the notifications menu';
+  await notifyMenu();
+  await click('[role=menu] [data-computer-notify-option="started-here"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="started-here"]')?.textContent.includes('Only mine')`, 3_000))) return 'picking Only mine did not show on the computer’s row';
+  await notifyMenu();
+  await click('[role=menu] [data-computer-notify-option="off"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="off"]')?.textContent.includes('None')`, 3_000))) return 'picking None did not turn the computer’s notifications off';
+  await notifyMenu();
+  await click('[role=menu] [data-computer-notify-option="all"]');
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-notify="all"]')`, 3_000))) return 'picking All did not turn the computer’s notifications back on';
   // A saved prompt for every project, plain text, to use in New session on that computer (4).
   const savedText = `Smoke saved prompt ${Date.now()}`;
   const savedRow = '[data-saved-prompt-row="smoke-remote-prompt"]';
@@ -5041,8 +5156,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   }
   await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
   await click('[data-settings-section="remote"]');
-  if (await waitInPage(win, "document.querySelector('[data-computer-forget]')", 3_000)) {
-    await click('[data-computer-forget]');
+  if (await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-more]')`, 3_000) && (await fromMore('[data-computer-forget]'))) {
     await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
     await click('[data-confirm-strip] [data-confirm]');
   }
@@ -5136,9 +5250,12 @@ async function runComputersStripStep(win: BrowserWindow): Promise<string> {
   await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
   await click('[data-settings-section="remote"]');
   for (const id of ids) {
-    const forget = `[data-computer=${JSON.stringify(id)}] [data-computer-forget]`;
-    if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(forget)})`, 3_000))) continue;
-    await click(forget);
+    // Remove… is in the row's ⋯.
+    const more = `[data-computer=${JSON.stringify(id)}] [data-computer-more]`;
+    if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(more)})`, 3_000))) continue;
+    await click(more);
+    if (!(await waitInPage(win, "document.querySelector('[role=menu] [data-computer-forget]')", 2_000))) continue;
+    await click('[role=menu] [data-computer-forget]');
     await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
     await click('[data-confirm-strip] [data-confirm]');
     await waitInPage(win, `!document.querySelector(${JSON.stringify(`[data-computer=${JSON.stringify(id)}]`)})`, 5_000);
@@ -12458,6 +12575,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
+  await step('other computers: Settings › Remote updates an older computer, asks with sessions working, waits for idle, checks for updates', () => runComputerUpdateStep(win), { timeoutMs: 45_000 });
   await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" in a narrow sidebar', () => runComputersStripStep(win), { timeoutMs: 75_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
@@ -12530,6 +12648,7 @@ app.whenReady().then(() => {
     },
   });
   sendEngineSettings(preferences.get());
+  engine.sendStanding({ type: 'appUpdate', state: updater.state });
   engine.start();
   // The website's screenshots draw a session with demo mods (SESHBOARD_SMOKE_MODS), started as the app opens.
   if (driven && process.env.SESHBOARD_SMOKE_MODS) engine.sendStanding({ type: 'smokeMods' });

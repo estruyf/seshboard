@@ -7,6 +7,10 @@ describe('the remote contracts', () => {
     // A paired phone can make Claude run commands on the computer: adding a method here must be a deliberate change,
     // reviewed against the threat model in docs/remote-access.md.
     expect(Object.keys(remoteContract.requests).sort()).toEqual([
+      'app.update.cancel',
+      'app.update.check',
+      'app.update.get',
+      'app.update.install',
       'catchup.get',
       'changes.commit',
       'changes.diff',
@@ -62,7 +66,7 @@ describe('the remote contracts', () => {
       'usage.tokens',
       'usage.windowCosts',
     ]);
-    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'catchup.changed', 'limits.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'theme.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
+    expect(Object.keys(remoteContract.events).sort()).toEqual(['app.icon', 'app.update.changed', 'catchup.changed', 'limits.changed', 'projects.cloneProgress', 'session.ask', 'session.stream', 'sessions.changed', 'theme.changed', 'transcript.updated', 'upNext.changed', 'usage.changed']);
     expect(Object.keys(remotePairContract.requests)).toEqual(['pair.request']);
   });
 

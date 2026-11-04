@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
+import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type RemoteAppUpdate, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
 import type { ThemeFile, ThemeModeFile } from '@seshboard/protocol/theme-format';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
 import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
@@ -624,10 +624,31 @@ const deliver = (sessionId: string, message: string): string => {
   return uuid;
 };
 
+/** The version this made-up computer runs (`SESHBOARD_DEMO_VERSION`): the smoke run's is older than the app. */
+const DEMO_VERSION = process.env.SESHBOARD_DEMO_VERSION ?? 'demo';
+
+/**
+ * A stand-in for Seshboard's updater, for updating it from another computer (Settings › Remote there): it hasn't
+ * seen a newer version, Check for updates finds none, and an update downloads what the other computer offered, then
+ * fails, since the demo computer can't restart. Update when it's idle waits in the real hub: its sessions keep working.
+ */
+let demoUpdate: RemoteAppUpdate = { status: 'up-to-date', currentVersion: DEMO_VERSION, availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: Date.now(), whenIdle: false };
+const setDemoUpdate = (change: Partial<RemoteAppUpdate>) => {
+  demoUpdate = { ...demoUpdate, ...change };
+  hub.setAppUpdate(demoUpdate);
+};
+const runDemoUpdate = (command: 'check' | 'install', by: string) => {
+  console.log(`[info] ${by} asked to ${command}`);
+  setDemoUpdate({ status: 'checking', error: null });
+  if (command === 'check') return void setTimeout(() => setDemoUpdate({ status: 'up-to-date', checkedAt: Date.now() }), 1_200);
+  const steps: Array<Partial<RemoteAppUpdate>> = [{ status: 'available', availableVersion: '9.9.9', checkedAt: Date.now() }, { status: 'downloading', downloadPercent: 30 }, { downloadPercent: 80 }, { status: 'downloaded', downloadPercent: 100, downloadedVersion: '9.9.9' }, { status: 'error', error: 'The demo computer can’t restart' }];
+  steps.forEach((step, i) => setTimeout(() => setDemoUpdate(step), 400 * (i + 1)));
+};
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
-  appVersion: 'demo',
+  appVersion: DEMO_VERSION,
   appUrl: APP_URL,
   filesDir: join(dir, 'remote-files'),
   computerName: () => process.env.SESHBOARD_DEMO_NAME ?? "Elio's iMac",
@@ -750,9 +771,11 @@ const hub: RemoteHub = new RemoteHub({
     { sessionId: 'a0000000-0000-4000-8000-000000000002', triggerId: 'demo-ci', eventId: 'demo-ci-4512', triggerName: 'CI fails on main', kind: 'ci', ref: 'CI #4512', url: 'https://github.com/acme/harbor-api/actions/runs/4512', at: ago(7) },
     { sessionId: ROW_RUN, triggerId: 'demo-issues', eventId: 'demo-issue-212', triggerName: 'New bug issues', kind: 'issue', ref: '#212', url: 'https://github.com/acme/harbor-api/issues/212', at: ago(16) },
   ],
+  runAppUpdate: runDemoUpdate,
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),
 });
+hub.setAppUpdate(demoUpdate);
 
 // The theme the demo computer shows (Theme on the phone): `SESHBOARD_DEMO_THEME=catppuccin` takes a built-in theme's
 // own colours (without the app's generator, which needs the renderer), else Demo Time's.
@@ -781,6 +804,8 @@ const allow = setInterval(() => {
   if (asked) {
     hub.decidePairing(asked.id, true);
     console.log(`Paired ${asked.name}. Press Ctrl+C to stop.`);
+    // A link is good for one pairing: the next device (a later smoke step) gets a fresh one, once this one is done.
+    if (linkFile) setTimeout(() => writeFileSync(linkFile, hub.startPairing().url), 500);
   }
 }, 200);
 

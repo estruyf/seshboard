@@ -1722,6 +1722,11 @@
       "page": "remote-access"
     },
     {
+      "id": "feature:computer-app-update",
+      "name": "Settings › Remote: each computer's version, and Update for an older one, right away or once its sessions are idle (⋯ › Check for updates)",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-needs-you-cards",
       "name": "Remote: answer what Claude asks from the list",
       "page": "remote-access"

@@ -3,7 +3,7 @@
  * tested without React. See AGENTS.md, Design system, for when to use which variant.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'side';
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'side' | 'tint';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonLook {
@@ -37,6 +37,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   danger: 'btn-secondary border-error/50 text-error enabled:hover:bg-error/10',
   // Ask about this session: outlined in the side channel's blue, never the accent.
   side: 'border border-link/55 font-medium text-link enabled:hover:bg-link/10',
+  // An offer that isn't the area's main action (Update on another computer's row): a blue tint, no edge.
+  tint: 'bg-link/15 font-medium text-link enabled:hover:bg-link/25',
 };
 const DANGER_FILLED = 'bg-error font-semibold text-white enabled:hover:bg-error/85';
 const SIDE_FILLED = 'bg-link font-semibold text-bg enabled:hover:bg-link/85';
@@ -45,7 +47,7 @@ const SIDE_SELECTED = 'border border-link bg-link/15 font-medium text-link enabl
 const QUIET_SELECTED = 'bg-selected text-text';
 // The ▾ of a split button: narrower than a square, behind a 1px line in the button's own ink.
 const MENU_WIDTH: Record<ButtonSize, string> = { sm: 'w-5', md: 'w-6', lg: 'w-7' };
-const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '' };
+const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '', tint: '' };
 
 /** The classes for a button: shape, size and variant. Callers add layout (`ml-auto`, `w-full`) on top. */
 export function buttonClass({ variant, size, iconOnly, filled, selected, segment, round = false }: ButtonLook): string {

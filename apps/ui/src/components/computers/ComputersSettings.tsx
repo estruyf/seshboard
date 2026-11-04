@@ -1,44 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
-import { Bell, BellDot, BellOff, BellRing, Link2, Monitor, Pencil } from 'lucide-react';
-import { COMPUTER_COLORS, COMPUTER_NOTIFY, type Computer, type ComputerColor, type ComputerNotify } from '@seshboard/protocol/client';
+import { useState } from 'react';
+import { Link2 } from 'lucide-react';
+import type { ComputerColor, ComputerNotify } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
-import { ConfirmStrip, ConnectedNow, ListRow, RenameField } from '../remote/RemoteRows.tsx';
-import { remoteAge } from '../remote/remoteText.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
-import { Radio, RadioGroup } from '../ui/Radio.tsx';
-import { COMPUTER_COLOR_NAME, COMPUTER_COLOR_VAR, computerTint } from './computerColor.ts';
-import { computerLine } from './computerSessions.ts';
+import { ComputerRow } from './ComputerRow.tsx';
 
 const field = 'h-7 min-w-0 flex-1 rounded-md border border-edge bg-card px-2 font-mono text-ui text-text placeholder:text-faint';
 
 /**
- * Settings › Remote, Other computers: the computers this one paired with, in the same rows as the paired devices
- * (Rename and Colour change how it shows here only, the bell picks which of its notifications show, Open shows its sessions, Remove forgets it here), then the field for the link from another computer's Pair a
- * device. It also takes a link from Reconnect a paired device, for a computer whose quick tunnel got a new address.
+ * Settings › Remote, Other computers: the computers this one paired with (`ComputerRow`: its version and updater,
+ * Update when it is behind, the notifications choice, Open and ⋯ with the rest), then the field for the link from
+ * another computer's Pair a device. It also takes a link from Reconnect a paired device, for a computer whose quick
+ * tunnel got a new address.
  */
 export function ComputersSettings() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const status = useComputers((s) => s.status);
+  const lists = useComputers((s) => s.lists);
+  // Notifications in a computer's chip menu opens here at it: its row opens the choice.
+  const notifyFor = useComputers((s) => s.notifyFor);
   const [link, setLink] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [colouring, setColouring] = useState<string | null>(null);
-  const [notifying, setNotifying] = useState<string | null>(null);
-  const removeButtons = useRef(new Map<string, HTMLButtonElement | null>());
-  // Notifications in a computer's chip menu opens here at it: its choices open under its row, in view.
-  const notifyFor = useComputers((s) => s.notifyFor);
-  const known = !!status?.computers.some((c) => c.id === notifyFor);
-  useEffect(() => {
-    if (!notifyFor || !known) return;
-    setColouring(null);
-    setNotifying(notifyFor);
-    useComputers.getState().clearNotifyFor();
-    requestAnimationFrame(() => document.querySelector(`[data-computer="${CSS.escape(notifyFor)}"]`)?.scrollIntoView({ block: 'center' }));
-  }, [notifyFor, known]);
   if (!status || !client) return <p className="text-ui text-muted">Checking…</p>;
   if (!status.available) return <Notice>Other computers aren't available in this build of Seshboard.</Notice>;
   const { pairing, computers } = status;
@@ -61,96 +46,15 @@ export function ComputersSettings() {
       {computers.length > 0 && (
         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card" data-computers-list>
           {computers.map((computer) => (
-            <ListRow
+            <ComputerRow
               key={computer.id}
-              attrs={{ 'data-computer': computer.id, 'data-computer-state': computer.state }}
-              icon={
-                <span className="flex text-remote" style={computerTint(computer.color)} data-computer-color={computer.color}>
-                  <Monitor size={16} aria-hidden />
-                </span>
-              }
-              name={
-                renaming === computer.id ? (
-                  <RenameField
-                    name={computer.name}
-                    label={`Name of ${computer.name}`}
-                    clearable
-                    placeholder={computer.ownName}
-                    onCancel={() => setRenaming(null)}
-                    onSave={(name) => {
-                      setRenaming(null);
-                      update(computer.id, { name });
-                    }}
-                  />
-                ) : (
-                  <>
-                    {computer.name}
-                    {computer.renamed && <span className="text-muted" data-tooltip="What it calls itself">{` · ${computer.ownName}`}</span>}
-                  </>
-                )
-              }
-              status={
-                <>
-                  {computer.state === 'connected' ? <ConnectedNow /> : computerLine(computer)}
-                  {` · paired ${remoteAge(computer.pairedAt)}`}
-                </>
-              }
-              actions={
-                <>
-                  {computer.state === 'offline' && (
-                    <Button size="sm" variant="quiet" onClick={() => void client.call('computers.retry', { id: computer.id })}>
-                      Try again
-                    </Button>
-                  )}
-                  <Button size="sm" variant="quiet" icon={<Pencil size={12} aria-hidden />} onClick={() => setRenaming(computer.id)} data-computer-rename>
-                    Rename
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    icon={<span aria-hidden className="size-2.5 rounded-full" style={{ background: COMPUTER_COLOR_VAR[computer.color] }} />}
-                    aria-expanded={colouring === computer.id}
-                    onClick={() => {
-                      setNotifying(null);
-                      setColouring(colouring === computer.id ? null : computer.id);
-                    }}
-                    data-computer-colour
-                  >
-                    Colour
-                  </Button>
-                  <NotifyButton
-                    computer={computer}
-                    open={notifying === computer.id}
-                    onClick={() => {
-                      setColouring(null);
-                      setNotifying(notifying === computer.id ? null : computer.id);
-                    }}
-                  />
-                  <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
-                    Open
-                  </Button>
-                  <Button ref={(el) => void removeButtons.current.set(computer.id, el)} size="sm" variant="danger" aria-expanded={removing === computer.id} onClick={() => setRemoving(computer.id)} data-computer-forget>
-                    Remove
-                  </Button>
-                </>
-              }
-              confirm={
-                removing === computer.id ? (
-                  <ConfirmStrip
-                    question={`Remove ${computer.name}? Its sessions leave this computer. To pair again, paste a new link.`}
-                    action="Remove"
-                    returnTo={{ current: removeButtons.current.get(computer.id) ?? null }}
-                    onCancel={() => setRemoving(null)}
-                    onConfirm={() => {
-                      setRemoving(null);
-                      void client.call('computers.forget', { id: computer.id }).catch((e: Error) => setError(e.message));
-                    }}
-                  />
-                ) : (
-                  (colouring === computer.id && <ColourStrip computer={computer} onPick={(color) => update(computer.id, { color })} onClose={() => setColouring(null)} />) ||
-                  (notifying === computer.id && <NotifyStrip computer={computer} onPick={(notify) => update(computer.id, { notify })} onClose={() => setNotifying(null)} />)
-                )
-              }
+              computer={computer}
+              client={client}
+              list={lists.get(computer.id) ?? null}
+              notifyOpen={notifyFor === computer.id}
+              onNotifyShown={() => useComputers.getState().clearNotifyFor()}
+              onChange={(changes) => update(computer.id, changes)}
+              onError={setError}
             />
           ))}
         </ul>
@@ -180,123 +84,6 @@ export function ComputersSettings() {
           {pairing.message}
         </Notice>
       )}
-    </div>
-  );
-}
-
-/**
- * A computer's colour, in a strip under its row: what its chips, its rows' badges and the line over its sessions
- * show here. Violet is the default; Esc or Done closes it.
- */
-function ColourStrip({ computer, onPick, onClose }: { computer: Computer; onPick(color: ComputerColor): void; onClose(): void }) {
-  return (
-    <div
-      className="flex flex-wrap items-center gap-3 bg-text/4 px-4 py-2.5"
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
-        event.stopPropagation();
-        event.preventDefault();
-        onClose();
-      }}
-      data-computer-colours={computer.id}
-    >
-      <span className="text-ui text-muted">Colour of {computer.name}</span>
-      <RadioGroup label={`Colour of ${computer.name}`} className="flex flex-1 items-center gap-1">
-        {COMPUTER_COLORS.map((color) => (
-          <button
-            key={color}
-            type="button"
-            role="radio"
-            aria-checked={computer.color === color}
-            aria-label={COMPUTER_COLOR_NAME[color]}
-            data-tooltip={COMPUTER_COLOR_NAME[color]}
-            tabIndex={computer.color === color ? 0 : -1}
-            autoFocus={computer.color === color}
-            onClick={() => computer.color !== color && onPick(color)}
-            className={`flex size-5 items-center justify-center rounded-full ${computer.color === color ? 'ring-2 ring-accent-ink/70 ring-offset-1 ring-offset-card' : ''}`}
-            data-computer-colour-option={color}
-          >
-            <span aria-hidden className="size-3.5 rounded-full" style={{ background: COMPUTER_COLOR_VAR[color] }} />
-          </button>
-        ))}
-      </RadioGroup>
-      <Button size="sm" onClick={onClose}>
-        Done
-      </Button>
-    </div>
-  );
-}
-
-const NOTIFY_LABEL: Record<ComputerNotify, string> = { all: 'All', 'started-here': 'Only mine', 'needs-you': 'Needs you', off: 'Off' };
-const NOTIFY_HINT: Record<ComputerNotify, string> = {
-  all: 'Needs you, finished and failed',
-  'started-here': 'The same, only for sessions you started there or acted on from this computer',
-  'needs-you': 'Only when a session waits for you',
-  off: 'None. Its sessions still show here.',
-};
-
-function NotifyIcon({ notify }: { notify: ComputerNotify }) {
-  if (notify === 'off') return <BellOff size={14} aria-hidden />;
-  if (notify === 'needs-you') return <BellRing size={14} aria-hidden />;
-  if (notify === 'started-here') return <BellDot size={14} aria-hidden />;
-  return <Bell size={14} aria-hidden />;
-}
-
-/**
- * The row's bell. With all of them it is only the bell; otherwise it says which (Off, Needs you, Only mine), so
- * the choice shows without cutting the status line short.
- */
-function NotifyButton({ computer, open, onClick }: { computer: Computer; open: boolean; onClick(): void }) {
-  const shared = { size: 'sm', variant: 'quiet', icon: <NotifyIcon notify={computer.notify} />, 'aria-expanded': open, onClick, 'data-computer-notify': computer.notify } as const;
-  if (computer.notify === 'all') return <Button {...shared} iconOnly aria-label={`Notifications from ${computer.name}`} data-tooltip="Notifications: All" />;
-  return (
-    <Button {...shared} aria-label={`Notifications from ${computer.name}: ${NOTIFY_LABEL[computer.notify]}`} data-tooltip={NOTIFY_HINT[computer.notify]}>
-      {NOTIFY_LABEL[computer.notify]}
-    </Button>
-  );
-}
-
-/**
- * Which of a computer's notifications show here, in a strip under its row, like its colour: the title and Done on
- * one line, then one choice a line with what it shows next to it (under it, in a narrow window). Its sessions stay in
- * the sidebar whatever you pick. Esc or Done closes it.
- */
-function NotifyStrip({ computer, onPick, onClose }: { computer: Computer; onPick(notify: ComputerNotify): void; onClose(): void }) {
-  const strip = useRef<HTMLDivElement>(null);
-  // Focus starts on the choice it has, as in the colours, so the arrows and Esc work at once.
-  useEffect(() => strip.current?.querySelector<HTMLButtonElement>('[role=radio][aria-checked=true]')?.focus(), []);
-  return (
-    <div
-      ref={strip}
-      className="grid gap-2 bg-text/4 px-4 py-3"
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
-        event.stopPropagation();
-        event.preventDefault();
-        onClose();
-      }}
-      data-computer-notify-options={computer.id}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-ui text-muted">Notifications from {computer.name}</span>
-        <Button size="sm" onClick={onClose}>
-          Done
-        </Button>
-      </div>
-      <RadioGroup label={`Notifications from ${computer.name}`} className="grid gap-1.5">
-        {COMPUTER_NOTIFY.map((notify) => (
-          <Radio key={notify} checked={computer.notify === notify} onSelect={() => computer.notify !== notify && onPick(notify)} className="w-full" dataAttrs={{ 'data-computer-notify-option': notify }}>
-            <span className="flex flex-wrap items-baseline gap-x-2">
-              <span className="whitespace-nowrap text-ui text-text">{NOTIFY_LABEL[notify]}</span>
-              <span className="text-meta text-muted">{NOTIFY_HINT[notify]}</span>
-            </span>
-          </Radio>
-        ))}
-      </RadioGroup>
-      {/* Which sessions show is a filter where you look (ComputersStrip), not a setting: say where it went. */}
-      <p className="text-meta text-muted" data-computer-notify-filter-note>
-        Which sessions show in the sidebar is a filter on {computer.name}’s chip there.
-      </p>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
+export { channelOf } from "./appUpdate.ts";
 export * from "./notificationPause.ts";
 
 /**

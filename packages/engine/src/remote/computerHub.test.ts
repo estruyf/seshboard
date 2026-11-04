@@ -53,6 +53,8 @@ async function otherComputer(name = 'Studio Mac') {
         'session.respond': () => ({}),
         'limits.resume': () => ({}),
         'limits.arm': () => ({}),
+        // Its updater, for the row in Settings › Remote there.
+        'app.update.get': () => ({ update: { status: 'up-to-date', currentVersion: '9.9.9', availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: 1, whenIdle: false } }),
         'session.create': ({ projectId }: { projectId: string }) => {
           // One project there, for the sessions this computer starts (Started here).
           if (projectId === 'fedcba9876543210') return { sessionId: `started-${++created}` };
@@ -134,6 +136,22 @@ describe('Other computers', () => {
     b.server.each((rpc) => rpc.emit('sessions.changed', { sessions: [], prompts: [] }));
     await a.until(() => a.events.length > 0);
     expect(a.events[0]).toEqual({ computerId: id, name: 'sessions.changed', payload: { sessions: [], prompts: [] } });
+  });
+
+  it('carries the updater of a computer while it is connected, and follows its changes', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const status = await a.until((s) => s.computers[0]?.update !== null && s.computers[0]?.update !== undefined);
+    expect(status.computers[0]!.update).toMatchObject({ status: 'up-to-date', currentVersion: '9.9.9', channel: 'stable' });
+    b.server.each((rpc) => rpc.emit('app.update.changed', { status: 'available', currentVersion: '9.9.9', availableVersion: '10.0.0', downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: 2, whenIdle: true }));
+    const changed = await a.until((s) => s.computers[0]?.update?.status === 'available');
+    expect(changed.computers[0]!.update).toMatchObject({ availableVersion: '10.0.0', whenIdle: true });
+    // Gone: what it said is from before.
+    b.server.stop();
+    const away = await a.until((s) => s.computers[0]?.state !== 'connected');
+    expect(away.computers[0]!.update).toBeNull();
   });
 
   it('passes on only what this version can read, and says what it left out', async () => {

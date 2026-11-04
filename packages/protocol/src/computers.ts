@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { COMPUTER_COLORS, COMPUTER_METHODS, COMPUTER_NAME_MAX, COMPUTER_NOTIFY } from './computerConstants.ts';
+import { RemoteAppUpdate } from './remote.ts';
 
 /**
  * Other computers: this Seshboard pairs with Remote on another computer, as a phone does, and shows that
@@ -57,6 +58,8 @@ export const Computer = z.object({
   version: z.string().nullable(),
   /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`), once connected. */
   features: z.array(z.string()),
+  /** Seshboard's updater there (`REMOTE_FEATURE_UPDATE`), while connected; null before it said, or from an older version. */
+  update: RemoteAppUpdate.nullable().default(null),
   /** When it was last connected, while it is not ("Last seen 2h ago"); null while connected, or not since this app started. */
   lastSeen: z.number().nullable(),
   /**

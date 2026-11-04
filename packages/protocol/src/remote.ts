@@ -357,6 +357,28 @@ const RunId = z.string().min(1).max(100);
 const RunParams = z.object({ runId: RunId });
 const RunResult = z.object({ state: RemoteRunState });
 
+/**
+ * Seshboard's own updater on that computer, as Settings › About shows it there (a part of `UpdateState`). `status` is
+ * the updater's (`UpdateStatus`); a computer that reads one it doesn't know shows nothing for it.
+ */
+export const RemoteAppUpdate = z.object({
+  status: z.string().max(50),
+  currentVersion: z.string().max(100),
+  availableVersion: z.string().max(100).nullable(),
+  downloadedVersion: z.string().max(100).nullable(),
+  /** 0-100 while downloading. */
+  downloadPercent: z.number().nullable(),
+  /** The update channel there (Settings › About): Stable never gets a beta. */
+  channel: z.enum(['stable', 'beta']).catch('stable'),
+  error: z.string().max(1_000).nullable(),
+  /** Why this build can't update itself (development, no feed, turned off). */
+  disabledReason: z.string().max(1_000).nullable(),
+  checkedAt: z.number().nullable(),
+  /** Update when it's idle was picked: it installs once none of its sessions works (`app.update.cancel` stops the wait). */
+  whenIdle: z.boolean().default(false),
+});
+export type RemoteAppUpdate = z.infer<typeof RemoteAppUpdate>;
+
 /** The most messages one `transcript.get` returns. */
 export const REMOTE_PAGE_LIMIT = 200;
 
@@ -608,6 +630,21 @@ export const remoteContract = {
     'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
     /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
     'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
+    /**
+     * Seshboard's updater there, for Seshboard on another paired computer; null where it can't be asked (a computer
+     * without the app's main process). With `REMOTE_FEATURE_UPDATE`. The `app.update.*` methods answer FORBIDDEN to a
+     * phone or a browser: only another computer may update this one, and each call is logged there with its name.
+     */
+    'app.update.get': { params: z.object({}), result: z.object({ update: RemoteAppUpdate.nullable() }) },
+    /** Checks for a newer version now, even after a recent check. `app.update.changed` follows. */
+    'app.update.check': { params: z.object({}), result: z.object({}) },
+    /**
+     * Checks now, downloads what it found and restarts into it: the connection closes until Seshboard runs again, and
+     * its `hello` then has the new version. `idle` waits until none of its sessions works (`whenIdle`).
+     */
+    'app.update.install': { params: z.object({ when: z.enum(['now', 'idle']) }), result: z.object({}) },
+    /** Stops waiting for idle. An update that already started goes on. */
+    'app.update.cancel': { params: z.object({}), result: z.object({}) },
     /** The theme in use on the computer (null until the app showed one); `theme.changed` follows each change. With `REMOTE_FEATURE_THEME`. */
     'theme.get': { params: z.object({}), result: z.object({ theme: RemoteTheme.nullable() }) },
   },
@@ -630,6 +667,8 @@ export const remoteContract = {
     'app.icon': z.object({ key: z.string().max(50) }),
     /** Someone picked another theme on the computer, or edited the one in use. */
     'theme.changed': RemoteTheme,
+    /** Seshboard's updater there moved on (`app.update.get`); to paired computers only. */
+    'app.update.changed': RemoteAppUpdate,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;

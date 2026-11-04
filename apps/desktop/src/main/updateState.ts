@@ -1,4 +1,4 @@
-import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/protocol/bridge';
+import { channelOf, type UpdateChannel, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
 
 /**
  * The updater's state machine. Every change is a pure function from one state to the next,
@@ -6,10 +6,8 @@ import type { UpdateChannel, UpdateCommand, UpdateState } from '@seshboard/proto
  * is tested without Electron; `updater.ts` only calls these.
  */
 
-/** `1.2.3-beta.1` is on the beta channel; anything else is stable. */
-export function channelOf(version: string): UpdateChannel {
-  return /-beta\./.test(version) ? 'beta' : 'stable';
-}
+/** `1.2.3-beta.1` is on the beta channel; anything else is stable. In the protocol, which the windows use too. */
+export { channelOf };
 
 /**
  * Whether Remote also lets in the preview's remote app (`REMOTE_PREVIEW_APP_URL`, built from `dev`): a development

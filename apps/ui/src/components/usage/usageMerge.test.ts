@@ -130,6 +130,7 @@ describe('computersToAsk', () => {
     renamed: false,
     color: 'violet',
     notify: 'all',
+    update: null,
     mineHere: [],
     address: 'https://example.trycloudflare.com',
     pairedAt: 1,

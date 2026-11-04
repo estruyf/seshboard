@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   BUILT_IN_PIPELINES,
+  REMOTE_DESKTOP_ORIGIN,
   generateKeyPair,
   parseRemoteLink,
   parseBriefs,
@@ -32,7 +33,7 @@ import {
   type TranscriptMessage,
   writeStub,
 } from '@seshboard/protocol';
-import type { RemoteLimitStanding } from '@seshboard/protocol';
+import type { RemoteAppUpdate, RemoteLimitStanding } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
@@ -108,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
+async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -119,6 +120,8 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
   }) as unknown as typeof fetch;
   const identity = options.identity === undefined ? generateKeyPair().secretKey : options.identity;
   const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-hub-'));
+  /** What phones asked Seshboard's updater (with `updates`). */
+  const updateRuns: string[] = [];
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
@@ -166,6 +169,7 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
     appState,
     appVersion: '1.2.3',
     appUrl: `${APP_ORIGIN}/remote/`,
+    ...(options.updates ? { runAppUpdate: (command: 'check' | 'install', by: string) => void updateRuns.push(`${command} by ${by}`) } : {}),
     previewApp: options.previewApp ?? false,
     filesDir: join(dir, 'remote-files'),
     logFile: join(dir, 'remote.log'),
@@ -287,28 +291,31 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, dir, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, updateRuns, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
-async function pair(hub: RemoteHub, port: number) {
+async function pair(hub: RemoteHub, port: number, origin = APP_ORIGIN) {
   const { url } = hub.startPairing();
   expect(url.startsWith(`${APP_ORIGIN}/remote/#p.`)).toBe(true);
   const link = parseRemoteLink(new URL(url).hash);
   if (link?.kind !== 'pair') throw new Error('Not a pairing link');
   expect(link.address).toBe('https://quiet-river.trycloudflare.com');
   const phone = generateKeyPair();
-  const pairing = await handshake(port, 'pair', phone, link.enginePublicKey, pskFromSecret(link.secret));
+  const pairing = await handshake(port, 'pair', phone, link.enginePublicKey, pskFromSecret(link.secret), origin);
   const asked = client<RemotePairContract>(pairing.frames, pairing.session!).call('pair.request', { name: 'Phone' });
   await until(() => hub.status().pairing.request !== null);
   hub.decidePairing(hub.status().pairing.request!.id, true);
   await asked;
   pairing.ws.close();
-  const connected = await handshake(port, 'connect', phone, link.enginePublicKey);
+  const connected = await handshake(port, 'connect', phone, link.enginePublicKey, undefined, origin);
   const remote = client<RemoteContract>(connected.frames, connected.session!);
   await remote.call('hello', { client: { version: '1' } });
   return { remote, connected };
 }
+
+/** Seshboard's updater as main would send it, `status` with what goes with it. */
+const appUpdate = (status: string, rest: Partial<RemoteAppUpdate> = {}): RemoteAppUpdate => ({ status, currentVersion: '1.2.3', availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: null, whenIdle: false, ...rest });
 
 async function until(check: () => boolean, ms = 3_000) {
   const end = Date.now() + ms;
@@ -1123,6 +1130,72 @@ describe('Remote hub', () => {
     // An address that never changes: never.
     await hub.configure({ tunnel: 'custom', customUrl: 'https://remote.example.com' });
     expect(hub.status().addressChanged).toBe(false);
+  });
+});
+
+describe('Update and restart from another computer', () => {
+  it('shows the updater to a paired computer and runs what it asks, in its name', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true });
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    // Main hasn't said yet.
+    expect(await remote.call('app.update.get', {})).toEqual({ update: null });
+    await expect(remote.call('app.update.check', {})).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    hub.setAppUpdate(appUpdate('up-to-date'));
+    await until(() => changes.length === 1);
+    expect(changes[0]).toMatchObject({ status: 'up-to-date', channel: 'stable', whenIdle: false });
+    await remote.call('app.update.check', {});
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    await until(() => changes.length === 2);
+    expect((await remote.call('app.update.get', {})).update?.availableVersion).toBe('1.3.0');
+    // Nothing works here: idle starts at once.
+    await remote.call('app.update.install', { when: 'idle' });
+    await remote.call('app.update.install', { when: 'now' });
+    expect(updateRuns).toEqual(['check by Phone', 'install by Phone', 'install by Phone']);
+
+    hub.setAppUpdate(appUpdate('disabled', { disabledReason: 'Updates are turned off in development builds.' }));
+    await expect(remote.call('app.update.check', {})).rejects.toMatchObject({ code: 'UNAVAILABLE', message: 'Updates are turned off in development builds.' });
+  });
+
+  it('waits for idle while a session works, and Cancel update stops the wait', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true, hosts: [{ sessionId: SESSION, cwd: ROOT, state: 'running', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo] });
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    await remote.call('app.update.install', { when: 'idle' });
+    await until(() => changes.some((c) => c.whenIdle));
+    expect(updateRuns).toEqual([]);
+    expect((await remote.call('app.update.get', {})).update?.whenIdle).toBe(true);
+    await remote.call('app.update.cancel', {});
+    await until(() => changes.at(-1)?.whenIdle === false);
+    expect(updateRuns).toEqual([]);
+  });
+
+  it('gives a phone nothing: no state, no changes, and no update', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    for (const call of [remote.call('app.update.get', {}), remote.call('app.update.check', {}), remote.call('app.update.install', { when: 'now' }), remote.call('app.update.cancel', {})]) await expect(call).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(changes).toEqual([]);
+    expect(updateRuns).toEqual([]);
+  });
+
+  it('answers null without an updater (no app around the engine)', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    expect(await remote.call('app.update.get', {})).toEqual({ update: null });
+    await expect(remote.call('app.update.install', { when: 'now' })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
   });
 });
 

@@ -208,6 +208,21 @@ export class Updater {
     }
   }
 
+  /**
+   * Update and restart, from a paired phone: checks for the newest version, downloads it and restarts into it, each
+   * step only when it is needed. A check that fails still installs what was downloaded before. Nothing while a check,
+   * download or install runs: the phone offers it again once that ends. The phone has asked about running sessions.
+   */
+  async updateAndRestart(): Promise<void> {
+    if (this.#state.status === 'disabled' || isBusy(this.#state)) return;
+    await this.check();
+    if (!this.#state.downloadedVersion) {
+      if (this.#state.status !== 'available') return;
+      await this.download();
+    }
+    if (this.#state.downloadedVersion) await this.install();
+  }
+
   /** Restarts into the downloaded update. The renderer has already asked about running sessions. */
   async install(): Promise<void> {
     const version = this.#state.downloadedVersion;
