@@ -23,7 +23,7 @@ export interface SelectProps<T extends string> {
   tooltip?: string;
   /** Classes for the button (size, border, colours). */
   className?: string;
-  /** Minimum width of the list; it is at least as wide as the button. */
+  /** Minimum width of the list; it is at least as wide as the button, and grows to fit its longest option. */
   menuWidth?: number;
   /** Shown when the value matches no option. */
   placeholder?: string;
@@ -145,8 +145,9 @@ export function Select<T extends string>({ value, options, onChange, disabled, l
         <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder ?? value}</span>
         <ChevronDown size={12} className="shrink-0 opacity-60" />
       </button>
+      {/* The list fits its longest option (a long pipeline name), up to a cap; past that, options truncate. */}
       {open && (
-        <Popover x={open.x} y={open.y} above={open.above} width={open.width} onClose={closeQuietly} closeOnEscape={false} anchor={buttonRef}>
+        <Popover x={open.x} y={open.y} above={open.above} minWidth={open.width} onClose={closeQuietly} closeOnEscape={false} anchor={buttonRef} className="max-w-[min(32rem,calc(100vw-16px))]">
           <div
             ref={listRef}
             id={id}

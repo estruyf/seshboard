@@ -1,6 +1,6 @@
 import { ListTree, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { currentIndex, runButtons, runHeaderLine, STEP_VIEW_WORD, stepView, stopNotice, waitsForPush, type Computer, type Contract, type PushPreview, type RemoteRunState, type RpcClient } from '@seshboard/protocol/client';
+import { currentIndex, pushFailure, pushReady, runButtons, runHeaderLine, STEP_VIEW_WORD, stepView, stopNotice, waitsForPush, type Computer, type Contract, type PushPreview, type RemoteRunState, type RpcClient } from '@seshboard/protocol/client';
 import { modKey } from '../../lib/shortcuts.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { toast } from '../../state/toastStore.ts';
@@ -27,6 +27,7 @@ export function RemoteRunCard({ client, computer, state, now }: { client: RpcCli
   const [pushing, setPushing] = useState(false);
   const buttons = runButtons(state);
   const notice = stopNotice(state);
+  const failure = pushFailure(state);
   const at = currentIndex(state);
 
   const act = async (action: RunAction) => {
@@ -82,6 +83,11 @@ export function RemoteRunCard({ client, computer, state, now }: { client: RpcCli
           {notice.advice && <span className="text-muted"> · {notice.advice}</span>}
         </p>
       )}
+      {failure && (
+        <p className="text-ui text-error" data-remote-run-push-failure>
+          Push failed: {failure}
+        </p>
+      )}
       {(buttons.continue || buttons.anotherRound || buttons.retry || buttons.skip || buttons.stop || waitsForPush(state)) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {waitsForPush(state) && (
@@ -130,11 +136,11 @@ function PushDialog({ client, computer, runId, onClose }: { client: RpcClient<Co
     };
   }, [client, computer.id, runId]);
   const push = async () => {
-    if (busy || !message.trim() || preview?.problem) return;
+    if (busy || !preview || !pushReady(preview, message)) return;
     setBusy(true);
     setError(null);
     try {
-      await callComputer(client, computer.id, 'runs.continue', { runId, message: message.trim() });
+      await callComputer(client, computer.id, 'runs.continue', { runId, ...(message.trim() ? { message: message.trim() } : {}) });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -150,7 +156,7 @@ function PushDialog({ client, computer, runId, onClose }: { client: RpcClient<Co
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" kbd="⌘↵" disabled={!preview || !!preview.problem || !message.trim() || busy} aria-busy={busy || undefined} onClick={() => void push()} data-remote-push-confirm>
+          <Button variant="primary" kbd="⌘↵" disabled={!preview || !pushReady(preview, message) || busy} aria-busy={busy || undefined} onClick={() => void push()} data-remote-push-confirm>
             {busy ? 'Pushing…' : 'Push'}
           </Button>
         </>
@@ -171,6 +177,7 @@ function PushDialog({ client, computer, runId, onClose }: { client: RpcClient<Co
           rows={5}
           disabled={!preview || busy}
           aria-label="Commit message"
+          placeholder={preview?.files === 0 ? 'Nothing to commit: Push sends the commits on the branch.' : undefined}
           className="w-full resize-y rounded-lg border border-edge bg-card px-2.5 py-1.5 font-mono text-ui text-text outline-none focus:border-link disabled:opacity-60"
         />
         {error && (

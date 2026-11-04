@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BUILT_IN_PIPELINES, parseActionResults, parseBriefs, type CatchUp, type ImageAttachment, type Pipeline, type PipelineNotice, type PipelineStep, type SessionSummary, type StepActionResult } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
 import { removeDir } from '../util/removeDir.ts';
@@ -83,6 +83,10 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
   const notices: PipelineNotice[] = [];
   const replies = new Map<string, string>();
   const busy = new Map<string, 'working' | 'waiting'>();
+  /** Sessions with background tasks still running. */
+  const background = new Set<string>();
+  /** The checkout as Push sees it, and how many previews were written. */
+  const checkout = { stamp: 'a', previews: 0 };
   /** Sessions with a question or permission waiting for an answer. */
   const asking = new Set<string>();
   const titles = new Map<string, string>();
@@ -133,7 +137,12 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     hold: () => hold(),
     busy: (id) => busy.get(id) ?? null,
     asks: (id) => asking.has(id),
-    pushPreview: async () => ({ message: 'feat(usage): add a toggle', files: 6, branch: 'worktree-run-1', base: 'main', problem: null }),
+    backgroundWork: (id) => background.has(id),
+    checkoutStamp: async () => checkout.stamp,
+    pushPreview: async () => {
+      checkout.previews++;
+      return { message: 'feat(usage): add a toggle', files: 6, branch: 'worktree-run-1', base: 'main', problem: null };
+    },
     push: async (_run, request) => {
       pushed.push(request);
       return { number: 152, url: 'https://github.com/demo/web/pull/152' };
@@ -153,6 +162,8 @@ function world(options: { hold?: () => StepHold | null; actions?: StepActionResu
     pushed,
     replies,
     busy,
+    background,
+    checkout,
     asking,
     archived,
     hidden,
@@ -364,6 +375,50 @@ describe('PipelineRunner', () => {
     expect(w.state(run.id).run.step).toBe(1);
   });
 
+  it('waits for a step’s background tasks before the next step starts', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+      const plan = w.last();
+      // The turn ends while a background command still runs: Execute doesn't start under it.
+      w.background.add(plan.id);
+      await w.end(plan.id);
+      expect(w.started).toHaveLength(1);
+      expect(w.state(run.id).run).toMatchObject({ step: 0, status: 'running' });
+
+      // The command is done and Claude takes a turn for what it reported: that turn's end moves the run on.
+      w.background.delete(plan.id);
+      w.runner.onHost({ sessionId: plan.id, state: 'idle', backgroundTasks: [] });
+      w.runner.onHost({ sessionId: plan.id, state: 'running' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(w.started).toHaveLength(1);
+      await w.end(plan.id);
+      expect(w.state(run.id).run.step).toBe(1);
+      expect(w.started).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('goes on when a step’s background tasks end without another turn', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
+      const plan = w.last();
+      w.background.add(plan.id);
+      await w.end(plan.id);
+      w.background.delete(plan.id);
+      w.runner.onHost({ sessionId: plan.id, state: 'idle', backgroundTasks: [] });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(w.state(run.id).run.step).toBe(1);
+      expect(w.started).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('stops when the catch-up says Claude waits for you', async () => {
     const w = world();
     const { run } = await w.runner.start({ pipelineId: planExecute, parentSessionId: 'parent' });
@@ -410,8 +465,15 @@ describe('PipelineRunner', () => {
       ['Validate', 2, 'done'],
     ]);
 
-    // Push: commit, push and open the pull request with the task and the verdict.
+    // Push: commit, push and open the pull request with the task and the verdict. The message is written once for
+    // the checkout as it is, and again when a step changed it after that.
     expect((await w.runner.pushPreview(run.id)).message).toBe('feat(usage): add a toggle');
+    const written = w.checkout.previews;
+    await w.runner.pushPreview(run.id);
+    expect(w.checkout.previews).toBe(written);
+    w.checkout.stamp = 'b';
+    await w.runner.pushPreview(run.id);
+    expect(w.checkout.previews).toBe(written + 1);
     await w.runner.continue(run.id, 'feat: edited');
     expect(w.pushed[0]).toMatchObject({ message: 'feat: edited', title: 'Add a usage cost toggle' });
     expect(w.pushed[0]!.body).toContain('Add a toggle to hide the cost');

@@ -202,10 +202,11 @@ export const anotherRound = (runId: string) => runCall(runId, 'runs.anotherRound
 export const skipStep = (runId: string) => runCall(runId, 'runs.skipStep', 'Couldn’t skip this step');
 export const stopRun = (runId: string) => runCall(runId, 'runs.stop', 'Couldn’t stop the run');
 
-/** Push's commit message and what it pushes, written once per run unless `fresh`. */
+/**
+ * Push's commit message and what it pushes. The engine writes it once for the checkout as it is (again when a step
+ * committed, switched branch or changed files since, or when `fresh`); the store keeps the last one to show at once.
+ */
 export async function loadPushPreview(runId: string, fresh = false): Promise<PushPreview> {
-  const kept = usePipelines.getState().previews.get(runId);
-  if (kept && !fresh) return kept;
   const { preview } = await clientNow().call('runs.pushPreview', { runId, fresh });
   usePipelines.setState((s) => ({ previews: new Map(s.previews).set(runId, preview) }));
   return preview;

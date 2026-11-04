@@ -30,6 +30,19 @@ export async function previewPush(cwd: string, write: (input: NonNullable<Awaite
   return { message, files: context ? status.uncommitted : 0, branch: status.branch, base, problem: refusal?.message ?? null };
 }
 
+/**
+ * The checkout as Push sees it: branch, last commit and what changed. A preview written for another stamp is out of
+ * date (a step committed, switched branch or changed files after it was written).
+ */
+export async function checkoutStamp(cwd: string): Promise<string> {
+  const [head, branch, changes] = await Promise.all([
+    git(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowExitCodes: [1, 128] }),
+    git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowExitCodes: [1, 128] }),
+    git(cwd, ['status', '--porcelain=v1', '--untracked-files=all']),
+  ]);
+  return [head.trim(), branch.trim(), changes].join('\n');
+}
+
 /** Commits everything with `message` (when there is anything to commit), pushes, and opens the pull request. */
 export async function commitAndOpen(cwd: string, request: { message: string; title: string; body: string; draft: boolean }, deps: PushDeps): Promise<{ number: number; url: string } | null> {
   const files = await stageForCommit(cwd);

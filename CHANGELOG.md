@@ -58,6 +58,9 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A pipeline waits for a step's background work.** When Claude ended a step's turn with a command or an agent still running in the background, the next step (or Push) started while Claude was still working in the folder. The run now goes on once that work is done.
+- **Push shows what it would push now.** Its commit message, files and branch were written once and kept, even after a step committed, switched branch or changed files, so it could show "0 files" next to six changed ones. They are written again when the folder changed. When Push fails, the run says why, here and on another computer. With nothing to commit, Push sends the branch's commits and opens the pull request without a message.
+- **Dropdowns show long names in full.** A dropdown's list, such as the pipeline picker in a trigger, was a fixed width and cut long names off. It now widens to fit them.
 - **GitHub Copilot's answers in Auto mode show as its reply.** In Auto mode, Copilot often ends a turn with its answer in a "task complete" step instead of a message, and Seshboard showed that step as a tool card with its raw input. The answer now shows as Copilot's reply.
 - **Project actions show up in GitHub Copilot sessions.** A Copilot session that was new, or whose file doesn't name its folder, had no actions above the message box and none in the ⋯ menu. It now takes its project from the folder Copilot runs in.
 - **Long GitHub Copilot sessions can be pinned, archived and renamed again.** A Copilot session whose history starts partway through (after autopilot kept it going) showed as "New session", with Rename, Pin, Archive and Delete greyed out. It now shows with your last prompt as its title, in its project, with every action.

@@ -198,7 +198,7 @@ import { PipelineStore } from './pipelines/pipelineStore.ts';
 import { isRunId, RunStore } from './pipelines/runStore.ts';
 import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
 import { findNamed, runActionsFirst, runCommand } from './pipelines/actionsFirst.ts';
-import { commitAndOpen, previewPush } from './pipelines/push.ts';
+import { checkoutStamp, commitAndOpen, previewPush } from './pipelines/push.ts';
 import pkg from '../package.json' with { type: 'json' };
 
 export interface EngineOptions {
@@ -1937,6 +1937,8 @@ export function createEngine(options: EngineOptions): Engine {
       return state === 'starting' || state === 'running' ? 'working' : state === 'needs-you' ? 'waiting' : null;
     },
     asks: (id) => hosts.list().permissions.some((p) => p.sessionId === id),
+    backgroundWork: (id) => (hosts.list().hosts.find((h) => h.sessionId === id)?.backgroundTasks.length ?? 0) > 0,
+    checkoutStamp: async (run) => (options.stubQueueStarts ? '' : checkoutStamp(run.cwd)),
     pushPreview: async (run) => {
       if (options.stubQueueStarts) return { message: stubCommitMessage(''), files: 0, branch: null, base: null, problem: null };
       const profileId = run.profileId && profiles.has(run.profileId) ? run.profileId : folderProfile(run.cwd);

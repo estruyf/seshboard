@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, clockTime, parseRunBriefs, type PipelineRunState } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, clockTime, parseRunBriefs, pushFailure, pushReady, type PipelineRunState } from '@seshboard/protocol/client';
 import { actionDetail, parentRows, pushLine, roundDivider, runButtons, stepDetail, stepMeta, stepPills, stopNotice, verdictView, waitsOnStep, withRunStub, holdLine } from './runView.ts';
 
 const pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 0, updatedAt: 0 };
@@ -86,6 +86,19 @@ describe('push, the parent and the verdict', () => {
   it('says what Push commits and where', () => {
     expect(pushLine({ files: 6, branch: 'worktree-usage-cost', base: 'main' })).toBe('6 files · worktree-usage-cost → main');
     expect(pushLine({ files: 1, branch: null, base: null })).toBe('1 file');
+  });
+
+  it('says why Push failed while it waits again, and when it can go', () => {
+    const busy = 'Claude is working in this folder. Wait for it to finish, or stop it first.';
+    const steps = [{}, { index: 1 }, { index: 2 }, { step: 'Push', index: 3, status: 'failed' as const, reason: busy }];
+    expect(pushFailure(state({ step: 3, status: 'waiting', waitingFor: 'push' }, steps))).toBe(busy);
+    expect(pushFailure(state({ step: 3, status: 'waiting', waitingFor: 'push' }, steps.slice(0, 3)))).toBeNull();
+    expect(pushFailure(state({ step: 3, status: 'stopped' }, steps))).toBeNull();
+    expect(pushReady({ files: 6, problem: null }, '')).toBe(false);
+    expect(pushReady({ files: 6, problem: null }, 'fix: tooltip')).toBe(true);
+    // Nothing to commit: Push only pushes the branch's commits.
+    expect(pushReady({ files: 0, problem: null }, '')).toBe(true);
+    expect(pushReady({ files: 0, problem: 'There is nothing to commit or push.' }, '')).toBe(false);
   });
 
   it("writes the parent's own rows", () => {

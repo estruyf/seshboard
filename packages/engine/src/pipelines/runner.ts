@@ -83,8 +83,12 @@ export interface RunnerDeps {
   busy(sessionId: string): 'working' | 'waiting' | null;
   /** Whether a session has a permission or a question still waiting for your answer. */
   asks(sessionId: string): boolean;
+  /** Whether a session whose turn ended still has background tasks (a command, an agent) running. */
+  backgroundWork?(sessionId: string): boolean;
   /** Push's commit message and what it would push. */
   pushPreview(run: PipelineRun): Promise<PushPreview>;
+  /** What the run's checkout looks like now (branch, last commit, changed files), so a kept preview that no longer matches is written again. */
+  checkoutStamp?(run: PipelineRun): Promise<string>;
   /** Commits (with `message`), pushes and opens the pull request; the pull request, or null when gh opened none. */
   push(run: PipelineRun, request: { message: string; title: string; body: string; draft: boolean }): Promise<{ number: number; url: string } | null>;
   changed(state: PipelineRunState): void;
@@ -97,6 +101,8 @@ export interface RunnerDeps {
 export const RESUME_STEP_PROMPT = 'Seshboard was closed while you were working on this. Go on where you stopped.';
 /** What a step in plan mode hears when you approve its plan: the next step builds it. */
 export const PLAN_APPROVED_MESSAGE = 'The user approved this plan. Don’t start building it: the next step of the pipeline does that. Reply with one line that says the plan is ready, and stop.';
+/** How long a session that settled after its background tasks gets to take the turn they usually start. */
+const SETTLE_MS = 5_000;
 const PAUSED_REASON = 'Paused: Seshboard was closed. The run goes on at the next start.';
 /** What Claude hears instead of an answer to a question, in a run that goes on without you. */
 export const UNATTENDED_ANSWER = 'No one is watching this run, so nobody can answer. Make the most reasonable choice yourself, say in your reply what you assumed, and go on.';
@@ -134,8 +140,10 @@ export class PipelineRunner {
   private readonly holds = new Map<string, StepHold>();
   /** Each run's queue of calls. */
   private readonly chains = new Map<string, Promise<unknown>>();
-  /** Push previews, by run, so Haiku writes the message once. */
-  private readonly previews = new Map<string, Promise<PushPreview>>();
+  /** Push previews, by run, so Haiku writes the message once for the checkout as it is (`stamp`). */
+  private readonly previews = new Map<string, { stamp: string | null; preview: Promise<PushPreview> }>();
+  /** Sessions whose turn ended while their background tasks still ran: the run goes on once they settle. */
+  private readonly settling = new Map<string, ReturnType<typeof setTimeout> | null>();
   private limitTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
   /** Plan steps whose plan the runner approved for you, so the step's row says so. */
@@ -278,7 +286,8 @@ export class PipelineRunner {
    * A session this app runs changed state. One closed in the middle of a turn ends without a `result`: for the run
    * that is a stop, as for the queue.
    */
-  onHost(info: Pick<SessionHostInfo, 'sessionId' | 'state'>): void {
+  onHost(info: Pick<SessionHostInfo, 'sessionId' | 'state'> & { backgroundTasks?: readonly unknown[] }): void {
+    this.settle(info);
     const before = this.hostStates.get(info.sessionId);
     this.hostStates.set(info.sessionId, info.state);
     if (info.state === 'closed' || info.state === 'error') this.hostStates.delete(info.sessionId);
@@ -365,11 +374,41 @@ export class PipelineRunner {
     return run ? this.state(run.id) : null;
   }
 
+  /**
+   * A session whose step waits on its background tasks went idle with none left. Claude Code usually takes a new turn
+   * for what they reported, and that turn's end moves the run on; if none comes (a task was stopped), the run goes on
+   * with the turn it has after a short wait. Busy again in the meantime, it waits for that turn.
+   */
+  private settle(info: Pick<SessionHostInfo, 'sessionId' | 'state'> & { backgroundTasks?: readonly unknown[] }): void {
+    if (!this.settling.has(info.sessionId)) return;
+    clearTimeout(this.settling.get(info.sessionId) ?? undefined);
+    this.settling.set(info.sessionId, null);
+    if (info.state === 'closed' || info.state === 'error') return void this.settling.delete(info.sessionId);
+    if (info.state !== 'idle' || info.backgroundTasks?.length || this.closed) return;
+    const timer = setTimeout(() => {
+      if (!this.settling.has(info.sessionId) || this.deps.busy(info.sessionId) || this.deps.backgroundWork?.(info.sessionId)) return;
+      for (const run of this.waitingOn(info.sessionId)) void this.serial(run.id, () => this.afterTurn(run.id, info.sessionId));
+    }, SETTLE_MS);
+    timer.unref?.();
+    this.settling.set(info.sessionId, timer);
+  }
+
   private async afterTurn(runId: string, sessionId: string): Promise<void> {
     const run = this.deps.runs.get(runId);
     const turn = this.lastTurns.get(sessionId);
     if (!run || !turn || this.waitedSession(run) !== sessionId) return;
     if (!(run.status === 'running' || (run.status === 'waiting' && run.waitingFor === 'you'))) return;
+    // Claude Code ends a turn while background tasks still run, and works on when they report back: the next step
+    // (or Push) would start under it, in the same folder. The run goes on once the session settles (`settle`).
+    if (this.deps.backgroundWork?.(sessionId)) {
+      if (!this.settling.has(sessionId)) {
+        this.settling.set(sessionId, null);
+        this.deps.log('info', `Pipelines: ${run.pipeline.steps[run.sentBackTo ?? run.step]?.name ?? 'A step'} of “${run.title}” waits for its background tasks`);
+      }
+      return;
+    }
+    clearTimeout(this.settling.get(sessionId) ?? undefined);
+    this.settling.delete(sessionId);
     const steps = run.pipeline.steps;
     const step = steps[run.step];
     const verdictStep = step?.kind === 'claude' && step.verdict !== null && run.sentBackTo === null;
@@ -682,14 +721,16 @@ export class PipelineRunner {
   // --- Push ----------------------------------------------------------------------------------------------------------
 
   /** Push's commit message (Haiku, from the diff) and what it pushes; written once per run. */
-  pushPreview(runId: string, fresh = false): Promise<PushPreview> {
-    let preview = fresh ? undefined : this.previews.get(runId);
-    if (!preview) {
-      preview = this.deps.pushPreview(this.need(runId));
-      this.previews.set(runId, preview);
-      preview.catch(() => this.previews.delete(runId));
-    }
-    return preview;
+  async pushPreview(runId: string, fresh = false): Promise<PushPreview> {
+    const run = this.need(runId);
+    // A step (or you) may have committed, switched branch or changed files since: then it is written again.
+    const stamp = this.deps.checkoutStamp ? await this.deps.checkoutStamp(run).catch(() => null) : null;
+    const kept = fresh ? undefined : this.previews.get(runId);
+    if (kept && kept.stamp === stamp) return kept.preview;
+    const entry = { stamp, preview: this.deps.pushPreview(run) };
+    this.previews.set(runId, entry);
+    entry.preview.catch(() => this.previews.get(runId) === entry && this.previews.delete(runId));
+    return entry.preview;
   }
 
   /** The pull request's title and description: the task, the plan and the last verdict. */
@@ -760,6 +801,7 @@ export class PipelineRunner {
   pauseAll(): void {
     this.closed = true;
     clearTimeout(this.limitTimer);
+    for (const timer of this.settling.values()) clearTimeout(timer ?? undefined);
     for (const run of this.deps.runs.list()) {
       if (run.status !== 'running') continue;
       this.deps.runs.update(run.id, { status: 'paused', reason: PAUSED_REASON });
