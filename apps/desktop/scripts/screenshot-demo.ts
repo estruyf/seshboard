@@ -479,7 +479,7 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     .tool('Bash', { command: 'npm test -- theme', description: 'Run the theme tests' }, ' RUN  v3.2.4 /acme-store\n\n ✓ src/lib/theme.test.ts (6 tests) 12ms\n\n Test Files  1 passed (1)\n      Tests  6 passed (6)\n   Duration  412ms')
     .say(
       [
-        'Dark mode is in. The Settings page has a new **Appearance** section with a System / Light / Dark toggle.',
+        'I went through the theme code and the Settings page first. Dark mode is in. The Settings page has a new **Appearance** section with a System / Light / Dark toggle.',
         '',
         '- `src/lib/theme.ts` now has a `ThemeChoice` that defaults to `system` and follows `prefers-color-scheme` live.',
         '- The choice is saved in `localStorage` and removed again when someone goes back to System.',

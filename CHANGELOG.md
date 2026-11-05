@@ -2,6 +2,12 @@
 
 All notable changes to Seshboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
+## [Unreleased]
+
+### Added
+
+- **Skim the conversation.** A finished turn now has less to read: Claude's messages between tool calls fold into the summary line, a line above the reply says what changed (`+42 −7 · 3 files · 2 tests fail · 4m 12s`), and less important sentences in the reply fade. Nothing is rewritten: failures, skipped work, questions, numbers and code never fade, and **Show all text** restores a reply. Switch back to **Full** in Settings › Conversation or from the command palette.
+
 ## [1.3.0] - 2026-11-05
 
 ### Added

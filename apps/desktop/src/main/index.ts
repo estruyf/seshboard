@@ -6823,6 +6823,121 @@ async function runAnsweredQuestionStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * Skim and Full, on the demo's finished session (`screenshot-demo.ts`): another home folder doesn't have it, so the step
+ * says so and leaves. Read-only: it opens that session and goes back to the one it was on.
+ */
+async function runConversationViewStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-current-session]';
+  const faded = `document.querySelectorAll('${view} [data-skim-faded]').length`;
+  const open = (id: string) => js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  const back = (await js(`document.querySelector('${view}')?.dataset.currentSession ?? null`)) as string | null;
+  const hero = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.innerText.includes('Add dark mode toggle'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!hero) return 'ok: not the demo home, so no session to skim';
+  if (preferences.get().conversationView !== 'skim') return `failed: the default is ${preferences.get().conversationView}`;
+  const openReply = async () => {
+    await open(hero);
+    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(hero)} && document.querySelector('${view} [data-folded-messages]') && document.querySelector('${view} [data-skim-show-all]')`, 5_000);
+  };
+  try {
+    if (!(await openReply())) return 'failed: the finished turn did not fold, or its reply has nothing faded';
+
+    // The stats line sits above the reply, from the turn's tool calls.
+    const stats = (await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1)?.innerText.replace(/\\s+/g, ' ') ?? ''`)) as string;
+    if (!/\+\d+.*\d files/.test(stats)) return `failed: stats line says "${stats}"`;
+    if (!(await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1).closest('[data-message-key]').querySelector('.markdown')?.innerText.includes('Dark mode is in')`))) return 'failed: the stats line is not on the reply';
+
+    // Less important sentences fade in `faint`; code and numbers don't.
+    if (!(await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.innerText.includes('I went through the theme code'))`))) return 'failed: the narrated sentence did not fade';
+    if (await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.querySelector('code') || /\\d|\\?/.test(el.innerText))`)) return 'failed: code, a number or a question faded';
+
+    // The fade shows in dark and light, and a narrow pane neither clips the line nor scrolls sideways.
+    const fadeShows = `(() => { const span = document.querySelector('${view} [data-skim-faded]'); return !!span && getComputedStyle(span).color !== getComputedStyle(span.parentElement).color; })()`;
+    if (!(await js(fadeShows))) return 'failed: the faded sentence looks like the rest in dark';
+    const [width, height] = win.getContentSize() as [number, number];
+    const scheme = preferences.get().colorScheme;
+    updatePreferences({ colorScheme: 'light' });
+    win.setContentSize(760, height);
+    try {
+      if (!(await waitInPage(win, `getComputedStyle(document.querySelector('${view} [data-transcript]')).backgroundColor === 'rgb(255, 255, 255)' || getComputedStyle(document.body).backgroundColor === 'rgb(255, 255, 255)'`, 2_000))) return 'failed: Light did not apply';
+      await settle(win);
+      if (!(await js(fadeShows))) return 'failed: the faded sentence looks like the rest in light';
+      const fits = (await js(`(() => { const list = document.querySelector('${view} [data-transcript]'); const line = [...document.querySelectorAll('${view} [data-skim-stats]')].at(-1); const row = [...document.querySelectorAll('${view} [data-skim-fade-row]')].at(-1); const box = list.getBoundingClientRect(); return list.scrollWidth <= list.clientWidth && [line, row].every((el) => el && el.getBoundingClientRect().right <= box.right); })()`)) as boolean;
+      await shot(win, 'skim-light-narrow.png');
+      if (!fits) return 'failed: the stats line or Show all text overflows a narrow pane';
+    } finally {
+      updatePreferences({ colorScheme: scheme });
+      win.setContentSize(width, height);
+    }
+
+    // The group opens to read the messages, in place.
+    const group = `document.querySelector('${view} [data-folded-messages]')`;
+    await js(`${group}.querySelector('button').click()`);
+    if (!(await waitInPage(win, `${group}?.querySelector('[data-folded-message]')?.innerText.includes('how the theme is set up')`, 3_000))) return 'failed: the group did not open to the folded message';
+    await shot(win, 'skim.png');
+    await js(`${group}.querySelector('button').click()`);
+    if (!(await waitInPage(win, `!${group}?.querySelector('[data-steps]')`, 2_000))) return 'failed: the group did not close';
+
+    // Find works on the whole text: the fade goes, and a match in a folded message opens its group.
+    await js(`document.querySelector('${view} [data-transcript]').focus?.()`);
+    pressKey(win, 'F', ['meta']);
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-find-input]')", 3_000))) return 'failed: ⌘F did not open the find bar';
+    await setFieldValue(win, '[data-find-input]', 'how the theme is set up');
+    if (!(await waitInPage(win, `/^\\d+ of \\d+$/.test(document.querySelector('[data-find-count]')?.innerText ?? '') && ${faded} === 0 && ${group}?.querySelector('[data-folded-message]') && CSS.highlights.get('find-current')?.size === 1`, 3_000))) {
+      return `failed: find did not reach the folded message (${await js("document.querySelector('[data-find-count]')?.innerText ?? 'no count'")}, ${await js(faded)} still faded)`;
+    }
+    pressKey(win, 'Escape');
+    if (!(await waitInPage(win, `!document.querySelector('[data-find-bar]') && ${faded} > 0 && !${group}?.querySelector('[data-steps]')`, 3_000))) return 'failed: closing find did not bring the fade back and close the group';
+
+    // Reading mode shows the reply without the fade.
+    const readButtons = `[...document.querySelectorAll('${view} [data-read-button]')]`;
+    await js(`${readButtons}.at(-1)?.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-read-mode]')?.innerText.includes('I went through the theme code')", 3_000))) return 'failed: reading mode did not open on the reply';
+    if (await js("!!document.querySelector('[data-read-mode] [data-skim-faded]')")) return 'failed: reading mode shows faded text';
+    pressKey(win, 'Escape');
+    // Leaving puts the focus on the reply's Read button a frame later, which would take it from the palette below.
+    if (!(await waitInPage(win, "!document.querySelector('[data-read-mode]') && document.activeElement?.matches('[data-read-button]')", 3_000))) return 'failed: Escape did not leave reading mode';
+
+    // Show all text stays when the row is gone from the list and back; here, by leaving the session.
+    await js(`document.querySelector('${view} [data-skim-show-all]').click()`);
+    if (!(await waitInPage(win, `${faded} === 0 && document.querySelector('${view} [data-skim-show-all]')?.innerText === 'Fade text'`, 2_000))) return 'failed: Show all text kept the fade';
+    if (back && back !== hero) {
+      await open(back);
+      await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(back)}`, 3_000);
+      if (!(await openReply())) return 'failed: did not get back to the session';
+      if ((await js(faded)) !== 0) return 'failed: Show all text did not stay after leaving the row';
+    }
+    await js(`document.querySelector('${view} [data-skim-show-all]').click()`);
+    if (!(await waitInPage(win, `${faded} > 0`, 2_000))) return 'failed: Fade text did not fade again';
+
+    // Full from the palette applies without a reload, and looks like the conversation always did.
+    if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return 'failed: the palette did not open';
+    await setFieldValue(win, '[data-palette-input]', 'Conversation: Full');
+    if (!(await waitInPage(win, "[...document.querySelectorAll('[data-command-palette] [role=option]')].some((el) => el.innerText.includes('Conversation: Full'))", 3_000))) return 'failed: no Conversation: Full in the palette';
+    pressKey(win, 'Return');
+    if (!(await until(() => preferences.get().conversationView === 'full', 2_000))) return 'failed: Conversation: Full was not saved';
+    const full = `!document.querySelector('${view} [data-folded-messages]') && !document.querySelector('${view} [data-skim-stats]') && !document.querySelector('${view} [data-skim-show-all]') && ${faded} === 0`;
+    if (!(await waitInPage(win, `${full} && [...document.querySelectorAll('${view} [data-item-kind="text"]')].some((row) => row.innerText.includes('how the theme is set up'))`, 3_000))) return 'failed: Full still folds or fades';
+
+    // Skim again from Settings, saved to the preferences file.
+    await js("document.querySelector('[data-open-settings]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-settings]')", 3_000))) return 'failed: Settings did not open';
+    await js("document.querySelector('[data-settings-section=\"conversation\"]')?.click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-conversation-view=\"skim\"]')", 3_000))) return 'failed: Settings › Conversation has no Skim';
+    await js("document.querySelector('[data-conversation-view=\"skim\"]').click()");
+    if (!(await until(() => preferences.get().conversationView === 'skim', 2_000))) return 'failed: Skim was not saved';
+    const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
+    await js("document.querySelector('[data-close-settings]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('[data-settings]') && document.querySelector('${view} [data-folded-messages]') && ${faded} > 0`, 3_000))) return 'failed: Skim did not apply when Settings closed';
+    if (saved.conversationView !== 'skim') return `failed: saved ${String(saved.conversationView)}`;
+    return `ok: stats "${stats}", folded and opened, the fade in light and dark and a narrow pane, Show all text kept, find and reading mode on the whole text, Full and Skim switched`;
+  } finally {
+    if (preferences.get().conversationView !== 'skim') updatePreferences({ conversationView: 'skim' });
+    if (back && back !== hero) await open(back);
+  }
+}
+
 async function runReadModeStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const view = '[data-current-session]';
@@ -12699,6 +12814,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
+  await step('conversation view: Skim folds, shows the stats and fades, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('remember this', () => runRememberStep(win));

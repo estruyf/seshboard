@@ -1,11 +1,14 @@
 import { ChevronRight } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useSecondClock } from '../../lib/secondClock.ts';
 import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { LiveTurnParts, type LiveTurnInfo } from './TurnMeta.tsx';
-import type { ActivityGroup, DisplayItem } from './displayItems.ts';
+import { isFoldedMessage, type ActivityGroup, type DisplayItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
+import { MessageText } from './MessageText.tsx';
+import { foldedLabel } from './skim.ts';
 import { ToolDetails, ToolImages } from './ToolDetails.tsx';
+import { useOpenKey } from './useOpenKey.ts';
 import { activitySummary, stepLabel } from './toolSummary.ts';
 
 /** 9s, 4m 12s, 1h 5m. */
@@ -19,24 +22,10 @@ export function formatDuration(ms: number): string {
 /** Ticks once a second while `active`, on the window's one clock. */
 export const useTicker = useSecondClock;
 
-// Open groups and steps survive scrolling out of the virtualised list and back.
-const openKeys = new Set<string>();
-function useOpen(key: string): [boolean, () => void] {
-  const [open, setOpen] = useState(() => openKeys.has(key));
-  return [
-    open,
-    () => {
-      if (open) openKeys.delete(key);
-      else openKeys.add(key);
-      setOpen(!open);
-    },
-  ];
-}
-
 const endOf = (item: DisplayItem) => (item.kind === 'tool' ? (item.result?.at ?? item.at) : item.at);
 
 function Step({ item, cwd, sessionId }: { item: DisplayItem; cwd: string | null; sessionId: string }) {
-  const [open, toggle] = useOpen(`step:${item.key}`);
+  const [open, toggle] = useOpenKey(`step:${item.key}`);
   const label = stepLabel(item, cwd).past;
   const failed = item.kind === 'tool' && (item.result?.isError ?? false);
   const detailsId = useId();
@@ -76,7 +65,8 @@ function Step({ item, cwd, sessionId }: { item: DisplayItem; cwd: string | null;
 /**
  * A run of tool calls as one line, like Claude Code: while Claude works, the step it's on
  * ("Reading src/a.ts") with a timer; afterwards, what it did ("Ran 3 commands and edited a file").
- * Click to see each step, and a step to see its details.
+ * Click to see each step, and a step to see its details. Claude's messages that Skim folded in
+ * here read as they do in the conversation, without a second click.
  */
 export function ActivityGroupView({
   group,
@@ -85,6 +75,7 @@ export function ActivityGroupView({
   active,
   activeLabel,
   live = null,
+  reveal = false,
 }: {
   group: ActivityGroup;
   cwd: string | null;
@@ -95,8 +86,11 @@ export function ActivityGroupView({
   activeLabel: string | null;
   /** While active: the turn's live numbers, which the working line shows instead of the run's own time. */
   live?: LiveTurnInfo | null;
+  /** Find's current match is in one of its folded messages: open while it is. */
+  reveal?: boolean;
 }) {
-  const [open, toggle] = useOpen(group.key);
+  const [kept, toggle] = useOpenKey(group.key);
+  const open = kept || reveal;
   const now = useTicker(active && !live);
   const items = group.items;
   const last = items.at(-1)!;
@@ -106,12 +100,13 @@ export function ActivityGroupView({
   const failures = items.filter((i) => i.kind === 'tool' && i.result?.isError).length;
   // One step reads best as itself ("Run the unit tests"); several as what they add up to.
   const steps = items.filter((i) => i.kind !== 'thinking');
-  const label = active ? (activeLabel ?? stepLabel(last, cwd).present) : steps.length === 1 ? stepLabel(steps[0]!, cwd).past : activitySummary(items);
+  const messages = items.filter(isFoldedMessage).length;
+  const label = active ? (activeLabel ?? stepLabel(last, cwd).present) : messages > 0 ? foldedLabel(messages, steps.length - messages) : steps.length === 1 ? stepLabel(steps[0]!, cwd).past : activitySummary(items);
   const images = items.filter((i) => i.kind === 'tool' && (i.result?.images.length ?? 0) > 0);
   const stepsId = useId();
 
   return (
-    <div data-activity={active ? 'active' : 'done'}>
+    <div data-activity={active ? 'active' : 'done'} data-folded-messages={messages > 0 ? messages : undefined}>
       <button
         type="button"
         onClick={toggle}
@@ -147,9 +142,15 @@ export function ActivityGroupView({
       {open && (
         // Each step is a quiet row of its own, indented under the summary; no box around them.
         <div id={stepsId} className="ml-6" data-steps>
-          {items.map((item) => (
-            <Step key={item.key} item={item} cwd={cwd} sessionId={sessionId} />
-          ))}
+          {items.map((item) =>
+            isFoldedMessage(item) ? (
+              <div key={item.key} className="py-1" data-folded-message>
+                <MessageText item={item} />
+              </div>
+            ) : (
+              <Step key={item.key} item={item} cwd={cwd} sessionId={sessionId} />
+            ),
+          )}
         </div>
       )}
     </div>

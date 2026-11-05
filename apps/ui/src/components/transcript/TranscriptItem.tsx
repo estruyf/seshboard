@@ -17,9 +17,10 @@ import { answeredQuestions } from './questionAnswers.ts';
 import { ClampedPrompt } from './ClampedPrompt.tsx';
 import type { DisplayItem, RenderItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
-import { MessageToolbar, messageUuid, ReadButton, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
+import { MessageToolbar, messageUuid } from './messageActions.tsx';
+import { MessageText, Speaker } from './MessageText.tsx';
 import { sentLine } from './turnFormat.ts';
-import { TurnMetaLine, type LiveTurnInfo } from './TurnMeta.tsx';
+import type { LiveTurnInfo } from './TurnMeta.tsx';
 import { useRemote } from '../../state/remoteStore.ts';
 import { ToolDetails, ToolImages, type ToolItem } from './ToolDetails.tsx';
 import { messageImageSlots } from './imageLayout.ts';
@@ -60,11 +61,6 @@ function Dot({ state }: { state: 'ok' | 'error' | 'pending' }) {
 
 function Spinner() {
   return <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-accent-ink/25 border-t-accent-ink" data-tooltip="Running" role="img" aria-label="Running" />;
-}
-
-/** Says who wrote a message, for screen readers; it also lets VoiceOver jump between messages by heading. */
-function Speaker({ name }: { name: string }) {
-  return <h2 className="sr-only">{name}</h2>;
 }
 
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
@@ -303,6 +299,8 @@ export const TranscriptItem = memo(function TranscriptItem(props: {
   activeLabel?: string | null;
   /** For the activity group Claude is on: the live part of the working line. */
   live?: LiveTurnInfo | null;
+  /** For an activity group: find's current match is in it. */
+  reveal?: boolean;
 }) {
   // A mod that replaces this kind of item draws it, with the built-in one where it puts its `engine` node.
   const hooked = useMods((s) => s.sessions.get(props.sessionId)?.state.hooked) ?? NO_HOOKED;
@@ -325,6 +323,7 @@ function BuiltInItem({
   active = false,
   activeLabel = null,
   live = null,
+  reveal = false,
 }: {
   item: RenderItem;
   cwd: string | null;
@@ -333,8 +332,9 @@ function BuiltInItem({
   active?: boolean;
   activeLabel?: string | null;
   live?: LiveTurnInfo | null;
+  reveal?: boolean;
 }) {
-  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} live={live} />;
+  if (item.kind === 'activity') return <ActivityGroupView group={item} cwd={cwd} sessionId={sessionId} active={active} activeLabel={activeLabel} live={live} reveal={reveal} />;
   if (item.kind === 'user') return <PromptItem item={item} sessionId={sessionId} />;
   const indent = 'subagent' in item && item.subagent ? 'ml-6 border-l border-border pl-3' : '';
   switch (item.kind) {
@@ -353,19 +353,7 @@ function BuiltInItem({
         </div>
       );
     case 'text':
-      return (
-        <div className={`group/message relative text-body ${indent}`} data-remember-from={item.subagent ? undefined : 'claude'} data-message-key={item.key}>
-          <Speaker name={item.subagent ? 'Subagent' : 'Claude'} />
-          <Markdown text={item.text} />
-          {/* The actions, then (under a turn's last reply) when the turn ended, how long it took and its tokens: both
-              hidden until the reply is hovered or the row has focus, with their space kept. */}
-          <div className="group/reply-row -ml-1 mt-1 flex h-6 min-w-0 items-center gap-2">
-            <MessageToolbar itemKey={item.key} kind="text" text={item.text} copyOnly={item.subagent} />
-            {!item.subagent && <ReadButton itemKey={item.key} />}
-            {!item.subagent && <TurnMetaLine itemKey={item.key} className={REVEAL_IN_REPLY_ROW} />}
-          </div>
-        </div>
-      );
+      return <MessageText item={item} className={indent} />;
     case 'thinking':
       return <Thinking text={item.text} />;
     case 'tool':
