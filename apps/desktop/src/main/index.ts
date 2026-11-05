@@ -8669,6 +8669,106 @@ async function pipelineEditorChecks(win: BrowserWindow, js: (code: string) => Pr
   return `ok: in a narrow window the list sits above the editor, and Validate's Starts (${box.text}) is one row of ${box.height}px, above the Model row`;
 }
 
+/** The stand-in model that has fast mode (`SMOKE_FAST_MODEL` in the engine). */
+const SMOKE_FAST_MODEL = 'smoke-fast';
+
+/**
+ * Fast mode on a stand-in session: no toggle on a model that doesn't say it has it; with one, the toggle starts off and
+ * its tooltip says what it does and costs; a click and a typed /fast change it without sending anything to Claude; and
+ * being blocked says why. On New session, the bolt starts off, what it picks reaches the session that starts, and the
+ * next New session is off again. Nothing reaches Claude Code: the stand-in takes the call, and `session.create` is stubbed.
+ */
+async function runFastModeStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-fast-')));
+  const standIn = `smoke-fast-${randomUUID()}`;
+  let started: string | null = null;
+  const host = (state: 'running' | 'idle' | 'closed', fast?: { blocked: string | null }) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(fast ? { fast } : {}) });
+  const pane = `[data-current-session="${standIn}"]`;
+  const toggle = (look: string) => `document.querySelector('${pane} [data-fast-toggle="${look}"]')`;
+  const typed = async (text: string) => {
+    await js(`(() => { const box = document.querySelector('${pane} textarea[data-composer]'); box.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)}); box.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await settle(win);
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+  };
+  try {
+    host('idle');
+    if (!(await waitInPage(win, `!!document.querySelector('[data-session-list] [data-session-id="${standIn}"]')`, 5_000))) return 'the stand-in session did not show';
+    await js(`document.querySelector('[data-session-list] [data-session-id="${standIn}"]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${pane} [data-composer-chips]')`, 5_000))) return 'the session has no chips';
+    if (await js(`!!document.querySelector('${pane} [data-fast-toggle]')`)) return 'a model that does not say it has fast mode got the toggle';
+
+    host('idle', { blocked: null });
+    if (!(await waitInPage(win, `!!${toggle('off')}`, 5_000))) return 'no fast mode toggle on a model that has it';
+    const off = (await js(`({ pressed: ${toggle('off')}.getAttribute('aria-pressed'), label: ${toggle('off')}.getAttribute('aria-label'), native: ${toggle('off')}.hasAttribute('title') })`)) as { pressed: string; label: string; native: boolean };
+    if (off.pressed !== 'false' || off.label !== 'Fast mode: off' || off.native) return `the toggle does not start off: ${JSON.stringify(off)}`;
+
+    const rect = (await js(`(() => { const r = ${toggle('off')}.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)) as { x: number; y: number };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: rect.x, y: rect.y });
+    if (!(await waitInPage(win, "(document.querySelector('[data-tooltip-layer]')?.innerText ?? '').includes('2.5x faster')", 3_000))) return `the tooltip does not say what fast mode does (${String(await js("document.querySelector('[data-tooltip-layer]')?.innerText ?? 'no tooltip'"))})`;
+    const tip = (await js("document.querySelector('[data-tooltip-layer]').innerText")) as string;
+    if (!tip.includes('usage credits')) return `the tooltip does not say what fast mode bills to: ${tip}`;
+    await shot(win, 'fast-mode-tooltip.png');
+
+    await js(`${toggle('off')}.click()`);
+    if (!(await waitInPage(win, `${toggle('on')}?.getAttribute('aria-pressed') === 'true'`, 3_000))) return 'a click did not turn fast mode on';
+    await shot(win, 'fast-mode-on.png');
+
+    await typed('/fast off');
+    if (!(await waitInPage(win, `!!${toggle('off')}`, 3_000))) return '/fast off did not turn fast mode off';
+    if (!(await waitInPage(win, `document.querySelector('${pane} textarea[data-composer]').value === ''`, 3_000))) return '/fast off stayed in the message box';
+    if (await js(`[...document.querySelectorAll('${pane} [data-transcript-item]')].some((item) => item.innerText.includes('/fast'))`)) return '/fast went into the conversation';
+
+    host('idle', { blocked: 'credits_exhausted' });
+    if (!(await waitInPage(win, `(${toggle('blocked')}?.getAttribute('data-tooltip') ?? '').includes('out of usage credits')`, 3_000))) return 'being out of credits does not say so on the toggle';
+    await shot(win, 'fast-mode-blocked.png');
+
+    // New session, on the stand-in's model: the toggle's choice goes with the start, and doesn't stay.
+    const view = '[data-new-session-view]';
+    const bolt = (look: string) => `document.querySelector('${view} [data-fast-toggle="${look}"]')`;
+    /** New session on the stand-in's model, in its folder when it will start. Null, or what went wrong. */
+    const openNew = async (inFolder: boolean): Promise<string | null> => {
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+      if (!(await waitInPage(win, `!!document.querySelector('${view} [data-folder-select]')`, 5_000))) return 'New session did not open';
+      const folderShown = `document.querySelector('${view} [data-folder-select]').dataset.value === ${JSON.stringify(folder)}`;
+      if (inFolder && !(await js(folderShown))) {
+        // By its path, as you can type one: the demo home has no project to pick until a later step.
+        await js(`document.querySelector('${view} [data-find-project]').click()`);
+        if (!(await waitInPage(win, `!!document.querySelector('${view} input[data-folder-select]')`, 3_000))) return 'the folder field did not open';
+        await setFieldValue(win, `${view} input[data-folder-select]`, folder);
+        if (!(await waitInPage(win, `document.querySelector('${view}').innerText.includes('Add and start here')`, 3_000))) return 'the typed folder was not offered';
+        pressKey(win, 'Enter');
+      }
+      if (inFolder && !(await waitInPage(win, `${folderShown} && !document.querySelector('${view} [data-composer]').disabled`, 3_000))) return `the folder was not picked (${String(await js(`document.querySelector('${view} [data-folder-select]')?.dataset.value ?? 'no field'`))})`;
+      // The project's defaults arrive with the folder and would replace an earlier pick.
+      await settle(win);
+      return (await chooseChoice(win, 'model', SMOKE_FAST_MODEL, view)) ? null : 'could not pick the model with fast mode';
+    };
+    engine.send({ type: 'smokeStubCreate', on: true });
+    const opened = await openNew(true);
+    if (opened) return `New session: ${opened}`;
+    if (!(await waitInPage(win, `!!${bolt('off')}`, 3_000))) return 'New session has no fast mode toggle, or it does not start off';
+    await js(`${bolt('off')}.click()`);
+    if (!(await waitInPage(win, `${bolt('on')}?.getAttribute('aria-pressed') === 'true'`, 2_000))) return 'a click did not turn it on in New session';
+    await shot(win, 'fast-mode-new-session.png');
+    await setFieldValue(win, `${view} [data-composer]`, 'Smoke fast mode, never started');
+    await js(`document.querySelector('${view} [data-composer-submit]').click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session] [data-fast-toggle="on"]')`, 5_000))) return `the session did not start with fast mode on (${String(await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? 'no session'"))})`;
+    started = (await js("document.querySelector('[data-current-session]').dataset.currentSession")) as string;
+    const again = await openNew(false);
+    if (again) return `the next New session: ${again}`;
+    if (!(await waitInPage(win, `!!${bolt('off')}`, 3_000))) return 'the next New session did not start with fast mode off';
+    return 'ok: off with a tooltip on what it does and costs, a click and /fast change it, out of credits says so, and New session starts the session with it, then is off again';
+  } finally {
+    engine.send({ type: 'smokeStubCreate', on: false });
+    // Starting in a folder can add it to your projects.
+    engine.send({ type: 'smokeProject', path: folder, add: false });
+    if (started) engine.send({ type: 'smokeQueueHost', sessionId: started, cwd: folder, state: 'closed' });
+    host('closed');
+  }
+}
+
 /** A session that is compacting says so after you switch to another session and back (a stand-in the host list reports as compacting). */
 async function runCompactingStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -11626,7 +11726,7 @@ async function runComposerTrayStep(win: BrowserWindow): Promise<string> {
     await js(`${root}.style.maxWidth = '300px'`);
     try {
       if (!(await waitInPage(win, `${tray}.hasAttribute('data-composer-tray-folded') && !!${tray}.querySelector('[data-folded-chip]')`, 5_000))) return `the tray did not fold in a narrow box (${String(await js(`${tray}.getBoundingClientRect().width`))}px)`;
-      const folded = (await js(`({ chips: ${tray}.querySelectorAll('[data-composer-chips] > [data-chip]:not([data-chip="profile"])').length, label: ${tray}.querySelector('[data-folded-chip]').getAttribute('aria-label'), tools: !!${tray}.querySelector('[data-open-tools]')?.checkVisibility({ visibilityProperty: true }) })`)) as { chips: number; label: string; tools: boolean };
+      const folded = (await js(`({ chips: ${tray}.querySelectorAll('[data-composer-chips] > [data-chip]:not([data-chip="profile"]):not([data-chip="fast"])').length, label: ${tray}.querySelector('[data-folded-chip]').getAttribute('aria-label'), tools: !!${tray}.querySelector('[data-open-tools]')?.checkVisibility({ visibilityProperty: true }) })`)) as { chips: number; label: string; tools: boolean };
       if (folded.chips !== 1) return `the folded tray shows ${folded.chips} chips besides the profile, not one`;
       if (!folded.label.startsWith('Model, effort and mode: ')) return `the folded chip is labelled ${JSON.stringify(folded.label)}`;
       if (folded.tools) return 'Tools still shows on a folded tray';
@@ -12511,6 +12611,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('pipelines: the editor keeps a step\'s Starts choice on one row', () => runPipelineEditorStep(win));
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
+  await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
   await step('working panel: the patch panel on the working line, still while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());

@@ -194,6 +194,8 @@ export interface PaletteApi {
   compact(): void;
   /** Keep awake until done, on or off, for the session on screen. */
   setKeepAwake(on: boolean): void;
+  /** Fast mode, on or off, for the session on screen. */
+  setFastMode(on: boolean): void;
   copyLastReply(): void;
   /** Preview last written file: opens the previewable file Claude wrote last in the session. */
   previewLastFile(): void;
@@ -805,6 +807,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'compact', title: 'Compact context', group: 'session', icon: Shrink, keywords: '/compact summarise', when: (ctx) => hosted(ctx) && (session(ctx)!.host!.contextTokens ?? 0) > 0, run: (api) => api.compact() },
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
+  { id: 'fast-mode-on', title: 'Turn on fast mode', group: 'session', icon: Zap, keywords: '/fast speed quick opus usage credits', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.supportsFastMode && (session(ctx)!.host!.fastMode ?? 'off') === 'off' && session(ctx)!.host!.state !== 'closed' && session(ctx)!.host!.state !== 'error', run: (api) => api.setFastMode(true) },
+  { id: 'fast-mode-off', title: 'Turn off fast mode', group: 'session', icon: Zap, keywords: '/fast speed standard', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.supportsFastMode && (session(ctx)!.host!.fastMode ?? 'off') !== 'off', run: (api) => api.setFastMode(false) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
   {
     id: 'ask-session',

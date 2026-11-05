@@ -11,7 +11,9 @@ import { NEW_SESSION_COLUMN } from './ProjectRow.tsx';
 import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
+import { fastModeFace } from '../../lib/fastMode.ts';
 import { basename, shortAge } from '../../lib/format.ts';
+import { findModelOption } from '../../lib/models.ts';
 import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
@@ -128,6 +130,8 @@ function LocalNewSession() {
   const [cwd, setCwd] = useState<string | null>(null);
   /** The choices last made for a quick question, kept apart from those for projects. */
   const [questionChoices, setQuestionChoices] = useState<QuestionChoices>(INITIAL_QUESTION_CHOICES);
+  /** The bolt: off every time, and kept out of the choices, so a project's defaults and drafts never carry it. */
+  const [fastStart, setFastStart] = useState(false);
   // Before a folder is picked, the mode is already the one Settings sets.
   const [d, setD] = useState<Choices>(() => newSessionChoices(null, newSessionMode, INITIAL_CHOICES.permissionMode, globals));
   /** The permission mode last picked here or in the palette, for Settings › General › Permission mode › Remember last. */
@@ -1112,6 +1116,8 @@ function LocalNewSession() {
         autoEnabled: autoModel.enabled,
         github: fresh || noWorktree || noBranch ? undefined : githubStart(worktree),
         provider: runWith ? { model: runWithModel || null, effort: providerEffortShown || null, permissionMode: runWithMode } : null,
+        // A link starts what it says, never at a higher price.
+        ...(fastStart && !fromLink ? { fastMode: true } : {}),
       },
       {
         createSession: (params) => client.call('session.create', params),
@@ -1137,6 +1143,7 @@ function LocalNewSession() {
             if (cloned?.root) useDrafts.getState().removeDraft(newDraftKey(cloned.root));
           }
           if (!fresh && worktree && !nameTouched) setSuggestedName(randomWorktreeName());
+          setFastStart(false);
           if (fromGithub) {
             setFromGithub(null);
             setNameTouched(false);
@@ -1203,6 +1210,13 @@ function LocalNewSession() {
     setSwitched(null);
   };
 
+  // Only for a start that runs right away on a model that says it has fast mode: not Auto, which hasn't picked yet, a
+  // pipeline, another provider, a quick question, or what goes on the Later list or a schedule to run unattended.
+  const fastOffered = !runWith && !(runAs && !noPipeline) && !question && !fromLater && !fromSchedule && findModelOption(models, shownModel || 'default')?.supportsFastMode === true;
+  useEffect(() => {
+    if (!fastOffered) setFastStart(false);
+  }, [fastOffered]);
+
   // The same chip row as in a session.
   const controls = (
     <ComposerChipRow
@@ -1235,6 +1249,7 @@ function LocalNewSession() {
             : null
           : { value: d.effort, onChange: (effort) => update({ effort }) }
       }
+      fast={fastOffered ? { face: fastModeFace({ fastMode: fastStart ? 'on' : 'off', contextTokens: null }), onToggle: setFastStart } : null}
       mode={runWith ? (runWithModes.length ? { value: runWithMode, onChange: (mode) => (pickForProvider(), setProviderMode(mode)), choices: runWithModes } : null) : { value: d.permissionMode, onChange: (permissionMode) => update({ permissionMode }) }}
       pipeline={runAs && !noPipeline ? boxChoiceUse(runAs) : null}
     />

@@ -58,6 +58,11 @@ export class RoutedHostManager extends HostManager {
     return other ? other.setEffort(sessionId, effort) : super.setEffort(sessionId, effort);
   }
 
+  override async setFastMode(sessionId: string, on: boolean): Promise<void> {
+    if (this.providerFor(sessionId)) throw new RpcError('UNSUPPORTED', 'Fast mode is only available for Claude Code sessions');
+    return super.setFastMode(sessionId, on);
+  }
+
   override async rewind(sessionId: string, userMessageId: string, dryRun: boolean): Promise<RewindResult> {
     const other = this.providerFor(sessionId);
     return other ? other.rewind(sessionId, userMessageId, dryRun) : super.rewind(sessionId, userMessageId, dryRun);

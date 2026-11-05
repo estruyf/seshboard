@@ -84,6 +84,16 @@ export const SessionHostInfo = z.object({
   model: z.string().nullable(),
   permissionMode: PermissionMode,
   effort: Effort.nullable(),
+  /**
+   * Fast mode as Claude Code last reported it, each turn (`cooldown`: paused after a rate limit, at standard speed until
+   * it comes back). `on` is what was asked for: see `fastModeBlocked` for a turn that fell back. Missing: off.
+   */
+  fastMode: z.enum(['off', 'on', 'cooldown']).optional(),
+  /**
+   * Why fast mode isn't serving: Claude Code's reason (`free`, `extra_usage_disabled`, …), or `credits_exhausted` when
+   * requests fall back to standard speed while it still reports `on`. Null or missing: nothing stands in its way.
+   */
+  fastModeBlocked: z.string().nullable().optional(),
   /** Cost reported by Claude Code for this process so far. */
   costUsd: z.number(),
   contextPercent: z.number().nullable(),
@@ -211,6 +221,8 @@ export const ModelOption = z.object({
   supportsEffort: z.boolean(),
   /** The effort levels it takes, when it says (GitHub Copilot's models); every level otherwise. */
   efforts: z.array(Effort).optional(),
+  /** It can run in fast mode. Missing: it can't (never assumed, since fast mode bills differently). */
+  supportsFastMode: z.boolean().optional(),
 });
 export type ModelOption = z.infer<typeof ModelOption>;
 

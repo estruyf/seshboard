@@ -381,7 +381,7 @@ export interface Engine {
    * a turn, `idle` ends it with `outcome`, `closed` takes it away. `needs-you` holds a made-up permission prompt, which
    * goes when the session moves on, or when Allow or Deny answers it (the menu bar's Allow).
    */
-  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean }): void;
+  smokeQueueHost(host: { sessionId: string; cwd: string; state: 'running' | 'needs-you' | 'idle' | 'closed'; outcome?: 'clean' | 'error' | 'stopped'; compacting?: boolean; fast?: { blocked: string | null; on?: boolean } }): void;
   /**
    * The smoke test (`stubQueueStarts` only): while on, `session.create` starts a stand-in session (`smokeQueueHost`)
    * instead of Claude Code, and records what it got. For the menu bar's new work.
@@ -425,6 +425,9 @@ export interface Engine {
 }
 
 /** The built-in profile keeps the key used before profiles existed. */
+/** The smoke test's stand-in model that has fast mode (`smokeQueueHost`). */
+const SMOKE_FAST_MODEL: ModelOption = { value: 'smoke-fast', displayName: 'Smoke Fast', description: 'Stand-in', supportsEffort: true, supportsFastMode: true };
+
 const commandCacheKey = ({ profileId, cwd }: { profileId: string; cwd: string }) =>
   profileId === BUILTIN_PROFILE_ID ? `commands:${cwd}` : `commands:${profileId}:${cwd}`;
 
@@ -1128,7 +1131,7 @@ export function createEngine(options: EngineOptions): Engine {
     models: appState.get('models') as ModelOption[] | null,
     onModels: (models) => {
       appState.set('models', models);
-      broadcast('models.changed', { models });
+      broadcast('models.changed', { models: withStandInModel(models) });
     },
     commandCache: {
       // Persisted for an hour; Claude Code reports fresh lists from every running session anyway.
@@ -1495,11 +1498,13 @@ export function createEngine(options: EngineOptions): Engine {
     skipped: (event) => broadcast('later.autoSkipped', event),
     log,
   });
+  /** The smoke test's fast model stays listed while a stand-in uses it, also when Claude Code's real list arrives meanwhile. */
+  const withStandInModel = (models: ModelOption[]): ModelOption[] => ([...smokeHosts.values()].some((h) => h.model === SMOKE_FAST_MODEL.value) ? [...models, SMOKE_FAST_MODEL] : models);
   /**
    * A stand-in session this app "runs" (`stubQueueStarts` only): the smoke test drives one through a turn, and the
    * screenshots' demo shows a session queued items start after (`DemoUsage.queueHosts`).
    */
-  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting }) => {
+  const standInHost: Engine['smokeQueueHost'] = ({ sessionId, cwd, state, outcome, compacting, fast }) => {
     if (!options.stubQueueStarts) return;
     const before = smokeHosts.get(sessionId);
     const info: HostInfo = {
@@ -1522,11 +1527,14 @@ export function createEngine(options: EngineOptions): Engine {
       }),
       state,
       ...(compacting !== undefined ? { compacting } : {}),
+      // A model that has fast mode, whatever this computer's Claude Code lists.
+      ...(fast ? { model: SMOKE_FAST_MODEL.value, fastModeBlocked: fast.blocked, ...(fast.on ? { fastMode: 'on' as const } : {}) } : {}),
       promptedAt: state === 'running' ? Date.now() : (before?.promptedAt ?? null),
     };
     if (state === 'idle' && outcome) autoStarter?.turnEnded(sessionId, { ok: outcome === 'clean', stopped: outcome === 'stopped' });
     if (state === 'closed') smokeHosts.delete(sessionId);
     else smokeHosts.set(sessionId, info);
+    if (fast || before?.model === SMOKE_FAST_MODEL.value) broadcast('models.changed', { models: withStandInModel(hosts.listModels()) });
     awake.update(sessionId, info);
     broadcast('session.host', withAwake(info));
     // Waiting for you: a permission prompt, as a host asks one, until the session moves on.
@@ -2309,8 +2317,8 @@ export function createEngine(options: EngineOptions): Engine {
   const createSession = async (params: CreateSessionParams) => {
     if (stubCreate && options.stubQueueStarts) {
       const sessionId = `smoke-new-${randomUUID()}`;
-      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null })}\n`);
-      standInHost({ sessionId, cwd: params.cwd, state: 'running' });
+      appendFileSync(join(options.dataDir, 'smoke-created.jsonl'), `${JSON.stringify({ sessionId, cwd: params.cwd, prompt: params.prompt, profileId: params.profileId ?? null, fastMode: params.fastMode ?? false })}\n`);
+      standInHost({ sessionId, cwd: params.cwd, state: 'running', ...(params.fastMode ? { fast: { blocked: null, on: true } } : {}) });
       return { sessionId };
     }
     // A profile of another provider (the project's, or the one picked) starts that provider: its own model and mode.
@@ -3338,6 +3346,17 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.setEffort(sessionId, effort);
       return {};
     },
+    'session.setFastMode': async ({ sessionId, on }) => {
+      const standIn = smokeHosts.get(sessionId);
+      if (standIn) {
+        const info: HostInfo = { ...standIn, fastMode: on ? 'on' : 'off', fastModeBlocked: null };
+        smokeHosts.set(sessionId, info);
+        broadcast('session.host', withAwake(info));
+        return {};
+      }
+      await hosts.setFastMode(sessionId, on);
+      return {};
+    },
     'session.context': ({ sessionId }) => hosts.context(sessionId),
     // Answered beside whatever the session does: never through session.send, so never in its turn or Up next.
     'session.ask': ({ sessionId, threadId, question, replaces }) => {
@@ -3427,7 +3446,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (statSafe(cwd)?.isDirectory()) void hosts.prewarm(cwd, profile, effort).catch((error: Error) => log('debug', `Pre-warm failed: ${error.message}`));
       return {};
     },
-    'models.list': () => ({ models: hosts.listModels() }),
+    'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
     'usage.get': ({ refresh, profileId }) => {
       // Plan usage is Claude Code's: another provider's profile has its own (`providers.quota`), never a Claude profile's.
       if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude') throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);

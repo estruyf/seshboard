@@ -1,8 +1,9 @@
-import { Cpu, WandSparkles } from 'lucide-react';
+import { Cpu, WandSparkles, Zap, ZapOff } from 'lucide-react';
 import { AUTO_MODEL } from '@seshboard/protocol/client';
 import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { PROVIDER_NAMES, type ClaudeProfile, type Effort, type PermissionMode, type ProviderMode } from '@seshboard/protocol/client';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
+import type { FastModeFace } from '../../lib/fastMode.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -43,6 +44,8 @@ export interface ComposerChipRowProps {
    * every level otherwise. `defaultDescription`: what Default means, in its provider's words.
    */
   effort: { value: Effort | ''; onChange(effort: Effort | ''): void; levels?: readonly Effort[]; defaultDescription?: string } | null;
+  /** The fast mode toggle of a running session on a model that has it. Stays a chip of its own in a folded tray. */
+  fast?: { face: FastModeFace; onToggle(on: boolean): void } | null;
   /**
    * The permission mode. `choices`: the modes another provider has, in its words (Copilot's); without them,
    * Claude Code's. Null when there is no mode to pick.
@@ -92,7 +95,7 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * When the row runs out of room it steps through fixed levels (`footerLevel`) rather than cutting words:
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
-export function ComposerChipRow({ profile, model, effort, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
+export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
   const profiles = useProfiles((s) => s.profiles);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
@@ -223,6 +226,19 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
       </ChoiceMenu>
     ),
   });
+  if (fast) {
+    const { look, label, next, tooltip } = fast.face;
+    chips.push({
+      key: 'fast',
+      // On: filled in the accent. Paused: filled but gray. Off is the quiet chip, and it can't serve when struck through.
+      face: () => (look === 'blocked' ? <ZapOff size={13} className="shrink-0" aria-hidden /> : <Zap size={13} className={`shrink-0 ${look === 'on' ? 'fill-current text-accent-ink' : look === 'cooldown' ? 'fill-current text-faint' : ''}`} aria-hidden />),
+      menu: (face) => (
+        <button type="button" className={CHOICE_PILL} disabled={disabled} aria-label={label} aria-pressed={!next} data-tooltip={tooltip} data-fast-toggle={look} onClick={() => fast.onToggle(next)}>
+          {face}
+        </button>
+      ),
+    });
+  }
   if (effort) {
     chips.push({
       key: 'effort',
@@ -287,7 +303,7 @@ export function ComposerChipRow({ profile, model, effort, mode, disabled, names 
     ...(effort ? [{ key: 'effort' as const, heading: 'Effort', shown: effortLabel, value: effort.value, choices: effortChoices, onChange: (v: string) => effort.onChange(v as Effort | ''), name: names.effort }] : []),
     ...(mode ? [{ key: 'mode' as const, heading: 'Mode', shown: modeShort, value: mode.value, choices: modeChoices, onChange: (v: string) => mode.onChange(v as PermissionMode), name: names.mode }] : []),
   ];
-  const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile') : chips;
+  const shownChips = tray.folded ? chips.filter((chip) => chip.key === 'profile' || chip.key === 'fast') : chips;
 
   return (
     <div ref={rowRef} className="relative flex min-w-0 flex-1 items-center gap-0.5" data-composer-chips data-chip-level={level}>

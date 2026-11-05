@@ -52,6 +52,16 @@
       "page": "new-session/models-and-options"
     },
     {
+      "id": "palette:fast-mode-on",
+      "name": "Turn on fast mode",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:fast-mode-off",
+      "name": "Turn off fast mode",
+      "page": "new-session/models-and-options"
+    },
+    {
       "id": "palette:change-mode",
       "name": "Change permission mode…",
       "page": "permissions"
@@ -2574,6 +2584,11 @@
     {
       "id": "feature:effort-chip",
       "name": "Effort chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:fast-mode-toggle",
+      "name": "Fast mode toggle: a lightning bolt under the message box, in a session and on New session, with a tooltip on what it does and costs and why it isn't running, and /fast",
       "page": "new-session/models-and-options"
     },
     {

@@ -126,6 +126,8 @@ const PLANS: Record<string, Plan> = {
   compact: 'here',
   'keep-awake-on': 'here',
   'keep-awake-off': 'here',
+  'fast-mode-on': 'here',
+  'fast-mode-off': 'here',
   'change-model': 'here',
   'change-effort': 'here',
   'change-mode': 'here',

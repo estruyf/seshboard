@@ -187,6 +187,8 @@ export interface CreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
+  /** Turned on before the first message goes, so that message runs fast too. Not saved: a resume starts off. */
+  fastMode?: boolean | undefined;
   worktree: ClaudeWorktreeRequest | null;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
@@ -291,6 +293,8 @@ export class HostManager {
       if (params.model) await host.setModel(params.model).catch(() => {});
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
+    // Sent the same way for a warm process and a new one. If it fails the session starts at standard speed, and says so.
+    if (params.fastMode) await host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`));
     // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
     if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
@@ -541,6 +545,11 @@ export class HostManager {
   async setEffort(sessionId: string, effort: Effort | null): Promise<void> {
     if (this.running(sessionId)) await this.require(sessionId).setEffort(effort);
     this.settings.set(sessionId, { effort });
+  }
+
+  /** Only while it runs, and not saved like effort: it bills to usage credits, so a session never comes back with it on. */
+  async setFastMode(sessionId: string, on: boolean): Promise<void> {
+    await this.require(sessionId).setFastMode(on);
   }
 
   async context(sessionId: string): Promise<ContextUsage> {

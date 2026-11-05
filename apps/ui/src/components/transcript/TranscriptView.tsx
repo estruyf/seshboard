@@ -5,7 +5,9 @@ import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo
 import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
+import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
 import { basename, shortAge, tildify } from '../../lib/format.ts';
+import { findModelOption } from '../../lib/models.ts';
 import { nextMode } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { lastPreviewableWrite, useLastWritten } from '../../state/lastWrittenStore.ts';
@@ -1258,6 +1260,19 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
    */
   const send = async (text: string, attachments: ImageAttachment[], fork = false, ungated = false, mode?: SendMode): Promise<void | false> => {
     if (!client) throw new Error('Not connected to the engine');
+    const typedFast = !otherProvider && !fork && attachments.length === 0 ? fastCommand(text) : null;
+    if (typedFast) {
+      if (!activeHost) {
+        setActionError('Fast mode can be turned on once this session runs. Send a message first.');
+        return false;
+      }
+      if (!findModelOption(useHosts.getState().models, activeHost.model)?.supportsFastMode) {
+        setActionError('This model has no fast mode. Pick Opus in the model menu first.');
+        return false;
+      }
+      await client.call('session.setFastMode', { sessionId, on: typedFast === 'toggle' ? fastModeFace(activeHost).next : typedFast === 'on' });
+      return;
+    }
     if (restart) {
       // The engine can't resume a session it has no transcript or folder for: start it again, and show the new one.
       const outcome = await startNewSession(

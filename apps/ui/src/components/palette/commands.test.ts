@@ -264,6 +264,24 @@ describe('when(): a session is open', () => {
     expect(ids(inSession({ host: { state: 'idle', contextTokens: null, supportsEffort: false } }))).not.toContain('change-effort');
   });
 
+  it('offers fast mode only on a running session whose model has it, and to turn it off once on', () => {
+    const host = (extra: object) => inSession({ host: { state: 'idle', contextTokens: 0, supportsEffort: true, ...extra } });
+    expect(ids(host({}))).not.toContain('fast-mode-on');
+    expect(ids(host({ supportsFastMode: true }))).toContain('fast-mode-on');
+    expect(ids(host({ supportsFastMode: true }))).not.toContain('fast-mode-off');
+    expect(ids(host({ supportsFastMode: true, state: 'closed' }))).not.toContain('fast-mode-on');
+    for (const fastMode of ['on', 'cooldown']) {
+      expect(ids(host({ supportsFastMode: true, fastMode }))).toContain('fast-mode-off');
+      expect(ids(host({ supportsFastMode: true, fastMode }))).not.toContain('fast-mode-on');
+    }
+    // On a model without it, there is nothing to turn off: Claude Code has turned it off itself.
+    expect(ids(host({ fastMode: 'on' }))).not.toContain('fast-mode-off');
+    const api = { setFastMode: vi.fn() } as unknown as PaletteApi;
+    const ctx = host({ supportsFastMode: true });
+    COMMANDS.find((c) => c.id === 'fast-mode-on')!.run!(api, ctx);
+    expect(api.setFastMode).toHaveBeenCalledWith(true);
+  });
+
   it('keeps the computer awake until done only while it runs here, and offers to stop once it does', () => {
     expect(ids(inSession())).not.toContain('keep-awake-on');
     const working = inSession({ host: { state: 'running', contextTokens: 0, supportsEffort: true } });

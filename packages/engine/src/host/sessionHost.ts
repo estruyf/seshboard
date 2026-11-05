@@ -20,6 +20,7 @@ import type {
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { pluginsFromInit, readCapabilities } from './capabilities.ts';
 import { commandEcho } from './commandEcho.ts';
+import { FAST_CREDITS_NOTIFICATION, FAST_CREDITS_OUT, fastModeReport } from './fastMode.ts';
 import { isReadOnlyTool, READ_ONLY_STEP_REASON } from './sideQuestions.ts';
 import { InputQueue } from './inputQueue.ts';
 import { sessionFolder } from './sessionFolder.ts';
@@ -219,6 +220,7 @@ export function toModelOption(m: ModelInfo): ModelOption {
     displayName: m.displayName,
     description: m.description,
     supportsEffort: m.supportsEffort ?? false,
+    ...(m.supportsFastMode ? { supportsFastMode: true } : {}),
   };
 }
 
@@ -569,6 +571,15 @@ export class SessionHost {
     this.update({ effort });
   }
 
+  /**
+   * A flag setting lasts as long as this process and is never written to the user's settings. It is also the only way
+   * in: an SDK session ignores `fastMode` in a settings file, and a typed `/fast` refuses until this has been sent.
+   */
+  async setFastMode(on: boolean): Promise<void> {
+    await (await this.query)?.applyFlagSettings({ fastMode: on });
+    this.update({ fastMode: on ? 'on' : 'off', fastModeBlocked: null });
+  }
+
   async contextUsage(): Promise<ContextUsage> {
     const query = await this.query;
     if (!query) throw new Error('This session is not running');
@@ -719,7 +730,8 @@ export class SessionHost {
         if (stop) this.events.limitHit?.(this.sessionId, stop);
         else if (signedOut) this.events.signedOut?.(this.sessionId, signInMessage);
         else if (outcome.ok) this.events.turnOk?.(this.sessionId);
-        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}) });
+        const speed = (message.usage as { speed?: unknown } | undefined)?.speed;
+        this.update({ costUsd: message.total_cost_usd ?? this.info.costUsd, ...this.takeCache(), ...(this.info.compacting ? { compacting: false } : {}), ...fastModeReport(message, speed === 'fast' ? null : this.info.fastModeBlocked) });
         void this.refreshContext();
         this.events.usageHint?.();
         const stopped = this.stopRequested;
@@ -766,6 +778,7 @@ export class SessionHost {
         model: typeof init.model === 'string' ? init.model : this.info.model,
         permissionMode: typeof init.permissionMode === 'string' ? (init.permissionMode as PermissionMode) : this.info.permissionMode,
         state: first ? 'idle' : this.info.state,
+        ...fastModeReport(init, this.info.fastModeBlocked),
       });
       const terminalOnly = (init as { terminal_slash_commands?: unknown }).terminal_slash_commands;
       if (Array.isArray(terminalOnly)) this.terminalOnly = terminalOnly.filter((c): c is string => typeof c === 'string');
@@ -797,6 +810,10 @@ export class SessionHost {
     }
     if (message.subtype === 'compact_boundary') {
       this.endCompacting();
+      return;
+    }
+    if (message.subtype === 'notification') {
+      if ((message as { key?: unknown }).key === FAST_CREDITS_NOTIFICATION) this.update({ fastModeBlocked: FAST_CREDITS_OUT });
       return;
     }
     if (message.subtype === 'background_tasks_changed') {

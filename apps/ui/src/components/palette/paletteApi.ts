@@ -179,6 +179,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     editNote: () => openNoteEditor(sessionId),
     remind: () => openRemindEditor([sessionId]),
     setKeepAwake: (on) => call(on ? 'keep the computer awake' : 'stop keeping the computer awake', (c) => c.call('session.keepAwake', { sessionId, on })),
+    setFastMode: (on) => call(on ? 'turn on fast mode' : 'turn off fast mode', (c) => c.call('session.setFastMode', { sessionId, on })),
     // Finishing work: the focus limit never stands in the way of compacting.
     compact: () => call('compact the context', (c) => c.call('session.send', { sessionId, text: '/compact', attachments: [], fork: false })),
     copyLastReply: () => {

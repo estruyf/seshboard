@@ -416,6 +416,8 @@ export const contract = {
         model: z.string().max(200).nullable().default(null),
         permissionMode: PermissionMode.default('default'),
         effort: Effort.nullable().default(null),
+        /** Run the first message in fast mode too. It lasts as long as this run, like `session.setFastMode`; another provider ignores it. */
+        fastMode: z.boolean().optional(),
         worktree: WorktreeRequest.nullable().default(null),
         /** The Claude profile to run with; null uses the project's, else the default. */
         profileId: ProfileId.nullable().default(null),
@@ -528,6 +530,8 @@ export const contract = {
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().max(200).nullable() }), result: z.object({}) },
     /** Changes how hard Claude thinks, for this session only (null: back to the default). */
     'session.setEffort': { params: z.object({ sessionId: SessionId, effort: Effort.nullable() }), result: z.object({}) },
+    /** Turns fast mode on or off for this run of a session; it isn't saved, so every start is at standard speed. */
+    'session.setFastMode': { params: z.object({ sessionId: SessionId, on: z.boolean() }), result: z.object({}) },
     /** What fills a running session's context window, by category. */
     'session.context': { params: z.object({ sessionId: SessionId }), result: ContextUsage },
     /** Stops the Claude Code process behind a session (the transcript stays; sending resumes it). */

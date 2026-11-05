@@ -20,6 +20,13 @@ function deps(outcome: GateOutcome = 'start') {
 }
 
 describe('sessionCreateParams', () => {
+  it('asks for fast mode only when picked, and never for another provider', () => {
+    expect(sessionCreateParams(START)).not.toHaveProperty('fastMode');
+    expect(sessionCreateParams({ ...START, fastMode: false })).not.toHaveProperty('fastMode');
+    expect(sessionCreateParams({ ...START, fastMode: true })).toMatchObject({ fastMode: true });
+    expect(createParamsFor({ ...START, fastMode: true, provider: { model: 'gpt' } })).not.toHaveProperty('fastMode');
+  });
+
   it('passes the choices, with empty ones as Claude Code’s defaults', () => {
     expect(sessionCreateParams(START)).toEqual({
       cwd: '/work/app',

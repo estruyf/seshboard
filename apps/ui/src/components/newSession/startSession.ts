@@ -41,6 +41,8 @@ export interface NewSessionStart {
    * (New session leaves out what the provider doesn't have yet). Auto doesn't apply.
    */
   provider?: { model: string | null; effort?: Effort | null; permissionMode?: PermissionMode } | null;
+  /** The bolt on New session: this session's first message runs in fast mode too. Claude Code's only. */
+  fastMode?: boolean;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -88,6 +90,7 @@ export interface ClaudeSessionCreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Exclude<Choices['effort'], ''> | null;
+  fastMode?: boolean;
   worktree: { name: string; baseRef: 'fresh' | 'head' | WorktreeBranchBase } | null;
   checkoutBranch: string | null;
   profileId: string;
@@ -131,6 +134,7 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
+    ...(start.fastMode ? { fastMode: true } : {}),
     worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || worktreeRequestBase(choices.baseRef) } : null,
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
@@ -141,7 +145,7 @@ export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreate
 export function createParamsFor(start: NewSessionStart): SessionCreateParams {
   if (!start.provider) return sessionCreateParams(start);
   const { model, effort, permissionMode } = start.provider;
-  const { model: _model, effort: _effort, permissionMode: _mode, ...rest } = sessionCreateParams(start);
+  const { model: _model, effort: _effort, permissionMode: _mode, fastMode: _fast, ...rest } = sessionCreateParams(start);
   return { ...rest, model, ...(model && effort ? { effort } : {}), ...(permissionMode ? { permissionMode } : {}) };
 }
 
