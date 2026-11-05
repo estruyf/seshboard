@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isProviderFeature, OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
+import { ActivityDay, RemoteActivityEntry } from './activity.ts';
 import { CatchUp } from './catchUp.ts';
 import { ChangedFile } from './git.ts';
 import { ClonePlan, CloneProgress } from './clone.ts';
@@ -536,6 +537,14 @@ export const remoteContract = {
         windows: z.array(z.object({ kind: z.string().max(100), scope: z.string().max(200).nullable(), from: z.number() })).max(10),
       }),
       result: z.object({ windows: z.array(WindowCost).nullable() }),
+    },
+    /**
+     * What the sessions there did per day, as `activity.range` on that computer: the project as a name, no folders.
+     * With `REMOTE_FEATURE_ACTIVITY`.
+     */
+    'activity.range': {
+      params: z.object({ from: ActivityDay, to: ActivityDay, timeZone: z.string().max(100).default('UTC') }),
+      result: z.object({ entries: z.array(RemoteActivityEntry) }),
     },
     /** The catch-up of a session's last turn, without paths outside its project. */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },

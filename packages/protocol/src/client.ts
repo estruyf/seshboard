@@ -52,6 +52,7 @@ export type * from './memory.ts';
 export * from './memoryText.ts';
 export type * from './sideQuestions.ts';
 export * from './sideQuestionConstants.ts';
+export type * from './activity.ts';
 export type * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export type * from './remote.ts';

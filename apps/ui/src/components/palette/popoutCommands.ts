@@ -70,10 +70,11 @@ const PLANS: Record<string, Plan> = {
   pipelines: 'hide',
   'open-in-new-window': 'hide',
 
-  // Settings, Usage, Upcoming and project pages: their stores send them to the main window.
+  // Settings, Usage, Upcoming, Activity and project pages: their stores send them to the main window.
   settings: 'main',
   'open-usage': 'main',
   upcoming: 'main',
+  activity: 'main',
   'queue-view': 'main',
   'schedules-view': 'main',
   'worktrees-here': 'main',

@@ -1,4 +1,6 @@
 import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
+import { oneLine, promptText } from '../catchUp/turn.ts';
+import type { RawSessionMessage } from '../claude/transcript.ts';
 
 /**
  * Token usage from Claude Code's transcript lines. Only `assistant` lines carry a `message.usage`; Claude Code writes
@@ -98,6 +100,43 @@ export function parseUsageLine(line: string): UsageLine | null {
     ...counts,
     cacheWrite1h: Math.min(counts.cacheWrite, count((message.usage?.cache_creation as { ephemeral_1h_input_tokens?: unknown } | null | undefined)?.ephemeral_1h_input_tokens)),
   };
+}
+
+/** One prompt of yours, as a transcript line has it: Activity's turns. */
+export interface PromptLine {
+  /** Its time and first words: a fork copies a transcript's lines, and the prompt still counts once. */
+  key: string;
+  sessionId: string;
+  at: number;
+  cwd: string | null;
+  /** Shortened to one line. */
+  text: string;
+}
+
+/** What every prompt's line has; `PROMPT_NOT` is on tool results (they can be megabytes), so those are never parsed. */
+export const PROMPT_MARKER = '"type":"user"';
+export const PROMPT_NOT = '"tool_use_id"';
+/** Commands that do nothing in the conversation: they aren't turns. */
+const NOT_A_TURN = /^\/(clear|compact|context|cost|exit|help|login|logout|model|resume|status|usage)(\s|$)/;
+const PROMPT_TEXT_MAX = 240;
+
+/** Reads a transcript line as a prompt of yours, or null: another type, a subagent's, Claude Code's own, bad JSON. */
+export function parsePromptLine(line: string): PromptLine | null {
+  let json: RawSessionMessage & { timestamp?: unknown; sessionId?: unknown; cwd?: unknown; isSidechain?: unknown; isMeta?: unknown };
+  try {
+    json = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (json?.type !== 'user' || json.isSidechain === true || json.isMeta === true) return null;
+  const sessionId = text(json.sessionId);
+  const at = Date.parse(String(json.timestamp ?? ''));
+  if (!sessionId || !Number.isFinite(at)) return null;
+  // The transcript's line has no `parent_tool_use_id` (the SDK adds it): being in the main chain says the same.
+  const prompt = promptText({ ...json, parent_tool_use_id: null });
+  if (!prompt || NOT_A_TURN.test(prompt)) return null;
+  const short = oneLine(prompt, PROMPT_TEXT_MAX);
+  return { key: `${at}|${short.slice(0, 80)}`, sessionId, at, cwd: text(json.cwd), text: short };
 }
 
 /** The start of the UTC hour a moment falls in: the bucket session totals are kept in. */

@@ -3,6 +3,7 @@ import { otherModalOpen } from '../lib/modalGuards.ts';
 import { useOverlay } from './overlayStore.ts';
 import { openUsage } from './usageViewStore.ts';
 import { openUpcoming } from './upcomingStore.ts';
+import { openActivity } from './activityStore.ts';
 import { PROJECT_TABS, openProject, type ProjectTab } from './projectPageStore.ts';
 import { useProjects } from './projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './sessionNav.ts';
@@ -41,6 +42,9 @@ export function runMainRequest(request: MainWindowRequest): void {
       return;
     case 'upcoming':
       openUpcoming({ kind: request.filter ?? undefined, scheduleId: request.scheduleId });
+      return;
+    case 'activity':
+      openActivity(request.day);
       return;
     case 'navigate':
       if (request.to === 'needs-you') goToNextNeedsYou();

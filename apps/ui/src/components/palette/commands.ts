@@ -108,6 +108,7 @@ import {
   ListTree,
   type LucideIcon,
   CalendarClock,
+  Clock,
   BookOpen,
 } from 'lucide-react';
 import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
@@ -135,6 +136,8 @@ export interface PaletteApi {
   goHome(): void;
   /** Upcoming, on a filter (Queue…, Schedules…). */
   openUpcoming(kind?: 'all' | 'queue' | 'schedules'): void;
+  /** Activity, on today. */
+  openActivity(): void;
   /** The Usage view, for the default profile. */
   openUsage(): void;
   showSearch(): void;
@@ -411,6 +414,7 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'sidebar-close', title: 'Close sidebar', group: 'general', icon: PanelLeftClose, keywords: 'hide collapse full width', when: (ctx) => ctx.sidebar !== 'closed', run: (api) => api.setSidebar('closed') },
   { id: 'home', title: 'Home', group: 'general', shortcut: keysFor('home'), icon: House, keywords: 'start overview dashboard', when: (ctx) => ctx.view !== 'home', run: (api) => api.goHome() },
   { id: 'upcoming', title: 'Go to Upcoming', group: 'general', shortcut: keysFor('upcoming'), icon: CalendarClock, keywords: 'queue queued schedules scheduled runs planned later timeline week', when: (ctx) => ctx.view !== 'upcoming', run: (api) => api.openUpcoming('all') },
+  { id: 'activity', title: 'Go to Activity', group: 'general', shortcut: keysFor('activity'), icon: Clock, keywords: 'what did i do today yesterday week history standup timesheet export summary day', when: (ctx) => ctx.view !== 'activity', run: (api) => api.openActivity() },
   { id: 'open-usage', title: 'Open usage', group: 'general', icon: Gauge, keywords: 'plan limits tokens usage insights session weekly cache', when: (ctx) => ctx.view !== 'usage', run: (api) => api.openUsage() },
   { id: 'search-memory', title: 'Search memory…', group: 'general', icon: Brain, keywords: 'find memories knowledge notes', when: (ctx) => ctx.connected, run: (api) => api.showMemorySearch() },
   { id: 'search', title: 'Search conversations', group: 'general', shortcut: keysFor('search'), icon: TextSearch, keywords: 'find text', when: always, run: (api) => api.showSearch() },

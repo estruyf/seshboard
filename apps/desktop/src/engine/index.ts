@@ -126,6 +126,11 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // Settings › Conversation › Activity's "Write the day in short with Haiku".
+  if (data?.type === 'activity') {
+    engine.setActivitySummaries((data as { summaries?: unknown }).summaries !== false);
+    return;
+  }
   // The smoke run's menu bar step: New work starts a stand-in session instead of Claude Code.
   if (data?.type === 'smokeStubCreate') {
     engine.smokeStubCreate((data as { on?: unknown }).on === true);

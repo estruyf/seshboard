@@ -87,8 +87,10 @@ import { useSessionViewHandoff } from './state/useSessionViewSync.ts';
 import { matches, type ShortcutId } from './lib/shortcuts.ts';
 import { ShortcutsSheet } from './components/shortcuts/ShortcutsSheet.tsx';
 import { UpcomingView } from './components/upcoming/UpcomingView.tsx';
+import { ActivityView } from './components/activity/ActivityView.tsx';
 import { SelectionMenu } from './components/SelectionMenu.tsx';
 import { openUpcoming } from './state/upcomingStore.ts';
+import { openActivity } from './state/activityStore.ts';
 
 /** What the main area shows, as the terminal sees it: Home is the session view without a session. */
 function terminalView(view: MainView, sessionId: string | null): TerminalView {
@@ -142,6 +144,9 @@ function useShortcuts() {
       } else if (matches(event, 'upcoming')) {
         event.preventDefault();
         openUpcoming();
+      } else if (matches(event, 'activity')) {
+        event.preventDefault();
+        openActivity();
       } else if (matches(event, 'search')) {
         if (otherModalOpen()) return;
         event.preventDefault();
@@ -285,6 +290,8 @@ export function App() {
           <NewSessionView />
         ) : behind === 'upcoming' ? (
           <UpcomingView />
+        ) : behind === 'activity' ? (
+          <ActivityView />
         ) : hasPanes ? (
           <SplitPanes />
         ) : (

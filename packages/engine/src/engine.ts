@@ -151,6 +151,8 @@ import { UsageInsights } from './usage/usageInsights.ts';
 import { scopeOf } from './usage/usageScanner.ts';
 import { ModelRouter, RoutingStore, stubRoute } from './autoModel/router.ts';
 import { CatchUpService } from './catchUp/catchUpService.ts';
+import { ActivityService } from './activity/activityService.ts';
+import { stubDaySummary } from './activity/daySummary.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { COMMIT_SYSTEM_PROMPT, commitContext, commitMessageInput, parseCommitMessage, stubCommitMessage } from './git/commitMessage.ts';
@@ -364,6 +366,8 @@ export interface Engine {
   setAutoModel(prefs: AutoModelPrefs): void;
   /** Settings › Conversation › Catch-up: write the summaries with Haiku (else from the tool calls), from main. */
   setCatchUpSummaries(enabled: boolean): void;
+  /** Settings › Conversation › Activity: write the day in short with Haiku, from main. */
+  setActivitySummaries(enabled: boolean): void;
   /** Settings › Conversation › Resume after a usage limit resets, from main. */
   setResumeAtLimit(mode: ResumeAtLimit): void;
   /** Settings › General › Global permission mode, from main: what a phone's new session starts in where its profile and project set none. */
@@ -1310,6 +1314,43 @@ export function createEngine(options: EngineOptions): Engine {
     startMs: 15_000,
     answerMs: 30_000,
     ...(options.stubCatchUp ? { stub: stubCommitMessage } : {}),
+  });
+  // --- Activity -----------------------------------------------------------------------------------------------------
+  /** Main sends Settings › Conversation › Activity's "Write the day in short with Haiku" at start and after each change. */
+  let activitySummaries = true;
+  /** The day in short: a few sentences from many sessions, so it has longer than a catch-up. */
+  const dayWriter = new Summarizer({
+    sdk,
+    env: envFor,
+    claudePath: async () => (await claude)?.path,
+    ephemeral,
+    record: (profileId, entry) => {
+      catchUpUsage.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
+      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
+    },
+    log,
+    what: 'Day in short',
+    startMs: 15_000,
+    answerMs: 30_000,
+    ...(options.stubCatchUp ? { stub: stubDaySummary } : {}),
+  });
+  const activity = new ActivityService({
+    db: cache.db,
+    session: (id) => sessions.get(id),
+    providerSessions: () => sessions.snapshot().sessions.filter(isOtherProviderSession),
+    projectOf: (cwd) => resolver.resolve(cwd).root,
+    projectName: (root) => projects.addedEntries().find((p) => p.root === root)?.name ?? basename(root),
+    prsOf: (id) => linkStore.prsOf(id),
+    git: (cwd, args) => git(cwd, args, { timeout: 10_000 }),
+    refresh: () => insights.refresh(),
+    // On the profile of the day's busiest session it can find, so the tokens count where the work did.
+    ask: (sessionIds, input, system) => {
+      const runtimes = new Set(profiles.runtimes().map((p) => p.id));
+      const fallback = runtimes.has(profiles.defaultId()) ? profiles.defaultId() : profiles.runtimes()[0]?.id;
+      const profileId = sessionIds.map((id) => sessions.get(id)?.profileId).find((id) => id && runtimes.has(id)) ?? fallback;
+      return profileId ? dayWriter.ask(profileId, 'activity', input, system) : Promise.resolve(null);
+    },
+    useModel: () => activitySummaries,
   });
   /** Where a session works now: its process's folder (a worktree once it has one), else what its transcript says. */
   const sessionCwd = (id: string) => hosts.list().hosts.find((h) => h.sessionId === id)?.cwd ?? sessions.get(id)?.cwd ?? liveList().find((l) => l.sessionId === id)?.cwd ?? null;
@@ -2553,6 +2594,7 @@ export function createEngine(options: EngineOptions): Engine {
         return match ? insights.breakdown(match, params) : null;
       },
       sessionCost: (sessionId) => insights.sessionCost(sessions.get(sessionId)?.profileId ?? profiles.defaultId(), sessionId),
+      activity: (params) => activity.range(params),
       windowCosts: (account, windows) => {
         const match = profileOfAccount(account);
         return match ? insights.windowCostsFrom(match, windows) : null;
@@ -3454,6 +3496,9 @@ export function createEngine(options: EngineOptions): Engine {
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.cost': ({ profileId }) => ({ windows: insights.windowCosts(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()) }),
     'usage.sessionCost': ({ sessionId, profileId }) => ({ cost: insights.sessionCost(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), sessionId) }),
+
+    'activity.range': async (params) => ({ entries: await activity.range(params) }),
+    'activity.summary': (params) => activity.summary(params),
 
     'questions.folder': () => ({ path: questions.ensure() }),
     'projects.inspect': ({ path }) => {
@@ -4466,6 +4511,9 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setCatchUpSummaries: (enabled) => {
       catchUpSummaries = enabled;
+    },
+    setActivitySummaries: (enabled) => {
+      activitySummaries = enabled;
     },
     setResumeAtLimit: (mode) => {
       resumeAtLimit = mode;

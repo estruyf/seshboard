@@ -34,6 +34,7 @@ export * from './memory.ts';
 export * from './memoryText.ts';
 export * from './sideQuestions.ts';
 export * from './sideQuestionConstants.ts';
+export * from './activity.ts';
 export * from './catchUp.ts';
 export * from './catchUpRules.ts';
 export * from './remote.ts';

@@ -7,6 +7,7 @@ import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { inScope } from '../../state/sidebarRows.ts';
+import { YesterdayCard } from '../activity/YesterdayCard.tsx';
 import { useMinute } from '../focus/useMinute.ts';
 import { useQuickProjects } from '../quickStart/useQuickProjects.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -61,10 +62,11 @@ export function HomeView() {
         <div className="drag flex h-13 shrink-0 items-center px-4">
           <SidebarToggle />
         </div>
-        {/* Queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
+        {/* Yesterday, queued prompts and schedules (in folders that aren't projects) still show, under the way to add the first project. */}
         <div className="@container flex flex-1 flex-col items-center justify-center gap-8 px-6 pb-16">
           <Onboarding />
           <div className="grid w-full max-w-3xl gap-7">
+            <YesterdayCard now={now} />
             <QueueCard now={now} />
             <SchedulesCard now={now} />
           </div>
@@ -100,8 +102,8 @@ export function HomeView() {
           <div className="grid grid-cols-1 items-start gap-7 @min-[1100px]:grid-cols-[2fr_1fr]" data-home-below>
             <div className="grid min-w-0 content-start gap-7">
               <StartInProject projects={quick} store={projects} />
-              {/* Yesterday (the day in short) joins Up next here once Activity is in. */}
               <div className="grid grid-cols-1 items-start gap-5 @min-[760px]:grid-cols-2">
+                <YesterdayCard now={now} />
                 <UpNext now={now} nameOf={nameOf} />
               </div>
               <UnsentCard now={now} />

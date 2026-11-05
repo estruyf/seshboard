@@ -11,6 +11,7 @@ export type NavPlace =
   | { view: 'project'; root: string; tab: ProjectTab }
   | { view: 'usage'; profileId: string | null }
   | { view: 'upcoming' }
+  | { view: 'activity' }
   /** A paired computer's page (its sessions are panes, in a session place). */
   | { view: 'remote'; computerId: string };
 

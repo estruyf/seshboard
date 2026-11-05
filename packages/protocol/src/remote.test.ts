@@ -7,6 +7,7 @@ describe('the remote contracts', () => {
     // A paired phone can make Claude run commands on the computer: adding a method here must be a deliberate change,
     // reviewed against the threat model in docs/remote-access.md.
     expect(Object.keys(remoteContract.requests).sort()).toEqual([
+      'activity.range',
       'app.update.cancel',
       'app.update.check',
       'app.update.get',

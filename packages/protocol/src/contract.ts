@@ -55,6 +55,7 @@ import { Trigger, TriggerEvent, TriggerNotice, TriggerRepoInfo, TriggerSave, Tri
 import { Pipeline, PipelineNotice, PipelineRunState, PipelineSave, PushPreview } from './pipelineSchema.ts';
 import { PROJECT_NAME_MAX } from './projectConstants.ts';
 import { AskEvent, AskThreadList } from './sideQuestions.ts';
+import { ActivityDay, ActivityEntry, ActivitySummary, ActivitySummaryExtra, ActivitySummaryState } from './activity.ts';
 import { CatchUp, RequestWhy } from './catchUp.ts';
 import { MAX_SIDE_QUESTION_LENGTH } from './sideQuestionConstants.ts';
 import { MAX_PROMPT_LENGTH, MAX_SEARCH_QUERY_LENGTH } from './promptConstants.ts';
@@ -1461,6 +1462,25 @@ export const contract = {
         dryRun: z.boolean().default(false),
       }),
       result: SectionCopy,
+    },
+
+    // --- Activity ------------------------------------------------------------------------------
+    /**
+     * What every session did per day from `from` through `to` (at most `ACTIVITY_MAX_DAYS`), in local days of `timeZone`.
+     * Reads what is new in the transcripts in the background; `usage.tokens` says when there is more. `git: false` leaves
+     * out the commits, for what only needs the days and their sessions.
+     */
+    'activity.range': {
+      params: z.object({ from: ActivityDay, to: ActivityDay, timeZone: z.string().max(100).default('UTC'), git: z.boolean().default(true) }),
+      result: z.object({ entries: z.array(ActivityEntry) }),
+    },
+    /**
+     * The day in short. A past day's is written once, after the day is over, and kept; today's again when its sessions
+     * changed. `fresh` (Regenerate) always writes it again. `others`: sessions on other computers to count too.
+     */
+    'activity.summary': {
+      params: z.object({ day: ActivityDay, timeZone: z.string().max(100).default('UTC'), fresh: z.boolean().default(false), others: z.array(ActivitySummaryExtra).max(200).default([]) }),
+      result: z.object({ summary: ActivitySummary.nullable(), state: ActivitySummaryState }),
     },
 
     // --- Catch-up ------------------------------------------------------------------------------

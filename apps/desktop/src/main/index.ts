@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
@@ -296,6 +296,7 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'autoModel', prefs: prefs.autoModel });
   // Settings › Conversation › Catch-up: whether Haiku writes the summaries.
   engine?.sendStanding({ type: 'catchUp', summaries: prefs.catchUpSummaries });
+  engine?.sendStanding({ type: 'activity', summaries: prefs.activitySummaries });
   // Settings › Conversation › Resume after a usage limit resets: Always arms a session the moment a limit stops it.
   engine?.sendStanding({ type: 'limits', resume: prefs.resumeAtLimit });
   // Settings › General › Global permission mode: a phone's new session starts in it where its profile and project set
@@ -1367,7 +1368,7 @@ ipcMain.on(IpcChannel.forwardKeys, (_event, keys: unknown) => {
   sendToWindow(showWindow(), IpcChannel.keysForwarded, keys);
 });
 // A view a pop-out doesn't have (Settings, Usage, a project, New session, Go to, Search) opens in the main window, which comes to the front.
-const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming']);
+const MAIN_REQUESTS = new Set(['settings', 'usage', 'project', 'new-session', 'go-to', 'search', 'navigate', 'upcoming', 'activity']);
 ipcMain.on(IpcChannel.showInMain, (_event, request: unknown) => {
   if (!request || typeof request !== 'object' || !MAIN_REQUESTS.has((request as { kind?: unknown }).kind as string)) return;
   sendToWindow(showWindow(), IpcChannel.mainRequested, request);
@@ -1533,6 +1534,34 @@ ipcMain.handle(IpcChannel.saveImage, async (event, request: unknown) => {
   }
   writeFileSync(path, Buffer.from(data, 'base64'));
   savedImages.add(path);
+  return path;
+});
+
+/** The kinds of text a window can save, with what the dialog calls them. */
+const TEXT_FILE_KINDS: Record<string, string> = { md: 'Markdown', csv: 'CSV' };
+
+ipcMain.handle(IpcChannel.saveTextFile, async (event, request: unknown) => {
+  const { fileName, content } = (request ?? {}) as Record<string, unknown>;
+  const name = typeof fileName === 'string' && /^[\w .-]{1,120}$/.test(fileName) ? fileName : null;
+  const extension = name?.split('.').pop()?.toLowerCase() ?? '';
+  if (!name || !TEXT_FILE_KINDS[extension] || typeof content !== 'string') throw new Error('Not a file that can be saved');
+  let path: string;
+  if (smokeOutDir) {
+    mkdirSync(smokeImageExports(), { recursive: true });
+    path = join(smokeImageExports(), name);
+  } else {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.SaveDialogOptions = {
+      title: 'Export',
+      defaultPath: join(app.getPath('downloads'), name),
+      filters: [{ name: TEXT_FILE_KINDS[extension]!, extensions: [extension] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    path = result.filePath;
+  }
+  writeFileSync(path, content);
   return path;
 });
 
@@ -9505,6 +9534,106 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Activity: from the sidebar on today, a day with sessions picked in the strip, its summary (the stub), numbers, hours and
+ * sessions per project, a row opened to what it did, the week's project filter, a day without sessions, Copy for
+ * standup (never copied: the clipboard is yours), Export as CSV (in the throwaway profile), and Home's Yesterday card.
+ */
+async function runActivityPageStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const view = '[data-activity]';
+  await js("document.querySelector('[data-activity-nav]').click()");
+  if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Activity did not open';
+  if (!(await js("document.querySelector('[data-activity-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Activity row was not selected';
+  if (!(await waitInPage(win, `document.querySelectorAll('${view} [data-activity-day]').length === 8 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'the strip has no eight days';
+  const today = (await js(`(() => { const d = new Date(); return \`\${d.getFullYear()}-\${String(d.getMonth() + 1).padStart(2, '0')}-\${String(d.getDate()).padStart(2, '0')}\`; })()`)) as string;
+  const selected = () => js(`document.querySelector('${view} [data-activity-day][aria-current="date"]')?.dataset.activityDay`);
+  if ((await selected()) !== today) return `it did not open on today, but on ${await selected()}`;
+  if (!(await js(`document.querySelector('${view} [data-activity-later]').disabled`))) return 'a later week can be picked from today';
+
+  // The transcripts' first read may still be going: wait for a day with sessions.
+  const busiest = `[...document.querySelectorAll('${view} [data-activity-day]')].filter((d) => Number(d.dataset.activityDayCount) > 0).sort((a, b) => b.dataset.activityDayCount - a.dataset.activityDayCount)[0]`;
+  if (!(await waitInPage(win, `!!${busiest}`, 15_000))) return process.env.SESHBOARD_SMOKE_DEMO ? 'no day in the strip has sessions' : 'ok: no sessions this week to show';
+  await js(`${busiest}.click()`);
+  const list = `${view} [data-activity-list]`;
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-session]') && !!document.querySelector('${view} [data-activity-numbers]')`, 5_000))) return 'a day with sessions listed none';
+  if (!(await js(`Number(document.querySelector('${view} [data-activity-stat="sessions"] b').innerText) > 0`))) return 'the numbers count no sessions';
+  if (!(await js(`[...document.querySelectorAll('${view} [data-activity-hour-level]')].some((h) => h.dataset.activityHourLevel !== '0')`))) return 'the hour ribbon is empty';
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok' && !!document.querySelector('${view} [data-activity-summary-text]')?.innerText.trim()`, 8_000))) return 'the day in short did not come';
+  if (!(await js(`!!document.querySelector('${view} [data-activity-summary-text] b')`))) return 'the day in short has no bold project';
+  await shot(win, 'activity.png');
+  const scheme = preferences.get().colorScheme;
+  await setColorScheme(win, 'light');
+  await shot(win, 'activity-light.png');
+  updatePreferences({ colorScheme: scheme });
+  await settle(win);
+
+  const row = `document.querySelector('${list} [data-activity-session]')`;
+  await js(`${row}.querySelector('button').click()`);
+  if (!(await waitInPage(win, `${row}.dataset.activitySessionOpen === 'true' && !!${row}.querySelector('[data-activity-open-session], [data-activity-did]')`, 2_000))) return 'a click did not open the row';
+  await js(`${row}.querySelector('button').click()`);
+
+  // Regenerate says it is busy, then the summary is back.
+  await js(`document.querySelector('${view} [data-activity-regenerate]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok'`, 8_000))) return 'Regenerate did not finish';
+
+  // The week's bars: a project filters the page, and clearing it brings the rest back.
+  const bars = (await js(`document.querySelectorAll('${view} [data-activity-week-project]').length`)) as number;
+  if (bars === 0) return 'the week lists no projects';
+  await js(`document.querySelector('${view} [data-activity-week-project]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'a project in the week did not filter the page';
+  await js(`document.querySelector('${view} [data-activity-clear-project]').click()`);
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'the project filter did not clear';
+
+  // A day without sessions says so.
+  const empty = `[...document.querySelectorAll('${view} [data-activity-day]')].find((d) => d.dataset.activityDayCount === '0')`;
+  let emptyDay = false;
+  if (await js(`!!${empty}`)) {
+    await js(`${empty}.click()`);
+    emptyDay = await waitInPage(win, `!!document.querySelector('${view} [data-activity-empty]')`, 2_000);
+    if (!emptyDay) return 'a day without sessions did not say so';
+    if (!(await js(`document.querySelector('${view} [data-activity-empty]').innerText.includes('had')`))) return 'an empty day does not say what the days around it had';
+    await js(`${busiest}.click()`);
+    if (!(await waitInPage(win, `!!document.querySelector('${list}')`, 2_000))) return 'back from an empty day, the list did not return';
+  }
+
+  // Copy for standup: Today or This week has a line, in Markdown and then plain.
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  const copyText = "(document.querySelector('[data-activity-copy-text]')?.innerText ?? '')";
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Copy for standup did not open';
+  await js(`document.querySelector('[data-activity-copy-pick="week"]').click()`);
+  if (!(await waitInPage(win, `${copyText}.includes('**') && ${copyText}.includes('\\n- ')`, 5_000))) return `Copy for standup has no Markdown lines: ${await js(copyText)}`;
+  await js("document.querySelector('[data-activity-copy-format]').click()");
+  if (!(await waitInPage(win, `!${copyText}.includes('**') && ${copyText}.includes('\\n- ')`, 2_000))) return 'Plain text kept the Markdown marks';
+  await shot(win, 'activity-copy.png');
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
+
+  // Export writes into the throwaway profile in a smoke run.
+  await js(`document.querySelector('${view} [data-activity-export]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-export-dialog]')", 2_000))) return 'Export did not open';
+  await js("document.querySelector('[data-activity-export-save]').click()");
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-export-dialog]')", 3_000))) return 'Export did not save';
+  const exports = existsSync(smokeImageExports()) ? readdirSync(smokeImageExports()).filter((name) => name.startsWith('activity-') && name.endsWith('.csv')) : [];
+  if (exports.length === 0) return 'Export wrote no CSV';
+  const csv = readFileSync(join(smokeImageExports(), exports[0]!), 'utf8');
+  if (!csv.startsWith('Date,Project,Session') || csv.trim().split('\n').length < 2) return `the CSV reads: ${csv.slice(0, 120)}`;
+
+  // Home: the last day with sessions, and a way back to it. Only when that isn't today alone.
+  await js("document.querySelector('[data-go-home]').click()");
+  const hasEarlier = await waitInPage(win, "!!document.querySelector('[data-home-yesterday-open]')", 5_000);
+  if (process.env.SESHBOARD_SMOKE_DEMO && !hasEarlier) return 'Home has no Yesterday card';
+  if (hasEarlier) {
+    if (!(await js("/\\d+ sessions? · /.test(document.querySelector('[data-home-yesterday-stats]').innerText)"))) return 'Home\'s Yesterday card has no numbers';
+    if (process.env.SESHBOARD_SMOKE_DEMO && !(await waitInPage(win, "!!document.querySelector('[data-home-yesterday-summary]')", 8_000))) return 'Home\'s Yesterday card has no day in short';
+    await shot(win, 'activity-home.png');
+    await js("document.querySelector('[data-home-yesterday-open]').click()");
+    if (!(await waitInPage(win, `!!document.querySelector('${view}') && document.querySelector('${view} [data-activity-day][aria-current="date"]')?.dataset.activityDay !== ${JSON.stringify(today)}`, 3_000))) return 'See the day did not open that day';
+  }
+  await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+  return `ok: opened on today, a day with its summary, numbers, hours and sessions; a row opened, Regenerate, the project filter${emptyDay ? ', an empty day' : ''}, Copy for standup, Export as CSV${hasEarlier ? ", Home's Yesterday card" : ''}`;
+}
+
+/**
  * Upcoming, in the throwaway profile against a temp folder: a queued prompt and a daily schedule made in New session,
  * then Upcoming from the sidebar with its three cards. The project filter keeps them; Skip this run dims the run and
  * says so, and Undo brings it back; Start now on the Queue card takes the item off the queue (the stub never sends
@@ -12754,6 +12883,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('keep awake until done: the ⋯ menu, the pill, and it goes once the session is done', () => runKeepAwakeSessionStep(win));
   await step('schedules: made in New session, run on a moved clock, paused, deleted and put back', () => runSchedulesStep(win), { timeoutMs: 45_000 });
   await step('upcoming: the queue, the runs and the schedules, filtered by project, a run skipped and put back, an item started', () => runUpcomingStep(win), { timeoutMs: 45_000 });
+  await step('activity: from the sidebar on today, a day with its summary, numbers and sessions, the project filter, Copy for standup, Export, Home\'s card', () => runActivityPageStep(win));
   await step('triggers: Start when… makes an issues trigger, the first check starts nothing, a new issue starts once with claude: working, paused starts nothing', () => runTriggersStep(win), { timeoutMs: 60_000 });
   await step('triggers: a trigger that starts a pipeline, from Run as and Start when…, starts one run with the issue as its task and the bolt on its run row', () => runTriggerPipelineStep(win), { timeoutMs: 60_000 });
   await step('saved prompts: made in Settings, picked with /, filled, queued, moved and shared', () => runSavedPromptsStep(win), { timeoutMs: 60_000 });

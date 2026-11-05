@@ -853,4 +853,42 @@ export const migrations: readonly string[] = [
     started_at  INTEGER NOT NULL
   );
   `,
+
+  // v52: Activity (#270). Your prompts' times and first words, read from the transcripts like the tokens (every
+  // transcript is read once more, without counting anything twice), so a day knows its turns even after Claude Code
+  // deleted the transcript. `catchup_turns` keeps what each turn's catch-up said, as `catchup` only has the latest turn,
+  // starting from the cards there are now. `activity_summaries` is the day in short, one Haiku call each. Nothing can
+  // read back the last two: keep them when rebuilding.
+  `
+  CREATE TABLE usage_prompts (
+    key        TEXT PRIMARY KEY,
+    scope      TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    text       TEXT NOT NULL
+  ) WITHOUT ROWID;
+  CREATE INDEX usage_prompts_at ON usage_prompts (at);
+  CREATE INDEX usage_messages_at ON usage_messages (at);
+  CREATE INDEX session_usage_hour ON session_usage (hour);
+  UPDATE usage_files SET size = -1, offset = 0, tail_hash = NULL;
+  CREATE TABLE catchup_turns (
+    session_id TEXT NOT NULL,
+    turn_id    TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    did_json   TEXT NOT NULL,
+    PRIMARY KEY (session_id, turn_id)
+  );
+  CREATE INDEX catchup_turns_at ON catchup_turns (at);
+  INSERT INTO catchup_turns (session_id, turn_id, at, did_json)
+    SELECT session_id, turn_id, json_extract(json, '$.generatedAt'), json_extract(json, '$.did') FROM catchup
+    WHERE json_valid(json) AND json_extract(json, '$.state') != 'waiting' AND json_extract(json, '$.generatedAt') IS NOT NULL AND json_extract(json, '$.did') IS NOT NULL;
+  CREATE TABLE activity_summaries (
+    day          TEXT PRIMARY KEY,
+    text         TEXT NOT NULL,
+    generated_at INTEGER NOT NULL,
+    sessions     INTEGER NOT NULL,
+    input_hash   TEXT NOT NULL,
+    final        INTEGER NOT NULL
+  );
+  `,
 ];
