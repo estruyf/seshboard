@@ -288,7 +288,8 @@ describe('ActivityService', () => {
     expect(await range()).toMatchObject([{ commits: 2, files: 2 }]);
     // Asked not to, it runs no git.
     expect(await service().range({ from: '2026-11-02', to: '2026-11-02', timeZone: 'UTC', git: false })).toMatchObject([{ commits: 0 }]);
-  });
+    // Some twenty real git commands: next to the rest of the suite that takes longer than the default 5s.
+  }, 30_000);
 
   it('has no commits outside a repository', async () => {
     summaries.set('s', summary('s', { projectRoot: join(dir, 'nowhere') }));
