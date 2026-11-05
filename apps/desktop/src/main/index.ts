@@ -8319,7 +8319,10 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${one(`[data-palette] [data-saved-prompt-option="${id}"]`)}?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'the / menu did not list the prompt again';
     await settle(win);
     pressKey(win, 'Return');
-    if (!(await waitInPage(win, `document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it again did not show its two empty blanks';
+    if (!(await waitInPage(win, `document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) {
+      await shot(win, 'saved-prompt-picked-again.png');
+      return `picking it again did not show its two empty blanks (${String(await js(`JSON.stringify({ empty: document.querySelectorAll('[data-blank][data-blank-empty]').length, blanks: [...document.querySelectorAll('[data-blank]')].map((el) => el.dataset.blank), focus: document.activeElement?.tagName + ' ' + (document.activeElement?.getAttribute('data-blank') ?? document.activeElement?.closest('[data-blank]')?.getAttribute('data-blank') ?? ''), header: ${one('[data-saved-prompt-header]')} !== null, box: ${one(box)}?.value, menu: ${one('[data-palette]')} !== null })`))})`;
+    }
 
     // 3. Both filled: the pull request typed (gh lists none here), the reason typed in its chip, then more context.
     pressKey(win, '1');

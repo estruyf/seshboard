@@ -281,6 +281,8 @@ export class ComputerHub {
       entry.update = parsed.data.update;
       this.changed();
     } catch (error) {
+      // Stopping closes the link, which fails this call: the store may be closed by now, and nobody is waiting.
+      if (this.stopped) return;
       this.options.log('warn', `Other computers: couldn't read the updater of ${this.nameOf(id)}: ${(error as Error).message}`);
     }
   }

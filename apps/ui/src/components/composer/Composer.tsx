@@ -1227,7 +1227,11 @@ export function Composer(props: ComposerProps) {
             onBlur={() => {
               // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
               ++searchSeq.current;
-              setTimeout(() => setPalette(null), 100);
+              // Focus back in the box by then: this list is one typed since, and closing it would let Return send the text.
+              setTimeout(() => {
+                if (document.hasFocus() && document.activeElement === ref.current) return;
+                setPalette(null);
+              }, 100);
             }}
             className={`block field-sizing-content w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'max-h-80 min-h-24 px-1 pt-1 text-title font-normal' : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
           />
