@@ -4517,6 +4517,46 @@
       "page": "sessions/upcoming"
     },
     {
+      "id": "shortcut:activity",
+      "name": "Activity: what you did per day",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "palette:activity",
+      "name": "Go to Activity",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity",
+      "name": "Activity: what you did per day, with a week strip, the numbers, the hours and your sessions per project",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-summary",
+      "name": "Activity: the day in short, a few lines by Haiku, kept per day, with Regenerate and a setting to turn it off",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-standup",
+      "name": "Activity: Copy for standup, the last day you worked, today or this week, as Markdown or plain text",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-export",
+      "name": "Activity: Export the day or the week as CSV or Markdown",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-week",
+      "name": "Activity: This week, the time per project as bars, a click filters the page",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-home",
+      "name": "Home: the Yesterday card with the day in short and See the day",
+      "page": "sessions/upcoming"
+    },
+    {
       "id": "feature:upcoming",
       "name": "Upcoming: the queue, the scheduled runs of the next 7 days and every schedule, across projects",
       "page": "sessions/upcoming"

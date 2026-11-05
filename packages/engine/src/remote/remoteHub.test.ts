@@ -225,6 +225,7 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
     },
+    activity: async () => [{ day: '2026-11-02', sessionId: SESSION, title: 'A session', parentId: null, projectRoot: '/secret/folder/shop', projectName: 'shop', firstAt: 1, lastAt: 2, activeMs: 1, turns: 1, costUsd: null, hours: new Array<number>(24).fill(0), commits: 0, files: 0, prs: [], did: [], asks: [], available: true }],
     sessionCost: (sessionId) => {
       calls.push(`sessionCost ${sessionId}`);
       return { usd: 4.2, partial: false };
@@ -708,6 +709,15 @@ describe('Remote hub', () => {
     expect(await remote.call('usage.tokens', { account: 'cd'.repeat(32), period: 'day' })).toEqual({ breakdown: null });
     await expect(remote.call('usage.tokens', { account: 'elio@example.com', period: 'day' } as never)).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
     expect(calls).toEqual(['tokens abab week project', 'tokens cdcd day session']);
+  });
+
+  it('tells another computer what its sessions did per day, never where they are', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port);
+    const { entries } = await remote.call('activity.range', { from: '2026-11-02', to: '2026-11-02', timeZone: 'UTC' });
+    expect(entries).toMatchObject([{ sessionId: SESSION, projectName: 'shop' }]);
+    expect(JSON.stringify(entries)).not.toContain('/secret/folder');
   });
 
   it('answers the cost of a session in the list, and of the plan windows an account asks for', async () => {

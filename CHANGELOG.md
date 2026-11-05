@@ -6,6 +6,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Added
 
+- **Activity: see what you did per day.** A new page under Upcoming in the sidebar (⌘⇧T). A week strip picks a day, then you see **the day in short** (a few lines by Haiku), your sessions, turns, time, commits, pull requests and cost, when you worked, and what you did per project. Click a session for what it did, and open it from there. Sessions from your other computers count too. **Copy for standup** gives you the last day you worked, today or this week as Markdown or plain text, **Export…** saves the day or the week as CSV or Markdown, and **This week** shows the time per project: click one to see only its sessions. Home has a **Yesterday** card with the day in short. Turn the summaries off in **Settings › Conversation**. Nothing leaves your computer apart from that summary.
 - **Skim the conversation.** A finished turn now has less to read: Claude's messages between tool calls fold into the summary line, a line above the reply says what changed (`+42 −7 · 3 files · 2 tests fail · 4m 12s`), and less important sentences in the reply fade. Nothing is rewritten: failures, skipped work, questions, numbers and code never fade, and **Show all text** restores a reply. Switch back to **Full** in Settings › Conversation or from the command palette.
 
 ## [1.3.0] - 2026-11-05

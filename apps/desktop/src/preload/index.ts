@@ -26,6 +26,7 @@ const bridge: SeshboardBridge = {
   chooseImportFile: () => ipcRenderer.invoke(IpcChannel.chooseImportFile) as Promise<string | null>,
   chooseMemoryExport: () => ipcRenderer.invoke(IpcChannel.chooseMemoryExport) as Promise<string[]>,
   saveImage: (request: SaveImageRequest) => ipcRenderer.invoke(IpcChannel.saveImage, request) as Promise<string | null>,
+  saveTextFile: (request: { fileName: string; content: string }) => ipcRenderer.invoke(IpcChannel.saveTextFile, request) as Promise<string | null>,
   showSavedImage: (path: string) => ipcRenderer.send(IpcChannel.showSavedImage, path),
   showRemoteLog: () => ipcRenderer.send(IpcChannel.showRemoteLog),
   // File.path is gone from Electron; webUtils is how a sandboxed page learns where a dropped file lives.

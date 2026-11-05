@@ -29,6 +29,7 @@ import { popOut } from '../../state/popoutsStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { openUpcoming } from '../../state/upcomingStore.ts';
+import { openActivity } from '../../state/activityStore.ts';
 import { openToSchedule } from '../../state/schedulesStore.ts';
 import { useSidebar } from '../../state/sidebarStore.ts';
 import { openTerminal, restartTerminal, useTerminals } from '../../state/terminalsStore.ts';
@@ -97,6 +98,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     goHome: () => useSessions.getState().goHome(),
     openUsage: () => openUsage(),
     openUpcoming: (kind) => openUpcoming({ kind }),
+    openActivity: () => openActivity(),
     showSearch: () => useOverlay.getState().show('search'),
     showMemorySearch: () => useOverlay.getState().searchMemory(),
     showShortcuts: () => useOverlay.getState().show('shortcuts'),

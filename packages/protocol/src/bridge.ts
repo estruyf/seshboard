@@ -46,6 +46,7 @@ export const IpcChannel = {
   chooseImportFile: "seshboard:choose-import-file",
   chooseMemoryExport: "seshboard:choose-memory-export",
   saveImage: "seshboard:save-image",
+  saveTextFile: "seshboard:save-text-file",
   showSavedImage: "seshboard:show-saved-image",
   showRemoteLog: "seshboard:show-remote-log",
   focusSession: "seshboard:focus-session",
@@ -177,7 +178,8 @@ export type MainWindowRequest =
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
-  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null };
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null }
+  | { kind: "activity"; day: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -448,6 +450,11 @@ export interface Preferences {
    */
   catchUpSummaries: boolean;
   /**
+   * Settings › Conversation: "Write the day in short with Haiku". Off, Activity and Home's card show the numbers and the
+   * list only, with no Haiku call.
+   */
+  activitySummaries: boolean;
+  /**
    * Settings › Conversation: "Show catch-ups folded". On, a finished session's catch-up starts as the strip, even unread;
    * a turn that ended with an error still opens in full.
    */
@@ -548,6 +555,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
+  activitySummaries: true,
   catchUpFolded: false,
   resumeAtLimit: "ask",
   showCost: true,
@@ -756,6 +764,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const autoModel = sanitizeAutoModel(raw.autoModel);
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
+  if (typeof raw.activitySummaries === "boolean") out.activitySummaries = raw.activitySummaries;
   if (typeof raw.catchUpFolded === "boolean") out.catchUpFolded = raw.catchUpFolded;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;
@@ -971,6 +980,8 @@ export interface SeshboardBridge {
   chooseMemoryExport(): Promise<string[]>;
   /** Native save dialog for an image from the conversation, then writes it. Resolves to the path, or null when cancelled. */
   saveImage(request: SaveImageRequest): Promise<string | null>;
+  /** Native save dialog for an export (Activity's), suggesting `fileName`, then writes it. Resolves to the path, or null when cancelled. */
+  saveTextFile(request: { fileName: string; content: string }): Promise<string | null>;
   /** Shows an image saved with `saveImage` in Finder (only those, never any other path). */
   showSavedImage(path: string): void;
   /** Shows Remote's log (`REMOTE_LOG_FILE` in the data folder) in Finder, or the folder before there is one. */

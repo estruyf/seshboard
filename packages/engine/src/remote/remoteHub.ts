@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  type ActivityEntry,
   DEFAULT_APP_ICON,
   defuseStubs,
   keyPairFromSecret,
@@ -241,6 +242,8 @@ export interface RemoteHubOptions {
   tokens(account: string, params: { period: UsagePeriod; groupBy: UsageGroup; model: string | null; timeZone: string }): UsageBreakdown | null;
   /** A session's estimated API cost since it started, as `usage.sessionCost` on the computer. */
   sessionCost(sessionId: string): { usd: number; partial: boolean } | null;
+  /** What the sessions did per day, as `activity.range` on the computer. */
+  activity(params: { from: string; to: string; timeZone: string }): Promise<ActivityEntry[]>;
   /** The cost of the given plan windows for the profile signed in to an account; null when no profile here signs in to it. */
   windowCosts(account: string, windows: ReadonlyArray<{ kind: string; scope: string | null; from: number }>): WindowCost[] | null;
   catchUp(sessionId: string): CatchUp | null;
@@ -1195,6 +1198,10 @@ export class RemoteHub {
         const breakdown = this.options.tokens(account, params);
         return { breakdown: breakdown && remoteUsage(breakdown, new Map(this.options.projects().map((p) => [p.root, p.name]))) };
       },
+      'activity.range': async (params) => ({
+        // Another computer gets the project's name, never its folders.
+        entries: (await this.options.activity(params)).map(({ projectRoot: _root, ...entry }) => entry),
+      }),
       'limits.get': ({ sessionId }) => {
         this.checkSession(sessionId);
         return { limit: this.options.limit(sessionId) };

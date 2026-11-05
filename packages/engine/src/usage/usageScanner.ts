@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
-import { hourOf, parseUsageLine, USAGE_MARKER, type UsageLine } from './transcriptUsage.ts';
+import { hourOf, parsePromptLine, parseUsageLine, PROMPT_MARKER, PROMPT_NOT, USAGE_MARKER, type PromptLine, type UsageLine } from './transcriptUsage.ts';
 
 /** A config folder to read: its `projects/` transcripts count for `scope`. */
 export interface ScanTarget {
@@ -24,6 +24,8 @@ const CHUNK = 1 << 20;
 /** How many bytes before the read offset are hashed to notice a rewritten file: lines end alike (`"speed":"standard"}}}`), so enough to span a few. */
 const TAIL = 1024;
 const MARKER = Buffer.from(USAGE_MARKER);
+const USER_MARKER = Buffer.from(PROMPT_MARKER);
+const NOT_USER_MARKER = Buffer.from(PROMPT_NOT);
 
 const hashOf = (bytes: Buffer) => createHash('sha1').update(bytes).digest('hex');
 
@@ -57,7 +59,7 @@ export interface ScanProgress {
  * files repeat it. Reading yields between files, so the engine keeps answering during a long first scan.
  */
 export class UsageScanner {
-  private readonly statements: Record<'file' | 'saveFile' | 'seen' | 'add' | 'split' | 'addHour' | 'cwd', StatementSync>;
+  private readonly statements: Record<'file' | 'saveFile' | 'seen' | 'add' | 'split' | 'addHour' | 'cwd' | 'prompt', StatementSync>;
   private running: Promise<boolean> | null = null;
   /** Scopes read completely at least once. */
   private readonly scanned = new Set<string>();
@@ -82,6 +84,7 @@ export class UsageScanner {
       addHour: db.prepare(
         'UPDATE session_usage SET cache_write_1h = MIN(cache_write, cache_write_1h + ?) WHERE scope = ? AND session_id = ? AND hour = ? AND model = ?',
       ),
+      prompt: db.prepare('INSERT OR IGNORE INTO usage_prompts (key, scope, session_id, at, text) VALUES (?, ?, ?, ?, ?)'),
       cwd: db.prepare('INSERT INTO usage_sessions (scope, session_id, cwd) VALUES (?, ?, ?) ON CONFLICT (scope, session_id) DO UPDATE SET cwd = COALESCE(cwd, excluded.cwd)'),
     };
   }
@@ -154,6 +157,7 @@ export class UsageScanner {
         if (size < start || bytesRead !== tail.length || hashOf(tail) !== known.tail_hash) start = 0;
       }
       const lines: UsageLine[] = [];
+      const prompts: PromptLine[] = [];
       let offset = start;
       let pending: Buffer[] = [];
       let position = start;
@@ -172,6 +176,9 @@ export class UsageScanner {
           if (line.indexOf(MARKER) !== -1) {
             const parsed = parseUsageLine(line.toString('utf8'));
             if (parsed) lines.push(parsed);
+          } else if (line.indexOf(USER_MARKER) !== -1 && line.indexOf(NOT_USER_MARKER) === -1) {
+            const parsed = parsePromptLine(line.toString('utf8'));
+            if (parsed) prompts.push(parsed);
           }
           offset = position + newline + 1;
           from = newline + 1;
@@ -187,14 +194,14 @@ export class UsageScanner {
         await handle.read(tail, 0, tail.length, offset - tail.length);
         tailHash = hashOf(tail);
       }
-      return this.store(scope, path, { size, mtime, offset, tailHash }, lines);
+      return this.store(scope, path, { size, mtime, offset, tailHash }, lines, prompts);
     } finally {
       await handle.close();
     }
   }
 
   /** Counts a file's new responses and saves how far it was read, in one transaction. */
-  private store(scope: string, path: string, file: { size: number; mtime: number; offset: number; tailHash: string | null }, lines: UsageLine[]): boolean {
+  private store(scope: string, path: string, file: { size: number; mtime: number; offset: number; tailHash: string | null }, lines: UsageLine[], prompts: PromptLine[]): boolean {
     let added = false;
     this.db.exec('BEGIN');
     try {
@@ -221,6 +228,10 @@ export class UsageScanner {
           line.input + line.cacheRead + line.cacheWrite,
         );
         if (line.cwd) this.statements.cwd.run(scope, line.sessionId, line.cwd);
+      }
+      for (const prompt of prompts) {
+        if (this.statements.prompt.run(prompt.key, scope, prompt.sessionId, prompt.at, prompt.text).changes > 0) added = true;
+        if (prompt.cwd) this.statements.cwd.run(scope, prompt.sessionId, prompt.cwd);
       }
       this.statements.saveFile.run(path, scope, file.size, file.mtime, file.offset, file.tailHash);
       this.db.exec('COMMIT');

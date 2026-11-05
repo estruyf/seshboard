@@ -7,6 +7,7 @@ import { Toggle } from '../ui/Toggle.tsx';
 export function CatchUpSettings() {
   const summaries = usePreferences((s) => s.prefs.catchUpSummaries);
   const folded = usePreferences((s) => s.prefs.catchUpFolded);
+  const activitySummaries = usePreferences((s) => s.prefs.activitySummaries);
   const update = usePreferences((s) => s.update);
   return (
     <div className="grid gap-4" data-catchup-settings>
@@ -24,6 +25,13 @@ export function CatchUpSettings() {
         disabled={!summaries}
         attr="data-catchup-folded"
         onChange={(catchUpFolded) => update({ catchUpFolded })}
+      />
+      <Toggle
+        label="Write the day in short with Haiku"
+        detail="A few lines on what you did each day, on Activity and Home. Haiku reads session titles, the catch-ups and your prompts, never your files. Off, you see the numbers and the list only."
+        checked={activitySummaries}
+        attr="data-activity-summaries"
+        onChange={(value) => update({ activitySummaries: value })}
       />
       <Notice tone="info" icon={<Info size={13} aria-hidden />}>
         Each summary uses a few thousand Haiku tokens. They count toward your plan and show in Usage as Catch-up summaries.

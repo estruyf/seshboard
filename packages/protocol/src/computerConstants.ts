@@ -65,6 +65,7 @@ export const COMPUTER_METHODS = [
   'usage.tokens',
   'usage.sessionCost',
   'usage.windowCosts',
+  'activity.range',
   'limits.get',
   'limits.resume',
   'limits.arm',
