@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityCsv, activityMarkdown, addDays, barHeight, countsByDay, dayOf, dayTitle, exportFileName, formatWorked, inProject, lastActiveDay, lastDayLabel, neighbourLine, projectGroups, projectShare, ribbonOf, rowKey, standupText, statsOf, stripDays, summaryExtras, summaryParts, summaryPlain, type ActivityRow } from './activityModel.ts';
+import { activityCsv, activityMarkdown, addDays, barHeight, countsByDay, dayOf, dayTitle, exportFileName, formatWorked, inProject, lastActiveDay, lastDayLabel, neighbourLine, projectGroups, projectShare, ribbonOf, rowKey, sessionsOnce, standupText, statsOf, stripDays, summaryExtras, summaryParts, summaryPlain, weekStart, type ActivityRow } from './activityModel.ts';
 
 const row = (over: Partial<ActivityRow> = {}): ActivityRow => ({
   day: '2026-11-02',
@@ -34,6 +34,11 @@ describe('days', () => {
     expect(days).toHaveLength(8);
     expect(days[0]).toBe('2026-10-26');
     expect(days[7]).toBe('2026-11-02');
+  });
+
+  it('has a week of seven days, so a page of the strip counts no day twice', () => {
+    expect(weekStart('2026-11-05')).toBe('2026-10-30');
+    expect(addDays(weekStart('2026-11-05'), -1)).toBe(addDays('2026-11-05', -7));
   });
 
   it('names a day', () => {
@@ -122,6 +127,36 @@ describe('projects', () => {
     expect(projectShare(groups[0]!, groups)).toBe(0.75);
     const copilot = projectGroups([row({ activeMs: 0 }), row({ sessionId: 'x', projectRoot: '/o', projectName: 'o', activeMs: 0 })]);
     expect(projectShare(copilot[0]!, copilot)).toBe(0.5);
+  });
+});
+
+describe('a project across the strip and a day', () => {
+  it('keeps the key the whole strip gives it, on a day with only another computer\'s session', () => {
+    const here = row();
+    const there = row({ day: '2026-11-03', sessionId: 's2', projectRoot: null, computer: { id: 'c', name: 'Mini' } });
+    expect(projectGroups([there])[0]!.key).toBe('name:seshboard');
+    const [group] = projectGroups([there], [here, there]);
+    expect(group!.key).toBe('/work/seshboard');
+    expect(inProject([here, there], group!.key)).toHaveLength(2);
+  });
+});
+
+describe('sessions over days', () => {
+  it('shows a session once, on its first day, with its numbers added up', () => {
+    const pr = { number: 1, url: 'a' };
+    const first = row({ title: 'Old title', commits: 1, files: 2, prs: [pr], did: ['First'], asks: ['Ask one'], available: false, hours: Array.from({ length: 24 }, (_, h) => (h === 9 ? 60 : 0)) });
+    const second = row({ day: '2026-11-03', title: 'New title', firstAt: new Date(2026, 10, 3, 8).getTime(), lastAt: new Date(2026, 10, 3, 9).getTime(), commits: 2, files: 1, costUsd: null, prs: [pr, { number: 2, url: 'b' }], did: ['Second'], asks: [], hours: Array.from({ length: 24 }, (_, h) => (h === 9 ? 30 : 0)) });
+    const [once, ...rest] = sessionsOnce([second, first]);
+    expect(rest).toEqual([]);
+    expect(once).toMatchObject({ day: '2026-11-02', title: 'New title', firstAt: first.firstAt, lastAt: second.lastAt, activeMs: 96 * 60_000, turns: 6, costUsd: 1.5, commits: 3, files: 3, did: ['First', 'Second'], asks: ['Ask one'], available: true });
+    expect(once!.prs.map((p) => p.number)).toEqual([1, 2]);
+    expect(once!.hours[9]).toBe(90);
+  });
+
+  it('keeps sessions apart per computer, and a cost nobody knows unknown', () => {
+    const rows = sessionsOnce([row({ costUsd: null }), row({ costUsd: null, day: '2026-11-03' }), row({ computer: { id: 'c', name: 'Mini' } })]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.costUsd).toBeNull();
   });
 });
 

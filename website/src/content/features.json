@@ -4538,7 +4538,7 @@
     },
     {
       "id": "feature:activity-standup",
-      "name": "Activity: Copy for standup, the last day you worked, today or this week, as Markdown or plain text",
+      "name": "Activity: Copy for standup, the last day you worked, today or this week, as Markdown or plain text, only for the project you picked",
       "page": "sessions/upcoming"
     },
     {
@@ -4548,7 +4548,17 @@
     },
     {
       "id": "feature:activity-week",
-      "name": "Activity: This week, the time per project as bars, a click filters the page",
+      "name": "Activity: Projects, the time per project of the day or the week as bars, a click filters the page",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-day-week",
+      "name": "Activity: Day or Week, what the numbers, the hours, the projects and the sessions cover",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:activity-pinned",
+      "name": "Activity: the title and actions stay when you scroll, and a bar keeps the days and the numbers",
       "page": "sessions/upcoming"
     },
     {

@@ -1,9 +1,9 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileDiff, GitCommitHorizontal, GitPullRequest, Loader2, Sparkles, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { homeSessions } from '../home/homeModel.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
-import { useActivity } from '../../state/activityStore.ts';
+import { useActivity, type ActivitySpan } from '../../state/activityStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
 import { ComputerChip } from '../computers/ComputerChip.tsx';
@@ -13,10 +13,12 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
+import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { useCostFormat } from '../usage/useCost.ts';
 import { ActivityCopyDialog } from './ActivityCopyDialog.tsx';
 import { ActivityExportDialog } from './ActivityExportDialog.tsx';
-import { addDays, barHeight, countsByDay, dayNumber, dayOf, dayShort, dayTitle, formatWorked, inProject, neighbourLine, plural, projectGroups, projectShare, ribbonOf, rowKey, statsOf, STRIP_STEP, stripDays, summaryParts, weekdayShort, type ActivityRow, type ProjectGroup } from './activityModel.ts';
+import { addDays, barHeight, countsByDay, dayNumber, dayOf, dayShort, dayTitle, formatWorked, inProject, neighbourLine, plural, projectGroups, projectShare, ribbonOf, rowKey, sessionsOnce, statsOf, STRIP_STEP, stripDays, summaryParts, weekdayShort, weekStart, type ActivityRow, type ProjectGroup } from './activityModel.ts';
 import { useActivityRange, useDaySummary, type DaySummary } from './useActivity.ts';
 
 /** How strong each level of the ribbon shows. */
@@ -24,9 +26,26 @@ const RIBBON_OPACITY = [0, 0.3, 0.5, 0.75, 1] as const;
 
 const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
+/** The page's column, the same for the fixed header, the pinned bar and what scrolls. */
+const COLUMN = 'mx-auto w-full max-w-[1000px] px-8 @max-[560px]:px-4';
+
+/** Whether `target` has scrolled out of `root`, which follows scrolling and everything that resizes either. */
+function useScrolledPast(root: RefObject<HTMLElement | null>, target: RefObject<HTMLElement | null>): boolean {
+  const [past, setPast] = useState(false);
+  useEffect(() => {
+    if (!root.current || !target.current) return;
+    const observer = new IntersectionObserver(([entry]) => setPast(!entry!.isIntersecting), { root: root.current });
+    observer.observe(target.current);
+    return () => observer.disconnect();
+  }, [root, target]);
+  return past;
+}
+
 /**
- * Activity: what you did per day. Upcoming looks ahead, this looks back. The strip picks a day, then the day in short,
- * its numbers, when you worked, the week per project (a click filters the page to it) and what you did per project.
+ * Activity: what you did, per day or per week. Upcoming looks ahead, this looks back. The title and the actions stay put;
+ * under them the strip picks a day, then its summary, numbers, when you worked, the time per project (a click filters the
+ * page to it) and what you did per project. Week shows the same for the seven days the strip ends on. Once the strip and
+ * the numbers have scrolled away, a bar under the header keeps them in short.
  * Everything is made in the renderer from one list of a session's days (`activity.range`).
  */
 export function ActivityView() {
@@ -35,47 +54,75 @@ export function ActivityView() {
   const pickedDay = useActivity((s) => s.day);
   const pickedEnd = useActivity((s) => s.stripEnd);
   const project = useActivity((s) => s.project);
+  const span = useActivity((s) => s.span);
   const day = pickedDay ?? today;
   const end = pickedEnd ?? today;
   const days = useMemo(() => stripDays(end), [end]);
+  const weekFirst = weekStart(end);
   const { rows, loading, settled, scanning } = useActivityRange(days[0]!, end);
   const [dialog, setDialog] = useState<'copy' | 'export' | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const top = useRef<HTMLDivElement>(null);
+  const edge = useScrollEdge(scroller);
+  const pinned = useScrolledPast(scroller, top);
 
   // The project filter is on everything below the title, the strip's bars too.
-  const filtered = useMemo(() => inProject(rows, project), [rows, project]);
+  const filtered = useMemo(() => inProject(rows, project?.key ?? null), [rows, project]);
   const counts = useMemo(() => countsByDay(filtered), [filtered]);
   const ofDay = useMemo(() => filtered.filter((row) => row.day === day), [filtered, day]);
-  // The day in short is the whole day's, also while a project is picked.
+  const ofWeek = useMemo(() => filtered.filter((row) => row.day >= weekFirst), [filtered, weekFirst]);
+  const shown = span === 'day' ? ofDay : ofWeek;
+  // The day in short is the whole day's, also while a project is picked. A week has none, so it writes nothing.
   const wholeDay = useMemo(() => rows.filter((row) => row.day === day), [rows, day]);
-  const summary = useDaySummary(day, wholeDay, settled);
-  const weekGroups = useMemo(() => projectGroups(rows), [rows]);
-  const pickedName = weekGroups.find((g) => g.key === project)?.name ?? null;
+  const summary = useDaySummary(span === 'day' ? day : null, wholeDay, settled);
+  // The bars list every project of the span, also while one is picked: another is one click away.
+  const groups = useMemo(() => projectGroups(rows.filter((row) => (span === 'day' ? row.day === day : row.day >= weekFirst)), rows), [rows, span, day, weekFirst]);
 
   const moveStrip = (by: number) => {
     const next = addDays(end, by);
     const latest = next >= today;
     useActivity.getState().moveStrip(latest ? null : next, latest ? null : next);
   };
+  const strip: StripProps = {
+    days,
+    span,
+    picked: (d) => (span === 'day' ? d === day : d >= weekFirst),
+    today,
+    counts,
+    onDay: (d) => useActivity.getState().showDay(d === today ? null : d),
+    onMove: moveStrip,
+    atLatest: end >= today,
+  };
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-activity>
+    <div className="@container flex h-full min-h-0 flex-col" data-activity>
       <div className="drag flex h-13 shrink-0 items-center px-4">
         <SidebarToggle />
       </div>
-      <div className="@container min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto grid w-full max-w-[1000px] grid-cols-[minmax(0,1fr)] gap-5 px-8 pt-1 pb-12 @max-[560px]:px-4">
-          <header className="flex flex-wrap items-end gap-3">
+      <div className="relative z-10 shrink-0">
+        <div className="edge-b" data-scrolled={(!edge.atTop && !pinned) || undefined} data-activity-header>
+          <header className={`${COLUMN} flex flex-wrap items-end gap-3 pt-1 pb-3`}>
             <div className="grid min-w-0 flex-1 gap-0.5">
               <span className="text-ui text-muted">Activity</span>
               <h1 className="truncate text-hero leading-tight font-semibold" data-activity-title>
-                {dayTitle(day)}
+                {span === 'day' ? dayTitle(day) : `${dayShort(weekFirst)} to ${dayShort(end)}`}
               </h1>
             </div>
-            {project && pickedName && (
-              <Pill tone="muted" icon={<X size={12} aria-hidden />} onClick={() => useActivity.getState().toggleProject(project)} aria-label={`Show every project, now only ${pickedName}`} data-activity-clear-project>
-                Only {pickedName}
+            {project && (
+              <Pill tone="muted" icon={<X size={12} aria-hidden />} onClick={() => useActivity.getState().toggleProject(project.key, project.name)} aria-label={`Show every project, now only ${project.name}`} data-activity-clear-project>
+                Only {project.name}
               </Pill>
             )}
+            <SegmentedControl
+              mode="radio"
+              label="Show a day or a week"
+              value={span}
+              onChange={(value: ActivitySpan) => useActivity.getState().setSpan(value)}
+              segments={[
+                { value: 'day', label: 'Day', data: { 'data-activity-span': 'day' } },
+                { value: 'week', label: 'Week', data: { 'data-activity-span': 'week' } },
+              ]}
+            />
             <div className="flex shrink-0 items-center gap-2">
               <Button icon={<Copy size={13} aria-hidden />} onClick={() => setDialog('copy')} data-activity-copy>
                 Copy for standup
@@ -85,28 +132,32 @@ export function ActivityView() {
               </Button>
             </div>
           </header>
+        </div>
+        {pinned && <PinnedBar strip={strip} rows={shown} />}
+      </div>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto" data-activity-scroller>
+        <div className={`${COLUMN} grid grid-cols-[minmax(0,1fr)] gap-5 pt-1 pb-12`}>
+          <div ref={top} className="grid grid-cols-[minmax(0,1fr)] gap-5">
+            <WeekStrip {...strip} />
+            {scanning && (
+              <p className="text-meta text-muted" data-activity-scanning>
+                Reading your transcripts. The days fill up as it goes.
+              </p>
+            )}
+            {!loading &&
+              (shown.length === 0 ? (
+                <EmptySpan span={span} day={day} first={weekFirst} last={end} today={today} counts={counts} project={project?.name ?? null} />
+              ) : (
+                <>
+                  {span === 'day' && !project && <DayInShort summary={summary} />}
+                  <Numbers rows={shown} />
+                  <Ribbon rows={shown} />
+                </>
+              ))}
+          </div>
 
-          <WeekStrip days={days} day={day} today={today} counts={counts} onDay={(picked) => useActivity.getState().showDay(picked === today ? null : picked)} onMove={moveStrip} atLatest={end >= today} />
-          {scanning && (
-            <p className="text-meta text-muted" data-activity-scanning>
-              Reading your transcripts. The days fill up as it goes.
-            </p>
-          )}
-
-          {!loading && ofDay.length === 0 ? (
-            <EmptyDay day={day} today={today} counts={counts} project={pickedName} />
-          ) : (
-            !loading && (
-              <>
-                {!project && <DayInShort summary={summary} />}
-                <Numbers rows={ofDay} />
-                <Ribbon rows={ofDay} />
-              </>
-            )
-          )}
-
-          {!loading && rows.length > 0 && <WeekCard groups={weekGroups} end={end} first={days[0]!} atLatest={end >= today} rows={rows} />}
-          {!loading && ofDay.length > 0 && <WhatYouDid rows={ofDay} />}
+          {!loading && groups.length > 0 && <ProjectsCard groups={groups} />}
+          {!loading && shown.length > 0 && <WhatYouDid rows={shown} known={rows} week={span === 'week'} />}
           {loading && (
             <p className="flex items-center gap-2 text-ui text-muted" aria-busy data-activity-loading>
               <Loader2 size={13} className="animate-spin" aria-hidden />
@@ -115,26 +166,44 @@ export function ActivityView() {
           )}
         </div>
       </div>
-      {dialog === 'copy' && <ActivityCopyDialog today={today} onClose={() => setDialog(null)} />}
-      {dialog === 'export' && <ActivityExportDialog day={day} first={days[0]!} last={end} dayRows={ofDay} weekRows={filtered} onClose={() => setDialog(null)} />}
+      {dialog === 'copy' && <ActivityCopyDialog today={today} project={project} initial={span === 'week' ? 'week' : 'last'} onClose={() => setDialog(null)} />}
+      {dialog === 'export' && <ActivityExportDialog day={day} first={weekFirst} last={end} dayRows={ofDay} weekRows={ofWeek} initial={span} onClose={() => setDialog(null)} />}
     </div>
   );
 }
 
-function WeekStrip({ days, day, today, counts, onDay, onMove, atLatest }: { days: readonly string[]; day: string; today: string; counts: ReadonlyMap<string, number>; onDay(day: string): void; onMove(by: number): void; atLatest: boolean }) {
+interface StripProps {
+  days: readonly string[];
+  span: ActivitySpan;
+  /** The day on screen, or each day of the week on screen. */
+  picked(day: string): boolean;
+  today: string;
+  counts: ReadonlyMap<string, number>;
+  onDay(day: string): void;
+  onMove(by: number): void;
+  atLatest: boolean;
+}
+
+function StripArrow({ by, atLatest, onMove }: { by: number; atLatest: boolean; onMove(by: number): void }) {
+  const later = by > 0;
+  const label = later ? 'Later week' : 'Earlier week';
+  return <Button variant="quiet" iconOnly icon={later ? <ChevronRight size={14} aria-hidden /> : <ChevronLeft size={14} aria-hidden />} aria-label={label} data-tooltip={later && atLatest ? undefined : label} disabled={later && atLatest} onClick={() => onMove(by)} {...(later ? { 'data-activity-later': true } : { 'data-activity-earlier': true })} />;
+}
+
+function WeekStrip({ days, span, picked, today, counts, onDay, onMove, atLatest }: StripProps) {
   const max = Math.max(0, ...days.map((d) => counts.get(d) ?? 0));
   return (
     <div className="flex items-center gap-1.5" role="group" aria-label="Pick a day" data-activity-strip>
-      <Button variant="quiet" iconOnly icon={<ChevronLeft size={14} aria-hidden />} aria-label="Earlier week" data-tooltip="Earlier week" onClick={() => onMove(-STRIP_STEP)} data-activity-earlier />
+      <StripArrow by={-STRIP_STEP} atLatest={atLatest} onMove={onMove} />
       {days.map((d) => {
         const count = counts.get(d) ?? 0;
-        const selected = d === day;
+        const selected = picked(d);
         return (
           <button
             key={d}
             type="button"
             onClick={() => onDay(d)}
-            aria-current={selected ? 'date' : undefined}
+            aria-current={selected ? (span === 'day' ? 'date' : 'true') : undefined}
             aria-label={`${dayTitle(d)}: ${plural(count, 'session')}${d === today ? ', today' : ''}`}
             className={`grid min-w-0 max-w-16 flex-1 justify-items-center gap-1 rounded-lg px-0.5 pt-2 pb-1.5 ${selected ? 'bg-selected' : 'hover:bg-border/45'}`}
             data-activity-day={d}
@@ -149,7 +218,50 @@ function WeekStrip({ days, day, today, counts, onDay, onMove, atLatest }: { days
           </button>
         );
       })}
-      <Button variant="quiet" iconOnly icon={<ChevronRight size={14} aria-hidden />} aria-label="Later week" data-tooltip={atLatest ? undefined : 'Later week'} disabled={atLatest} onClick={() => onMove(STRIP_STEP)} data-activity-later />
+      <StripArrow by={STRIP_STEP} atLatest={atLatest} onMove={onMove} />
+    </div>
+  );
+}
+
+/**
+ * The strip and the numbers in one line, over the sessions once the real ones have scrolled away. It lies over what
+ * scrolls, not above it, so showing it never moves the list you are reading.
+ */
+function PinnedBar({ strip: { days, span, picked, today, counts, onDay, onMove, atLatest }, rows }: { strip: StripProps; rows: readonly ActivityRow[] }) {
+  const stats = useMemo(() => statsOf(rows), [rows]);
+  const cost = useCostFormat();
+  const line = [plural(stats.sessions, 'session'), plural(stats.turns, 'turn'), formatWorked(stats.activeMs), plural(stats.commits, 'commit'), plural(stats.prs, 'pull request'), ...(cost && stats.costUsd !== null ? [cost(stats.costUsd)] : [])].join(' · ');
+  return (
+    <div className="absolute inset-x-0 top-full" data-activity-pinned>
+      <div className="edge-b bg-bg" data-scrolled>
+        <div className={`${COLUMN} flex flex-wrap items-center gap-x-4 gap-y-1 pb-2`}>
+          <div className="flex items-center gap-0.5" role="group" aria-label="Pick a day">
+            <StripArrow by={-STRIP_STEP} atLatest={atLatest} onMove={onMove} />
+            {days.map((d) => {
+              const count = counts.get(d) ?? 0;
+              const selected = picked(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => onDay(d)}
+                  aria-current={selected ? (span === 'day' ? 'date' : 'true') : undefined}
+                  aria-label={`${dayTitle(d)}: ${plural(count, 'session')}${d === today ? ', today' : ''}`}
+                  className={`flex items-baseline gap-1 rounded-md px-1.5 py-1 ${selected ? 'bg-selected' : 'hover:bg-border/45'}`}
+                  data-activity-pinned-day={d}
+                >
+                  <span className="text-meta text-muted @max-[720px]:hidden">{weekdayShort(d)}</span>
+                  <span className={`text-ui font-semibold tabular-nums ${count === 0 ? 'text-faint' : 'text-text'}`}>{dayNumber(d)}</span>
+                </button>
+              );
+            })}
+            <StripArrow by={STRIP_STEP} atLatest={atLatest} onMove={onMove} />
+          </div>
+          <span className="ml-auto min-w-0 text-meta text-muted tabular-nums" data-activity-pinned-numbers>
+            {line}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -234,28 +346,30 @@ function Ribbon({ rows }: { rows: readonly ActivityRow[] }) {
   );
 }
 
-function EmptyDay({ day, today, counts, project }: { day: string; today: string; counts: ReadonlyMap<string, number>; project: string | null }) {
+function EmptySpan({ span, day, first, last, today, counts, project }: { span: ActivitySpan; day: string; first: string; last: string; today: string; counts: ReadonlyMap<string, number>; project: string | null }) {
+  const week = span === 'week';
+  const none = week ? 'this week' : 'this day';
   return (
     <div className="grid justify-items-center gap-1.5 rounded-xl bg-text/6 px-4 py-6 text-center" data-activity-empty>
-      <b className="text-ui font-semibold">{dayTitle(day)}</b>
-      <span className="text-ui text-muted">{project ? `No sessions in ${project} this day.` : day === today ? 'No sessions yet today.' : 'No sessions this day.'}</span>
-      <span className="text-meta text-faint">{neighbourLine(day, today, counts)}</span>
+      <b className="text-ui font-semibold">{week ? `${dayShort(first)} to ${dayShort(last)}` : dayTitle(day)}</b>
+      <span className="text-ui text-muted">{project ? `No sessions in ${project} ${none}.` : !week && day === today ? 'No sessions yet today.' : `No sessions ${none}.`}</span>
+      {!week && <span className="text-meta text-faint">{neighbourLine(day, today, counts)}</span>}
     </div>
   );
 }
 
-function WeekBar({ group, groups, picked }: { group: ProjectGroup; groups: readonly ProjectGroup[]; picked: boolean }) {
+function ProjectBar({ group, groups, picked }: { group: ProjectGroup; groups: readonly ProjectGroup[]; picked: boolean }) {
   const project = useProjects((s) => (group.root ? s.projects.get(group.root) : undefined));
   const color = useProjectColor(project, group.root);
   const share = projectShare(group, groups);
   return (
     <button
       type="button"
-      onClick={() => useActivity.getState().toggleProject(group.key)}
+      onClick={() => useActivity.getState().toggleProject(group.key, group.name)}
       aria-pressed={picked}
       aria-label={`${group.name}: ${formatWorked(group.activeMs)}. ${picked ? 'Show every project' : 'Show only this project'}`}
       className={`grid grid-cols-[minmax(0,140px)_minmax(0,1fr)_56px] items-center gap-2.5 rounded-md px-1.5 py-1 text-left text-ui ${picked ? 'bg-selected' : 'hover:bg-border/45'}`}
-      data-activity-week-project={group.key}
+      data-activity-project-bar={group.key}
     >
       <span className="flex min-w-0 items-center gap-1.5">
         <ProjectIcon project={project} root={group.root ?? group.name} name={group.name} size={16} remote={group.computerId ?? false} />
@@ -269,25 +383,25 @@ function WeekBar({ group, groups, picked }: { group: ProjectGroup; groups: reado
   );
 }
 
-function WeekCard({ groups, first, end, atLatest, rows }: { groups: readonly ProjectGroup[]; first: string; end: string; atLatest: boolean; rows: readonly ActivityRow[] }) {
-  const picked = useActivity((s) => s.project);
-  const stats = useMemo(() => statsOf(rows), [rows]);
+function ProjectsCard({ groups }: { groups: readonly ProjectGroup[] }) {
+  const picked = useActivity((s) => s.project?.key);
+  const stats = useMemo(() => statsOf(groups.flatMap((group) => group.rows)), [groups]);
   return (
-    <section aria-labelledby="activity-week" className="grid gap-2 rounded-xl bg-text/6 px-4 py-3.5" data-activity-week>
+    <section aria-labelledby="activity-projects" className="grid gap-2 rounded-xl bg-text/6 px-4 py-3.5" data-activity-projects>
       <div className="flex items-center gap-2">
-        <h2 id="activity-week" className="text-ui font-semibold">
-          {atLatest ? 'This week' : `${dayShort(first)} to ${dayShort(end)}`}
+        <h2 id="activity-projects" className="text-ui font-semibold">
+          Projects
         </h2>
-        <span className="ml-auto text-meta text-muted">
+        <span className="ml-auto text-meta text-muted" data-activity-projects-total>
           {plural(stats.sessions, 'session')} · {formatWorked(stats.activeMs)}
         </span>
       </div>
       <div className="grid gap-0.5">
         {groups.map((group) => (
-          <WeekBar key={group.key} group={group} groups={groups} picked={picked === group.key} />
+          <ProjectBar key={group.key} group={group} groups={groups} picked={picked === group.key} />
         ))}
       </div>
-      <span className="text-meta text-faint">Pick a week in the strip, or click a project to see only its sessions.</span>
+      <span className="text-meta text-faint">Click a project to see only its sessions.</span>
     </section>
   );
 }
@@ -311,7 +425,7 @@ function openRow(row: ActivityRow): void {
   else useSessions.getState().select(row.sessionId);
 }
 
-function SessionRow({ row, needsYou }: { row: ActivityRow; needsYou: boolean }) {
+function SessionRow({ row, needsYou, week }: { row: ActivityRow; needsYou: boolean; week: boolean }) {
   const key = `${row.day}:${rowKey(row)}`;
   const open = useActivity((s) => s.expanded.has(key));
   const lines = row.did.length ? row.did : row.asks.slice(0, 6);
@@ -342,7 +456,7 @@ function SessionRow({ row, needsYou }: { row: ActivityRow; needsYou: boolean }) 
           </Pill>
         )}
         <span className="w-24 shrink-0 text-right text-meta text-muted tabular-nums">
-          {clock.format(row.firstAt)}
+          {week ? `${weekdayShort(row.day)} ${dayNumber(row.day)}` : clock.format(row.firstAt)}
           {row.activeMs > 0 && ` · ${formatWorked(row.activeMs)}`}
         </span>
       </button>
@@ -382,8 +496,9 @@ function SessionRow({ row, needsYou }: { row: ActivityRow; needsYou: boolean }) 
   );
 }
 
-function WhatYouDid({ rows }: { rows: readonly ActivityRow[] }) {
-  const groups = useMemo(() => projectGroups(rows), [rows]);
+function WhatYouDid({ rows, known, week }: { rows: readonly ActivityRow[]; known: readonly ActivityRow[]; week: boolean }) {
+  // A day's row is one session on that day; over a week a session of several days is one row.
+  const groups = useMemo(() => projectGroups(week ? sessionsOnce(rows) : rows, known), [rows, known, week]);
   // What needs you now, on this computer: the same list as Home's.
   const sessions = useSessions((s) => s.sessions);
   const live = useSessions((s) => s.live);
@@ -398,7 +513,7 @@ function WhatYouDid({ rows }: { rows: readonly ActivityRow[] }) {
         <div key={group.key} className="grid gap-0.5" data-activity-project={group.name}>
           <ProjectHeader group={group} />
           {group.rows.map((row) => (
-            <SessionRow key={rowKey(row)} row={row} needsYou={!row.computer && needs.has(row.sessionId)} />
+            <SessionRow key={rowKey(row)} row={row} week={week} needsYou={!row.computer && needs.has(row.sessionId)} />
           ))}
         </div>
       ))}

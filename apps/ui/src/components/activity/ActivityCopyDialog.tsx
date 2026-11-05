@@ -3,22 +3,26 @@ import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { addDays, countsByDay, lastActiveDay, lastDayLabel, standupText, stripDays, type StandupFormat } from './activityModel.ts';
+import { addDays, countsByDay, inProject, lastActiveDay, lastDayLabel, standupText, stripDays, weekStart, type StandupFormat } from './activityModel.ts';
 import { useActivityRange } from './useActivity.ts';
 
 type Pick = 'last' | 'today' | 'week';
 
-/** Copy for standup: the last day you worked (Yesterday, or Friday on a Monday), today or this week, one line per session. */
-export function ActivityCopyDialog({ today, onClose }: { today: string; onClose(): void }) {
+/**
+ * Copy for standup: the last day you worked (Yesterday, or Friday on a Monday), today or this week, one line per session.
+ * A project picked on the page stays picked: only its sessions, and the last day you worked on it.
+ */
+export function ActivityCopyDialog({ today, project, initial, onClose }: { today: string; project: { key: string; name: string } | null; initial: Pick; onClose(): void }) {
   const days = useMemo(() => stripDays(today), [today]);
-  const { rows, loading } = useActivityRange(days[0]!, today);
-  const [pick, setPick] = useState<Pick>('last');
+  const { rows: everything, loading } = useActivityRange(days[0]!, today);
+  const [pick, setPick] = useState<Pick>(initial);
   const [format, setFormat] = useState<StandupFormat>('markdown');
 
+  const rows = useMemo(() => inProject(everything, project?.key ?? null), [everything, project]);
   const counts = useMemo(() => countsByDay(rows), [rows]);
   const lastDay = useMemo(() => lastActiveDay(today, counts) ?? addDays(today, -1), [today, counts]);
   const text = useMemo(() => {
-    const picked = pick === 'week' ? rows : rows.filter((row) => row.day === (pick === 'today' ? today : lastDay));
+    const picked = pick === 'week' ? rows.filter((row) => row.day >= weekStart(today)) : rows.filter((row) => row.day === (pick === 'today' ? today : lastDay));
     return standupText(picked, format);
   }, [rows, pick, format, today, lastDay]);
 
@@ -37,6 +41,7 @@ export function ActivityCopyDialog({ today, onClose }: { today: string; onClose(
     <Dialog
       width="sm"
       title="Copy for standup"
+      subtitle={project ? `Only ${project.name}.` : undefined}
       onClose={onClose}
       onSubmit={copy}
       data-activity-copy-dialog

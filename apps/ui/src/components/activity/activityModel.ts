@@ -38,6 +38,9 @@ export function addDays(day: string, days: number): string {
 /** The days of the strip that ends on `last`, oldest first. */
 export const stripDays = (last: string): string[] => Array.from({ length: STRIP_DAYS }, (_, i) => addDays(last, i - STRIP_DAYS + 1));
 
+/** The first day of the week that ends on `last`: seven days, so an arrow of the strip moves to the next week without counting a day twice. */
+export const weekStart = (last: string): string => addDays(last, 1 - STRIP_STEP);
+
 export const weekdayShort = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { weekday: 'short' });
 export const weekdayLong = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { weekday: 'long' });
 export const dayNumber = (day: string) => noon(day).getDate();
@@ -124,9 +127,12 @@ export function projectKeyOf(row: ActivityRow, rootsByName: ReadonlyMap<string, 
   return rootsByName.get(row.projectName) ?? `name:${row.projectName}`;
 }
 
-/** Rows grouped by project, the most time first; inside one, sessions by when they started. */
-export function projectGroups(rows: readonly ActivityRow[]): ProjectGroup[] {
-  const rootsByName = new Map(rows.flatMap((row) => (row.projectRoot ? [[row.projectName, row.projectRoot] as const] : [])));
+/**
+ * Rows grouped by project, the most time first; inside one, sessions by when they started. `known` are the rows that say
+ * which folder a name belongs to: a day with only another computer's session keeps the key the whole strip gives its project.
+ */
+export function projectGroups(rows: readonly ActivityRow[], known: readonly ActivityRow[] = rows): ProjectGroup[] {
+  const rootsByName = new Map(known.flatMap((row) => (row.projectRoot ? [[row.projectName, row.projectRoot] as const] : [])));
   const groups = new Map<string, ProjectGroup>();
   for (const row of rows) {
     const key = projectKeyOf(row, rootsByName);
@@ -146,14 +152,14 @@ export function projectGroups(rows: readonly ActivityRow[]): ProjectGroup[] {
   return [...groups.values()].sort((a, b) => b.activeMs - a.activeMs || b.sessions - a.sessions || a.name.localeCompare(b.name));
 }
 
-/** The rows of a project picked in the week's bars; every row with none picked. */
+/** The rows of a project picked in the bars; every row with none picked. */
 export function inProject(rows: readonly ActivityRow[], key: string | null): ActivityRow[] {
   if (!key) return [...rows];
   const rootsByName = new Map(rows.flatMap((row) => (row.projectRoot ? [[row.projectName, row.projectRoot] as const] : [])));
   return rows.filter((row) => projectKeyOf(row, rootsByName) === key);
 }
 
-/** A project's bar in the week: its share of the week's time. A week with no time known shares by sessions. */
+/** A project's bar: its share of the time on screen. With no time known it shares by sessions. */
 export function projectShare(group: ProjectGroup, groups: readonly ProjectGroup[]): number {
   const time = groups.reduce((sum, g) => sum + g.activeMs, 0);
   if (time > 0) return group.activeMs / time;
@@ -204,20 +210,39 @@ export function summaryExtras(rows: readonly ActivityRow[]): ActivitySummaryExtr
     .map((row) => ({ title: row.title.slice(0, 300), projectName: row.projectName.slice(0, 300), activeMs: row.activeMs, did: row.did.slice(-8).map((l) => l.slice(0, 300)), asks: row.asks.slice(0, 8).map((l) => l.slice(0, 300)) }));
 }
 
-// --- Copy for standup ------------------------------------------------------------------------------------------------
+// --- Sessions over days ----------------------------------------------------------------------------------------------
 
-export type StandupFormat = 'markdown' | 'plain';
-
-/** Each session once over the days (the latest title), with all its pull requests. */
-function sessionsOnce(rows: readonly ActivityRow[]): ActivityRow[] {
+/** Each session once over the days: on its first day, with the latest title, everything it did and its numbers added up. */
+export function sessionsOnce(rows: readonly ActivityRow[]): ActivityRow[] {
   const byKey = new Map<string, ActivityRow>();
   for (const row of [...rows].sort((a, b) => a.firstAt - b.firstAt)) {
     const known = byKey.get(rowKey(row));
-    if (!known) byKey.set(rowKey(row), row);
-    else byKey.set(rowKey(row), { ...known, title: row.title, prs: [...known.prs, ...row.prs.filter((pr) => !known.prs.some((k) => k.url === pr.url))] });
+    if (!known) {
+      byKey.set(rowKey(row), row);
+      continue;
+    }
+    byKey.set(rowKey(row), {
+      ...known,
+      title: row.title,
+      lastAt: Math.max(known.lastAt, row.lastAt),
+      activeMs: known.activeMs + row.activeMs,
+      turns: known.turns + row.turns,
+      costUsd: known.costUsd === null && row.costUsd === null ? null : (known.costUsd ?? 0) + (row.costUsd ?? 0),
+      hours: known.hours.map((ms, hour) => ms + (row.hours[hour] ?? 0)),
+      commits: known.commits + row.commits,
+      files: known.files + row.files,
+      prs: [...known.prs, ...row.prs.filter((pr) => !known.prs.some((k) => k.url === pr.url))],
+      did: [...known.did, ...row.did],
+      asks: [...known.asks, ...row.asks],
+      available: known.available || row.available,
+    });
   }
   return [...byKey.values()];
 }
+
+// --- Copy for standup ------------------------------------------------------------------------------------------------
+
+export type StandupFormat = 'markdown' | 'plain';
 
 /** One line per session, grouped by project: the title, and its pull requests. */
 export function standupText(rows: readonly ActivityRow[], format: StandupFormat): string {

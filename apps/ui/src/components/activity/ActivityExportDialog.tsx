@@ -8,9 +8,9 @@ import { activityCsv, activityMarkdown, dayShort, dayTitle, exportFileName, plur
 type Span = 'day' | 'week';
 type Format = 'md' | 'csv';
 
-/** Export…: the day or the week on screen as Markdown or CSV (a project picked in the week's bars stays picked). */
-export function ActivityExportDialog({ day, first, last, dayRows, weekRows, onClose }: { day: string; first: string; last: string; dayRows: readonly ActivityRow[]; weekRows: readonly ActivityRow[]; onClose(): void }) {
-  const [span, setSpan] = useState<Span>('day');
+/** Export…: the day or the week on screen as Markdown or CSV (a project picked in the bars stays picked). */
+export function ActivityExportDialog({ day, first, last, dayRows, weekRows, initial, onClose }: { day: string; first: string; last: string; dayRows: readonly ActivityRow[]; weekRows: readonly ActivityRow[]; initial: Span; onClose(): void }) {
+  const [span, setSpan] = useState<Span>(initial);
   const [format, setFormat] = useState<Format>('csv');
   const [saving, setSaving] = useState(false);
   const rows = span === 'day' ? dayRows : weekRows;

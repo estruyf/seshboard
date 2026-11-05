@@ -9650,8 +9650,9 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Activity: from the sidebar on today, a day with sessions picked in the strip, its summary (the stub), numbers, hours and
- * sessions per project, a row opened to what it did, the week's project filter, a day without sessions, Copy for
- * standup (never copied: the clipboard is yours), Export as CSV (in the throwaway profile), and Home's Yesterday card.
+ * sessions per project, a row opened to what it did, the projects of that day, the Week view, the bar that stays when
+ * scrolling, the project filter (Copy for standup keeps it), a day without sessions, Copy for standup (never copied: the
+ * clipboard is yours), Export as CSV (in the throwaway profile), and Home's Yesterday card.
  */
 async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
@@ -9691,11 +9692,53 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   await js(`document.querySelector('${view} [data-activity-regenerate]').click()`);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok'`, 8_000))) return 'Regenerate did not finish';
 
-  // The week's bars: a project filters the page, and clearing it brings the rest back.
-  const bars = (await js(`document.querySelectorAll('${view} [data-activity-week-project]').length`)) as number;
-  if (bars === 0) return 'the week lists no projects';
-  await js(`document.querySelector('${view} [data-activity-week-project]').click()`);
-  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'a project in the week did not filter the page';
+  // Day is the default, and the projects' bars add up to the sessions of that day.
+  const stat = `Number(document.querySelector('${view} [data-activity-stat="sessions"] b').innerText)`;
+  const total = `parseInt(document.querySelector('${view} [data-activity-projects-total]').innerText)`;
+  if (!(await js(`document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true'`))) return 'the page did not start on Day';
+  if (!(await js(`${total} === ${stat}`))) return `the projects count ${await js(total)} sessions, the day ${await js(stat)}`;
+  const dayTitleText = (await js(`document.querySelector('${view} [data-activity-title]').innerText`)) as string;
+  const daySessions = (await js(stat)) as number;
+
+  // Week: the title, the numbers, the bars and the list are all of the week, and it has no day in short.
+  await js(`document.querySelector('${view} [data-activity-span="week"]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText.includes(' to ') && document.querySelectorAll('${view} [data-activity-day][aria-current="true"]').length === 7`, 2_000))) return 'Week did not show seven days';
+  if (await js(`!!document.querySelector('${view} [data-activity-summary]')`)) return 'Week shows the day in short of one day';
+  if (!(await js(`${stat} >= ${daySessions} && ${total} === ${stat}`))) return 'Week does not count the whole week';
+  const listed = `new Set([...document.querySelectorAll('${list} [data-activity-session]')].map((row) => row.dataset.activitySession))`;
+  if (!(await js(`${listed}.size === document.querySelectorAll('${list} [data-activity-session]').length`))) return 'Week lists a session twice';
+  await shot(win, 'activity-week.png');
+  // A day picked in the strip goes back to that day.
+  await js(`${busiest}.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)}`, 2_000))) return 'a day in the strip did not go back to Day';
+
+  // Scrolled down, the title and the actions are still there, and a bar keeps the strip and the numbers.
+  const scroller = `document.querySelector('${view} [data-activity-scroller]')`;
+  const shortList = `Array.from({ length: 40 }, () => document.createElement('div')).forEach((filler) => { filler.style.height = '40px'; filler.dataset.smokeFiller = ''; ${scroller}.firstElementChild.append(filler); })`;
+  await js(shortList);
+  await js(`${scroller}.scrollTop = ${scroller}.scrollHeight`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'scrolling down did not show the bar';
+  if (!(await js(`document.querySelector('${view} [data-activity-copy]').getBoundingClientRect().top >= 0 && document.querySelector('${view} [data-activity-title]').getBoundingClientRect().bottom <= ${scroller}.getBoundingClientRect().top`))) return 'the title and the actions scrolled away';
+  if (!(await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText.startsWith(${daySessions} + ' session')`))) return `the bar says: ${await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText`)}`;
+  if (!(await js(`document.querySelector('${view} [data-activity-pinned-day][aria-current="date"]') !== null && document.querySelectorAll('${view} [data-activity-pinned-day]').length === 8`))) return 'the bar has no strip';
+  await shot(win, 'activity-scrolled.png');
+  await js(`${scroller}.scrollTop = 0; document.querySelectorAll('[data-smoke-filler]').forEach((filler) => filler.remove())`);
+  if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'back at the top, the bar stayed';
+
+  // The bars: a project filters the page and Copy for standup, and clearing it brings the rest back.
+  const bars = (await js(`document.querySelectorAll('${view} [data-activity-project-bar]').length`)) as number;
+  if (bars === 0) return 'the day lists no projects';
+  await js(`document.querySelector('${view} [data-activity-project-bar]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'a project in the bars did not filter the page';
+  const pickedProject = (await js(`document.querySelector('${view} [data-activity-clear-project]').innerText.replace(/^Only /, '')`)) as string;
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  const standup = "(document.querySelector('[data-activity-copy-text]')?.innerText ?? '')";
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Copy for standup did not open';
+  await js(`document.querySelector('[data-activity-copy-pick="week"]').click()`);
+  if (!(await waitInPage(win, `${standup}.startsWith(${JSON.stringify(`**${pickedProject}**`)})`, 5_000))) return `Copy for standup is not of ${pickedProject}: ${await js(standup)}`;
+  if (((await js(standup)) as string).split('\n').some((line) => line.startsWith('**') && line !== `**${pickedProject}**`)) return `Copy for standup has other projects: ${await js(standup)}`;
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
   await js(`document.querySelector('${view} [data-activity-clear-project]').click()`);
   if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'the project filter did not clear';
 
