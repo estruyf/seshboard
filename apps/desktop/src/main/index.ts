@@ -3358,11 +3358,13 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
   const chip = `document.querySelector('${view} [data-mode-select]')`;
   const open = (await js("document.querySelector('[data-current-session]')?.dataset.currentSession ?? null")) as string | null;
   /** New session opened afresh (from Home, so it mounts again): the mode its chip starts on, once it has settled. */
-  const freshMode = async () => {
+  const freshMode = async (wanted?: string) => {
     await js("document.querySelector('[data-go-home]')?.click()");
     await waitInPage(win, `!${chip}`, 2_000);
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
     if (!(await waitInPage(win, `${chip}?.dataset.value`, 5_000))) return null;
+    // The chip shows before New session has read the remembered mode: give it time to reach the mode it should start on.
+    if (wanted) await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(wanted)}`, 3_000);
     await settle(win);
     return (await js(`${chip}.dataset.value`)) as string;
   };
@@ -3389,11 +3391,11 @@ async function runNewSessionModeStep(win: BrowserWindow): Promise<string> {
   const afterPick = await freshMode();
   if (afterPick !== base) return `with Ask before edits, New session kept ${afterPick} instead of starting on ${base}`;
   if (!(await setMode('remember'))) return 'could not set the global permission mode to Remember last in Settings › General';
-  const remembered = await freshMode();
+  const remembered = await freshMode(expect(picked));
   if (remembered !== expect(picked)) return `with Remember last, New session's mode chip starts on ${remembered}, not ${expect(picked)}`;
   const fixed = picked === 'plan' ? 'acceptEdits' : 'plan';
   if (!(await setMode(fixed))) return `could not set the global permission mode to ${fixed} in Settings › General`;
-  const withFixed = await freshMode();
+  const withFixed = await freshMode(expect(fixed));
   if (withFixed !== expect(fixed)) return `with ${fixed} set, New session's mode chip starts on ${withFixed}, not ${expect(fixed)}`;
   if (!(await setMode('default'))) return 'could not set the global permission mode back to Ask before edits';
   const again = await freshMode();
