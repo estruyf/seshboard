@@ -1,9 +1,9 @@
-import type { ActivityEntry, ActivitySummaryExtra } from '@seshboard/protocol/client';
+import { ACTIVITY_MAX_DAYS, type ActivityEntry, type ActivitySummaryExtra } from '@seshboard/protocol/client';
 
-/** Days in the strip: today and the same weekday a week ago, so a day can be compared with last week's. */
-export const STRIP_DAYS = 8;
-/** What an arrow moves the strip by. */
-export const STRIP_STEP = 7;
+/** Days in the strip, and what an arrow moves it by. */
+export const WEEK_DAYS = 7;
+/** How far "the last day you worked" looks back: all of last week's working days, also from a Monday. */
+export const LOOK_BACK_DAYS = 7;
 
 /** An entry of this computer, or of another one (`computer`, whose project is only a name). */
 export type ActivityRow = Omit<ActivityEntry, 'projectRoot'> & {
@@ -35,17 +35,99 @@ export function addDays(day: string, days: number): string {
   return dayOf(date.getTime());
 }
 
-/** The days of the strip that ends on `last`, oldest first. */
-export const stripDays = (last: string): string[] => Array.from({ length: STRIP_DAYS }, (_, i) => addDays(last, i - STRIP_DAYS + 1));
+/** The Monday of a day's week. Weeks start on Monday everywhere: a region's own first day isn't what a timesheet goes by. */
+export const mondayOf = (day: string): string => addDays(day, -((noon(day).getDay() + 6) % WEEK_DAYS));
 
-/** The first day of the week that ends on `last`: seven days, so an arrow of the strip moves to the next week without counting a day twice. */
-export const weekStart = (last: string): string => addDays(last, 1 - STRIP_STEP);
+/** The seven days of the week that starts on `monday`. */
+export const weekOf = (monday: string): string[] => Array.from({ length: WEEK_DAYS }, (_, i) => addDays(monday, i));
+
+/** The week the strip shows for a day: its Monday, or null for this week, so the strip follows today over a Sunday night. */
+export const stripWeek = (day: string | null, today: string): string | null => (!day || mondayOf(day) === mondayOf(today) ? null : mondayOf(day));
 
 export const weekdayShort = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { weekday: 'short' });
 export const weekdayLong = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { weekday: 'long' });
 export const dayNumber = (day: string) => noon(day).getDate();
 export const dayTitle = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 export const dayShort = (day: string, locale?: string) => noon(day).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+
+// --- A range of days -------------------------------------------------------------------------------------------------
+
+/** From a day till another; `to` null is till today, whichever day that is. */
+export interface DayRange {
+  from: string;
+  to: string | null;
+}
+
+/** The days a range covers now. One till today that has grown past what the engine answers keeps its end: its start moves up. */
+export function rangeDays(range: DayRange, today: string): { from: string; to: string } {
+  const to = range.to && range.to < today ? range.to : today;
+  const earliest = addDays(to, 1 - ACTIVITY_MAX_DAYS);
+  return { from: range.from < earliest ? earliest : range.from > to ? to : range.from, to };
+}
+
+/** A new start. The end moves along when it has to, so any day can be picked: January stays reachable from a range till today. */
+export function pickFrom(range: DayRange, from: string, today: string): DayRange {
+  const { to } = rangeDays(range, today);
+  if (from > to) return { from, to: from >= today ? null : from };
+  const last = addDays(from, ACTIVITY_MAX_DAYS - 1);
+  return to > last ? { from, to: last } : { from, to: range.to };
+}
+
+/** A new end, null or today being till today. The start moves along when it has to. */
+export function pickTill(range: DayRange, till: string | null, today: string): DayRange {
+  const to = till === null || till >= today ? null : till;
+  const last = to ?? today;
+  const earliest = addDays(last, 1 - ACTIVITY_MAX_DAYS);
+  return { from: range.from > last ? last : range.from < earliest ? earliest : range.from, to };
+}
+
+/** A day in short, with its year when that isn't this year's: a range can go back that far. */
+export const dayLabel = (day: string, today: string, locale?: string) => noon(day).toLocaleDateString(locale, { day: 'numeric', month: 'short', ...(day.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }) });
+
+export function rangeTitle(range: DayRange, today: string, locale?: string): string {
+  const { from, to } = rangeDays(range, today);
+  return `${dayLabel(from, today, locale)} till ${range.to && range.to < today ? dayLabel(to, today, locale) : 'today'}`;
+}
+
+/** Every day from `from` through `to`. */
+export function daysBetween(from: string, to: string): string[] {
+  const days: string[] = [];
+  for (let day = from; day <= to; day = addDays(day, 1)) days.push(day);
+  return days;
+}
+
+/** The rows of the days from `from` through `to`. */
+export const inDays = <T extends { day: string }>(rows: readonly T[], from: string, to: string): T[] => rows.filter((row) => row.day >= from && row.day <= to);
+
+// --- The calendar ----------------------------------------------------------------------------------------------------
+
+/** The first of a day's month. */
+export const monthOf = (day: string): string => `${day.slice(0, 7)}-01`;
+
+export function addMonths(month: string, months: number): string {
+  const date = noon(month);
+  date.setDate(1);
+  date.setMonth(date.getMonth() + months);
+  return dayOf(date.getTime());
+}
+
+/** The same day in another month, or the last one it has: PageDown from the 31st of January lands on February's last. */
+export function sameDayInMonth(day: string, months: number): string {
+  const month = addMonths(monthOf(day), months);
+  const last = addDays(addMonths(month, 1), -1);
+  const same = `${month.slice(0, 8)}${day.slice(8)}`;
+  return same > last ? last : same;
+}
+
+export const monthTitle = (month: string, locale?: string) => noon(month).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+
+/** A month as whole weeks from Monday, with the days of the months around it. */
+export function calendarWeeks(month: string): string[][] {
+  const weeks: string[][] = [];
+  const next = addMonths(month, 1);
+  for (let monday = mondayOf(month); monday < next; monday = addDays(monday, WEEK_DAYS)) weeks.push(weekOf(monday));
+  return weeks;
+}
 
 /** How much time reads: "48m", "2h 05m", "13h"; under a minute "<1m", none at all "–". */
 export function formatWorked(ms: number): string {
@@ -177,9 +259,9 @@ export function neighbourLine(day: string, today: string, counts: ReadonlyMap<st
   return next > today ? before : `${before} · ${say(next)} →`;
 }
 
-/** The last day with sessions before `today` (a Monday's yesterday is Friday's work), up to the strip's length back. Null without one. */
+/** The last day with sessions before `today` (a Monday's yesterday is Friday's work), up to `LOOK_BACK_DAYS` back. Null without one. */
 export function lastActiveDay(today: string, counts: ReadonlyMap<string, number>): string | null {
-  for (let back = 1; back < STRIP_DAYS; back++) {
+  for (let back = 1; back <= LOOK_BACK_DAYS; back++) {
     const day = addDays(today, -back);
     if ((counts.get(day) ?? 0) > 0) return day;
   }

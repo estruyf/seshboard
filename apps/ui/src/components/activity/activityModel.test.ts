@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityCsv, activityMarkdown, addDays, barHeight, countsByDay, dayOf, dayTitle, exportFileName, formatWorked, inProject, lastActiveDay, lastDayLabel, neighbourLine, projectGroups, projectShare, ribbonOf, rowKey, sessionsOnce, standupText, statsOf, stripDays, summaryExtras, summaryParts, summaryPlain, weekStart, type ActivityRow } from './activityModel.ts';
+import { activityCsv, activityMarkdown, addDays, addMonths, barHeight, calendarWeeks, countsByDay, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, sameDayInMonth, sessionsOnce, standupText, statsOf, stripWeek, summaryExtras, summaryParts, summaryPlain, weekOf, type ActivityRow } from './activityModel.ts';
 
 const row = (over: Partial<ActivityRow> = {}): ActivityRow => ({
   day: '2026-11-02',
@@ -29,20 +29,84 @@ describe('days', () => {
     expect(dayOf(new Date(2026, 10, 2, 23, 59).getTime())).toBe('2026-11-02');
   });
 
-  it('has a strip of eight days that ends on the last one', () => {
-    const days = stripDays('2026-11-02');
-    expect(days).toHaveLength(8);
-    expect(days[0]).toBe('2026-10-26');
-    expect(days[7]).toBe('2026-11-02');
+  it('starts a week on Monday, from any of its days', () => {
+    expect(mondayOf('2026-11-02')).toBe('2026-11-02');
+    expect(mondayOf('2026-11-05')).toBe('2026-11-02');
+    expect(mondayOf('2026-11-08')).toBe('2026-11-02');
+    expect(mondayOf('2026-11-01')).toBe('2026-10-26');
+    expect(mondayOf('2026-03-29')).toBe('2026-03-23');
   });
 
-  it('has a week of seven days, so a page of the strip counts no day twice', () => {
-    expect(weekStart('2026-11-05')).toBe('2026-10-30');
-    expect(addDays(weekStart('2026-11-05'), -1)).toBe(addDays('2026-11-05', -7));
+  it('has seven days in a week, over the end of a month', () => {
+    expect(weekOf('2026-10-26')).toEqual(['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']);
+  });
+
+  it('shows this week for today and its days, and the week of an older day', () => {
+    expect(stripWeek(null, '2026-11-05')).toBeNull();
+    expect(stripWeek('2026-11-02', '2026-11-05')).toBeNull();
+    expect(stripWeek('2026-11-01', '2026-11-02')).toBe('2026-10-26');
   });
 
   it('names a day', () => {
     expect(dayTitle('2026-11-02', 'en-GB')).toBe('Monday 2 November');
+  });
+});
+
+describe('a range of days', () => {
+  const today = '2026-11-05';
+
+  it('runs till today, or a day before it', () => {
+    expect(rangeDays({ from: '2026-10-01', to: null }, today)).toEqual({ from: '2026-10-01', to: today });
+    expect(rangeDays({ from: '2026-10-01', to: '2026-10-15' }, today)).toEqual({ from: '2026-10-01', to: '2026-10-15' });
+    expect(rangeTitle({ from: '2026-10-01', to: null }, today, 'en-GB')).toBe('1 Oct till today');
+    expect(rangeTitle({ from: '2026-10-01', to: '2026-10-15' }, today, 'en-GB')).toBe('1 Oct till 15 Oct');
+    expect(rangeTitle({ from: '2025-10-01', to: '2025-10-15' }, today, 'en-GB')).toBe('1 Oct 2025 till 15 Oct 2025');
+  });
+
+  it('keeps its end when one till today grows too long', () => {
+    expect(rangeDays({ from: '2026-01-01', to: null }, today)).toEqual({ from: addDays(today, -61), to: today });
+    expect(daysBetween(addDays(today, -61), today)).toHaveLength(62);
+  });
+
+  it('moves the end along with a new start', () => {
+    expect(pickFrom({ from: '2026-10-01', to: null }, '2026-09-15', today)).toEqual({ from: '2026-09-15', to: null });
+    expect(pickFrom({ from: '2026-10-01', to: null }, '2026-01-10', today)).toEqual({ from: '2026-01-10', to: addDays('2026-01-10', 61) });
+    expect(pickFrom({ from: '2026-10-01', to: '2026-10-15' }, '2026-10-20', today)).toEqual({ from: '2026-10-20', to: '2026-10-20' });
+    expect(pickFrom({ from: '2026-10-01', to: '2026-10-15' }, today, today)).toEqual({ from: today, to: null });
+  });
+
+  it('moves the start along with a new end', () => {
+    expect(pickTill({ from: '2026-10-01', to: null }, '2026-10-15', today)).toEqual({ from: '2026-10-01', to: '2026-10-15' });
+    expect(pickTill({ from: '2026-10-01', to: null }, '2026-09-15', today)).toEqual({ from: '2026-09-15', to: '2026-09-15' });
+    expect(pickTill({ from: '2026-01-01', to: '2026-01-20' }, null, today)).toEqual({ from: addDays(today, -61), to: null });
+    expect(pickTill({ from: '2026-10-01', to: '2026-10-15' }, today, today)).toEqual({ from: '2026-10-01', to: null });
+  });
+
+  it('filters rows on both ends', () => {
+    const rows = [{ day: '2026-10-31' }, { day: '2026-11-01' }, { day: '2026-11-02' }, { day: '2026-11-03' }];
+    expect(inDays(rows, '2026-11-01', '2026-11-02').map((r) => r.day)).toEqual(['2026-11-01', '2026-11-02']);
+  });
+});
+
+describe('the calendar', () => {
+  it('shows a month as whole weeks from Monday', () => {
+    const weeks = calendarWeeks('2026-11-01');
+    expect(weeks[0]![0]).toBe('2026-10-26');
+    expect(weeks.at(-1)!.at(-1)).toBe('2026-12-06');
+    expect(weeks.every((week) => week.length === 7)).toBe(true);
+    expect(weeks.flat()).toContain('2026-11-30');
+  });
+
+  it('has no week without a day of the month', () => {
+    expect(calendarWeeks('2026-06-01').at(-1)![0]).toBe('2026-06-29');
+    expect(calendarWeeks('2026-06-01')[0]![0]).toBe('2026-06-01');
+  });
+
+  it('steps over months, on the last day a month has', () => {
+    expect(addMonths('2026-12-01', 1)).toBe('2027-01-01');
+    expect(addMonths('2026-01-01', -1)).toBe('2025-12-01');
+    expect(sameDayInMonth('2026-01-31', 1)).toBe('2026-02-28');
+    expect(sameDayInMonth('2026-03-15', -1)).toBe('2026-02-15');
   });
 });
 

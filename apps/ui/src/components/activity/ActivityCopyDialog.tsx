@@ -3,18 +3,17 @@ import { toast } from '../../state/toastStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
-import { addDays, countsByDay, inProject, lastActiveDay, lastDayLabel, standupText, stripDays, weekStart, type StandupFormat } from './activityModel.ts';
+import { addDays, countsByDay, inProject, lastActiveDay, lastDayLabel, LOOK_BACK_DAYS, mondayOf, standupText, type ActivityRow, type StandupFormat } from './activityModel.ts';
 import { useActivityRange } from './useActivity.ts';
 
-type Pick = 'last' | 'today' | 'week';
+type Pick = 'last' | 'today' | 'week' | 'range';
 
 /**
  * Copy for standup: the last day you worked (Yesterday, or Friday on a Monday), today or this week, one line per session.
- * A project picked on the page stays picked: only its sessions, and the last day you worked on it.
+ * A project picked on the page stays picked: only its sessions, and the last day you worked on it. With a range on the page, that too.
  */
-export function ActivityCopyDialog({ today, project, initial, onClose }: { today: string; project: { key: string; name: string } | null; initial: Pick; onClose(): void }) {
-  const days = useMemo(() => stripDays(today), [today]);
-  const { rows: everything, loading } = useActivityRange(days[0]!, today);
+export function ActivityCopyDialog({ today, project, initial, rangeRows, onClose }: { today: string; project: { key: string; name: string } | null; initial: Pick; rangeRows: readonly ActivityRow[] | null; onClose(): void }) {
+  const { rows: everything, loading } = useActivityRange(addDays(today, -LOOK_BACK_DAYS), today);
   const [pick, setPick] = useState<Pick>(initial);
   const [format, setFormat] = useState<StandupFormat>('markdown');
 
@@ -22,9 +21,10 @@ export function ActivityCopyDialog({ today, project, initial, onClose }: { today
   const counts = useMemo(() => countsByDay(rows), [rows]);
   const lastDay = useMemo(() => lastActiveDay(today, counts) ?? addDays(today, -1), [today, counts]);
   const text = useMemo(() => {
-    const picked = pick === 'week' ? rows.filter((row) => row.day >= weekStart(today)) : rows.filter((row) => row.day === (pick === 'today' ? today : lastDay));
+    if (pick === 'range') return standupText(rangeRows ?? [], format);
+    const picked = pick === 'week' ? rows.filter((row) => row.day >= mondayOf(today)) : rows.filter((row) => row.day === (pick === 'today' ? today : lastDay));
     return standupText(picked, format);
-  }, [rows, pick, format, today, lastDay]);
+  }, [rows, rangeRows, pick, format, today, lastDay]);
 
   const copy = () => {
     if (!text) return;
@@ -67,6 +67,7 @@ export function ActivityCopyDialog({ today, project, initial, onClose }: { today
             { value: 'last', label: lastDayLabel(lastDay, today), data: { 'data-activity-copy-pick': 'last' } },
             { value: 'today', label: 'Today', data: { 'data-activity-copy-pick': 'today' } },
             { value: 'week', label: 'This week', data: { 'data-activity-copy-pick': 'week' } },
+            ...(rangeRows ? [{ value: 'range' as const, label: 'This range', data: { 'data-activity-copy-pick': 'range' } }] : []),
           ]}
         />
         <pre className="max-h-72 min-h-16 overflow-auto rounded-lg bg-code px-3 py-2.5 font-mono text-ui leading-relaxed whitespace-pre-wrap text-text" data-activity-copy-text>

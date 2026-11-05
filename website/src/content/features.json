@@ -4538,12 +4538,12 @@
     },
     {
       "id": "feature:activity-standup",
-      "name": "Activity: Copy for standup, the last day you worked, today or this week, as Markdown or plain text, only for the project you picked",
+      "name": "Activity: Copy for standup, the last day you worked, today, this week or your range, as Markdown or plain text, only for the project you picked",
       "page": "sessions/upcoming"
     },
     {
       "id": "feature:activity-export",
-      "name": "Activity: Export the day or the week as CSV or Markdown",
+      "name": "Activity: Export the day, the week or the range as CSV or Markdown",
       "page": "sessions/upcoming"
     },
     {
@@ -4553,7 +4553,7 @@
     },
     {
       "id": "feature:activity-day-week",
-      "name": "Activity: Day or Week, what the numbers, the hours, the projects and the sessions cover",
+      "name": "Activity: Day, Week (Monday to Sunday) or Range (from a date till a date or today), what the numbers, the hours, the projects and the sessions cover",
       "page": "sessions/upcoming"
     },
     {

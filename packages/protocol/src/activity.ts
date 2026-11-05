@@ -73,5 +73,4 @@ export const ActivitySummaryExtra = z.object({
 });
 export type ActivitySummaryExtra = z.infer<typeof ActivitySummaryExtra>;
 
-/** The longest range `activity.range` answers, in days. */
-export const ACTIVITY_MAX_DAYS = 62;
+export { ACTIVITY_MAX_DAYS } from './activityConstants.ts';

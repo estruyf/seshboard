@@ -9650,8 +9650,8 @@ async function runSchedulesStep(win: BrowserWindow): Promise<string> {
 
 /**
  * Activity: from the sidebar on today, a day with sessions picked in the strip, its summary (the stub), numbers, hours and
- * sessions per project, a row opened to what it did, the projects of that day, the Week view, the bar that stays when
- * scrolling, the project filter (Copy for standup keeps it), a day without sessions, Copy for standup (never copied: the
+ * sessions per project, a row opened to what it did, the projects of that day, the Week view from Monday, a Range with its
+ * calendar, the bar that stays when scrolling, the project filter (Copy for standup keeps it), a day without sessions, Copy for standup (never copied: the
  * clipboard is yours), Export as CSV (in the throwaway profile), and Home's Yesterday card.
  */
 async function runActivityPageStep(win: BrowserWindow): Promise<string> {
@@ -9660,7 +9660,8 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   await js("document.querySelector('[data-activity-nav]').click()");
   if (!(await waitInPage(win, `!!document.querySelector('${view}')`, 3_000))) return 'Activity did not open';
   if (!(await js("document.querySelector('[data-activity-nav]')?.getAttribute('aria-current') === 'page'"))) return 'the Activity row was not selected';
-  if (!(await waitInPage(win, `document.querySelectorAll('${view} [data-activity-day]').length === 8 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'the strip has no eight days';
+  if (!(await waitInPage(win, `document.querySelectorAll('${view} [data-activity-day]').length === 7 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'the strip has no seven days';
+  if (!(await js(`new Date(document.querySelector('${view} [data-activity-day]').dataset.activityDay + 'T12:00').getDay() === 1`))) return 'the strip does not start on a Monday';
   const today = (await js(`(() => { const d = new Date(); return \`\${d.getFullYear()}-\${String(d.getMonth() + 1).padStart(2, '0')}-\${String(d.getDate()).padStart(2, '0')}\`; })()`)) as string;
   const selected = () => js(`document.querySelector('${view} [data-activity-day][aria-current="date"]')?.dataset.activityDay`);
   if ((await selected()) !== today) return `it did not open on today, but on ${await selected()}`;
@@ -9702,7 +9703,8 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
 
   // Week: the title, the numbers, the bars and the list are all of the week, and it has no day in short.
   await js(`document.querySelector('${view} [data-activity-span="week"]').click()`);
-  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText.includes(' to ') && document.querySelectorAll('${view} [data-activity-day][aria-current="true"]').length === 7`, 2_000))) return 'Week did not show seven days';
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText === 'This week' && document.querySelectorAll('${view} [data-activity-day][aria-current="true"]').length === document.querySelectorAll('${view} [data-activity-day]:not([disabled])').length`, 2_000))) return 'Week did not show the days of this week so far';
+  if (await js(`[...document.querySelectorAll('${view} [data-activity-day]')].some((d) => d.disabled !== d.dataset.activityDay > ${JSON.stringify(today)})`)) return 'a day to come can be picked, or a day so far cannot';
   if (await js(`!!document.querySelector('${view} [data-activity-summary]')`)) return 'Week shows the day in short of one day';
   if (!(await js(`${stat} >= ${daySessions} && ${total} === ${stat}`))) return 'Week does not count the whole week';
   const listed = `new Set([...document.querySelectorAll('${list} [data-activity-session]')].map((row) => row.dataset.activitySession))`;
@@ -9712,17 +9714,81 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   await js(`${busiest}.click()`);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)}`, 2_000))) return 'a day in the strip did not go back to Day';
 
-  // Scrolled down, the title and the actions are still there, and a bar keeps the strip and the numbers.
+  // Range: from a week ago till today, then till a day, then back till today, with the other end moving when it has to.
+  const daysAgo = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const rangeTitleText = `document.querySelector('${view} [data-activity-title]').innerText`;
+  const rangeBars = `document.querySelectorAll('${view} [data-activity-range-day]').length`;
+  /** Picks a day in the open calendar, one month back when it isn't in this one's grid. */
+  const pickInCalendar = async (day: string) => {
+    if (!(await waitInPage(win, "!!document.querySelector('[data-activity-calendar]')", 2_000))) return false;
+    const cell = `document.querySelector('[data-activity-calendar-day="${day}"]')`;
+    if (!(await js(`!!${cell}`))) await js("document.querySelector('[data-activity-calendar-earlier]').click()");
+    if (!(await waitInPage(win, `!!${cell}`, 2_000))) return false;
+    await js(`${cell}.click()`);
+    return waitInPage(win, "!document.querySelector('[data-activity-calendar]')", 2_000);
+  };
+  await js(`document.querySelector('${view} [data-activity-span="range"]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-range]') && ${rangeBars} === 7 && !document.querySelector('${view} [data-activity-loading]') && ${rangeTitleText}.endsWith('till today')`, 5_000))) return `Range did not start on the last seven days: ${await js(rangeTitleText)}`;
+  await js(`document.querySelector('${view} [data-activity-range-from]').click()`);
+  await shot(win, 'activity-range.png');
+  if (!(await pickInCalendar(daysAgo(7)))) return 'the first day of the range could not be picked';
+  if (!(await waitInPage(win, `${rangeBars} === 8 && ${rangeTitleText}.endsWith('till today')`, 5_000))) return `a new first day did not change the range: ${await js(rangeBars)} days`;
+  await js(`document.querySelector('${view} [data-activity-range-till]').click()`);
+  if (!(await pickInCalendar(daysAgo(1)))) return 'the last day of the range could not be picked';
+  if (!(await waitInPage(win, `${rangeBars} === 7 && !${rangeTitleText}.endsWith('today') && document.querySelector('${view} [data-activity-range-till]').innerText !== 'Today'`, 5_000))) return `a last day did not change the range: ${await js(rangeTitleText)}`;
+  await js(`document.querySelector('${view} [data-activity-range-till]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-calendar-today]')", 2_000))) return 'the calendar of the last day has no Today';
+  await js("document.querySelector('[data-activity-calendar-today]').click()");
+  if (!(await waitInPage(win, `${rangeBars} === 8 && ${rangeTitleText}.endsWith('till today') && document.querySelector('${view} [data-activity-range-till]').innerText === 'Today'`, 5_000))) return 'Today did not end the range on today';
+  // Only the projects at first, Escape leaves a calendar, a project opens to its sessions, each once.
+  await js(`document.querySelector('${view} [data-activity-range-from]').click()`);
+  if (!(await waitInPage(win, `document.activeElement?.dataset.activityCalendarDay === ${JSON.stringify(daysAgo(7))}`, 2_000))) return 'the calendar did not take the focus on its day';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, `!document.querySelector('[data-activity-calendar]') && document.activeElement === document.querySelector('${view} [data-activity-range-from]')`, 2_000))) return 'Escape did not close the calendar and go back to its button';
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-project-toggle]') && !document.querySelector('${list} [data-activity-session]')`, 5_000))) return 'a range did not start with only its projects';
+  // Opening one stays where you are, also when that makes the list long enough to only draw what is in view: turning that on once scrolled to the top.
   const scroller = `document.querySelector('${view} [data-activity-scroller]')`;
-  const shortList = `Array.from({ length: 40 }, () => document.createElement('div')).forEach((filler) => { filler.style.height = '40px'; filler.dataset.smokeFiller = ''; ${scroller}.firstElementChild.append(filler); })`;
-  await js(shortList);
+  const addFiller = `Array.from({ length: 40 }, () => document.createElement('div')).forEach((filler) => { filler.style.height = '40px'; filler.dataset.smokeFiller = ''; ${scroller}.firstElementChild.append(filler); })`;
+  const removeFiller = `${scroller}.scrollTop = 0; document.querySelectorAll('[data-smoke-filler]').forEach((filler) => filler.remove())`;
+  const toggleTop = `document.querySelector('${list} [data-activity-project-toggle]').getBoundingClientRect().top`;
+  await js(addFiller);
+  await js(`${scroller}.scrollTop = 200`);
+  const toggleBefore = (await js(toggleTop)) as number;
+  await js(`document.querySelector('${list} [data-activity-project-toggle]').click()`);
+  if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-session]')`, 2_000))) return 'a project in a range did not open';
+  await settle(win);
+  const toggleAfter = (await js(toggleTop)) as number;
+  if (Math.abs(toggleAfter - toggleBefore) > 16) return `opening a project moved the page: its row went from ${toggleBefore} to ${toggleAfter}, scrolled to ${await js(`${scroller}.scrollTop`)}`;
+  await js(removeFiller);
+  await shot(win, 'activity-range-list.png');
+  // Copy for standup and Export start on the range.
+  await js(`document.querySelector('${view} [data-activity-copy]').click()`);
+  if (!(await waitInPage(win, `document.querySelector('[data-activity-copy-pick="range"]')?.getAttribute('aria-checked') === 'true' && (document.querySelector('[data-activity-copy-text]')?.innerText ?? '').includes('\\n- ')`, 5_000))) return 'Copy for standup did not start on the range';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-copy-dialog]')", 2_000))) return 'Escape did not close Copy for standup';
+  await js(`document.querySelector('${view} [data-activity-export]').click()`);
+  if (!(await waitInPage(win, "!!document.querySelector('[data-activity-export-dialog]') && !document.querySelector('[data-activity-export-span]')", 2_000))) return 'Export of a range still asks which days';
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-activity-export-dialog]')", 2_000))) return 'Escape did not close Export';
+  // A bar shows its day.
+  await js(`[...document.querySelectorAll('${view} [data-activity-range-day]')].find((d) => Number(d.dataset.activityRangeDayCount) > 0).click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelectorAll('${view} [data-activity-day]').length === 7 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'a bar of the range did not show its day';
+  await js(`${busiest}.click()`);
+  if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)} && !!document.querySelector('${list} [data-activity-session]')`, 5_000))) return 'back from the range, the day did not return';
+
+  // Scrolled down, the title and the actions are still there, and a bar keeps the strip and the numbers.
+  await js(addFiller);
   await js(`${scroller}.scrollTop = ${scroller}.scrollHeight`);
   if (!(await waitInPage(win, `!!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'scrolling down did not show the bar';
   if (!(await js(`document.querySelector('${view} [data-activity-copy]').getBoundingClientRect().top >= 0 && document.querySelector('${view} [data-activity-title]').getBoundingClientRect().bottom <= ${scroller}.getBoundingClientRect().top`))) return 'the title and the actions scrolled away';
   if (!(await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText.startsWith(${daySessions} + ' session')`))) return `the bar says: ${await js(`document.querySelector('${view} [data-activity-pinned-numbers]').innerText`)}`;
-  if (!(await js(`document.querySelector('${view} [data-activity-pinned-day][aria-current="date"]') !== null && document.querySelectorAll('${view} [data-activity-pinned-day]').length === 8`))) return 'the bar has no strip';
+  if (!(await js(`document.querySelector('${view} [data-activity-pinned-day][aria-current="date"]') !== null && document.querySelectorAll('${view} [data-activity-pinned-day]').length === 7`))) return 'the bar has no strip';
   await shot(win, 'activity-scrolled.png');
-  await js(`${scroller}.scrollTop = 0; document.querySelectorAll('[data-smoke-filler]').forEach((filler) => filler.remove())`);
+  await js(removeFiller);
   if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-pinned]')`, 2_000))) return 'back at the top, the bar stayed';
 
   // The bars: a project filters the page and Copy for standup, and clearing it brings the rest back.
@@ -9743,7 +9809,7 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!document.querySelector('${view} [data-activity-clear-project]')`, 2_000))) return 'the project filter did not clear';
 
   // A day without sessions says so.
-  const empty = `[...document.querySelectorAll('${view} [data-activity-day]')].find((d) => d.dataset.activityDayCount === '0')`;
+  const empty = `[...document.querySelectorAll('${view} [data-activity-day]:not([disabled])')].find((d) => d.dataset.activityDayCount === '0')`;
   let emptyDay = false;
   if (await js(`!!${empty}`)) {
     await js(`${empty}.click()`);
