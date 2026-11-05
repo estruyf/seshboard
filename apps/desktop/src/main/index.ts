@@ -2162,7 +2162,16 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   key('Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-context-breakdown]')", 2_000))) return 'failed: Escape did not close the ring popup';
 
-  // Resize from the handle: ↑ from the keyboard, then a drag.
+  // However full the column is (an open catch-up card, the message box), the panel stays in the window.
+  const overflow = (await js("Math.round(document.querySelector('[data-terminal-panel]').getBoundingClientRect().bottom - window.innerHeight)")) as number;
+  if (overflow > 1) return `failed: the panel runs ${overflow}px out of the window`;
+
+  // Resize from the handle: ↑ from the keyboard, then a drag. The catch-up card an earlier step left open would leave no room to grow.
+  if (await js("Boolean(document.querySelector('[data-catchup-collapse]'))")) {
+    await js("document.querySelector('[data-catchup-collapse]').click()");
+    await waitInPage(win, "!document.querySelector('[data-catchup-collapse]')", 2_000);
+    await settle(win);
+  }
   const start = (await box())!;
   await js("document.querySelector('[data-terminal-resize]').focus()");
   key('Up');
@@ -5077,6 +5086,12 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
 
   // 3d. Someone else's session, sent a message from here, is mine: it stays when the computer goes back to Mine.
   const theirs = `[...document.querySelectorAll(${JSON.stringify(row)})].find((r) => r.innerText.includes('Explain the tile renderer'))`;
+  // An old session, and the list is virtualised: with more sessions above it, as late in a full run, it has to be scrolled to.
+  await js("document.querySelector('[data-session-list]').scrollTop = 0");
+  for (let i = 0; i < 12 && !(await js(`Boolean(${theirs})`)); i++) {
+    await js("document.querySelector('[data-session-list]').scrollTop += 200");
+    await settle(win);
+  }
   if (!(await waitInPage(win, `Boolean(${theirs}?.querySelector('[data-row-started-by]'))`, 5_000))) return 'the other computer’s own session does not say who started it';
   await js(`${theirs}.click()`);
   if (!(await waitInPage(win, "document.querySelector('[data-remote-composer] [data-computer-composer]') && !document.querySelector('[data-remote-composer] [data-computer-composer]').disabled", 5_000))) return 'someone else’s session on the other computer has no message box';

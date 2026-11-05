@@ -845,22 +845,26 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // The "Working…" line below the list grows the end the same way: on a session's first message it
   // appears only once Claude Code has started, after everything above has settled.
   // Following the end again on every height change keeps them in sight.
+  // The list too: right after a commit that grows it, scrollHeight can still read the old height, so the follow above lands
+  // short. Nothing else moves the view afterwards when the message box doesn't animate (Reduce motion).
   const tailRef = useRef<HTMLDivElement>(null);
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     let lastHeight = el.clientHeight;
     const observer = new ResizeObserver((entries) => {
       const height = el.clientHeight;
-      const tailChanged = entries.some((entry) => entry.target === tailRef.current);
-      if (height === lastHeight && !tailChanged) return;
+      const contentChanged = entries.some((entry) => entry.target !== el);
+      if (height === lastHeight && !contentChanged) return;
       lastHeight = height;
       if (stickToBottom.current && height > 0) el.scrollTop = el.scrollHeight;
     });
     observer.observe(el);
     if (tailRef.current) observer.observe(tailRef.current);
+    if (listEl) observer.observe(listEl);
     return () => observer.disconnect();
-  }, []);
+  }, [listEl]);
 
   // The prompt outline: a mark for each of your prompts beside the conversation, and ⌘⇧↑ / ⌘⇧↓ to move between them.
   // The list only changes when a prompt comes or goes, so the rail doesn't redraw for every new line from Claude.
@@ -1796,7 +1800,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   )}
                 </div>
               ) : (
-                <div className="relative mx-auto max-w-3xl px-6" style={{ height: virtualizer.getTotalSize() }}>
+                <div ref={setListEl} className="relative mx-auto max-w-3xl px-6" style={{ height: virtualizer.getTotalSize() }}>
                   {virtualizer.getVirtualItems().map((row) => (
                     <div
                       key={row.key}

@@ -60,6 +60,8 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **A session opens at the end with Reduce motion on.** With Reduce motion turned on in your system settings, a conversation could stop a little short of its last lines when you opened it.
+- **The terminal stays in the window.** With the catch-up open or in a narrow split pane, the terminal under a session could run past the bottom of the window and hide its last lines. It now gets shorter to fit.
 - **A pipeline waits for a step's background work.** When Claude ended a step's turn with a command or an agent still running in the background, the next step (or Push) started while Claude was still working in the folder. The run now goes on once that work is done.
 - **Push shows what it would push now.** Its commit message, files and branch were written once and kept, even after a step committed, switched branch or changed files, so it could show "0 files" next to six changed ones. They are written again when the folder changed. When Push fails, the run says why, here and on another computer. With nothing to commit, Push sends the branch's commits and opens the pull request without a message.
 - **Dropdowns show long names in full.** A dropdown's list, such as the pipeline picker in a trigger, was a fixed width and cut long names off. It now widens to fit them.

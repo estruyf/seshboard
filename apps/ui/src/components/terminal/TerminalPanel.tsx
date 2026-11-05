@@ -140,11 +140,14 @@ export function TerminalPanel({
     }
   };
 
+  // Docked below, the panel can be shorter than its height when the column is full: resizing starts from what is on screen.
+  const shownHeight = (handle: HTMLElement) => Math.round(handle.closest('[data-terminal-panel]')?.getBoundingClientRect().height ?? height);
+
   // Drag the handle to resize: the top edge below the conversation, the left edge on the right.
   const startResize = (event: PointerEvent<HTMLDivElement>) => {
     const start = right ? event.clientX : event.clientY;
-    const startSize = right ? width : height;
     const target = event.currentTarget;
+    const startSize = right ? width : shownHeight(target);
     target.setPointerCapture(event.pointerId);
     const move = (e: globalThis.PointerEvent) => (right ? setWidth(startSize + (start - e.clientX)) : setHeight(startSize + (start - e.clientY)));
     const up = () => {
@@ -157,7 +160,7 @@ export function TerminalPanel({
 
   // The same from the keyboard: ↑ ↓ below, ← → on the right.
   const resizeByKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next = panelSizeForKey(dock, event.key, right ? width : height, { width: window.innerWidth, height: window.innerHeight });
+    const next = panelSizeForKey(dock, event.key, right ? width : shownHeight(event.currentTarget), { width: window.innerWidth, height: window.innerHeight });
     if (next === null) return;
     event.preventDefault();
     if (right) setWidth(next);
@@ -231,13 +234,14 @@ export function TerminalPanel({
     </div>
   );
 
-  const size = maximized ? undefined : right ? { width } : { height };
+  // Below, it gives way when the rest of the column doesn't fit (a catch-up card and the message box in a narrow pane), so it never runs out of the window.
+  const size = maximized ? undefined : right ? { width } : { height, minHeight: PANEL_MIN_HEIGHT };
   return (
     <section
       aria-label="Terminal"
       onKeyDown={onPanelKey}
       className={`relative flex min-h-0 min-w-0 flex-col ${tabs ? 'bg-bg' : 'theme-dark @container/terminal bg-terminal text-text'} ${
-        maximized ? 'flex-1' : tabs ? 'shrink-0 border-l border-border' : right ? 'shrink-0 border-l border-border terminal-edge-left' : 'shrink-0 border-t border-border terminal-edge-top'
+        maximized ? 'flex-1' : tabs ? 'shrink-0 border-l border-border' : right ? 'shrink-0 border-l border-border terminal-edge-left' : 'shrink border-t border-border terminal-edge-top'
       }`}
       style={size}
       data-terminal-panel
