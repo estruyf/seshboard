@@ -61,6 +61,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Seshboard installs on Windows on Arm.** On an Arm PC the installer finished without putting Seshboard.exe in place, so its shortcuts showed "Missing Shortcut".
 - **A session opens at the end with Reduce motion on.** With Reduce motion turned on in your system settings, a conversation could stop a little short of its last lines when you opened it.
 - **The terminal stays in the window.** With the catch-up open or in a narrow split pane, the terminal under a session could run past the bottom of the window and hide its last lines. It now gets shorter to fit.
 - **A pipeline waits for a step's background work.** When Claude ended a step's turn with a command or an agent still running in the background, the next step (or Push) started while Claude was still working in the folder. The run now goes on once that work is done.
