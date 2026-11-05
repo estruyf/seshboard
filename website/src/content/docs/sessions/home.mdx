@@ -1,6 +1,6 @@
 ---
 title: Home
-description: One view of what needs you, what is working, your queue, your schedules and your projects.
+description: One view of what needs you, what is working and what to review, with a box to start new work and your projects and usage.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -9,9 +9,9 @@ import Pill from '../../../components/Pill.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 
-Home is what the window shows when no session is open. It tells you in one sentence what needs you and what is working, and gives you a quick way to start in one of your projects.
+Home is what the window shows when no session is open. It uses the whole window: a box to start new work, lanes for what needs you, what is working and what to review, and under them your projects and usage.
 
-<Screenshot name="home" alt="Home: a card for a session that needs you, one that is working, the queue, four project tiles under Start in a project, and the two Claude profiles" eager />
+<Screenshot name="home" alt="Home: a greeting and a start box, the lanes Needs you, Working and To review, then the projects with Up next, and usage on the right" eager />
 
 ## Open it
 
@@ -22,20 +22,28 @@ Home is what the window shows when no session is open. It tells you in one sente
 
 Seshboard also opens on Home, unless you choose otherwise in Settings.
 
-## What's on it
+## Start from the box
 
-From top to bottom:
+Type a project's name and what Claude should do, then press <Kbd keys="enter" />: New session opens with both filled in. Press <Kbd keys="mod+1..9" /> to pick one of your projects by its number.
 
-- **The summary**, such as "1 session needs you, 2 are working.", and the **New session** button (<Kbd shortcut="session.new" />).
-- <Pill tone="needs-you">Needs you</Pill> **Needs you:** a card per session that waits for you, with its project and branch, what it asks for ("Permission: Bash", "Question", "Plan to review") and **Open**.
-- <Pill tone="working">Working</Pill> **Working:** a card per session Claude is working on, with what it is doing. Click one to open it.
+## The lanes
+
+Every card opens its session.
+
+- <Pill tone="needs-you">Needs you</Pill> **Needs you:** a card per session that waits for you, with what it asks for ("Permission: Bash", "Question", "Plan to review").
+- <Pill tone="working">Working</Pill> **Working:** a card per session Claude is working on, with what it is doing.
+- **To review:** finished sessions you haven't read, newest first. A card opens its session with the [catch-up](/sessions/catch-up/), and the lane can start [going through them one by one](/sessions/catch-up/#go-through-your-sessions).
+
+In a narrower window the lanes stack. When an empty Needs you doesn't fit, the line under the greeting says it instead.
+
+## Under the lanes
+
+- **Start in a project:** your projects as rows, in New session's order and with the same keys. Click one to open New session on that project.
+- **Up next:** the one thing Upcoming has next, with when. Click it to open [Upcoming](/sessions/upcoming/) on it.
 - **Unsent:** the messages you typed and didn't send, each with **Open**. See [Unsent messages](/sessions/unsent-drafts/).
-- **Queue:** your first three queued prompts, with **Start** on the ones that are ready and ⋯ for the rest. **See all in Upcoming** opens [Upcoming](/sessions/upcoming/) on the whole queue. See [Queue](/new-session/queue/).
-- **Schedules:** your first three scheduled sessions, each with its rule, its last and next run, **Run now** and ⋯. **See all in Upcoming** opens [Upcoming](/sessions/upcoming/) on every schedule. **Schedule a session** opens New session, with Start set to **Schedule…**. A line under the card says when schedules run: <Os mac="while Seshboard is running, also with its windows closed" windows="while a Seshboard window is open" />. See [Schedules](/new-session/schedules/).
-- **Start in a project:** tiles for four of your projects, with the branch checked out and how many sessions are open there. Click one to open New session on that project.
-- **Profiles** (or **Usage** with one profile): each Claude profile's plan usage and what its sessions are doing. Click the usage to see what used it in the [Usage view](/usage/).
-
-Needs you and Working only show when there is something in them. With the window narrow, the columns stack.
+- **Queue:** your first queued prompts, with **Start** on the ones that are ready. **See all in Upcoming** opens the whole queue. See [Queue](/new-session/queue/).
+- **Schedules:** your first scheduled sessions, each with its rule, its last and next run, **Run now** and ⋯. **See all in Upcoming** opens every schedule, and **Schedule a session** opens New session with Start set to **Schedule…**. They run <Os mac="while Seshboard is running, also with its windows closed" windows="while a Seshboard window is open" />. See [Schedules](/new-session/schedules/).
+- **Usage**, in a column on the right: each profile's plan usage. A profile with sessions today keeps its card, and quiet ones take one line each. Click the usage to see what used it in the [Usage view](/usage/).
 
 ### Before you have projects
 
@@ -43,9 +51,9 @@ Without projects, Home says *Add your first project* with an **Add a project** b
 
 ## Settings
 
-- [Settings, General](/settings/#general): *On startup* picks what Seshboard shows when it opens: **Home** (the default), **The last session** or **New session**. [Settings, Projects](/settings/#projects): *Project order* picks which projects get a tile: **Recent** (the ones you used last) or **Your order** (the order you set in Projects).
+- [Settings, General](/settings/#general): *On startup* picks what Seshboard shows when it opens: **Home** (the default), **The last session** or **New session**. [Settings, Projects](/settings/#projects): *Project order* picks the order of your projects: **Recent** (the ones you used last) or **Your order** (the order you set in Projects).
 - **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) adds sessions from the terminal, Claude desktop and your editor to Needs you and Working.
 
 ## Related
 
-<Related pages={['sessions/upcoming', 'new-session/queue', 'new-session/schedules', 'sessions/unsent-drafts', 'usage', 'settings/claude-profiles']} />
+<Related pages={['sessions/upcoming', 'sessions/catch-up', 'new-session/queue', 'new-session/schedules', 'sessions/unsent-drafts', 'usage']} />

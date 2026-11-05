@@ -1,6 +1,6 @@
 ---
-title: Archived sessions
-description: Where quiet sessions go, how to archive one yourself, and how to delete sessions for good.
+title: Done
+description: Where finished and quiet sessions go, how to mark a session done, and how to delete sessions for good.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -10,53 +10,61 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-Sessions you haven't touched for a while move to **Archived**, out of the way, so the sidebar shows what matters now. Nothing is deleted: an archived session comes back as soon as there is something new, and you can open, continue or unarchive it at any time.
+What you finished, and what went quiet, sits in **Done**, out of the way, so the sidebar shows what is still yours. Nothing is deleted: a session in Done comes back as soon as there is something new, and you can open, continue or reopen it at any time.
 
-<Screenshot name="archived" alt="The sidebar with the Archived section opened under the other sessions, its sessions slightly faded" width={480} eager />
+<Screenshot name="archived" alt="The sidebar with Done opened under the other sessions, each row saying why it is there" width={480} eager />
 
 ## Open it
 
-While it is closed, **Archived** is docked at the bottom of the sidebar with its count. Click it to open it: it slides up right under your other sessions. Click its header again to close it. With the header focused, → opens it and ← closes it.
+While it is closed, **Done** is docked at the bottom of the sidebar with its count. Click it to open it: it slides up right under your other sessions. Click its header again to close it. With the header focused, → opens it and ← closes it.
 
-While you type in **Search sessions**, archived sessions that match show under the rest, even with Archived closed.
+While you type in **Search sessions**, sessions in Done that match show under the rest, even with Done closed.
 
-## What gets archived
+Each row says why it is there: **Done** when you marked it, **Merged #123** when its pull request merged, or **Inactive 3 days** when it went quiet. Inactive ones are dimmed, so they don't look finished by you.
 
-**On its own.** A finished session moves to Archived after 3 days without activity. Choose the number of days in [Settings › Sessions](/settings/sessions/). It stays in the main list while it is:
+## What goes to Done
+
+**On its own.** A finished session moves to Done after 3 days without activity. Choose the number of days in [Settings › Sessions](/settings/sessions/). It stays in the main list while it is:
 
 - working, or waiting for you;
 - failed;
 - finished and unread;
 - open in Seshboard;
-- pinned.
+- pinned;
+- holding an [unsent message](/sessions/unsent-drafts/) or a queued prompt;
+- left with [loose ends](/sessions/sidebar/#loose-ends), such as files not committed.
 
-**By you.** Archive a session yourself to put it away now:
+**When its pull request merges.** The session goes to Done and its row says "Merged #123". You get one toast for them the next time you're in Seshboard, with **Undo**. A session that is pinned, working, waiting for you, open in Seshboard, active since the merge or with loose ends left stays where it is, and one you reopen stays open. Turn it off with **Move to Done when its pull request merges** in [Settings › Sessions](/settings/sessions/#move-to-done-when-its-pull-request-merges).
 
-- Right-click it and choose **Archive** (until new activity).
+**By you.** Mark a session done to put it away now:
+
+- Click the checkmark on its row, or press <Kbd shortcut="sidebar.quick-archive" /> on it.
+- Right-click it and choose **Done** (until new activity).
 - Middle-click a finished session (<Kbd shortcut="sidebar.archive" />). Sessions that are working, waiting for you or failed stay where they are.
-- With the session open, choose *Archive* in the command palette.
-- Select several sessions with <Kbd shortcut="sidebar.select" first /> and choose **Archive** in the bar at the bottom of the sidebar, or right-click one of them.
+- In its [catch-up](/sessions/catch-up/), choose **Done** (<Kbd shortcut="catchup.archive" />).
+- With the session open, choose *Mark as done* in the command palette.
+- Select several sessions with <Kbd shortcut="sidebar.select" first /> and choose **Done** in the bar at the bottom of the sidebar, or right-click one of them.
 
-You can archive a session even while Claude is working on it. It stays archived while it works, and comes back when it has finished, so you see the result. A session that <Pill tone="needs-you">needs you</Pill> or failed always shows in the main list.
+You can mark a session done even while Claude is working on it. It stays in Done while it works, and comes back when it has finished, so you see the result. A session that <Pill tone="needs-you">needs you</Pill> or failed always shows in the main list. If it has loose ends, the toast says what's left.
 
-Archiving a session unpins it. Archiving the session you have open closes it; with two sessions side by side, the other one takes the full width.
+Marking a session done unpins it. Marking the session you have open closes it; with two sessions side by side, the other one takes the full width.
 
 <Aside type="note">
-If the session has an [unsent message](/sessions/unsent-drafts/), Seshboard asks first (*Archive and discard the unsent message?*), because archiving discards it.
+If the session has an [unsent message](/sessions/unsent-drafts/), Seshboard asks first (*Mark done and discard the unsent message?*), because marking it done discards it.
 </Aside>
 
 ## Bring a session back
 
 - **New activity** brings it back by itself: when you send it a message, or it finishes something new.
-- **Unarchive** it from its menu, from the command palette, or with several selected (**Unarchive** in the bar at the bottom). An unarchived session stays in the main list until it has new activity, however long it was quiet. After that, it's archived again once it has been quiet for the days you set.
-- **Select all** on the Archived header (while selecting) picks every archived session at once.
+- **Reopen** it from its row, its menu, the command palette, or with several selected (**Reopen** in the bar at the bottom). A reopened session stays in the main list until it has new activity, however long it was quiet. After that, it goes to Done again once it has been quiet for the days you set.
+- **Select all** on the Done header (while selecting) picks every session in Done at once.
 
-## Manage archived sessions
+## Manage them
 
-Click the **⋯** on the Archived header:
+Click the **⋯** on the Done header:
 
-- **Manage sessions…** opens [Settings › Sessions](/settings/sessions/) with only archived sessions listed, grouped by month, to unarchive them or move many to the <Os mac="Trash" windows="Recycle Bin" /> at once.
-- **Archive settings…** opens the same page on the number of days.
+- **Manage sessions…** opens [Settings › Sessions](/settings/sessions/) with only sessions in Done listed, grouped by month, to reopen them or move many to the <Os mac="Trash" windows="Recycle Bin" /> at once.
+- **Done settings…** opens the same page on the number of days.
 
 ## Delete a session
 
@@ -68,15 +76,15 @@ To remove a session for good, delete it:
 
 After you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**, the conversation and any subagent transcripts go to the <Os mac="Trash" windows="Recycle Bin" />, so you can still get them back from there.
 
-## Delete old archived sessions
+## Delete old sessions in Done
 
-Archived sessions stay on disk until you delete them. To have Seshboard move them to the <Os mac="Trash" windows="Recycle Bin" /> after some time, turn on **Delete archived sessions** in [Settings › Sessions](/settings/sessions/#delete-archived-sessions). It is off by default and asks first.
+Sessions in Done stay on disk until you delete them. To have Seshboard move them to the <Os mac="Trash" windows="Recycle Bin" /> after some time, turn on **Delete Done sessions** in [Settings › Sessions](/settings/sessions/#delete-done-sessions). It is off by default and asks first.
 
 Claude Code also deletes old transcripts by itself, after 30 days unless you changed `cleanupPeriodDays`. [Settings › Sessions](/settings/sessions/#claude-codes-own-cleanup) shows what each Claude profile uses and lets you change it.
 
 ## Settings
 
-[Settings › Sessions](/settings/sessions/) sets when sessions are archived and deleted. [Settings, Backup](/settings/#backup) can include your archived sessions in an export when you tick them.
+[Settings › Sessions](/settings/sessions/) sets when sessions move to Done and when they are deleted. [Settings, Backup](/settings/#backup) can include your sessions in Done in an export when you tick them.
 
 ## Related
 

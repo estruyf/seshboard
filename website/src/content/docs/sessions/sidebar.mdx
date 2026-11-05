@@ -10,9 +10,9 @@ import Screenshot from '../../../components/Screenshot.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-The sidebar lists your sessions across every project, grouped by what needs attention first and then by time. It is where you see at a glance which sessions are working, which wait for you, and which finished.
+The sidebar lists your sessions across every project, grouped by what needs attention first and then by what is still yours to finish. It is where you see at a glance which sessions are working, which wait for you, and which you still have to look at.
 
-<Screenshot name="sidebar" alt="The sidebar: Needs you and Working groups at the top, the Queue under them, then Pinned, Today, Yesterday and Earlier, with Archived docked at the bottom" width={480} eager />
+<Screenshot name="sidebar" alt="The sidebar: Needs you and Working at the top, the Queue under them, then Pinned, To review and Open, with Done docked at the bottom" width={480} eager />
 
 ## Open it
 
@@ -31,7 +31,9 @@ At the top:
 
 A session you ran a [pipeline](/sessions/pipelines/) from shows where the run is, such as *Validate · 3 of 4*, with the pipeline icon. Its steps sit under it, closed at first: open them with the arrow. A run you started from New session has a row of its own with the pipeline icon instead of a project icon.
 
-At the bottom, the footer counts your sessions ("12 sessions · 2 open · 1 queued · 1 waiting"), shows the [focus limit](/focus-limit/) counter when it is on and the [unsent messages](/sessions/unsent-drafts/) count, and has the **Projects** and **Settings** buttons.
+At the bottom, the footer counts your sessions ("12 sessions · 2 running · 1 queued · 1 waiting"), shows the [focus limit](/focus-limit/) counter when it is on and the [unsent messages](/sessions/unsent-drafts/) count, and has the **Projects** and **Settings** buttons.
+
+**N open** in the footer counts what is still yours to finish: To review, Open and reminders that came due. Click it to [go through them one by one](/sessions/catch-up/#go-through-your-sessions).
 
 ### Star on GitHub
 
@@ -49,22 +51,34 @@ The list is split into sections. Empty sections don't show.
 | **Working** | Sessions Claude is working on, the one you last sent a message to at the top. |
 | **Queue** | Prompts waiting to start, right under Working. See [Queue](/new-session/queue/). |
 | **Pinned** | Sessions you pinned. See [Pinned sessions](/sessions/pinned/). |
-| **Today**, **Yesterday**, **Earlier** | Everything else, newest first, by the day it was last active. |
-| **Archived** | Sessions that were quiet for the days set in [Settings › Sessions](/settings/sessions/) (3 by default), or that you archived. See [Archived sessions](/sessions/archived/). |
+| **Reminders** | Sessions you asked to be [reminded about](/sessions/upcoming/#remind-me-later), once it is time. They stay here until you open them. |
+| **To review** | Finished sessions you haven't read yet, and sessions that failed, newest first. |
+| **Open** | Sessions you read but haven't marked done, newest first. |
+| **Done** | Sessions you marked done, and sessions that were quiet for the days set in [Settings › Sessions](/settings/sessions/) (3 by default). See [Done](/sessions/archived/). |
 
-A pinned session that needs you or is working shows in Needs you or Working, and goes back to Pinned when it is done.
+A pinned session that needs you or is working shows in Needs you or Working, and goes back to Pinned when it is done. A session with an [unsent message](/sessions/unsent-drafts/) or a queued prompt stays listed however old it is, so it never slips into Done.
 
 [Quick questions](/new-session/quick-questions/) are sessions like any other: they sit in the same sections, with their own icon and *Questions* where a project name would be.
 
 Each row shows the project's icon, the title, its age, and a second line with the branch and project. A session with a [catch-up](/sessions/catch-up/) says how long it takes to review instead ("acme-store · ~2 min to review"), and a warning shows when Claude changed files outside the plan. The [state](/sessions/states/) shows as a coloured rail on the left edge, the colour of the age and a status icon. A pin marks a pinned session and a pen an unsent message.
 
+### What's left: a note
+
+Give a session one line, such as "push after review" or "waiting on Jan". Press <Kbd shortcut="sidebar.note" /> on its row or <Kbd shortcut="catchup.note" /> in its catch-up, or choose **Note…** in its menu or the command palette. The note shows under the title (in the tooltip with the compact style), and search finds it. A catch-up that needs something from you offers **Use as note**, which puts that there in one click. Done keeps the note but doesn't show it.
+
+### Loose ends
+
+A session that left something behind has a small marker on its row: files not committed, commits not pushed, a pull request with failing checks, one closed without merging, or a queued prompt. Hover the marker to see what.
+
+Such a session never goes to Done by itself after the days you set. You can still mark it done yourself, and the toast then says what's left, such as "3 files not committed". Seshboard looks when a turn ends, when you come back to the window, and every few minutes.
+
 ### Close a section
 
-Every section but Needs you closes from its header: click it, or press <Kbd shortcut="sidebar.section-toggle" /> on it. <Kbd shortcut="sidebar.sections-all" /> on a header closes or opens every section at once. **Earlier** starts closed. The chevron in each header points right while the section is closed and down while it is open.
+Every section but Needs you, Reminders and To review closes from its header: click it, or press <Kbd shortcut="sidebar.section-toggle" /> on it. <Kbd shortcut="sidebar.sections-all" /> on a header closes or opens every section at once. The chevron in each header points right while the section is closed and down while it is open.
 
 A closed section keeps its count and says what matters inside, such as "2 unread" or, for the Queue, "1 ready". The session you have open stays visible under its closed section, with "+N hidden" under it. Going to a session in a closed section opens it again. While you search or filter by project, every section shows.
 
-**Archived** sits docked at the bottom of the sidebar while it is closed. Click it to open it: it slides up right under your other sessions. Its **⋯** has **Manage sessions…** and **Archive settings…**, which open [Settings › Sessions](/settings/sessions/).
+**Done** sits docked at the bottom of the sidebar while it is closed. Click it to open it: it slides up right under your other sessions. Its **⋯** has **Manage sessions…** and **Done settings…**, which open [Settings › Sessions](/settings/sessions/).
 
 The session count at the bottom of the sidebar opens [Settings › Sessions](/settings/sessions/) too, with every session you have.
 
@@ -75,28 +89,30 @@ The session count at the bottom of the sidebar opens [Settings › Sessions](/se
 - **Move between sessions from anywhere:** <Kbd shortcut="session.next" /> and <Kbd shortcut="session.previous" /> go to the next and previous session in the sidebar's order, and <Kbd shortcut="session.next-needs-you" /> to the next one that needs you.
 - **Go back and forward:** the back and forward buttons on your mouse return to where you were before, as in a browser: sessions, Home, New session, Settings pages, Projects and project pages. A session or project that is gone is skipped.
 - **Rename:** press <Kbd shortcut="sidebar.rename" />, or choose **Rename…** in the session's menu.
-- **Archive a finished session:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
+- **Mark a finished session done:** middle-click it (<Kbd shortcut="sidebar.archive" />). Sessions that are working, need you or failed stay where they are.
+- **Come back to it later:** press <Kbd shortcut="sidebar.remind" /> to [remind yourself](/sessions/upcoming/#remind-me-later).
 - **Delete:** press <Kbd shortcut="sidebar.delete" />, or choose **Delete session…**. After you confirm with **Move to <Os mac="Trash" windows="Recycle Bin" />**, the conversation and any subagent transcripts go to the <Os mac="Trash" windows="Recycle Bin" />, so you can get them back.
 
 ### Quick actions on hover
 
 Hover a session and buttons show at the end of its row, so you can tidy the list in one click:
 
-- **Mark as read** or **Mark as unread**, **Pin** or **Unpin**, and **Archive** on a finished session.
-- **Pin**, **Stop** and **Archive** on a session that is working or needs you.
-- **Unarchive** on a session under Archived.
+- **Mark as read** or **Mark as unread**, **Pin** or **Unpin**, and **Done** on a finished session.
+- **Pin**, **Stop** and **Done** on a session that is working or needs you.
+- **Reopen** on a session under Done.
+- On a [pipeline](/sessions/pipelines/)'s row, the first button shows or hides its steps.
 
 Each button does the same as its item in the session menu. A toast then says what it did, such as "Pinned", with **Undo**. <Kbd shortcut="sidebar.undo" /> in the sidebar undoes it too, while the toast is up.
 
-Archive on a session that is still working or waits for you asks first: **Stop and archive** stops it, then archives it. A session that runs in another app keeps running there after you archive it.
+**Done** on a session that is still working or waits for you asks first: **Stop and mark done** stops it, then marks it done. A session that runs in another app keeps running there after you mark it done.
 
 The keys do the same on the focused session, or the one under the pointer, also with the buttons turned off:
 
-- <Kbd shortcut="sidebar.quick-archive" /> archives the session, or unarchives it.
+- <Kbd shortcut="sidebar.quick-archive" /> marks the session done, or reopens it.
 - <Kbd shortcut="sidebar.quick-read" /> marks it read or unread.
 - <Kbd shortcut="sidebar.quick-pin" /> pins or unpins it.
 
-Press <Kbd keys="tab" /> on a row to move into its buttons, and <Kbd keys="escape" /> to go back to the row. Turn the buttons off, or down to Archive only, in [Settings](#settings).
+Press <Kbd keys="tab" /> on a row to move into its buttons, and <Kbd keys="escape" /> to go back to the row. Turn the buttons off, or down to Done only, in [Settings](#settings).
 
 ### The session menu
 
@@ -105,7 +121,8 @@ Right-click a session, or press <Kbd shortcut="context-menu" /> on it, for:
 - **Rename…**
 - **Mark as read** or **Mark as unread**
 - **Pin** or **Unpin**
-- **Archive** (until new activity) or **Unarchive**
+- **Done** (until new activity) or **Reopen**
+- **Note…** and **Remind me…**
 - **Open beside**, **Open in new window** and **New session linked to this one**
 - **Open folder in editor**
 - **Copy session ID**
@@ -119,12 +136,12 @@ Right-click a session, or press <Kbd shortcut="context-menu" /> on it, for:
 
 ### Select several sessions
 
-<Kbd shortcut="sidebar.select" /> selects several sessions. Every row then shows a round checkbox, and a bar at the bottom of the sidebar holds the actions for the selection: **Archive** (or **Unarchive**), **Pin** (or **Unpin**) and **Delete…**.
+<Kbd shortcut="sidebar.select" /> selects several sessions. Every row then shows a round checkbox, and a bar at the bottom of the sidebar holds the actions for the selection: **Done** (or **Reopen**), **Pin** (or **Unpin**) and **Delete…**.
 
 - <Kbd shortcut="sidebar.select-group" /> or **Select all** on a section header selects every session in that section.
 - <Kbd keys="space" /> ticks the focused row.
 - <Kbd shortcut="sidebar.clear-selection" /> or **Clear** ends the selection.
-- Right-click one of the selected sessions for the same actions.
+- Right-click one of the selected sessions for the same actions, and **Remind me about** them.
 
 ## Resize and collapse
 
@@ -154,7 +171,7 @@ In [Settings, Sidebar](/settings/#sidebar):
 - **Sidebar style:** **Large icons** (each project easy to spot), **Standard** (the default) or **Compact** (one line per session). The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact*.
 - **When collapsed:** what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do: **Minimal rail** (the default) or **Hidden**.
 - **Show sessions from other apps:** also list sessions from your terminal, Claude desktop and your editor. Off (the default) shows only sessions you started or continued in Seshboard.
-- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Archive only** or **Read · Pin · Archive** (the default). Working sessions show Stop too.
+- **Quick actions on hover:** show the [buttons on a row under the pointer](#quick-actions-on-hover) (on by default). **Show** picks **Done only** or **Read · Pin · Done** (the default). Working sessions show Stop too.
 
 <Screenshot name="settings-sidebar" alt="Settings open on Sidebar: the three sidebar styles, the When collapsed choice, and the Show sessions from other apps switch" />
 

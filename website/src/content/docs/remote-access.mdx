@@ -20,7 +20,7 @@ On your phone you can:
 - allow or deny what Claude asks, answer its questions, and start or keep working on a plan;
 - send a prompt, or add one to Up next while Claude works, and remove it again, steer Claude or stop it;
 - see what a finished session did, look at its changes and commit them;
-- stop Claude's turn, mark a session as read or archive it, with a swipe;
+- stop Claude's turn, mark a session as read or done, with a swipe;
 - start a new session in one of the projects you added in Seshboard, with that project's defaults or your own choice of Claude profile, model, effort, mode, worktree and branch;
 - start a [pipeline](/sessions/pipelines/) and follow its steps;
 - get a notification when a session needs you or finishes.
@@ -44,7 +44,9 @@ Settings → Remote (<Kbd shortcut="settings" />) shows first what you open it f
 - **The status card** says whether Remote works: **Running** with the address and who is connected, or what is wrong with the fix as a button. **Install Tailscale** or **Use Cloudflare instead** when a tool is missing, **Use port 47616** when another app has the port, **Try again** and **Show details** when it can't start.
 - **Paired devices**, each with when it last connected, **Rename** and **Revoke**.
 - **Connection**: the tunnel and its address. **Change…** opens the choices, and nothing changes until **Save and restart**.
-- **Advanced**: the port, and how Remote keeps others out.
+- **Advanced**: the port, how Remote keeps others out, and Remote's log.
+
+Remote writes who connected, who it refused and why, and when it makes an address wait, to `remote.log`. Open it from **Advanced**. When an address waits after refused attempts, the status card says so, and **Unblock** lets everyone on it in again without restarting Seshboard.
 
 With Remote off and nothing paired, the page shows three steps instead: choose a tunnel, **Turn on Remote**, then pair a device.
 
@@ -159,18 +161,18 @@ What Claude asks shows next, as cards with a pink frame, the oldest first:
 
 Tap anywhere else on a card to open its session. If someone answered first, on your computer or another phone, the phone says **Already answered**.
 
-Below the cards are your sessions by group: **Working**, **Today**, **Yesterday** and **Earlier**, each row from edge to edge. Sessions you haven't read have a bold title. With more than one Claude profile, a dot in the profile's colour comes before the project's name. **New session** floats at the bottom of the screen. It slides away while you scroll down the list, and comes back as soon as you scroll up.
+Below the cards are your sessions by group: **Working**, **To review** and **Open**, each row from edge to edge. Sessions you haven't read have a bold title. With more than one Claude profile, a dot in the profile's colour comes before the project's name. **New session** floats at the bottom of the screen. It slides away while you scroll down the list, and comes back as soon as you scroll up.
 
 Pull the list down from the top to refresh it: it says **Pull to refresh**, then **Release to refresh**, and shows a spinner until the new list is in.
 
 ### Swipe a session
 
 - **Swipe right** to mark it as read, on blue with a check.
-- **Swipe left** to archive it.
+- **Swipe left** to mark it done.
 
 A short swipe shows the button: tap it, or tap the session to put it back. A long swipe, past most of the row, does it at once. Either way a message says what happened, with **Undo**. A session that needs you doesn't swipe, so you can't dismiss a prompt by accident: open it to answer.
 
-A long press on a session has the same **Mark as read** and **Archive**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Seshboard on your computer.
+A long press on a session has the same **Mark as read** and **Done**, and so does a right-click in a browser on a computer. With a screen reader, each session has its own actions button. Undo after **Mark as read** needs this version of Seshboard on your computer.
 
 ## Switch sessions
 
@@ -220,7 +222,7 @@ The count on the drawer button, on each chip and in the browser tab adds up what
 
 ## A session
 
-The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with, such as **· Work**. On a phone, the **⋯** menu has **Ask about this session**, **Changes** with the number of files, **Copy the last reply**, **Archive**, **Stop** while Claude works, **Mark as read** and **Run pipeline…**. Opening a session marks it as read, as on your computer.
+The header shows the session's status, project and branch, and with more than one Claude profile, the profile it runs with, such as **· Work**. On a phone, the **⋯** menu has **Ask about this session**, **Changes** with the number of files, **Copy the last reply**, **Done**, **Stop** while Claude works, **Mark as read** and **Run pipeline…**. Opening a session marks it as read, as on your computer.
 
 When Claude needs you, the question stays above the message box, so it doesn't scroll away: **Claude needs you**, what it asks, and **Deny**, **Always allow** when it's offered, and **Allow**. The arrow folds it to one line while you read the conversation. With more than one, **1 of 2** and the arrows step through them. While it's open, the message box says **Or tell Claude what to do instead**: what you send there says no, with your message as the reason.
 
@@ -254,7 +256,7 @@ To send images or files with a message, tap the paperclip button next to the mes
 - **Follow it**: a bar under the session's header shows the pipeline and where the run is, such as *Validate · 3 of 4*. Tap it for the steps, each with its state, model and **Open**. In a step, the up arrow goes **Back to the run**.
 - **Act on it**: what the run waits for is a button on the bar: **Continue**, **Another round** or **Push…**. The steps sheet also has **Skip this step**, **Run this step again** and **Stop the run**.
 - **Push**: shows the commit message and the files first, with **Commit, push and open PR**, **Edit message** and **Stop here**.
-- **Archive**: on a run's parent, **Archive with its 3 steps** archives the parent and its sub-sessions together.
+- **Done**: on a run's parent, **Done, with its 3 steps** marks the parent and its sub-sessions done together.
 
 A notification says when a run waits for you, stops or is done. Pipelines are set up in Seshboard on your computer, in Settings › Pipelines.
 
@@ -392,7 +394,7 @@ When there is one, a blue bar says **A new version is ready.** **Reload** loads 
 ## Good to know
 
 - Your computer has to be on and Seshboard running. Sleep stops Remote until the computer wakes up: turn on <Os mac="Keep this Mac awake" windows="Keep this PC awake" /> in [Settings › General](/settings/#sleep) to keep it from sleeping.
-- The phone only lists the sessions your sidebar lists, outside Archived, and can only open those.
+- The phone only lists the sessions your sidebar lists, outside Done, and can only open those.
 - Messages you send from your phone show **From *your phone*** under them on the phone.
 - Scrolled up in a conversation, **Jump to latest** takes you back down. It says **New messages** when something arrived below.
 - The chip and the offline help use your computer's name, which you set in <Os mac="System Settings → General → About → Name" windows="Settings → System → About → Rename this PC" />.
