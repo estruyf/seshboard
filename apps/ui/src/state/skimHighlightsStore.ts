@@ -45,3 +45,16 @@ export function useSkimHighlight(client: Client | null, request: SkimHighlightRe
   }, [wanted, client, key]);
   return active ? entry : null;
 }
+
+/** Which sessions have which model to offer: another provider's is asked once, Claude Code's is always Haiku. */
+const useModels = create<{ models: ReadonlyMap<string, string | null> }>()(() => ({ models: new Map() }));
+
+/** The model that picks a session's sentences; null until it is known, and when its account has none cheap enough. */
+export function useSkimModel(client: Client | null, sessionId: string, provider: string | null, wanted: boolean): string | null {
+  const known = useModels((state) => state.models.get(sessionId));
+  useEffect(() => {
+    if (!wanted || !client || provider === null || known !== undefined) return;
+    void client.call('skim.model', { sessionId }).then(({ model }) => useModels.setState((state) => ({ models: new Map(state.models).set(sessionId, model) })), () => {});
+  }, [wanted, client, sessionId, provider, known]);
+  return provider === null ? 'Haiku' : (known ?? null);
+}

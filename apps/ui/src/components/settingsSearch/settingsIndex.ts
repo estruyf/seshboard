@@ -227,6 +227,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-skim-highlights-setting]',
     },
     {
+      id: 'skim-highlights-copilot',
+      page: 'conversation',
+      label: 'Fade less important sentences in Copilot sessions',
+      detail: "The same, for GitHub Copilot's sessions, with the cheapest model your account has. This uses your Copilot account, not your Claude plan.",
+      keywords: 'skim fade highlight sentences copilot github cheap model reply premium',
+      target: '[data-skim-highlights-copilot-setting]',
+    },
+    {
       id: 'prompt-outline',
       page: 'conversation',
       label: 'Show prompt outline',

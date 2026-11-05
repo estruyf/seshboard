@@ -1,4 +1,4 @@
-import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta } from '@seshboard/protocol';
+import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta, TokenCounts } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { AskText } from '../host/sideQuestions.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -149,6 +149,13 @@ export interface DriverSession {
   close(): Promise<void>;
 }
 
+/** What `askCheap` answered and used; `model` is null when no call was made. */
+export interface CheapAnswer {
+  answer: string | null;
+  model: string | null;
+  tokens: TokenCounts;
+}
+
 export interface ProviderDriver {
   /**
    * Seshboard's permission modes this provider has, with what each means for it (its own words where it differs from
@@ -168,6 +175,13 @@ export interface ProviderDriver {
    * the sidebar); it is gone when this resolves. `spent`: what the answer cost in the provider's unit.
    */
   ask?(params: { sessionId: string; cwd: string; model: string | null; prompt: string; onText(text: AskText): void; onFork(forkId: string): void }): Promise<{ answer: string | null; error?: string; spent: number }>;
+  /** The account's cheapest model when it is cheap enough for a call per reply; null otherwise. */
+  cheapModel?(): Promise<{ id: string; name: string } | null>;
+  /**
+   * One question to `cheapModel`, with no tools and none of the session's context, from a throwaway session that is gone
+   * when this resolves. `onSession` names it before it exists (to keep it out of the sidebar). Never throws.
+   */
+  askCheap?(params: { system: string; prompt: string; onSession(sessionId: string): void }): Promise<CheapAnswer>;
   /** Stops the provider's runtime (the app quits). */
   dispose(): Promise<void>;
 }

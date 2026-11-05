@@ -22,7 +22,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
 import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
-import type { DriverSession, ProviderAdapter } from './provider.ts';
+import type { CheapAnswer, DriverSession, ProviderAdapter } from './provider.ts';
 
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
@@ -238,6 +238,23 @@ export class ProviderHosts {
     const result = await adapter.driver.ask({ sessionId, cwd, model, prompt, onText, onFork: (id) => this.deps.ephemeral?.add(id) });
     if (result.spent) this.deps.log('info', `Ask about ${sessionId}: ${Math.round(result.spent * 100) / 100} premium requests`);
     return { answer: result.answer, ...(result.error ? { error: result.error } : {}), usage: [] };
+  }
+
+  /** The account's cheap model for a session's provider; null when it has none, or no way to call one. */
+  async cheapModel(sessionId: string): Promise<{ id: string; name: string } | null> {
+    return (await this.adapterOf(this.deps.profileOf(sessionId))?.driver?.cheapModel?.()) ?? null;
+  }
+
+  /** Whether a session's provider can answer through a cheap model at all. */
+  canAskCheap(sessionId: string): boolean {
+    return !!this.adapterOf(this.deps.profileOf(sessionId))?.driver?.askCheap;
+  }
+
+  /** One question to a session's provider's cheap model, on its own account; its throwaway session never shows. */
+  async askCheap(sessionId: string, system: string, prompt: string): Promise<CheapAnswer> {
+    const driver = this.adapterOf(this.deps.profileOf(sessionId))?.driver;
+    if (!driver?.askCheap) return { answer: null, model: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+    return driver.askCheap({ system, prompt, onSession: (id) => this.deps.ephemeral?.add(id) });
   }
 
   /** Stops one of a session's background tasks. */

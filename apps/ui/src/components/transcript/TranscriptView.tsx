@@ -1106,7 +1106,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const latest = useMemo(() => latestTests(catchUp, items, turns.at(-1)), [catchUp, items, turns]);
   const lastReplyKey = turns.at(-1)?.replyKey ?? null;
   const skim = useMemo<SkimValue | null>(
-    () => (skimming ? { items, latest, finding: findQuery !== null, sessionId, client, lastReplyKey, canHighlight: otherProvider === null } : null),
+    () => (skimming ? { items, latest, finding: findQuery !== null, sessionId, client, lastReplyKey, provider: otherProvider } : null),
     [skimming, items, latest, findQuery, sessionId, client, lastReplyKey, otherProvider],
   );
   useEffect(() => {

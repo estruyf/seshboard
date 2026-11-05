@@ -347,6 +347,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               onChange={(skimHighlights) => update({ skimHighlights, skimHighlightsAsked: true })}
             />
             <Toggle
+              label="Fade less important sentences in Copilot sessions"
+              detail="The same, for GitHub Copilot's sessions, with the cheapest model your account has. This uses your Copilot account, not your Claude plan. Without a cheap model, replies stay whole."
+              checked={prefs.skimHighlightsCopilot}
+              attr="data-skim-highlights-copilot-setting"
+              onChange={(skimHighlightsCopilot) => update({ skimHighlightsCopilot, skimHighlightsCopilotAsked: true })}
+            />
+            <Toggle
               label="Show prompt outline"
               detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."
               checked={prefs.promptOutline}

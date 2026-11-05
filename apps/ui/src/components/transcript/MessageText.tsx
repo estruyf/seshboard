@@ -1,9 +1,9 @@
 import { createContext, Fragment, useContext, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { CatchUpTests } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, type CatchUpTests } from '@seshboard/protocol/client';
 import type { EngineClient as Client } from '../../engine/connection.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
-import { requestSkimHighlight, useSkimHighlight } from '../../state/skimHighlightsStore.ts';
+import { requestSkimHighlight, useSkimHighlight, useSkimModel } from '../../state/skimHighlightsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import type { DisplayItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
@@ -25,8 +25,8 @@ export interface SkimValue {
   client: Client | null;
   /** The reply that may go to Haiku: the session's last. */
   lastReplyKey: string | null;
-  /** Claude Code's own sessions only: another provider's has no Claude login to use. */
-  canHighlight: boolean;
+  /** Another provider's session: Skim's picks run on that account, with their own setting. */
+  provider: string | null;
 }
 
 export const SkimContext = createContext<SkimValue | null>(null);
@@ -56,10 +56,10 @@ function SkimStats({ parts }: { parts: StatPart[] }) {
 }
 
 /** The once-only offer under a long reply: nothing goes to Haiku before Try it. */
-function SkimInvitation({ onAnswer }: { onAnswer: (tryIt: boolean) => void }) {
+function SkimInvitation({ model, account, onAnswer }: { model: string; account: string; onAnswer: (tryIt: boolean) => void }) {
   return (
     <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-skim-invitation>
-      <span className="ml-1 text-meta text-muted">Fade the less important sentences with Haiku? This uses your plan.</span>
+      <span className="ml-1 text-meta text-muted">Fade the less important sentences with {model}? This uses {account}.</span>
       <Button size="sm" onClick={() => onAnswer(true)} data-skim-try>
         Try it
       </Button>
@@ -76,11 +76,16 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
   const tests = skim.latest?.turn === turn ? skim.latest.tests : null;
   // A finished turn's items don't change while its Turn stays the same one (`updateTurns` keeps it).
   const parts = useMemo(() => statParts(turnStats(skim.items, turn, tests)), [turn, tests]);
-  const on = usePreferences((s) => s.prefs.skimHighlights);
-  const asked = usePreferences((s) => s.prefs.skimHighlightsAsked);
+  const copilot = skim.provider !== null;
+  const on = usePreferences((s) => (copilot ? s.prefs.skimHighlightsCopilot : s.prefs.skimHighlights));
+  const asked = usePreferences((s) => (copilot ? s.prefs.skimHighlightsCopilotAsked : s.prefs.skimHighlightsAsked));
   const update = usePreferences((s) => s.update);
+  const setOn = (value: boolean) => update(copilot ? { skimHighlightsCopilot: value, skimHighlightsCopilotAsked: true } : { skimHighlights: value, skimHighlightsAsked: true });
   const outline = useMemo(() => skimOutline(item.text), [item.text]);
-  const long = skim.canHighlight && outline.total >= SKIM_MIN_SENTENCES;
+  const enough = outline.total >= SKIM_MIN_SENTENCES;
+  // Another provider is asked for a model only once there is something to offer or to fade.
+  const model = useSkimModel(skim.client, skim.sessionId, skim.provider, enough && (on || !asked));
+  const long = enough && model !== null;
   const prompt = skim.items[turn.start];
   // Only a session's last reply goes to Haiku, so opening a long session never spends a call per turn.
   const request = {
@@ -99,7 +104,7 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
     <>
       {parts.length > 0 && <SkimStats parts={parts} />}
       <Markdown text={item.text} keep={fades && !showAll && !skim.finding ? keep : null} />
-      {!on && !asked && long && request.ask && <SkimInvitation onAnswer={(tryIt) => update({ skimHighlights: tryIt, skimHighlightsAsked: true })} />}
+      {!on && !asked && long && request.ask && <SkimInvitation model={model} account={copilot ? `your ${PROVIDER_NAMES.copilot} account` : 'your plan'} onAnswer={setOn} />}
       {highlight?.state === 'loading' && request.ask && (
         <div className="mt-1 flex items-center gap-1.5 text-meta text-muted" role="status" aria-busy data-skim-fading>
           <Loader2 size={12} className="animate-spin" aria-hidden />
@@ -108,7 +113,7 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
       )}
       {highlight?.state === 'failed' && (
         <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2" data-skim-failed>
-          <span className="ml-1 text-meta text-muted">Haiku did not answer.</span>
+          <span className="ml-1 text-meta text-muted">{model} did not answer.</span>
           <Button variant="quiet" size="sm" onClick={() => skim.client && requestSkimHighlight(skim.client, request)} data-skim-retry>
             Try again
           </Button>
@@ -119,7 +124,7 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
           <Button variant="quiet" size="sm" onClick={toggle} data-skim-show-all>
             {showAll ? 'Fade text' : 'Show all text'}
           </Button>
-          <Button variant="quiet" size="sm" onClick={() => update({ skimHighlights: false })} data-skim-turn-off>
+          <Button variant="quiet" size="sm" onClick={() => setOn(false)} data-skim-turn-off>
             Turn off
           </Button>
           {!showAll && (

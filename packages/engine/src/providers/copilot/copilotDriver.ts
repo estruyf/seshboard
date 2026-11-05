@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
 import type { Effort, ImageAttachment, ModelOption, PermissionDecision, PermissionMode, ProviderMode, ProviderQuota, RewindResult } from '@seshboard/protocol';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import { backgroundTasks, cannotRewind, effortsOf, rewindOutcome, rewindPreview, rewindProblem, type CopilotTask } from './copilotActions.ts';
@@ -9,6 +10,7 @@ import { CopilotLive } from './copilotLive.ts';
 import { commandList, commandOutcome, parseCommand, type CopilotCommand } from './copilotCommands.ts';
 import { copilotCapabilities, type CopilotMcpServer, type CopilotSkill } from './copilotCapabilities.ts';
 import { toCopilotDecision, toPermissionRequest } from './copilotPermissions.ts';
+import { cheapestModel, lowestEffort, type CopilotModelPrice } from './copilotCheapModel.ts';
 import { copilotModel, fusionModels, isTierModel, modelOfChange, withFusion, type CopilotAutoTier } from './copilotFusion.ts';
 
 /** The subset of the Copilot SDK's `CopilotSession` the driver uses (tests fake it). */
@@ -49,14 +51,24 @@ export interface CopilotSdkSession {
 type PermissionAnswer = ReturnType<typeof toCopilotDecision> | { kind: 'user-not-available' };
 
 export interface CopilotSessionOptions {
+  /** A helper's own id, known before the session exists. */
+  sessionId?: string;
   workingDirectory: string;
   model?: string;
   /** One of Auto's routing preferences (Fusion), with `model: 'auto'`. */
   autoTier?: string;
-  reasoningEffort?: Effort;
+  /** `none` is Copilot's own level below Seshboard's, for a helper that shouldn't spend tokens on thinking. */
+  reasoningEffort?: Effort | 'none';
   streaming: boolean;
   /** Copilot keeps what each turn changed in files, which Rewind restores. */
   enableFileChangeTracking?: boolean;
+  /** Empty: a helper that only answers in words. */
+  availableTools?: string[];
+  /** False: none of the folder's or the user's instructions and MCP servers, for a helper. */
+  enableConfigDiscovery?: boolean;
+  /** False: a repository's hooks stay out of a helper's session. */
+  enableFileHooks?: boolean;
+  systemMessage?: { mode: 'replace'; content: string };
   clientName: string;
   onPermissionRequest(request: Record<string, unknown>, invocation: { sessionId: string }): Promise<PermissionAnswer>;
 }
@@ -66,7 +78,7 @@ export interface CopilotSdkClient {
   start(): Promise<void>;
   stop(): Promise<unknown>;
   getAuthStatus(): Promise<{ isAuthenticated: boolean; login?: string; statusMessage?: string }>;
-  listModels(): Promise<Array<{ id: string; name: string; capabilities?: { supports?: { reasoningEffort?: boolean } }; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }>>;
+  listModels(): Promise<Array<CopilotModelPrice & { name: string; capabilities?: { supports?: { reasoningEffort?: boolean } }; defaultReasoningEffort?: string }>>;
   createSession(options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   resumeSession(sessionId: string, options: CopilotSessionOptions): Promise<CopilotSdkSession>;
   /** The headless `copilot` the SDK started (its locks on sessions are Seshboard's own). */
@@ -169,6 +181,8 @@ export interface CopilotDriver extends ProviderDriver {
   /** Renames a session that isn't running here: resumed for the change, then let go. */
   renameSession(sessionId: string, cwd: string, title: string): Promise<void>;
   ask: NonNullable<ProviderDriver['ask']>;
+  cheapModel: NonNullable<ProviderDriver['cheapModel']>;
+  askCheap: NonNullable<ProviderDriver['askCheap']>;
 }
 
 /** A session's model in its options: Fusion's tiers are Auto with the tier. */
@@ -184,6 +198,9 @@ const sessionName = (title: string) => title.trim().slice(0, 100);
 /** Pages of a persisted read; a session larger than this many is read from its file instead. */
 const MAX_PAGES = 500;
 
+/** How long the cheap model has to answer: long enough for a long reply, on a call nobody waits on. */
+const CHEAP_TIMEOUT_MS = 30_000;
+
 const INSTALL = 'Install GitHub Copilot CLI to start Copilot sessions here.';
 const SIGN_IN = 'Not signed in to GitHub Copilot CLI. Use Sign in on this profile in Settings › Profiles, or run `copilot login`. Seshboard uses that login.';
 
@@ -197,6 +214,17 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
   let client: Promise<CopilotSdkClient> | undefined;
   /** The started client, once it is (for its process id). */
   let started: CopilotSdkClient | null = null;
+  /** The account's models don't change while the runtime runs. */
+  let cheap: Promise<(CopilotModelPrice & { name: string }) | null> | undefined;
+  const cheapest = () =>
+    (cheap ??= connect()
+      .then((sdk) => sdk.listModels())
+      .then(cheapestModel)
+      .catch((error: unknown) => {
+        // Not kept: signing in later should work without restarting Seshboard.
+        cheap = undefined;
+        throw error;
+      }));
   const connect = () => {
     client ??= (async () => {
       const binary = await options.binary();
@@ -338,6 +366,70 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
         await sdk.deleteSession?.(forkId).catch(() => {});
       }
       return { answer, ...(error ? { error } : {}), spent };
+    },
+
+    async cheapModel() {
+      const model = await cheapest().catch(() => null);
+      return model && { id: model.id, name: model.name };
+    },
+
+    async askCheap({ system, prompt, onSession }) {
+      const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+      const sdk = await connect().catch(() => null);
+      const model = await cheapest().catch(() => null);
+      if (!sdk || !model) return { answer: null, model: null, tokens };
+      const id = randomUUID();
+      onSession(id);
+      const effort = lowestEffort(model.supportedReasoningEfforts);
+      let answer: string | null = null;
+      try {
+        const session = await sdk.createSession({
+          sessionId: id,
+          workingDirectory: homedir(),
+          model: model.id,
+          ...(effort ? { reasoningEffort: effort } : {}),
+          streaming: false,
+          clientName: SESHBOARD_CLIENT,
+          availableTools: [],
+          enableConfigDiscovery: false,
+          enableFileHooks: false,
+          systemMessage: { mode: 'replace', content: system },
+          // It has no tools, so nothing should ask.
+          onPermissionRequest: async () => ({ kind: 'user-not-available' }),
+        });
+        let off = () => {};
+        try {
+          const finished = new Promise<void>((resolve) => {
+            off = session.on((event) => {
+              const data = (event.data ?? {}) as Record<string, unknown>;
+              const count = (key: string) => (typeof data[key] === 'number' ? data[key] : 0);
+              if (event.type === 'assistant.message' && typeof data.content === 'string') answer = data.content;
+              else if (event.type === 'assistant.usage') {
+                tokens.input += count('inputTokens');
+                tokens.output += count('outputTokens');
+                tokens.cacheRead += count('cacheReadTokens');
+                tokens.cacheWrite += count('cacheWriteTokens');
+              } else if (event.type === 'session.idle' || event.type === 'session.error') resolve();
+            });
+          });
+          await session.send({ prompt });
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), CHEAP_TIMEOUT_MS)));
+          if ((await Promise.race([finished, late])) === 'late') {
+            answer = null;
+            await session.abort().catch(() => {});
+          }
+          clearTimeout(timer);
+        } finally {
+          off();
+          await session.disconnect().catch(() => {});
+        }
+      } catch {
+        answer = null;
+      } finally {
+        await sdk.deleteSession?.(id).catch(() => {});
+      }
+      return { answer, model: model.id, tokens };
     },
 
     async renameSession(sessionId, cwd, title) {
@@ -521,6 +613,7 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
     async dispose() {
       const current = client;
       client = undefined;
+      cheap = undefined;
       started = null;
       if (current) await (await current.catch(() => null))?.stop();
     },

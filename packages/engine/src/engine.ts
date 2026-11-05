@@ -154,7 +154,7 @@ import { CatchUpService } from './catchUp/catchUpService.ts';
 import { ActivityService } from './activity/activityService.ts';
 import { stubDaySummary } from './activity/daySummary.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
-import { SKIM_SYSTEM_PROMPT, SkimHighlights, SkimUsageStore, stubSkim } from './skim/skimHighlights.ts';
+import { providerScope, SKIM_SYSTEM_PROMPT, SkimHighlights, SkimUsageStore, stubSkim, USAGE_WINDOW_MS } from './skim/skimHighlights.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { COMMIT_SYSTEM_PROMPT, commitContext, commitMessageInput, parseCommitMessage, stubCommitMessage } from './git/commitMessage.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
@@ -1318,6 +1318,7 @@ export function createEngine(options: EngineOptions): Engine {
   });
   // --- Skim ---------------------------------------------------------------------------------------------------------
   const skimUsage = new SkimUsageStore(cache.db);
+  const isClaudeSession = (sessionId: string) => profiles.runtimes().some((p) => p.id === sessionProfile(sessionId));
   /** Picks the sentences Skim keeps in a reply: a long reply is more to read than a catch-up, so it has longer. */
   const skimWriter = new Summarizer({
     sdk,
@@ -1336,9 +1337,14 @@ export function createEngine(options: EngineOptions): Engine {
   });
   const skimHighlights = new SkimHighlights({
     db: cache.db,
-    // Another provider's session has no Claude Code login to use: its replies stay whole.
-    canAsk: (sessionId) => profiles.runtimes().some((p) => p.id === sessionProfile(sessionId)),
-    ask: (sessionId, input) => skimWriter.ask(sessionProfile(sessionId), sessionId, input, SKIM_SYSTEM_PROMPT),
+    canAsk: (sessionId) => isClaudeSession(sessionId) || providerHosts.canAskCheap(sessionId),
+    // Another provider's session stays on its own account, on the cheapest model there.
+    ask: async (sessionId, input) => {
+      if (isClaudeSession(sessionId)) return skimWriter.ask(sessionProfile(sessionId), sessionId, input, SKIM_SYSTEM_PROMPT);
+      const { answer, model, tokens } = await providerHosts.askCheap(sessionId, SKIM_SYSTEM_PROMPT, input);
+      if (model) skimUsage.record({ id: randomUUID(), scope: providerScope(sessionProfile(sessionId)), at: Date.now(), model, sessionId, tokens });
+      return answer;
+    },
   });
   // --- Activity -----------------------------------------------------------------------------------------------------
   /** Main sends Settings › Conversation › Activity's "Write the day in short with Haiku" at start and after each change. */
@@ -4365,6 +4371,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
     'skim.highlights': (params) => skimHighlights.get(params),
+    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : ((await providerHosts.cheapModel(sessionId))?.name ?? null) }),
+    'skim.usage': ({ profileId }) => skimUsage.totals(providerScope(profileId), Date.now() - USAGE_WINDOW_MS),
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
     'catchup.build': async ({ sessionId }) => {
