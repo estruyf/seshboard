@@ -30,7 +30,7 @@ The menu groups the pages by what they are about:
 | Group | Pages |
 |---|---|
 | **App** | [General](#general), [Theme](#theme), [Sidebar](#sidebar), [Notifications](#notifications) and [Focus](#focus) |
-| **Claude** | [Conversation](#conversation), [Claude profiles](#claude-profiles), [Usage](#usage) and [Memory](#memory) |
+| **Claude** | [Conversation](#conversation), [Profiles](#profiles), [Usage](#usage) and [Memory](#memory) |
 | **Your work** | [Projects](#projects), [Sessions](#sessions), [Prompts](#prompts) and [Pipelines](#pipelines) |
 | **Connect** | [VS Code](#vs-code), [Remote](#remote) and [Mods](#mods) |
 
@@ -66,6 +66,8 @@ What Seshboard shows when it opens:
 
 ### New sessions
 
+**Global model** and **Global effort** are what new sessions start on where the project and profile set none, also when a session starts from a link or your phone. Leave them on **Claude Code's default** to keep what Claude Code picks. They are for Claude: a [GitHub Copilot](/settings/claude-profiles/#github-copilot-profiles) session without a model starts on Copilot's default.
+
 **Global permission mode** is what new sessions start in, unless their Claude profile or project sets a mode:
 
 - **Ask before edits** (the default), **Accept edits**, **Plan mode** or **Auto mode**.
@@ -74,6 +76,23 @@ What Seshboard shows when it opens:
 A project's own mode (its [Settings tab](/projects/settings/#defaults-for-new-sessions)) comes first, then its [Claude profile's](/settings/claude-profiles/#defaults-for-new-sessions), then this one. A session can still change its mode. A session started by a link never starts in Auto mode, and quick questions keep their own mode. See [Model, effort and mode](/new-session/models-and-options/#permission-mode).
 
 **Use Claude in Chrome** (off by default) gives sessions the browser tools of the Claude in Chrome extension, so Claude can open pages, click and read them in your own Chrome. It needs the extension installed in Chrome. Claude Code's own **Enabled by default** for Claude in Chrome only works in a terminal, so turn it on here for Seshboard's sessions. It applies to sessions you start or resume after you change it: a session that is running keeps what it started with until you stop and resume it.
+
+### Quick start
+
+**Shortcut** is what opens [Quick start](/new-session/form/#quick-start-from-any-app) from any app: <Kbd shortcut="quickstart.open" /> by default, with **Reset**, and a message when another app has it. **Start in the background** (on by default) starts a session without bringing Seshboard forward.
+
+### Menu bar
+
+On Windows this is **Notification area**.
+
+- **<Os mac="Show in the menu bar" windows="Show in the notification area" />** (on by default): the working light, what needs you, and new work from anywhere. See [Session states](/sessions/states/#seshboard-in-the-menu-bar).
+- **Keep running when the window closes** (on by default): sessions keep going, and the icon stays.
+
+<OnlyOn os="mac">
+
+**Hide from the Dock while no window is open** (off by default): Seshboard lives in the menu bar only until you open it.
+
+</OnlyOn>
 
 ### Quitting
 
@@ -95,6 +114,7 @@ See [Built-in themes](/themes/built-in/), [Custom themes](/themes/custom/) and [
 
 Pick one of nine colourways of the Seshboard icon: **Graphite** (the default), **Midnight**, **Paper**, **Signal yellow**, **Forest**, **Plum**, **Aluminium**, **Ocean** or **Neon**. The shape stays the same, only the colours change. Click a tile, or move between them with the arrow keys, and the icon changes right away. There is no restart. **Reset to Graphite** goes back to the original.
 
+**Show when Claude is working** (macOS, on by default): while a session works, the empty jacks in the Dock icon light up one after another and a pulse of light runs along the cables, in whichever icon you picked. With Reduce motion on, the jacks stay lit instead.
 <OnlyOn os="mac">
 
 The icon shows in the Dock and the app switcher. macOS shows it while Seshboard runs, so Finder and Launchpad keep the original icon, and so do notifications.
@@ -123,12 +143,13 @@ Seshboard doesn't change the app's own files or your shortcuts for this, so it a
   The command palette has *Sidebar: Large icons*, *Sidebar: Standard* and *Sidebar: Compact* too.
 - **When collapsed**: what <Kbd shortcut="sidebar.toggle" /> and the sidebar button do. **Minimal rail** (the default) shrinks the sidebar to a narrow rail of project icons; **Hidden** hides it.
 - **Show sessions from other apps** (off by default): also list sessions from your terminal, Claude desktop and your editor. Off shows only sessions you started or continued in Seshboard.
-- **Quick actions on hover** (on by default): Mark as read, Pin and Archive appear on a row under the pointer. **Show** picks **Archive only** or **Read · Pin · Archive** (the default); working sessions show Stop too. See [Quick actions on hover](/sessions/sidebar/#quick-actions-on-hover).
+- **Quick actions on hover** (on by default): Mark as read, Pin and Done appear on a row under the pointer. **Show** picks **Done only** or **Read · Pin · Done** (the default); working sessions show Stop too. See [Quick actions on hover](/sessions/sidebar/#quick-actions-on-hover).
 
 See [Sidebar](/sessions/sidebar/).
 
 ## Notifications
 
+- **Reminders:** the notification when a [reminder](/sessions/upcoming/#remind-me-later) comes due, and **Count reminders in the badge**.
 - **Notifications** (on by default): a notification when Claude needs you, finishes or stops with an error, and when a project action ends. <Os mac="The Dock badge" windows="The dot on the taskbar button" /> shows either way. **Send a test notification** checks that they come through.
 - **Sounds** (off by default): a sound for each moment, with notifications on or off. Pick the sound for **Needs you**, **Finished**, **Stopped with an error** and **Project action ended** (or **None**), with a button to play each, and the **Volume** for all of them.
 
@@ -199,11 +220,11 @@ See [Catch-up](/sessions/catch-up/) and [Why is Claude asking?](/permissions/#wh
 
 **Auto model** turns Auto on or off in the model menus, and sets the models it can pick, which way it leans when in doubt, and whether it suggests a stronger model later. See [Auto model](/new-session/auto-model/).
 
-## Claude profiles
+## Profiles
 
-<Screenshot name="settings-profiles" alt="Settings on Claude profiles: two profiles, each with its name, colour, config folder and the account it is signed in with, the Default choice, Add profile, and How to set up another profile" />
+<Screenshot name="settings-profiles" alt="Settings on Profiles: two profiles, each with its name, colour, config folder and the account it is signed in with, the Default choice, Add profile, and How to set up another profile" />
 
-Use more than one Claude account, for example a personal plan and a work one. Each profile is a Claude Code config folder with its own login.
+Use more than one account, for example a personal Claude plan and a work one, or [GitHub Copilot](/settings/claude-profiles/#github-copilot-profiles). Each profile is a config folder with its own login. When Seshboard finds Copilot CLI, this page offers to add it.
 
 For each profile:
 
@@ -217,7 +238,7 @@ Below the list:
 - **Add profile**: a name, a colour and a **Config folder** (**Choose…** picks one). Then **Add profile**.
 - **How to set up another profile**: the steps, from signing in to linking projects.
 
-See [Claude profiles](/settings/claude-profiles/).
+See [Profiles](/settings/claude-profiles/).
 
 ## Usage
 
@@ -267,8 +288,9 @@ See [Claude Code memory](/memory/overview/).
 ## Sessions
 
 - **Mark as read after** (on, 3 seconds by default): a session you open unread is marked read once it has been in front of you this long. Turn it off to mark sessions read yourself.
-- **Archive finished sessions after**: the days without activity before a finished session moves to Archived (3 by default).
-- **Delete archived sessions** (off by default): move sessions to the <Os mac="Trash" windows="Recycle Bin" /> once they have been archived for the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.
+- **Move finished sessions to Done after**: the days without activity before a finished session moves to Done (3 by default).
+- **Move to Done when its pull request merges** (on by default): see [Done](/sessions/archived/#what-goes-to-done).
+- **Delete Done sessions** (off by default): move sessions to the <Os mac="Trash" windows="Recycle Bin" /> once they have been in Done for the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.
 - A note says when Claude Code deletes old transcripts by itself, per Claude profile, with **Change…** to set it.
 - **All sessions**: every session in one table, to filter, select, unarchive or move to the <Os mac="Trash" windows="Recycle Bin" />.
 
@@ -340,6 +362,7 @@ The engine behind Seshboard, the Claude Code it runs, and its recent log. Look h
 - **Channel**: **Stable** (published releases, the default) or **Beta** (beta versions to test what comes next, and the published releases).
 - **Claude Code**: the Claude Code Seshboard runs, whether it is up to date, **Installed**, **Latest**, **Installed with** and **Path**, with **Check for Updates** and, when a newer version is out, **Update to v…**.
 - **Check for Claude Code updates automatically** (on by default).
+- **GitHub Copilot CLI**, with a Copilot profile: the version you have, whether a newer one is out, and **Update**.
 
 See [Updates](/settings/updates/).
 

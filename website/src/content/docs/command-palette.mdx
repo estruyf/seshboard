@@ -38,7 +38,7 @@ What you type first decides what the palette lists, as in VS Code:
 
 ## Go to a session or project
 
-With nothing typed, Go to lists your sessions under the sidebar's own headings, in its order: Needs you, Working, Pinned, Today, Yesterday, Earlier. Unsent messages come first. It can stand in for the sidebar while that is closed. Type a few letters to match session titles and project names; projects follow under **Projects**.
+With nothing typed, Go to lists your sessions under the sidebar's own headings, in its order: Needs you, Working, Pinned, To review, Open. Unsent messages come first. It can stand in for the sidebar while that is closed. Type a few letters to match session titles and project names; projects follow under **Projects**.
 
 - <Kbd keys="enter" /> opens the session. On a project, it starts a new session there.
 - <Kbd keys="alt+enter" /> opens the session beside the current one, in [split view](/sessions/split-view/).
@@ -57,7 +57,7 @@ With nothing typed, the commands for where you are come first, in groups:
 - **New session**: while New session is open.
 - **Settings**: while Settings is open, to go to a section.
 
-Then **Recently used** (the last five commands you ran in this window), then the rest under **Commands**. Type to search: the palette matches titles, and a few other words each command answers to (*Archive* also answers to "done", *Change model…* to "opus"). A command only shows when it can run; nothing is ever listed greyed out.
+Then **Recently used** (the last five commands you ran in this window), then the rest under **Commands**. Type to search: the palette matches titles, and a few other words each command answers to (*Mark as done* also answers to "archive", *Change model…* to "opus"). A command only shows when it can run; nothing is ever listed greyed out.
 
 Each row shows the command's shortcut, when it has one, so the palette also teaches you the keys.
 
@@ -161,7 +161,10 @@ Commands that need the engine (Seshboard's background process) hide while it isn
 |---|---|---|
 | *Rename session…* | Session open | |
 | *Pin* or *Unpin* | Session open | |
-| *Archive* or *Unarchive* | Session open | |
+| *Mark as done* or *Reopen* | Session open | |
+| *Note…* | Session open | |
+| *Remind me…* | Session open | |
+| *Keep awake until done* | Session running here | |
 | *Fork session…* | The session has a prompt or a reply | |
 | *Rewind to a message…* | The session has a prompt | |
 | *Compact context* | The session runs in Seshboard and its context isn't empty | |

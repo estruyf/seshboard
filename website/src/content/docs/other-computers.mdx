@@ -33,7 +33,7 @@ The computer you paired shows under **Paired devices** on the first one, like a 
 
 <Screenshot name="computers-session" alt="A session on the computer mystic open in the normal view: a violet line along the top, on mystic in the header, the terminal and Changes buttons greyed out, tool calls folded into one line, an Allow Bash? card above the message box, and in the sidebar the remote sessions with a mystic chip and the Computers strip with This Mac and mystic" />
 
-The other computer's sessions sit in your sidebar, in the same groups as yours: **Needs you**, **Working**, **Today** and so on. Violet marks everything on another computer, and nothing else uses it:
+The other computer's sessions sit in your sidebar, in the same groups as yours: **Needs you**, **Working**, **To review** and so on. Violet marks everything on another computer, and nothing else uses it:
 
 - the project icon has a small monitor badge;
 - the second line of the row ends with a chip with the computer's name, such as **mystic**.
@@ -52,7 +52,17 @@ Under the message box, *Cost ≈$12.40* says what the session would cost at API 
 
 What only works on that computer stays in its place, but is off: **Changes**, the terminal, opening the folder in your editor, pull requests and file links. Point at one to see why, for example *Terminal is on mystic. Not available from here.* Nothing in another computer's conversation runs on yours: only web links open.
 
-Right-click a remote session for **Open**, **Open beside**, **Pin**, **Archive**, **Copy title** and **New session in** its project. Rename and delete it on the computer it runs on.
+Right-click a remote session for **Open**, **Open beside**, **Pin**, **Done**, **Copy title** and **New session in** its project. Rename and delete it on the computer it runs on.
+
+## What you can do in its sessions
+
+- **Quote** text you select, or right-click a message to quote it. **Read** under a finished reply opens [reading mode](/sessions/conversation/#reading-mode), with **Reply with quote** and **Ask about this**.
+- The [catch-up](/sessions/catch-up/) shows over the conversation, and **Ask about this session** asks Claude on that computer.
+- **Changes** lists what isn't committed there, with each file's diff, and **Commit** commits it there. It doesn't push.
+- Click a step to see its diff or what it ran, and its output. Find in the conversation with <Kbd keys="mod+f" />, and **Jump to latest** when you scroll up.
+- **Mark as read**, **Mark as unread**, **Copy last reply** and **Run a pipeline** are in the **⋯** menu. A run's steps sit under the session in the sidebar, and its card has **Continue**, **Run this step again**, **Skip**, **Stop** and **Push**.
+
+You get notifications when one of its sessions needs you or finishes. A click opens the session.
 
 ## Send images and files
 
@@ -63,11 +73,29 @@ To send images or files with a message, click the paperclip button under the mes
 - An older Seshboard on the other computer only takes images in a session, and nothing in New session. Point at the paperclip to see what it takes. Update Seshboard there to send files too.
 - Folders can't be sent. Drop the files in a folder instead.
 
+## Its name, colour and page
+
+In **Settings › Remote › Other computers**, each row has the notifications choice, **Open** and **⋯**:
+
+- **Rename** gives a paired computer a name of its own here. Clear it to go back to the name it gives itself. **Colour** picks its colour, for its chips, the badge on its projects and the line over its sessions. Only this computer sees them.
+- **Open** shows its page: what needs you, with the longest wait to answer right on the page, what is working, and its recent sessions by project. The line under its name says which Seshboard version it runs. When it is offline, the page shows the last list it sent, dimmed.
+- **⋯** also has **Check for updates**, **Update to…**, **Copy its address**, **Reconnect** and **Remove**.
+
+### Choose its notifications
+
+The bell on its row picks which of its notifications show here: **All** (needs you, finished and failed), **Only mine** (all of them, but only for sessions you started there or acted on from this computer), **Needs you** or **Off**. Its sessions still show in the sidebar. When it isn't All, the bell says which.
+
+### Update it from here
+
+Each row shows the computer's version. **Update** shows when that computer is behind, even before it has seen the new version, as long as this computer knows about it. Update it right away, or once its sessions are idle. Whoever is on the other computer gets a notification that says who started the update.
+
 ## Filter by computer
 
 <Screenshot name="computers-sidebar" alt="The sidebar with sessions from This Mac and from mystic in the same groups, each remote one with a monitor badge on its icon and a mystic chip, and the Computers strip at the bottom with counts of what needs you" width={320} />
 
 The **Computers** strip at the bottom of the sidebar has a chip for <Os mac="This Mac" windows="This PC" /> and one for each paired computer, with a green dot when it is connected and, in pink, how many of its sessions need you. Click a chip to show only that computer's sessions. Click it again to show all of them. In the project menu (**All projects ▾**), **Show sessions from** has a checkbox for each computer, and the other computers' projects are listed with their chip. The command palette has **Show only mystic** for each connected computer. Each window keeps its own filter.
+
+On a shared computer, the chip switches between your sessions and everyone's. Right-click it, or click the ▾ that shows on hover, to pick **Mine** or **All**, kept for each computer. While Mine is on, a person shows after the computer's name. Mine shows the sessions you started there from this computer, and the ones you sent a message to, answered or resumed from here. The chip's menu says how many it hides, and a search still finds them. In **All**, other people's sessions say who started them, after the branch. The chips that don't fit fold into **+N**.
 
 **Search sessions** at the top of the sidebar finds them by title, project, branch or computer name. Go to session in the command palette (<Kbd shortcut="palette.goto" />) and <Kbd shortcut="session.next-needs-you" /> include them too.
 

@@ -1,6 +1,6 @@
 ---
-title: Claude profiles
-description: Use more than one Claude account in Seshboard, such as a personal plan and a work one.
+title: Profiles
+description: Use more than one account in Seshboard, such as a personal Claude plan and a work one, or GitHub Copilot.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -104,13 +104,33 @@ Every change saves at once. A new session takes each field from the first place 
 
 1. The project's own defaults, on its [Settings tab](/projects/settings/).
 2. The defaults of the session's profile.
-3. Claude Code's own defaults, and for the permission mode **Global permission mode** in [Settings › General](/settings/#new-sessions).
+3. **Global model**, **Global effort** and **Global permission mode** in [Settings › General](/settings/#new-sessions).
+4. Claude Code's own defaults.
 
 A project can skip its profile's permission mode: on its Settings tab, choose *Global default* under **Permissions**.
 
 What you change in [New session](/new-session/form/) applies to that prompt only and doesn't change these defaults.
 
 A branch to check out is only a project default, since branches belong to a repository. When you pick another profile for one session in New session, its defaults apply, unless you already changed something there.
+
+## GitHub Copilot profiles
+
+A **GitHub Copilot** profile starts Copilot sessions in Seshboard, with your own Copilot CLI and the profile's login. Seshboard never asks for a token.
+
+When Seshboard finds Copilot CLI, this page offers to add it. A profile skips sign-in when you're already signed in; otherwise its **Sign in** runs Copilot's own sign in. Two Copilot accounts can be two profiles.
+
+Pick the profile in [New session](/new-session/form/), or link a project to it. A Copilot session has:
+
+- Copilot's models in the model menu, its permission prompts as cards, and its replies as they stream.
+- The same permission modes as Claude. In **Auto mode**, Copilot runs as its autopilot and doesn't ask before commands.
+- Its slash commands, its MCP servers, agents and skills in Tools, **Compact**, Up next, and its context and premium requests under the message box.
+- Fork, Edit and resend, Rewind, Rename and Delete, through Copilot's own tools.
+
+Each session's row and header show whose it is with the Claude or Copilot mark. Sessions you started in Copilot CLI or in VS Code show up too when **Show sessions from other apps** is on in [Settings › Sidebar](/settings/#sidebar), and you can continue them here. A session open in Copilot CLI in a terminal shows as working, and Seshboard waits until it is closed before continuing it.
+
+**New session defaults** work as above, with Copilot's own models. The **Global model** and **Global effort** in [Settings › General](/settings/#new-sessions) are Claude's, so a Copilot session without a model starts on Copilot's default; the global permission mode applies to both.
+
+You can start Copilot sessions from your phone (the profile in **Options**) and on another [paired computer](/other-computers/) too.
 
 ## Pick a profile for one session
 
@@ -135,7 +155,7 @@ A profile whose folder is gone says **folder not found**.
 
 ## Settings
 
-Profiles and their defaults for new sessions are managed in [Settings → Claude profiles](/settings/#claude-profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).
+Profiles and their defaults for new sessions are managed in [Settings → Profiles](/settings/#profiles). The link between a project and a profile is part of the project, in its [Settings tab](/projects/settings/).
 
 ## Related
 
