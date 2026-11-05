@@ -2175,8 +2175,14 @@ async function terminalLayoutChecks(win: BrowserWindow): Promise<string> {
   }
   const tall = (await box())!;
   await js("document.querySelector('[data-terminal-resize]').focus()");
-  for (let i = 0; i < 3; i++) key('Down');
-  if (!(await waitInPage(win, `${PANEL_BOX}.height === ${tall.height - 72}`, 2_000))) return `failed: ↓ on the handle did not make the panel shorter (${tall.height}px)`;
+  // Folding the card can hand the focus back a moment later, so the handle has to keep it first.
+  await settle(win);
+  await js("document.querySelector('[data-terminal-resize]').focus()");
+  if (!(await js("document.activeElement === document.querySelector('[data-terminal-resize]')"))) return `failed: the handle did not keep the focus (${await js("document.activeElement?.tagName")})`;
+  for (let i = 1; i <= 3; i++) {
+    key('Down');
+    if (!(await waitInPage(win, `${PANEL_BOX}.height === ${tall.height - 24 * i}`, 2_000))) return `failed: ↓ on the handle did not make the panel shorter (${(await box())?.height}px, from ${tall.height}px)`;
+  }
   const start = (await box())!;
   key('Up');
   if (!(await waitInPage(win, `${PANEL_BOX}.height === ${start.height + 24}`, 2_000))) return `failed: ↑ on the handle did not make the panel taller (${start.height}px)`;
@@ -5007,7 +5013,7 @@ async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `!document.querySelector('[data-prompt-editor-dialog]') && document.querySelector(${JSON.stringify(savedRow)})`, 3_000))) return 'the saved prompt was not listed in Settings › Prompts';
   // Close Settings: the sidebar stays, the main area comes back.
   pressKey(win, 'Escape');
-  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
 
   // Shared computers: its chip shows Mine at first, and nothing there is this computer's yet, so none of its sessions
   // are listed, and the sidebar says nothing of them (the chip's menu counts them); Settings › Remote only sets its
@@ -5216,7 +5222,9 @@ async function runComputersStripStep(win: BrowserWindow): Promise<string> {
   }
   const ids = (await js("[...document.querySelectorAll('[data-computer]')].filter((el) => /Studio Mac|Render workstation/.test(el.innerText)).map((el) => el.dataset.computer)")) as string[];
   pressKey(win, 'Escape');
-  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-settings-close]')?.click()");
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
+  // Still open, Settings covers the sidebar's edge and the drags below would miss it.
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) return 'Settings did not close';
   const width = () => js("Math.round(document.querySelector('[data-sidebar]').getBoundingClientRect().width)") as Promise<number>;
   const drag = async (dx: number) => {
     const { x, y } = (await js("(() => { const r = document.querySelector('[data-sidebar-resize]').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()")) as { x: number; y: number };
@@ -12630,8 +12638,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: New session with a Copilot profile, in its own models and modes', runPhoneProviderStep, { timeoutMs: 75_000 });
   await closeRemotePhone();
   // Every built-in theme in light and dark (about 11s locally) runs over 30s on a CI runner.
-  // Every built-in theme in both modes: about 11 s here, and 70 s or more on the macOS runners, so it gets room.
-  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 150_000 });
+  // Every built-in theme in both modes: about 11 s here, and over 120 s on the macOS runners, so it gets room.
+  await step('themes: export, import, pick, remove, and every built-in in light and dark', () => runThemeStep(win), { timeoutMs: 240_000 });
   await step('settings › theme › app icon: Signal yellow is checked, saved and applied, the keys, light and dark, Reset to Graphite', () => runAppIconStep(win));
   await step('settings › theme › app icon: Show when Claude is working animates the Dock and stops when off', () => runDockActivityStep(win));
   await step('diagnostics', () => runDiagnosticsStep(win));
