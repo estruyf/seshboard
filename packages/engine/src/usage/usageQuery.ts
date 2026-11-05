@@ -11,6 +11,8 @@ export const AUTO_ROUTING_KEY = 'auto-routing';
 export const SIDE_QUESTIONS_KEY = 'side-questions';
 /** The key of the Catch-up summaries row: Haiku's calls that wrote the briefings on finished turns. */
 export const CATCHUP_KEY = 'catch-up-summaries';
+/** The row of Haiku's calls that pick the sentences Skim keeps in a reply. */
+export const SKIM_KEY = 'skim-highlights';
 
 /** `YYYY-MM-DD` of a moment in a time zone (UTC when the zone is unknown). */
 export function dayKeyFormatter(timeZone: string): (at: number) => string {
@@ -206,6 +208,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   const spoken = db
     .prepare(`SELECT id, at, model, input, output, cache_read, cache_write FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
     .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
+  const skimmed = db
+    .prepare(`SELECT id, at, model, input, output, cache_read, cache_write FROM skim_usage WHERE scope = ? AND at >= ? AND at <= ? ${model ? 'AND model = ?' : ''}`)
+    .all(...([scope, hourOf(from), to, ...(model ? [model] : [])] as Array<string | number>)) as unknown as Routed[];
   const addApart = (row: Routed, rowKey: string, count: (group: Group) => void) => {
     const tokens: TokenCounts = { input: row.input, output: row.output, cacheRead: row.cache_read, cacheWrite: row.cache_write };
     const cost = costOf(tokens, row.model) ?? 0;
@@ -232,6 +237,7 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
   // One question can use more than one model: a row per model, `<question id>:<model>`.
   for (const row of asked) addApart(row, SIDE_QUESTIONS_KEY, (group) => group.asked.add(row.id.slice(0, row.id.lastIndexOf(':'))));
   for (const row of spoken) addApart(row, CATCHUP_KEY, (group) => (group.picks += 1));
+  for (const row of skimmed) addApart(row, SKIM_KEY, (group) => (group.picks += 1));
   /** The model Auto picked for each session, for "· 4 by Auto" on the model rows. */
   const autoPicked =
     groupBy === 'model'
@@ -267,6 +273,9 @@ export function breakdown(db: DatabaseSync, query: BreakdownQuery, lookup: Sessi
     }
     if (g.key === CATCHUP_KEY && groupBy !== 'day') {
       return { key: g.key, label: 'Catch-up summaries', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, cost: g.cost, largestContext: 0, share: share.share, measured: false, catchUpSummaries: { calls: g.picks } };
+    }
+    if (g.key === SKIM_KEY && groupBy !== 'day') {
+      return { key: g.key, label: 'Skim highlights', sessionId: null, projectRoot: null, model: mainModel, sessions: 0, turns: g.turns, fastTurns: 0, tokens: g.tokens, cost: g.cost, largestContext: 0, share: share.share, measured: false, skimHighlights: { calls: g.picks } };
     }
     const base = { key: g.key, sessions: g.sessions.size, turns: g.turns, fastTurns: g.fastTurns, tokens: g.tokens, cost: g.cost, largestContext: g.largestContext, share: share.share, measured: share.measured };
     if (groupBy === 'session') {
@@ -336,9 +345,10 @@ export function windowCostsFrom(db: DatabaseSync, scope: string, windows: readon
            UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND at >= ? AND at <= ?
            UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND at >= ? AND at <= ?
            UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND at >= ? AND at <= ?
+           UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM skim_usage WHERE scope = ? AND at >= ? AND at <= ?
          ) GROUP BY model`,
       )
-      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
+      .all(scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now, scope, hourOf(from), now) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
     return rows.map(({ model, ...tokens }) => ({ model, tokens }));
   };
   const result: WindowCost[] = [];
@@ -370,9 +380,10 @@ export function sessionCost(db: DatabaseSync, scope: string, sessionId: string):
          UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM auto_routing WHERE scope = ? AND session_id = ?
          UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM side_question_usage WHERE scope = ? AND session_id = ?
          UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM catchup_usage WHERE scope = ? AND session_id = ?
+         UNION ALL SELECT model, input, output, cache_read, cache_write, 0 FROM skim_usage WHERE scope = ? AND session_id = ?
        ) GROUP BY model`,
     )
-    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
+    .all(scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId, scope, sessionId) as Array<{ model: string } & TokenCounts & { cacheWrite1h: number }>;
   if (rows.length === 0) return null;
   let usd = 0;
   let partial = false;

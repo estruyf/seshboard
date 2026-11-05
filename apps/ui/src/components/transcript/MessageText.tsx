@@ -1,11 +1,15 @@
 import { createContext, Fragment, useContext, useMemo } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { CatchUpTests } from '@seshboard/protocol/client';
+import type { EngineClient as Client } from '../../engine/connection.ts';
+import { usePreferences } from '../../state/preferencesStore.ts';
+import { requestSkimHighlight, useSkimHighlight } from '../../state/skimHighlightsStore.ts';
 import { Button } from '../ui/Button.tsx';
 import type { DisplayItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
 import { MessageToolbar, ReadButton, REVEAL_IN_REPLY_ROW } from './messageActions.tsx';
 import { statParts, turnStats, type StatPart } from './skim.ts';
-import { fadeCountOf } from './skimFade.ts';
+import { fadeCountOf, SKIM_MIN_SENTENCES, skimOutline } from './skimFade.ts';
 import { Sep, TurnMetaContext, TurnMetaLine } from './TurnMeta.tsx';
 import type { Turn } from './turns.ts';
 import { useOpenKey } from './useOpenKey.ts';
@@ -17,6 +21,12 @@ export interface SkimValue {
   latest: { turn: Turn; tests: CatchUpTests } | null;
   /** Find is open: it works on the whole text, as Full shows it. The text only changes colour, so nothing moves. */
   finding: boolean;
+  sessionId: string;
+  client: Client | null;
+  /** The reply that may go to Haiku: the session's last. */
+  lastReplyKey: string | null;
+  /** Claude Code's own sessions only: another provider's has no Claude login to use. */
+  canHighlight: boolean;
 }
 
 export const SkimContext = createContext<SkimValue | null>(null);
@@ -45,22 +55,72 @@ function SkimStats({ parts }: { parts: StatPart[] }) {
   );
 }
 
-/** A finished turn's last reply in Skim: the stats line, the text with its less important sentences faded, Show all text. */
+/** The once-only offer under a long reply: nothing goes to Haiku before Try it. */
+function SkimInvitation({ onAnswer }: { onAnswer: (tryIt: boolean) => void }) {
+  return (
+    <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-skim-invitation>
+      <span className="ml-1 text-meta text-muted">Fade the less important sentences with Haiku? This uses your plan.</span>
+      <Button size="sm" onClick={() => onAnswer(true)} data-skim-try>
+        Try it
+      </Button>
+      <Button variant="quiet" size="sm" onClick={() => onAnswer(false)} data-skim-not-now>
+        Not now
+      </Button>
+    </div>
+  );
+}
+
+/** A finished turn's last reply in Skim: the stats line, the text with what Haiku didn't keep faded, Show all text. */
 function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 'text' }>; turn: Turn; skim: SkimValue }) {
   const [showAll, toggle] = useOpenKey(`show-all:${item.key}`);
-  const count = useMemo(() => fadeCountOf(item.text), [item.text]);
   const tests = skim.latest?.turn === turn ? skim.latest.tests : null;
   // A finished turn's items don't change while its Turn stays the same one (`updateTurns` keeps it).
   const parts = useMemo(() => statParts(turnStats(skim.items, turn, tests)), [turn, tests]);
-  const fades = count.faded > 0;
+  const on = usePreferences((s) => s.prefs.skimHighlights);
+  const asked = usePreferences((s) => s.prefs.skimHighlightsAsked);
+  const update = usePreferences((s) => s.update);
+  const outline = useMemo(() => skimOutline(item.text), [item.text]);
+  const long = skim.canHighlight && outline.total >= SKIM_MIN_SENTENCES;
+  const prompt = skim.items[turn.start];
+  // Only a session's last reply goes to Haiku, so opening a long session never spends a call per turn.
+  const request = {
+    sessionId: skim.sessionId,
+    replyKey: item.key,
+    total: outline.total,
+    ask: skim.lastReplyKey === item.key,
+    message: prompt?.kind === 'user' ? prompt.text : '',
+    outline: outline.text,
+  };
+  const highlight = useSkimHighlight(skim.client, request, on && long);
+  const keep = highlight?.state === 'ready' ? highlight.keep : null;
+  const count = useMemo(() => (keep ? fadeCountOf(item.text, keep) : null), [item.text, keep]);
+  const fades = !!count && count.faded > 0;
   return (
     <>
       {parts.length > 0 && <SkimStats parts={parts} />}
-      <Markdown text={item.text} fade={fades && !showAll && !skim.finding} />
+      <Markdown text={item.text} keep={fades && !showAll && !skim.finding ? keep : null} />
+      {!on && !asked && long && request.ask && <SkimInvitation onAnswer={(tryIt) => update({ skimHighlights: tryIt, skimHighlightsAsked: true })} />}
+      {highlight?.state === 'loading' && request.ask && (
+        <div className="mt-1 flex items-center gap-1.5 text-meta text-muted" role="status" aria-busy data-skim-fading>
+          <Loader2 size={12} className="animate-spin" aria-hidden />
+          Fading…
+        </div>
+      )}
+      {highlight?.state === 'failed' && (
+        <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2" data-skim-failed>
+          <span className="ml-1 text-meta text-muted">Haiku did not answer.</span>
+          <Button variant="quiet" size="sm" onClick={() => skim.client && requestSkimHighlight(skim.client, request)} data-skim-retry>
+            Try again
+          </Button>
+        </div>
+      )}
       {fades && (
         <div className="-ml-1 mt-1 flex min-w-0 flex-wrap items-center gap-x-2" data-skim-fade-row>
           <Button variant="quiet" size="sm" onClick={toggle} data-skim-show-all>
             {showAll ? 'Fade text' : 'Show all text'}
+          </Button>
+          <Button variant="quiet" size="sm" onClick={() => update({ skimHighlights: false })} data-skim-turn-off>
+            Turn off
           </Button>
           {!showAll && (
             <span className="text-meta text-faint tabular-nums">

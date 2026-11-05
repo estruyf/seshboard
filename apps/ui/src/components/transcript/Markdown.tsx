@@ -1,5 +1,6 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import type { PluggableList } from 'unified';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
@@ -98,21 +99,21 @@ const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
 });
 
 const PLUGINS = [remarkGfm];
-const FADING_PLUGINS = [remarkGfm, remarkSkimFade];
 
-const Block = memo(function Block({ text, fade = false }: { text: string; fade?: boolean }) {
+const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
+  const plugins = useMemo(() => (keep ? [remarkGfm, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
   return (
-    <ReactMarkdown remarkPlugins={fade ? FADING_PLUGINS : PLUGINS} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={plugins as PluggableList} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );
 });
 
-/** Assistant prose. Memoised: finished messages never change, so they render once. `fade`: Skim's faded sentences. */
-export const Markdown = memo(function Markdown({ text, variant = 'chat', fade = false }: { text: string; variant?: MarkdownVariant; fade?: boolean }) {
+/** Assistant prose. Memoised: finished messages never change, so they render once. `keep`: the sentences Skim keeps; the rest fade. */
+export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = null }: { text: string; variant?: MarkdownVariant; keep?: readonly number[] | null }) {
   return (
     <div className={proseOf(variant)}>
-      <Block text={text} fade={fade} />
+      <Block text={text} keep={keep} />
     </div>
   );
 });

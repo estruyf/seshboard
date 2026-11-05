@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { MessageCircleQuestion, Monitor, NotebookText, Search, X, Zap } from 'lucide-react';
+import { Highlighter, MessageCircleQuestion, Monitor, NotebookText, Search, X, Zap } from 'lucide-react';
 import type { UsageBreakdown, UsagePeriod } from '@seshboard/protocol/client';
 import { thisComputerName } from '../../lib/platform.ts';
 import { useUsageView } from '../../state/usageViewStore.ts';
@@ -184,11 +184,23 @@ function CatchUpSummariesName({ model }: { model: string | null }) {
   );
 }
 
-/** The name of a row whose tokens left no transcript (Auto routing, Side questions, Catch-up summaries), or null for any other row. */
+/** The Skim highlights row's name: the calls Haiku made to pick the sentences to keep in a reply (no transcript either). */
+function SkimHighlightsName({ model }: { model: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" data-usage-skim-highlights>
+      <Highlighter size={13} className="shrink-0 text-muted" aria-hidden />
+      <span className="truncate font-medium">Skim highlights</span>
+      <span className="shrink-0 text-meta font-normal text-faint">· {modelName(model)}</span>
+    </span>
+  );
+}
+
+/** The name of a row whose tokens left no transcript (Auto routing, Side questions, Catch-up summaries, Skim highlights), or null for any other row. */
 function apartName(r: MergedRow): ReactNode | null {
   if (r.autoRouting) return <AutoRoutingName model={r.model} />;
   if (r.sideQuestions) return <SideQuestionsName model={r.model} />;
   if (r.catchUpSummaries) return <CatchUpSummariesName model={r.model} />;
+  if (r.skimHighlights) return <SkimHighlightsName model={r.model} />;
   return null;
 }
 
@@ -240,7 +252,9 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
           ? `${num(r.sideQuestions.asked)} ${r.sideQuestions.asked === 1 ? 'question' : 'questions'}`
         : r.catchUpSummaries
           ? `${num(r.catchUpSummaries.calls)} ${r.catchUpSummaries.calls === 1 ? 'summary' : 'summaries'}`
-          : num(r.sessions),
+          : r.skimHighlights
+            ? `${num(r.skimHighlights.calls)} ${r.skimHighlights.calls === 1 ? 'reply' : 'replies'}`
+            : num(r.sessions),
   };
   if (groupBy === 'session') {
     return [
@@ -261,7 +275,7 @@ function useColumns(groupBy: UsageViewGroup, across: boolean): Column[] {
         width: across ? 'minmax(170px,1.2fr)' : 'minmax(90px,1fr)',
         cell: (r) => (
           <Named row={r}>
-            <span className="truncate text-muted">{r.autoRouting || r.sideQuestions || r.catchUpSummaries ? '' : rowProjectName(r, nameOf)}</span>
+            <span className="truncate text-muted">{r.autoRouting || r.sideQuestions || r.catchUpSummaries || r.skimHighlights ? '' : rowProjectName(r, nameOf)}</span>
           </Named>
         ),
       },
@@ -390,7 +404,7 @@ function Breakdown({
   const virtualizer = useVirtualizer({ count: shown.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_HEIGHT, overscan: 8 });
   const noun = groupBy === 'session' ? 'sessions' : groupBy === 'project' ? 'projects' : groupBy === 'model' ? 'models' : groupBy === 'computer' ? 'computers' : 'days';
 
-  const rowAction = (row: MergedRow) => (row.autoRouting || row.sideQuestions || row.catchUpSummaries ? null : groupBy === 'session' ? open(row) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
+  const rowAction = (row: MergedRow) => (row.autoRouting || row.sideQuestions || row.catchUpSummaries || row.skimHighlights ? null : groupBy === 'session' ? open(row) : groupBy === 'model' && row.model ? () => onModel(row.model!) : null);
   const renderRow = (row: MergedRow, style?: CSSProperties) => {
     const action = rowAction(row);
     const selected = groupBy === 'model' && row.model === model;

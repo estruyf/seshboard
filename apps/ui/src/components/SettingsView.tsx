@@ -329,7 +329,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
             <div className="grid gap-2" data-setting-row>
               <span>
                 <span className="block text-ui">Conversation view</span>
-                <span className="block text-meta text-muted">Skim shows less to read once a turn has finished: Claude's messages between tool calls fold into the summary, and less important sentences of the reply fade. Nothing is rewritten. With Every step, messages stay open.</span>
+                <span className="block text-meta text-muted">Skim shows less to read once a turn has finished: Claude's messages between tool calls fold into the summary, and a line above the reply says what changed. Nothing is rewritten. With Every step, messages stay open.</span>
               </span>
               <RadioGroup label="Conversation view" className="grid grid-cols-3 gap-4">
                 {CONVERSATION_VIEWS.map(({ value, label }) => (
@@ -339,6 +339,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 ))}
               </RadioGroup>
             </div>
+            <Toggle
+              label="Fade less important sentences with Haiku"
+              detail="In Skim, Haiku reads your message and the session's last long reply, and picks the sentences to keep. The rest fade. Failures, skipped work and questions never fade. This uses your plan, and the tokens show under Usage."
+              checked={prefs.skimHighlights}
+              attr="data-skim-highlights-setting"
+              onChange={(skimHighlights) => update({ skimHighlights, skimHighlightsAsked: true })}
+            />
             <Toggle
               label="Show prompt outline"
               detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."

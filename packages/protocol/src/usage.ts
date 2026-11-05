@@ -96,6 +96,8 @@ export const UsageRow = z.object({
   sideQuestions: z.object({ asked: z.number() }).optional(),
   /** The Catch-up summaries row: Haiku's calls that wrote the briefings on finished turns, and how many there were. */
   catchUpSummaries: z.object({ calls: z.number() }).optional(),
+  /** The Skim highlights row: Haiku's calls that picked the sentences to keep in a reply, and how many there were. */
+  skimHighlights: z.object({ calls: z.number() }).optional(),
   /** A model row: how many of its sessions Auto picked it for. */
   byAuto: z.number().optional(),
 });

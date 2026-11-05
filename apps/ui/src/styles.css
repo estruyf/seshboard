@@ -785,3 +785,8 @@ html[data-keyboard-nav] [data-prompt-mark]:focus-visible {
   opacity: 1 !important;
   cursor: default;
 }
+
+/* A faded sentence fades as a whole: inline code and links in it take its colour. */
+[data-skim-faded] * {
+  color: inherit;
+}

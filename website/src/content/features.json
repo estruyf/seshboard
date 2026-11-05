@@ -4003,7 +4003,12 @@
     },
     {
       "id": "feature:conversation-view",
-      "name": "Conversation view: Skim folds a finished turn's messages between tool calls, adds a stats line above the reply and fades less important sentences; Full shows everything",
+      "name": "Conversation view: Skim folds a finished turn's messages between tool calls and adds a stats line above the reply; Full shows everything",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:skim-highlights",
+      "name": "Skim highlights: Haiku picks the sentences to keep in a long reply and the rest fade, off until you try it, with its tokens in Usage",
       "page": "sessions/conversation"
     },
     {

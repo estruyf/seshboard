@@ -4,52 +4,32 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
 /**
- * Which sentences of a reply Skim fades, by local rules: no model, no tokens. A sentence stays as it is unless it reads
- * as narration or filler, and what must stay visible wins over that. A reply in another language has nothing to match,
- * so it stays whole: fading too little costs some reading, fading the wrong sentence costs trust.
+ * Which sentences of a reply Skim fades. Haiku picks the ones to keep (Settings › Conversation, off by default), since
+ * only a model can weigh a sentence against what you asked. This file numbers the sentences for it, and has the last word:
+ * a sentence that says something failed, was skipped or isn't finished, or asks something, stays whatever Haiku picked.
  */
 
 /** A question, to you or not. */
 const QUESTION = /\?/;
-const NUMBER = /\d|\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|hundred|thousand|million|percent|half)\b/i;
 const FAILURE =
   /\b(?:fail\w*|errors?|crash\w*|bugs?|broke\w*|break\w*|exceptions?|regress\w*|flak\w+|timeouts?|timed out|reject\w*|denied|refus\w*|conflicts?|warnings?|wrong|invalid|unable|can't|cannot|couldn't|doesn't work|not work\w*|problems?|issues?|block\w*|abort\w*|missing|risk\w*|careful|caveats?|limitations?)\b/i;
 const SKIPPED =
-  /\b(?:skip\w*|did not|didn't|not (?:done|changed?|touched?|run|tested|fixed|included|covered|implemented)|haven't|have not|hasn't|has not|won't|will not|left out|leav\w+|ignor\w+|omitted|deferred|postponed|out of scope)\b/i;
+  /\b(?:skip\w*|did not|didn't|not (?:done|changed?|touched?|run|tested|fixed|included|covered|implemented)|haven't|have not|hasn't|has not|won't|will not|left out|leav\w+|ignor\w+|omitted|deferred|postponed|out of scope|ran nothing|only part|none of|estimates?)\b/i;
 const UNFINISHED =
   /\b(?:todo|fixme|still|yet|remain\w*|unfinished|incomplete|not finished|not complete|partial\w*|pending|wip|stubs?|placeholders?|temporar\w*|workarounds?|for now|later|follow-?ups?|next steps?|needs? (?:to|you)|needed to|you(?: need| should| must| have to| will need|'ll need)|must|before you)\b/i;
 
-const MUST_STAY = [QUESTION, NUMBER, FAILURE, SKIPPED, UNFINISHED];
+const MUST_STAY = [QUESTION, FAILURE, SKIPPED, UNFINISHED];
 
-/** The words that lead into a sentence without changing what it says. */
-const LEAD = String.raw`(?:(?:so|then|first|next|now|finally|after that|afterwards|also|okay|ok|alright)[,:]?\s+)*`;
-const LOOKED = String.raw`went through|walked through|looked|read|checked|searched|explored|reviewed|inspected|traced|opened|examined|investigated|compared|scanned|skimmed|ran|re-?ran|started|began|tried`;
+/** The fewest sentences worth asking Haiku about: a shorter reply has nothing to skim. */
+export const SKIM_MIN_SENTENCES = 8;
 
-const LESS_IMPORTANT = [
-  // What Claude looked at or ran on the way: "I went through the store", "I ran the tests".
-  new RegExp(String.raw`^${LEAD}I(?:'ve| have)?\s+(?:also\s+|then\s+|first\s+)?(?:${LOOKED})\b`, 'i'),
-  // Tests it wrote on the way; what they show is a sentence of its own.
-  new RegExp(String.raw`^${LEAD}I(?:'ve| have)?\s+(?:also\s+)?(?:added|wrote|updated)\s+(?:(?:a|an|the|some|more|new|unit|smoke)\s+)*tests?\b`, 'i'),
-  // What it is about to do.
-  new RegExp(String.raw`^${LEAD}(?:let me(?! know)|let's|I'll|I will|I'm going to|I am going to)\b`, 'i'),
-  // How the work went, rather than what it did.
-  /^(?:this|that|it) (?:needed|required|took|involved|runs in|ran in)\b/i,
-  // An acknowledgement that is the whole sentence.
-  /^(?:great|perfect|excellent|awesome|nice|good|sure|certainly|absolutely|of course|got it|understood|okay|ok|alright|all right|done|all set|all done|there we go|that's it|that should do it)[.!]?$/i,
-  // Announcing a summary.
-  /^(?:here's|here is) (?:what|how|a summary|the summary)\b/i,
-  /^(?:in summary|to summarize|to sum up|overall)\b/i,
-  // Closing lines.
-  /^(?:just )?let me know (?:if|how|when)\b/i,
-  /^(?:feel free|happy to|hope (?:this|that)|I hope|anything else|just (?:say|tell me)|if you(?:'d| would)? (?:like|want|prefer))\b/i,
-];
+/** Under this share faded, a reply looks the same: the button and the count would be more to read than they save. */
+const MIN_FADED_SHARE = 0.1;
 
-/** Whether a sentence of plain text is one Skim fades. */
-export function fadesSentence(sentence: string): boolean {
-  const text = sentence.replace(/’/g, "'").trim();
-  if (!text) return false;
-  if (MUST_STAY.some((rule) => rule.test(text))) return false;
-  return LESS_IMPORTANT.some((rule) => rule.test(text));
+/** Whether a sentence stays whatever Haiku picked. */
+export function mustStay(sentence: string): boolean {
+  const text = sentence.replace(/’/g, "'");
+  return MUST_STAY.some((rule) => rule.test(text));
 }
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
@@ -67,15 +47,17 @@ const ATOM = 'Ʞ';
 
 interface Sentence {
   nodes: PhrasingContent[];
+  /** What it says, with inline code and link text. */
   text: string;
-  fades: boolean;
 }
+
+const plainText = (node: PhrasingContent): string => ('value' in node ? node.value : 'children' in node ? node.children.map(plainText).join('') : '');
 
 function sentencesOf(paragraph: Paragraph): Sentence[] {
   const flat = paragraph.children.map((node) => (node.type === 'text' ? node.value : node.type === 'break' ? '\n' : ATOM)).join('');
   let end = 0;
   const ranges = splitSentences(flat).map((text) => ({ text, start: end, end: (end += text.length) }));
-  const sentences = ranges.map((range): Sentence => ({ nodes: [], text: range.text, fades: false }));
+  const sentences = ranges.map((): Sentence => ({ nodes: [], text: '' }));
   let at = 0;
   let current = 0;
   for (const node of paragraph.children) {
@@ -94,11 +76,12 @@ function sentencesOf(paragraph: Paragraph): Sentence[] {
       if (at >= ranges[current]!.end && current < ranges.length - 1) current++;
     }
   }
-  // Code, a link or anything marked up says the sentence matters, and code is never faded. So only plain text fades, and
-  // a faded sentence holds nothing but text.
-  for (const sentence of sentences) sentence.fades = sentence.nodes.every((node) => node.type === 'text') && fadesSentence(sentence.text);
+  for (const sentence of sentences) sentence.text = sentence.nodes.map(plainText).join('');
   return sentences;
 }
+
+/** A sentence that gets a number: blank space between two isn't one. */
+const counts = (sentence: Sentence) => sentence.text.trim() !== '';
 
 /** The paragraphs prose is in: at the top and in lists. Headings, tables, code and quotes stay as they are. */
 function paragraphsOf(nodes: readonly RootContent[]): Paragraph[] {
@@ -107,6 +90,38 @@ function paragraphsOf(nodes: readonly RootContent[]): Paragraph[] {
     if (node.type === 'list') return node.children.flatMap((item) => paragraphsOf(item.children));
     return [];
   });
+}
+
+const parse = (markdown: string) => unified().use(remarkParse).use(remarkGfm).parse(markdown);
+
+/** A reply as Haiku reads it, and how many sentences it numbered. */
+export interface SkimOutline {
+  text: string;
+  total: number;
+}
+
+/**
+ * Numbers a reply's sentences as `fadeTree` does, so Haiku's numbers mean the same sentences. Headings stay for context;
+ * what never fades (code, tables, quotes) goes as a word, since Haiku has nothing to pick there.
+ */
+export function skimOutline(markdown: string): SkimOutline {
+  const lines: string[] = [];
+  let total = 0;
+  const walk = (nodes: readonly RootContent[], prefix: string) => {
+    for (const node of nodes) {
+      if (node.type === 'paragraph') {
+        for (const sentence of sentencesOf(node).filter(counts)) lines.push(`${prefix}[${++total}] ${sentence.text.trim()}`);
+      } else if (node.type === 'list') {
+        for (const item of node.children) walk(item.children, `${prefix}- `);
+      } else if (node.type === 'heading') {
+        lines.push(`${'#'.repeat(node.depth)} ${node.children.map(plainText).join('')}`);
+      } else if (node.type === 'code' || node.type === 'table' || node.type === 'blockquote') {
+        lines.push(`(${node.type})`);
+      }
+    }
+  };
+  walk(parse(markdown).children, '');
+  return { text: lines.join('\n'), total };
 }
 
 /** A faded sentence. `data` makes it a span with the faint colour; it starts as emphasis since that is a node that holds text. */
@@ -122,29 +137,37 @@ export interface FadeCount {
 }
 
 /**
- * Fades a Markdown tree's less important sentences, in place, and says how many. When every sentence would fade nothing
- * does: a reply needs something to stand out, and a short one has nothing to skim.
+ * Fades every sentence not in `keep` (numbered from 1, as in `skimOutline`) that may fade, in place, and says how many.
+ * When all or nearly none would fade, nothing does: a reply needs something to stand out, and a change too small to see
+ * isn't worth a button.
  */
-export function fadeTree(tree: Root): FadeCount {
-  const plans = paragraphsOf(tree.children).map((paragraph) => ({ paragraph, sentences: sentencesOf(paragraph) }));
-  const all = plans.flatMap((plan) => plan.sentences).filter((sentence) => sentence.text.trim() && sentence.nodes.length > 0);
-  const faded = all.filter((sentence) => sentence.fades).length;
-  if (faded === 0 || faded === all.length) return { faded: 0, total: all.length };
+export function fadeTree(tree: Root, keep: readonly number[]): FadeCount {
+  const kept = new Set(keep);
+  let number = 0;
+  const plans = paragraphsOf(tree.children).map((paragraph) => {
+    const sentences = sentencesOf(paragraph).map((sentence) => {
+      const fades = counts(sentence) && !kept.has(++number) && !mustStay(sentence.text);
+      return { sentence, fades };
+    });
+    return { paragraph, sentences };
+  });
+  const faded = plans.flatMap((plan) => plan.sentences).filter((s) => s.fades).length;
+  if (faded === 0 || faded === number || faded / number < MIN_FADED_SHARE) return { faded: 0, total: number };
   for (const { paragraph, sentences } of plans) {
-    if (!sentences.some((sentence) => sentence.fades)) continue;
-    paragraph.children = sentences.flatMap((sentence) => (sentence.fades ? [fadedNode(sentence.nodes)] : sentence.nodes));
+    if (!sentences.some((s) => s.fades)) continue;
+    paragraph.children = sentences.flatMap(({ sentence, fades }) => (fades ? [fadedNode(sentence.nodes)] : sentence.nodes));
   }
-  return { faded, total: all.length };
+  return { faded, total: number };
 }
 
 /** The remark plugin the renderer uses for a faded reply: the words, inline code and links go through as they were. */
-export function remarkSkimFade() {
+export function remarkSkimFade({ keep }: { keep: readonly number[] }) {
   return (tree: Root) => {
-    fadeTree(tree);
+    fadeTree(tree, keep);
   };
 }
 
 /** How many sentences of a reply fade, for the line next to Show all text. */
-export function fadeCountOf(markdown: string): FadeCount {
-  return fadeTree(unified().use(remarkParse).use(remarkGfm).parse(markdown));
+export function fadeCountOf(markdown: string, keep: readonly number[]): FadeCount {
+  return fadeTree(parse(markdown), keep);
 }

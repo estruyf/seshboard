@@ -3,50 +3,35 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { describe, expect, it } from 'vitest';
-import { fadeCountOf, fadesSentence, remarkSkimFade, splitSentences } from './skimFade.ts';
+import { fadeCountOf, mustStay, remarkSkimFade, skimOutline, splitSentences } from './skimFade.ts';
 
-const render = (text: string) => renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, remarkSkimFade] }, text));
+const render = (text: string, keep: number[]) => renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, [remarkSkimFade, { keep }]] }, text));
 const fadedIn = (html: string) => [...html.matchAll(/<span class="text-faint" data-skim-faded="true">(.*?)<\/span>/g)].map((m) => m[1]!.trim());
 
-describe('fadesSentence', () => {
-  it.each([
-    'I went through the sidebar store and the list again to see where a row gets its position.',
-    'I ran the tests next to the change and most of them pass.',
-    'I added a test next to the existing grouping tests.',
-    'This needed a small set of waiting rows in the store and a selector that the list reads from.',
-    'It runs in about a second.',
-    'Let me look at how the store works.',
-    'Now I’ll read the list.',
-    'Let me know how you would like to continue.',
-    'Hope this helps!',
-    'Done.',
-  ])('fades narration and filler: %s', (sentence) => {
-    expect(fadesSentence(sentence)).toBe(true);
-  });
-
+describe('mustStay', () => {
   it.each([
     // Failures
-    'I ran the tests and they fail on Windows.',
-    'I looked at the error and the store crashes on start.',
-    'I checked it and it doesn’t work with a worktree.',
+    'The tests fail on Windows.',
+    'The store crashes on start.',
+    'It doesn’t work with a worktree.',
     // Skipped work
     'I did not change them, since they look like they failed before this work.',
-    'I ran the suite but skipped the smoke steps.',
+    'I skipped the smoke steps.',
+    // Limits of the work
+    'Sizes are my estimates, and I ran nothing.',
+    'I read only part of the controller.',
+    'I read none of the implementation code.',
     // Unfinished work
-    'I started on the store, but the list is still to do.',
-    'I looked at the rest and it remains unfinished.',
-    'I checked the docs, and you’ll need a key.',
-    // Questions and numbers
-    'Should I fix the two Windows tests now, or leave them for later?',
-    'Let me check: do you want it on the left?',
-    'I ran 42 tests.',
-    'I read three files.',
-    // What it did, by default
-    'Rows now stay in their group until you have read them.',
-    'The list reads from a new selector.',
-    'Les lignes restent dans leur groupe.',
+    'The list is still to do.',
+    'You’ll need a key.',
+    // Questions
+    'Should I fix the two Windows tests now?',
   ])('keeps: %s', (sentence) => {
-    expect(fadesSentence(sentence)).toBe(false);
+    expect(mustStay(sentence)).toBe(true);
+  });
+
+  it.each(['Rows now stay in their group.', 'I ran 42 tests.', 'The list reads from a new selector.', 'Les lignes restent dans leur groupe.'])('leaves it to Haiku: %s', (sentence) => {
+    expect(mustStay(sentence)).toBe(false);
   });
 });
 
@@ -62,58 +47,82 @@ describe('splitSentences', () => {
   });
 });
 
-describe('the fade through the renderer', () => {
-  const reply = 'I went through the store. Rows now stay in their group. It runs in about a second.';
+describe('skimOutline', () => {
+  it('numbers sentences in paragraphs and lists, and keeps headings for context', () => {
+    expect(skimOutline('# Title\n\nOne here. Two here.\n\n- Three here.\n  - Four here.')).toEqual({
+      text: '# Title\n[1] One here.\n[2] Two here.\n- [3] Three here.\n- - [4] Four here.',
+      total: 4,
+    });
+  });
+  it('puts inline code and link text in the sentence, without ending it there', () => {
+    expect(skimOutline('Look at `a.b` and [the docs](https://example.com/a.b) now. Done.')).toEqual({ text: '[1] Look at a.b and the docs now.\n[2] Done.', total: 2 });
+  });
+  it('gives no numbers to code, tables and quotes', () => {
+    expect(skimOutline('```\ncode.\n```\n\n| A. |\n|---|\n| B. |\n\n> Quote.\n\nRows stay.')).toEqual({ text: '(code)\n(table)\n(blockquote)\n[1] Rows stay.', total: 1 });
+  });
+  it('numbers the same sentences the fade does', () => {
+    const reply = 'One here. `two.ts` here.\n\n- Three here.\n\n```\nnot this.\n```\n\nFour here. Five here.';
+    expect(skimOutline(reply).total).toBe(5);
+    expect(fadedIn(render(reply, [1, 3, 5]))).toEqual(['<code>two.ts</code> here.', 'Four here.']);
+  });
+});
 
-  it('fades less important sentences and keeps every word', () => {
-    const html = render(reply);
-    expect(fadedIn(html)).toEqual(['I went through the store.', 'It runs in about a second.']);
-    expect(html.replace(/<[^>]+>/g, '')).toBe(reply);
+describe('the fade through the renderer', () => {
+  const reply = 'Rows stay in their group. The list reads a selector. It opens in about a second.';
+
+  it('fades what Haiku did not keep, and keeps every word', () => {
+    const html = render(reply, [2]);
+    expect(fadedIn(html)).toEqual(['Rows stay in their group.', 'It opens in about a second.']);
+    expect(html.replace(/<[^>]+>/g, '')).toBe(`${reply}\n`.trim());
   });
 
-  it('leaves a sentence with inline code or a link whole, and working', () => {
-    const html = render('I looked at `store.ts` first. I read [the docs](https://example.com/a.b) too. I checked the list. Rows stay.');
-    expect(fadedIn(html)).toEqual(['I checked the list.']);
+  it('never fades a sentence that must stay, whatever Haiku picked', () => {
+    expect(fadedIn(render('The tests fail on Windows. Rows stay. Do you want it on the left? The list reads a selector.', [4]))).toEqual(['Rows stay.']);
+  });
+
+  it('fades a sentence with inline code or a link, which stays working', () => {
+    const html = render('Look at `store.ts` first. Read [the docs](https://example.com/a.b) too. Rows stay.', [3]);
+    expect(fadedIn(html)).toHaveLength(2);
     expect(html).toContain('<code>store.ts</code>');
     expect(html).toContain('<a href="https://example.com/a.b">the docs</a>');
   });
 
-  it("doesn't end a sentence at a full stop inside code", () => {
-    expect(fadedIn(render('I looked at `a. Then b` first and it is good. Rows stay.'))).toEqual([]);
-  });
-
   it('keeps bold text as written', () => {
-    const html = render('**I ran the tests** and looked. I ran the linter. Rows stay.');
-    expect(html).toContain('<strong>I ran the tests</strong>');
-    expect(fadedIn(html)).toEqual(['I ran the linter.']);
+    expect(render('**Rows** stay here. The list reads a selector.', [2])).toContain('<strong>Rows</strong>');
   });
 
   it('fades in list items, keeping the list', () => {
-    const html = render('- I ran the linter. Rows stay.\n- Another point');
+    const html = render('- Rows stay. The list reads.\n- Another point', [2, 3]);
     expect(html).toContain('<li>');
-    expect(fadedIn(html)).toEqual(['I ran the linter.']);
+    expect(fadedIn(html)).toEqual(['Rows stay.']);
   });
 
   it('never fades code blocks, tables, headings or quotes', () => {
-    const text = ['# I ran the tests.', '```\nI ran the tests.\n```', '| I ran the tests. |\n|---|\n| I checked it. |', '> I ran the tests.', 'Rows stay.'].join('\n\n');
-    expect(fadedIn(render(text))).toEqual([]);
+    const text = ['# The heading here.', '```\nThe code here.\n```', '| The table here. |\n|---|\n| A cell. |', '> The quote here.', 'Rows stay. The list reads.'].join('\n\n');
+    expect(fadedIn(render(text, [1]))).toEqual(['The list reads.']);
   });
 
   it('fades nothing when every sentence would fade', () => {
-    expect(fadedIn(render('I went through the store. Let me know how you would like to continue.'))).toEqual([]);
-    expect(fadeCountOf('Done.')).toEqual({ faded: 0, total: 1 });
+    expect(fadedIn(render('Rows stay. The list reads.', []))).toEqual([]);
+    expect(fadeCountOf('Rows stay. The list reads.', [])).toEqual({ faded: 0, total: 2 });
+  });
+
+  it('fades nothing when too little would fade to see', () => {
+    const reply = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} here.`).join(' ');
+    expect(fadeCountOf(reply, Array.from({ length: 11 }, (_, i) => i + 1))).toEqual({ faded: 0, total: 12 });
+    expect(fadeCountOf(reply, Array.from({ length: 10 }, (_, i) => i + 1))).toEqual({ faded: 2, total: 12 });
   });
 
   it('keeps a hard line break', () => {
-    expect(render('I checked the list.  \nRows stay.')).toContain('<br/>');
+    expect(render('The list reads.  \nRows stay.', [2])).toContain('<br/>');
   });
 });
 
 describe('fadeCountOf', () => {
   it('counts what the renderer fades', () => {
-    expect(fadeCountOf('I went through the store. Rows stay.\n\n- I ran the linter.\n- Another point')).toEqual({ faded: 2, total: 4 });
+    expect(fadeCountOf('Rows stay. The list reads.\n\n- It opens.\n- Another point', [2, 4])).toEqual({ faded: 2, total: 4 });
   });
   it('counts nothing for a reply without prose', () => {
-    expect(fadeCountOf('```\ncode\n```')).toEqual({ faded: 0, total: 0 });
+    expect(fadeCountOf('```\ncode\n```', [])).toEqual({ faded: 0, total: 0 });
   });
 });

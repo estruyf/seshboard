@@ -1104,7 +1104,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   );
   const findKey = findCurrent >= 0 ? (renderItems[matches[findCurrent]?.index ?? -1]?.key ?? null) : null;
   const latest = useMemo(() => latestTests(catchUp, items, turns.at(-1)), [catchUp, items, turns]);
-  const skim = useMemo<SkimValue | null>(() => (skimming ? { items, latest, finding: findQuery !== null } : null), [skimming, items, latest, findQuery]);
+  const lastReplyKey = turns.at(-1)?.replyKey ?? null;
+  const skim = useMemo<SkimValue | null>(
+    () => (skimming ? { items, latest, finding: findQuery !== null, sessionId, client, lastReplyKey, canHighlight: otherProvider === null } : null),
+    [skimming, items, latest, findQuery, sessionId, client, lastReplyKey, otherProvider],
+  );
   useEffect(() => {
     if (findKey && !openPrompts.has(findKey)) setOpenPrompts((open) => new Set(open).add(findKey));
   }, [findKey]);

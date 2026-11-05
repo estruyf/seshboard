@@ -6867,19 +6867,33 @@ async function runConversationViewStep(win: BrowserWindow): Promise<string> {
   if (preferences.get().conversationView !== 'skim') return `failed: the default is ${preferences.get().conversationView}`;
   const openReply = async () => {
     await open(hero);
-    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(hero)} && document.querySelector('${view} [data-folded-messages]') && document.querySelector('${view} [data-skim-show-all]')`, 5_000);
+    return waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(hero)} && document.querySelector('${view} [data-folded-messages]')`, 5_000);
   };
   try {
-    if (!(await openReply())) return 'failed: the finished turn did not fold, or its reply has nothing faded';
+    if (!(await openReply())) return 'failed: the finished turn did not fold';
+    // Earlier runs of this step on this profile start it over: the invitation comes once.
+    updatePreferences({ skimHighlights: false, skimHighlightsAsked: false });
+
+    // Off by default: nothing fades and nothing goes to Haiku until Try it. Not now leaves it off, and it asks only once.
+    const invitation = `document.querySelector('${view} [data-skim-invitation]')`;
+    if (!(await waitInPage(win, `${invitation} && ${faded} === 0 && !document.querySelector('${view} [data-skim-show-all]')`, 3_000))) return 'failed: no invitation under the reply, or something faded before it was answered';
+    await js(`document.querySelector('${view} [data-skim-not-now]').click()`);
+    if (!(await until(() => preferences.get().skimHighlightsAsked && !preferences.get().skimHighlights, 2_000))) return 'failed: Not now was not saved';
+    if (!(await waitInPage(win, `!${invitation} && ${faded} === 0`, 2_000))) return 'failed: Not now left the invitation or faded the reply';
+    updatePreferences({ skimHighlightsAsked: false });
+    if (!(await waitInPage(win, invitation, 2_000))) return 'failed: the invitation did not come back for Try it';
+    await js(`document.querySelector('${view} [data-skim-try]').click()`);
+    if (!(await until(() => preferences.get().skimHighlights && preferences.get().skimHighlightsAsked, 2_000))) return 'failed: Try it was not saved';
+    if (!(await waitInPage(win, `!${invitation} && ${faded} > 0 && document.querySelector('${view} [data-skim-show-all]')`, 5_000))) return 'failed: Try it did not fade the reply';
 
     // The stats line sits above the reply, from the turn's tool calls.
     const stats = (await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1)?.innerText.replace(/\\s+/g, ' ') ?? ''`)) as string;
     if (!/\+\d+.*\d files/.test(stats)) return `failed: stats line says "${stats}"`;
     if (!(await js(`[...document.querySelectorAll('${view} [data-skim-stats]')].at(-1).closest('[data-message-key]').querySelector('.markdown')?.innerText.includes('Dark mode is in')`))) return 'failed: the stats line is not on the reply';
 
-    // Less important sentences fade in `faint`; code and numbers don't.
+    // What Haiku didn't keep fades in `faint`; a question stays whatever it picked.
     if (!(await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.innerText.includes('I went through the theme code'))`))) return 'failed: the narrated sentence did not fade';
-    if (await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.querySelector('code') || /\\d|\\?/.test(el.innerText))`)) return 'failed: code, a number or a question faded';
+    if (await js(`[...document.querySelectorAll('${view} [data-skim-faded]')].some((el) => el.innerText.includes('?'))`)) return 'failed: a question faded';
 
     // The fade shows in dark and light, and a narrow pane neither clips the line nor scrolls sideways.
     const fadeShows = `(() => { const span = document.querySelector('${view} [data-skim-faded]'); return !!span && getComputedStyle(span).color !== getComputedStyle(span.parentElement).color; })()`;
@@ -6934,7 +6948,7 @@ async function runConversationViewStep(win: BrowserWindow): Promise<string> {
     if (back && back !== hero) {
       await open(back);
       await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(back)}`, 3_000);
-      if (!(await openReply())) return 'failed: did not get back to the session';
+      if (!(await openReply()) || !(await waitInPage(win, `document.querySelector('${view} [data-skim-show-all]')`, 3_000))) return 'failed: did not get back to the session';
       if ((await js(faded)) !== 0) return 'failed: Show all text did not stay after leaving the row';
     }
     await js(`document.querySelector('${view} [data-skim-show-all]').click()`);
@@ -6953,16 +6967,22 @@ async function runConversationViewStep(win: BrowserWindow): Promise<string> {
     await js("document.querySelector('[data-open-settings]').click()");
     if (!(await waitInPage(win, "document.querySelector('[data-settings]')", 3_000))) return 'failed: Settings did not open';
     await js("document.querySelector('[data-settings-section=\"conversation\"]')?.click()");
-    if (!(await waitInPage(win, "document.querySelector('[data-conversation-view=\"skim\"]')", 3_000))) return 'failed: Settings › Conversation has no Skim';
+    if (!(await waitInPage(win, "document.querySelector('[data-conversation-view=\"skim\"]') && document.querySelector('[data-skim-highlights-setting]')", 3_000))) return 'failed: Settings › Conversation has no Skim, or no switch for the fade';
     await js("document.querySelector('[data-conversation-view=\"skim\"]').click()");
     if (!(await until(() => preferences.get().conversationView === 'skim', 2_000))) return 'failed: Skim was not saved';
     const saved = JSON.parse(readFileSync(join(app.getPath('userData'), 'preferences.json'), 'utf8')) as Record<string, unknown>;
     await js("document.querySelector('[data-close-settings]').click()");
     if (!(await waitInPage(win, `!document.querySelector('[data-settings]') && document.querySelector('${view} [data-folded-messages]') && ${faded} > 0`, 3_000))) return 'failed: Skim did not apply when Settings closed';
     if (saved.conversationView !== 'skim') return `failed: saved ${String(saved.conversationView)}`;
-    return `ok: stats "${stats}", folded and opened, the fade in light and dark and a narrow pane, Show all text kept, find and reading mode on the whole text, Full and Skim switched`;
+
+    // Turn off stays off: no fade, and the invitation doesn't come back.
+    await js(`document.querySelector('${view} [data-skim-turn-off]').click()`);
+    if (!(await until(() => !preferences.get().skimHighlights, 2_000))) return 'failed: Turn off was not saved';
+    if (!(await waitInPage(win, `${faded} === 0 && !document.querySelector('${view} [data-skim-fade-row]') && !${invitation}`, 2_000))) return 'failed: Turn off left the fade or brought the invitation back';
+    return `ok: stats "${stats}", invited once, Not now, Try it and Turn off, folded and opened, the fade in light and dark and a narrow pane, Show all text kept, find and reading mode on the whole text, Full and Skim switched`;
   } finally {
     if (preferences.get().conversationView !== 'skim') updatePreferences({ conversationView: 'skim' });
+    updatePreferences({ skimHighlights: false, skimHighlightsAsked: false });
     if (back && back !== hero) await open(back);
   }
 }
@@ -13054,7 +13074,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
-  await step('conversation view: Skim folds, shows the stats and fades, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
+  await step('conversation view: Skim folds, shows the stats, invites to fade and fades, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('remember this', () => runRememberStep(win));

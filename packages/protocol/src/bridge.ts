@@ -455,6 +455,13 @@ export interface Preferences {
    */
   activitySummaries: boolean;
   /**
+   * Settings › Conversation: "Fade less important sentences with Haiku". Off by default, since each reply it reads uses the
+   * person's plan: Skim then only folds messages and shows the stats line.
+   */
+  skimHighlights: boolean;
+  /** The invitation to try `skimHighlights` was answered, so it never shows again (Settings keeps the switch). */
+  skimHighlightsAsked: boolean;
+  /**
    * Settings › Conversation: "Show catch-ups folded". On, a finished session's catch-up starts as the strip, even unread;
    * a turn that ended with an error still opens in full.
    */
@@ -556,6 +563,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autoModel: DEFAULT_AUTO_MODEL,
   catchUpSummaries: true,
   activitySummaries: true,
+  skimHighlights: false,
+  skimHighlightsAsked: false,
   catchUpFolded: false,
   resumeAtLimit: "ask",
   showCost: true,
@@ -765,6 +774,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (autoModel) out.autoModel = autoModel;
   if (typeof raw.catchUpSummaries === "boolean") out.catchUpSummaries = raw.catchUpSummaries;
   if (typeof raw.activitySummaries === "boolean") out.activitySummaries = raw.activitySummaries;
+  if (typeof raw.skimHighlights === "boolean") out.skimHighlights = raw.skimHighlights;
+  if (typeof raw.skimHighlightsAsked === "boolean") out.skimHighlightsAsked = raw.skimHighlightsAsked;
   if (typeof raw.catchUpFolded === "boolean") out.catchUpFolded = raw.catchUpFolded;
   if (oneOf(["ask", "always"] as const, raw.resumeAtLimit))
     out.resumeAtLimit = raw.resumeAtLimit;

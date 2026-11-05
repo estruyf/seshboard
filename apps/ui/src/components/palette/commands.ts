@@ -441,7 +441,7 @@ export const COMMANDS: PaletteCommand[] = [
       title: `Conversation: ${label}`,
       group: 'general',
       icon: value === 'skim' ? FoldVertical : UnfoldVertical,
-      keywords: 'skim full fade fold less reading view messages',
+      keywords: 'skim full fold less reading view messages',
       when: (ctx) => ctx.conversationView !== value,
       run: (api) => api.setPreferences({ conversationView: value }),
     }),

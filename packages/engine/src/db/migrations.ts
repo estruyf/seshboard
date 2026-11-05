@@ -891,4 +891,26 @@ export const migrations: readonly string[] = [
     final        INTEGER NOT NULL
   );
   `,
+  `
+  CREATE TABLE skim_highlights (
+    session_id TEXT NOT NULL,
+    reply_key  TEXT NOT NULL,
+    total      INTEGER NOT NULL,
+    keep_json  TEXT NOT NULL,
+    at         INTEGER NOT NULL,
+    PRIMARY KEY (session_id, reply_key)
+  );
+  CREATE TABLE skim_usage (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    at          INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    session_id  TEXT,
+    input       INTEGER NOT NULL,
+    output      INTEGER NOT NULL,
+    cache_read  INTEGER NOT NULL,
+    cache_write INTEGER NOT NULL
+  );
+  CREATE INDEX skim_usage_scope_at ON skim_usage (scope, at);
+  `,
 ];

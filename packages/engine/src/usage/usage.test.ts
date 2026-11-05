@@ -11,6 +11,7 @@ import { breakdown, periodRange, sessionCost, windowCosts, type SessionLookup } 
 import { scopeOf, UsageScanner } from './usageScanner.ts';
 import { RoutingStore } from '../autoModel/router.ts';
 import { CatchUpUsageStore } from '../catchUp/catchUpStore.ts';
+import { SkimUsageStore } from '../skim/skimHighlights.ts';
 
 let dir: string;
 let cache: CacheDatabase;
@@ -313,6 +314,18 @@ describe('breakdown', () => {
     expect(row).toMatchObject({ key: 'catch-up-summaries', label: 'Catch-up summaries', sessionId: null, turns: 2, catchUpSummaries: { calls: 2 }, tokens: { input: 1_800, output: 240 } });
     expect(result.rows.find((r) => r.autoRouting)?.autoRouting).toEqual({ picks: 1 });
     expect(result.rows.reduce((sum, r) => sum + r.share, 0)).toBeCloseTo(1);
+  });
+
+  it('keeps the Skim highlights in a row of their own, on their profile', async () => {
+    const scope = await seeded();
+    const tokens = { input: 700, output: 60, cacheRead: 0, cacheWrite: 0 };
+    const skim = new SkimUsageStore(cache.db);
+    skim.record({ id: 's1', scope, at: Date.UTC(2026, 9, 12, 8), model: 'claude-haiku-5-5', sessionId: 'known', tokens });
+    skim.record({ id: 's2', scope: 'elsewhere', at: Date.UTC(2026, 9, 12, 9), model: 'claude-haiku-5-5', sessionId: 'known', tokens });
+    const range = periodRange('week', now, 'UTC');
+    const result = breakdown(cache.db, { scope, period: 'week', ...range, groupBy: 'session', model: null, timeZone: 'UTC' }, lookup);
+    expect(result.rows.find((r) => r.skimHighlights)).toMatchObject({ key: 'skim-highlights', label: 'Skim highlights', sessionId: null, turns: 1, skimHighlights: { calls: 1 }, tokens: { input: 700, output: 60 } });
+    expect(result.rows.find((r) => r.catchUpSummaries)).toBeUndefined();
   });
 
   it('narrows to one model, and counts hours for the 24-hour period', async () => {
