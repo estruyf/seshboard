@@ -111,7 +111,7 @@ import {
   Clock,
   BookOpen,
 } from 'lucide-react';
-import type { ColorScheme, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { ColorScheme, ConversationView, PreferencesPatch, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { PromptScope } from '@seshboard/protocol/client';
 import { fuzzyMatch } from '../../lib/fuzzy.ts';
 import { keysFor } from '../../lib/shortcuts.ts';
@@ -332,6 +332,11 @@ const THEMES: Array<{ value: ColorScheme; label: string; icon: LucideIcon }> = [
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
 ];
+const CONVERSATION_VIEWS: Array<{ value: ConversationView; label: string }> = [
+  { value: 'skim', label: 'Skim' },
+  { value: 'full', label: 'Full' },
+];
+
 const SIDEBAR_STYLES: Array<{ value: SidebarStyle; label: string }> = [
   { value: 'compact', label: 'Compact' },
   { value: 'standard', label: 'Standard' },
@@ -428,6 +433,17 @@ export const COMMANDS: PaletteCommand[] = [
       keywords: 'rows density',
       when: (ctx) => ctx.sidebarStyle !== value,
       run: (api) => api.setPreferences({ sidebarStyle: value }),
+    }),
+  ),
+  ...CONVERSATION_VIEWS.map(
+    ({ value, label }): PaletteCommand => ({
+      id: `conversation-${value}`,
+      title: `Conversation: ${label}`,
+      group: 'general',
+      icon: value === 'skim' ? FoldVertical : UnfoldVertical,
+      keywords: 'skim full fade fold less reading view messages',
+      when: (ctx) => ctx.conversationView !== value,
+      run: (api) => api.setPreferences({ conversationView: value }),
     }),
   ),
   ...THEMES.map(

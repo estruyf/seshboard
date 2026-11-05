@@ -1,5 +1,5 @@
 import type { PromptScope } from '@seshboard/protocol/client';
-import type { ColorScheme, SidebarStyle } from '@seshboard/protocol/bridge';
+import type { ColorScheme, ConversationView, SidebarStyle } from '@seshboard/protocol/bridge';
 import type { SidebarState } from '../../state/sidebarWidth.ts';
 import type { ActionIcon, HostState } from '@seshboard/protocol/client';
 import type { TerminalDock } from '../terminal/terminalLayout.ts';
@@ -124,6 +124,7 @@ export interface PaletteContext {
   themes: Array<{ id: string; name: string }>;
   themeId: string;
   sidebarStyle: SidebarStyle;
+  conversationView: ConversationView;
   /** Open, the minimal rail, or closed. */
   sidebar: SidebarState;
   settingsSection: SettingsSection;

@@ -211,6 +211,14 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-tool-activity]',
     },
     {
+      id: 'conversation-view',
+      page: 'conversation',
+      label: 'Conversation view',
+      detail: 'Skim folds Claude\'s messages between tool calls and fades less important sentences once a turn has finished. Full shows everything.',
+      keywords: 'skim full fade fold less reading stats sentences',
+      target: '[data-conversation-view]',
+    },
+    {
       id: 'prompt-outline',
       page: 'conversation',
       label: 'Show prompt outline',

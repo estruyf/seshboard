@@ -210,18 +210,24 @@ const isActivity = (item: DisplayItem) =>
   (item.kind === 'tool' && item.name !== 'ExitPlanMode' && answeredQuestions(item) === null) ||
   ((item.kind === 'text' || item.kind === 'user') && item.subagent);
 
+const NO_FOLDED: ReadonlySet<string> = new Set();
+
+/** A message of Claude's that was folded into an activity group: only Skim puts one there. */
+export const isFoldedMessage = (item: DisplayItem): item is Extract<DisplayItem, { kind: 'text' }> => item.kind === 'text' && !item.subagent;
+
 /**
  * Collapses each run of activity (tool calls, thinking, subagent output) into one
  * group, like Claude Code does. Claude's messages, your prompts, commands, notices
  * and plans break a run and stay as they are. The group's key is its first item's,
- * so it stays stable while the run grows.
+ * so it stays stable while the run grows. `folded`: Claude's messages that go in the
+ * group too (Skim, for a finished turn).
  */
-export function groupActivity(items: readonly DisplayItem[], standalone: (item: DisplayItem) => boolean = () => false): RenderItem[] {
+export function groupActivity(items: readonly DisplayItem[], standalone: (item: DisplayItem) => boolean = () => false, folded: ReadonlySet<string> = NO_FOLDED): RenderItem[] {
   const out: RenderItem[] = [];
   let group: ActivityGroup | null = null;
   for (const item of items) {
     // A memory Claude saved stays a line of its own, between runs.
-    if (!isActivity(item) || standalone(item)) {
+    if ((!isActivity(item) && !folded.has(item.key)) || standalone(item)) {
       group = null;
       out.push(item);
       continue;

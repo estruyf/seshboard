@@ -1,7 +1,7 @@
 import { currentPlatform, fileManagerName } from '../lib/platform.ts';
 import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
+import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
@@ -111,6 +111,32 @@ function ActivityPreview({ mode }: { mode: ToolActivity }) {
   );
 }
 
+/** A finished turn in miniature: everything open, or folded with some of the reply faded. */
+function ConversationViewPreview({ mode }: { mode: ConversationView }) {
+  const line = (width: string, tone: string) => <div className={`h-1.5 rounded-full ${tone}`} style={{ width }} />;
+  return (
+    <div className="absolute inset-0 flex flex-col justify-center gap-1.5 bg-bg px-3">
+      {mode === 'skim' ? (
+        <>
+          {line('45%', 'bg-faint/50')}
+          {line('30%', 'bg-ok/70')}
+          {line('80%', 'bg-faint/40')}
+          {line('65%', 'bg-text/60')}
+          {line('50%', 'bg-faint/40')}
+        </>
+      ) : (
+        <>
+          {line('60%', 'bg-text/60')}
+          {line('45%', 'bg-faint/50')}
+          {line('70%', 'bg-text/60')}
+          {line('80%', 'bg-text/60')}
+          {line('50%', 'bg-text/60')}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Section({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   const id = useId();
   // minmax(0, 1fr): a long path or command inside wraps or truncates instead of widening the page.
@@ -133,6 +159,11 @@ function Section({ title, description, action, children }: { title: string; desc
 const ACTIVITY: Array<{ value: ToolActivity; label: string }> = [
   { value: 'summary', label: 'Summarised' },
   { value: 'steps', label: 'Every step' },
+];
+
+const CONVERSATION_VIEWS: Array<{ value: ConversationView; label: string }> = [
+  { value: 'skim', label: 'Skim' },
+  { value: 'full', label: 'Full' },
 ];
 
 /** "Under each reply": each choice with what the line looks like, at 14:32 today in the user's own time format. */
@@ -295,6 +326,19 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
                 </Choice>
               ))}
             </RadioGroup>
+            <div className="grid gap-2" data-setting-row>
+              <span>
+                <span className="block text-ui">Conversation view</span>
+                <span className="block text-meta text-muted">Skim shows less to read once a turn has finished: Claude's messages between tool calls fold into the summary, and less important sentences of the reply fade. Nothing is rewritten. With Every step, messages stay open.</span>
+              </span>
+              <RadioGroup label="Conversation view" className="grid grid-cols-3 gap-4">
+                {CONVERSATION_VIEWS.map(({ value, label }) => (
+                  <Choice key={value} value={value} current={prefs.conversationView} label={label} attr="data-conversation-view" onSelect={(conversationView) => update({ conversationView })}>
+                    <ConversationViewPreview mode={value} />
+                  </Choice>
+                ))}
+              </RadioGroup>
+            </div>
             <Toggle
               label="Show prompt outline"
               detail="A thin rail beside the conversation with a mark for each of your prompts. Click a mark to go back to it."

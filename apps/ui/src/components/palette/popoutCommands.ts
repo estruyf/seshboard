@@ -197,6 +197,7 @@ const PLANS: Record<string, Plan> = {
 const PREFIX_PLANS: ReadonlyArray<readonly [string, Plan]> = [
   ['sidebar-', 'hide'],
   ['settings-', 'hide'],
+  ['conversation-', 'here'],
   ['theme-', 'here'],
   ['theme:', 'here'],
   ['action:', 'here'],

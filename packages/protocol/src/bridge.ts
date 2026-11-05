@@ -189,6 +189,8 @@ export type SidebarStyle = "large" | "standard" | "compact";
 export type SidebarCollapsed = "minimal" | "closed";
 /** Tool calls in a conversation: one summary line per run (click for the steps), or every step. */
 export type ToolActivity = "summary" | "steps";
+/** How a conversation shows Claude's work: finished turns with less to read, or everything as written. */
+export type ConversationView = "skim" | "full";
 /** Settings › Conversation, "Under each reply": what a finished turn's line shows after the reply's actions. */
 export type TurnDetails = "none" | "time" | "duration" | "tokens";
 /**
@@ -344,6 +346,7 @@ export interface Preferences {
   sidebarStyle: SidebarStyle;
   sidebarCollapsed: SidebarCollapsed;
   toolActivity: ToolActivity;
+  conversationView: ConversationView;
   /** What a click on a file link in the conversation does (Settings › Conversation); Shift-click does the other. */
   fileLinkClick: FileLinkClick;
   /** Internal: which version of the `fileLinkClick` choices was saved; "file-manager" without the current one is the old default. */
@@ -512,6 +515,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarStyle: "standard",
   sidebarCollapsed: "minimal",
   toolActivity: "summary",
+  conversationView: "skim",
   fileLinkClick: "switchboard",
   fileLinkClickRevision: FILE_LINK_CLICK_REVISION,
   promptOutline: true,
@@ -679,6 +683,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.sidebarCollapsed = raw.sidebarCollapsed;
   if (oneOf(["summary", "steps"] as const, raw.toolActivity))
     out.toolActivity = raw.toolActivity;
+  if (oneOf(["skim", "full"] as const, raw.conversationView))
+    out.conversationView = raw.conversationView;
   // An unknown value (a newer version's choice) is left out, so the default or the last good one stays.
   // "file-manager" saved before the revision was the old default, not a choice: leave it out so "switchboard" applies.
   if (
