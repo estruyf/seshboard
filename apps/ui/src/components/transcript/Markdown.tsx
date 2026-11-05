@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
 import { fileRefFromHref, parseFileRef } from './fileRefs.ts';
+import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
 /** Fenced-block languages that get a Preview | Source switch. */
@@ -96,19 +97,22 @@ const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   );
 });
 
-const Block = memo(function Block({ text }: { text: string }) {
+const PLUGINS = [remarkGfm];
+const FADING_PLUGINS = [remarkGfm, remarkSkimFade];
+
+const Block = memo(function Block({ text, fade = false }: { text: string; fade?: boolean }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={fade ? FADING_PLUGINS : PLUGINS} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );
 });
 
-/** Assistant prose. Memoised: finished messages never change, so they render once. */
-export const Markdown = memo(function Markdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
+/** Assistant prose. Memoised: finished messages never change, so they render once. `fade`: Skim's faded sentences. */
+export const Markdown = memo(function Markdown({ text, variant = 'chat', fade = false }: { text: string; variant?: MarkdownVariant; fade?: boolean }) {
   return (
     <div className={proseOf(variant)}>
-      <Block text={text} />
+      <Block text={text} fade={fade} />
     </div>
   );
 });

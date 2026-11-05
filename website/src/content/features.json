@@ -682,6 +682,16 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "palette:conversation-full",
+      "name": "conversation-full",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "palette:conversation-skim",
+      "name": "conversation-skim",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "palette:sidebar-compact",
       "name": "sidebar-compact",
       "page": "settings"
@@ -3989,6 +3999,11 @@
     {
       "id": "feature:turn-details",
       "name": "Under each reply: when a turn ended, how long it took and its tokens, and the setting in Settings, Conversation",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:conversation-view",
+      "name": "Conversation view: Skim folds a finished turn's messages between tool calls, adds a stats line above the reply and fades less important sentences; Full shows everything",
       "page": "sessions/conversation"
     },
     {

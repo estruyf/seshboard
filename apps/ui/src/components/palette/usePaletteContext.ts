@@ -215,6 +215,7 @@ export function usePaletteContext(): PaletteContext {
     themes: themes.map((t) => ({ id: t.id, name: t.file.name })),
     themeId: activeTheme,
     sidebarStyle: prefs.sidebarStyle,
+    conversationView: prefs.conversationView,
     sidebar,
     settingsSection,
     newSession: view === 'new-session' ? newSessionInfo : null,

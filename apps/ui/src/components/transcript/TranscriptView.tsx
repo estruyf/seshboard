@@ -98,6 +98,8 @@ import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
+import { SkimContext, type SkimValue } from './MessageText.tsx';
+import { foldedMessages, latestTests } from './skim.ts';
 import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
 import { LiveTurnParts, TurnMetaContext, type LiveTurnInfo, type TurnMetaValue } from './TurnMeta.tsx';
 import { claudeMs, liveTurn, type Turn } from './turns.ts';
@@ -375,6 +377,7 @@ function useGitChanges(cwd: string | null, base: ChangesBase, activity: string, 
  */
 /** One empty list, so a session without a provider keeps the same one between renders. */
 const NO_FEATURES: readonly ProviderFeature[] = [];
+const NO_MESSAGES: ReadonlySet<string> = new Set();
 
 export function TranscriptView({ sessionId, tiled = false, active = true, leading = true }: { sessionId: string; tiled?: boolean; active?: boolean; leading?: boolean }) {
   const connection = useEngineConnection();
@@ -433,18 +436,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // A memory Claude saved shows as its own line, also between summarised runs of tool calls.
   useMemoryFoldersSync();
   const memoryFolders = useKnownMemoryFolders();
-  const renderItems = useMemo<RenderItem[]>(
-    () => (toolActivity === 'summary' ? groupActivity(items, (item) => item.kind === 'tool' && memoryWriteOf(item.name, item.input, memoryFolders) !== null) : items),
-    [items, toolActivity, memoryFolders],
-  );
   const [commands, setCommands] = useState<SlashCommand[]>([]);
-  /** The first answer after your first message: Auto's line goes above it (-1 before Claude answers). */
-  const firstAnswer = useMemo(() => {
-    if (!autoPick) return -1;
-    const first = renderItems.findIndex((item) => item.kind === 'user');
-    return first < 0 ? -1 : renderItems.findIndex((item, index) => index > first && item.kind !== 'user');
-  }, [renderItems, autoPick]);
-
   // Last, the host's folder: another provider's session (GitHub Copilot) has no entry in Claude Code's live registry,
   // and isn't listed until it has a prompt (or is listed under "Unknown folder" when its file doesn't name one), so
   // without it the session would have no project (and no actions).
@@ -684,11 +676,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // The run of steps Claude is on now (summary mode), and what to call it between steps.
-  const lastRender = renderItems.at(-1);
+  // What to call the run of steps Claude is on now (summary mode), between steps.
   // Sessions running elsewhere (a terminal, Claude desktop) count too: their status comes from the registry.
   const working = running || live?.status === 'running' || live?.status === 'needs-you';
-  const activeGroupKey = working && lastRender?.kind === 'activity' ? lastRender.key : null;
   const streamKind = useHosts((s) => s.streaming.get(sessionId)?.kind ?? null);
   const streamTool = useHosts((s) => (s.streaming.get(sessionId)?.kind === 'tool' ? s.streaming.get(sessionId)!.text : null));
   const activeLabel =
@@ -731,6 +721,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     return map;
   }, [items, turns]);
   const openTurn = working ? (turns.at(-1) ?? null) : null;
+  const conversationView = usePreferences((s) => s.prefs.conversationView);
+  const skimming = conversationView === 'skim';
+  // Skim folds a finished turn's messages between tool calls; the turn Claude is on shows everything.
+  const folded = useMemo(() => (skimming ? foldedMessages(items, turns, openTurn) : NO_MESSAGES), [skimming, items, turns, openTurn]);
+  const renderItems = useMemo<RenderItem[]>(
+    () => (toolActivity === 'summary' ? groupActivity(items, (item) => item.kind === 'tool' && memoryWriteOf(item.name, item.input, memoryFolders) !== null, folded) : items),
+    [items, toolActivity, memoryFolders, folded],
+  );
+  /** The first answer after your first message: Auto's line goes above it (-1 before Claude answers). */
+  const firstAnswer = useMemo(() => {
+    if (!autoPick) return -1;
+    const first = renderItems.findIndex((item) => item.kind === 'user');
+    return first < 0 ? -1 : renderItems.findIndex((item, index) => index > first && item.kind !== 'user');
+  }, [renderItems, autoPick]);
+
+  // The run of steps Claude is on now (summary mode).
+  const lastRender = renderItems.at(-1);
+  const activeGroupKey = working && lastRender?.kind === 'activity' ? lastRender.key : null;
   const finishedByReply = useMemo(() => {
     const map = new Map<string, Turn>();
     for (const turn of turns) if (turn !== openTurn && turn.replyKey) map.set(turn.replyKey, turn);
@@ -1047,7 +1055,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       const index = Number(row.dataset.index);
       const item = renderItems[index];
       if (!item || searchableText(item) === null) continue;
-      const ranges = rangesIn(row, needle);
+      // In a group, only Claude's folded messages were counted: its steps' labels aren't matches.
+      const ranges = item.kind === 'activity' ? [...row.querySelectorAll('[data-folded-message]')].flatMap((message) => rangesIn(message, needle)) : rangesIn(row, needle);
       all.push(...ranges);
       // The text renders as Markdown, so a row can show fewer matches than its source has.
       if (match?.index === index) current = ranges[Math.min(match.nth, ranges.length - 1)] ?? null;
@@ -1094,6 +1103,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     [openPrompts],
   );
   const findKey = findCurrent >= 0 ? (renderItems[matches[findCurrent]?.index ?? -1]?.key ?? null) : null;
+  const latest = useMemo(() => latestTests(catchUp, items, turns.at(-1)), [catchUp, items, turns]);
+  const skim = useMemo<SkimValue | null>(() => (skimming ? { items, latest, finding: findQuery !== null } : null), [skimming, items, latest, findQuery]);
   useEffect(() => {
     if (findKey && !openPrompts.has(findKey)) setOpenPrompts((open) => new Set(open).add(findKey));
   }, [findKey]);
@@ -1764,6 +1775,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <FileLinksProvider cwd={cwd}>
           <PreviewOpenerContext.Provider value={openPreviewHere}>
           <TurnMetaContext.Provider value={turnMeta}>
+          <SkimContext.Provider value={skim}>
             {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
             <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
             <div
@@ -1834,6 +1846,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                         active={renderItems[row.index]!.key === activeGroupKey}
                         activeLabel={renderItems[row.index]!.key === activeGroupKey ? activeLabel : null}
                         live={renderItems[row.index]!.key === activeGroupKey ? liveTurnInfo : null}
+                        reveal={renderItems[row.index]!.key === findKey}
                       />
                     </div>
                   ))}
@@ -1875,6 +1888,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
             </div>
             {readReplyNow && createPortal(<ReadMode sessionId={sessionId} title={title} live={live} cwd={cwd} reply={readReplyNow} />, document.body)}
+          </SkimContext.Provider>
           </TurnMetaContext.Provider>
           </PreviewOpenerContext.Provider>
           </FileLinksProvider>

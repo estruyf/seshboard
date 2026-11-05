@@ -15,7 +15,7 @@ describe('find in session', () => {
   it('lists every match top to bottom, skipping collapsed activity', () => {
     const items: RenderItem[] = [
       user('u1', 'Run the link test'),
-      { kind: 'activity', key: 'activity:t1', items: [text('t0', 'link test inside a tool run')] },
+      { kind: 'activity', key: 'activity:t1', items: [{ ...text('t0', 'link test inside a tool run'), subagent: true } as DisplayItem] },
       text('t1', 'The link test passed. Every link works.'),
       { kind: 'command', key: 'c1', at: null, name: '/links', args: '' },
     ];
