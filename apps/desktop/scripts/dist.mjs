@@ -86,7 +86,11 @@ function builderArgs(passed) {
 const { args, cleanup } = builderArgs(process.argv.slice(2));
 const builderRequire = createRequire(createRequire(import.meta.url).resolve('electron-builder/package.json'));
 const cli = builderRequire.resolve('./cli.js');
-const result = spawnSync(process.execPath, [cli, ...platformArgs, ...args], { stdio: 'inherit' });
+// electron-builder's 7-Zip compresses Arm64 .exe and .dll files with its ARM64 filter unless told otherwise, and the
+// plugin that unpacks them in the installer (Nsis7z) can't read that filter. It skips them without an error, so the
+// installer reports success on an Arm64 PC and leaves no Seshboard.exe. BCJ is a filter the plugin can read.
+const env = process.platform === 'win32' ? { ...process.env, ELECTRON_BUILDER_7Z_FILTER: 'BCJ' } : process.env;
+const result = spawnSync(process.execPath, [cli, ...platformArgs, ...args], { stdio: 'inherit', env });
 cleanup();
 if (result.status !== 0) process.exit(result.status ?? 1);
 const problem = checkArchives(builderRequire) ?? checkLocales();
