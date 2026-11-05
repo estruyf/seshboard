@@ -2,7 +2,7 @@
 
 All notable changes to Seshboard are listed here. Each release is also on the [releases page](https://github.com/estruyf/switchboard/releases), with the `.dmg` for macOS and, from the first release with Windows support, the installer for Windows to download.
 
-## [Unreleased]
+## [1.3.0] - 2026-11-05
 
 ### Added
 
@@ -50,6 +50,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Changed
 
+- **The old addresses stop working.** The remote app only connects from seshboard.app now, so a phone still paired on switchboard.struyfconsulting.com has to pair again. VS Code companions up to 0.2.0 no longer find Seshboard: update the extension.
 - Sessions look calmer: panels are set apart by their background instead of lines, and headers only show a line while something scrolls under them.
 - **No Mark as read in the catch-up.** The catch-up no longer has a Mark as read button or the U key: a session you look at is marked read after a few seconds by itself (**Settings › Sessions › Mark as read after**).
 - The sidebar footer's count of running Claude Code processes says "2 running" instead of "2 open", now that "open" counts the sessions you haven't finished.
@@ -61,6 +62,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **The / menu stays open when you type right after clicking away.** It could close by itself a moment after it opened, and Return then sent what you typed as a message.
 - **Terminals open when you start Seshboard from a Store PowerShell.** On Windows, they failed with "Cannot create process, error code: 5".
 - **With Reduce motion on, things no longer show in the wrong place for a moment.** The selection toolbar could appear in the corner of the window first, and its buttons could miss a click right after it showed.
 - **Code blocks in another computer's sessions work like your own.** They are the same size, with syntax colours, a copy button and Preview | Source for Markdown. Run stays on that computer.

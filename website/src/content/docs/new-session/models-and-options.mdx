@@ -49,6 +49,20 @@ How much Claude thinks before it answers. The chip shows three bars that fill wi
 
 In a session the effort chip shows only when the model has an effort setting.
 
+## Fast mode
+
+On a model that has it, a lightning bolt sits in the row. Click it to turn on fast mode: Opus runs up to 2.5x faster, at a higher price per token. On a Claude subscription it always bills to usage credits. Hover the bolt to see what it does and what it costs.
+
+- In a session, it applies to that session. Turning it on later reads the conversation again at the full fast rate, so it costs least at the start of a session.
+- In New session, it also applies to the first message.
+- It is off every time you start or resume a session.
+
+You can also run *Turn on fast mode* and *Turn off fast mode* in the command palette, or type `/fast`, `/fast on` or `/fast off` in the message box.
+
+When fast mode can't run, the session goes on at standard speed and the bolt's tooltip says why, such as being out of usage credits. If it hits its rate limit, it pauses until it comes back.
+
+Fast mode is for Claude Code sessions. Your [usage](/usage/) marks the sessions and models with fast mode turns.
+
 ## Permission mode
 
 The mode decides when Claude stops to ask before it acts. The menu, under the heading **Permissions**, offers four modes:
@@ -87,7 +101,7 @@ When the row runs out of room, it never cuts a chip off. It steps through fixed 
 3. Effort shows only its bars.
 4. The mode shows only its dot.
 
-The model, effort and mode shrink last, because they say the most about how a session runs.
+The model, effort and mode shrink last, because they say the most about how a session runs. The fast mode bolt keeps its place in the row at every level.
 
 The label and tooltip keep the full value at every level. This happens in narrow windows and when two sessions are [side by side](/sessions/split-view/).
 
