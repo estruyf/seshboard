@@ -692,7 +692,10 @@ html[data-quick-start-window] body {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* 0s, never a tiny duration: transition-property defaults to all, so with any duration every property of every
+       element would transition and keep its old value until the next frame (a toolbar at 0,0, buttons still hidden). */
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }

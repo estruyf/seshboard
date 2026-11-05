@@ -2037,7 +2037,7 @@ async function actionTerminalChecks(win: BrowserWindow, js: (code: string) => Pr
   if (!(await waitInPage(win, state('failed'), 8_000))) return `failed: Stop did not end the command (the click landed on ${stop.at})`;
   const stopped = (await js(`${strip}.querySelector('[data-terminal-run-status]').innerText`)) as string;
   // POSIX shells report Ctrl+C as 130; on Windows the console ends with its own non-zero code.
-  const stoppedLabel = process.platform === 'win32' ? /^Failed \(exit [1-9]\d*\)$/ : /^Failed \(exit 130\)$/;
+  const stoppedLabel = process.platform === 'win32' ? /^Failed \(exit -?[1-9]\d*\)$/ : /^Failed \(exit 130\)$/;
   if (!stoppedLabel.test(stopped) || !(await js("!!document.querySelector('[data-terminal-tab-dot=\"failed\"]') && !document.querySelector('[data-terminal-stop]')"))) return `failed: after Stop the strip says "${stopped}"`;
   await shot(win, 'action-stopped.png');
   const restart = await clickLikeAUser(win, '[data-terminal-restart]');
@@ -2436,7 +2436,14 @@ async function runTerminalStep(win: BrowserWindow): Promise<string> {
       process.platform === 'win32'
         ? `echo "terminal works: $env:TERM_PROGRAM"; (Get-Location).Path | Set-Content -NoNewline '${marker.replace(/'/g, "''")}'`
         : `echo "terminal works: $TERM_PROGRAM" && pwd > ${JSON.stringify(marker)}`;
-    const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
+    // Empty until it can be read: on Windows, reading it while the shell still writes it fails with EPERM.
+    const read = () => {
+      try {
+        return readFileSync(marker, 'utf8').trim();
+      } catch {
+        return '';
+      }
+    };
     if (!(await typeInShell(win, line, () => read() !== ''))) return 'failed: the shell did not run the command';
     // The panel opens in the session's own folder, which is below the project's root when it was started in a subfolder.
     const folder = (await js("(() => { const view = document.querySelector('[data-current-session]'); return view?.dataset.cwd || view?.dataset.projectRoot || ''; })()")) as string;
@@ -2625,7 +2632,14 @@ async function runAppTerminalStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `${panel}?.querySelector('[data-terminal] textarea')`, 5_000))) return "failed: ⌘J in Usage did not open the window's terminal";
     await js(`${panel}.querySelector('[data-terminal] textarea').focus()`);
     const line = process.platform === 'win32' ? `(Get-Location).Path | Set-Content -NoNewline '${marker.replace(/'/g, "''")}'` : `pwd > ${JSON.stringify(marker)}`;
-    const read = () => (existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '');
+    // Empty until it can be read: on Windows, reading it while the shell still writes it fails with EPERM.
+    const read = () => {
+      try {
+        return readFileSync(marker, 'utf8').trim();
+      } catch {
+        return '';
+      }
+    };
     if (!(await typeInShell(win, line, () => read() !== ''))) return 'failed: the shell did not run the command';
     if (realpathSync.native(read()) !== realpathSync.native(homedir())) return `failed: the shell started in ${read()}, not the home folder`;
     const tab = (await js(`${panel}.querySelector('[role=tab][aria-selected=true]').innerText.trim()`)) as string;
@@ -3057,7 +3071,8 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
     const ready = `${page}.querySelector('[data-profile-ready]')`;
     if (!(await waitInPage(win, `${ready}?.textContent.includes('Copilot is ready')`, 10_000))) return 'adding the profile did not end on Copilot is ready';
     profileId = (await js(`${ready}.dataset.profileReady`)) as string;
-    if (demo && !(await js(`${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user')`))) return "Copilot is ready doesn't say who it is signed in as";
+    // It says Asking Copilot… first, while the CLI answers.
+    if (demo && !(await waitInPage(win, `${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user')`, 10_000))) return "Copilot is ready doesn't say who it is signed in as";
     await shot(win, 'copilot-ready.png');
     // Its own new session defaults: Copilot's models, which New session then starts on (checked in 4).
     const defaultsCard = `[data-profile="${profileId}"] [data-profile-defaults="${profileId}"]`;
@@ -6410,11 +6425,30 @@ async function runCopyMessageStep(win: BrowserWindow): Promise<string> {
  * never clicks one.
  */
 /**
+ * Until the open conversation has its rows and has stopped moving. Rows are measured just after a session opens, and
+ * that scrolls the list: a step that starts sooner finds no reply to select, and a scroll takes the selection toolbar away.
+ */
+async function transcriptAtRest(win: BrowserWindow): Promise<void> {
+  await waitInPage(win, "!!document.querySelector('[data-transcript] [data-transcript-item]')", 5_000);
+  await win.webContents.executeJavaScript(`new Promise((resolve) => {
+    let last = '', still = 0, ticks = 0;
+    const timer = setInterval(() => {
+      const el = document.querySelector('[data-transcript]');
+      const now = el ? el.scrollTop + '/' + el.scrollHeight : '';
+      still = now === last ? still + 1 : 0;
+      last = now;
+      if (still >= 3 || ++ticks >= 40) (clearInterval(timer), resolve(true));
+    }, 100);
+  })`);
+}
+
+/**
  * Remember this, read-only: select a few words of one of Claude's replies, use the button that shows over the
  * selection, and check the dialog has the text, a suggested name and Claude's default type. Cancelled, never saved.
  */
 async function runRememberStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
+  await transcriptAtRest(win);
   if (!(await js("!!document.querySelector('[data-transcript] [data-remember-from=\"claude\"] p')"))) return 'ok: no reply of Claude on screen to remember';
   const selected = (await js(`(() => {
     const p = document.querySelector('[data-transcript] [data-remember-from="claude"] p');
@@ -6458,6 +6492,7 @@ async function runSelectionToolbarStep(win: BrowserWindow): Promise<string> {
   const view = `[data-current-session="${smokeSessionId}"]`;
   const box = `${view} [data-composer]`;
   const toolbar = "document.querySelector('[data-remember-selection][data-side]')";
+  await transcriptAtRest(win);
   if (!(await js(`!!document.querySelector('${view} [data-transcript] [data-remember-from="claude"] p')`))) return 'ok: no reply of Claude on screen to select';
   if ((await js(`document.querySelector('${box}')?.value ?? null`)) !== '') return 'ok: the message box is not empty, nothing quoted';
   // A paragraph on screen (the list is virtualised, and its first rows may be scrolled out of view).
@@ -6949,9 +6984,22 @@ async function runReadModeStep(win: BrowserWindow): Promise<string> {
         return { left: Math.round(r.left + 2), right: Math.round(r.right - 2), y: Math.round(r.top + r.height / 2) };
       })()`)) as { left: number; right: number; y: number } | null;
       if (!line) return 'failed: reading mode shows no paragraph to select';
-      win.webContents.sendInputEvent({ type: 'mouseDown', x: line.left, y: line.y, button: 'left', clickCount: 1 });
-      for (let i = 1; i <= 8; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(line.left + ((line.right - line.left) * i) / 8), y: line.y, button: 'left' });
-      win.webContents.sendInputEvent({ type: 'mouseUp', x: line.right, y: line.y, button: 'left', clickCount: 1 });
+      // Chromium extends a selection from simulated mouse moves only at a whole-number display scale: at 125% each move
+      // just moves the caret, while a real mouse selects as it should. On such a screen a script selects the paragraph
+      // instead, so the drag itself is checked where the scale allows it, such as on the runners.
+      if (await js('Number.isInteger(devicePixelRatio)')) {
+        win.webContents.sendInputEvent({ type: 'mouseDown', x: line.left, y: line.y, button: 'left', clickCount: 1 });
+        for (let i = 1; i <= 8; i++) win.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(line.left + ((line.right - line.left) * i) / 8), y: line.y, button: 'left', modifiers: ['leftbuttondown'] });
+        win.webContents.sendInputEvent({ type: 'mouseUp', x: line.right, y: line.y, button: 'left', clickCount: 1 });
+      } else {
+        await js(`(() => {
+          const p = [...document.querySelectorAll('[data-read-text] p')].find((el) => el.textContent.trim().length > 20 && el.getClientRects().length > 0);
+          const range = document.createRange();
+          range.selectNodeContents(p);
+          window.getSelection().addRange(range);
+          p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        })()`);
+      }
       if (!(await waitInPage(win, "window.getSelection().toString().trim().length > 10", 2_000))) return 'dragging over a paragraph in reading mode selected nothing';
       const picked = ((await js('window.getSelection().toString()')) as string).trim();
       const toolbar = "document.querySelector('[data-read-selection][data-side]')";
@@ -8263,10 +8311,12 @@ async function runSavedPromptsStep(win: BrowserWindow): Promise<string> {
     await click('[data-saved-prompt-clear]');
     if (!(await waitInPage(win, `!${one('[data-saved-prompt-header]')} && ${one(box)}.value === 'Smoke kept text'`, 2_000))) return `Clear did not take the prompt out and keep the text under it (${String(await js(`${one(box)}.value`))})`;
     await setFieldValue(win, box, '');
+    // A frame after Clear and the edit above: typed sooner, the menu could close again before Return reached it.
+    await settle(win);
     await js(`${one(box)}.focus()`);
     await win.webContents.insertText('/smoke');
-    if (!(await waitInPage(win, one(`[data-palette] [data-saved-prompt-option="${id}"]`), 3_000))) return 'the / menu did not list the prompt again';
-    // Pressed before the menu is ready for keys, Return would send "/smoke" as a message.
+    // Pressed before the menu is ready for keys, which is when its first option is selected, Return would send "/smoke" as a message.
+    if (!(await waitInPage(win, `${one(`[data-palette] [data-saved-prompt-option="${id}"]`)}?.getAttribute('aria-selected') === 'true'`, 3_000))) return 'the / menu did not list the prompt again';
     await settle(win);
     pressKey(win, 'Return');
     if (!(await waitInPage(win, `document.querySelectorAll('[data-blank][data-blank-empty]').length === 2 && document.activeElement?.matches('[data-blank="pr"]')`, 3_000))) return 'picking it again did not show its two empty blanks';
@@ -9096,8 +9146,11 @@ async function runQuickStartPanelStep(): Promise<string> {
       if (!(await waitInPage(panel, `!!${row}`, 5_000))) return `failed: the waiting session is not under Needs you (${await js("JSON.stringify([...document.querySelectorAll('[data-quick-start-section]')].map((s) => s.dataset.quickStartSection))")})`;
       const wants = (await js(`${row}.innerText`)) as string;
       if (!wants.includes('Wants to run echo smoke')) return `failed: the waiting row says ${JSON.stringify(wants)}`;
+      // The engine adds the throwaway project on its own channel: showing the panel again reloads the list, as the shortcut does.
+      const listed = "!!document.querySelector('[data-quick-start-section=\"projects\"] [data-quick-start-project]')";
+      if (!(await waitInPage(panel, listed, 2_500))) panel.webContents.send(IpcChannel.quickStartShown, true);
+      if (!(await waitInPage(panel, listed, 5_000))) return 'failed: no projects';
       const projects = (await js("document.querySelectorAll('[data-quick-start-section=\"projects\"] [data-quick-start-project]').length")) as number;
-      if (projects === 0) return 'failed: no projects';
       if (!(await js("!!document.querySelector('[data-quick-start-project] kbd')"))) return 'failed: the first project has no ⌘1';
       if (!(await js("document.activeElement?.hasAttribute('data-quick-start-field') && document.querySelector('[role=dialog][aria-label=\"Quick start\"]') !== null"))) return 'failed: focus did not start in the field of the Quick start dialog';
       // A theme or preference change paints every window's background: never this one, which is see-through around the panel.
@@ -11904,6 +11957,8 @@ async function runAskStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, `${field}.value === 'and the release script?'`, 2_000))) return await fail('↑ in the empty field did not put the last question back');
   win.webContents.selectAll();
   press('Backspace');
+  // Still on their way when Quote is clicked, these keys would land in the message box and take the quote out again.
+  if (!(await waitInPage(win, `${field}.value === ''`, 2_000))) return await fail('could not empty the field after ↑');
 
   // Quote in message: the answer goes into the message box as a quote, with the focus.
   await js(`${lastItem}.querySelector('[data-ask-quote]').click()`);
