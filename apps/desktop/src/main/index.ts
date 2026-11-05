@@ -8778,8 +8778,10 @@ async function runFastModeStep(win: BrowserWindow): Promise<string> {
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-fast-')));
   const standIn = `smoke-fast-${randomUUID()}`;
   let started: string | null = null;
+  let picked = false;
   const host = (state: 'running' | 'idle' | 'closed', fast?: { blocked: string | null }) => engine.send({ type: 'smokeQueueHost', sessionId: standIn, cwd: folder, state, ...(fast ? { fast } : {}) });
   const pane = `[data-current-session="${standIn}"]`;
+  const view = '[data-new-session-view]';
   const toggle = (look: string) => `document.querySelector('${pane} [data-fast-toggle="${look}"]')`;
   const typed = async (text: string) => {
     await js(`(() => { const box = document.querySelector('${pane} textarea[data-composer]'); box.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)}); box.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -8820,7 +8822,6 @@ async function runFastModeStep(win: BrowserWindow): Promise<string> {
     await shot(win, 'fast-mode-blocked.png');
 
     // New session, on the stand-in's model: the toggle's choice goes with the start, and doesn't stay.
-    const view = '[data-new-session-view]';
     const bolt = (look: string) => `document.querySelector('${view} [data-fast-toggle="${look}"]')`;
     /** New session on the stand-in's model, in its folder when it will start. Null, or what went wrong. */
     const openNew = async (inFolder: boolean): Promise<string | null> => {
@@ -8841,6 +8842,7 @@ async function runFastModeStep(win: BrowserWindow): Promise<string> {
       return (await chooseChoice(win, 'model', SMOKE_FAST_MODEL, view)) ? null : 'could not pick the model with fast mode';
     };
     engine.send({ type: 'smokeStubCreate', on: true });
+    picked = true;
     const opened = await openNew(true);
     if (opened) return `New session: ${opened}`;
     if (!(await waitInPage(win, `!!${bolt('off')}`, 3_000))) return 'New session has no fast mode toggle, or it does not start off';
@@ -8857,10 +8859,24 @@ async function runFastModeStep(win: BrowserWindow): Promise<string> {
     return 'ok: off with a tooltip on what it does and costs, a click and /fast change it, out of credits says so, and New session starts the session with it, then is off again';
   } finally {
     engine.send({ type: 'smokeStubCreate', on: false });
-    // Starting in a folder can add it to your projects.
-    engine.send({ type: 'smokeProject', path: folder, add: false });
     if (started) engine.send({ type: 'smokeQueueHost', sessionId: started, cwd: folder, state: 'closed' });
     host('closed');
+    // Closed without a transcript, the session counts as failed to start, and its prompt comes back as its unsent message
+    // when its row goes. Left, it moves to New session at some later moment, and the + opens this folder from then on:
+    // gone, as a draft emptied in another window is.
+    if (started) {
+      await waitInPage(win, `!document.querySelector('[data-session-list] [data-session-id="${started}"]')`, 5_000);
+      win.webContents.send(IpcChannel.draftsRelayed, { [started]: null, [`new:${folder}`]: null });
+    }
+    // Picking the folder added it to your projects. Through Projects, so the UI's list knows too: New session fills an
+    // empty folder from that list, and the engine alone would leave it there for every later step.
+    if (picked) await removeProjectInProjects(win, folder);
+    engine.send({ type: 'smokeProject', path: folder, add: false });
+    // It ends on New session, in its throwaway folder: back to the session the next steps work in.
+    if (smokeSessionId) {
+      await js(`document.querySelector('[data-session-id="${smokeSessionId}"]')?.click()`);
+      await waitInPage(win, `!!document.querySelector('[data-current-session="${smokeSessionId}"]')`, 5_000);
+    }
   }
 }
 
@@ -10585,8 +10601,8 @@ async function runPaletteStep(win: BrowserWindow): Promise<string> {
   const runCommand = async (text: string) => {
     if (!(await openPalette(win, 'K', ['meta'], 'commands'))) return null;
     await setFieldValue(win, '[data-palette-input]', text);
-    // The palette reads the checkout's git state when it opens: on git, wait for the command to be offered.
-    if (onGit) await waitInPage(win, `${firstMatch} === 'toggle-changes'`, 3_000);
+    // The palette reads the checkout's git state when it opens: on git, wait for the command to be offered. Git can take seconds on a runner.
+    if (onGit) await waitInPage(win, `${firstMatch} === 'toggle-changes'`, 10_000);
     else await settle(win);
     const first = await js(firstMatch);
     if (first === 'toggle-changes') pressKey(win, 'Return');

@@ -4484,8 +4484,11 @@ export function createEngine(options: EngineOptions): Engine {
     },
     smokeProject: (path, add) => {
       if (!options.stubQueueStarts) return;
-      if (add) projects.add(path);
-      else projects.remove(path);
+      if (add) return void projects.add(path);
+      projects.remove(path);
+      // New session reopens on the last folder it had (`DEFAULTS_KEY` in the UI): a throwaway one must not follow the next steps.
+      const remembered = appState.get('newSession.defaults') as { cwd?: unknown } | null;
+      if (remembered?.cwd === path) appState.set('newSession.defaults', { cwd: null });
     },
     smokePipelineTurn: async ({ sessionId, outcome, reply }) => {
       if (!options.stubQueueStarts) return;
