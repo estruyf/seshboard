@@ -142,6 +142,15 @@ export function formatWorked(ms: number): string {
 
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
+/** How many pills a session's row has for its pull requests. A session can have dozens; the open row lists them all. */
+const ROW_PR_PILLS = 2;
+
+/** The pull requests a session's row names, and the rest, which share one pill with their count. */
+export function rowPrs(prs: ActivityRow['prs']): { named: ActivityRow['prs']; rest: ActivityRow['prs'] } {
+  const named = prs.length <= ROW_PR_PILLS ? prs : prs.slice(0, ROW_PR_PILLS - 1);
+  return { named, rest: prs.slice(named.length) };
+}
+
 // --- Numbers ---------------------------------------------------------------------------------------------------------
 
 export interface ActivityStats {

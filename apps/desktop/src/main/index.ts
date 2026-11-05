@@ -9677,6 +9677,8 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   if (!(await js(`[...document.querySelectorAll('${view} [data-activity-hour-level]')].some((h) => h.dataset.activityHourLevel !== '0')`))) return 'the hour ribbon is empty';
   if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-summary]')?.dataset.activitySummaryState === 'ok' && !!document.querySelector('${view} [data-activity-summary-text]')?.innerText.trim()`, 8_000))) return 'the day in short did not come';
   if (!(await js(`!!document.querySelector('${view} [data-activity-summary-text] b')`))) return 'the day in short has no bold project';
+  // A row with many pull requests must not push the page sideways.
+  if (await js(`(() => { const el = document.querySelector('${view} [data-activity-scroller]'); return el.scrollWidth > el.clientWidth; })()`)) return 'the page scrolls sideways';
   await shot(win, 'activity.png');
   const scheme = preferences.get().colorScheme;
   await setColorScheme(win, 'light');

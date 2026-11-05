@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityCsv, activityMarkdown, addDays, addMonths, barHeight, calendarWeeks, countsByDay, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, sameDayInMonth, sessionsOnce, standupText, statsOf, stripWeek, summaryExtras, summaryParts, summaryPlain, weekOf, type ActivityRow } from './activityModel.ts';
+import { activityCsv, activityMarkdown, addDays, addMonths, barHeight, calendarWeeks, countsByDay, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sameDayInMonth, sessionsOnce, standupText, statsOf, stripWeek, summaryExtras, summaryParts, summaryPlain, weekOf, type ActivityRow } from './activityModel.ts';
 
 const row = (over: Partial<ActivityRow> = {}): ActivityRow => ({
   day: '2026-11-02',
@@ -117,6 +117,22 @@ describe('formatWorked', () => {
     expect(formatWorked(48 * 60_000)).toBe('48m');
     expect(formatWorked(125 * 60_000)).toBe('2h 05m');
     expect(formatWorked(13 * 3_600_000)).toBe('13h');
+  });
+});
+
+describe('rowPrs', () => {
+  const prs = (count: number) => Array.from({ length: count }, (_, i) => ({ number: i + 1, url: `u${i + 1}` }));
+
+  it('names up to two pull requests', () => {
+    expect(rowPrs([])).toEqual({ named: [], rest: [] });
+    expect(rowPrs(prs(2))).toEqual({ named: prs(2), rest: [] });
+  });
+
+  it('names the first and counts the rest from three on, so the row keeps two pills', () => {
+    const { named, rest } = rowPrs(prs(40));
+    expect(named.map((pr) => pr.number)).toEqual([1]);
+    expect(rest).toHaveLength(39);
+    expect(rowPrs(prs(3)).rest.map((pr) => pr.number)).toEqual([2, 3]);
   });
 });
 

@@ -19,7 +19,7 @@ import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { useCostFormat } from '../usage/useCost.ts';
 import { ActivityCopyDialog } from './ActivityCopyDialog.tsx';
 import { ActivityExportDialog } from './ActivityExportDialog.tsx';
-import { addDays, barHeight, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, sessionsOnce, statsOf, summaryParts, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type DayRange, type ProjectGroup } from './activityModel.ts';
+import { addDays, barHeight, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, statsOf, summaryParts, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type DayRange, type ProjectGroup } from './activityModel.ts';
 import { RangePicker } from './RangePicker.tsx';
 import { useActivityRange, useDaySummary, type DaySummary } from './useActivity.ts';
 
@@ -494,6 +494,7 @@ function SessionRow({ row, needsYou, span, today }: { row: ActivityRow; needsYou
   const key = `${row.day}:${rowKey(row)}`;
   const open = useActivity((s) => s.expanded.has(key));
   const lines = row.did.length ? row.did : row.asks.slice(0, 6);
+  const prs = rowPrs(row.prs);
   return (
     <div className={`rounded-lg ${open ? 'bg-text/6' : ''}`} data-activity-session={row.sessionId} data-activity-session-open={open || undefined}>
       <button type="button" onClick={() => useActivity.getState().toggleExpanded(key)} aria-expanded={open} className={`flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-ui ${open ? '' : 'hover:bg-border/45'}`}>
@@ -510,17 +511,22 @@ function SessionRow({ row, needsYou, span, today }: { row: ActivityRow; needsYou
             {row.files}
           </Pill>
         )}
-        {row.prs.map((pr) => (
+        {prs.named.map((pr) => (
           <Pill key={pr.url} tone="muted" icon={<GitPullRequest size={12} aria-hidden />} data-activity-pr={pr.number}>
             #{pr.number}
           </Pill>
         ))}
+        {prs.rest.length > 0 && (
+          <Pill tone="muted" aria-label={plural(prs.rest.length, 'more pull request')} data-tooltip={prs.rest.map((pr) => `#${pr.number}`).join(', ')} data-activity-prs-more={prs.rest.length}>
+            +{prs.rest.length}
+          </Pill>
+        )}
         {needsYou && (
           <Pill tone="warn" data-activity-needs-you>
             needs you
           </Pill>
         )}
-        <span className="w-24 shrink-0 text-right text-meta text-muted tabular-nums">
+        <span className="w-30 shrink-0 text-right text-meta whitespace-nowrap text-muted tabular-nums">
           {span === 'day' ? clock.format(row.firstAt) : span === 'week' ? `${weekdayShort(row.day)} ${dayNumber(row.day)}` : dayLabel(row.day, today)}
           {row.activeMs > 0 && ` · ${formatWorked(row.activeMs)}`}
         </span>
