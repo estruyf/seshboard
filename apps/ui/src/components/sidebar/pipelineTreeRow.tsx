@@ -29,14 +29,14 @@ export function PipelineTile({ size }: { size: number }) {
  * A parent's chevron: right while closed, down while open. A click opens or closes the parent without opening it;
  * from the keyboard, → and ← on the row do the same (the row carries `aria-expanded`).
  */
-export function TreeChevron({ open, count, onToggle }: { open: boolean; count: number; onToggle(): void }) {
+export function TreeChevron({ open, count, className = '', onToggle }: { open: boolean; count: number; className?: string; onToggle(): void }) {
   return (
     <span
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
       }}
-      className="-my-1 flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-border/60 hover:text-text"
+      className={`-my-1 flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-border/60 hover:text-text ${className}`}
       data-tooltip={open ? 'Hide steps' : `Show ${count} ${count === 1 ? 'step' : 'steps'}`}
       data-tree-toggle={open}
       aria-hidden

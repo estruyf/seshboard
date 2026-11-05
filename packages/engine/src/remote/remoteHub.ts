@@ -6,10 +6,10 @@ import {
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
-  REMOTE_LEGACY_APP_URLS,
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
+  RemoteAppUpdate,
   RemoteTheme,
   RpcError,
   type Handlers,
@@ -60,6 +60,8 @@ import {
   withRunStub,
   REMOTE_DIFF_LINES,
   REMOTE_DESKTOP_ORIGIN,
+  type RemoteProfile,
+  type TriggerSession,
 } from '@seshboard/protocol';
 import type { AppStateStore } from '../db/appState.ts';
 import type { SessionSources } from '../companion/companionSessions.ts';
@@ -71,8 +73,10 @@ import { nextFreePort } from './freePort.ts';
 import { RemoteLog } from './remoteLog.ts';
 import { findTool, Tunnel, type TunnelTool } from './tunnel.ts';
 import { finishedLine, needsYouLine, promptAnswers, pushTargets, TurnEnds, type PushPayload } from './pushEvents.ts';
+import { IdleUpdate } from './idleUpdate.ts';
 import { generateVapidKeys, isPushEndpoint, sendPush, validVapidKeys, type VapidKeys } from './webPush.ts';
-import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { SessionOrigins } from './sessionOrigins.ts';
+import { capDiff, lastSegment, projectIdOf, remoteCatchUp, remoteRun, remoteUsage, remoteDefaults, remoteMessage, remoteSessions, NO_GLOBAL_MODEL, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 
 const SETTINGS_KEY = 'remote.settings';
 /** The app's theme, kept so a phone that connects before a window opened gets it too. */
@@ -81,7 +85,6 @@ const THEME_KEY = 'remote.theme';
 const VAPID_KEY = 'remote.vapid';
 /** Each paired device's push subscription and the moments it wants, by device id. */
 const PUSH_KEY = 'remote.push';
-/** How long a finished turn's push waits for its catch-up, which says what happened. */
 const CATCH_UP_WAIT_MS = 8_000;
 
 type PushEntry = {
@@ -89,6 +92,8 @@ type PushEntry = {
   subscription: RemotePushSubscription;
   needsYou: boolean;
   finished: boolean;
+  /** Reminders that come due; left out by a phone from before, which follows `finished`. */
+  reminders?: boolean;
   /** The device's own VAPID key (`REMOTE_FEATURE_PUSH_KEY`), which its subscription was made with; else the engine's. */
   vapid?: VapidKeys;
   /** What its pushes start with: this computer's name, for a device paired with more than one. */
@@ -175,6 +180,8 @@ export interface RemoteHubOptions {
    */
   identity(): Promise<Uint8Array | null>;
   sources(): SessionSources;
+  /** The sessions and runs triggers started, for the bolt and "Started by …" on the phone. */
+  triggerSessions?(): readonly TriggerSession[];
   archiveAfterDays(): number;
   /** The sidebar's scope, so the phone lists what the sidebar lists. */
   scope(): 'switchboard' | 'all';
@@ -202,6 +209,10 @@ export interface RemoteHubOptions {
   respond(requestId: string, decision: PermissionDecision): void;
   /** A new session in `root`, with what the phone chose and the project's defaults for the rest. */
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
+  /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
+  providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
+  /** Whether a provider profile can start a session now, and its models. */
+  providerReady?(profileId: string): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
   /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
   branches(root: string): Promise<RemoteBranches>;
   /** Puts a prompt in the queue (Later) for `root`. */
@@ -219,6 +230,8 @@ export interface RemoteHubOptions {
   autoModel(): { enabled: boolean; allowed: AutoTier[] };
   /** Settings › General › Global permission mode: what a session starts in where its profile and project set none. */
   globalPermissionMode(): PermissionMode;
+  /** Settings › General › Global model and Global effort: what a session starts with where its profile and project set none. */
+  globalModel(): GlobalModel;
   /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
   usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   /**
@@ -246,6 +259,12 @@ export interface RemoteHubOptions {
   cancelClone(jobId: string): void;
   /** Pipelines: the runs in the list, and what a phone may do with them. Without it a phone sees no runs. */
   pipelines?: RemotePipelines;
+  /**
+   * Seshboard's updater, in main: `check`, or `install` (check, download and restart), for Seshboard on another paired
+   * computer, named by `by` (main says who started it). Without it (tests, a computer without the app)
+   * `app.update.get` answers null.
+   */
+  runAppUpdate?(command: 'check' | 'install', by: string): void;
   /** Tells the app's windows. */
   onStatus(status: RemoteStatus): void;
   /** A prompt or an answer came from a phone, for the label in the conversation and the sidebar's last action. */
@@ -260,20 +279,11 @@ export interface RemoteHubOptions {
   catchUpWaitMs?: number;
 }
 
-/**
- * The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`, each with the
- * address it had before seshboard.app (`REMOTE_LEGACY_APP_URLS`), so phones paired there keep working.
- */
+/** The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`. */
 export function remoteAppOrigins(appUrl: string, previewApp: boolean): string[] {
   const urls = [appUrl];
   if (previewApp) urls.push(REMOTE_PREVIEW_APP_URL);
-  const origins: string[] = [];
-  for (const url of urls) {
-    for (const origin of [new URL(url).origin, ...(REMOTE_LEGACY_APP_URLS[url] ? [new URL(REMOTE_LEGACY_APP_URLS[url]).origin] : [])]) {
-      if (!origins.includes(origin)) origins.push(origin);
-    }
-  }
-  return origins;
+  return [...new Set(urls.map((url) => new URL(url).origin))];
 }
 
 /** What a phone watches: one transcript at a time. */
@@ -289,6 +299,8 @@ interface Watch {
  */
 export class RemoteHub {
   readonly devices: DeviceStore;
+  /** Which device started each session from afar, for `startedBy`. */
+  private readonly origins: SessionOrigins;
   private readonly pairing: Pairing;
   private readonly server: RemoteServer;
   private identity: KeyPair | null = null;
@@ -333,6 +345,17 @@ export class RemoteHub {
   private appIcon: string = DEFAULT_APP_ICON;
   /** The theme the app shows (`remote.setTheme`), for phones that look like this computer. */
   private theme: RemoteTheme | null;
+  /** Seshboard's updater as main last said (`setAppUpdate`); null until it did. */
+  private appUpdate: RemoteAppUpdate | null = null;
+  /** Update when it's idle, from another computer: it starts once no session here works. */
+  private readonly idleUpdate = new IdleUpdate({
+    working: () => this.list().sessions.filter((s) => s.status === 'working' || s.status === 'needs-you' || s.status === 'background').length,
+    start: (by) => {
+      this.log('info', `Remote: no session works now, so the update ${by} asked for starts`);
+      this.options.runAppUpdate?.('install', by);
+    },
+    changed: () => this.emitAppUpdate(),
+  });
 
   /** Every Remote log line: to the app's windows, and to `remote.log` when the engine keeps one. */
   private readonly log: RemoteHubOptions['log'];
@@ -346,6 +369,7 @@ export class RemoteHub {
       file?.write(level, message);
     };
     this.devices = new DeviceStore(options.db);
+    this.origins = new SessionOrigins(options.db);
     this.pairing = new Pairing(() => this.statusChanged());
     const saved = RemoteSettings.safeParse(options.appState.get(SETTINGS_KEY));
     this.settings = saved.success ? saved.data : DEFAULT_SETTINGS;
@@ -472,6 +496,8 @@ export class RemoteHub {
     if (this.changeTimer || !this.server.listening) return;
     this.changeTimer = setTimeout(() => {
       this.changeTimer = undefined;
+      // Update when it's idle: this may be the change that leaves nothing working.
+      this.idleUpdate.check();
       const snapshot = this.list();
       // A session that left the list (archived, out of scope) is no longer a phone's to follow: its watch ends, so
       // nothing more of it is sent.
@@ -521,6 +547,28 @@ export class RemoteHub {
     if (enabled === this.previewApp) return;
     this.previewApp = enabled;
     if (!enabled && this.server.listening) this.server.closeRefused();
+  }
+
+  /**
+   * Seshboard's updater moved on, from main (also once after each start): paired computers hear it. Phones don't:
+   * only Seshboard on another computer may update this one.
+   */
+  setAppUpdate(update: RemoteAppUpdate): void {
+    if (JSON.stringify(update) === JSON.stringify(this.appUpdate)) return;
+    this.appUpdate = update;
+    this.emitAppUpdate();
+  }
+
+  /** The updater as the computers see it: main's, and whether an update waits for idle here. */
+  private shownAppUpdate(): RemoteAppUpdate | null {
+    return this.appUpdate && this.options.runAppUpdate ? { ...this.appUpdate, whenIdle: this.idleUpdate.waiting } : null;
+  }
+
+  private emitAppUpdate(): void {
+    const update = this.shownAppUpdate();
+    if (!update || !this.server.listening) return;
+    const computers = new Set(this.devices.list().flatMap((d) => (d.kind === 'computer' ? [d.id] : [])));
+    this.server.each((rpc, deviceId) => computers.has(deviceId) && rpc.emit('app.update.changed', update));
   }
 
   /** A usage limit was hit, cleared or armed: phones watching a session hear how it stands now. */
@@ -733,6 +781,14 @@ export class RemoteHub {
     this.options.appState.set(PUSH_KEY, entry ? [...rest, { deviceId, ...entry }] : rest);
   }
 
+  /** Reminders that came due (Remind me later): one push each, to the devices that want them. */
+  pushReminders(reminders: readonly { id: string; title: string; note: string | null }[]): void {
+    for (const reminder of reminders) {
+      const session = this.list().sessions.find((s) => s.id === reminder.id);
+      this.push({ kind: 'reminder', sessionId: reminder.id, title: `Reminder: ${reminder.title}`, project: session?.projectName ?? '', ...(session ? profileOf(session) : {}), line: reminder.note ?? 'You asked to be reminded.' });
+    }
+  }
+
   private sendFinished(sessionId: string): void {
     clearTimeout(this.finishing.get(sessionId));
     this.finishing.delete(sessionId);
@@ -774,7 +830,9 @@ export class RemoteHub {
   private list(): RemoteSessions {
     const projectNames = new Map(this.options.projects().map((p) => [p.root, p.name]));
     const runs = this.options.pipelines?.runs();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, ...(runs ? { runs } : {}) });
+    const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
+    const triggers = this.options.triggerSessions?.();
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}) });
   }
 
   private projectName(root: string): string {
@@ -835,7 +893,10 @@ export class RemoteHub {
    * remote branch, or a name that isn't one.
    */
   private async choiceFor(project: RemoteProject, options: RemoteSessionOptions): Promise<SessionChoice> {
-    const choice = sessionChoice(options, project.defaults, this.profileFor(project, options.profileId), this.options.globalPermissionMode());
+    const profile = this.profileFor(project, options.profileId);
+    // Settings › General's model and effort are Claude Code's: another provider's profile starts on its own default.
+    const globals = this.options.providerOfProfile?.(profile.id) ? NO_GLOBAL_MODEL : this.options.globalModel();
+    const choice = sessionChoice(options, project.defaults, profile, this.options.globalPermissionMode(), globals);
     const branch = choice.checkoutBranch;
     if (branch === null) return choice;
     if (choice.worktree) throw new RpcError('INVALID_PARAMS', 'A new worktree gets its own branch; choose the current checkout to check out a branch');
@@ -848,6 +909,20 @@ export class RemoteHub {
   /** A phone may only touch the sessions it can see in its list. */
   private checkSession(sessionId: string): void {
     if (!this.list().sessions.some((s) => s.id === sessionId)) throw new RpcError('NOT_FOUND', 'No such session');
+  }
+
+  /** The `app.update.*` methods are for Seshboard on another computer only: a phone or a browser is refused. */
+  private mayUpdate(device: RemoteDevice): void {
+    if (device.kind !== 'computer') throw new RpcError('FORBIDDEN', 'Only Seshboard on another computer can update this one');
+  }
+
+  /** Main's updater, for a computer that may use it; refused while it can't update (development, no feed, turned off). */
+  private updater(device: RemoteDevice): NonNullable<RemoteHubOptions['runAppUpdate']> {
+    this.mayUpdate(device);
+    const run = this.options.runAppUpdate;
+    if (!run || !this.appUpdate) throw new RpcError('UNAVAILABLE', 'Seshboard can’t be updated from here');
+    if (this.appUpdate.status === 'disabled') throw new RpcError('UNAVAILABLE', this.appUpdate.disabledReason ?? 'Updates are turned off on this computer');
+    return run;
   }
 
   private handlers(device: RemoteDevice): Omit<Handlers<RemoteContract>, 'hello'> {
@@ -933,8 +1008,12 @@ export class RemoteHub {
       'session.create': async ({ projectId, prompt, images, files, ...options }) => {
         const project = this.project(projectId);
         checkAttachments(images, files);
+        // A provider profile (GitHub Copilot) runs in its own modes: one it doesn't have is refused, not passed on.
+        const provider = options.profileId ? this.options.providerOfProfile?.(options.profileId) : null;
+        if (provider && options.permissionMode && !provider.modes.some((m) => m.value === options.permissionMode)) throw new RpcError('INVALID_PARAMS', `${provider.name} has no such mode`);
         const choice = await this.choiceFor(project, options);
         const created = await this.options.create(project.root, promptWithFiles(prompt, saveRemoteFiles(this.options.filesDir, files)), choice, images);
+        this.origins.add(created.sessionId, device);
         // Its first prompt: the sidebar's last action for the device.
         this.options.onFromDevice?.({ sessionId: created.sessionId, messageUuid: null, requestId: null, device: device.name, deviceId: device.id, answer: null });
         return created;
@@ -967,6 +1046,8 @@ export class RemoteHub {
           profileId: profile,
           choices,
         });
+        // A run row's steps sit under it, so they say who started them too.
+        if (!parentSessionId) this.origins.add(state.run.id, device);
         this.log('info', `Remote: ${device.name} ran the pipeline ${state.run.pipeline.name}`);
         return { state: this.toRemote(state) };
       },
@@ -1069,20 +1150,32 @@ export class RemoteHub {
         this.sessionsChanged();
         return {};
       },
+      'providers.ready': async ({ profileId }) => {
+        if (!this.options.providerOfProfile?.(profileId) || !this.options.providerReady) throw new RpcError('NOT_FOUND', 'That is not a provider profile on this computer');
+        return this.options.providerReady(profileId);
+      },
       'options.get': () => {
         const { profiles, defaultId } = this.options.profiles();
         const globalMode = this.options.globalPermissionMode();
+        const globalModel = this.options.globalModel();
         return {
           models: this.options.models().map(({ value, displayName, description, supportsEffort }) => ({ value, displayName, description, supportsEffort })),
           efforts: [...Effort.options],
           modes: ['default', 'acceptEdits', 'plan', 'auto'],
-          profiles: profiles.map((p) => ({ id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode) })),
+          profiles: profiles.map((p) => {
+            const provider = this.options.providerOfProfile?.(p.id) ?? null;
+            return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, provider ? NO_GLOBAL_MODEL : globalModel), ...(provider ? { provider } : {}) };
+          }),
           defaultProfileId: defaultId,
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
             profileId: p.profileId && profiles.some((profile) => profile.id === p.profileId) ? p.profileId : null,
-            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null),
+            // What the project skips its profile's for comes in as the global value (an empty global model still falls to the profile's on the phone).
+            defaults: remoteDefaults(p.defaults, p.defaults.globalPermissionMode ? globalMode : null, {
+              model: p.defaults.globalModel ? globalModel.model : null,
+              effort: p.defaults.globalEffort ? globalModel.effort : null,
+            }),
           })),
         };
       },
@@ -1151,11 +1244,11 @@ export class RemoteHub {
         return capDiff(await this.options.diff(sessionId, path), REMOTE_DIFF_LINES);
       },
       'push.key': () => ({ publicKey: this.vapid().publicKey }),
-      'push.subscribe': ({ subscription, needsYou, finished, vapid, label }) => {
+      'push.subscribe': ({ subscription, needsYou, finished, reminders, vapid, label }) => {
         // Only the browsers' push services: a phone can't make the engine send requests anywhere else.
         if (!isPushEndpoint(subscription.endpoint)) throw new RpcError('INVALID_PARAMS', 'Not a push service this app knows');
         if (vapid && !validVapidKeys(vapid)) throw new RpcError('INVALID_PARAMS', 'Not a VAPID key pair');
-        this.setPush(device.id, { subscription, needsYou, finished, ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
+        this.setPush(device.id, { subscription, needsYou, finished, ...(reminders !== undefined ? { reminders } : {}), ...(vapid ? { vapid } : {}), ...(label ? { label } : {}) });
         return {};
       },
       'push.unsubscribe': () => {
@@ -1163,6 +1256,35 @@ export class RemoteHub {
         return {};
       },
       'theme.get': () => ({ theme: this.theme }),
+      // Only Seshboard on another paired computer, never a phone or a browser (docs/remote-access.md, the threat model).
+      // Each call is in the log with that computer's name, so whoever is on this one can see who updated it.
+      'app.update.get': () => {
+        this.mayUpdate(device);
+        return { update: this.shownAppUpdate() };
+      },
+      'app.update.check': () => {
+        const run = this.updater(device);
+        this.log('info', `Remote: ${device.name} checks for updates here`);
+        run('check', device.name);
+        return {};
+      },
+      'app.update.install': ({ when }) => {
+        const run = this.updater(device);
+        if (when === 'idle') {
+          this.log('info', `Remote: ${device.name} asked to update once no session works here`);
+          this.idleUpdate.wait(device.name);
+        } else {
+          this.log('info', `Remote: ${device.name} asked to update and restart now`);
+          this.idleUpdate.cancel();
+          run('install', device.name);
+        }
+        return {};
+      },
+      'app.update.cancel': () => {
+        this.mayUpdate(device);
+        if (this.idleUpdate.cancel()) this.log('info', `Remote: ${device.name} cancelled the update that waited for idle`);
+        return {};
+      },
       'device.visibility': ({ visible }, phone) => {
         if (!this.visible.has(phone) && visible) phone.onDispose(() => this.visible.delete(phone));
         if (visible) this.visible.set(phone, device.id);

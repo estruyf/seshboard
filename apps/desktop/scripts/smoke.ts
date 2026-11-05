@@ -74,7 +74,7 @@ if (process.argv.includes('--demo')) {
   linkClaude(world.home);
   // The home folder is HOME on macOS and USERPROFILE on Windows; with CLAUDE_CONFIG_DIR, neither the app nor
   // Claude Code sees the real one.
-  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), SESHBOARD_SMOKE_DEMO: '1' });
+  Object.assign(childEnv, { HOME: world.home, USERPROFILE: world.home, CLAUDE_CONFIG_DIR: join(world.home, '.claude'), COPILOT_HOME: join(world.home, '.copilot'), SESHBOARD_SMOKE_DEMO: '1', SESHBOARD_STUB_COPILOT: '1' });
   console.log(`demo home: ${world.home}`);
 }
 
@@ -107,10 +107,26 @@ const freePort = await freePortNow();
 const computerDir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-computer-'));
 const computerLink = join(computerDir, 'link.txt');
 const otherComputer = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
-  env: { ...process.env, SESHBOARD_DEMO_DIR: computerDir, SESHBOARD_DEMO_NAME: 'Smoke Mac', SESHBOARD_DEMO_LINK_FILE: computerLink, PORT: String(freePort) },
+  // An older Seshboard than this app's, so Settings › Remote offers to update it.
+  env: { ...process.env, SESHBOARD_DEMO_DIR: computerDir, SESHBOARD_DEMO_NAME: 'Smoke Mac', SESHBOARD_DEMO_LINK_FILE: computerLink, SESHBOARD_DEMO_VERSION: '1.0.0', PORT: String(freePort) },
   stdio: 'ignore',
 });
 childEnv.SESHBOARD_SMOKE_COMPUTER_LINK = computerLink;
+
+// Two more for the Computers strip step, which pairs both to fill the strip's line: one with a long name, cut on its chip.
+const stripComputers = await Promise.all(
+  ['Studio Mac', 'Render workstation'].map(async (name) => {
+    const dir = mkdtempSync(join(tmpdir(), 'seshboard-smoke-strip-'));
+    const link = join(dir, 'link.txt');
+    const port = await freePortNow();
+    const proc = spawn(process.execPath, ['--experimental-transform-types', '--no-warnings', join(appDir, '..', '..', 'scripts', 'remote-demo.ts')], {
+      env: { ...process.env, SESHBOARD_DEMO_DIR: dir, SESHBOARD_DEMO_NAME: name, SESHBOARD_DEMO_LINK_FILE: link, PORT: String(port) },
+      stdio: 'ignore',
+    });
+    return { dir, link, proc };
+  }),
+);
+childEnv.SESHBOARD_SMOKE_STRIP_LINKS = JSON.stringify(stripComputers.map((c) => c.link));
 
 // The remote app on a phone: apps/remote served by Vite, and a made-up computer of its own ("Phone Mac") whose
 // pairing links point there. The app drives it in a phone-sized window (remotePhoneSmoke.ts).
@@ -139,9 +155,11 @@ const child = spawn(command, packaged ? [] : [appDir], {
 
 const code: number = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
 otherComputer.kill();
+for (const c of stripComputers) c.proc.kill();
 phoneComputer.kill();
 remoteApp.kill();
 rmSync(computerDir, { recursive: true, force: true, maxRetries: 5 });
+for (const c of stripComputers) rmSync(c.dir, { recursive: true, force: true, maxRetries: 5 });
 rmSync(phoneDir, { recursive: true, force: true, maxRetries: 5 });
 rmSync(modsDir, { recursive: true, force: true, maxRetries: 5 });
 if (world) {

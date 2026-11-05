@@ -18,11 +18,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
+import { accountTag, BUILT_IN_PIPELINES, costOf, sharesOf, weightOf, type AskThread, type Pipeline, type PipelineRun, type PipelineRunState, type PipelineRunStep, type RemoteAppUpdate, type CatchUp, type GitChanges, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type SessionSummary, type TokenCounts, type TranscriptMessage, type TranscriptUpdate, type UsageBreakdown, type UsageGroup, type UsagePeriod, type UsageRow } from '@seshboard/protocol';
 import type { ThemeFile, ThemeModeFile } from '@seshboard/protocol/theme-format';
 import { createAppStateStore } from '../packages/engine/src/db/appState.ts';
+import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
+import { SessionOrigins } from '../packages/engine/src/remote/sessionOrigins.ts';
 
 const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -39,6 +41,8 @@ const NO_DEFAULTS = { model: null, effort: null, permissionMode: null, workspace
 const PROFILES = [
   { id: 'default', name: 'Personal', color: 'yellow' as const, defaults: NO_DEFAULTS, account: accountTag({ email: 'demo@example.com', organization: null }) },
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
+  // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
+  { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -374,6 +378,11 @@ const keyFile = join(dir, 'identity.key');
 if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.getRandomValues(new Uint8Array(32)));
 const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
 const appState = createAppStateStore(cache.db);
+// Other people share this computer: two of its sessions were started from their devices, so a computer set to All
+// says whose they are (`startedBy`); the rest were started here.
+const origins = new SessionOrigins(cache.db);
+origins.add('a0000000-0000-4000-8000-000000000006', { id: 'demo-dmitriy', name: 'Dmitriy' });
+origins.add('a0000000-0000-4000-8000-000000000005', { id: 'demo-sarah', name: 'Sarah’s MacBook' });
 const watchers = new Map<string, Set<(update: TranscriptUpdate) => void>>();
 
 /** The answer to a message from the phone, written a few words at a time as Claude would, then put in the transcript. */
@@ -504,7 +513,7 @@ const runs: PipelineRunState[] = [
     ],
   },
   {
-    run: demoRun(ROW_RUN, null, '/demo/harbor-api', { title: 'Retry failed webhook deliveries', task: 'Retry failed webhook deliveries with a backoff, and stop after five tries.', step: 1, createdAt: ago(16) }),
+    run: demoRun(ROW_RUN, null, '/demo/harbor-api', { title: 'Retry failed webhook deliveries', task: 'Retry failed webhook deliveries with a backoff, and stop after five tries.', step: 1, createdAt: ago(16), unattended: true }),
     steps: [stepRow(ROW_RUN, 0, 'a0000000-0000-4000-8000-00000000000d', 'done', 16, 14, { reason: 'plan approved' }), stepRow(ROW_RUN, 1, 'a0000000-0000-4000-8000-00000000000e', 'working', 14, null)],
   },
 ];
@@ -615,10 +624,31 @@ const deliver = (sessionId: string, message: string): string => {
   return uuid;
 };
 
+/** The version this made-up computer runs (`SESHBOARD_DEMO_VERSION`): the smoke run's is older than the app. */
+const DEMO_VERSION = process.env.SESHBOARD_DEMO_VERSION ?? 'demo';
+
+/**
+ * A stand-in for Seshboard's updater, for updating it from another computer (Settings › Remote there): it hasn't
+ * seen a newer version, Check for updates finds none, and an update downloads what the other computer offered, then
+ * fails, since the demo computer can't restart. Update when it's idle waits in the real hub: its sessions keep working.
+ */
+let demoUpdate: RemoteAppUpdate = { status: 'up-to-date', currentVersion: DEMO_VERSION, availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: Date.now(), whenIdle: false };
+const setDemoUpdate = (change: Partial<RemoteAppUpdate>) => {
+  demoUpdate = { ...demoUpdate, ...change };
+  hub.setAppUpdate(demoUpdate);
+};
+const runDemoUpdate = (command: 'check' | 'install', by: string) => {
+  console.log(`[info] ${by} asked to ${command}`);
+  setDemoUpdate({ status: 'checking', error: null });
+  if (command === 'check') return void setTimeout(() => setDemoUpdate({ status: 'up-to-date', checkedAt: Date.now() }), 1_200);
+  const steps: Array<Partial<RemoteAppUpdate>> = [{ status: 'available', availableVersion: '9.9.9', checkedAt: Date.now() }, { status: 'downloading', downloadPercent: 30 }, { downloadPercent: 80 }, { status: 'downloaded', downloadPercent: 100, downloadedVersion: '9.9.9' }, { status: 'error', error: 'The demo computer can’t restart' }];
+  steps.forEach((step, i) => setTimeout(() => setDemoUpdate(step), 400 * (i + 1)));
+};
+
 const hub: RemoteHub = new RemoteHub({
   db: cache.db,
   appState,
-  appVersion: 'demo',
+  appVersion: DEMO_VERSION,
   appUrl: APP_URL,
   filesDir: join(dir, 'remote-files'),
   computerName: () => process.env.SESHBOARD_DEMO_NAME ?? "Elio's iMac",
@@ -666,6 +696,28 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
+  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  providerOfProfile: (profileId) =>
+    profileId === 'copilot'
+      ? {
+          id: 'copilot',
+          name: 'GitHub Copilot',
+          modes: [
+            { value: 'default', label: 'Ask before edits', description: 'Approve every edit and command' },
+            { value: 'acceptEdits', label: 'Accept edits', description: 'File edits apply, commands still ask' },
+            { value: 'plan', label: 'Plan mode', description: 'Copilot plans before it changes anything' },
+            { value: 'auto', label: 'Auto mode', description: 'Copilot keeps going until the task is done, without asking' },
+          ],
+          supports: [],
+        }
+      : null,
+  providerReady: async () => ({
+    problem: null,
+    models: [
+      { value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false },
+      { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
+    ],
+  }),
   branches: async () => ({ current: 'main', branches: ['main', 'feat/onboarding', 'fix/login-redirect'], checkedOutElsewhere: [] }),
   queue: () => ({ id: `later-${Date.now()}` }),
   markRead: (sessionId) => void read.add(sessionId),
@@ -679,6 +731,8 @@ const hub: RemoteHub = new RemoteHub({
   setPermissionMode: async (sessionId, mode) => void modes.set(sessionId, mode),
   autoModel: () => ({ enabled: true, allowed: ['haiku', 'sonnet', 'opus'] }),
   globalPermissionMode: () => 'default',
+  // No global model or effort set on this made-up computer: sessions start on Claude Code's defaults.
+  globalModel: () => NO_GLOBAL_MODEL,
   // No demo session is at a usage limit.
   limit: () => null,
   models: () => [
@@ -712,9 +766,16 @@ const hub: RemoteHub = new RemoteHub({
     return { ok: true, sha: '9b8e7d2c4f1a6b3e5d7c9a0b1c2d3e4f5a6b7c8d' };
   },
   pipelines: demoPipelines,
+  // Triggers (#180, #185): failing CI started the flaky test's fix, and a new issue started the webhook run.
+  triggerSessions: () => [
+    { sessionId: 'a0000000-0000-4000-8000-000000000002', triggerId: 'demo-ci', eventId: 'demo-ci-4512', triggerName: 'CI fails on main', kind: 'ci', ref: 'CI #4512', url: 'https://github.com/acme/harbor-api/actions/runs/4512', at: ago(7) },
+    { sessionId: ROW_RUN, triggerId: 'demo-issues', eventId: 'demo-issue-212', triggerName: 'New bug issues', kind: 'issue', ref: '#212', url: 'https://github.com/acme/harbor-api/issues/212', at: ago(16) },
+  ],
+  runAppUpdate: runDemoUpdate,
   onStatus: () => {},
   log: (level, message) => console.log(`[${level}] ${message}`),
 });
+hub.setAppUpdate(demoUpdate);
 
 // The theme the demo computer shows (Theme on the phone): `SESHBOARD_DEMO_THEME=catppuccin` takes a built-in theme's
 // own colours (without the app's generator, which needs the renderer), else Demo Time's.
@@ -743,6 +804,8 @@ const allow = setInterval(() => {
   if (asked) {
     hub.decidePairing(asked.id, true);
     console.log(`Paired ${asked.name}. Press Ctrl+C to stop.`);
+    // A link is good for one pairing: the next device (a later smoke step) gets a fresh one, once this one is done.
+    if (linkFile) setTimeout(() => writeFileSync(linkFile, hub.startPairing().url), 500);
   }
 }, 200);
 

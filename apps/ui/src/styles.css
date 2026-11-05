@@ -51,6 +51,17 @@
   --sb-chart-cache-write: #c2255c;
   --sb-chart-cache-read: #1c7ed6;
   --sb-chart-input: #099268;
+  /*
+   * The working mark under a reply (WorkingPanel): the app icon's patch panel. Its free jacks are holes that
+   * light up in turn; the plugged ones keep the cables' colours, the gold a little darker in light mode, where it washes out.
+   */
+  --sb-working-hole: #d6d4ce;
+  --sb-working-lit: #ff961a;
+  --sb-working-glow: #ffb85c;
+  --sb-working-plug-a: #f3a27f;
+  --sb-working-plug-b: #c95f3d;
+  --sb-working-plug-c: #dcb058;
+  --sb-working-plug-d: #ec9f33;
   /* Menus, popovers and dialogs: their own surface, border and shadow so they stand out from what's behind them. */
   --sb-popover: #ffffff;
   --sb-overlay-border: #d1d5da;
@@ -109,6 +120,13 @@
     --sb-chart-cache-write: #e64980;
     --sb-chart-cache-read: #339af0;
     --sb-chart-input: #0ca678;
+    --sb-working-hole: #3d404a;
+    --sb-working-lit: #fff1cc;
+    --sb-working-glow: #ff961a;
+    --sb-working-plug-a: #f3a27f;
+    --sb-working-plug-b: #c95f3d;
+    --sb-working-plug-c: #ffd27a;
+    --sb-working-plug-d: #ec9f33;
     /* Lighter than card (which the sidebar and composer share) with a strong shadow: a dark UI hides soft ones. */
     --sb-popover: #2a3244;
     --sb-overlay-border: #414861;
@@ -165,6 +183,13 @@
   --sb-chart-cache-write: #e64980;
   --sb-chart-cache-read: #339af0;
   --sb-chart-input: #0ca678;
+  --sb-working-hole: #3d404a;
+  --sb-working-lit: #fff1cc;
+  --sb-working-glow: #ff961a;
+  --sb-working-plug-a: #f3a27f;
+  --sb-working-plug-b: #c95f3d;
+  --sb-working-plug-c: #ffd27a;
+  --sb-working-plug-d: #ec9f33;
   /* Lighter than card (which the sidebar and composer share) with a strong shadow: a dark UI hides soft ones. */
   --sb-popover: #2a3244;
   --sb-overlay-border: #414861;
@@ -304,6 +329,90 @@
 }
 
 /*
+ * The hairline of a fixed header (`edge-b`, along its bottom) or footer (`edge-t`, along its top) that shows
+ * only while content scrolls beneath it: set `data-scrolled` from `useScrollEdge`. A pseudo-element, so it
+ * leaves the element's own border and shadow alone (a tiled pane's accent line). Windows high contrast
+ * flattens surfaces, so there the line stays, as a real border.
+ */
+@utility edge-b {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--sb-border);
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+    pointer-events: none;
+  }
+  &[data-scrolled]::after {
+    opacity: 1;
+  }
+  @media (forced-colors: active) {
+    border-bottom: 1px solid CanvasText;
+    &::after {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      transition: none;
+    }
+  }
+}
+@utility edge-t {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: var(--sb-border);
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+    pointer-events: none;
+  }
+  &[data-scrolled]::before {
+    opacity: 1;
+  }
+  @media (forced-colors: active) {
+    border-top: 1px solid CanvasText;
+    &::before {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before {
+      transition: none;
+    }
+  }
+}
+
+/*
+ * The soft fade above the message box: the conversation scrolls under it instead of under a line. It sits
+ * over the end of the conversation and takes no clicks; `composer-fade-room` ends the conversation with as much
+ * room, so the last line (Working, a reply's end) clears it once scrolled to the bottom.
+ */
+@theme {
+  --spacing-composer-fade: 2rem;
+}
+@utility composer-fade {
+  pointer-events: none;
+  height: var(--spacing-composer-fade);
+  background: linear-gradient(to bottom, transparent, var(--sb-bg));
+  @media (forced-colors: active) {
+    display: none;
+  }
+}
+@utility composer-fade-room {
+  flex-shrink: 0;
+  height: var(--spacing-composer-fade);
+}
+
+/*
  * A range slider (`Slider`): a thin grey track, filled in yellow up to the value (`--fill`, set by the component),
  * and a round knob like the one on a switch. The native look ignores the theme.
  */
@@ -413,6 +522,12 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   outline-offset: 1px;
 }
 
+/* The quick start panel's window: see-through around the panel, which draws its own surface. */
+html[data-quick-start-window],
+html[data-quick-start-window] body {
+  background: transparent;
+}
+
 /* Scrollbars in the theme's colours: a thin thumb on a transparent track (no grey system gutter). */
 * {
   scrollbar-width: thin;
@@ -448,35 +563,86 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   }
 }
 
-/* Claude is working: three dots that take turns, like Claude Code. */
-.working-dots {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
+/*
+ * Claude is working: the app icon's patch panel (WorkingPanel), its free jacks lighting up in turn like the Dock's.
+ * Each jack runs the same round (--working-round) with its own delay (--jack-delay), both set by the component. A jack
+ * is full for its turn (WORKING_HOLD, 20%) with a ring of glow that narrows from 2px to 1px, then fades to dark by
+ * WORKING_FADE (2.4 of 5 jacks, 48%), so the two before the lit one are still fading. A test keeps the stops in step with
+ * @seshboard/protocol/working-panel. The phone has the same rules (apps/remote).
+ */
+.working-panel .jack-hole {
+  fill: var(--sb-working-hole);
 }
-.working-dots span {
-  width: 4px;
-  height: 4px;
-  border-radius: 9999px;
-  background: var(--sb-accent-ink);
-  animation: working-dot 1.2s ease-in-out infinite;
+.working-panel .jack-lit {
+  fill: var(--sb-working-lit);
 }
-.working-dots span:nth-child(2) {
-  animation-delay: 0.2s;
+.working-panel .jack-glow {
+  fill: var(--sb-working-glow);
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.working-dots span:nth-child(3) {
-  animation-delay: 0.4s;
+.working-panel .jack-plug-a {
+  fill: var(--sb-working-plug-a);
 }
-@keyframes working-dot {
+.working-panel .jack-plug-b {
+  fill: var(--sb-working-plug-b);
+}
+.working-panel .jack-plug-c {
+  fill: var(--sb-working-plug-c);
+}
+.working-panel .jack-plug-d {
+  fill: var(--sb-working-plug-d);
+}
+.working-panel .jack-light {
+  opacity: 0;
+}
+.working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
+  animation-duration: var(--working-round);
+  animation-delay: var(--jack-delay);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.working-panel[data-working-state='working'] .jack-light {
+  animation-name: working-jack;
+}
+.working-panel[data-working-state='working'] .jack-glow {
+  animation-name: working-glow;
+}
+/* Compacting, and every state with Reduce motion: the five free jacks softly lit, without glow, as the Dock's still frame. */
+.working-panel[data-working-state='still'] .jack-light {
+  opacity: 0.8;
+}
+/* Waiting for you: all five lit in the needs-you colour. */
+.working-panel[data-working-state='waiting'] .jack-light {
+  opacity: 1;
+}
+.working-panel[data-working-state='waiting'] .jack-lit {
+  fill: var(--sb-warn);
+}
+.working-panel:not([data-working-state='working']) .jack-glow {
+  visibility: hidden;
+}
+@keyframes working-jack {
   0%,
-  80%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  40% {
+  20% {
     opacity: 1;
-    transform: translateY(-2px);
+  }
+  48%,
+  100% {
+    opacity: 0;
+  }
+}
+/* The glow is drawn 2px past the jack's 3px dot: 1px past it at the end of the turn, none once it is dark. */
+@keyframes working-glow {
+  0% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(0.714);
+  }
+  48%,
+  100% {
+    transform: scale(0.427);
   }
 }
 /* The message box after Quote put text in it: its frame lights up in the accent once, then fades back. */
@@ -511,9 +677,14 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   .stream-caret:empty::after {
     animation: none;
   }
-  .working-dots span {
+  .working-panel[data-working-state='working'] :is(.jack-light, .jack-glow) {
     animation: none;
+  }
+  .working-panel[data-working-state='working'] .jack-light {
     opacity: 0.8;
+  }
+  .working-panel[data-working-state='working'] .jack-glow {
+    visibility: hidden;
   }
   /* Spinners keep turning (they mean "busy"); everything else stops moving. */
   *:not(.animate-spin),
@@ -521,7 +692,10 @@ html[data-keyboard-nav] :is(button, a, summary, input, textarea, [contenteditabl
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* 0s, never a tiny duration: transition-property defaults to all, so with any duration every property of every
+       element would transition and keep its old value until the next frame (a toolbar at 0,0, buttons still hidden). */
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }

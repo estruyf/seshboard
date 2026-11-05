@@ -7,6 +7,10 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { PaneClose } from '../split/PaneClose.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
+import { computerTint } from './computerColor.ts';
+import { ComputerOverviewBody } from './ComputerOverviewBody.tsx';
+import { versionText } from './computerOverview.ts';
 import { computerLine } from './computerSessions.ts';
 import { newSessionOn } from './remoteActions.ts';
 
@@ -52,9 +56,10 @@ export function paneHandle(pane: PaneProps | undefined) {
 }
 
 /**
- * A paired computer's page, for when its sessions can't be in the sidebar: it has none, it is still connecting, it
- * is offline, or it has to be paired again (docs/remote-access.md, Other computers). Its chip in the sidebar's
- * Computers strip opens it then. In a pane (`pane`), it stands in for a session of it: `missing`, the session is no
+ * A paired computer's page (docs/remote-access.md, Other computers), opened from Settings › Remote and, when its
+ * sessions can't be in the sidebar, its chip in the Computers strip: what needs you there, what is working and its
+ * recent sessions (`ComputerOverviewBody`), or why there are none (offline, connecting, to pair again). In a pane
+ * (`pane`), it stands in for a session of it: `missing`, the session is no
  * longer listed there; `starting`, New session just started it there, and its list doesn't have it yet.
  */
 export function ComputerView({ computerId, missing = false, starting = false, pane }: { computerId: string | null; missing?: boolean; starting?: boolean; pane?: PaneProps }) {
@@ -69,7 +74,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
   if (!computer) {
     return (
       <div className="flex h-full flex-col">
-        <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6" {...paneHeader(pane)}>
+        <header className={PANE_HEADER} {...paneHeader(pane)}>
           {toggle && <SidebarToggle />}
           <div className={`min-w-0 flex-1 self-stretch ${handle.className}`} data-pane-handle={handle['data-pane-handle']} />
           {pane && <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip="Close and go Home" />}
@@ -79,9 +84,12 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
     );
   }
 
+  // The page itself (not a pane standing in for one of its sessions) lists its sessions, once it sent a list and still knows this computer.
+  const overview = !pane && computer.state !== 'unpaired' && list !== null;
+
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-computer-view={computer.id}>
-      <header className={`drag flex h-13 shrink-0 items-center gap-3 overflow-hidden border-b border-border px-6 ${remoteLine(pane)} @max-[860px]:gap-2 @max-[860px]:px-4`} {...paneHeader(pane)}>
+    <div className="@container flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-computer-view={computer.id}>
+      <header className={`${PANE_HEADER} ${remoteLine(pane)}`} {...paneHeader(pane)}>
         {toggle && <SidebarToggle />}
         <Monitor size={16} aria-hidden className="shrink-0 text-remote" />
         <div className={`min-w-0 flex-1 ${handle.className}`} data-pane-handle={handle['data-pane-handle']}>
@@ -92,7 +100,7 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
             data-computer-problem={computer.problem ? true : undefined}
             data-tooltip={computer.problem ?? undefined}
           >
-            {computerLine(computer, now)}
+            {[computerLine(computer, now), computer.state === 'connected' ? versionText(computer) : null].filter(Boolean).join(' · ')}
           </p>
         </div>
         {computer.state === 'offline' && client && (
@@ -112,17 +120,21 @@ export function ComputerView({ computerId, missing = false, starting = false, pa
         )}
         {pane && <PaneClose id={pane.id} tiled={pane.tiled} closeTooltip={`Close session and go Home (it keeps running on ${computer.name})`} />}
       </header>
-      <div className="flex flex-1 items-center justify-center p-6">
-        <p className="max-w-sm text-center text-ui text-muted" data-computer-empty>
-          {starting ? `Starting the session on ${computer.name}…` : emptyLine(computer, list !== null && list.sessions.length > 0, missing)}
-        </p>
-      </div>
+      {overview && list ? (
+        <ComputerOverviewBody client={client} computer={computer} list={list} />
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="max-w-sm text-center text-ui text-muted" data-computer-empty>
+            {starting ? `Starting the session on ${computer.name}…` : emptyLine(computer, list !== null && list.sessions.length > 0, missing)}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 function emptyLine(computer: Computer, hasSessions: boolean, missing: boolean): string {
-  if (missing) return `This session is no longer listed on ${computer.name}. It may be archived there.`;
+  if (missing) return `This session is no longer listed on ${computer.name}. It may be in Done there.`;
   if (computer.state === 'unpaired') return `${computer.name} no longer knows this computer. Pair it again in Settings › Remote.`;
   if (computer.state !== 'connected') return `Its sessions show in the sidebar once ${computer.name} is connected.`;
   if (hasSessions) return `Its sessions are in the sidebar, marked with ${computer.name}. Claude keeps running there.`;

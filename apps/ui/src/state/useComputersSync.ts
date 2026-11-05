@@ -6,11 +6,15 @@ import { toast } from './toastStore.ts';
 import { useEngineConnection } from '../engine/useEngine.ts';
 import { useComputers } from './computersStore.ts';
 
-/** Mirrors the paired computers and the session list of each connected one, for the dock and the Computer view. */
+/**
+ * Mirrors the paired computers and the session list of each connected one, for the dock and the Computer view. After
+ * Update there (Settings › Remote), says it updated once it is back on the new version.
+ */
 export function useComputersSync(): void {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const computers = useComputers((s) => s.status?.computers);
+  const asks = useComputers((s) => s.updateAsks);
   /** The computers whose list was fetched since they last connected. */
   const fetched = useRef(new Set<string>());
 
@@ -59,4 +63,21 @@ export function useComputersSync(): void {
       );
     }
   }, [client, computers]);
+
+  // An update asked from this window: once the computer is back on another version, its row says Updated for the rest
+  // of the app session, and a toast says so wherever you are.
+  useEffect(() => {
+    if (!computers) return;
+    for (const [id, ask] of asks) {
+      const computer = computers.find((c) => c.id === id);
+      if (!computer) {
+        useComputers.getState().setUpdateAsk(id, null);
+        continue;
+      }
+      if (ask.kind !== 'install' || computer.state !== 'connected' || !computer.version || computer.version === ask.from) continue;
+      useComputers.getState().setUpdateAsk(id, null);
+      useComputers.getState().setUpdatedTo(id, computer.version);
+      toast(`Updated ${computer.name} to ${computer.version}`, { icon: 'computer', tone: 'ok', durationMs: 8_000, data: { 'data-computer-update-toast': 'updated' } });
+    }
+  }, [computers, asks]);
 }

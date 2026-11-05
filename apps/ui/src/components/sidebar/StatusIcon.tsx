@@ -1,17 +1,17 @@
 import type { RowStatus } from '../../state/sidebarRows.ts';
-import { STATUS_LABEL } from './rowLabel.ts';
+import { STATUS_LABEL, statusLabel } from './rowLabel.ts';
 
 export { STATUS_LABEL };
 
 /**
- * One glance per session: a spinning ring while Claude works, a pulsing
+ * One glance per session: a spinning ring while Claude (or another agent) works, a pulsing
  * pink dot when it waits for you, red when it failed, blue for unread (never yellow: that means working), a slow green
  * ring while a background task runs, green when open and idle. Nothing for archived, read sessions.
  * Each is a labelled image, so the state never rests on colour or motion alone.
  */
-export function StatusIcon({ status }: { status: RowStatus }) {
+export function StatusIcon({ status, agent }: { status: RowStatus; /** Who works in the session (`agentNameOf`). */ agent?: string }) {
   if (!status) return <span className="size-3.5 shrink-0" aria-hidden />;
-  const label = STATUS_LABEL[status];
+  const label = statusLabel(status, agent);
   switch (status) {
     case 'running':
       return (

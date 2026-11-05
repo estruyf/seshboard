@@ -1,4 +1,5 @@
-import { Bot, Code, Coffee, Ellipsis, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope } from 'lucide-react';
+import { Blocks, Bot, Check, Code, Coffee, Copy, Ellipsis, Minimize2, NotebookPen, Pencil, Play, ScrollText, Sparkles, Square, Stethoscope, SquareTerminal } from 'lucide-react';
+import { claudeOnlyLine, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderFeature } from '@seshboard/protocol/client';
 import { useRef, useState } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -14,12 +15,72 @@ import { useOpenInEntries } from '../OpenInButton.tsx';
 import { ProfileDot } from '../profiles/ProfileBadge.tsx';
 import { sessionMemoryEntries, useSessionMemories } from '../memory/sessionMemories.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { Button } from '../ui/Button.tsx';
 import { keepAwakeUntilDoneDetail } from '../general/keepAwake.ts';
 
 const MENU_WIDTH = 260;
+
+export interface ProviderMenu {
+  id: OptionalProvider;
+  supports: readonly ProviderFeature[];
+  /** Null while it can't compact (not running here). */
+  onCompact: (() => void) | null;
+  onTools: (() => void) | null;
+  /** The last reply's text; null when there is none. */
+  lastReply: string | null;
+  /** Null while Seshboard runs it: it can't run in two places. */
+  onOpenCli: (() => void) | null;
+  onArchive: () => void;
+  /** Rename… (its provider renames it too); null leaves it out. */
+  onRename?: (() => void) | null;
+  /** The Agents panel, with how many its subagents are and how many still run; null leaves it out. */
+  onAgents?: (() => void) | null;
+  agents?: { total: number; running: number };
+}
+
+/** The ⋯ menu of another provider's session: Compact, Tools, Copy the last reply, Rename (when it can), its Agents, Open in its CLI and Archive. */
+export function providerEntries(provider: ProviderMenu): MenuEntry[] {
+  const short = PROVIDER_SHORT_NAMES[provider.id];
+  const line = claudeOnlyLine(provider.supports);
+  return [
+    { label: 'Compact', icon: <Minimize2 size={13} />, disabled: !provider.onCompact, onSelect: () => provider.onCompact?.(), data: { 'data-provider-compact': true, ...(provider.onCompact ? {} : { 'data-tooltip': `Only while ${short} runs it here` }) } },
+    { label: 'Tools', icon: <Blocks size={13} />, disabled: !provider.onTools, onSelect: () => provider.onTools?.(), data: { 'data-provider-tools': true } },
+    {
+      label: 'Copy the last reply',
+      icon: <Copy size={13} />,
+      disabled: !provider.lastReply,
+      onSelect: () => void (provider.lastReply && navigator.clipboard.writeText(provider.lastReply).then(() => toast('Copied the last reply'), () => {})),
+      data: { 'data-copy-last-reply': true },
+    },
+    ...(provider.onRename ? [{ label: 'Rename…', icon: <Pencil size={13} />, onSelect: provider.onRename, data: { 'data-rename-session': true } } satisfies MenuEntry] : []),
+    ...(provider.onAgents && provider.agents
+      ? [
+          {
+            label: 'Agents',
+            icon: <Bot size={13} />,
+            hint: provider.agents.running ? `${provider.agents.running} running` : provider.agents.total ? `${provider.agents.total} finished` : 'None',
+            disabled: provider.agents.total === 0,
+            onSelect: provider.onAgents,
+            data: { 'data-agents-button': true },
+          } satisfies MenuEntry,
+        ]
+      : []),
+    {
+      label: `Open in ${short} CLI`,
+      icon: <SquareTerminal size={13} />,
+      hint: 'Terminal',
+      disabled: !provider.onOpenCli,
+      onSelect: () => provider.onOpenCli?.(),
+      data: { 'data-open-provider-cli': provider.id, ...(provider.onOpenCli ? {} : { 'data-tooltip': `Stop it here first: ${short} can't run it in two places` }) },
+    },
+    { label: 'Done', icon: <Check size={13} />, onSelect: provider.onArchive, data: { 'data-archive-session': true } },
+    // Plain text, not a disabled item: screen readers don't land on it as an action.
+    ...(line ? (['separator', { note: line, tone: 'faint' }] as MenuEntry[]) : []),
+  ];
+}
 
 /**
  * The session header's "⋯" menu: opening the folder in an editor, terminal or Finder (⌘O opens the
@@ -40,6 +101,7 @@ export function MoreMenu({
   profileId,
   title,
   onStop,
+  provider = null,
 }: {
   sessionId: string;
   actions: ActionsMenu;
@@ -57,6 +119,11 @@ export function MoreMenu({
   title: string | null;
   /** Stops the Claude Code process for this session; null when it isn't running here. */
   onStop: (() => void) | null;
+  /**
+   * Another provider's session (GitHub Copilot): the menu is only what works for it, and one faint line names Claude
+   * Code's actions it doesn't have yet (from `supports`, so the line shrinks as they come).
+   */
+  provider?: ProviderMenu | null;
 }) {
   const menu = useMenu();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -133,6 +200,13 @@ export function MoreMenu({
       onSelect: () => setRenaming(true),
       data: { 'data-rename-session': true },
     },
+    {
+      label: 'Note…',
+      icon: <NotebookPen size={13} />,
+      disabled: title === null,
+      onSelect: () => openNoteEditor(sessionId),
+      data: { 'data-session-note': true },
+    },
     ...(onAgents
       ? [
           {
@@ -195,7 +269,8 @@ export function MoreMenu({
     },
   );
 
-  const label = `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
+  const shownEntries = provider ? providerEntries({ ...provider, onRename: provider.supports.includes('rename') && title !== null ? () => setRenaming(true) : null, onAgents, agents }) : entries;
+  const label = provider ? 'More: compact, tools, copy, open in the CLI, done' : `More: open in, project actions, agents${running ? ` (${running} running)` : ''}, stop session`;
   const error = actions.error ?? openIn.error;
   return (
     <div className="no-drag relative flex shrink-0 items-center" data-actions-bar>
@@ -220,7 +295,7 @@ export function MoreMenu({
           if (menu.at || !rect) menu.close();
           else menu.openAt(rect.right - MENU_WIDTH, rect.bottom + 4);
         }}
-        data-tooltip={error ?? (running ? `More · ${running === 1 ? '1 agent' : `${running} agents`} running` : 'More: open in, project actions, agents, stop session')}
+        data-tooltip={provider ? 'More' : error ?? (running ? `More · ${running === 1 ? '1 agent' : `${running} agents`} running` : 'More: open in, project actions, agents, stop session')}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={menu.at !== null}
@@ -228,7 +303,7 @@ export function MoreMenu({
       >
         {running > 0 && <span className="absolute top-0.5 right-0.5 size-1.5 animate-pulse rounded-full bg-accent-ink" aria-hidden />}
       </Button>
-      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={MENU_WIDTH} entries={entries} onClose={menu.close} label="More" />}
+      {menu.at && <Menu x={menu.at.x} y={menu.at.y} width={MENU_WIDTH} entries={shownEntries} onClose={menu.close} label="More" />}
       {renaming && title !== null && <RenameSessionDialog sessionId={sessionId} title={title} onClose={() => setRenaming(false)} />}
     </div>
   );

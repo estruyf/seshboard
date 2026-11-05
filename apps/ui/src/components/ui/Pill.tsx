@@ -8,8 +8,10 @@ interface PillProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick'> {
   tone?: PillTone;
   /** A button when given, otherwise a label. */
   onClick?: MouseEventHandler<HTMLButtonElement>;
-  /** For pills that add something ("+ Add action"). */
+  /** For pills that add something in an editor (Add step): a dashed outline. */
   dashed?: boolean;
+  /** For pills that add something beside the message box ("+ Add action"): no border, faint text, a hover background. */
+  ghost?: boolean;
   /** A pill that toggles something open, while it is open. */
   selected?: boolean;
   /** Let it shrink and truncate its label rather than keep its width. */
@@ -23,8 +25,8 @@ interface PillProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick'> {
 }
 
 /** A small rounded chip: project actions and the task strip above the message box, or a label. */
-export function Pill({ tone = 'default', onClick, dashed = false, selected = false, shrink = false, icon, kbd, disabled, className = '', children, ref, ...rest }: PillProps) {
-  const look = `${pillClass({ tone, interactive: !!onClick, dashed, selected, shrink })} ${className}`;
+export function Pill({ tone = 'default', onClick, dashed = false, ghost = false, selected = false, shrink = false, icon, kbd, disabled, className = '', children, ref, ...rest }: PillProps) {
+  const look = `${pillClass({ tone, interactive: !!onClick, dashed, ghost, selected, shrink })} ${className}`;
   const content = (
     <>
       {icon}
@@ -46,7 +48,7 @@ export function Pill({ tone = 'default', onClick, dashed = false, selected = fal
   );
 }
 
-const COUNT_TINT = { 'needs-you': 'bg-warn/15', working: 'bg-accent/20', neutral: 'bg-border/60', ok: 'bg-ok/15', info: 'bg-link/15', caution: 'bg-caution/15', error: 'bg-error/15' } as const;
+const COUNT_TINT = { 'needs-you': 'bg-warn/15', working: 'bg-accent/20', unread: 'bg-unread/15', neutral: 'bg-border/60', ok: 'bg-ok/15', info: 'bg-link/15', caution: 'bg-caution/15', error: 'bg-error/15' } as const;
 
 /**
  * The count next to a group heading (Needs you, Working, Archived), tinted like the heading's status.

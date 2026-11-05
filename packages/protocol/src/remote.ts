@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isProviderFeature, OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import type { ContractShape } from './rpc.ts';
 import { CompanionStatus } from './companion.ts';
 import { CatchUp } from './catchUp.ts';
@@ -35,6 +36,12 @@ export const DeviceName = z.string().trim().min(1).max(REMOTE_DEVICE_NAME_MAX);
 export const RemoteSessionProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor });
 export type RemoteSessionProfile = z.infer<typeof RemoteSessionProfile>;
 
+/** Which trigger started a session or a run (`triggerOrigin.ts`); one this version can't read is left out, not the session. */
+export const RemoteTriggerOriginSchema = z
+  .object({ name: z.string().max(200), kind: z.enum(['ci', 'issue']), ref: z.string().max(100), url: z.string().max(2_000), at: z.number() })
+  .optional()
+  .catch(undefined);
+
 export const RemoteSession = z.object({
   id: z.string(),
   title: z.string(),
@@ -51,6 +58,11 @@ export const RemoteSession = z.object({
   /** Finished since you last looked, on any device: the title shows in bold. */
   unread: z.boolean(),
   pinned: z.boolean(),
+  /**
+   * Another provider runs it (GitHub Copilot): Claude Code's model, effort and mode chips and Ask about this session
+   * don't apply. Null or left out: Claude Code.
+   */
+  provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */
@@ -73,6 +85,13 @@ export const RemoteSession = z.object({
    * under its run (a run row's id, `RemoteRun.id`). Null on its own; left out by a Seshboard from before phones knew runs.
    */
   parentId: z.string().nullable().optional(),
+  /**
+   * The paired device (phone, browser or computer) that started it from afar, by its name there, or that of the
+   * session it sits under; null when it was started on this computer itself. With `REMOTE_FEATURE_STARTED_BY`.
+   */
+  startedBy: z.string().max(200).nullable().optional(),
+  /** The trigger that started it (#180): the bolt on its row and "Started by …" under its header. Left out when none did. */
+  trigger: RemoteTriggerOriginSchema,
 });
 export type RemoteSession = z.infer<typeof RemoteSession>;
 
@@ -87,6 +106,8 @@ export const RemoteRun = PipelineRun.omit({ pipeline: true, projectRoot: true, c
   projectName: z.string(),
   /** Its steps work in a worktree, not the project's folder. */
   worktree: z.boolean(),
+  /** The trigger that started it (#185), as a session's. Left out when none did. */
+  trigger: RemoteTriggerOriginSchema,
 });
 export type RemoteRun = z.infer<typeof RemoteRun>;
 
@@ -183,7 +204,10 @@ export type RemotePermissionMode = z.infer<typeof RemotePermissionMode>;
 
 /** What a phone may choose for a new session; anything left out is the project's default, then its profile's. */
 export const RemoteSessionOptions = z.object({
-  /** The Claude profile to run with, for this session only; left out: the project's, else the default. */
+  /**
+   * The profile to run with, for this session only; left out: the project's, else the default. A profile of another
+   * provider (GitHub Copilot) starts it with that provider: only `model` and `permissionMode` apply, both its own.
+   */
   profileId: ProfileId.optional(),
   model: z.string().min(1).max(200).nullable().optional(),
   effort: Effort.nullable().optional(),
@@ -202,8 +226,20 @@ export type RemoteSessionOptions = z.infer<typeof RemoteSessionOptions>;
 export const RemoteDefaults = z.object({ model: z.string().nullable(), effort: Effort.nullable(), permissionMode: PermissionMode.nullable(), worktree: z.boolean().nullable() });
 export type RemoteDefaults = z.infer<typeof RemoteDefaults>;
 
-/** A Claude profile (login) as a phone knows it: its name and colour, never its folder or account. */
-export const RemoteProfile = z.object({ id: z.string(), name: z.string(), color: ProfileColor, defaults: RemoteDefaults });
+/** A provider's own mode for one of Seshboard's (Copilot's, described in its words). */
+export const RemoteProviderMode = z.object({ value: RemotePermissionMode, label: z.string(), description: z.string() });
+
+/**
+ * A profile (login) as a phone knows it: its name and colour, never its folder or account. A profile of another
+ * provider (GitHub Copilot) says so, with that provider's own modes; left out: Claude Code's.
+ */
+export const RemoteProfile = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: ProfileColor,
+  defaults: RemoteDefaults,
+  provider: z.object({ id: z.enum(OPTIONAL_PROVIDERS), name: z.string(), modes: z.array(RemoteProviderMode), /** Claude Code's features it has too; a computer from before says none, and ones this build doesn't know are left out. */ supports: z.array(z.string()).default([]).transform((list) => list.filter(isProviderFeature)) }).optional(),
+});
 export type RemoteProfile = z.infer<typeof RemoteProfile>;
 
 /**
@@ -321,6 +357,28 @@ const RunId = z.string().min(1).max(100);
 const RunParams = z.object({ runId: RunId });
 const RunResult = z.object({ state: RemoteRunState });
 
+/**
+ * Seshboard's own updater on that computer, as Settings › About shows it there (a part of `UpdateState`). `status` is
+ * the updater's (`UpdateStatus`); a computer that reads one it doesn't know shows nothing for it.
+ */
+export const RemoteAppUpdate = z.object({
+  status: z.string().max(50),
+  currentVersion: z.string().max(100),
+  availableVersion: z.string().max(100).nullable(),
+  downloadedVersion: z.string().max(100).nullable(),
+  /** 0-100 while downloading. */
+  downloadPercent: z.number().nullable(),
+  /** The update channel there (Settings › About): Stable never gets a beta. */
+  channel: z.enum(['stable', 'beta']).catch('stable'),
+  error: z.string().max(1_000).nullable(),
+  /** Why this build can't update itself (development, no feed, turned off). */
+  disabledReason: z.string().max(1_000).nullable(),
+  checkedAt: z.number().nullable(),
+  /** Update when it's idle was picked: it installs once none of its sessions works (`app.update.cancel` stops the wait). */
+  whenIdle: z.boolean().default(false),
+});
+export type RemoteAppUpdate = z.infer<typeof RemoteAppUpdate>;
+
 /** The most messages one `transcript.get` returns. */
 export const REMOTE_PAGE_LIMIT = 200;
 
@@ -431,6 +489,15 @@ export const remoteContract = {
     /** New session's choices. */
     'options.get': { params: z.object({}), result: RemoteOptions },
     /**
+     * Whether a provider profile (one `options.get` lists with a `provider`) can start a session now (installed and
+     * signed in with its own CLI, which says how when it isn't), and its models. Asked when New session picks it: it
+     * starts the profile's runtime on the computer.
+     */
+    'providers.ready': {
+      params: z.object({ profileId: ProfileId }),
+      result: z.object({ problem: z.string().nullable(), models: z.array(ModelOption.pick({ value: true, displayName: true, description: true, supportsEffort: true })) }),
+    },
+    /**
      * Plan usage of every Claude profile, the default first. From the computer's last check when it is less than a
      * minute old; `refresh` checks now. `usage.changed` follows each new check.
      */
@@ -540,7 +607,15 @@ export const remoteContract = {
      * computer it is paired with), and `label`, what each push starts with (this computer's name, with more than one).
      */
     'push.subscribe': {
-      params: z.object({ subscription: RemotePushSubscription, needsYou: z.boolean(), finished: z.boolean(), vapid: RemoteVapidKeys.optional(), label: z.string().trim().min(1).max(60).optional() }),
+      params: z.object({
+        subscription: RemotePushSubscription,
+        needsYou: z.boolean(),
+        finished: z.boolean(),
+        /** Reminders that come due (Remind me later); left out by a phone from before: it follows `finished`. */
+        reminders: z.boolean().optional(),
+        vapid: RemoteVapidKeys.optional(),
+        label: z.string().trim().min(1).max(60).optional(),
+      }),
       result: z.object({}),
     },
     'push.unsubscribe': { params: z.object({}), result: z.object({}) },
@@ -555,6 +630,21 @@ export const remoteContract = {
     'limits.arm': { params: z.object({ sessionId: SessionId, armed: z.boolean() }), result: z.object({}) },
     /** Whether the app is on this device's screen now: no push while it is. Sent after hello and on each change. */
     'device.visibility': { params: z.object({ visible: z.boolean() }), result: z.object({}) },
+    /**
+     * Seshboard's updater there, for Seshboard on another paired computer; null where it can't be asked (a computer
+     * without the app's main process). With `REMOTE_FEATURE_UPDATE`. The `app.update.*` methods answer FORBIDDEN to a
+     * phone or a browser: only another computer may update this one, and each call is logged there with its name.
+     */
+    'app.update.get': { params: z.object({}), result: z.object({ update: RemoteAppUpdate.nullable() }) },
+    /** Checks for a newer version now, even after a recent check. `app.update.changed` follows. */
+    'app.update.check': { params: z.object({}), result: z.object({}) },
+    /**
+     * Checks now, downloads what it found and restarts into it: the connection closes until Seshboard runs again, and
+     * its `hello` then has the new version. `idle` waits until none of its sessions works (`whenIdle`).
+     */
+    'app.update.install': { params: z.object({ when: z.enum(['now', 'idle']) }), result: z.object({}) },
+    /** Stops waiting for idle. An update that already started goes on. */
+    'app.update.cancel': { params: z.object({}), result: z.object({}) },
     /** The theme in use on the computer (null until the app showed one); `theme.changed` follows each change. With `REMOTE_FEATURE_THEME`. */
     'theme.get': { params: z.object({}), result: z.object({ theme: RemoteTheme.nullable() }) },
   },
@@ -577,6 +667,8 @@ export const remoteContract = {
     'app.icon': z.object({ key: z.string().max(50) }),
     /** Someone picked another theme on the computer, or edited the one in use. */
     'theme.changed': RemoteTheme,
+    /** Seshboard's updater there moved on (`app.update.get`); to paired computers only. */
+    'app.update.changed': RemoteAppUpdate,
   },
 } as const satisfies ContractShape;
 export type RemoteContract = typeof remoteContract;
@@ -614,16 +706,6 @@ export const REMOTE_APP_URL = 'https://seshboard.app/remote/';
  * never does, so code that is only on `dev` can't talk to anyone's computer.
  */
 export const REMOTE_PREVIEW_APP_URL = 'https://beta.seshboard.app/remote/';
-
-/**
- * Where the remote app and the preview lived before seshboard.app, by the address that replaced each. A phone keeps
- * its pairing on the origin it paired on, so the engine still accepts sockets from these until people have paired
- * on the new site. Remove in 1.3.0.
- */
-export const REMOTE_LEGACY_APP_URLS: Readonly<Record<string, string>> = {
-  [REMOTE_APP_URL]: 'https://switchboard.struyfconsulting.com/remote/',
-  [REMOTE_PREVIEW_APP_URL]: 'https://switch-dev.struyfconsulting.com/remote/',
-};
 
 /**
  * How a phone reaches this computer from anywhere:

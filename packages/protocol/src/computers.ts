@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { COMPUTER_METHODS } from './computerConstants.ts';
+import { COMPUTER_COLORS, COMPUTER_METHODS, COMPUTER_NAME_MAX, COMPUTER_NOTIFY } from './computerConstants.ts';
+import { RemoteAppUpdate } from './remote.ts';
 
 /**
  * Other computers: this Seshboard pairs with Remote on another computer, as a phone does, and shows that
@@ -9,6 +10,15 @@ import { COMPUTER_METHODS } from './computerConstants.ts';
  */
 
 export const ComputerMethodSchema = z.enum(COMPUTER_METHODS);
+
+/** A paired computer's colour; one a newer version saved and this one doesn't know is the default violet. */
+export const ComputerColorSchema = z.enum(COMPUTER_COLORS).catch('violet');
+
+/** Which of a paired computer's notifications show here; one a newer version saved and this one doesn't know is `all`. */
+export const ComputerNotifySchema = z.enum(COMPUTER_NOTIFY).catch('all');
+
+/** A name you give a paired computer here; empty goes back to what it calls itself. */
+export const ComputerNameSchema = z.string().trim().max(COMPUTER_NAME_MAX);
 
 /**
  * How the connection to a paired computer is:
@@ -22,8 +32,21 @@ export type ComputerState = z.infer<typeof ComputerState>;
 
 export const Computer = z.object({
   id: z.string(),
-  /** What the other computer calls itself ("Studio Mac"), from its last `hello`. */
+  /** Its name here: the one you gave it, else what it calls itself (`ownName`). */
   name: z.string(),
+  /** What the other computer calls itself ("Studio Mac"), from its last `hello`. */
+  ownName: z.string(),
+  /** Whether `name` is one you gave it here. */
+  renamed: z.boolean(),
+  /** Its colour on chips, rows and the line over its sessions. */
+  color: ComputerColorSchema,
+  /** Which of its notifications show here. */
+  notify: ComputerNotifySchema,
+  /**
+   * The sessions that are mine there, the most recent last: started there from this computer (New session, Run on) or
+   * acted on from here (a message, an answer, a resume). `isMine` reads it, for the sidebar's Mine filter and Only mine.
+   */
+  mineHere: z.array(z.string()).default([]),
   /** Where it is: its tunnel's `https://` address. */
   address: z.string(),
   pairedAt: z.number(),
@@ -35,6 +58,8 @@ export const Computer = z.object({
   version: z.string().nullable(),
   /** What it takes beyond what every version does (`REMOTE_FEATURE_ATTACHMENTS`), once connected. */
   features: z.array(z.string()),
+  /** Seshboard's updater there (`REMOTE_FEATURE_UPDATE`), while connected; null before it said, or from an older version. */
+  update: RemoteAppUpdate.nullable().default(null),
   /** When it was last connected, while it is not ("Last seen 2h ago"); null while connected, or not since this app started. */
   lastSeen: z.number().nullable(),
   /**

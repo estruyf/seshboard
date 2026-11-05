@@ -107,6 +107,10 @@ When something stops Start, its tooltip says why: "Type a message first", "Choos
 
 The session opens as soon as it starts. Claude Code was already warmed up in the folder while you typed, so the first reply comes quickly.
 
+## GitHub Copilot
+
+With a [GitHub Copilot profile](/settings/claude-profiles/#github-copilot-profiles), pick it in New session to start a Copilot session, with Copilot's own models. New session says what it turned off when you switch to it.
+
 ## Project defaults
 
 New session starts from the project's defaults: model, effort, permission mode, current checkout or worktree, what a worktree branches from, and a branch. Fields the project leaves unset use the [defaults of the session's Claude profile](/settings/claude-profiles/#defaults-for-new-sessions), then Claude Code's own defaults. When neither the project nor the profile sets a permission mode, the session starts in **Global permission mode** from [Settings › General](/settings/#new-sessions), which can also remember the last one you picked.
@@ -140,7 +144,19 @@ An offline computer stays in the switch, greyed out, with when it was last seen.
 With the [focus limit](/focus-limit/) on and reached, a note above the message box lists the sessions that count, each with **Open**, and **Change limit** opens Settings. Its **Add to queue** keeps the idea for later.
 
 - **Nudge**: Start asks first, and the note also has **Start anyway**.
-- **Strict**: Start waits until you finish, read or archive a session. **Add to queue** stays in Start's menu.
+- **Strict**: Start waits until you finish, read or mark a session done. **Add to queue** stays in Start's menu.
+
+## Quick start, from any app
+
+Press <Kbd shortcut="quickstart.open" /> in any app to start a session without leaving what you're doing. A panel opens over it: what needs you on top, then your projects. Pick a project with <Kbd shortcut="quickstart.pick" /> or by typing its name, type the task and press <Kbd shortcut="quickstart.start" />. The session runs in the background and Seshboard doesn't come forward.
+
+| Key | What it does |
+|---|---|
+| <Kbd shortcut="quickstart.start-open" /> | Starts it and opens Seshboard. |
+| <Kbd shortcut="quickstart.actions" /> | Shows the other actions: start in a new worktree, change the model, mode or profile, attach the clipboard, or add it to Later instead. |
+| <Kbd keys="escape" /> | Closes the panel, and keeps what you typed for five minutes. |
+
+Change the shortcut, or turn off starting in the background, in [Settings › General › Quick start](/settings/#quick-start).
 
 ## Start from the palette
 
@@ -167,7 +183,7 @@ A `seshboard://new-session` link opens New session with a project and a prompt f
 
 - [Settings → General](/settings/#general): Seshboard can open on New session.
 - [Settings → Projects](/settings/#projects): *Project order* sets how the projects are ordered, and [Clone from GitHub](/projects/clone-from-github/) turns on cloning a repository from New session.
-- [Settings → Claude profiles](/settings/#claude-profiles): the profiles you can pick from.
+- [Settings → Profiles](/settings/#profiles): the profiles you can pick from.
 - [Settings → Focus](/settings/#focus): the focus limit.
 - A project's [Settings tab](/projects/settings/): its defaults and profile.
 

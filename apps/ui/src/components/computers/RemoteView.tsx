@@ -2,6 +2,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { sameRemote, type RemoteRef } from '../../state/remoteSelection.ts';
 import { ComputerView, type PaneProps } from './ComputerView.tsx';
+import { RemoteRunRowPane } from './RemoteRunRowPane.tsx';
 import { RemoteSessionView } from './RemoteSessionView.tsx';
 
 const NO_PROMPTS: never[] = [];
@@ -13,8 +14,9 @@ export function RemoteView() {
 }
 
 /**
- * A pane showing a session on another computer (its leaf in the layout is `remoteRowId`): the session, or its
- * computer's page while it is starting, the computer is away before the first list, or it is no longer listed there.
+ * A pane showing a session on another computer (its leaf in the layout is `remoteRowId`): the session, a run row of
+ * it (`RemoteRunRowPane`: a run started from New session there, keyed by the run's id), or its computer's page while
+ * it is starting, the computer is away before the first list, or it is no longer listed there.
  */
 export function RemotePane({ remote, pane }: { remote: RemoteRef; pane: PaneProps }) {
   const connection = useEngineConnection();
@@ -23,6 +25,8 @@ export function RemotePane({ remote, pane }: { remote: RemoteRef; pane: PaneProp
   const computer = useComputers((s) => s.status?.computers.find((c) => c.id === remote.computerId) ?? null);
   const list = useComputers((s) => s.lists.get(remote.computerId) ?? null);
   const session = list?.sessions.find((s) => s.id === remote.sessionId) ?? null;
+  const runRow = session ? null : (list?.runs?.find((state) => state.run.id === remote.sessionId && !state.run.parentSessionId) ?? null);
+  if (client && computer && runRow) return <RemoteRunRowPane key={`${computer.id}:${runRow.run.id}`} client={client} computer={computer} state={runRow} pane={pane} />;
   if (!client || !computer || !session) {
     const fresh = sameRemote(starting, remote);
     return <ComputerView computerId={remote.computerId} missing={!!computer && !!list && !fresh} starting={fresh} pane={pane} />;

@@ -10,8 +10,8 @@ export interface MessageActions {
   fork(messageUuid: string): void;
   /** A new session up to just before this prompt, with the prompt in the message box to change. */
   edit(messageUuid: string, text: string): void;
-  /** Undo the file changes Claude made since this prompt. */
-  rewind(messageUuid: string): void;
+  /** Undo the file changes Claude made since this prompt (Copilot's rewind: the conversation from it too, and `text` goes back in the box). */
+  rewind(messageUuid: string, text: string): void;
   /** Whether this prompt has a message before it (the first one can't be edited by forking). */
   canEdit(messageUuid: string): boolean;
   /** Types a code block's command into the session's terminal; null when the session has no folder. */
@@ -26,6 +26,12 @@ export interface MessageActions {
   read?(turnKey: string): void;
   /** The replies that can be read, by the key of the turn's last reply: the turn they belong to and a word count. */
   readable?: ReadonlyMap<string, ReadableReply>;
+  /** Fork and Edit and resend are offered: in another provider's session only when its provider has them. Missing: true. */
+  canFork?: boolean;
+  /** Rewind is offered. Missing: true. */
+  canRewind?: boolean;
+  /** Rewinding takes the conversation back too, not only the files (another provider's, GitHub Copilot's). */
+  rewindsConversation?: boolean;
 }
 
 /** A turn's last reply, as the Read button needs it. */
@@ -112,17 +118,19 @@ export function MessageToolbar({ itemKey, kind, text, copyOnly = false }: { item
     >
       {actions && kind === 'user' && (
         <>
-          <Action title="Undo file changes since this message" onClick={() => actions.rewind(uuid)}>
-            <Undo2 size={13} />
-          </Action>
-          {actions.canEdit(uuid) && (
+          {actions.canRewind !== false && (
+            <Action title={actions.rewindsConversation ? 'Rewind to before this message' : 'Undo file changes since this message'} onClick={() => actions.rewind(uuid, text)}>
+              <Undo2 size={13} />
+            </Action>
+          )}
+          {actions.canFork !== false && actions.canEdit(uuid) && (
             <Action title="Edit and resend (in a new session)" onClick={() => actions.edit(uuid, text)}>
               <Pencil size={12} />
             </Action>
           )}
         </>
       )}
-      {actions && kind === 'text' && (
+      {actions && actions.canFork !== false && kind === 'text' && (
         <Action title="Fork from here (a new session with the conversation up to this message)" onClick={() => actions.fork(uuid)}>
           <GitFork size={13} />
         </Action>

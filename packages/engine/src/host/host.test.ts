@@ -9,7 +9,7 @@ import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
 import type { LimitStop } from '../usageLimit/usageLimit.ts';
 import { describeSuggestions, RECHECK_MESSAGE } from './permissions.ts';
-import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, type HostConfig } from './sessionHost.ts';
+import { buildOptions, CLAUDE_MISSING_MESSAGE, failureMessage, toModelOption, type HostConfig } from './sessionHost.ts';
 import { createMemorySessionSettings, createSessionSettingsStore, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 
@@ -168,6 +168,11 @@ class FakeQuery {
   }
   async setModel(model?: string) {
     this.model = model ?? 'default';
+  }
+  /** What the host sent through applyFlagSettings. */
+  flagSettings: Array<Record<string, unknown>> = [];
+  async applyFlagSettings(settings: Record<string, unknown>) {
+    this.flagSettings.push(settings);
   }
   /** Skills written to disk after start, picked up by reloadSkills(). */
   newSkills: Array<{ name: string; description: string; argumentHint: string }> = [];
@@ -1070,6 +1075,21 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('adopts a pre-warmed process only for a new session with the effort it started with', async () => {
+    const t = setup();
+    await t.manager.prewarm('/work/app', 'default', 'high');
+    expect(t.warmups[0]!.options).toMatchObject({ effort: 'high' });
+    // Asking again with the same effort keeps it; a session with another effort starts cold.
+    await t.manager.prewarm('/work/app', 'default', 'high');
+    expect(t.warmups).toHaveLength(1);
+    const cold = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', effort: 'low' });
+    expect(cold).not.toBe(t.warmups[0]!.options.sessionId);
+    const warm = await t.manager.create({ ...base, cwd: '/work/app', prompt: 'Say hi', permissionMode: 'plan', effort: 'high' });
+    expect(warm).toBe(t.warmups[0]!.options.sessionId);
+    await until(() => lastState(t.infos, warm) === 'idle');
+    t.manager.closeAll();
+  });
+
   it('drops a pre-warmed process that failed, so the next pre-warm tries again and a session starts fresh', async () => {
     const t = setup({ warmFails: { message: 'Claude Code process exited with code 1' } });
     await t.manager.prewarm('/work/app', 'default');
@@ -1470,6 +1490,80 @@ describe('HostManager', () => {
     expect(t.models.at(-1)).toEqual([{ value: 'fake', displayName: 'Fake', description: 'Test model', supportsEffort: false }]);
     expect(t.manager.listModels()).toEqual(t.models.at(-1));
     t.manager.close(id);
+  });
+
+  it('turns fast mode on for this run only and follows what Claude Code reports, also when out of credits', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => t.queries.length === 1 && t.manager.list().hosts[0]?.state === 'idle');
+    const out = t.queries[0]!.out;
+    const host = () => t.manager.list().hosts.find((h) => h.sessionId === id)!;
+    const result = (fields: Record<string, unknown>) => out.push({ type: 'result', subtype: 'success', is_error: false, result: '', total_cost_usd: 0, session_id: id, ...fields });
+
+    // Off from the start, and not reported as blocked for not having asked.
+    expect(t.queries[0]!.options.settings).toBeUndefined();
+    out.push({ type: 'system', subtype: 'init', session_id: id, fast_mode_state: 'off', fast_mode_disabled_reason: 'sdk_opt_in_required' });
+    await until(() => host().fastMode === 'off');
+    expect(host().fastModeBlocked).toBeNull();
+
+    await t.manager.setFastMode(id, true);
+    expect(t.queries[0]!.flagSettings).toEqual([{ fastMode: true }]);
+    expect(host().fastMode).toBe('on');
+
+    // Out of credits: Claude Code still says on, but the turn ran at standard speed.
+    out.push({ type: 'system', subtype: 'init', session_id: id, fast_mode_state: 'on' });
+    out.push({ type: 'system', subtype: 'notification', key: 'fast-mode-overage-rejected', text: 'Fast mode disabled · usage credits exhausted', session_id: id });
+    result({ fast_mode_state: 'on', usage: { speed: 'standard' } });
+    await until(() => host().fastModeBlocked === 'credits_exhausted');
+    // The next turn's result, without a notification of its own, doesn't clear it.
+    result({ fast_mode_state: 'on', usage: { speed: 'standard' }, total_cost_usd: 5 });
+    await until(() => host().costUsd === 5);
+    expect(host().fastModeBlocked).toBe('credits_exhausted');
+
+    // A request that ran fast says the credits are back.
+    result({ fast_mode_state: 'on', usage: { speed: 'fast' } });
+    await until(() => host().fastModeBlocked === null);
+    expect(host().fastMode).toBe('on');
+
+    await t.manager.setFastMode(id, false);
+    expect(t.queries[0]!.flagSettings.at(-1)).toEqual({ fastMode: false });
+    expect(host().fastMode).toBe('off');
+
+    t.manager.close(id);
+    await until(() => !t.manager.list().hosts.some((h) => h.sessionId === id && h.state !== 'closed'));
+    await expect(t.manager.setFastMode(id, true)).rejects.toMatchObject({ code: 'NOT_RUNNING' });
+  });
+
+  it('turns on fast mode before the first message when asked, and a resume starts without it', async () => {
+    const cwds: Record<string, string> = {};
+    const t = setup({ cwds });
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello', fastMode: true });
+    await until(() => t.queries.length === 1);
+    const query = t.queries[0]!;
+    expect(query.flagSettings).toEqual([{ fastMode: true }]);
+    expect(t.manager.list().hosts.find((h) => h.sessionId === id)!.fastMode).toBe('on');
+    t.manager.close(id);
+    await until(() => !t.manager.has(id));
+    cwds[id] = '/w';
+
+    await t.manager.send({ sessionId: id, text: 'again', attachments: [], fork: false });
+    await until(() => t.queries.length === 2);
+    expect(t.queries[1]!.flagSettings).toEqual([]);
+    expect(t.manager.list().hosts.find((h) => h.sessionId === id)!.fastMode ?? 'off').toBe('off');
+    t.manager.close(id);
+  });
+
+  it('asks for nothing when a new session does not want fast mode', async () => {
+    const t = setup();
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => t.queries.length === 1);
+    expect(t.queries[0]!.flagSettings).toEqual([]);
+    t.manager.close(id);
+  });
+
+  it('marks the models that can run in fast mode', () => {
+    expect(toModelOption({ value: 'opus', displayName: 'Opus', description: '', supportsFastMode: true })).toMatchObject({ supportsFastMode: true });
+    expect(toModelOption({ value: 'sonnet', displayName: 'Sonnet', description: '', supportsFastMode: false })).not.toHaveProperty('supportsFastMode');
   });
 
   it('follows mode changes Claude Code reports on its own', async () => {

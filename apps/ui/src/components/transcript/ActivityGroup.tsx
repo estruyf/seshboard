@@ -1,22 +1,12 @@
 import { ChevronRight } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useSecondClock } from '../../lib/secondClock.ts';
+import { WorkingPanel } from '../ui/WorkingPanel.tsx';
 import { LiveTurnParts, type LiveTurnInfo } from './TurnMeta.tsx';
 import type { ActivityGroup, DisplayItem } from './displayItems.ts';
 import { Markdown } from './Markdown.tsx';
 import { ToolDetails, ToolImages } from './ToolDetails.tsx';
 import { activitySummary, stepLabel } from './toolSummary.ts';
-
-/** Three dots taking turns: Claude is working. */
-export function WorkingDots() {
-  return (
-    <span className="working-dots shrink-0" aria-hidden>
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
 
 /** 9s, 4m 12s, 1h 5m. */
 export function formatDuration(ms: number): string {
@@ -131,7 +121,7 @@ export function ActivityGroupView({
         data-tooltip={open ? 'Hide steps' : 'Show each step'}
       >
         <span className="flex w-4 shrink-0 justify-center" aria-hidden>
-          {active ? <WorkingDots /> : <span className={`size-1.5 rounded-full ${failures > 0 ? 'bg-error' : 'bg-ok'}`} />}
+          {active ? <WorkingPanel state={live?.waitingSince != null ? 'waiting' : 'working'} /> : <span className={`size-1.5 rounded-full ${failures > 0 ? 'bg-error' : 'bg-ok'}`} />}
         </span>
         <span className={`min-w-0 truncate ${active ? 'text-text/85' : 'text-muted group-hover:text-text'}`}>{label}</span>
         {failures > 0 && !active && <span className="shrink-0 text-meta text-error">· {failures} failed</span>}

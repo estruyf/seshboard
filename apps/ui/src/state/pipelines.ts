@@ -1,4 +1,4 @@
-import { mentionsIn, modelWord, modeWord, PARENT_MENTION, type Pipeline, type PipelineClaudeStep, type PipelineStep } from '@seshboard/protocol/client';
+import { mentionsIn, modelWord, modeWord, PARENT_MENTION, PROVIDER_SHORT_NAMES, type Pipeline, type PipelineClaudeStep, type PipelineStep } from '@seshboard/protocol/client';
 
 // Pipelines (#179) in the window: the words the editor shows, without React or the stores, so they can be tested. The
 // rules are the protocol's (`pipelines.ts`), and the words of a run, which the remote app shows too, are in its
@@ -43,7 +43,8 @@ export function stepMentions(step: PipelineClaudeStep, names: readonly string[])
 export function stepSummary(step: PipelineStep, pipeline: Pick<Pipeline, 'steps' | 'autoPush'>): string {
   if (step.kind === 'push') return ['commit, push, pull request', step.draft ? 'draft' : null, pipeline.autoPush ? 'by itself' : 'waits for you'].filter(Boolean).join(' · ');
   const names = pipeline.steps.map((s) => s.name);
-  const parts = [typeof step.start === 'object' ? `Fork of ${step.start.fork}` : 'Fresh', modelWord(step.model), modeWord(step), ...stepMentions(step, names)];
+  // Another tool runs it (Copilot): said first after how it starts. Claude Code's steps say nothing, as before.
+  const parts = [typeof step.start === 'object' ? `Fork of ${step.start.fork}` : 'Fresh', step.provider ? PROVIDER_SHORT_NAMES[step.provider] : null, modelWord(step.model), modeWord(step), ...stepMentions(step, names)];
   if (step.actionsFirst.length) parts.push(`runs ${step.actionsFirst.join(', ')} first`);
   if (step.verdict) parts.push(`↺ ${step.verdict.sendTo} ×${step.verdict.rounds}`);
   if (step.confirmBefore) parts.push('waits for you');
@@ -61,7 +62,7 @@ export function treeLines(pipeline: Pick<Pipeline, 'steps' | 'autoPush'>): Array
       lines.push({ step: step.name, name: `${branch}${step.name.padEnd(width)}`, detail: pipeline.autoPush ? 'by itself' : 'waits for you' });
       return;
     }
-    const how = [modelWord(step.model), typeof step.start === 'object' ? 'fork' : (modeWord(step) ?? 'fresh')].join(' · ');
+    const how = [step.provider ? PROVIDER_SHORT_NAMES[step.provider] : null, modelWord(step.model), typeof step.start === 'object' ? 'fork' : (modeWord(step) ?? 'fresh')].filter(Boolean).join(' · ');
     lines.push({ step: step.name, name: `${branch}${step.name.padEnd(width)}`, detail: how });
     if (step.verdict) lines.push({ step: step.name, name: `${last ? '   ' : '│  '}${''.padEnd(width)}`, detail: `↺ ${step.verdict.sendTo}, ${step.verdict.rounds} ${step.verdict.rounds === 1 ? 'round' : 'rounds'}` });
   });

@@ -11,6 +11,8 @@ import { otherModalOpen, overlayOpen } from './lib/modalGuards.ts';
 import { LinkError } from './components/LinkError.tsx';
 import { QuitPrompt } from './components/QuitPrompt.tsx';
 import { ArchiveDraftDialog } from './components/drafts/ArchiveDraftDialog.tsx';
+import { SessionNoteDialog } from './components/notes/SessionNoteDialog.tsx';
+import { RemindDialog } from './components/notes/RemindDialog.tsx';
 import { UnsentList } from './components/drafts/UnsentList.tsx';
 import { useDraftsSync } from './state/useDraftsSync.ts';
 import { useCompanionSync } from './state/useCompanionSync.ts';
@@ -42,6 +44,9 @@ import { useTriggersSync } from './state/triggersStore.ts';
 import { usePipelinesSync } from './state/pipelinesStore.ts';
 import { TriggerEditorHost } from './components/triggers/TriggerEditor.tsx';
 import { useCatchUpSync } from './state/useCatchUpSync.ts';
+import { useLooseEndsSync } from './state/looseEndsStore.ts';
+import { useReminderClear } from './state/useReminderClear.ts';
+import { useMergedDoneToast } from './state/mergedDoneToast.ts';
 import { useUpNextSync } from './state/upNextStore.ts';
 import { useModsSync } from './state/useModsSync.ts';
 import { useSavedPromptsSync } from './components/savedPrompts/savedPromptsStore.ts';
@@ -59,6 +64,7 @@ import { usePreferencesSync } from './state/preferencesStore.ts';
 import { useThemesSync } from './state/themeStore.ts';
 import { ThemeImportDialogs } from './components/theme/ThemeImport.tsx';
 import { useProfilesSync } from './state/profilesStore.ts';
+import { useProvidersSync } from './state/providersStore.ts';
 import { useProjects, useProjectsSync } from './state/projectsStore.ts';
 import { goToAdjacentSession, goToNextNeedsYou } from './state/sessionNav.ts';
 import { useSidebar, useSidebarSync } from './state/sidebarStore.ts';
@@ -67,11 +73,13 @@ import { AppTerminalFrame } from './components/terminal/AppTerminalFrame.tsx';
 import { terminalOwner, type TerminalView } from './components/terminal/appTerminal.ts';
 import { useUpdatesSync } from './state/updatesStore.ts';
 import { useClaudeUpdateSync } from './state/claudeUpdateStore.ts';
+import { useProviderUpdatesSync } from './state/providerUpdateStore.ts';
 import { useHostsSync } from './state/useHostsSync.ts';
 import { useComputersSync } from './state/useComputersSync.ts';
 import { useRemoteSync } from './state/useRemoteSync.ts';
 import { RemoteView } from './components/computers/RemoteView.tsx';
 import { localSessionId } from './state/remoteSelection.ts';
+import { openRow } from './state/useRemoteRows.ts';
 import { useSessionsSync } from './state/useSessionsSync.ts';
 import { runMainRequest } from './state/mainRequests.ts';
 import { usePopoutsSync } from './state/usePopoutsSync.ts';
@@ -174,7 +182,7 @@ function useShortcuts() {
   // The terminal, Open in editor and Open in new window: shared with the pop-out (`useSessionShortcuts`).
   useSessionShortcuts(() => {
     const { view, selectedId } = useSessions.getState();
-    return { terminalOwner: currentTerminalOwner(), sessionId: view === 'session' ? localSessionId(selectedId) : null };
+    return { terminalOwner: currentTerminalOwner(), sessionId: view === 'session' ? localSessionId(selectedId) : null, readId: view === 'session' ? selectedId : null };
   });
 }
 
@@ -183,9 +191,10 @@ function useWindowFocus() {
   const view = useSessions((s) => s.view);
   const selectedId = useSessions((s) => s.selectedId);
   useEffect(() => {
-    window.seshboard?.reportFocus(view === 'session' ? localSessionId(selectedId) : null);
+    // Another computer's session too (its row id), so its notifications stay quiet while it is on screen.
+    window.seshboard?.reportFocus(view === 'session' ? selectedId : null);
   }, [view, selectedId]);
-  useEffect(() => window.seshboard?.onSelectSession((id) => useSessions.getState().select(id)), []);
+  useEffect(() => window.seshboard?.onSelectSession((id) => openRow(id)), []);
   // A pop-out has no Settings, Usage, project pages or New session: they open here, with the window in front.
   useEffect(() => window.seshboard?.onMainRequest(runMainRequest), []);
   // Seshboard → Settings… (⌘,) or Check for Updates… (About) in the menu bar.
@@ -208,9 +217,11 @@ export function App() {
   useProjectsSync();
   useCloneSync();
   useProfilesSync();
+  useProvidersSync();
   useTerminalsSync();
   useUpdatesSync();
   useClaudeUpdateSync();
+  useProviderUpdatesSync();
   useSidebarSync();
   useDraftsSync();
   usePopoutsSync();
@@ -223,6 +234,9 @@ export function App() {
   useTriggersSync();
   usePipelinesSync();
   useCatchUpSync();
+  useLooseEndsSync();
+  useReminderClear();
+  useMergedDoneToast();
   useUpNextSync();
   useModsSync();
   useLimitsSync();
@@ -293,6 +307,8 @@ export function App() {
       <AddContextDialogHost />
       <UnsentList />
       <ArchiveDraftDialog />
+      <SessionNoteDialog />
+      <RemindDialog />
       {adding && <AddProjectDialog onClose={() => useProjects.getState().showAdd(false)} />}
       {cloning && <CloneProjectDialog />}
       <BackupDialogs />

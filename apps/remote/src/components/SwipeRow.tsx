@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Archive, Check } from 'lucide-react';
+import { Check, CheckCheck } from 'lucide-react';
 import { startsEdgeSwipe } from '../lib/drawer.ts';
 import { addSample, axisOf, velocity, type Sample } from '../lib/gesture.ts';
 import { restingOffset, swipeOffset, swipeOutcome, type SwipeAction } from '../lib/swipe.ts';
@@ -10,7 +10,7 @@ let closeOpen: (() => void) | null = null;
 
 const LOOK: Record<SwipeAction, { label: string; className: string; icon: ReactNode }> = {
   read: { label: 'Mark as read', className: 'bg-unread text-bg justify-start', icon: <Check className="size-5" aria-hidden /> },
-  archive: { label: 'Archive', className: 'bg-faint text-bg justify-end', icon: <Archive className="size-5" aria-hidden /> },
+  archive: { label: 'Done', className: 'bg-faint text-bg justify-end', icon: <CheckCheck className="size-5" aria-hidden /> },
 };
 
 /**

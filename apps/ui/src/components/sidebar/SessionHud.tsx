@@ -64,7 +64,7 @@ export function SessionHud() {
                 {message.position} of {message.total}
               </span>
               <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[line?.tone ?? 'faint']}`} />
-              <ProjectIcon project={project} root={session.projectRoot} size={18} name={session.remote?.projectName} remote={!!session.remote} />
+              <ProjectIcon project={project} root={session.projectRoot} size={18} name={session.remote?.projectName} remote={session.remote?.computerId ?? false} />
               <span className="min-w-0 truncate text-body font-semibold text-text">{session.title || 'Untitled session'}</span>
               <span className="shrink-0 text-meta text-muted">{project?.name ?? basename(session.projectRoot)}</span>
             </>

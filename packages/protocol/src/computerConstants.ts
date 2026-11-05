@@ -11,6 +11,28 @@ import type { RemoteContract } from './remote.ts';
 export const REMOTE_DESKTOP_ORIGIN = 'switchboard-desktop://switchboard';
 
 /**
+ * The colours a paired computer can have, to tell computers apart (Settings › Remote, Other computers). `violet` is
+ * the `remote` token, what every computer has until you pick another; the others use the profile colours' tokens.
+ */
+export const COMPUTER_COLORS = ['violet', 'blue', 'green', 'yellow', 'orange', 'red', 'gray'] as const;
+export type ComputerColor = (typeof COMPUTER_COLORS)[number];
+
+/**
+ * Which of a paired computer's notifications this one shows (Settings › Remote, Other computers): `all` (needs you,
+ * finished and failed, as for a session here), `started-here` ("Only mine": all of them, for the sessions that are
+ * mine there, `isMine`), `needs-you` (only a session that waits for you), or `off`. Its sessions still show in the
+ * sidebar either way: which of them show is the Mine / All filter on its chip there, not this.
+ */
+export const COMPUTER_NOTIFY = ['all', 'started-here', 'needs-you', 'off'] as const;
+
+/** How many of the sessions that are mine on another computer this one remembers (`isMine`): the most recent. */
+export const COMPUTER_STARTED_MAX = 200;
+export type ComputerNotify = (typeof COMPUTER_NOTIFY)[number];
+
+/** The longest name you can give a paired computer here. */
+export const COMPUTER_NAME_MAX = 60;
+
+/**
  * What a window may ask another computer. Not `hello` (the engine says it once per connection), and not push
  * notifications or `device.visibility`, which are a browser's: this computer stays connected and tells you itself.
  */
@@ -32,11 +54,13 @@ export const COMPUTER_METHODS = [
   'session.ask',
   'session.askThreads',
   'session.markRead',
+  'session.markUnread',
   'session.setFlags',
   'session.setModel',
   'session.setEffort',
   'session.setPermissionMode',
   'options.get',
+  'providers.ready',
   'usage.get',
   'usage.tokens',
   'usage.sessionCost',
@@ -51,5 +75,18 @@ export const COMPUTER_METHODS = [
   'projects.clonePlan',
   'projects.clone',
   'projects.cancelClone',
+  'pipelines.list',
+  'pipelines.run',
+  'runs.continue',
+  'runs.retryStep',
+  'runs.anotherRound',
+  'runs.skipStep',
+  'runs.stop',
+  'runs.archive',
+  'runs.pushPreview',
+  'runs.write',
+  'app.update.check',
+  'app.update.install',
+  'app.update.cancel',
 ] as const satisfies ReadonlyArray<MethodName<RemoteContract>>;
 export type ComputerMethod = (typeof COMPUTER_METHODS)[number];

@@ -1,4 +1,4 @@
-import { AUTO_MODEL, worktreeRequestBase, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
+import { AUTO_MODEL, worktreeRequestBase, type Effort, type GithubOrigin, type ImageAttachment, type PermissionMode, type WorktreeBranchBase } from '@seshboard/protocol/client';
 import { randomWorktreeName } from '../../lib/modes.ts';
 import type { DraftForm } from '../../state/drafts.ts';
 import type { GateOutcome } from '../../state/focusGate.ts';
@@ -35,6 +35,14 @@ export interface NewSessionStart {
    * from its branch (`worktreeFrom`), or Current checkout checks it out first (`checkoutPullRequest`).
    */
   github?: { origin: GithubOrigin; worktreeFrom?: WorktreeBranchBase; checkoutPullRequest?: { number: number; repo: string } };
+  /**
+   * `profileId` is another provider's profile (GitHub Copilot): it starts on this model (null: the provider's default),
+   * its effort (for a model that takes one) and mode, with the same worktree, branch and pull request as Claude Code's
+   * (New session leaves out what the provider doesn't have yet). Auto doesn't apply.
+   */
+  provider?: { model: string | null; effort?: Effort | null; permissionMode?: PermissionMode } | null;
+  /** The bolt on New session: this session's first message runs in fast mode too. Claude Code's only. */
+  fastMode?: boolean;
 }
 
 /** What starting needs from the app; the view and the palette pass the real ones, tests fake them. */
@@ -72,13 +80,17 @@ export function firstPromptOf(start: NewSessionStart): FirstPromptStart {
   };
 }
 
-export interface SessionCreateParams {
+/** What `session.create` gets: Claude Code's options, or only the folder, the message and the model for another provider. */
+export type SessionCreateParams = ClaudeSessionCreateParams | { cwd: string; prompt: string; attachments: ImageAttachment[]; model: string | null; permissionMode?: PermissionMode; profileId: string };
+
+export interface ClaudeSessionCreateParams {
   cwd: string;
   prompt: string;
   attachments: ImageAttachment[];
   model: string | null;
   permissionMode: PermissionMode;
   effort: Exclude<Choices['effort'], ''> | null;
+  fastMode?: boolean;
   worktree: { name: string; baseRef: 'fresh' | 'head' | WorktreeBranchBase } | null;
   checkoutBranch: string | null;
   profileId: string;
@@ -107,7 +119,7 @@ export function branchBlocked(checkoutBranch: string | null, checkedOutElsewhere
 }
 
 /** What `session.create` gets: a worktree with a made-up name unless you named it. */
-export function sessionCreateParams(start: NewSessionStart): SessionCreateParams {
+export function sessionCreateParams(start: NewSessionStart): ClaudeSessionCreateParams {
   const { choices, github } = start;
   // A pull request: its own branch, in a new worktree or checked out here; never another branch as well.
   const fromPr = github && (github.worktreeFrom || github.checkoutPullRequest);
@@ -122,10 +134,19 @@ export function sessionCreateParams(start: NewSessionStart): SessionCreateParams
     // A link never starts a session in a mode that skips permission prompts.
     permissionMode: start.fromLink ? linkPermissionMode(choices.permissionMode) : choices.permissionMode,
     effort: choices.effort || null,
+    ...(start.fastMode ? { fastMode: true } : {}),
     worktree: start.worktree ? { name: start.worktreeName || randomWorktreeName(), baseRef: (start.worktree && github?.worktreeFrom) || worktreeRequestBase(choices.baseRef) } : null,
     checkoutBranch: fromPr ? null : checkoutBranchFor(choices, start.worktree, start.currentBranch),
     profileId: start.profileId,
   };
+}
+
+/** What `session.create` gets for this start: Claude Code's options, or another provider's model, effort and mode with the same git steps. */
+export function createParamsFor(start: NewSessionStart): SessionCreateParams {
+  if (!start.provider) return sessionCreateParams(start);
+  const { model, effort, permissionMode } = start.provider;
+  const { model: _model, effort: _effort, permissionMode: _mode, fastMode: _fast, ...rest } = sessionCreateParams(start);
+  return { ...rest, model, ...(model && effort ? { effort } : {}), ...(permissionMode ? { permissionMode } : {}) };
 }
 
 /** Claude Code can be warmed up for the folder while you type: only for this checkout as it is (no worktree, no branch to switch to). */
@@ -147,7 +168,7 @@ export async function startNewSession(start: NewSessionStart, deps: StartDeps): 
     if (outcome === 'stop') return { kind: 'stopped' };
     if (outcome === 'saved') return { kind: 'saved' };
   }
-  const params = sessionCreateParams(start);
+  const params = createParamsFor(start);
   let created: { sessionId: string };
   try {
     created = await deps.createSession(params);

@@ -3,8 +3,14 @@ import {
   keyPairFromSecret,
   parseRemoteLink,
   REMOTE_DESKTOP_ORIGIN,
+  REMOTE_FEATURE_UPDATE,
+  remoteContract,
   RpcError,
+  type RemoteAppUpdate,
   type Computer,
+  type ComputerColor,
+  type ComputerNotify,
+  type RemoteSessions,
   type ComputerEvent,
   type ComputerMethod,
   type ComputerPairing,
@@ -14,7 +20,7 @@ import {
 } from '@seshboard/protocol';
 import { checkEvent, checkResult, type CheckedData } from './computerData.ts';
 import { ComputerLink, dialWebSocket, LinkError, pairComputer, type Dial, type LinkFailure, type LinkState } from './computerLink.ts';
-import { ComputerStore, type PairedComputer } from './computerStore.ts';
+import { ComputerStore, shownName, type PairedComputer } from './computerStore.ts';
 import { computerName } from './computerName.ts';
 import { CLOSE } from './remoteServer.ts';
 
@@ -148,6 +154,16 @@ export class ComputerHub {
     if (this.store.remove(id)) this.changed();
   }
 
+  /** Names or colours a computer here only, or picks which of its notifications show; an empty name goes back to its own. */
+  update(id: string, changes: { name?: string; color?: ComputerColor; notify?: ComputerNotify }): void {
+    const computer = this.store.list().find((c) => c.id === id);
+    if (!computer) throw new RpcError('NOT_FOUND', 'This computer isn’t paired');
+    if (changes.name !== undefined) this.store.setLabel(id, changes.name.trim() === computer.name ? '' : changes.name);
+    if (changes.color !== undefined) this.store.setColor(id, changes.color);
+    if (changes.notify !== undefined) this.store.setNotify(id, changes.notify);
+    this.changed();
+  }
+
   retry(id: string): void {
     this.links.get(id)?.link.retryNow();
   }
@@ -159,6 +175,10 @@ export class ComputerHub {
     const result = await entry.link.call(method, params);
     const checked = this.checked(id, entry, method, checkResult(method, result));
     if (!checked.ok) throw new RpcError('UNREADABLE', unreadableLine(this.nameOf(id), null));
+    if (method === 'sessions.list') entry.lastList = checked.value as RemoteSessions;
+    // A session started from here, or one acted on from here: mine (`isMine`), for the Mine filter and Only mine.
+    const mine = mineOf(method, params, checked.value, entry.lastList);
+    if (mine && this.store.addMine(id, mine)) this.changed();
     return checked.value;
   }
 
@@ -178,7 +198,8 @@ export class ComputerHub {
   }
 
   private nameOf(id: string): string {
-    return this.store.list().find((computer) => computer.id === id)?.name ?? '';
+    const computer = this.store.list().find((c) => c.id === id);
+    return computer ? shownName(computer) : '';
   }
 
   private async deviceKey(): Promise<KeyPair | null> {
@@ -194,6 +215,7 @@ export class ComputerHub {
       lastSeen: null,
       problem: null,
       listProblem: null,
+      update: null,
       link: new ComputerLink({
         address: computer.address,
         enginePublicKey: computer.enginePublicKey,
@@ -206,6 +228,13 @@ export class ComputerHub {
           entry.state = state;
           // Connected again: it may have been updated since.
           if (state.kind === 'connected') entry.problem = entry.listProblem = null;
+          // Away: its list and its updater are out of date; it sends them again when it is back.
+          if (state.kind !== 'connected') {
+            delete entry.lastList;
+            entry.update = null;
+          }
+          // Its updater, for Settings › Remote (`REMOTE_FEATURE_UPDATE`); `app.update.changed` keeps it current.
+          if (state.kind === 'connected' && state.features.includes(REMOTE_FEATURE_UPDATE)) void this.readUpdate(computer.id, entry);
           if (state.kind === 'connected' && state.name && state.name !== this.store.find(computer.enginePublicKey)?.name) this.store.setName(computer.id, state.name);
           if (state.kind === 'unpaired') this.options.log('info', `Other computers: ${computer.address} no longer knows this computer`);
           this.changed();
@@ -213,7 +242,13 @@ export class ComputerHub {
         onEvent: (name, payload) => {
           const event = checkEvent(name, payload);
           const checked = event && this.checked(computer.id, entry, name, event);
-          if (checked?.ok) this.options.onEvent({ computerId: computer.id, name, payload: checked.value as ComputerEvent['payload'] });
+          if (!checked?.ok) return;
+          if (name === 'sessions.changed') entry.lastList = checked.value as RemoteSessions;
+          if (name === 'app.update.changed') {
+            entry.update = checked.value as RemoteAppUpdate;
+            this.changed();
+          }
+          this.options.onEvent({ computerId: computer.id, name, payload: checked.value as ComputerEvent['payload'] });
         },
       }),
     };
@@ -224,16 +259,31 @@ export class ComputerHub {
   private view(computer: PairedComputer): Computer {
     const entry = this.links.get(computer.id);
     const state = entry?.state ?? { kind: 'connecting' as const };
-    const base = { id: computer.id, name: computer.name, address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
+    const name = shownName(computer);
+    const base = { id: computer.id, name, ownName: computer.name, renamed: computer.label !== null, color: computer.color, notify: computer.notify, mineHere: this.store.mineOn(computer.id), address: computer.address, pairedAt: computer.pairedAt, lastSeen: entry?.lastSeen ?? null, problem: entry?.listProblem ?? entry?.problem ?? null };
     switch (state.kind) {
       case 'connected':
-        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, lastSeen: null };
+        return { ...base, state: 'connected', message: null, retryAt: null, version: state.version, features: state.features, update: entry?.update ?? null, lastSeen: null };
       case 'connecting':
-        return { ...base, state: 'connecting', message: null, retryAt: null, version: null, features: [] };
+        return { ...base, state: 'connecting', message: null, retryAt: null, version: null, features: [], update: null };
       case 'offline':
-        return { ...base, state: 'offline', message: offlineMessage(state.failure, computer.name), retryAt: state.retryAt, version: null, features: [] };
+        return { ...base, state: 'offline', message: offlineMessage(state.failure, name), retryAt: state.retryAt, version: null, features: [], update: null };
       case 'unpaired':
-        return { ...base, state: 'unpaired', message: `${computer.name} no longer knows this computer. Pair it again.`, retryAt: null, version: null, features: [] };
+        return { ...base, state: 'unpaired', message: `${name} no longer knows this computer. Pair it again.`, retryAt: null, version: null, features: [], update: null };
+    }
+  }
+
+  /** Asks a computer that was just connected for its updater. */
+  private async readUpdate(id: string, entry: LinkEntry): Promise<void> {
+    try {
+      const parsed = remoteContract.requests['app.update.get'].result.safeParse(await entry.link.call('app.update.get', {}));
+      if (!parsed.success || this.links.get(id) !== entry || entry.state.kind !== 'connected') return;
+      entry.update = parsed.data.update;
+      this.changed();
+    } catch (error) {
+      // Stopping closes the link, which fails this call: the store may be closed by now, and nobody is waiting.
+      if (this.stopped) return;
+      this.options.log('warn', `Other computers: couldn't read the updater of ${this.nameOf(id)}: ${(error as Error).message}`);
     }
   }
 
@@ -255,6 +305,10 @@ interface LinkEntry {
   problem: string | null;
   /** What its last session list had that this version can't read. */
   listProblem: string | null;
+  /** Its last session list: which session an answered prompt was for (`session.respond` only names the prompt). */
+  lastList?: RemoteSessions;
+  /** Its updater, while connected (`REMOTE_FEATURE_UPDATE`). */
+  update: RemoteAppUpdate | null;
 }
 
 /** Two addresses of one computer's Remote: the same origin (`https://mac.example.com` and `…/`). */
@@ -301,4 +355,48 @@ export function pairingMessage(error: unknown): string {
     return 'Can’t reach the other computer. Check that Remote is on there, and that its link is new.';
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The session a request from here makes mine there (`isMine`): the one New session or Run on started, or the one it
+ * acted on: a message sent (or one sent now from its queue), a prompt answered, a session resumed or set to resume
+ * after a limit. A pipeline counts as its tree's head: the run row a run from New session is (its steps sit under its
+ * id), or the session a run started from, and so does a run's button pressed here (Continue, Push, Stop…) and what
+ * you write in a run row (its new session). Null for what doesn't, or failed. `session.respond` and the run buttons
+ * name only the prompt or the run: its session is in the last list.
+ */
+export function mineOf(method: ComputerMethod, params: unknown, result: unknown, lastList: Pick<RemoteSessions, 'prompts' | 'runs'> | undefined): string | null {
+  const id = (value: unknown, key: string): string | null => {
+    const found = value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+    return typeof found === 'string' ? found : null;
+  };
+  switch (method) {
+    case 'session.create':
+      return id(result, 'sessionId');
+    case 'session.send':
+    case 'session.queue.sendNow':
+    case 'limits.resume':
+      return id(params, 'sessionId');
+    case 'limits.arm':
+      return (params as { armed?: unknown } | null)?.armed === true ? id(params, 'sessionId') : null;
+    case 'session.respond': {
+      const requestId = id(params, 'requestId');
+      return lastList?.prompts.find((p) => p.requestId === requestId)?.sessionId ?? null;
+    }
+    case 'pipelines.run':
+      return id(params, 'parentSessionId') ?? id((result as { state?: { run?: unknown } } | null)?.state?.run, 'id');
+    case 'runs.write':
+      return id(result, 'sessionId');
+    case 'runs.continue':
+    case 'runs.retryStep':
+    case 'runs.anotherRound':
+    case 'runs.skipStep':
+    case 'runs.stop': {
+      const runId = id(params, 'runId');
+      const run = lastList?.runs?.find((state) => state.run.id === runId)?.run;
+      return run ? (run.parentSessionId ?? run.id) : runId;
+    }
+    default:
+      return null;
+  }
 }

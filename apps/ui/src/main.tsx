@@ -1,9 +1,11 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { MenuBarApp } from './components/menuBar/MenuBarApp.tsx';
 import { PopoutApp } from './components/popout/PopoutApp.tsx';
+import { QuickStartApp } from './components/quickStart/QuickStartApp.tsx';
 import { KEEPS_SELECTION, SELECTABLE } from './lib/selectable.ts';
-import { popoutSession } from './state/popoutsStore.ts';
+import { menuBarWindow, popoutSession, quickStartWindow } from './state/popoutsStore.ts';
 import { receiveSessionView } from './state/sessionView.ts';
 import './styles.css';
 // Applies the theme (a generated style element) before the first render.
@@ -32,12 +34,15 @@ window.addEventListener(
   true,
 );
 
+// The quick start panel's window is see-through around the panel (styles.css).
+if (quickStartWindow) root.setAttribute('data-quick-start-window', '');
+
 // A pop-out opens with the panels its session had open in the main window, from its first paint.
 if (popoutSession) receiveSessionView(popoutSession, window.seshboard?.popoutView);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* A pop-out window shows one session (`?popout=<id>`); the main window shows the whole app. */}
-    {popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
+    {/* A pop-out window shows one session (`?popout=<id>`), the menu bar's and quick start's panels only themselves (`?menubar=1`, `?quickstart=1`); the main window shows the whole app. */}
+    {quickStartWindow ? <QuickStartApp /> : menuBarWindow ? <MenuBarApp /> : popoutSession ? <PopoutApp sessionId={popoutSession} /> : <App />}
   </StrictMode>,
 );

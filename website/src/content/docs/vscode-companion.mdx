@@ -52,11 +52,15 @@ The extension only adds chips to the message box. Nothing is sent to Claude unti
 
 <Steps>
 
-1. To the session you have open in Seshboard, when its folder holds the file.
-2. Otherwise VS Code asks which session, from Seshboard's sessions for this workspace, with what each one is doing.
-3. Or pick **New session** to open Seshboard's New session on that folder, with the chips already in it.
+1. VS Code asks where to add it. The session you have open in Seshboard is first, so <Kbd keys="enter" /> still adds to it.
+2. Then **New session**, which opens Seshboard's New session on that folder with the chips already in it.
+3. Then the workspace's other sessions, with what each one is doing.
 
 </Steps>
+
+To add straight to the open session, turn on `seshboard.addToOpenSession` in VS Code's settings.
+
+*Seshboard: New Session* opens New session on the workspace folder, and **Add File to Seshboard** in the editor's right-click menu adds the file you have open.
 
 On Windows, folders match without regard to case.
 
@@ -99,6 +103,7 @@ Commands, all under **Seshboard** in VS Code's command palette: *Add Selection t
 | Setting | What it does |
 |---|---|
 | `seshboard.bringToFront` | Bring Seshboard to the front on the session when you add something (on by default). |
+| `seshboard.addToOpenSession` | Add straight to the session you have open in Seshboard, without asking (off by default). |
 | `seshboard.statusBar` | Show the status bar item (on by default). |
 | `seshboard.prompts` | Show permissions, questions and plans from this workspace's sessions as notifications you can answer (on by default). |
 | `seshboard.quickFix` | Offer **Fix in Seshboard** in the quick fixes of errors and warnings (on by default). |

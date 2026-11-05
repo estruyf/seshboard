@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_PROVIDERS } from './providerConstants.ts';
 import { isBranchName } from './githubRepo.ts';
 import { UsageLimitHit } from './usageLimit.ts';
 import { isWorktreeBase, type WorktreeBase } from './worktreeBase.ts';
@@ -83,6 +84,16 @@ export const SessionHostInfo = z.object({
   model: z.string().nullable(),
   permissionMode: PermissionMode,
   effort: Effort.nullable(),
+  /**
+   * Fast mode as Claude Code last reported it, each turn (`cooldown`: paused after a rate limit, at standard speed until
+   * it comes back). `on` is what was asked for: see `fastModeBlocked` for a turn that fell back. Missing: off.
+   */
+  fastMode: z.enum(['off', 'on', 'cooldown']).optional(),
+  /**
+   * Why fast mode isn't serving: Claude Code's reason (`free`, `extra_usage_disabled`, …), or `credits_exhausted` when
+   * requests fall back to standard speed while it still reports `on`. Null or missing: nothing stands in its way.
+   */
+  fastModeBlocked: z.string().nullable().optional(),
   /** Cost reported by Claude Code for this process so far. */
   costUsd: z.number(),
   contextPercent: z.number().nullable(),
@@ -131,6 +142,10 @@ export const SessionHostInfo = z.object({
    * included. The flag goes by itself once it is. Missing: off.
    */
   keepAwake: z.boolean().optional(),
+  /** Another provider runs it (GitHub Copilot), through its driver; missing: Claude Code. */
+  provider: z.enum(OPTIONAL_PROVIDERS).optional(),
+  /** What another provider's session has spent, in that provider's unit (Copilot's premium requests). */
+  providerUsage: z.object({ amount: z.number(), unit: z.string() }).optional(),
 });
 export type SessionHostInfo = z.infer<typeof SessionHostInfo>;
 
@@ -204,6 +219,10 @@ export const ModelOption = z.object({
   displayName: z.string(),
   description: z.string(),
   supportsEffort: z.boolean(),
+  /** The effort levels it takes, when it says (GitHub Copilot's models); every level otherwise. */
+  efforts: z.array(Effort).optional(),
+  /** It can run in fast mode. Missing: it can't (never assumed, since fast mode bills differently). */
+  supportsFastMode: z.boolean().optional(),
 });
 export type ModelOption = z.infer<typeof ModelOption>;
 

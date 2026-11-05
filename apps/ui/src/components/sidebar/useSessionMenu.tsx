@@ -5,22 +5,28 @@ import { useState, type ReactNode } from 'react';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { isActiveHost, useHosts } from '../../state/hostsStore.ts';
 import { popOut } from '../../state/popoutsStore.ts';
+import { useProviders } from '../../state/providersStore.ts';
+import { sessionCan } from '../../state/sessionFeatures.ts';
 import { useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
+import { agentNameOf } from './rowLabel.ts';
 import { archivesOnMiddleClick, isActive, rowStatus } from '../../state/sidebarRows.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { keepUnread } from '../../state/keptUnread.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
+import { useComputers } from '../../state/computersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { startAfter } from '../../state/startAfterStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
 import { useOpenIn } from '../OpenInButton.tsx';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
+import { openNoteEditor } from '../../state/noteEditorStore.ts';
+import { openRemindEditor } from '../../state/remindEditorStore.ts';
+import { reminderWhen } from '../../state/reminders.ts';
 import { useProjectIconEntries } from './ProjectMenu.tsx';
 import { sessionMemorySubmenu } from '../memory/sessionMemories.tsx';
 import { useProjects } from '../../state/projectsStore.ts';
-import { remoteSessionEntries, setRemoteFlags } from '../computers/remoteActions.ts';
-import { callComputer } from '../computers/callComputer.ts';
+import { archiveRemote, remoteSessionEntries, setRemoteFlags, stopRemote } from '../computers/remoteActions.ts';
 import { stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { isRunRowId } from '../../state/runSelection.ts';
 import { archiveTreeLabel, runGoesOn, runRowMenu, treeRunsOf, unarchiveTreeLabel } from '../../state/runTree.ts';
@@ -29,6 +35,9 @@ import { runPipelineSubmenu } from '../pipelines/pipelineMenu.tsx';
 import { archiveTree, askDeleteTree, isTreeParent, treeSize } from '../pipelines/RunTreeDialogs.tsx';
 import { QUICK_UNDO, quickActionToast, type QuickActionMethod } from './quickActions.ts';
 import { quickActionDone } from './quickUndo.ts';
+import { useLooseEnds } from '../../state/looseEndsStore.ts';
+import { leftBehind, rowLooseEnds } from '../../state/looseEndsText.ts';
+import { useLater } from '../../state/laterStore.ts';
 
 export type FlagChange = { pinned?: boolean; archived?: boolean };
 /** Archiving takes the pin away: a pinned session would stay in the main list, under Pinned. */
@@ -70,8 +79,16 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const projects = useProjects((s) => s.projects);
   const pipelines = usePipelines((s) => s.pipelines);
   const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[]; label: string } | null>(null);
-  const [deleting, setDeleting] = useState<SessionRowData[] | null>(null);
-  const [renaming, setRenaming] = useState<SessionRowData | null>(null);
+  const providers = useProviders((s) => s.providers);
+  const [deleting, setDeletingRows] = useState<SessionRowData[] | null>(null);
+  const [renaming, setRenamingRow] = useState<SessionRowData | null>(null);
+  /** Asks to delete the ones that can be (another provider's only when it can delete them), from any trigger. */
+  const setDeleting = (targets: SessionRowData[] | null) => {
+    const can = targets?.filter((t) => sessionCan(t.summary, 'delete', providers)) ?? [];
+    setDeletingRows(can.length ? can : null);
+  };
+  /** Renames one that can be renamed (another provider's when it can). */
+  const setRenaming = (target: SessionRowData | null) => setRenamingRow(target && sessionCan(target.summary, 'rename', providers) ? target : null);
   /** Archive on a session that works or waits for you: asks to stop it first. */
   const [stopping, setStopping] = useState<{ data: SessionRowData; then?: () => void } | null>(null);
 
@@ -100,7 +117,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     }
     if (!archivesOnMiddleClick(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays)) return;
     // A session on another computer is archived there, through its own contract.
-    if (data.remote) return setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    if (data.remote) return archiveRemote(client, data.remote, true);
     flagAll([data], ARCHIVE);
   };
 
@@ -125,7 +142,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   /** Stop, as the session's own Stop does: Claude's turn, or a pipeline's run that goes on. */
   const stop = async (data: SessionRowData) => {
-    if (data.remote) return void (await (client ? callComputer(client, data.remote.computerId, 'session.interrupt', { sessionId: data.remote.sessionId }) : null));
+    if (data.remote) return stopRemote(client, data.remote);
     for (const state of treeRunsOf(usePipelines.getState().runs.values(), data.id).filter(runGoesOn)) await stopRun(state.run.id);
     if (!isRunRowId(data.id) && isActiveHost(useHosts.getState().hosts.get(data.id))) await client?.call('session.interrupt', { sessionId: data.id });
   };
@@ -145,11 +162,12 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   /** Archives without asking: a finished session, or one Stop and archive has stopped. */
   const archiveNow = (data: SessionRowData, then?: () => void) => {
     if (!data.remote) return flagAll([data], ARCHIVE, then);
-    setRemoteFlags(client, data.remote.computerId, data.remote.sessionId, ARCHIVE);
+    archiveRemote(client, data.remote, true);
     then?.();
   };
 
   const unarchive = (data: SessionRowData, then?: () => void) => {
+    if (data.remote) return (archiveRemote(client, data.remote, false), then?.());
     if (archiveTree(data.id, false, data.title, then)) return;
     flagAll([data], { archived: false }, then);
   };
@@ -176,7 +194,10 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
 
   const quickAction = (method: QuickActionMethod, data: SessionRowData) => {
     if (method === 'stop') return runMethod(method, data);
-    const message = quickActionToast(method, data.title);
+    // Done with something left behind says what (an unsent message asks first, elsewhere).
+    const queued = useLater.getState().items.some((item) => item.waitFor.kind === 'session' && item.waitFor.sessionId === data.id);
+    const left = method === 'archive' ? leftBehind(rowLooseEnds(useLooseEnds.getState().byOwner.get(data.id) ?? [], { draft: false, queued })) : null;
+    const message = quickActionToast(method, data.title, left);
     runMethod(method, data, () => {
       if (!message) return;
       quickActionDone(message, () => {
@@ -190,10 +211,11 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   const openSessionMenu = (at: { x: number; y: number }, data: SessionRowData) => {
     // A session on another computer: only what its remote contract offers (no rename, delete or folder here).
     if (data.remote) {
-      const { computerId, computerName, offline, sessionId, projectId, projectName } = data.remote;
-      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const) };
-      const session = { id: sessionId, title: data.title, pinned: data.pinned, projectId, projectName };
-      setMenu({ ...at, label: `Session “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
+      const { computerId, computerName, offline, sessionId, projectId, projectName, runRow, treeRunId } = data.remote;
+      const features = useComputers.getState().status?.computers.find((c) => c.id === computerId)?.features ?? [];
+      const computer = { id: computerId, name: computerName, state: offline ? ('offline' as const) : ('connected' as const), features };
+      const session = { id: sessionId, title: data.title, pinned: data.pinned, unread: data.unread, projectId, projectName, runRow: runRow ?? false, treeRunId: treeRunId ?? null };
+      setMenu({ ...at, label: `${runRow ? 'Pipeline run' : 'Session'} “${data.title}” on ${computerName}`, entries: remoteSessionEntries(client, computer, session, { open: true }) });
       return;
     }
     const archivedNow = !isActive(data, Date.now(), usePreferences.getState().prefs.archiveAfterDays);
@@ -221,11 +243,23 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
     const projectMenu: MenuEntry[] = projectEntries.length
       ? [{ label: 'Project', hint: projectName, submenu: [{ title: projectName, detail: data.projectRoot }, ...projectEntries], data: { 'data-session-project-menu': true } }]
       : [];
+    // Another provider's session (Copilot): renamed and deleted when its provider can, never run a pipeline from (yet).
+    const canRename = sessionCan(data.summary, 'rename', providers);
+    const canDelete = sessionCan(data.summary, 'delete', providers);
+    const canPipeline = sessionCan(data.summary, 'pipeline', providers);
     setMenu({
       ...at,
       label: `Session “${data.title}”`,
       entries: [
-        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary, data: { 'data-rename-session': true } },
+        { label: 'Rename…', hint: 'F2', onSelect: () => setRenaming(data), disabled: !data.summary || !canRename, data: { 'data-rename-session': true } },
+        {
+          label: data.summary?.remindAt != null && data.summary.remindedAt == null ? `Remind me… (${reminderWhen(data.summary.remindAt, Date.now())})` : 'Remind me…',
+          hint: formatKeys(keysFor('sidebar.remind')),
+          onSelect: () => openRemindEditor([data.id]),
+          disabled: !data.summary || isRunRowId(data.id),
+          data: { 'data-session-remind': true },
+        },
+        { label: data.summary?.note ? 'Edit note…' : 'Note…', hint: formatKeys(keysFor('sidebar.note')), onSelect: () => openNoteEditor(data.id), disabled: !data.summary || isRunRowId(data.id), data: { 'data-session-note': true } },
         ...(data.summary
           ? [data.unread
               ? ({ label: 'Mark as read', onSelect: () => markRead(data), data: { 'data-mark-read': true } } satisfies MenuEntry)
@@ -233,14 +267,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           : []),
         { label: data.pinned ? 'Unpin' : 'Pin', onSelect: () => setPinned(data, !data.pinned), disabled: !data.summary },
         archivedNow
-          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Unarchive', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
-          : { label: tree !== null ? archiveTreeLabel(tree) : 'Archive', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
+          ? { label: tree !== null ? unarchiveTreeLabel(tree) : 'Reopen', onSelect: () => unarchive(data), disabled: !data.summary, data: { 'data-session-archive': 'unarchive' } }
+          : { label: tree !== null ? archiveTreeLabel(tree) : 'Done', hint: 'until new activity', onSelect: () => archive(data), disabled: !data.summary, data: { 'data-session-archive': 'archive' } },
         'separator',
         { label: 'Open beside', hint: '⌥-click', onSelect: () => useSessions.getState().openBeside(data.id) },
         { label: 'Open in new window', hint: formatKeys(keysFor('session.new-window')), onSelect: () => popOut(data.id) },
         { label: 'New session linked to this one', onSelect: () => data.summary && startLinkedSession({ id: data.id, title: data.title, projectRoot: data.summary.projectRoot }), disabled: !data.summary, data: { 'data-new-linked-session': true } },
         // A run row (#179) has no conversation to be the parent of another run.
-        ...(isRunRowId(data.id) ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
+        ...(isRunRowId(data.id) || !canPipeline ? [] : [runPipelineSubmenu(pipelines, { id: data.id, projectRoot: data.projectRoot })]),
         { label: 'Start after this one…', onSelect: () => startAfter({ id: data.id, projectRoot: data.projectRoot }), data: { 'data-start-after': true } },
         { label: 'Open folder in editor', onSelect: () => cwd && void openIn(cwd).catch(() => {}), disabled: !cwd },
         { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(data.id) },
@@ -248,7 +282,7 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
         ...(projectMenu.length ? [...projectMenu, 'separator' as const] : []),
         tree !== null
           ? { label: 'Delete…', hint: '⌘⌫', danger: true, onSelect: () => askDeleteTree(data.id, data.title), data: { 'data-delete-tree': true } }
-          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary, onSelect: () => setDeleting([data]) },
+          : { label: 'Delete session…', hint: '⌘⌫', danger: true, disabled: !data.summary || !canDelete, onSelect: () => setDeleting([data]), data: { 'data-delete-session': true } },
       ],
     });
     // The memories it wrote, once read: added under Project while the menu is still this session's.
@@ -279,14 +313,14 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
           blockedReason={
             deleting.some((target) => target.live && !isActiveHost(hosts.get(target.id)))
               ? deleting.length === 1
-                ? 'This session is open in another Claude Code window. Close it there first.'
-                : 'Some of these sessions are open in another Claude Code window. Close them there first.'
+                ? `This session is open in ${openWhere(deleting)}. Close it there first.`
+                : `Some of these sessions are open in ${openWhere(deleting)}. Close them there first.`
               : null
           }
           body={
             <>
               {deleting.length === 1 ? 'The conversation and any subagent transcripts move' : 'The conversations and any subagent transcripts move'} to the {trashName()}, so you can
-              restore them {restoreFrom()}. Files Claude changed in your project are not touched.
+              restore them {restoreFrom()}. {changedBy(deleting)} in your project are not touched.
               {deleting.some((target) => isActiveHost(hosts.get(target.id))) &&
                 (deleting.length === 1 ? ' It is running in Seshboard and will be stopped first.' : ' Sessions running in Seshboard will be stopped first.')}
             </>
@@ -323,6 +357,24 @@ export function useSessionMenu(order: readonly string[], onDeleted?: () => void)
   return { showMenu: setMenu, openSessionMenu, flagAll, middleClick, quickAction, requestDelete: setDeleting, requestRename: setRenaming, overlays };
 }
 
+/** The one agent of the sessions to delete (Claude, GitHub Copilot), or null for a mix. */
+function oneAgent(targets: readonly SessionRowData[]): string | null {
+  const agents = new Set(targets.map((t) => agentNameOf(t.summary)));
+  return agents.size === 1 ? [...agents][0]! : null;
+}
+
+/** Where the sessions to delete are open: Claude Code's other windows, or another provider's CLI. */
+const openWhere = (targets: readonly SessionRowData[]) => {
+  const agent = oneAgent(targets);
+  return !agent || agent === 'Claude' ? 'another Claude Code window' : `${agent} CLI`;
+};
+
+/** "Files Claude changed", "Files GitHub Copilot changed", or "Files changed" for a mix. */
+const changedBy = (targets: readonly SessionRowData[]) => {
+  const agent = oneAgent(targets);
+  return agent ? `Files ${agent} changed` : 'Files changed';
+};
+
 /** Waits until a session in Seshboard has stopped working (or a few seconds pass), so archiving comes after its last activity. */
 function untilStopped(sessionId: string, timeoutMs = 5_000): Promise<void> {
   const busy = () => {
@@ -353,9 +405,9 @@ function StopAndArchive({ data, hosted, stop, archive, onClose }: { data: Sessio
   const stoppable = hosted || !!data.remote;
   return (
     <ConfirmDialog
-      title={stoppable ? 'Stop and archive?' : 'Archive while it works?'}
-      body={stoppable ? `“${title}” is ${state}. It is stopped first, then archived.` : `“${title}” is ${state} in another app. It keeps running there after you archive it.`}
-      confirmLabel={stoppable ? 'Stop and archive' : 'Archive'}
+      title={stoppable ? 'Stop it and mark it done?' : 'Mark it done while it works?'}
+      body={stoppable ? `“${title}” is ${state}. It is stopped first, then moved to Done.` : `“${title}” is ${state} in another app. It keeps running there after you mark it done.`}
+      confirmLabel={stoppable ? 'Stop and mark done' : 'Mark done'}
       data={{ 'data-stop-archive-confirm': stoppable ? 'stop' : 'archive' }}
       onConfirm={async () => {
         if (stoppable) {

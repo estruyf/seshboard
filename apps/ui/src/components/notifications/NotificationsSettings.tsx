@@ -131,6 +131,12 @@ export function NotificationsSettings() {
             Send a test notification
           </Button>
         </Row>
+        <Row label="Reminders" detail="When a session you asked to be reminded about comes back." off={!notifications.enabled}>
+          <Switch checked={notifications.reminders} disabled={!notifications.enabled} onChange={(reminders) => update({ notifications: { reminders } })} label="Reminders" dataAttrs={{ 'data-notifications-reminders': true }} />
+        </Row>
+        <Row label="Count reminders in the badge" detail="Due reminders count with what needs you, on the app's icon." off={false}>
+          <Switch checked={notifications.badgeReminders} onChange={(badgeReminders) => update({ notifications: { badgeReminders } })} label="Count reminders in the badge" dataAttrs={{ 'data-notifications-badge-reminders': true }} />
+        </Row>
       </section>
 
       <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Sounds" data-sounds-card>

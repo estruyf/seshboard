@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AUTO_MODEL, branchOfBase, isBranchBase, type BranchBase, type Effort, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type WorktreeBase } from '@seshboard/protocol/client';
+import { AUTO_MODEL, branchOfBase, isBranchBase, PROVIDER_SHORT_NAMES, type BranchBase, type ClaudeProfile, type Effort, type ModelOption, type PermissionMode, type ProfileDefaults, type ProjectDefaults, type ProviderMode, type WorktreeBase } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { globalModeLabel, MODE_CHOICES, MODE_LABEL } from '../../lib/modes.ts';
 import { useHosts } from '../../state/hostsStore.ts';
@@ -9,14 +9,17 @@ import { EFFORT_LABEL, EFFORTS } from '../newSession/route.ts';
 import { Select } from '../ui/Select.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useSessions } from '../../state/sessionsStore.ts';
+import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
 import { jumpToSetting } from '../settingsSearch/SettingsSearch.tsx';
 import { settingsIndex } from '../settingsSearch/settingsIndex.ts';
 
 const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60 disabled:opacity-50';
-/** The value an unset field shows; unset fields use the profile's defaults, else the choices last made in the New session view. */
+/** The value an unset field shows; unset fields use the profile's defaults, else the global ones in Settings › General. */
 const UNSET = '';
-/** A project's permission mode that skips its profile's and follows the global one (`globalPermissionMode`). */
+/** A project's model, effort or permission mode that skips its profile's and follows the global one (`globalModel`, `globalEffort`, `globalPermissionMode`). */
 const GLOBAL = 'global';
+/** Who decides where neither the profile nor Settings › General sets a model or an effort. */
+const CLAUDE_CODE = 'Claude Code';
 
 /** Opens Settings on a setting from its search entry, `target` narrowing where it lands (one profile among several). */
 function openSetting(id: string, target?: string): void {
@@ -42,6 +45,26 @@ export function describeDefaults(d: Omit<ProjectDefaults, 'branch' | 'defaultBra
 /** Whether any field is set. */
 export const hasDefaults = (d: ProfileDefaults | null | undefined) => !!d && Object.values(d).some((v) => v !== null);
 
+/** Another provider's (GitHub Copilot's) own models and modes, for defaults that start its sessions. */
+export interface ProviderChoices {
+  /** Its short name, in "Copilot default". */
+  name: string;
+  /** Empty while it is being asked, or when it can't run here (not signed in). */
+  models: readonly ModelOption[];
+  modes: readonly ProviderMode[];
+}
+
+/**
+ * The models and modes of `profile`'s provider when it is another one than Claude Code, asked while the editor is
+ * shown (`active`), since asking starts its runtime. Null for a Claude Code profile.
+ */
+export function useProviderChoices(profile: Pick<ClaudeProfile, 'id' | 'provider'> | null | undefined, active = true): ProviderChoices | null {
+  const runWith = profile && profile.provider !== 'claude' ? profile.provider : null;
+  const info = useProvider(runWith);
+  const readiness = useProviderReadiness(runWith && active ? profile!.id : null);
+  return runWith ? { name: PROVIDER_SHORT_NAMES[runWith], models: readiness?.models ?? [], modes: info?.modes ?? [] } : null;
+}
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 @max-[560px]:grid-cols-1 @max-[560px]:gap-1">
@@ -54,8 +77,9 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /**
  * A project's or a profile's defaults for new sessions. An unset field leaves it to the level under it: a
  * project's to its profile's (`profile`, named in the option when it sets that field), and both to the
- * choices last made in the New session view. Without a `root` (a profile) there is no branch to pick.
- * Every change saves at once.
+ * global defaults in Settings › General. A project's model, effort and permission mode can also skip the profile's. Without a `root` (a profile) there is no branch to pick.
+ * With `provider` (a GitHub Copilot profile, or a project that uses one) the model and effort are that provider's, and
+ * fall back to its own default rather than the global ones, which are Claude Code's. Every change saves at once.
  */
 export function ProjectDefaultsEditor({
   root,
@@ -63,6 +87,7 @@ export function ProjectDefaultsEditor({
   isGitRepo,
   profile,
   profileRef,
+  provider,
   onSave,
 }: {
   root: string | null;
@@ -72,6 +97,8 @@ export function ProjectDefaultsEditor({
   profile?: ProfileDefaults | null;
   /** The project's profile, which the permission mode's hint names and links to. */
   profileRef?: { id: string; name: string } | null;
+  /** The profile's provider when it isn't Claude Code: its models, efforts and modes. */
+  provider?: ProviderChoices | null;
   onSave(defaults: ProjectDefaults): void;
 }) {
   const connection = useEngineConnection();
@@ -79,6 +106,8 @@ export function ProjectDefaultsEditor({
   const models = useHosts((s) => s.models);
   const autoEnabled = usePreferences((s) => s.prefs.autoModel.enabled);
   const globalMode = globalModeLabel(usePreferences((s) => s.prefs.newSessionMode));
+  const globalModel = usePreferences((s) => s.prefs.newSessionModel);
+  const globalEffort = usePreferences((s) => s.prefs.newSessionEffort);
   const [branches, setBranches] = useState<{ current: string | null; branches: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
 
   useEffect(() => {
@@ -108,6 +137,14 @@ export function ProjectDefaultsEditor({
   const nullable = <T extends string>(value: string) => (value === UNSET ? null : (value as T));
   // What an unset field falls back to: "Profile default (Opus)" when the profile sets it, else the global default.
   const inherit = (label: string, value: string | null | undefined, shown?: string) => (value ? `Profile ${label} (${shown ?? value})` : `Global ${label}`);
+  // The fallbacks of a model or effort menu, as the permission mode's: a project's unset field follows its profile
+  // ("Profile default (Opus)", naming what that comes to) or skips it for the global one; a profile's follows the global one.
+  const fallbacks = (label: string, profileShown: string | undefined, globalShown: string | undefined) => [
+    ...(root ? [{ value: UNSET, label: `Profile ${label} (${profileShown ?? globalShown ?? CLAUDE_CODE})` }] : []),
+    { value: root ? GLOBAL : UNSET, label: `Global ${label} (${globalShown ?? CLAUDE_CODE})` },
+  ];
+  // A project's value, or GLOBAL where it skips its profile's (`skips`).
+  const inheritValue = (value: string | null, skips: boolean | undefined) => value ?? (root && skips ? GLOBAL : UNSET);
   const baseLabel = { fresh: 'from origin', head: 'from HEAD' } as const;
   const branchOptions = defaults.branch && !branches.branches.includes(defaults.branch) ? [defaults.branch, ...branches.branches] : branches.branches;
   // A project's worktrees can start from any of its branches; a profile has no repository, so only origin or HEAD.
@@ -134,30 +171,39 @@ export function ProjectDefaultsEditor({
   return (
     <div className="grid gap-2.5" data-project-defaults={root ?? undefined}>
       <Row label="Model">
-        <Select
-          label="Model"
-          className={field}
-          value={defaults.model ?? UNSET}
-          onChange={(value) => set({ model: nullable(value) })}
-          options={[
-            { value: UNSET, label: inherit('default', profile?.model, profile?.model ? modelLabel(models, profile.model) : undefined) },
-            // Auto stays listed while it is the saved choice, also with Auto off (the note says what happens then).
-            ...(autoEnabled || defaults.model === AUTO_MODEL ? [{ value: AUTO_MODEL, label: autoEnabled ? 'Auto' : 'Auto (off)' }] : []),
-            ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
-            ...(defaults.model && defaults.model !== AUTO_MODEL && !models.some((m) => m.value === defaults.model) ? [{ value: defaults.model, label: defaults.model }] : []),
-          ]}
-          dataAttrs={{ 'data-default-model': true }}
-        />
-        <Select
-          label="Effort"
-          className={field}
-          value={defaults.effort ?? UNSET}
-          onChange={(value) => set({ effort: nullable<Effort>(value) })}
-          options={[{ value: UNSET, label: inherit('effort', profile?.effort, profile?.effort ? EFFORT_LABEL[profile.effort] : undefined) }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
-          dataAttrs={{ 'data-default-effort': true }}
-        />
+        {provider ? (
+          <ProviderModelSelects provider={provider} defaults={defaults} profile={profile} inProject={!!root} set={set} />
+        ) : (
+          <>
+            <Select
+              label="Model"
+              className={field}
+              value={inheritValue(defaults.model, defaults.globalModel)}
+              onChange={(value) => set(root ? { model: value === GLOBAL ? null : nullable(value), globalModel: value === GLOBAL || undefined } : { model: nullable(value) })}
+              options={[
+                ...fallbacks('default', profile?.model ? modelLabel(models, profile.model) : undefined, globalModel ? modelLabel(models, globalModel) : undefined),
+                // Auto stays listed while it is the saved choice, also with Auto off (the note says what happens then).
+                ...(autoEnabled || defaults.model === AUTO_MODEL ? [{ value: AUTO_MODEL, label: autoEnabled ? 'Auto' : 'Auto (off)' }] : []),
+                ...models.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, label: m.displayName })),
+                ...(defaults.model && defaults.model !== AUTO_MODEL && !models.some((m) => m.value === defaults.model) ? [{ value: defaults.model, label: defaults.model }] : []),
+              ]}
+              dataAttrs={{ 'data-default-model': true }}
+            />
+            <Select
+              label="Effort"
+              className={field}
+              value={inheritValue(defaults.effort, defaults.globalEffort)}
+              onChange={(value) => set(root ? { effort: value === GLOBAL ? null : nullable<Effort>(value), globalEffort: value === GLOBAL || undefined } : { effort: nullable<Effort>(value) })}
+              options={[
+                ...fallbacks('effort', profile?.effort ? EFFORT_LABEL[profile.effort] : undefined, globalEffort ? EFFORT_LABEL[globalEffort] : undefined),
+                ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` })),
+              ]}
+              dataAttrs={{ 'data-default-effort': true }}
+            />
+          </>
+        )}
       </Row>
-      {defaults.model === AUTO_MODEL && (
+      {!provider && defaults.model === AUTO_MODEL && (
         <p className="ml-[122px] text-meta text-muted @max-[560px]:ml-0" data-default-model-auto>
           {autoEnabled ? 'Queued prompts are routed when they start, not when you add them.' : AUTO_OFF_NOTE}
         </p>
@@ -172,7 +218,7 @@ export function ProjectDefaultsEditor({
             // A project inherits its profile's mode, or skips it for the global one; a profile inherits the global one.
             ...(root ? [{ value: UNSET, label: `Profile default (${profile?.permissionMode ? MODE_LABEL[profile.permissionMode] : globalMode})` }] : []),
             { value: root ? GLOBAL : UNSET, label: `Global default (${globalMode})` },
-            ...MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] })),
+            ...(provider?.modes.length ? provider.modes : MODE_CHOICES.map((m) => ({ value: m, label: MODE_LABEL[m] }))).map((m) => ({ value: m.value, label: m.label })),
           ]}
           menuWidth={240}
           dataAttrs={{ 'data-default-mode': true }}
@@ -247,5 +293,66 @@ export function ProjectDefaultsEditor({
         </Row>
       )}
     </div>
+  );
+}
+
+/**
+ * The model and effort menus for another provider's sessions: its own models, and the efforts the model takes. An unset
+ * field falls back to the profile's, then to the provider's own default: Settings › General's model and effort are
+ * Claude Code's, so they never apply.
+ */
+function ProviderModelSelects({
+  provider,
+  defaults,
+  profile,
+  inProject,
+  set,
+}: {
+  provider: ProviderChoices;
+  defaults: ProjectDefaults;
+  profile: ProfileDefaults | null | undefined;
+  inProject: boolean;
+  set(patch: Partial<ProjectDefaults>): void;
+}) {
+  const nameOf = (value: string) => provider.models.find((m) => m.value === value)?.displayName ?? value;
+  const profileModel = inProject ? profile?.model : null;
+  const profileEffort = inProject ? profile?.effort : null;
+  const ownModel = `${provider.name} default`;
+  const ownEffort = "Model's own effort";
+  // The model sessions start on, for its efforts: a model that takes none has the menu off.
+  const model = provider.models.find((m) => m.value === (defaults.model ?? profileModel));
+  const levels = model?.efforts ?? EFFORTS;
+  // A project's flags for skipping its profile's model and effort are Claude Code's global ones: they are cleared here.
+  const clearGlobal = (patch: Partial<ProjectDefaults>) => set(inProject ? { ...patch, globalModel: undefined, globalEffort: undefined } : patch);
+  return (
+    <>
+      <Select
+        label="Model"
+        className={field}
+        value={defaults.model ?? UNSET}
+        onChange={(value) => clearGlobal({ model: value === UNSET ? null : value })}
+        options={[
+          { value: UNSET, label: inProject ? `Profile default (${profileModel ? nameOf(profileModel) : ownModel})` : ownModel },
+          ...provider.models.map((m) => ({ value: m.value, label: m.displayName })),
+          // A saved model stays listed while the provider's list is being asked, or no longer has it.
+          ...(defaults.model && !provider.models.some((m) => m.value === defaults.model) ? [{ value: defaults.model, label: defaults.model }] : []),
+        ]}
+        menuWidth={260}
+        dataAttrs={{ 'data-default-model': true }}
+      />
+      <Select
+        label="Effort"
+        className={field}
+        value={defaults.effort ?? UNSET}
+        disabled={!!model && !model.supportsEffort && !defaults.effort}
+        tooltip={model && !model.supportsEffort ? `${model.displayName} takes no effort level` : undefined}
+        onChange={(value) => clearGlobal({ effort: value === UNSET ? null : (value as Effort) })}
+        options={[
+          { value: UNSET, label: inProject ? `Profile effort (${profileEffort ? EFFORT_LABEL[profileEffort] : "the model's own"})` : ownEffort },
+          ...[...new Set([...levels, ...(defaults.effort ? [defaults.effort] : [])])].map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` })),
+        ]}
+        dataAttrs={{ 'data-default-effort': true }}
+      />
+    </>
   );
 }

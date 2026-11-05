@@ -89,14 +89,17 @@ export function ConfirmStrip({
   );
 }
 
-/** A name edited in place: ↩ saves, Esc cancels. */
-export function RenameField({ name, label, onSave, onCancel }: { name: string; label: string; onSave(name: string): void; onCancel(): void }) {
+/**
+ * A name edited in place: ↩ saves, Esc cancels. With `clearable`, an empty name saves too (an empty string), for a
+ * name that goes back to a default, shown as the `placeholder`.
+ */
+export function RenameField({ name, label, onSave, onCancel, clearable = false, placeholder }: { name: string; label: string; onSave(name: string): void; onCancel(): void; clearable?: boolean; placeholder?: string }) {
   const [draft, setDraft] = useState(name);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.select(), []);
   const save = () => {
     const next = draft.trim();
-    if (!next || next === name) return onCancel();
+    if ((!next && !clearable) || next === name) return onCancel();
     onSave(next.slice(0, 60));
   };
   return (
@@ -104,6 +107,7 @@ export function RenameField({ name, label, onSave, onCancel }: { name: string; l
       ref={input}
       value={draft}
       maxLength={60}
+      placeholder={placeholder}
       aria-label={label}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={save}

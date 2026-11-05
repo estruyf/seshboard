@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PipelineRunState } from '@seshboard/protocol/client';
+import type { PipelineRunState, RunView } from '@seshboard/protocol/client';
 
 // The sidebar's tree (#179) in this window: which parents are open (closed by default, not saved), and where the runs
 // come from for code that orders the sidebar without React (⌃⇥, ⌘P). The rules are in `pipelineTree.ts`.
@@ -32,4 +32,14 @@ export const treeRuns = (): PipelineRunState[] => [...source()];
 /** Where `treeRuns` reads from: kept apart so the ordering code stays free of the engine connection. */
 export function provideTreeRuns(read: () => Iterable<PipelineRunState>): void {
   source = read;
+}
+
+let remoteSource: () => readonly RunView[] = () => [];
+
+/** Other computers' runs in their rows' ids (`remoteTreeRuns`), for the same order. The computers store registers itself (`SidebarShell`). */
+export const remoteTreeRunsNow = (): readonly RunView[] => remoteSource();
+
+/** Where `remoteTreeRunsNow` reads from. */
+export function provideRemoteTreeRuns(read: () => readonly RunView[]): void {
+  remoteSource = read;
 }

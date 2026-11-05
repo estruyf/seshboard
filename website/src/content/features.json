@@ -22,6 +22,16 @@
       "page": "sessions/archived"
     },
     {
+      "id": "palette:note",
+      "name": "note",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "palette:remind",
+      "name": "remind",
+      "page": "sessions/upcoming"
+    },
+    {
       "id": "palette:branches",
       "name": "Branches…",
       "page": "projects/branches"
@@ -39,6 +49,16 @@
     {
       "id": "palette:change-effort",
       "name": "Change effort…",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:fast-mode-on",
+      "name": "Turn on fast mode",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "palette:fast-mode-off",
+      "name": "Turn off fast mode",
       "page": "new-session/models-and-options"
     },
     {
@@ -188,7 +208,7 @@
     },
     {
       "id": "palette:delete-archived-sessions",
-      "name": "Delete archived sessions…",
+      "name": "Delete Done sessions…",
       "page": "settings/sessions"
     },
     {
@@ -987,6 +1007,11 @@
       "page": "command-palette"
     },
     {
+      "id": "shortcut:home.pick",
+      "name": "Start in a project from Home by its number",
+      "page": "sessions/home"
+    },
+    {
       "id": "shortcut:memory.save",
       "name": "Save the memory or instructions you are editing",
       "page": "memory/adding-memory"
@@ -1152,6 +1177,76 @@
       "page": "new-session/queue"
     },
     {
+      "id": "shortcut:menubar.start",
+      "name": "menubar.start",
+      "page": "sessions/states"
+    },
+    {
+      "id": "shortcut:menubar.open",
+      "name": "menubar.open",
+      "page": "sessions/states"
+    },
+    {
+      "id": "shortcut:quickstart.open",
+      "name": "quickstart.open",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.start",
+      "name": "quickstart.start",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.start-open",
+      "name": "quickstart.start-open",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.actions",
+      "name": "quickstart.actions",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.pick",
+      "name": "quickstart.pick",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.worktree",
+      "name": "quickstart.worktree",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.model",
+      "name": "quickstart.model",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.mode",
+      "name": "quickstart.mode",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.profile",
+      "name": "quickstart.profile",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.paste",
+      "name": "quickstart.paste",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.later",
+      "name": "quickstart.later",
+      "page": "new-session/form"
+    },
+    {
+      "id": "shortcut:quickstart.open-started",
+      "name": "quickstart.open-started",
+      "page": "new-session/form"
+    },
+    {
       "id": "shortcut:quit",
       "name": "quit",
       "page": "settings"
@@ -1258,8 +1353,18 @@
     },
     {
       "id": "shortcut:sidebar.quick-archive",
-      "name": "Archive the session, or unarchive it",
+      "name": "Mark the session done, or reopen it",
       "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.note",
+      "name": "Write what's left in the session",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "shortcut:sidebar.remind",
+      "name": "Remind me about the session later",
+      "page": "sessions/upcoming"
     },
     {
       "id": "shortcut:sidebar.quick-pin",
@@ -1442,8 +1547,43 @@
       "page": "settings"
     },
     {
+      "id": "feature:working-panel",
+      "name": "The working mark: the app icon's patch panel under a reply, its free jacks lighting up in turn like the Dock (still while compacting, pink while waiting for you)",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:dock-activity",
       "name": "Settings: Theme: App icon, Show when Claude is working (the Dock icon's jacks light up and light runs along its cables while a session works, macOS)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:menu-bar",
+      "name": "Seshboard in the menu bar (the notification area on Windows, a menu on Linux): the icon lights up while sessions work and shows how many need you; its panel has Allow, Stop, what finished and New work in the background",
+      "page": "sessions/states"
+    },
+    {
+      "id": "feature:menu-bar-settings",
+      "name": "Settings: General: Menu bar (Show in the menu bar, Keep running when the window closes, Hide from the Dock while no window is open)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:quick-start",
+      "name": "Quick start: ⌃⌥Space (Ctrl+Alt+Space on Windows and Linux) in any app opens a panel over it: Needs you, your projects with ⌘1–⌘9, Quick question; a picked project becomes a token and the field takes the task, with its options (profile, model, effort, mode, this folder or a new worktree); ↩ starts it in the background, ⌘↩ starts it and opens Seshboard, ⌘K for Start in a new worktree, Change model, mode or profile, Attach the clipboard and Add to Later instead",
+      "page": "new-session/form"
+    },
+    {
+      "id": "feature:quick-start-settings",
+      "name": "Settings: General: Quick start (Shortcut, with Reset and a message when another app has it; Start in the background; Show what needs you)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:pause-notifications",
+      "name": "Pause notifications from the menu bar: for 1 hour, 3 hours or until tomorrow",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "feature:copilot-sessions",
+      "name": "GitHub Copilot sessions: Settings: Profiles offers Copilot CLI when it finds it (Add Copilot profile, Not now); Add profile asks which tool runs its sessions, uses Copilot CLI's own folder and skips sign in when it is signed in already, and ends on Copilot is ready (Start a Copilot session, Use Copilot for a project, Make it the default); New session groups profiles by tool, says what switching to Copilot turned off (Back to), offers Use Copilot for the project from now on and shows its premium requests; a Copilot session's ⋯ menu (Compact, Tools, Copy the last reply, Open in Copilot CLI, Done); its models, with Copilot Fusion's tiers (Standard, High, Max) after Auto; the same permission modes as Claude, Auto mode without asking; signed in with Copilot CLI's own login",
       "page": "settings"
     },
     {
@@ -1459,6 +1599,26 @@
     {
       "id": "feature:other-computers",
       "name": "Other computers: their sessions in the same sidebar and view, marked with the computer's name",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computer-name-colour",
+      "name": "Rename a paired computer and give it a colour, for its chips, badges and the line over its sessions",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computer-page",
+      "name": "A paired computer's page: what needs you there with its prompt to answer, what works, its recent sessions by project",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computer-notifications",
+      "name": "Pick which notifications a paired computer shows here: all, only mine, only needs you, or off",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computer-scope",
+      "name": "Mine or All on a paired computer's chip: only your sessions on a shared computer, how many it hides in the chip's menu, who started the others' sessions",
       "page": "other-computers"
     },
     {
@@ -1489,6 +1649,41 @@
     {
       "id": "feature:computers-drafts",
       "name": "Other computers: each session keeps its unsent message, and New session one prompt per computer",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-quote-read",
+      "name": "Other computers: Quote a selection or a message (right-click), and Read a reply in reading mode",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:remote-quote",
+      "name": "Remote app: Quote under a reply, and the Quote pill over selected text (also in Read)",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:computers-changes",
+      "name": "Other computers: Changes with each file's diff, and Commit there",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-ask-catchup",
+      "name": "Other computers: Ask about this session, and the catch-up of a finished turn",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-transcript-tools",
+      "name": "Other computers: open a step to see its diff and output, Find (⌘F), Jump to latest, Copy last reply, Mark as read or unread",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-pipelines",
+      "name": "Other computers: Run a pipeline, Run as in New session there, its run rows and steps in the sidebar, its card with Continue, Skip, Stop and Push, and which trigger started it",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:computers-queue-notifications",
+      "name": "Other computers: Queue for later in New session, and notifications when a session there needs you or finishes",
       "page": "other-computers"
     },
     {
@@ -1534,6 +1729,11 @@
     {
       "id": "feature:remote-reconnect",
       "name": "Settings › Remote: Reconnect a paired device after the address changed",
+      "page": "remote-access"
+    },
+    {
+      "id": "feature:computer-app-update",
+      "name": "Settings › Remote: each computer's version, and Update for an older one, right away or once its sessions are idle (⋯ › Check for updates)",
       "page": "remote-access"
     },
     {
@@ -1583,12 +1783,12 @@
     },
     {
       "id": "feature:remote-row-menu",
-      "name": "Remote: Mark as read and Archive from a long press, a right-click or the row's actions button",
+      "name": "Remote: Mark as read and Done from a long press, a right-click or the row's actions button",
       "page": "remote-access"
     },
     {
       "id": "feature:remote-session-menu",
-      "name": "Remote: a session's ⋯ with Ask about this session, Changes, Copy the last reply, Archive, Stop and Mark as read",
+      "name": "Remote: a session's ⋯ with Ask about this session, Changes, Copy the last reply, Done, Stop and Mark as read",
       "page": "remote-access"
     },
     {
@@ -1703,7 +1903,7 @@
     },
     {
       "id": "feature:remote-swipe-actions",
-      "name": "Remote: swipe to mark as read or archive, with Undo",
+      "name": "Remote: swipe to mark as read or done, with Undo",
       "page": "remote-access"
     },
     {
@@ -1933,17 +2133,17 @@
     },
     {
       "id": "feature:archive-closes-session",
-      "name": "Archiving closes the open session",
+      "name": "Marking a session done closes it",
       "page": "sessions/archived"
     },
     {
       "id": "feature:archive-draft-confirm",
-      "name": "Archive and discard the unsent message",
+      "name": "Mark done and discard the unsent message",
       "page": "sessions/unsent-drafts"
     },
     {
       "id": "feature:archive-while-working",
-      "name": "Archive while working",
+      "name": "Mark done while working",
       "page": "sessions/archived"
     },
     {
@@ -1978,7 +2178,7 @@
     },
     {
       "id": "feature:auto-archive",
-      "name": "Auto-archive after the days you set",
+      "name": "Inactive sessions go to Done after the days you set",
       "page": "sessions/archived"
     },
     {
@@ -2157,6 +2357,11 @@
       "page": "settings/updates"
     },
     {
+      "id": "feature:provider-cli-updates",
+      "name": "GitHub Copilot CLI updates in Settings › About, while a Copilot profile exists: Check for Updates, Update (copilot update, or the Homebrew, npm or WinGet command), the toast for a new version, and checking automatically",
+      "page": "settings/updates"
+    },
+    {
       "id": "feature:claude-in-chrome",
       "name": "Use Claude in Chrome",
       "page": "settings"
@@ -2194,6 +2399,11 @@
     {
       "id": "feature:composer-chips",
       "name": "Profile, model, effort and mode chips",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:composer-tray",
+      "name": "The message box with the tray under it: profile, model, effort and mode, Tools, context and usage, folding into one chip in a narrow window",
       "page": "sessions/conversation"
     },
     {
@@ -2268,7 +2478,7 @@
     },
     {
       "id": "feature:checks-archived",
-      "name": "Archived sessions stop following their pull request checks",
+      "name": "Done sessions stop following their pull request checks",
       "page": "terminal-changes-git/git"
     },
     {
@@ -2374,6 +2584,11 @@
     {
       "id": "feature:effort-chip",
       "name": "Effort chip",
+      "page": "new-session/models-and-options"
+    },
+    {
+      "id": "feature:fast-mode-toggle",
+      "name": "Fast mode toggle: a lightning bolt under the message box, in a session and on New session, with a tooltip on what it does and costs and why it isn't running, and /fast",
       "page": "new-session/models-and-options"
     },
     {
@@ -2493,17 +2708,17 @@
     },
     {
       "id": "feature:home-profiles",
-      "name": "Profiles and usage on Home",
+      "name": "Profiles and usage on Home, in a column on the right; quiet profiles take one line",
       "page": "sessions/home"
     },
     {
       "id": "feature:home-project-tiles",
-      "name": "Start in a project",
+      "name": "Start in a project: New session's rows with their ⌘ keys, in three columns",
       "page": "sessions/home"
     },
     {
       "id": "feature:home-view",
-      "name": "Home",
+      "name": "Home: a greeting, a start box, the lanes Needs you, Working and To review, then your projects, Up next and usage, using the whole window",
       "page": "sessions/home"
     },
     {
@@ -2568,7 +2783,7 @@
     },
     {
       "id": "feature:manual-archive",
-      "name": "Archive a session",
+      "name": "Mark a session done",
       "page": "sessions/archived"
     },
     {
@@ -2728,17 +2943,17 @@
     },
     {
       "id": "feature:middle-click-archive",
-      "name": "Middle-click to archive",
+      "name": "Middle-click to mark done",
       "page": "sessions/archived"
     },
     {
       "id": "feature:sidebar-quick-actions",
-      "name": "Quick actions on hover: Mark as read, Pin and Archive on a session row, with Undo",
+      "name": "Quick actions on hover: Mark as read, Pin and Done on a session row, with Undo, and a pipeline's Show steps",
       "page": "sessions/sidebar"
     },
     {
       "id": "feature:sidebar-quick-actions-setting",
-      "name": "Settings › Sidebar: Quick actions on hover, and Show (Archive only or Read · Pin · Archive)",
+      "name": "Settings › Sidebar: Quick actions on hover, and Show (Done only or Read · Pin · Done)",
       "page": "sessions/sidebar"
     },
     {
@@ -2912,6 +3127,11 @@
       "page": "permissions"
     },
     {
+      "id": "feature:answered-questions",
+      "name": "Answered questions stay in the conversation",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:plan-usage",
       "name": "Plan usage under the message box",
       "page": "sessions/conversation"
@@ -2957,8 +3177,18 @@
       "page": "settings/claude-profiles"
     },
     {
+      "id": "feature:copilot-defaults",
+      "name": "GitHub Copilot defaults for new sessions: a Copilot profile's model, effort, permission mode and workspace in Settings › Profiles, and a project's on a Copilot profile in its Settings, with Copilot's own models and no global model or effort",
+      "page": "settings/claude-profiles"
+    },
+    {
       "id": "feature:new-session-permission-mode",
       "name": "Global permission mode: what new sessions start in where the profile and project set none, or Remember last",
+      "page": "settings"
+    },
+    {
+      "id": "feature:new-session-model-effort",
+      "name": "Global model and Global effort: what new sessions start with where the profile and project set none, or Claude Code's default",
       "page": "settings"
     },
     {
@@ -3487,6 +3717,61 @@
       "page": "sessions/sidebar"
     },
     {
+      "id": "feature:sidebar-review-open",
+      "name": "To review and Open: finished sessions you haven't read, then the ones you read but haven't marked done",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:sidebar-open-count",
+      "name": "\"N open\" in the sidebar footer: a click goes through them in catch-up, To review first",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:done-on-merge",
+      "name": "A session whose pull request merged moves to Done by itself (\"Merged #123\"), with one toast and Undo",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:done-on-merge-setting",
+      "name": "Settings › Sessions: Move to Done when its pull request merges",
+      "page": "settings/sessions"
+    },
+    {
+      "id": "feature:loose-ends",
+      "name": "Loose ends: a marker on a session that left files not committed, commits not pushed, failing checks or a closed pull request, which keeps it out of Done until you mark it done",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:session-note",
+      "name": "What's left: a one-line note under a session's title (N, Note… in its menu or the palette), found by search",
+      "page": "sessions/sidebar"
+    },
+    {
+      "id": "feature:remind-me-later",
+      "name": "Remind me later: In 1 hour, This evening, Tomorrow, Monday or a time you pick; the session leaves the list and comes back under Reminders with a notification",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:upcoming-reminders",
+      "name": "Upcoming: a Reminders filter, with Edit, Remind now and Cancel; the sidebar's Upcoming counts reminders and says the next one",
+      "page": "sessions/upcoming"
+    },
+    {
+      "id": "feature:reminder-settings",
+      "name": "Settings › Notifications: Reminders, and Count reminders in the badge",
+      "page": "settings/notifications"
+    },
+    {
+      "id": "feature:done-reason",
+      "name": "Done: each row says why (Done, or Inactive 3 days), inactive ones dimmed",
+      "page": "sessions/archived"
+    },
+    {
+      "id": "feature:keep-unsent-listed",
+      "name": "A session with an unsent message or a queued prompt stays listed, however old",
+      "page": "sessions/archived"
+    },
+    {
       "id": "feature:sidebar-style",
       "name": "Sidebar style",
       "page": "settings"
@@ -3728,7 +4013,7 @@
     },
     {
       "id": "feature:unarchive",
-      "name": "Unarchive",
+      "name": "Reopen a session from Done",
       "page": "sessions/archived"
     },
     {
@@ -4058,7 +4343,17 @@
     },
     {
       "id": "feature:catch-up-details",
-      "name": "Catch-up banner: Details open when it shows, with Mark as read and the other actions",
+      "name": "Catch-up banner: Details open when it shows, with the other actions",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "feature:catch-up-skip",
+      "name": "Catch-up Skip: on to the next session to review, with \"2 of 7\" while you go through them",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "feature:catch-up-use-as-note",
+      "name": "Catch-up: Use as note puts what it needs from you under the session's title, in one click",
       "page": "sessions/catch-up"
     },
     {
@@ -4117,13 +4412,23 @@
       "page": "sessions/catch-up"
     },
     {
-      "id": "shortcut:catchup.read",
-      "name": "catchup.read",
+      "id": "shortcut:catchup.archive",
+      "name": "catchup.archive",
       "page": "sessions/catch-up"
     },
     {
-      "id": "shortcut:catchup.archive",
-      "name": "catchup.archive",
+      "id": "shortcut:catchup.skip",
+      "name": "catchup.skip",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.note",
+      "name": "catchup.note",
+      "page": "sessions/catch-up"
+    },
+    {
+      "id": "shortcut:catchup.remind",
+      "name": "catchup.remind",
       "page": "sessions/catch-up"
     },
     {
@@ -4438,7 +4743,7 @@
     },
     {
       "id": "feature:pipeline-archive-tree",
-      "name": "Archive or delete a pipeline run with its sub-sessions",
+      "name": "Mark a pipeline run done, or delete it, with its sub-sessions",
       "page": "sessions/pipelines"
     },
     {

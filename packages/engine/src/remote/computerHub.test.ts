@@ -5,13 +5,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { generateKeyPair, remoteLinkFragment, RpcError, type ComputerEvent, type ComputersStatus, type RemoteContract, type Handlers } from '@seshboard/protocol';
 import { openCacheDatabase } from '../db/database.ts';
-import { ComputerHub, offlineMessage, pairingMessage, sameAddress } from './computerHub.ts';
+import { ComputerHub, mineOf, offlineMessage, pairingMessage, sameAddress } from './computerHub.ts';
 import { LinkError, retryDelay } from './computerLink.ts';
 import { DeviceStore } from './devices.ts';
 import { Pairing, type PairingState } from './pairing.ts';
 import { CLOSE, RemoteServer } from './remoteServer.ts';
 import { APP_ORIGIN } from './testPhone.ts';
-import { REMOTE_DESKTOP_ORIGIN } from '@seshboard/protocol';
+import { COMPUTER_STARTED_MAX, REMOTE_DESKTOP_ORIGIN } from '@seshboard/protocol';
+import { ComputerStore } from './computerStore.ts';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -34,6 +35,7 @@ async function otherComputer(name = 'Studio Mac') {
   let identity = generateKeyPair();
   const devices = new DeviceStore(db);
   let onRequest: (state: PairingState) => void = () => {};
+  let created = 0;
   const pairing = new Pairing((state) => state.request && onRequest(state));
   const server = new RemoteServer({
     identity: () => identity,
@@ -46,7 +48,16 @@ async function otherComputer(name = 'Studio Mac') {
     handlers: (device) =>
       ({
         'sessions.list': () => ({ sessions: [], prompts: [{ requestId: 'r1', sessionId: 's1', toolName: 'Bash', input: { command: device.name }, title: null, description: null, alwaysLabel: null, createdAt: 1 }] }),
-        'session.create': () => {
+        // What this computer does to a session there that makes it mine (`mineOf`).
+        'session.send': () => ({ queued: true }),
+        'session.respond': () => ({}),
+        'limits.resume': () => ({}),
+        'limits.arm': () => ({}),
+        // Its updater, for the row in Settings › Remote there.
+        'app.update.get': () => ({ update: { status: 'up-to-date', currentVersion: '9.9.9', availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: 1, whenIdle: false } }),
+        'session.create': ({ projectId }: { projectId: string }) => {
+          // One project there, for the sessions this computer starts (Started here).
+          if (projectId === 'fedcba9876543210') return { sessionId: `started-${++created}` };
           throw new RpcError('NOT_FOUND', 'No such project');
         },
       }) as unknown as Omit<Handlers<RemoteContract>, 'hello'>,
@@ -127,6 +138,22 @@ describe('Other computers', () => {
     expect(a.events[0]).toEqual({ computerId: id, name: 'sessions.changed', payload: { sessions: [], prompts: [] } });
   });
 
+  it('carries the updater of a computer while it is connected, and follows its changes', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const status = await a.until((s) => s.computers[0]?.update !== null && s.computers[0]?.update !== undefined);
+    expect(status.computers[0]!.update).toMatchObject({ status: 'up-to-date', currentVersion: '9.9.9', channel: 'stable' });
+    b.server.each((rpc) => rpc.emit('app.update.changed', { status: 'available', currentVersion: '9.9.9', availableVersion: '10.0.0', downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: 2, whenIdle: true }));
+    const changed = await a.until((s) => s.computers[0]?.update?.status === 'available');
+    expect(changed.computers[0]!.update).toMatchObject({ availableVersion: '10.0.0', whenIdle: true });
+    // Gone: what it said is from before.
+    b.server.stop();
+    const away = await a.until((s) => s.computers[0]?.state !== 'connected');
+    expect(away.computers[0]!.update).toBeNull();
+  });
+
   it('passes on only what this version can read, and says what it left out', async () => {
     const b = await otherComputer();
     const a = thisComputer();
@@ -190,6 +217,143 @@ describe('Other computers', () => {
     const moved = await otherComputer();
     await again.hub.add(b.connectLink(moved.address));
     expect(again.hub.status().computers[0]!.address).toBe(moved.address);
+  });
+
+  it('keeps a name and a colour you give a computer here, through its hello, a restart and pairing again', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Studio Mac', ownName: 'Studio Mac', renamed: false, color: 'violet' });
+
+    first.hub.update(id, { name: '  Office  ', color: 'green' });
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Office', ownName: 'Studio Mac', renamed: true, color: 'green' });
+    // Only one field changes when only one is sent.
+    first.hub.update(id, { color: 'blue' });
+    expect(first.hub.status().computers[0]).toMatchObject({ name: 'Office', color: 'blue' });
+    first.hub.stop();
+
+    // A restart, and its hello again, keep them.
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    await again.until((s) => s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ name: 'Office', ownName: 'Studio Mac', color: 'blue' });
+    b.answerNext(true);
+    await again.hub.add(b.pairLink());
+    await again.until((s) => s.pairing === null && s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ id, name: 'Office', color: 'blue' });
+
+    // An empty name, or its own, goes back to its own.
+    again.hub.update(id, { name: '' });
+    expect(again.hub.status().computers[0]).toMatchObject({ name: 'Studio Mac', renamed: false });
+    again.hub.update(id, { name: 'Studio Mac' });
+    expect(again.hub.status().computers[0]!.renamed).toBe(false);
+    again.hub.update(id, { color: 'violet' });
+    expect(again.hub.status().computers[0]!.color).toBe('violet');
+    expect(() => again.hub.update('nope', { name: 'x' })).toThrow(RpcError);
+  });
+
+  it('keeps which notifications show for a computer, through a restart and pairing again', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]!.notify).toBe('all');
+
+    first.hub.update(id, { notify: 'needs-you' });
+    expect(first.hub.status().computers[0]).toMatchObject({ notify: 'needs-you', color: 'violet', renamed: false });
+    first.hub.update(id, { notify: 'off' });
+    first.hub.stop();
+
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    await again.until((s) => s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]!.notify).toBe('off');
+    b.answerNext(true);
+    await again.hub.add(b.pairLink());
+    await again.until((s) => s.pairing === null && s.computers[0]?.state === 'connected');
+    expect(again.hub.status().computers[0]).toMatchObject({ id, notify: 'off' });
+    again.hub.update(id, { notify: 'all' });
+    expect(again.hub.status().computers[0]!.notify).toBe('all');
+    // Which sessions show is the chip's filter, not a setting here: a computer has no such field.
+    expect(again.hub.status().computers[0]).not.toHaveProperty('show');
+  });
+
+  it('remembers the sessions it started on a computer, through a restart, and forgets them with the computer', async () => {
+    const b = await otherComputer();
+    const first = thisComputer();
+    b.answerNext(true);
+    await first.hub.add(b.pairLink());
+    const { id } = (await first.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    expect(first.hub.status().computers[0]!.mineHere).toEqual([]);
+
+    await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'one' });
+    await first.hub.call(id, 'session.create', { projectId: 'fedcba9876543210', prompt: 'two' });
+    // One that failed there started nothing.
+    await expect(first.hub.call(id, 'session.create', { projectId: '0123456789abcdef', prompt: 'hi' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(first.hub.status().computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
+    expect(first.statuses.at(-1)!.computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
+    first.hub.stop();
+
+    const again = thisComputer(first.db, first.secret);
+    await again.hub.start();
+    expect(again.hub.status().computers[0]!.mineHere).toEqual(['started-1', 'started-2']);
+    again.hub.forget(id);
+    expect(new ComputerStore(first.db).mineOn(id)).toEqual([]);
+  });
+
+  it('makes a session mine when this computer acts on it there: a message, an answer, a resume', async () => {
+    const b = await otherComputer();
+    const a = thisComputer();
+    b.answerNext(true);
+    await a.hub.add(b.pairLink());
+    const { id } = (await a.until((s) => s.computers[0]?.state === 'connected')).computers[0]!;
+    // Its list has prompt r1 for s1: answering it names only the prompt.
+    await a.hub.call(id, 'sessions.list', {});
+    await a.hub.call(id, 'session.respond', { requestId: 'r1', decision: { behavior: 'allow' } });
+    await a.hub.call(id, 'session.send', { sessionId: 'theirs-sent-to', text: 'hi' });
+    await a.hub.call(id, 'limits.resume', { sessionId: 'resumed' });
+    await a.hub.call(id, 'limits.arm', { sessionId: 'not-armed', armed: false });
+    expect(a.hub.status().computers[0]!.mineHere).toEqual(['s1', 'theirs-sent-to', 'resumed']);
+    // Acting on one again keeps it once, as the most recent.
+    await a.hub.call(id, 'session.send', { sessionId: 's1', text: 'again' });
+    expect(a.hub.status().computers[0]!.mineHere).toEqual(['theirs-sent-to', 'resumed', 's1']);
+  });
+
+  it('says which session a request makes mine', () => {
+    const list = { prompts: [{ requestId: 'r1', sessionId: 's1' }] } as unknown as Parameters<typeof mineOf>[3];
+    expect(mineOf('session.create', {}, { sessionId: 'new' }, undefined)).toBe('new');
+    expect(mineOf('session.send', { sessionId: 's2' }, { queued: false }, undefined)).toBe('s2');
+    expect(mineOf('session.queue.sendNow', { sessionId: 's3', id: 'q' }, {}, undefined)).toBe('s3');
+    expect(mineOf('limits.arm', { sessionId: 's4', armed: true }, {}, undefined)).toBe('s4');
+    expect(mineOf('limits.arm', { sessionId: 's4', armed: false }, {}, undefined)).toBeNull();
+    expect(mineOf('session.respond', { requestId: 'r1' }, {}, list)).toBe('s1');
+    expect(mineOf('session.respond', { requestId: 'gone' }, {}, list)).toBeNull();
+    // A pipeline: the run row a run from New session is, or the session it started from; a run's button; writing in a run row.
+    const runs = { prompts: [], runs: [{ run: { id: 'run-row', parentSessionId: null } }, { run: { id: 'run-2', parentSessionId: 'p1' } }] } as unknown as Parameters<typeof mineOf>[3];
+    expect(mineOf('pipelines.run', { pipelineId: 'x', projectId: 'p', task: 't' }, { state: { run: { id: 'run-new' } } }, undefined)).toBe('run-new');
+    expect(mineOf('pipelines.run', { pipelineId: 'x', parentSessionId: 'p1' }, { state: { run: { id: 'run-3' } } }, undefined)).toBe('p1');
+    expect(mineOf('runs.continue', { runId: 'run-row' }, {}, runs)).toBe('run-row');
+    expect(mineOf('runs.stop', { runId: 'run-2' }, {}, runs)).toBe('p1');
+    expect(mineOf('runs.write', { runId: 'run-row', text: 'hi' }, { sessionId: 'adopted' }, runs)).toBe('adopted');
+    expect(mineOf('runs.pushPreview', { runId: 'run-row' }, {}, runs)).toBeNull();
+    // Reading or marking isn't acting on it.
+    expect(mineOf('transcript.get', { sessionId: 's5' }, {}, undefined)).toBeNull();
+    expect(mineOf('session.markRead', { sessionId: 's5' }, {}, undefined)).toBeNull();
+  });
+
+  it('keeps only the newest sessions it started on a computer', () => {
+    let now = 0;
+    const store = new ComputerStore(tempDb(), () => ++now);
+    for (let i = 1; i <= COMPUTER_STARTED_MAX + 5; i++) store.addMine('c1', `s${i}`);
+    store.addMine('c2', 'other');
+    const kept = store.mineOn('c1');
+    expect(kept).toHaveLength(COMPUTER_STARTED_MAX);
+    expect(kept[0]).toBe('s6');
+    expect(kept.at(-1)).toBe(`s${COMPUTER_STARTED_MAX + 5}`);
+    expect(store.mineOn('c2')).toEqual(['other']);
   });
 
   it('stops trying once the other computer revoked this one', async () => {

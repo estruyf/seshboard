@@ -139,13 +139,13 @@ export function rowProjectName(row: MergedRow, nameOf: (root: string | null) => 
 /** A row's project icon; another computer's carries the computer badge. */
 export function RowProjectIcon({ row, size }: { row: MergedRow; size: number }) {
   const projects = useProjects((s) => s.projects);
-  if (row.computer) return row.remoteProject?.id ? <ProjectIcon project={undefined} root={remoteProjectKey(row.computer.id, row.remoteProject.id)} name={row.remoteProject.name ?? undefined} size={size} remote /> : null;
+  if (row.computer) return row.remoteProject?.id ? <ProjectIcon project={undefined} root={remoteProjectKey(row.computer.id, row.remoteProject.id)} name={row.remoteProject.name ?? undefined} size={size} remote={row.computer.id} /> : null;
   return row.projectRoot ? <ProjectIcon project={projects.get(row.projectRoot)} root={row.projectRoot} size={size} /> : null;
 }
 
 /** The chip of the computer a row's tokens were used on, when that is another computer. */
 export function RowComputer({ row }: { row: MergedRow }) {
-  return row.computer ? <ComputerChip name={row.computer.name} data-usage-row-computer={row.computer.id} /> : null;
+  return row.computer ? <ComputerChip name={row.computer.name} computerId={row.computer.id} data-usage-row-computer={row.computer.id} /> : null;
 }
 
 /** Why paired computers' tokens aren't in the numbers: offline, an older Seshboard, another account, or no account here. */

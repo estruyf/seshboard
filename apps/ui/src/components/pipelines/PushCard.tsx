@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { GitPullRequestArrow, LoaderCircle, RefreshCw } from 'lucide-react';
-import type { PipelineRunState, PushPreview } from '@seshboard/protocol/client';
+import { pushFailure, pushReady, type PipelineRunState, type PushPreview } from '@seshboard/protocol/client';
 import { continueRun, loadPushPreview, stopRun, usePipelines } from '../../state/pipelinesStore.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
@@ -24,8 +24,8 @@ export function PushCard({ state }: { state: PipelineRunState }) {
   const [pushing, setPushing] = useState(false);
   const messageId = useId();
 
-  const load = (fresh: boolean) => {
-    setLoading(true);
+  const load = (fresh: boolean, quietly = false) => {
+    if (!quietly) setLoading(true);
     setError(null);
     loadPushPreview(run.id, fresh)
       .then((p) => {
@@ -36,9 +36,8 @@ export function PushCard({ state }: { state: PipelineRunState }) {
       .finally(() => setLoading(false));
   };
   useEffect(() => {
-    if (kept) return;
-    load(false);
-    // Once per run: the store keeps the message after that.
+    // The kept preview shows at once; the engine writes a new one only when the checkout changed since.
+    load(false, kept !== null);
   }, [run.id]);
 
   const push = async () => {
@@ -49,7 +48,10 @@ export function PushCard({ state }: { state: PipelineRunState }) {
       setPushing(false);
     }
   };
-  const blocked = loading || busy || !!preview?.problem || !message.trim();
+  const failure = pushFailure(state);
+  // With nothing to commit, Push only pushes the branch's commits and opens the pull request.
+  const nothingToCommit = preview?.files === 0 && !preview.problem;
+  const blocked = loading || busy || !preview || !pushReady(preview, message);
   return (
     <div className="rounded-xl border border-accent-ink/60 bg-accent/5 px-3.5 py-3" data-push-card={run.id}>
       <div className="flex flex-wrap items-center gap-2">
@@ -58,6 +60,11 @@ export function PushCard({ state }: { state: PipelineRunState }) {
         <Pill tone="accent">waits for you</Pill>
         {step?.kind === 'push' && step.draft && <span className="text-meta text-muted">opens a draft</span>}
       </div>
+      {failure && (
+        <Notice tone="error" className="mt-2" data-push-failure>
+          Push failed: {failure}
+        </Notice>
+      )}
       {loading ? (
         <p className="mt-2 flex items-center gap-1.5 text-ui text-muted" role="status" data-push-loading>
           <LoaderCircle size={13} className="animate-spin text-accent-ink" aria-hidden />
@@ -94,7 +101,7 @@ export function PushCard({ state }: { state: PipelineRunState }) {
             </>
           ) : (
             <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-code px-2.5 py-1.5 font-mono text-ui whitespace-pre-wrap text-text [overflow-wrap:anywhere]" data-push-message>
-              {message || 'No message'}
+              {message || (nothingToCommit ? 'Nothing to commit: Push sends the commits on the branch.' : 'No message')}
             </pre>
           )}
           {preview && (
@@ -119,7 +126,7 @@ export function PushCard({ state }: { state: PipelineRunState }) {
           onClick={() => void push()}
           data-push-confirm
         >
-          {pushing ? 'Pushing…' : 'Commit, push and open PR'}
+          {pushing ? 'Pushing…' : nothingToCommit && !message.trim() ? 'Push and open PR' : 'Commit, push and open PR'}
         </Button>
         {!editing && (
           <Button size="lg" disabled={loading || !!error} onClick={() => setEditing(true)} data-push-edit>

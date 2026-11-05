@@ -61,7 +61,10 @@ export async function runScreenshotTour(win: BrowserWindow, outDir: string, hook
   await click('[data-settings-section="profiles"]');
   await need("document.querySelector('[data-add-profile]')", 'no Add profile button');
   await click('[data-add-profile]');
-  await need("document.querySelector('[data-new-profile-folder]')", 'the add profile form did not open');
+  // Its first screen asks which tool; Claude Code is picked.
+  await need("document.querySelector('[data-add-profile-next]')", 'the add profile form did not open');
+  await click('[data-add-profile-next]');
+  await need("document.querySelector('[data-new-profile-folder]')", 'the add profile details did not open');
   await setFieldValue(win, '[data-new-profile-name]', 'Work');
   await setFieldValue(win, '[data-new-profile-folder]', join(homedir(), '.claude-work'));
   // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.

@@ -80,6 +80,34 @@ describe('generating a theme from canvas and accent', () => {
     expect(generateTokens('dark', '#15181f', '#ffd43b').link).toBe(DEMO_TIME_TOKENS.dark.link);
   });
 
+  it("lights the working mark in the theme's accent, readable on its canvas", () => {
+    const dark = generateTokens('dark', '#0d1d18', '#52bd69');
+    expect(dark['working-glow']).toBe('#52bd69');
+    // A warm white with a tint of the accent: lighter than it, and greener than plain white.
+    expect(contrastOf(dark['working-lit'], '#0d1d18')).toBeGreaterThan(contrastOf('#52bd69', '#0d1d18'));
+    expect(dark['working-lit']).not.toBe('#ffffff');
+    // A pale accent on a light canvas is moved until it shows (2:1), and its ring sits between it and the canvas.
+    const light = generateTokens('light', '#fffbea', '#ffd84d');
+    expect(contrastOf(light['working-lit'], '#fffbea')).toBeGreaterThanOrEqual(2);
+    expect(contrastOf(light['working-glow'], '#fffbea')).toBeLessThan(contrastOf(light['working-lit'], '#fffbea'));
+  });
+
+  it("keeps the working mark's plugs apart from its free jacks", () => {
+    // A grey cable (Aluminium, Signal) only differs from the holes in lightness, so it needs more of it to read as plugged.
+    for (const { id, raw } of BUILT_IN_THEMES) {
+      const resolved = resolveTheme(parse(raw));
+      for (const mode of THEME_MODES) {
+        const tokens = resolved[mode]?.tokens;
+        if (!tokens) continue;
+        for (const plug of ['working-plug-a', 'working-plug-b', 'working-plug-c', 'working-plug-d'] as const) {
+          const grey = toOklch(parseColor(tokens[plug])!).c < 0.05;
+          const need = grey ? 2.5 : mode === 'dark' ? 1.5 : 1.3;
+          expect(contrastOf(tokens[plug], tokens['working-hole']), `${id} ${mode} ${plug}`).toBeGreaterThanOrEqual(need);
+        }
+      }
+    }
+  });
+
   it('comes close to Demo Time from its canvas and accent', () => {
     // Known differences: on-accent is pure black (Demo Time uses its near-black), the greys and text of a
     // white canvas get a hint of the yellow accent (Demo Time's are cool blue-grey), the diff backgrounds
@@ -91,6 +119,8 @@ describe('generating a theme from canvas and accent', () => {
       const demo = DEMO_TIME_TOKENS[mode];
       const generated = generateTokens(mode, demo.bg, demo.accent);
       for (const token of THEME_TOKENS) {
+        // Demo Time's working light is the app icon's amber, not its yellow accent, which other themes' light follows.
+        if (token === 'working-lit' || token === 'working-glow') continue;
         const d = deltaE(generated[token], demo[token]);
         if (d > 0.005) report.push(`${mode} ${token}: ${demo[token]} → ${generated[token]} (ΔE ${d.toFixed(3)})`);
         expect(d, `${mode} ${token}: ${demo[token]} vs ${generated[token]}`).toBeLessThanOrEqual(LIMIT[token] ?? 0.025);

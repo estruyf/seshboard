@@ -12,6 +12,10 @@ export const MODE_LABEL: Record<PermissionMode, string> = {
 /** The line under Settings › General › Global permission mode, also what Settings' search shows. */
 export const GLOBAL_MODE_DETAIL = 'What new sessions start in, unless their Claude profile or project sets a mode. A session can still change it. A link never starts in Auto mode.';
 
+/** The lines under Settings › General › Global model and Global effort, also what Settings' search shows. */
+export const GLOBAL_MODEL_DETAIL = 'What new sessions start on, unless their Claude profile or project sets a model. A session can still change it.';
+export const GLOBAL_EFFORT_DETAIL = 'How hard new sessions think, unless their Claude profile or project sets an effort. A session can still change it.';
+
 /** The global permission mode as a menu names it: its mode, or the one picked last. */
 export const globalModeLabel = (setting: NewSessionMode) => (setting === 'remember' ? 'Last picked' : MODE_LABEL[setting]);
 

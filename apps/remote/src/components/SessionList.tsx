@@ -16,6 +16,7 @@ import type { Client } from './Connected.tsx';
 import { ConnectionLine } from './ConnectionStatus.tsx';
 import { ContextMenu, MenuButton, menuPoint, type MenuItem, type MenuPoint } from './Menu.tsx';
 import { NeedsYouCard } from './NeedsYouCard.tsx';
+import { TriggerBolt } from './TriggerOrigin.tsx';
 import { promptShort } from '../lib/prompts.ts';
 import { PullToRefresh } from './PullToRefresh.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
@@ -26,9 +27,9 @@ import { Button, ComputerTag, Kbd, Logo, PROFILE_RAIL, RoundButton, SectionHeade
 const GROUP_TONE: Record<SessionGroup, string> = {
   'needs-you': 'text-warn',
   working: 'text-accent-ink',
-  today: 'text-faint',
-  yesterday: 'text-faint',
-  earlier: 'text-faint',
+  pinned: 'text-faint',
+  review: 'text-faint',
+  open: 'text-faint',
 };
 
 /** The chip picked, for this tab (it survives a reload). */
@@ -43,7 +44,7 @@ function savedFilter(): ListFilter {
   }
 }
 
-/** Re-renders every minute, so ages and Today/Yesterday stay right on a page left open. */
+/** Re-renders every minute, so ages stay right on a page left open. */
 export function useNow(): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -238,7 +239,7 @@ export function SessionList({
     const flags = (archived: boolean) => (run ? client.call('runs.archive', { runId: run.run.id, archived }) : client.call('session.setFlags', { sessionId, archived }));
     void flags(true)
       .then(() => {
-        toast(`Archived ${session.title}`, { action: { label: 'Undo', run: () => void flags(false).catch(failed) } });
+        toast(`Done: ${session.title}`, { action: { label: 'Undo', run: () => void flags(false).catch(failed) } });
         onArchived(session.id);
       })
       // A run that still goes on can't be archived: its own words say so ("Stop it first").
@@ -246,7 +247,7 @@ export function SessionList({
   };
   const archiveLabel = (session: ListedSession) => {
     const steps = tree.children.get(session.id)?.length ?? 0;
-    return treeRun(session) && steps ? `Archive with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Archive';
+    return treeRun(session) && steps ? `Done, with ${steps === 1 ? 'its step' : `its ${steps} steps`}` : 'Done';
   };
   const rowItems = (session: ListedSession): MenuItem[] => [
     ...(session.runRow ? [] : [{ label: 'Mark as read', disabled: !clientOf(session) || !session.unread, onSelect: () => markRead(session) }]),
@@ -346,7 +347,7 @@ export function SessionList({
     </header>
   );
 
-  const groups = groupSessions(shown.sessions, now);
+  const groups = groupSessions(shown.sessions);
   const recent = recentOf(groups);
   const needsYouRows = groups.find((g) => g.group === 'needs-you')?.sessions.length ?? 0;
   const empty = sessions.sessions.length === 0;
@@ -669,6 +670,7 @@ function SessionRow({
           <span className={`flex min-w-0 items-center gap-1.5 text-body ${session.unread || asks ? 'font-semibold' : ''}`}>
             {session.runRow && <ListTree className="size-3.5 shrink-0 text-pipeline" aria-label="Pipeline run" role="img" />}
             <span className="truncate">{session.title}</span>
+            <TriggerBolt value={session.trigger} />
           </span>
           <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
             {computer && <ComputerTag name={computer} />}

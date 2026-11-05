@@ -3,7 +3,7 @@
  * tested without React. See AGENTS.md, Design system, for when to use which variant.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'side';
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'side' | 'tint';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonLook {
@@ -37,6 +37,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   danger: 'btn-secondary border-error/50 text-error enabled:hover:bg-error/10',
   // Ask about this session: outlined in the side channel's blue, never the accent.
   side: 'border border-link/55 font-medium text-link enabled:hover:bg-link/10',
+  // An offer that isn't the area's main action (Update on another computer's row): a blue tint, no edge.
+  tint: 'bg-link/15 font-medium text-link enabled:hover:bg-link/25',
 };
 const DANGER_FILLED = 'bg-error font-semibold text-white enabled:hover:bg-error/85';
 const SIDE_FILLED = 'bg-link font-semibold text-bg enabled:hover:bg-link/85';
@@ -45,7 +47,7 @@ const SIDE_SELECTED = 'border border-link bg-link/15 font-medium text-link enabl
 const QUIET_SELECTED = 'bg-selected text-text';
 // The ▾ of a split button: narrower than a square, behind a 1px line in the button's own ink.
 const MENU_WIDTH: Record<ButtonSize, string> = { sm: 'w-5', md: 'w-6', lg: 'w-7' };
-const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '' };
+const SEGMENT_DIVIDER: Record<ButtonVariant, string> = { primary: 'border-l border-on-accent/20', secondary: '', quiet: 'border-l border-border', danger: '', side: '', tint: '' };
 
 /** The classes for a button: shape, size and variant. Callers add layout (`ml-auto`, `w-full`) on top. */
 export function buttonClass({ variant, size, iconOnly, filled, selected, segment, round = false }: ButtonLook): string {
@@ -88,17 +90,20 @@ export interface PillLook {
   tone: PillTone;
   /** A button (it reacts to hover) rather than a label. */
   interactive: boolean;
+  /** A dashed outline: a pill that adds something in an editor (Add step). */
   dashed: boolean;
+  /** No border, in faint text: a pill that adds something beside the message box ("+ Add action"), quiet until you go for it. */
+  ghost: boolean;
   selected: boolean;
   /** May shrink below its content (it truncates its label) instead of keeping its width. */
   shrink: boolean;
 }
 
 /** The classes for a pill. `count` is the small tinted number next to a group heading; its tint comes from the caller. */
-export function pillClass({ tone, interactive, dashed, selected, shrink }: PillLook): string {
+export function pillClass({ tone, interactive, dashed, ghost, selected, shrink }: PillLook): string {
   if (tone === 'count') return 'inline-flex items-center rounded-full px-1.5 tabular-nums tracking-normal';
-  const muted = dashed || tone === 'muted';
-  const look = selected ? 'border-border bg-selected text-text' : dashed ? 'border-dashed border-border text-muted' : PILL_TONE[tone];
+  const muted = dashed || ghost || tone === 'muted';
+  const look = selected ? 'border-border bg-selected text-text' : ghost ? 'border-transparent text-faint' : dashed ? 'border-dashed border-border text-muted' : PILL_TONE[tone];
   const hover = interactive ? `hover:bg-border/50 ${muted && !selected ? 'hover:text-text' : ''}` : '';
   return `inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-meta whitespace-nowrap ${shrink ? 'min-w-0' : 'shrink-0'} ${look} ${hover}`;
 }

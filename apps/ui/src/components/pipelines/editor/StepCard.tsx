@@ -1,6 +1,6 @@
 import { AlertCircle, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useId, useState, type DragEvent, type ReactNode } from 'react';
-import { PIPELINE_LIMITS, type Effort, type ModelOption, type PermissionMode, type PipelineClaudeStep, type PipelinePushStep } from '@seshboard/protocol/client';
+import { PIPELINE_LIMITS, PROVIDER_NAMES, type Effort, type ModelOption, type OptionalProvider, type PermissionMode, type PipelineClaudeStep, type PipelinePushStep, type ProviderFeature, type ProviderMode } from '@seshboard/protocol/client';
 import { modelLabel } from '../../../lib/autoModel.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../../lib/modes.ts';
 import { mentionChoices, stepSummary } from '../../../state/pipelines.ts';
@@ -46,6 +46,8 @@ export interface StepCardProps {
   /** The issues about this step. */
   issues: string[];
   models: readonly ModelOption[];
+  /** The other tools that can run a step (GitHub Copilot, with a profile of it), with their models and modes. */
+  tools?: readonly StepTool[];
   /** The project actions "Run first" offers, by name. */
   actions: readonly string[];
   /** Whether `actions` is one project's list: a pipeline for every project can't say an action is missing. */
@@ -63,7 +65,16 @@ export interface StepCardProps {
 }
 
 /** A step: folded to its one line, or open to its form. Push is a card of its own kind, always last. */
-export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemove, readOnly, issues, models, actions, actionsKnown, drag }: StepCardProps) {
+/** Another tool a step can run with: its models (of its first profile) and its own modes. */
+export interface StepTool {
+  id: OptionalProvider;
+  name: string;
+  models: readonly ModelOption[];
+  modes: readonly ProviderMode[];
+  supports: readonly ProviderFeature[];
+}
+
+export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemove, readOnly, issues, models, tools = [], actions, actionsKnown, drag }: StepCardProps) {
   const id = useId();
   const step = form.steps[index]!;
   const push = step.kind === 'push';
@@ -148,7 +159,7 @@ export function StepCard({ form, index, open, onToggle, onChange, onMove, onRemo
             {step.kind === 'push' ? (
               <PushForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} />
             ) : (
-              <ClaudeForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} models={models} actions={actions} actionsKnown={actionsKnown} id={id} />
+              <ClaudeForm step={step} form={form} index={index} readOnly={readOnly} onChange={onChange} models={models} tools={tools} actions={actions} actionsKnown={actionsKnown} id={id} />
             )}
           </div>
         )}
@@ -183,8 +194,17 @@ function PushForm({ step, form, index, readOnly, onChange }: { step: PipelinePus
 
 const startValue = (start: PipelineClaudeStep['start']) => (typeof start === 'object' ? `fork:${start.fork}` : 'fresh');
 
-function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, actionsKnown, id }: { step: PipelineClaudeStep; form: PipelineForm; index: number; readOnly: boolean; onChange(form: PipelineForm): void; models: readonly ModelOption[]; actions: readonly string[]; actionsKnown: boolean; id: string }) {
+function ClaudeForm({ step, form, index, readOnly, onChange, models: claudeModels, tools, actions, actionsKnown, id }: { step: PipelineClaudeStep; form: PipelineForm; index: number; readOnly: boolean; onChange(form: PipelineForm): void; models: readonly ModelOption[]; tools: readonly StepTool[]; actions: readonly string[]; actionsKnown: boolean; id: string }) {
   const update = (patch: Partial<PipelineClaudeStep>) => onChange(updateStep<PipelineClaudeStep>(form, index, patch));
+  // Another tool runs it (GitHub Copilot): its models and modes. One without a profile here any more still shows its name.
+  const tool = step.provider ? (tools.find((t) => t.id === step.provider) ?? { id: step.provider, name: PROVIDER_NAMES[step.provider], models: [], modes: [], supports: [] }) : null;
+  const models = tool ? tool.models : claudeModels;
+  const picked = tool && step.model ? tool.models.find((m) => m.value === step.model) : undefined;
+  /** Another tool's effort: only for a model that takes one, at its levels. */
+  const toolEfforts = tool && picked?.supportsEffort && tool.supports.includes('effort') ? (picked.efforts ?? EFFORTS) : null;
+  /** Another tool, another model list and modes: they start from its defaults, and it has no plan to approve. */
+  const pickTool = (value: string) =>
+    update({ provider: value === 'claude' ? undefined : (value as OptionalProvider), model: null, effort: null, permissionMode: null, approvePlan: false });
   const earlier = earlierSessions(form.steps, index);
   const start = startValue(step.start);
   const startSegments = [{ value: 'fresh', label: 'Fresh', data: { 'data-pipeline-start': 'fresh' } }, ...earlier.map((s) => ({ value: `fork:${s.name.trim()}`, label: `Fork of ${s.name.trim()}`, data: { 'data-pipeline-start': s.name.trim() } }))];
@@ -199,6 +219,9 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
     ...(step.model && !models.some((m) => m.value === step.model) ? [{ value: step.model, label: modelLabel(models, step.model) }] : []),
   ];
   const modes: PermissionMode[] = step.permissionMode && !MODE_CHOICES.includes(step.permissionMode) ? [...MODE_CHOICES, step.permissionMode] : MODE_CHOICES;
+  const modeOptions = tool
+    ? tool.modes.map((m) => ({ value: m.value, label: m.label, icon: <span className={`size-2 rounded-full ${MODE_DOT[m.value] ?? 'bg-faint'}`} /> }))
+    : modes.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }));
   const [adding, setAdding] = useState(false);
   const [typed, setTyped] = useState('');
   const offered = [...new Set([...actions, ...step.actionsFirst])];
@@ -214,6 +237,19 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
 
   return (
     <>
+      {(tools.length > 0 || tool) && (
+        <Row label="Runs with" labelId={`${id}-runs-with`}>
+          <Select
+            label="Runs with"
+            className={CHIP}
+            value={tool?.id ?? 'claude'}
+            disabled={readOnly}
+            onChange={pickTool}
+            options={[{ value: 'claude', label: PROVIDER_NAMES.claude }, ...tools.map((t) => ({ value: t.id, label: t.name })), ...(tool && !tools.some((t) => t.id === tool.id) ? [{ value: tool.id, label: tool.name }] : [])]}
+            dataAttrs={{ 'data-pipeline-runs-with': true }}
+          />
+        </Row>
+      )}
       <Row label="Starts" labelId={`${id}-starts`}>
         {/* Fresh and one fork fit side by side; more earlier steps would wrap out of the track, so they get a menu. */}
         {startSegments.length <= 2 ? (
@@ -241,22 +277,24 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
       <Row label="Model" labelId={`${id}-model`}>
         <div role="group" aria-labelledby={`${id}-model`} className="flex flex-wrap items-center gap-1.5">
           <Select label="Model" className={CHIP} value={step.model ?? ''} disabled={readOnly} onChange={(value) => update({ model: value || null })} options={modelOptions} dataAttrs={{ 'data-pipeline-model': true }} />
-          <Select<Effort | ''>
-            label="Effort"
-            className={CHIP}
-            value={step.effort ?? ''}
-            disabled={readOnly}
-            onChange={(value) => update({ effort: value || null })}
-            options={[{ value: '', label: 'Default effort' }, ...EFFORTS.map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
-            dataAttrs={{ 'data-pipeline-effort': true }}
-          />
+          {(!tool || toolEfforts) && (
+            <Select<Effort | ''>
+              label="Effort"
+              className={CHIP}
+              value={step.effort ?? ''}
+              disabled={readOnly}
+              onChange={(value) => update({ effort: value || null })}
+              options={[{ value: '', label: 'Default effort' }, ...(toolEfforts ?? EFFORTS).map((e) => ({ value: e, label: `${EFFORT_LABEL[e]} effort` }))]}
+              dataAttrs={{ 'data-pipeline-effort': true }}
+            />
+          )}
           <Select<PermissionMode | ''>
             label="Permission mode"
             className={CHIP}
             value={step.permissionMode ?? ''}
             disabled={readOnly}
             onChange={(value) => update({ permissionMode: value || null })}
-            options={[{ value: '', label: 'Default mode' }, ...modes.map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className={`size-2 rounded-full ${MODE_DOT[m] ?? 'bg-faint'}`} /> }))]}
+            options={[{ value: '', label: 'Default mode' }, ...modeOptions]}
             dataAttrs={{ 'data-pipeline-mode': true }}
           />
           <Checkbox checked={step.readOnly} disabled={readOnly} onChange={(value) => update({ readOnly: value })} className="ml-1" tooltip="Only tools that read. Use it for a review." dataAttrs={{ 'data-pipeline-read-only': true }}>
@@ -264,7 +302,7 @@ function ClaudeForm({ step, form, index, readOnly, onChange, models, actions, ac
           </Checkbox>
         </div>
       </Row>
-      {step.permissionMode === 'plan' && (
+      {step.permissionMode === 'plan' && !tool && (
         <Row label="Plan" labelId={`${id}-plan`}>
           <Checkbox checked={step.approvePlan} disabled={readOnly} onChange={(approvePlan) => update({ approvePlan })} dataAttrs={{ 'data-pipeline-approve-plan': true }}>
             <span className="grid gap-0.5">

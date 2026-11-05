@@ -1,4 +1,7 @@
-import { AUTO_MODEL, tierLabel, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@seshboard/protocol/client';
+import type { ReactNode } from 'react';
+import { AUTO_MODEL, tierLabel, type AutoTier, type Effort, type PermissionMode, type RemoteBranches, type RemoteOptions, type RemotePermissionMode, type RemoteProfile, type RemoteProject, type RemoteSession, type RemoteSessionOptions, type RemoteSessions } from '@seshboard/protocol/client';
+import { autoDescription } from '../../lib/autoModel.ts';
+import type { Choice } from '../newSession/ChoiceMenu.tsx';
 import { filterBranches } from '../worktree/branchMenu.ts';
 import { ELSEWHERE_NOTE } from '../newSession/startSession.ts';
 
@@ -134,9 +137,61 @@ export function remoteModelLabel(models: RemoteOptions['models'], value: string 
 /** Whether a model takes an effort (the default one does). */
 export const remoteTakesEffort = (models: RemoteOptions['models'], value: string | null) => !value || (models.find((m) => m.value === value)?.supportsEffort ?? true);
 
-/** What a running session's model chip says about Auto: "Auto" while it picks, then "Auto · Sonnet"; null without Auto. */
-export function remoteAutoFace(auto: RemoteSession['auto']): string | null {
-  if (!auto) return null;
-  if (auto.choosing) return 'Auto';
-  return `Auto · ${auto.picked ? tierLabel(auto.picked) : 'Default model'}`;
+/**
+ * The model chip's list on that computer, as the local one: Auto first when offered (`auto`, New session with Auto on
+ * there), the default as '' (the list's own "default", or one added for it, worded by `defaultDescription`), and a
+ * model the list doesn't know kept first so it stays checked.
+ */
+export function remoteModelChoices(
+  models: RemoteOptions['models'],
+  value: string,
+  { auto = null, defaultDescription = 'What Seshboard starts sessions with' }: { auto?: { allowed: readonly AutoTier[]; icon?: ReactNode } | null; defaultDescription?: string } = {},
+): Array<Choice<string>> {
+  const listed = (m: string) => models.some((model) => model.value === m);
+  return [
+    ...(auto ? [{ value: AUTO_MODEL, label: 'Auto', description: autoDescription(auto.allowed), icon: auto.icon, separatorAfter: true }] : []),
+    ...(value && value !== AUTO_MODEL && !listed(value) ? [{ value, label: remoteModelLabel(models, value) }] : []),
+    ...(listed('default') ? [] : [{ value: '', label: 'Default model', description: defaultDescription }]),
+    ...models.map((m) => ({ value: m.value === 'default' ? '' : m.value, label: m.displayName, ...(m.description ? { description: m.description } : {}) })),
+  ];
+}
+
+/** The model chip of a session there, in the shape of the message box's (`ComposerChipRow`). */
+export interface RemoteModelChoice {
+  /** The model; '' is that computer's default, `AUTO_MODEL` while Auto picks. */
+  value: string;
+  label: string;
+  choices: Array<Choice<string>>;
+  /** What Auto picked ("Sonnet", or "Default model" when picking failed); null without Auto or while it picks. */
+  auto: string | null;
+}
+
+/**
+ * A running session's model on that computer, as the local chip shows one (`remoteModelChoices`). Auto isn't in the
+ * list: it only picks when a session starts.
+ */
+export function remoteModelChoice(models: RemoteOptions['models'], session: Pick<RemoteSession, 'model' | 'auto'>): RemoteModelChoice {
+  const value = session.auto?.choosing ? AUTO_MODEL : (session.model ?? '');
+  return {
+    value,
+    label: remoteModelLabel(models, value || null),
+    choices: remoteModelChoices(models, value),
+    auto: session.auto && !session.auto.choosing ? (session.auto.picked ? tierLabel(session.auto.picked) : 'Default model') : null,
+  };
+}
+
+/** A provider of a profile on that computer (GitHub Copilot), as `options.get` lists it. */
+export type RemoteProvider = NonNullable<RemoteProfile['provider']>;
+
+/**
+ * What `session.create` gets for a profile of another provider there: its own model and mode, and a worktree or a
+ * branch to check out only when that computer's provider has them (an older one refuses them).
+ */
+export function remoteProviderCreate(
+  provider: RemoteProvider,
+  picked: { profileId: string; model: string | null; mode: RemotePermissionMode; worktree: boolean; checkoutBranch: string | null },
+): RemoteSessionOptions {
+  const worktree = picked.worktree && provider.supports.includes('worktree');
+  const branch = !worktree && picked.checkoutBranch && provider.supports.includes('branch') ? picked.checkoutBranch : null;
+  return { profileId: picked.profileId, model: picked.model, permissionMode: picked.mode, worktree, ...(branch ? { checkoutBranch: branch } : {}) };
 }

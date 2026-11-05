@@ -70,6 +70,7 @@ import {
   PanelRight,
   PanelsTopLeft,
   Pencil,
+  NotebookPen,
   Pin,
   PinOff,
   Play,
@@ -186,9 +187,15 @@ export interface PaletteApi {
   /** Opens "Why Claude asks" beside the session for its oldest open permission or question. */
   showWhy(): void;
   setFlags(change: { pinned?: boolean; archived?: boolean }): void;
+  /** Opens the note of the session on screen: what's left in it, one line under its title. */
+  editNote(): void;
+  /** Remind me later about the session on screen. */
+  remind(): void;
   compact(): void;
   /** Keep awake until done, on or off, for the session on screen. */
   setKeepAwake(on: boolean): void;
+  /** Fast mode, on or off, for the session on screen. */
+  setFastMode(on: boolean): void;
   copyLastReply(): void;
   /** Preview last written file: opens the previewable file Claude wrote last in the session. */
   previewLastFile(): void;
@@ -531,13 +538,13 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'import-settings', title: 'Import settings…', group: 'general', icon: Download, keywords: 'backup restore move mac projects actions preferences', when: always, run: (api) => api.backup('import') },
   { id: 'connect-computer', title: 'Connect to another computer…', group: 'general', icon: Monitor, keywords: 'pair remote machine mac pc other computers sessions link', when: always, run: (api) => api.openSettings('remote') },
   { id: 'vscode-extension', title: 'VS Code extension', group: 'general', icon: SquareCode, keywords: 'companion cursor windsurf install marketplace settings', when: always, run: (api) => api.openSettings('vscode') },
-  { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
+  { id: 'manage-sessions', title: 'Manage sessions', group: 'general', icon: Archive, keywords: 'archived archive done delete trash clean up old all sessions overview size disk', when: always, run: (api) => api.manageSessions() },
   {
     id: 'delete-archived-sessions',
-    title: 'Delete archived sessions…',
+    title: 'Delete Done sessions…',
     group: 'general',
     icon: Trash2,
-    keywords: 'auto delete clean up old archived trash retention days cleanupPeriodDays',
+    keywords: 'auto delete clean up old archived archive done trash retention days cleanupPeriodDays',
     when: always,
     run: (api) => api.manageSessions({ focus: 'delete' }),
   },
@@ -744,12 +751,30 @@ export const COMMANDS: PaletteCommand[] = [
   },
   {
     id: 'archive',
-    title: (ctx) => (ctx.session?.archived ? 'Unarchive' : 'Archive'),
+    title: (ctx) => (ctx.session?.archived ? 'Reopen' : 'Mark as done'),
     group: 'session',
     icon: Archive,
-    keywords: 'unarchive settle hide done',
+    keywords: 'archive unarchive reopen settle hide done finished',
     when: indexed,
     run: (api, ctx) => api.setFlags(ctx.session!.archived ? { archived: false } : { archived: true, pinned: false }),
+  },
+  {
+    id: 'note',
+    title: 'Note…',
+    group: 'session',
+    icon: NotebookPen,
+    keywords: "what's left todo to do remember reminder later comment",
+    when: indexed,
+    run: (api) => api.editNote(),
+  },
+  {
+    id: 'remind',
+    title: 'Remind me…',
+    group: 'session',
+    icon: BellRing,
+    keywords: 'remind later snooze reminder come back tomorrow evening hour',
+    when: indexed,
+    run: (api) => api.remind(),
   },
   {
     id: 'fork',
@@ -782,6 +807,8 @@ export const COMMANDS: PaletteCommand[] = [
   { id: 'compact', title: 'Compact context', group: 'session', icon: Shrink, keywords: '/compact summarise', when: (ctx) => hosted(ctx) && (session(ctx)!.host!.contextTokens ?? 0) > 0, run: (api) => api.compact() },
   { id: 'change-model', title: 'Change model…', group: 'session', icon: Cpu, keywords: 'opus sonnet haiku', when: hosted, next: () => ({ kind: 'pick', list: 'model', chip: 'Model' }) },
   { id: 'change-effort', title: 'Change effort…', group: 'session', icon: Gauge, keywords: 'thinking', when: (ctx) => hosted(ctx) && session(ctx)!.host!.supportsEffort, next: () => ({ kind: 'pick', list: 'effort', chip: 'Effort' }) },
+  { id: 'fast-mode-on', title: 'Turn on fast mode', group: 'session', icon: Zap, keywords: '/fast speed quick opus usage credits', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.supportsFastMode && (session(ctx)!.host!.fastMode ?? 'off') === 'off' && session(ctx)!.host!.state !== 'closed' && session(ctx)!.host!.state !== 'error', run: (api) => api.setFastMode(true) },
+  { id: 'fast-mode-off', title: 'Turn off fast mode', group: 'session', icon: Zap, keywords: '/fast speed standard', when: (ctx) => hosted(ctx) && !!session(ctx)!.host!.supportsFastMode && (session(ctx)!.host!.fastMode ?? 'off') !== 'off', run: (api) => api.setFastMode(false) },
   { id: 'change-mode', title: 'Change permission mode…', group: 'session', shortcut: keysFor('mode.cycle'), icon: ShieldCheck, keywords: 'plan accept edits auto', when: hosted, next: () => ({ kind: 'pick', list: 'mode', chip: 'Permission mode' }) },
   {
     id: 'ask-session',

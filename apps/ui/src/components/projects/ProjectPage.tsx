@@ -21,6 +21,7 @@ import { ProjectIcon } from '../ProjectIcon.tsx';
 import { useProjectIconEntries } from '../sidebar/ProjectMenu.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { BranchesTab } from '../branches/BranchesTab.tsx';
 import { CountBadge } from '../ui/Pill.tsx';
 import { WorktreesTab } from '../worktrees/WorktreesTab.tsx';
@@ -136,7 +137,7 @@ export function ProjectPage({ list, narrow = false, onShowList }: { list: readon
   if (!root || !project) {
     return (
       <div className="@container flex h-full min-h-0 flex-col" data-project-page>
-        <header className="drag flex h-13 shrink-0 items-center gap-3 border-b border-border px-6">
+        <header className={PANE_HEADER}>
           <SidebarToggle />
           <h1 className="flex-1 text-title font-semibold">Project</h1>
         </header>

@@ -7,6 +7,8 @@ export interface SessionSources {
   hosts: readonly SessionHostInfo[];
   /** Permission prompts, questions and plans the sessions this app runs are waiting on. */
   permissions?: readonly PermissionRequest[];
+  /** Sessions with an unsent message or a queued prompt: listed whatever their age, as the sidebar keeps them. */
+  kept?: ReadonlySet<string>;
 }
 
 const activeHost = (host: SessionHostInfo | undefined): host is SessionHostInfo => !!host && host.state !== 'closed' && host.state !== 'error';
@@ -41,6 +43,8 @@ interface Listing {
   updatedAt: number;
   /** Running in this app, or a process this app started. */
   openInApp: boolean;
+  /** An unsent message or a queued prompt waits in it. */
+  keep?: boolean;
 }
 
 /**
@@ -58,6 +62,7 @@ export function listedInSidebar(s: Listing, now: number, archiveAfterDays: numbe
       unread: s.unread,
       updatedAt: s.updatedAt,
       openInApp: s.openInApp,
+      keep: s.keep ?? false,
     },
     now,
     archiveAfterDays,
@@ -93,7 +98,8 @@ export function companionSessions(sources: SessionSources, { now = Date.now(), k
     const inApp = summary.inApp || l?.origin === 'app';
     if (summary.id !== keep) {
       if (scope === 'switchboard' && !inApp) continue;
-      if (!listedInSidebar({ status, pinned: summary.pinned, archivedAt: summary.archivedAt, restoredAt: summary.restoredAt, unread: summary.unread, updatedAt, openInApp }, now, archiveAfterDays)) continue;
+      const listing = { status, pinned: summary.pinned, archivedAt: summary.archivedAt, restoredAt: summary.restoredAt, unread: summary.unread, updatedAt, openInApp, keep: sources.kept?.has(summary.id) ?? false };
+      if (!listedInSidebar(listing, now, archiveAfterDays)) continue;
     }
     out.push({
       id: summary.id,

@@ -28,7 +28,7 @@ import { useAttachments } from '../composer/useAttachments.ts';
 import { ChoiceMenu } from '../newSession/ChoiceMenu.tsx';
 import { StartButton } from '../newSession/StartButton.tsx';
 import { focusStartBlock, startButtonState } from '../newSession/startMenu.ts';
-import { INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, newSessionChoices, readLastMode, type Choices } from '../newSession/choices.ts';
+import { globalChoices, INITIAL_CHOICES, LAST_MODE_KEY, layeredDefaults, newSessionChoices, readLastMode, type Choices } from '../newSession/choices.ts';
 import { branchBlocked, checkoutBranchFor, ELSEWHERE_NOTE, shouldPrewarm, startNewSession } from '../newSession/startSession.ts';
 import { branchLabel, branchNote } from '../newSession/trayLabels.ts';
 import { baseChoices } from '../newSession/worktreeBases.ts';
@@ -67,6 +67,10 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   /** Changed here: the project's defaults arriving late must not undo it. */
   const touched = useRef(false);
   const newSessionMode = usePreferences((s) => s.prefs.newSessionMode);
+  const newSessionModel = usePreferences((s) => s.prefs.newSessionModel);
+  const newSessionEffort = usePreferences((s) => s.prefs.newSessionEffort);
+  /** The model and effort Settings › General sets, where the project and profile set none. */
+  const globals = globalChoices({ newSessionModel, newSessionEffort });
   const [profileOverride, setProfileOverride] = useState<string | null>(null);
   const projectProfile = project?.profileId && profiles.some((p) => p.id === project.profileId) ? project.profileId : null;
   const profileId = (profileOverride && profiles.some((p) => p.id === profileOverride) ? profileOverride : null) ?? projectProfile ?? defaultProfile;
@@ -74,7 +78,7 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   const sessionDefaults = layeredDefaults(isProject ? project!.defaults : null, profiles.find((p) => p.id === profileId)?.defaults);
   /** The permission mode last picked here or in New session, for Settings › General › Permission mode › Remember last. */
   const [lastMode, setLastMode] = useState<PermissionMode>(INITIAL_CHOICES.permissionMode);
-  const [d, setD] = useState<Choices>(() => ({ ...newSessionChoices(sessionDefaults, newSessionMode, INITIAL_CHOICES.permissionMode), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
+  const [d, setD] = useState<Choices>(() => ({ ...newSessionChoices(sessionDefaults, newSessionMode, INITIAL_CHOICES.permissionMode, globals), ...(worktree ? { workspace: 'worktree' as const } : {}) }));
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [gitBranches, setGitBranches] = useState<{ current: string | null; branches: string[]; checkedOutElsewhere?: string[]; remoteBranches?: string[] }>({ current: null, branches: [] });
   const [gitStatus, setGitStatus] = useState<{ remote: string | null; baseBranch: string | null; behindUpstream: number | null } | null>(null);
@@ -120,9 +124,9 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
       setD(questionStartingChoices(questionChoices));
       return;
     }
-    const choices = newSessionChoices(sessionDefaults, newSessionMode, lastMode);
+    const choices = newSessionChoices(sessionDefaults, newSessionMode, lastMode, globals);
     setD(worktree ? { ...choices, workspace: 'worktree' } : choices);
-  }, [loaded, newSessionMode, lastMode, defaultsKey, worktree, question, questionChoices]);
+  }, [loaded, newSessionMode, newSessionModel, newSessionEffort, lastMode, defaultsKey, worktree, question, questionChoices]);
 
   // Is it a git repository, on which branch, and where would a worktree branch from.
   useEffect(() => {
@@ -139,8 +143,8 @@ export function PromptStep({ root, from, worktree, chip, onBack, onChangeProject
   }, [client, root, options.git]);
   // Warm Claude Code up for the folder while the prompt is written, as New session does.
   useEffect(() => {
-    if (client && shouldPrewarm(d)) void client.call('session.prewarm', { cwd: root, profileId });
-  }, [client, root, d.workspace, d.branch, profileId]);
+    if (client && shouldPrewarm(d)) void client.call('session.prewarm', { cwd: root, profileId, effort: d.effort || null });
+  }, [client, root, d.workspace, d.branch, d.effort, profileId]);
 
   const canWorktree = options.git && (inspection?.isGitRepo ?? false);
   const useWorktree = d.workspace === 'worktree' && canWorktree;

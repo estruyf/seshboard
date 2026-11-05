@@ -2,13 +2,14 @@ import { ChevronRight } from 'lucide-react';
 import type { HTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { CountBadge } from './Pill.tsx';
 
-export type SectionTone = 'neutral' | 'needs-you' | 'working' | 'ok' | 'info' | 'caution' | 'error';
+export type SectionTone = 'neutral' | 'needs-you' | 'working' | 'unread' | 'ok' | 'info' | 'caution' | 'error';
 
-/** The status colours, plus the worktree overview's groups: safe (`ok`), probably done (`info`), keep (`caution`), stale (`error`). */
+/** The status colours (Needs you, Working, To review's unread), plus the worktree overview's groups: safe (`ok`), probably done (`info`), keep (`caution`), stale (`error`). */
 const TONE: Record<SectionTone, string> = {
   neutral: 'text-faint',
   'needs-you': 'text-warn',
   working: 'text-accent-ink',
+  unread: 'text-unread',
   ok: 'text-ok',
   info: 'text-link',
   caution: 'text-caution',
@@ -38,7 +39,7 @@ interface SectionHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'child
 }
 
 /**
- * The small capitals over a group of rows: the sidebar's Needs you, Working, Today and Archived,
+ * The small capitals over a group of rows: the sidebar's Needs you, Working, Open and Archived,
  * Home's sections, and the lists in dialogs. Same size and tracking everywhere; the tone is the status.
  */
 export function SectionHeader({ children, tone = 'neutral', count, as, level = 2, headingId, toggle, action, className = '', ...rest }: SectionHeaderProps) {

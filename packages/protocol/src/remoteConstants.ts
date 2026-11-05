@@ -61,3 +61,18 @@ export const REMOTE_FEATURE_PIPELINES = 'pipelines';
 export const REMOTE_FEATURE_QUEUE_SEND_NOW = 'session.queue.sendNow';
 /** In `hello`'s `features`: `theme.get` answers and `theme.changed` follows, so the phone can look like this computer. */
 export const REMOTE_FEATURE_THEME = 'theme';
+
+/**
+ * In `hello`'s `features`: each listed session says who started it (`RemoteSession.startedBy`), so another computer
+ * sharing this one can name the other people's sessions. Without it, a session's starter isn't known.
+ */
+export const REMOTE_FEATURE_STARTED_BY = 'sessions.startedBy';
+
+/**
+ * In `hello`'s `features`: `app.update.get`, `app.update.check`, `app.update.install` and `app.update.cancel` answer
+ * and `app.update.changed` follows, so Seshboard on another paired computer can update Seshboard there (never a phone).
+ */
+export const REMOTE_FEATURE_UPDATE = 'app.update';
+
+/** The first version that can be updated from another computer (`REMOTE_FEATURE_UPDATE`), for "needs … or later". */
+export const REMOTE_UPDATE_SINCE = '1.3.0';

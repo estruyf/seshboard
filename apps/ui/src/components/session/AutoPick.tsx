@@ -144,7 +144,7 @@ export function AutoPickPopover({ sessionId, pick, items, cwd }: { sessionId: st
               <Button size="md" disabled={busy || !client} onClick={() => void rerun(tier)} data-auto-rerun={tier}>
                 Run again with {tierLabel(tier)}
               </Button>
-              <span className="min-w-0 text-meta text-muted">new session, same prompt; this one is archived</span>
+              <span className="min-w-0 text-meta text-muted">new session, same prompt; this one goes to Done</span>
             </div>
           ))}
           {running &&

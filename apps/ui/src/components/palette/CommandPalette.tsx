@@ -10,6 +10,7 @@ import { findModelOption } from '../../lib/models.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { startQueued } from '../../state/laterStore.ts';
 import { useQueue } from '../../state/useQueue.ts';
 import { describe as describeRule } from '@seshboard/protocol/client';
@@ -29,7 +30,8 @@ import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions, type SessionRowData } from '../../state/sessionsStore.ts';
-import { openRow, useRemoteRows } from '../../state/useRemoteRows.ts';
+import { markFromOthers } from '../../state/remoteRows.ts';
+import { openRow, useRemoteRowSplit } from '../../state/useRemoteRows.ts';
 import { GROUP_LABEL, inScope } from '../../state/sidebarRows.ts';
 import { toast } from '../../state/toastStore.ts';
 import { rememberLimit } from '../focus/focusLimit.ts';
@@ -189,10 +191,13 @@ export function CommandPalette() {
   const digest = usePaletteBus((s) => s.digest);
   const home = useHomeFolder();
   // Sessions on other computers can be found too; their detail line names the computer ("involv-timesheet · mystic").
-  const remoteRows = useRemoteRows();
+  // A computer set to Mine leaves the others' sessions out of the list; a search still finds them, marked as theirs.
+  const { shown: remoteRows, hidden: othersRows } = useRemoteRowSplit();
+  const othersFound = useMemo(() => othersRows.map(markFromOthers), [othersRows]);
   const remoteNames = useMemo(() => new Map(remoteRows.flatMap((row) => (row.remote ? [[row.projectRoot, `${row.remote.projectName} · ${row.remote.computerName}`] as const] : []))), [remoteRows]);
   const nameOf = (root: string) => remoteNames.get(root) ?? projects.get(root)?.name ?? basename(root);
-  const localRows = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const localRows = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   const sessionRows = useMemo(() => [...localRows, ...remoteRows], [localRows, remoteRows]);
   const activity = useMemo(() => activityByProject(localRows), [localRows]);
   const branches = useMemo(() => latestBranches(sessions.values()), [sessions]);
@@ -242,7 +247,7 @@ export function CommandPalette() {
       const out: Section[] = [];
       const drafted = new Set(unsent.flatMap((e) => (e.item.kind === 'session' ? [e.item.sessionId] : [])));
       if (query.trim()) {
-        const found = matchSessions(sessionRows, query, nameOf, MATCH_LIMIT);
+        const found = matchSessions(othersFound.length ? [...sessionRows, ...othersFound] : sessionRows, query, nameOf, MATCH_LIMIT);
         if (found.length) out.push({ id: 'sessions', label: 'Sessions', rows: found.map(({ item, indices }) => ({ kind: 'session', key: `session:${item.id}`, data: item, indices, draft: drafted.has(item.id) })) });
       } else {
         // Nothing typed: unsent messages first, then the sidebar's groups in its order, so ⌘P stands in for it while it's closed.
@@ -291,7 +296,7 @@ export function CommandPalette() {
       return rows.length ? [{ id: list, label: PICK_PLACEHOLDER[list].replace(/^Pick (a |an )?/, ''), rows }] : [];
     }
     // The pick lists and project rows read these; the functions above are only called from here.
-  }, [state, step, ctx, sessionRows, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines]);
+  }, [state, step, ctx, sessionRows, othersFound, projectRoots, projectOrder, projects, models, hosts, focusLimit, queue, digest, unsent, memoryList, schedules, triggers, pipelines]);
 
   /** The choices of a pick step, the current one marked. */
   function pickOptions(list: PickList): Option[] {

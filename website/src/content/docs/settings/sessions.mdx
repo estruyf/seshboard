@@ -1,6 +1,6 @@
 ---
 title: Sessions
-description: When an opened session is marked read, when finished sessions are archived, moving old archived sessions to the Trash, Claude Code's own cleanup, and an overview of every session.
+description: When an opened session is marked read, when finished sessions move to Done, moving old Done sessions to the Trash, Claude Code's own cleanup, and an overview of every session.
 ---
 
 import Kbd from '../../../components/Kbd.astro';
@@ -8,14 +8,14 @@ import Os from '../../../components/Os.astro';
 import { Aside } from '@astrojs/starlight/components';
 import Related from '../../../components/Related.astro';
 
-**Settings › Sessions** keeps the sidebar short. Choose when an opened session is marked read, when finished sessions move to [Archived](/sessions/archived/), turn on moving old archived sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
+**Settings › Sessions** keeps the sidebar short. Choose when an opened session is marked read, when finished sessions move to [Done](/sessions/archived/), turn on moving old Done sessions to the <Os mac="Trash" windows="Recycle Bin" />, and see every session you have in one table.
 
 ## Open it
 
 - In Settings, choose **Sessions** in the list on the left.
-- Click the **⋯** on the **Archived** header in the sidebar and choose **Manage sessions…** (it shows only archived sessions) or **Archive settings…**.
+- Click the **⋯** on the **Done** header in the sidebar and choose **Manage sessions…** (it shows only sessions in Done) or **Archive settings…**.
 - Click the session count at the bottom of the sidebar.
-- Run *Manage sessions* or *Delete archived sessions…* in the command palette (<Kbd shortcut="palette.commands" />). *Delete archived sessions…* puts the keyboard on the **Delete archived sessions** switch.
+- Run *Manage sessions* or *Delete Done sessions…* in the command palette (<Kbd shortcut="palette.commands" />). *Delete Done sessions…* puts the keyboard on the **Delete Done sessions** switch.
 
 ## Unread sessions
 
@@ -25,21 +25,25 @@ A finished session stays unread, in blue, until you have looked at it.
 
 A session you open unread is marked read once it has been in front of you this long: 3 seconds by default, anything from 1 to 60. So a session you only pass through, with <Kbd shortcut="session.next" /> for example, stays unread. A session that opens with a [catch-up](/sessions/catch-up/) is read the same way, and its banner stays open until you fold it. What happens while you look at a session, such as Claude finishing, is read almost at once: you watched it happen.
 
-Turn the switch off to mark sessions read yourself: with **Mark as read** in the catch-up or the session's menu, or <Kbd shortcut="sidebar.quick-read" /> in the sidebar.
+Turn the switch off to mark sessions read yourself: with **Mark as read** in the session's menu, or <Kbd shortcut="sidebar.quick-read" /> in the sidebar.
 
 ## Keep the list short
 
-Archived sessions leave the sidebar but stay on disk. Deleting one moves its transcript to the <Os mac="Trash" windows="Recycle Bin" />, so `claude --resume` no longer lists it.
+Sessions in Done leave the list but stay on disk. Deleting one moves its transcript to the <Os mac="Trash" windows="Recycle Bin" />, so `claude --resume` no longer lists it.
 
-### Archive finished sessions after
+### Move finished sessions to Done after
 
-A finished session moves to Archived after this many days without activity: 3 by default, anything from 1 to 365. Working, needs you, unread and pinned sessions stay in the list, and so does a session open in Seshboard. New activity brings a session back, and so does unarchiving it yourself.
+A finished session moves to Done after this many days without activity: 3 by default, anything from 1 to 365. Working, needs you, unread and pinned sessions stay in the list, and so does a session open in Seshboard. So does a session with [loose ends](/sessions/sidebar/#loose-ends), an unsent message or a queued prompt. New activity brings a session back, and so does reopening it yourself.
 
 The [VS Code companion](/vscode-companion/) lists the same sessions as the sidebar, so it follows this setting too.
 
-### Delete archived sessions
+### Move to Done when its pull request merges
 
-Off by default. When it is on, a session that has been in Archived for longer than the days you set (30 by default, up to 3650) goes to the <Os mac="Trash" windows="Recycle Bin" />. A session counts as archived from the day you archived it, or, when it was archived on its own, from its last activity plus the archive days above.
+On by default. When a session's pull request merges, the session goes to Done and its row says "Merged #123". See [Done](/sessions/archived/#what-goes-to-done) for what stays where it is.
+
+### Delete Done sessions
+
+Off by default. When it is on, a session that has been in Done for longer than the days you set (30 by default, up to 3650) goes to the <Os mac="Trash" windows="Recycle Bin" />. A session counts as Done from the day you marked it, or, when it moved on its own, from its last activity plus the days above.
 
 These are always kept:
 
@@ -64,7 +68,7 @@ Claude Code deletes old transcripts by itself, even when Seshboard's deleting is
 
 ## All sessions
 
-Under the settings, **All sessions** lists every session Claude Code has, also those from other apps when the sidebar shows only Seshboard's. The line under the heading says how many there are, how much space they take, how many are archived, and how many of those have been archived for more than 30 days. **Reveal in <Os mac="Finder" windows="File Explorer" />** opens the folder where Claude Code keeps them (with several profiles, pick which).
+Under the settings, **All sessions** lists every session Claude Code has, also those from other apps when the sidebar shows only Seshboard's. The line under the heading says how many there are, how much space they take, how many are in Done, and how many of those have been there for more than 30 days. **Reveal in <Os mac="Finder" windows="File Explorer" />** opens the folder where Claude Code keeps them (with several profiles, pick which).
 
 ### Find sessions
 
@@ -72,7 +76,7 @@ Under the settings, **All sessions** lists every session Claude Code has, also t
 - **Any time**, **7 days**, **30 days**, **Older than 30 days**: by last activity.
 - **All projects**: one project only.
 - **From any app**: where the session started: **Seshboard**, **Terminal**, **Editor**, **Claude desktop** or **Other**.
-- **All**, **In the list**, **Archived**, **Pinned**: where the session is now.
+- **All**, **In the list**, **Done**, **Pinned**: where the session is now.
 
 The table groups sessions by month, newest first. Each row shows the project and title (with the branch and project under it), the status, when it was last active, its size on disk and the app it came from. Click a row, or press <Kbd keys="enter" /> on it, to open the session; Settings closes.
 
@@ -82,11 +86,11 @@ Tick a row's checkbox, or press <Kbd keys="space" /> on it. A month's checkbox s
 
 The bar at the bottom says how many sessions you selected, their size, and how many would be skipped because they are kept. It has:
 
-- **Unarchive**: puts the archived ones back in the sidebar.
+- **Reopen**: puts the ones in Done back in the list.
 - **Move to <Os mac="Trash" windows="Recycle Bin" />…**: asks first, with how much space it frees, a line per project, and which selected sessions are kept and why. After you confirm, a message says how many moved.
 - **Clear** (<Kbd keys="escape" />): selects nothing.
 
-Each row's **⋯** menu (or a right-click) has **Open session**, **Unarchive** or **Archive**, **Pin** or **Unpin**, **Reveal transcript in <Os mac="Finder" windows="File Explorer" />**, **Copy session ID** and **Move to <Os mac="Trash" windows="Recycle Bin" />…**.
+Each row's **⋯** menu (or a right-click) has **Open session**, **Reopen** or **Done**, **Pin** or **Unpin**, **Reveal transcript in <Os mac="Finder" windows="File Explorer" />**, **Copy session ID** and **Move to <Os mac="Trash" windows="Recycle Bin" />…**.
 
 ## Related
 

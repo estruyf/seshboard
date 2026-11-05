@@ -9,6 +9,7 @@ import { answer } from './answer.ts';
 import type { Client } from './Connected.tsx';
 import type { ListComputer } from './SessionList.tsx';
 import { PromptBody } from './PermissionCard.tsx';
+import { TriggerBolt } from './TriggerOrigin.tsx';
 import { useNow } from './SessionList.tsx';
 import { UsageSection } from './Usage.tsx';
 import { connectionOf } from './connectionOf.ts';
@@ -155,7 +156,10 @@ function PromptCard({ prompt, session, client, computer, now, onOpen, onAnswered
           Open
         </Button>
       </div>
-      <h2 className="truncate text-body font-semibold">{title}</h2>
+      <h2 className="flex min-w-0 items-center gap-1.5 text-body font-semibold">
+        <span className="truncate">{title}</span>
+        <TriggerBolt value={session?.trigger} />
+      </h2>
       <PromptBody prompt={prompt} disabled={busy || !client} respond={respond} hints compact />
     </article>
   );

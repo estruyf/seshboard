@@ -1,4 +1,5 @@
 import type { ImageRef, TranscriptMessage } from '@seshboard/protocol/client';
+import { answeredQuestions } from './questionAnswers.ts';
 
 export interface ToolResultView {
   text: string;
@@ -199,10 +200,15 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
 export type ActivityGroup = { kind: 'activity'; key: string; items: DisplayItem[] };
 export type RenderItem = DisplayItem | ActivityGroup;
 
-/** Plans stay visible; everything else Claude does between messages can be summarised. */
+/**
+ * Plans and questions you answered stay visible; everything else Claude does between messages can be summarised. A
+ * question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
+ */
 const isActivity = (item: DisplayItem) =>
   item.kind === 'thinking' ||
-  item.kind === 'agent-report' || (item.kind === 'tool' && item.name !== 'ExitPlanMode') || ((item.kind === 'text' || item.kind === 'user') && item.subagent);
+  item.kind === 'agent-report' ||
+  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && answeredQuestions(item) === null) ||
+  ((item.kind === 'text' || item.kind === 'user') && item.subagent);
 
 /**
  * Collapses each run of activity (tool calls, thinking, subagent output) into one

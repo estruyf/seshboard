@@ -10,6 +10,8 @@ export interface MenuItem {
   /** A second, quieter line under the label (a profile's account and folder). */
   detail?: string;
   icon?: ReactNode;
+  /** What follows the label, before the hint (a computer's filter icon and needs-you count). */
+  end?: ReactNode;
   hint?: string;
   /** Marks the current choice with a check. */
   checked?: boolean;
@@ -44,7 +46,7 @@ export interface SubmenuItem {
  * `heading`: a small label over a group of items. `title`: the menu's subject in bold, with a line
  * about it (a branch and where it stands). `note`: a sentence under the items, such as why some are unavailable.
  */
-export type MenuEntry = MenuItem | SubmenuItem | 'separator' | { heading: string } | { title: string; detail?: string } | { note: string; tone?: 'warn' };
+export type MenuEntry = MenuItem | SubmenuItem | 'separator' | { heading: string } | { title: string; detail?: string } | { note: string; tone?: 'warn' | 'faint' };
 
 /** How long the pointer rests on an item before its submenu opens (or the open one closes), so crossing a row on the way in doesn't swap it. */
 const SUBMENU_DELAY = 150;
@@ -186,7 +188,7 @@ export function Menu({
             <p
               key={i}
               role="presentation"
-              className={`text-ui ${entry.tone === 'warn' ? 'mx-2 my-1 rounded-md bg-warn/10 px-2.5 py-1.5 text-warn' : 'px-3 pt-1 pb-1.5 text-muted'}`}
+              className={`text-ui ${entry.tone === 'warn' ? 'mx-2 my-1 rounded-md bg-warn/10 px-2.5 py-1.5 text-warn' : entry.tone === 'faint' ? 'px-3 pt-1 pb-1.5 text-faint' : 'px-3 pt-1 pb-1.5 text-muted'}`}
               data-menu-note
             >
               {entry.note}
@@ -278,6 +280,7 @@ export function Menu({
                 ) : (
                   <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                 )}
+                {entry.end}
                 {entry.hint && <span className="shrink-0 text-meta text-faint">{localizeKeys(entry.hint)}</span>}
                 {entry.checked && !entry.checkbox && <Check size={13} className="shrink-0 text-accent-ink" aria-hidden />}
               </button>

@@ -18,6 +18,8 @@ import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
 export * from "./retention.ts";
 export * from "./autoModel.ts";
 export * from "./appIcons.ts";
+export { channelOf } from "./appUpdate.ts";
+export * from "./notificationPause.ts";
 
 /**
  * The small API the preload script exposes on `window.seshboard`.
@@ -92,10 +94,51 @@ export const IpcChannel = {
   getPopoutView: "seshboard:get-popout-view",
   reportView: "seshboard:report-view",
   viewReturned: "seshboard:view-returned",
+  menuBarCommand: "seshboard:menu-bar-command",
+  menuBarResize: "seshboard:menu-bar-resize",
+  menuBarShown: "seshboard:menu-bar-shown",
+  quickStartCommand: "seshboard:quick-start-command",
+  quickStartPassClicks: "seshboard:quick-start-pass-clicks",
+  quickStartShown: "seshboard:quick-start-shown",
+  quickStartKey: "seshboard:quick-start-key",
+  getQuickStartStatus: "seshboard:get-quick-start-status",
+  quickStartStatus: "seshboard:quick-start-status",
 } as const;
 
 /** The query parameter that makes a window a pop-out: the id of the one session it shows. */
 export const POPOUT_QUERY = "popout";
+
+/** The query parameter that makes a window the menu bar's panel (`?menubar=1`). */
+export const MENU_BAR_QUERY = "menubar";
+
+/**
+ * What the menu bar's panel asks main to do: open the main window (Open Seshboard), quit (through the quit guard, as
+ * ⌘Q does), or close the panel (Esc, or after opening something).
+ */
+export type MenuBarCommand = "open" | "quit" | "close";
+
+/** The query parameter that makes a window the quick start panel (`?quickstart=1`), which the global shortcut opens. */
+export const QUICK_START_QUERY = "quickstart";
+
+/** Quick start's global shortcut until one is picked in Settings › General: ⌃⌥Space, Ctrl+Alt+Space elsewhere. */
+export const DEFAULT_QUICK_START_SHORTCUT = "ctrl+alt+space";
+
+/** How quick start's global shortcut stands: `registered` is false when another app has the keys. */
+export interface QuickStartStatus {
+  /** The shortcut in the registry's stored form (`ctrl+alt+space`). */
+  shortcut: string;
+  registered: boolean;
+}
+
+/** A key the app menu would take in the quick start panel (⌘W, ⌘M…), handed to the page instead. */
+export interface QuickStartKey {
+  key: string;
+  shift: boolean;
+}
+
+/** Whether a stored shortcut can be quick start's: at least one modifier and a key, in the stored form. */
+export const isQuickStartShortcut = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= 60 && /^(?:(?:cmd|ctrl|alt|shift)\+)+[a-z0-9]+$/.test(value) && !/^(?:shift\+)+[a-z0-9]+$/.test(value);
 
 /**
  * Unsent messages that changed in one window, by draft key (`null`: the draft is gone). Main passes them on to
@@ -134,7 +177,7 @@ export type MainWindowRequest =
   | { kind: "go-to" }
   | { kind: "search"; memory: boolean }
   | { kind: "navigate"; to: "next" | "previous" | "needs-you" }
-  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | null; scheduleId: string | null };
+  | { kind: "upcoming"; filter: "all" | "queue" | "schedules" | "triggers" | "reminders" | null; scheduleId: string | null };
 
 /** Appearance: follow macOS, or always light or dark. */
 export type ColorScheme = "system" | "light" | "dark";
@@ -172,6 +215,11 @@ export type ProjectOrder = "recent" | "yours";
  */
 export type NewSessionMode = "remember" | "default" | "acceptEdits" | "plan" | "auto";
 export const NEW_SESSION_MODES: readonly NewSessionMode[] = ["remember", "default", "acceptEdits", "plan", "auto"];
+/** The global effort (Settings › General): one of Claude Code's effort levels, or `""` for Claude Code's own default. */
+export type NewSessionEffort = "" | "low" | "medium" | "high" | "xhigh" | "max";
+export const NEW_SESSION_EFFORTS: readonly NewSessionEffort[] = ["", "low", "medium", "high", "xhigh", "max"];
+/** Longest model id the global model keeps, as project defaults allow. */
+const NEW_SESSION_MODEL_MAX = 200;
 /** What Enter does while Claude is working: hold the message until the turn ends (`queue`), or hand it to Claude now (`steer`). */
 export type WhileWorking = "queue" | "steer";
 /** After a usage limit stops a session: offer to resume when it resets (`ask`), or arm that straight away (`always`). */
@@ -209,6 +257,10 @@ export type SoundChoice = string;
 /** A system notification when Claude needs you, finishes or stops with an error, and when a project action ends. The badge shows either way. */
 export interface NotificationPrefs {
   enabled: boolean;
+  /** A reminder that comes due (Remind me later) shows a notification. On by default. */
+  reminders: boolean;
+  /** Due reminders count in the Dock's badge (and the taskbar's dot) with what needs you. Off by default. */
+  badgeReminders: boolean;
 }
 
 export interface SoundPrefs {
@@ -222,7 +274,7 @@ export interface SoundPrefs {
   revision: number;
 }
 
-export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true };
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { enabled: true, reminders: true, badgeReminders: false };
 
 /**
  * Settings › Usage › Large context. A session whose context is at least `percent` full is "large": its ring turns
@@ -310,6 +362,13 @@ export interface Preferences {
   /** The global permission mode: what new sessions start in where the profile and the project set none (Settings › General). */
   newSessionMode: NewSessionMode;
   /**
+   * The global model (Settings › General): what new sessions start on where the profile and the project set none.
+   * A model Claude Code lists, `auto`, or `""` for Claude Code's own default (its `settings.json` or environment).
+   */
+  newSessionModel: string;
+  /** The global effort (Settings › General): as the model, `""` leaves it to Claude Code. */
+  newSessionEffort: NewSessionEffort;
+  /**
    * Settings › General: "Use Claude in Chrome". On, sessions start with `--chrome`, so they get the Claude in Chrome
    * extension's browser tools. Claude Code's own "Enabled by default" only applies in a terminal, so an SDK host has to
    * ask for it. Off by default: not everyone has the extension.
@@ -345,10 +404,35 @@ export interface Preferences {
    * up in turn while a session works. On by default.
    */
   dockActivity: boolean;
+  /**
+   * Settings › General › Menu bar: "Show in the menu bar" ("in the notification area" on Windows). The working light,
+   * what needs you and new work, from the menu bar's icon. On by default.
+   */
+  menuBar: boolean;
+  /**
+   * Settings › General › Menu bar: "Keep running when the window closes". On, closing the last window leaves the app
+   * running with its sessions (Windows and Linux too), and the menu bar icon stays. On by default.
+   */
+  keepRunning: boolean;
+  /** Settings › General › Menu bar: "Hide from the Dock while no window is open" (macOS). Off by default. */
+  hideDock: boolean;
+  /**
+   * Settings › General › Quick start: the global shortcut that opens the quick start panel from any app, in the
+   * registry's stored form (`ctrl+alt+space`).
+   */
+  quickStartShortcut: string;
+  /** Settings › General › Quick start: "Start in the background". Off, ↩ in the panel opens Seshboard too, as ⌘↩ does. */
+  quickStartBackground: boolean;
+  /** Settings › General › Quick start: "Show what needs you", the waiting sessions at the top of the panel. */
+  quickStartNeedsYou: boolean;
+  /** Pause notifications (the menu bar): no notifications or sounds until this time (ms since epoch); null when not paused. */
+  notificationsPausedUntil: number | null;
   /** Finished sessions leave the sidebar's main list after this many days without activity (1–365). */
   archiveAfterDays: number;
   /** Moves archived sessions to the Trash after some days in Archived (1–3650). Off by default. */
   deleteArchived: DeleteArchived;
+  /** Settings › Sessions: a session whose pull request merged moves to Done by itself. On by default. */
+  doneOnMerge: boolean;
   /** Settings › Sessions: "Mark as read after". An unread session you open is read after you look at it this long. */
   markReadAfter: MarkReadAfter;
   /** What Enter does in the message box while Claude is working (Settings › Conversation). */
@@ -396,6 +480,8 @@ export interface Preferences {
    * text until gh works.
    */
   githubHintSeen: string[];
+  /** Settings › Profiles: providers whose "found on this Mac" offer was put away with Not now (`copilot`). */
+  providerOffersDismissed: string[];
   /** The sidebar's order (its Recent | Quickest to unblock control). */
   sidebarSort: SidebarSort;
   /** Settings › Sidebar: "Quick actions on hover", buttons on the session row under the pointer. */
@@ -430,6 +516,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   startupView: "home",
   projectOrder: "recent",
   newSessionMode: "default",
+  newSessionModel: "",
+  newSessionEffort: "",
   chrome: false,
   keepAwake: false,
   autoUpdate: true,
@@ -442,8 +530,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
   appIcon: DEFAULT_APP_ICON,
   appIconOnRemote: true,
   dockActivity: true,
+  menuBar: true,
+  keepRunning: true,
+  hideDock: false,
+  quickStartShortcut: DEFAULT_QUICK_START_SHORTCUT,
+  quickStartBackground: true,
+  quickStartNeedsYou: true,
+  notificationsPausedUntil: null,
   archiveAfterDays: ARCHIVE_AFTER_DAYS.default,
   deleteArchived: DEFAULT_DELETE_ARCHIVED,
+  doneOnMerge: true,
   markReadAfter: DEFAULT_MARK_READ_AFTER,
   whileWorking: "queue",
   autoModel: DEFAULT_AUTO_MODEL,
@@ -457,6 +553,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   showMods: true,
   hiddenMods: [],
   githubHintSeen: [],
+  providerOffersDismissed: [],
   sidebarSort: "recent",
   quickActions: true,
   quickActionsShow: "all",
@@ -596,6 +693,11 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
     out.projectOrder = raw.projectOrder;
   if (oneOf(NEW_SESSION_MODES, raw.newSessionMode))
     out.newSessionMode = raw.newSessionMode;
+  // Models come from Claude Code at runtime, so any short id is kept; one it no longer lists is shown as it is.
+  if (typeof raw.newSessionModel === "string" && raw.newSessionModel.length <= NEW_SESSION_MODEL_MAX)
+    out.newSessionModel = raw.newSessionModel.trim();
+  if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
+    out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
@@ -623,6 +725,14 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (isAppIconKey(raw.appIcon)) out.appIcon = raw.appIcon;
   if (typeof raw.appIconOnRemote === "boolean") out.appIconOnRemote = raw.appIconOnRemote;
   if (typeof raw.dockActivity === "boolean") out.dockActivity = raw.dockActivity;
+  if (typeof raw.menuBar === "boolean") out.menuBar = raw.menuBar;
+  if (typeof raw.keepRunning === "boolean") out.keepRunning = raw.keepRunning;
+  if (typeof raw.hideDock === "boolean") out.hideDock = raw.hideDock;
+  if (isQuickStartShortcut(raw.quickStartShortcut)) out.quickStartShortcut = raw.quickStartShortcut;
+  if (typeof raw.quickStartBackground === "boolean") out.quickStartBackground = raw.quickStartBackground;
+  if (typeof raw.quickStartNeedsYou === "boolean") out.quickStartNeedsYou = raw.quickStartNeedsYou;
+  if (raw.notificationsPausedUntil === null || (typeof raw.notificationsPausedUntil === "number" && Number.isFinite(raw.notificationsPausedUntil)))
+    out.notificationsPausedUntil = raw.notificationsPausedUntil;
   const archiveAfterDays = clampDays(raw.archiveAfterDays, ARCHIVE_AFTER_DAYS);
   if (archiveAfterDays !== null) out.archiveAfterDays = archiveAfterDays;
   // Both fields or neither: half a setting would turn deleting on or off by accident.
@@ -630,6 +740,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   const afterDays = clampDays(deleting?.afterDays, DELETE_AFTER_DAYS);
   if (typeof deleting?.enabled === "boolean" && afterDays !== null)
     out.deleteArchived = { enabled: deleting.enabled, afterDays };
+  if (typeof raw.doneOnMerge === "boolean") out.doneOnMerge = raw.doneOnMerge;
   const reading = raw.markReadAfter as Record<string, unknown> | null | undefined;
   const seconds = clampDays(reading?.seconds, MARK_READ_SECONDS);
   if (typeof reading?.enabled === "boolean" && seconds !== null)
@@ -650,6 +761,8 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (typeof raw.showMods === "boolean") out.showMods = raw.showMods;
   if (Array.isArray(raw.hiddenMods))
     out.hiddenMods = [...new Set(raw.hiddenMods.filter((m): m is string => typeof m === "string" && m.length > 0 && m.length <= 400))].slice(0, 500);
+  if (Array.isArray(raw.providerOffersDismissed))
+    out.providerOffersDismissed = [...new Set(raw.providerOffersDismissed.filter((p): p is string => typeof p === "string" && /^[a-z][a-z0-9-]{0,39}$/.test(p)))].slice(0, 20);
   if (Array.isArray(raw.githubHintSeen))
     out.githubHintSeen = [...new Set(raw.githubHintSeen.filter((r): r is string => typeof r === "string" && r.length > 0 && r.length <= 4096))].slice(-500);
   if (oneOf(["recent", "quickest"] as const, raw.sidebarSort))
@@ -660,9 +773,15 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(["ask", "done"] as const, raw.githubStar))
     out.githubStar = raw.githubStar;
   // Before notifications and sounds had a card each, Show notifications was a plain switch.
-  if (typeof raw.notifications === "boolean") out.notifications = { enabled: raw.notifications };
-  else if (typeof (raw.notifications as NotificationPrefs | null)?.enabled === "boolean")
-    out.notifications = { enabled: (raw.notifications as NotificationPrefs).enabled };
+  if (typeof raw.notifications === "boolean") out.notifications = { ...DEFAULT_NOTIFICATIONS, enabled: raw.notifications };
+  else if (typeof (raw.notifications as NotificationPrefs | null)?.enabled === "boolean") {
+    const stored = raw.notifications as Partial<NotificationPrefs>;
+    out.notifications = {
+      enabled: stored.enabled!,
+      reminders: typeof stored.reminders === "boolean" ? stored.reminders : DEFAULT_NOTIFICATIONS.reminders,
+      badgeReminders: typeof stored.badgeReminders === "boolean" ? stored.badgeReminders : DEFAULT_NOTIFICATIONS.badgeReminders,
+    };
+  }
   const sounds = sanitizeSounds(raw);
   if (sounds) out.sounds = sounds;
   return out;
@@ -946,6 +1065,34 @@ export interface SeshboardBridge {
   onViewReturned(listener: (sessionId: string, view: SessionView) => void): () => void;
   /** From a pop-out: shows its session in the main window again and closes the pop-out. */
   popIn(): void;
+  /** Whether this window is the menu bar's panel (`?menubar=1`). Read once when the page loads. */
+  readonly menuBar: boolean;
+  /** From the menu bar's panel: open the main window, quit, or close the panel. */
+  menuBarCommand(command: MenuBarCommand): void;
+  /** From the menu bar's panel: how tall its content is, so the window fits it (up to 70% of the screen). */
+  menuBarResize(height: number): void;
+  /** In the menu bar's panel: it was shown again (the icon was clicked), so it puts focus back on its first row. */
+  onMenuBarShown(listener: () => void): () => void;
+  /** Whether this window is the quick start panel (`?quickstart=1`). Read once when the page loads. */
+  readonly quickStart: boolean;
+  /** From the quick start panel: close it (Esc, after a start, or after opening a session). */
+  quickStartClose(): void;
+  /**
+   * From the quick start panel: the pointer is over the window's see-through part (`true`), so clicks go to the app
+   * under it; or back over the panel or one of its menus (`false`).
+   */
+  quickStartPassClicks(pass: boolean): void;
+  /**
+   * In the quick start panel: the global shortcut showed it. `keepDraft` is false when it was hidden long enough
+   * (5 minutes) for what was typed to go.
+   */
+  onQuickStartShown(listener: (keepDraft: boolean) => void): () => void;
+  /** In the quick start panel: a key the app menu would have taken (⌘W, ⌘M…), handed to the panel. */
+  onQuickStartKey(listener: (key: QuickStartKey) => void): () => void;
+  /** How quick start's global shortcut stands (Settings › General says when another app has it). */
+  quickStartStatus(): Promise<QuickStartStatus>;
+  /** Fires in every window when the global shortcut is registered again (changed in Settings, or at launch). */
+  onQuickStartStatus(listener: (status: QuickStartStatus) => void): () => void;
   /** Shows a session where it is: its pop-out when it has one, otherwise the main window (both brought to the front). */
   showSession(sessionId: string): void;
   /** From a pop-out: brings the main window to the front and presses these keys there. */

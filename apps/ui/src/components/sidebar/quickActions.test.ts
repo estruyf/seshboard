@@ -78,7 +78,7 @@ describe('quickActionsFor', () => {
     expect(quickActionsFor(row({ status: 'unread', unread: true }), ALL).map((a) => [a.kind, a.label, a.shortcut])).toEqual([
       ['read', 'Mark as read', 'sidebar.quick-read'],
       ['pin', 'Pin', 'sidebar.quick-pin'],
-      ['archive', 'Archive', 'sidebar.quick-archive'],
+      ['archive', 'Done', 'sidebar.quick-archive'],
     ]);
     expect(quickActionsFor(row({ status: 'running', canStop: true }), ALL).find((a) => a.kind === 'stop')).toMatchObject({ label: 'Stop', shortcut: null });
   });
@@ -101,7 +101,8 @@ describe('quickActionForKey', () => {
 
 describe('toasts and undo', () => {
   it('says what was done', () => {
-    expect(quickActionToast('archive', 'Slide transitions')).toBe('Archived “Slide transitions”');
+    expect(quickActionToast('archive', 'Slide transitions')).toBe('Done: “Slide transitions”');
+    expect(quickActionToast('archive', 'Slide transitions', '3 files not committed')).toBe('Done: “Slide transitions”. 3 files not committed');
     expect(quickActionToast('markRead', 'x')).toBe('Marked as read');
     expect(quickActionToast('pin', 'x')).toBe('Pinned');
     expect(quickActionToast('stop', 'x')).toBeNull();
@@ -134,5 +135,12 @@ describe('quickRowOf', () => {
     const remote = (offline: boolean) => data({ remote: { offline, status: 'running' } as unknown as SessionRowData['remote'] });
     expect(quickRowOf(remote(false), false, { hosted: false, runs: [] })).toMatchObject({ flags: true, readable: false, canStop: true, status: 'running' });
     expect(quickRowOf(remote(true), false, { hosted: false, runs: [] })).toMatchObject({ flags: false, canStop: false });
+  });
+
+  it('a run row on another computer: no Pin, Done with its tree', () => {
+    const runRow = data({ remote: { offline: false, status: 'needs-you', runRow: true, treeRunId: 'run-1' } as unknown as SessionRowData['remote'] });
+    const row = quickRowOf(runRow, false, { hosted: false, runs: [] });
+    expect(row).toMatchObject({ flags: false, tree: true, canStop: true });
+    expect(quickActionsFor(row, { quickActions: true, quickActionsShow: 'all' }).map((a) => a.kind)).toEqual(['stop', 'archive']);
   });
 });

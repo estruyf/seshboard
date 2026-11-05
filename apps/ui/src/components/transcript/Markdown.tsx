@@ -40,19 +40,23 @@ export const markdownComponents: Components = {
   ),
 };
 
-/** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
-function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
+/** What a `code` element holds if it is a fenced block, null for inline code; `markdown`: its language gets a Preview | Source switch. */
+export function fencedBlock(className: string | undefined, children: ReactNode): { code: string; language: string | undefined; markdown: boolean } | null {
   const text = String(children ?? '');
   const language = /language-([\w+#-]+)/.exec(className ?? '')?.[1];
-  if (language || text.includes('\n')) {
-    const code = text.replace(/\n$/, '');
-    // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
-    return <CodeBlock code={code} language={language} preview={previews && language && MARKDOWN.has(language.toLowerCase()) ? <PreviewBlock text={code} /> : undefined} />;
-  }
+  if (!language && !text.includes('\n')) return null;
+  return { code: text.replace(/\n$/, ''), language, markdown: Boolean(language && MARKDOWN.has(language.toLowerCase())) };
+}
+
+/** Inline code, or a fenced block; `previews`: a Markdown block opens rendered (not inside another one's preview). */
+function renderCode({ className, children }: { className?: string; children?: ReactNode }, previews: boolean) {
+  const fence = fencedBlock(className, children);
+  // Markdown Claude writes out (a README, a PR description) opens rendered, with its source a click away.
+  if (fence) return <CodeBlock code={fence.code} language={fence.language} preview={previews && fence.markdown ? <PreviewBlock text={fence.code} /> : undefined} />;
   // Long inline code (URLs, paths) wraps instead of pushing the pane wider.
   const code = <code className="rounded bg-border/60 px-1 py-px font-mono text-[0.9em] [overflow-wrap:anywhere]">{children}</code>;
   // A file path (`src/a.ts:12`) becomes a link to open it in the editor, once the engine finds it.
-  const fileRef = parseFileRef(text);
+  const fileRef = parseFileRef(String(children ?? ''));
   return fileRef ? (
     <FileLink fileRef={fileRef} fallback={code}>
       {code}

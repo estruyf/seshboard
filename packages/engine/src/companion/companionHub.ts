@@ -15,8 +15,6 @@ type SessionScope = NonNullable<ListingOptions['scope']>;
 
 export interface CompanionHubOptions {
   infoDir: string;
-  /** See `CompanionServerOptions.legacyInfoDir`. */
-  legacyInfoDir?: string;
   appVersion: string;
   /** Everything the engine knows about sessions right now. */
   sources(): SessionSources;
@@ -55,7 +53,6 @@ export class CompanionHub {
   constructor(private readonly options: CompanionHubOptions) {
     this.server = new CompanionServer({
       infoDir: options.infoDir,
-      ...(options.legacyInfoDir ? { legacyInfoDir: options.legacyInfoDir } : {}),
       appVersion: options.appVersion,
       log: options.log,
       ...(options.socketParent ? { socketParent: options.socketParent } : {}),

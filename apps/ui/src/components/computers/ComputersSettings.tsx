@@ -1,31 +1,37 @@
-import { useRef, useState } from 'react';
-import { Link2, Monitor } from 'lucide-react';
+import { useState } from 'react';
+import { Link2 } from 'lucide-react';
+import type { ComputerColor, ComputerNotify } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useComputers } from '../../state/computersStore.ts';
-import { ConfirmStrip, ConnectedNow, ListRow } from '../remote/RemoteRows.tsx';
-import { remoteAge } from '../remote/remoteText.ts';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
-import { computerLine } from './computerSessions.ts';
+import { ComputerRow } from './ComputerRow.tsx';
 
 const field = 'h-7 min-w-0 flex-1 rounded-md border border-edge bg-card px-2 font-mono text-ui text-text placeholder:text-faint';
 
 /**
- * Settings › Remote, Other computers: the computers this one paired with, in the same rows as the paired devices
- * (Open shows its sessions, Remove forgets it here), then the field for the link from another computer's Pair a
- * device. It also takes a link from Reconnect a paired device, for a computer whose quick tunnel got a new address.
+ * Settings › Remote, Other computers: the computers this one paired with (`ComputerRow`: its version and updater,
+ * Update when it is behind, the notifications choice, Open and ⋯ with the rest), then the field for the link from
+ * another computer's Pair a device. It also takes a link from Reconnect a paired device, for a computer whose quick
+ * tunnel got a new address.
  */
 export function ComputersSettings() {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const status = useComputers((s) => s.status);
+  const lists = useComputers((s) => s.lists);
+  // Notifications in a computer's chip menu opens here at it: its row opens the choice.
+  const notifyFor = useComputers((s) => s.notifyFor);
   const [link, setLink] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const removeButtons = useRef(new Map<string, HTMLButtonElement | null>());
   if (!status || !client) return <p className="text-ui text-muted">Checking…</p>;
   if (!status.available) return <Notice>Other computers aren't available in this build of Seshboard.</Notice>;
   const { pairing, computers } = status;
+
+  const update = (id: string, changes: { name?: string; color?: ComputerColor; notify?: ComputerNotify }) => {
+    setError(null);
+    void client.call('computers.update', { id, ...changes }).catch((e: Error) => setError(e.message));
+  };
 
   const add = () => {
     setError(null);
@@ -40,46 +46,15 @@ export function ComputersSettings() {
       {computers.length > 0 && (
         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card" data-computers-list>
           {computers.map((computer) => (
-            <ListRow
+            <ComputerRow
               key={computer.id}
-              attrs={{ 'data-computer': computer.id, 'data-computer-state': computer.state }}
-              icon={<Monitor size={16} aria-hidden />}
-              name={computer.name}
-              status={
-                <>
-                  {computer.state === 'connected' ? <ConnectedNow /> : computerLine(computer)}
-                  {` · paired ${remoteAge(computer.pairedAt)}`}
-                </>
-              }
-              actions={
-                <>
-                  {computer.state === 'offline' && (
-                    <Button size="sm" variant="quiet" onClick={() => void client.call('computers.retry', { id: computer.id })}>
-                      Try again
-                    </Button>
-                  )}
-                  <Button size="sm" variant="quiet" onClick={() => useComputers.getState().openPage(computer.id)} data-computer-open>
-                    Open
-                  </Button>
-                  <Button ref={(el) => void removeButtons.current.set(computer.id, el)} size="sm" variant="danger" aria-expanded={removing === computer.id} onClick={() => setRemoving(computer.id)} data-computer-forget>
-                    Remove
-                  </Button>
-                </>
-              }
-              confirm={
-                removing === computer.id && (
-                  <ConfirmStrip
-                    question={`Remove ${computer.name}? Its sessions leave this computer. To pair again, paste a new link.`}
-                    action="Remove"
-                    returnTo={{ current: removeButtons.current.get(computer.id) ?? null }}
-                    onCancel={() => setRemoving(null)}
-                    onConfirm={() => {
-                      setRemoving(null);
-                      void client.call('computers.forget', { id: computer.id }).catch((e: Error) => setError(e.message));
-                    }}
-                  />
-                )
-              }
+              computer={computer}
+              client={client}
+              list={lists.get(computer.id) ?? null}
+              notifyOpen={notifyFor === computer.id}
+              onNotifyShown={() => useComputers.getState().clearNotifyFor()}
+              onChange={(changes) => update(computer.id, changes)}
+              onError={setError}
             />
           ))}
         </ul>

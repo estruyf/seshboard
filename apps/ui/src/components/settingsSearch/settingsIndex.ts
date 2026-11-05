@@ -1,10 +1,12 @@
 import { clickKeysFor, formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { fileManagerName, trashName } from '../../lib/platform.ts';
+import { HIDE_DOCK_DETAIL, HIDE_DOCK_LABEL, KEEP_RUNNING_LABEL, keepRunningDetail, MENU_BAR_KEYWORDS, menuBarDetail, menuBarLabel } from '../general/menuBarCopy.ts';
 import { keepAwakeDetail, keepAwakeLabel } from '../general/keepAwake.ts';
+import { BACKGROUND_LABEL, backgroundDetail, NEEDS_YOU_DETAIL, NEEDS_YOU_LABEL, QUICK_START_KEYWORDS, SHORTCUT_DETAIL } from '../general/quickStartCopy.ts';
 import { openAtLoginDetail } from '../general/openAtLogin.ts';
 import { shellCommandDetail } from '../general/shellCommand.ts';
 import { appIconDetail, DOCK_ACTIVITY_DETAIL, DOCK_ACTIVITY_LABEL } from '../theme/appIconCopy.ts';
-import { GLOBAL_MODE_DETAIL } from '../../lib/modes.ts';
+import { GLOBAL_EFFORT_DETAIL, GLOBAL_MODE_DETAIL, GLOBAL_MODEL_DETAIL } from '../../lib/modes.ts';
 import type { SettingEntry } from './searchSettings.ts';
 
 /**
@@ -21,6 +23,12 @@ export function settingsIndex(): SettingEntry[] {
     { id: 'open-at-login', page: 'general', label: 'Open at login', detail: openAtLoginDetail(), keywords: 'launch start startup boot restart login item sign in automatically virtual machine vm', target: '[data-open-at-login]' },
     { id: 'startup', page: 'general', label: 'On startup', detail: 'What Seshboard shows when it opens: Home, the last session or New session.', keywords: 'launch open start', target: '[data-startup-view]' },
     { id: 'keep-awake', page: 'general', label: keepAwakeLabel(), detail: keepAwakeDetail(), keywords: 'caffeinate sleep awake power insomnia prevent idle lid battery vm virtual machine schedules triggers remote', target: '[data-keep-awake]' },
+    { id: 'menu-bar', page: 'general', label: menuBarLabel(), detail: menuBarDetail(), keywords: MENU_BAR_KEYWORDS, target: '[data-menu-bar-setting]' },
+    { id: 'keep-running', page: 'general', label: KEEP_RUNNING_LABEL, detail: keepRunningDetail(), keywords: `${MENU_BAR_KEYWORDS} close window quit exit background`, target: '[data-keep-running]' },
+    { id: 'quick-start-shortcut', page: 'general', label: 'Quick start shortcut', detail: SHORTCUT_DETAIL, keywords: `${QUICK_START_KEYWORDS} keys record change`, target: '[data-quick-start-shortcut]' },
+    { id: 'quick-start-background', page: 'general', label: BACKGROUND_LABEL, detail: backgroundDetail(), keywords: `${QUICK_START_KEYWORDS} open bring forward`, target: '[data-quick-start-background]' },
+    { id: 'quick-start-needs-you', page: 'general', label: NEEDS_YOU_LABEL, detail: NEEDS_YOU_DETAIL, keywords: `${QUICK_START_KEYWORDS} waiting permission`, target: '[data-quick-start-needs-you]' },
+    { id: 'hide-dock', page: 'general', os: 'darwin', label: HIDE_DOCK_LABEL, detail: HIDE_DOCK_DETAIL, keywords: `${MENU_BAR_KEYWORDS} hide accessory`, target: '[data-hide-dock]' },
     { id: 'shell-command', page: 'general', label: 'Shell command', detail: shellCommandDetail(), keywords: 'terminal cli command line path code . switchboard seshboard sesh open folder install bin', target: '[data-shell-command]' },
     {
       id: 'new-session-mode',
@@ -29,6 +37,22 @@ export function settingsIndex(): SettingEntry[] {
       detail: GLOBAL_MODE_DETAIL,
       keywords: 'new session default ask first before edits accept edits plan auto mode permissions profile project remember last',
       target: '[data-new-session-mode]',
+    },
+    {
+      id: 'new-session-model',
+      page: 'general',
+      label: 'Global model',
+      detail: GLOBAL_MODEL_DETAIL,
+      keywords: 'new session default model opus sonnet haiku auto claude code profile project',
+      target: '[data-new-session-model]',
+    },
+    {
+      id: 'new-session-effort',
+      page: 'general',
+      label: 'Global effort',
+      detail: GLOBAL_EFFORT_DETAIL,
+      keywords: 'new session default effort thinking reasoning low medium high extra max claude code profile project',
+      target: '[data-new-session-effort]',
     },
     {
       id: 'chrome',
@@ -80,16 +104,16 @@ export function settingsIndex(): SettingEntry[] {
       id: 'quick-actions',
       page: 'sidebar',
       label: 'Quick actions on hover',
-      detail: 'Mark read, Pin and Archive appear on a row under the pointer.',
-      keywords: 'hover archive quick actions mark as read unread pin unpin stop buttons row one click',
+      detail: 'Mark read, Pin and Done appear on a row under the pointer.',
+      keywords: 'hover archive done quick actions mark as read unread pin unpin stop buttons row one click',
       target: '[data-quick-actions-setting]',
     },
     {
       id: 'quick-actions-show',
       page: 'sidebar',
       label: 'Show',
-      detail: 'Quick actions on hover: Archive only, or Read · Pin · Archive.',
-      keywords: 'hover archive quick actions mark as read pin buttons archive only',
+      detail: 'Quick actions on hover: Done only, or Read · Pin · Done.',
+      keywords: 'hover archive done quick actions mark as read pin buttons done only',
       target: '[data-quick-actions-show]',
       // Only while Quick actions on hover is on.
       fallback: '[data-quick-actions-setting]',
@@ -107,18 +131,26 @@ export function settingsIndex(): SettingEntry[] {
     {
       id: 'auto-archive',
       page: 'sessions',
-      label: 'Archive finished sessions after',
+      label: 'Move finished sessions to Done after',
       detail: 'Working, needs you, unread and pinned sessions stay in the list. New activity brings a session back.',
-      keywords: 'archived days old clean up',
+      keywords: 'archive archived done inactive days old clean up',
       target: '[data-auto-archive-value]',
     },
     {
       id: 'auto-delete',
       page: 'sessions',
-      label: 'Delete archived sessions',
-      detail: `An archived session goes to the ${trash} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`,
+      label: 'Delete Done sessions',
+      detail: `A session in Done goes to the ${trash} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`,
       keywords: 'remove trash recycle bin clean up disk space old',
       target: '[data-auto-delete]',
+    },
+    {
+      id: 'done-on-merge',
+      page: 'sessions',
+      label: 'Move to Done when its pull request merges',
+      detail: 'A session whose pull request merged goes to Done, unless it is pinned, working, open in Seshboard or active since.',
+      keywords: 'merged pull request pr github done archive automatically',
+      target: '[data-done-on-merge]',
     },
     {
       id: 'claude-cleanup',
@@ -129,7 +161,7 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-claude-cleanup]',
       fallback: '[data-sessions-settings]',
     },
-    { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Unarchive them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
+    { id: 'all-sessions', page: 'sessions', label: 'All sessions', detail: 'Every session, grouped by month, with filters. Reopen them or move them to the ' + trash + '.', keywords: 'manage overview table disk size unarchive', target: '[data-session-manager]' },
 
     // Projects
     {
@@ -248,6 +280,8 @@ export function settingsIndex(): SettingEntry[] {
       keywords: 'notification alerts banner notification centre center do not disturb needs you finished error action blocked permission system settings',
       target: '[data-notifications-toggle]',
     },
+    { id: 'notifications-reminders', page: 'notifications', label: 'Reminders', detail: 'When a session you asked to be reminded about comes back.', keywords: 'reminder remind later snooze notification', target: '[data-notifications-reminders]' },
+    { id: 'notifications-badge-reminders', page: 'notifications', label: 'Count reminders in the badge', detail: "Due reminders count with what needs you, on the app's icon.", keywords: 'badge dock taskbar count reminders', target: '[data-notifications-badge-reminders]' },
     { id: 'notifications-test', page: 'notifications', label: 'Check that they come through.', detail: 'Send a test notification', keywords: 'notification test try', target: '[data-notifications-test]' },
     { id: 'sounds', page: 'notifications', label: 'Sounds', detail: 'A sound per moment. Works with notifications on or off.', keywords: 'sound audio chime alert mute notification', target: '[data-sounds-toggle]' },
     { id: 'sound-needs-you', page: 'notifications', label: 'Needs you', detail: 'Claude asks for a permission, has a question or a plan.', keywords: 'sound needs you permission question plan waiting', target: '[data-sound-event="needsYou"]' },
@@ -490,6 +524,8 @@ export function settingsIndex(): SettingEntry[] {
       target: '[data-remote-computers]',
     },
     { id: 'computers-list', page: 'remote', label: 'Paired computers', detail: 'Open its sessions, or Remove it.', keywords: 'forget remove computers machines offline open', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
+    { id: 'computers-rename', page: 'remote', label: 'Rename or colour a computer', detail: 'Give a paired computer a name and a colour of its own here, to tell it apart.', keywords: 'rename name label colour color computer machine violet purple', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
+    { id: 'computers-notify', page: 'remote', label: 'Notifications from a computer', detail: 'Show all of a paired computer’s notifications, only for yours, only when it needs you, or none. Which sessions show is a filter on its chip in the sidebar.', keywords: 'notifications notify bell mute silence alerts computer machine needs you finished only mine shared others filter', target: '[data-computers-list]', fallback: '[data-remote-computers]' },
 
     // Backup
     { id: 'backup-export', page: 'backup', label: 'Export settings', detail: 'Choose what to include and save it to a file.', keywords: 'backup save move another computer', target: '[data-backup-export]' },

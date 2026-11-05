@@ -232,6 +232,16 @@ export function runButtons(state: RunView): { continue: boolean; anotherRound: b
 /** Push's card shows in the tree: the run waits for you at Push. */
 export const waitsForPush = (state: RunView) => state.run.status === 'waiting' && state.run.waitingFor === 'push';
 
+/** Why Push failed last time, while the run waits for it again ("Claude is working in this folder…"); null otherwise. */
+export function pushFailure(state: RunView): string | null {
+  if (!waitsForPush(state)) return null;
+  const row = state.steps.filter((s) => s.index === state.run.step).at(-1);
+  return row?.status === 'failed' ? row.reason : null;
+}
+
+/** Whether Push can go with this message: one is needed only when there is something to commit. */
+export const pushReady = (preview: Pick<PushPreview, 'files' | 'problem'>, message: string) => !preview.problem && (preview.files === 0 || message.trim() !== '');
+
 /** A stop to show on the step tree and in the step: what happened, and what to do. */
 export interface StopNotice {
   title: string;

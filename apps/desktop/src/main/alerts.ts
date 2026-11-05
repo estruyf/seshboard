@@ -1,8 +1,8 @@
-import { NO_SOUND, type Preferences, type SoundEvent } from '@seshboard/protocol/bridge';
+import { isPaused, NO_SOUND, type Preferences, type SoundEvent } from '@seshboard/protocol/bridge';
 import type { AttentionEvent } from './attention.ts';
 
-/** Settings › Notifications. */
-export type AlertPrefs = Pick<Preferences, 'notifications' | 'sounds'>;
+/** Settings › Notifications, and Pause notifications from the menu bar. */
+export type AlertPrefs = Pick<Preferences, 'notifications' | 'sounds'> & Partial<Pick<Preferences, 'notificationsPausedUntil'>>;
 
 /** What one attention event does: show a notification, and which moment's sound it plays (null: none). */
 export interface Alert {
@@ -33,6 +33,8 @@ const EVENT_SOUND: Record<AttentionEvent['kind'], SoundEvent> = {
   // A pipeline that stopped is like an error; one that is done like a finished turn.
   'pipeline-stopped': 'error',
   'pipeline-done': 'finished',
+  // A reminder that came due (Remind me later) is news like a finished turn.
+  reminder: 'finished',
 };
 
 /** Each kind of event has its own moment, and so its own sound. */
@@ -40,10 +42,13 @@ export const soundEventOf = (kind: AttentionEvent['kind']): SoundEvent => EVENT_
 
 /**
  * What an event does with these settings. Nothing at all for the session you are looking at (`suppressed`);
- * the badge and the Dock bounce don't depend on it. Notifications and sounds don't depend on each other.
+ * the badge and the Dock bounce don't depend on it. Notifications and sounds don't depend on each other. While
+ * notifications are paused, neither plays.
  */
-export function alertFor(kind: AttentionEvent['kind'], suppressed: boolean, prefs: AlertPrefs): Alert {
-  if (suppressed) return { notify: false, sound: null };
+export function alertFor(kind: AttentionEvent['kind'], suppressed: boolean, prefs: AlertPrefs, now = Date.now()): Alert {
+  if (suppressed || isPaused(prefs.notificationsPausedUntil ?? null, now)) return { notify: false, sound: null };
+  // Settings › Notifications › Reminders off: neither the notification nor its sound.
+  if (kind === 'reminder' && prefs.notifications.reminders === false) return { notify: false, sound: null };
   const event = soundEventOf(kind);
   const { enabled, volume, byEvent } = prefs.sounds;
   return { notify: prefs.notifications.enabled, sound: enabled && volume > 0 && byEvent[event] !== NO_SOUND ? event : null };

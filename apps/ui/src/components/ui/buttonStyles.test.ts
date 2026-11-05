@@ -59,7 +59,7 @@ describe('split button segments', () => {
 });
 
 describe('pillClass', () => {
-  const pill = { tone: 'default' as const, interactive: false, dashed: false, selected: false, shrink: false };
+  const pill = { tone: 'default' as const, interactive: false, dashed: false, ghost: false, selected: false, shrink: false };
   it('is a 24px rounded chip with a border', () => {
     expect(classes(pillClass(pill))).toEqual(expect.arrayContaining(['h-6', 'rounded-full', 'border', 'px-2.5', 'text-meta']));
   });
@@ -74,5 +74,6 @@ describe('pillClass', () => {
   });
   it('dashes an add pill', () => {
     expect(classes(pillClass({ ...pill, dashed: true, interactive: true }))).toContain('border-dashed');
+    expect(classes(pillClass({ ...pill, ghost: true, interactive: true }))).toEqual(expect.arrayContaining(['border-transparent', 'text-faint', 'hover:text-text']));
   });
 });

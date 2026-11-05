@@ -1,6 +1,6 @@
 ---
 title: Upcoming
-description: One view for everything queued, scheduled and triggered, across all your projects, with the scheduled runs of the next 7 days.
+description: One view for everything queued, scheduled and triggered, and your reminders, across all your projects, with the scheduled runs of the next 7 days.
 sidebar:
   badge: New
 ---
@@ -10,7 +10,7 @@ import Os from '../../../components/Os.astro';
 import Screenshot from '../../../components/Screenshot.astro';
 import Related from '../../../components/Related.astro';
 
-Upcoming shows what is going to run, across all your projects: everything in the [queue](/new-session/queue/), the scheduled runs of the next 7 days, every [schedule](/new-session/schedules/), and every [trigger](/projects/triggers/). **History** shows what ran in the last 7 days. Use it to see your day and week at a glance, to reorder the queue, or to skip a single run without pausing its schedule.
+Upcoming shows what is going to run, across all your projects: everything in the [queue](/new-session/queue/), the scheduled runs of the next 7 days, every [schedule](/new-session/schedules/), every [trigger](/projects/triggers/), and the [reminders](#remind-me-later) you set. **History** shows what ran in the last 7 days. Use it to see your day and week at a glance, to reorder the queue, or to skip a single run without pausing its schedule.
 
 <Screenshot name="upcoming" alt="Upcoming: the queue with three items, the scheduled runs of the next 7 days grouped by day, and four schedules on the right, one of them paused" eager />
 
@@ -32,7 +32,7 @@ The **Upcoming** row in the sidebar shows a count: your queued items plus your a
 
 At the top:
 
-- **All**, **Queue**, **Schedules** and **Triggers** pick what shows. **Queue** shows only the queue, across the full width. **Schedules** shows the scheduled runs and the schedules side by side. **Triggers** shows only the triggers.
+- **All**, **Queue**, **Schedules**, **Triggers** and **Reminders** pick what shows. **Queue** shows only the queue, across the full width. **Schedules** shows the scheduled runs and the schedules side by side. **Triggers** shows only the triggers, and **Reminders** only your reminders.
 - **All projects** filters by project. Its menu lists each project that has something queued or scheduled, or a trigger, with the counts as "queued · schedules".
 
 Each window remembers its own filters.
@@ -80,6 +80,14 @@ The **Triggers** card lists every [trigger](/projects/triggers/) across your pro
 A paused trigger says why, such as "Paused after 5 failed checks: gh is signed out.", with **Resume**.
 
 Under the triggers, **Waiting for a slot** lists the events that wait, oldest first, each with **Start now**.
+
+## Remind me later
+
+Press <Kbd shortcut="sidebar.remind" /> on a session (or several), or <Kbd shortcut="catchup.remind" /> in its [catch-up](/sessions/catch-up/), or choose **Remind me…** in its menu or the command palette. Pick **In 1 hour**, **This evening**, **Tomorrow**, **Monday** or a time of your own, with a note if you like.
+
+The session leaves the list until then. It then comes back under **Reminders** in the sidebar, above To review, with a notification ("Reminder: …"), and stays there until you open it. One that came due while Seshboard was closed says when it was for. If Claude needs you, fails or starts working in it, it comes back at once. In catch-up, <Kbd shortcut="catchup.remind" /> also goes on to the next session, as **Skip** does. A search still finds a session that waits for its reminder.
+
+The **Reminders** filter lists them, each with **Edit**, **Remind now** and **Cancel**, and the **Upcoming** row in the sidebar counts them. [Settings › Notifications](/settings/notifications/) can turn reminder notifications off, or count them in the app icon's badge.
 
 ## History
 

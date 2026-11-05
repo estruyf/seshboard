@@ -83,6 +83,8 @@ Messages in Up next are kept when you look at other sessions, stop the session o
 
 ## Follow what Claude does
 
+While Claude works, the working line under its last reply shows the patch panel from the app icon, its free jacks lighting up in turn. It takes your theme's colours.
+
 Each run of tool calls is one line, like Claude Code: what Claude is doing right now ("Reading src/app.ts…"), or what it did when the run ends ("Ran 3 commands and edited 2 files"), with how long it took. Click the line to see every step, and a step to see its details: diffs, command output, to-do lists and subagent runs.
 
 A command Claude runs without a description shows what it runs, not its script. A short command shows as it is, such as **Running npm test**. A long command or an inline script shows the program, such as **Running git** or **Running a Python script**. Open the step to see the whole command.
@@ -126,6 +128,10 @@ Hover one of your prompts to see when you sent it, and from which phone or compu
 
 In a narrow pane the line drops the tokens first, then the duration. To change what the line shows, or turn it off, use **Under each reply** in [Settings, Conversation](/settings/#conversation).
 
+## Questions Claude asked
+
+When Claude asks you a question, the question and what you answered stay in the conversation after you answer, with the options you picked marked and anything you typed yourself.
+
 ## Go back to a prompt
 
 In a long conversation, the prompt outline takes you back to what you asked. It is a thin rail on the right of the conversation, with a mark for each of your prompts. The mark of the prompt at the top of the view is highlighted, and it moves as you scroll.
@@ -146,7 +152,7 @@ To hide the rail, turn off **Show prompt outline** in [Settings, Conversation](/
 
 ## Change the model, mode and effort
 
-The chips under the message box show the session's settings. Click one to change it while the session runs:
+The chips on the tray under the message box show the session's settings. Click one to change it while the session runs:
 
 - **Profile:** the [Claude profile](/settings/claude-profiles/) the session uses, with more than one.
 - **Model:** the model for the next messages. Also *Change model…* in the command palette.
@@ -173,6 +179,10 @@ When a session's context is large (120k tokens or more by default, which is 60% 
 The cost shows with **Show estimated cost** on. It is the price of the model your next message goes to, so it changes when you pick another model in the model chip. Reading it all again counts toward your plan's limits too. For a session that isn't running in Seshboard, the size is an estimate from the last reply. Close the note with its **×**; it comes back the next time Seshboard starts.
 
 With **Notify before the cache expires** on, you get a notification 5 minutes before a large session's hour-long cache expires, while it waits for you. Quitting Seshboard with a large session open says so once, and **Warn me about this every time I quit** turns that on for good. Change the percentage or turn any of this off in [Settings › Usage](/settings/#large-context).
+
+## Keep awake until done
+
+Turn on **Keep awake until done** in a session's **⋯** menu, or in the command palette, and the computer doesn't sleep until the session is done: its turn, its background tasks (shell commands, subagents and workflows) and what waits in Up next. It turns off by itself then. Unlike **Keep awake** in [Settings › General](/settings/#sleep), it also works on battery on a Mac. A pill above the message box shows it is on; click it to stop.
 
 ## Reading mode
 
@@ -266,6 +276,7 @@ The **⋯** button in the header holds:
 - The project's [actions](/projects/actions/).
 - **Profile** (with more than one Claude profile), **Rename…**, **Agents**, and **Check transcript…**, which explains why a conversation looks empty or short.
 - **Memories from this session**, when Claude saved memories during it. Click one to open it in the editor.
+- **Note…**, **Remind me…** and **Keep awake until done**: a [note on what's left](/sessions/sidebar/#whats-left-a-note), a [reminder](/sessions/upcoming/#remind-me-later), and [staying awake](#keep-awake-until-done).
 - **Stop session:** ends the Claude Code process for this session. The conversation is kept, and sending a message starts it again.
 
 <OnlyOn os="windows">

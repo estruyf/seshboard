@@ -2,9 +2,16 @@ import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative } from 'node:path';
 import type { ProjectIcon } from '@seshboard/protocol';
 import { readRepoFile } from '../system/repoFile.ts';
+import { shrinkPng } from './pngShrink.ts';
 
 /** Icons travel to the renderer as data URLs, so keep them small. */
 export const MAX_ICON_BYTES = 200_000;
+
+/** A larger PNG (an app's 1024-pixel icon) is scaled down to this many pixels a side instead of being turned away. */
+export const ICON_SIZE = 128;
+
+/** Past this, a PNG isn't worth reading to scale down. */
+export const MAX_PNG_BYTES = 20_000_000;
 
 const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
@@ -44,6 +51,8 @@ const PACKAGE_CANDIDATES = [
   '.github/logo.png',
   'build/icon.png',
   'resources/icon.png',
+  'Resources/AppIcon.png',
+  'Resources/icon.png',
   'public/favicon.ico',
   'src/app/favicon.ico',
   'app/favicon.ico',
@@ -62,8 +71,7 @@ function readJson(path: string): Record<string, unknown> | null {
 }
 
 function usable(path: string): boolean {
-  const stat = statSync(path, { throwIfNoEntry: false });
-  return !!stat?.isFile() && stat.size > 0 && stat.size <= MAX_ICON_BYTES && extname(path).toLowerCase() in MIME;
+  return iconDataUrl(path) !== null;
 }
 
 /**
@@ -130,8 +138,39 @@ export function detectIconPath(root: string): string | null {
   return null;
 }
 
+/**
+ * An image's bytes as an icon: as they are when small enough, a large PNG scaled down to `ICON_SIZE`, or null
+ * (not an image type we show, empty, or too large and not a PNG that can be read).
+ */
+export function fitIcon(ext: string, data: Buffer): Buffer | null {
+  const type = ext.toLowerCase();
+  if (!data.length || !(type in MIME)) return null;
+  if (data.length <= MAX_ICON_BYTES) return data;
+  if (type !== '.png' || data.length > MAX_PNG_BYTES) return null;
+  const small = shrinkPng(data, ICON_SIZE);
+  return small && small.length <= MAX_ICON_BYTES ? small : null;
+}
+
+/** Large PNGs scaled down, by path, until the file changes: the project list asks for its icons often. */
+const shrunk = new Map<string, { mtimeMs: number; size: number; icon: ProjectIcon | null }>();
+
 export function iconDataUrl(path: string): ProjectIcon | null {
-  if (!usable(path)) return null;
-  const mime = MIME[extname(path).toLowerCase()]!;
-  return { kind: 'image', dataUrl: `data:${mime};base64,${readFileSync(path).toString('base64')}` };
+  const stat = statSync(path, { throwIfNoEntry: false });
+  const ext = extname(path).toLowerCase();
+  if (!stat?.isFile() || !stat.size || !(ext in MIME)) return null;
+  const toUrl = (data: Buffer | null): ProjectIcon | null => (data ? { kind: 'image', dataUrl: `data:${MIME[ext]};base64,${data.toString('base64')}` } : null);
+  const read = () => {
+    try {
+      return fitIcon(ext, readFileSync(path));
+    } catch {
+      return null;
+    }
+  };
+  if (stat.size <= MAX_ICON_BYTES) return toUrl(read());
+  if (ext !== '.png' || stat.size > MAX_PNG_BYTES) return null;
+  const hit = shrunk.get(path);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.icon;
+  const icon = toUrl(read());
+  shrunk.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, icon });
+  return icon;
 }

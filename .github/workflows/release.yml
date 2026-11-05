@@ -230,6 +230,10 @@ jobs:
         # installed copy of this release refuse all later updates.
         run: node apps/desktop/scripts/checkWindowsSignatures.mjs
 
+      - name: Check the installer can unpack everything
+        # The installer skips a file it can't unpack without an error, so a broken one still reports success.
+        run: node apps/desktop/scripts/checkWindowsInstaller.mjs
+
       - name: Check the update feed
         run: |
           cd apps/desktop/dist

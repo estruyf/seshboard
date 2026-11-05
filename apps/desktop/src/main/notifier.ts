@@ -1,6 +1,7 @@
 import { app, MessageChannelMain, nativeImage, Notification, type BrowserWindow, type NativeImage } from 'electron';
 import { resolveSound } from '@seshboard/protocol/bridge';
-import { createRpcClient, promptLabel, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { createRpcClient, promptLabel, type ComputerNotify, type ComputersStatus, type Contract, type LaterItem, type PipelineRunState, type QueueAuto, type QueueStarted, type RemoteSessions, type RpcClient, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { RemoteAttention } from './remoteAttention.ts';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 import { alertFor, louder, type Alert, type AlertPrefs } from './alerts.ts';
 import { Attention, type AttentionEvent } from './attention.ts';
@@ -12,6 +13,9 @@ import { triggerAlerts } from './triggerAlerts.ts';
 import { pipelineAlerts, stepSessions } from './pipelineAlerts.ts';
 import type { SoundPlayer } from './sounds.ts';
 import { badgeDescription, badgeDotBitmap } from './taskbarBadge.ts';
+
+/** "09:00": when a missed reminder was for. */
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 /** A recorded event: whether it was for the session on screen, and what it did with the settings at the time. */
 export type RecordedAlert = AttentionEvent & { suppressed: boolean } & Alert;
@@ -43,6 +47,8 @@ export interface NotifierOptions {
   notificationIcon?: () => string | undefined;
   /** Whether Claude is working somewhere, after every change: the Dock's icon shows it (macOS). */
   working?: (working: boolean) => void;
+  /** How many sessions work and how many need you, after every change: the menu bar's icon shows them. */
+  counts?: (counts: { working: number; needsYou: number }) => void;
   /** Smoke tests record events (whether they'd be suppressed, and what they'd do) instead of showing notifications. */
   record?: (event: RecordedAlert) => void;
   /** Smoke tests record scheduled runs too, to check what a run would be titled (the stubbed run has no session). */
@@ -67,6 +73,11 @@ export class Notifier {
   private steps = new Set<string>();
   /** Reminds you before a large session's cache lapses (Settings › Usage). */
   private readonly cache: CacheReminder;
+  /** Sessions whose reminder came due and that you haven't opened yet: the badge counts them when Settings says so. */
+  private readonly reminded = new Set<string>();
+  /** The sessions of paired computers, and their names and notifications choice, for their notifications. */
+  private remote = new RemoteAttention();
+  private computerInfo = new Map<string, { name: string; notify: ComputerNotify; mineHere: readonly string[] }>();
 
   constructor(private readonly options: NotifierOptions) {
     this.attention = new Attention({ external: options.showAllSessions });
@@ -87,6 +98,8 @@ export class Notifier {
   /** Settings changed: the cache reminder may be due sooner or not at all. */
   prefsChanged(): void {
     this.cache.prefsChanged();
+    // Due reminders may count in the badge now, or not any more.
+    this.updateBadge();
   }
 
   /** (Re)connects; call again after the engine restarts. */
@@ -95,13 +108,31 @@ export class Notifier {
     this.attention.reset();
     // The engine's sessions went with it: nothing works until the fresh snapshot says so.
     this.options.working?.(false);
+    this.options.counts?.({ working: 0, needsYou: 0 });
     this.cache.reset();
     const { port1, port2 } = new MessageChannelMain();
     this.options.engine.connect(port1);
     const client = createRpcClient<Contract>(mainPortTransport(port2), { timeoutMs: 15_000 });
     this.client = client;
 
-    client.on('sessions.changed', ({ upserted }) => upserted.forEach((s) => this.attention.setTitle(s.id, s.title)));
+    client.on('sessions.changed', ({ upserted, removed }) => {
+      upserted.forEach((s) => this.attention.setTitle(s.id, s.title));
+      const before = this.reminded.size;
+      for (const s of upserted) this.trackReminder(s);
+      for (const id of removed) this.reminded.delete(id);
+      if (this.reminded.size !== before) this.updateBadge();
+    });
+    // Remind me later: "Reminder: <title>", with your note; one missed while Seshboard was closed says when it was for.
+    client.on('sessions.remindersDue', ({ reminders }) =>
+      this.handle(
+        reminders.map((r) => ({
+          kind: 'reminder' as const,
+          sessionId: r.id,
+          title: r.missed ? `Reminder (from ${clock(r.remindAt)}): ${r.title}` : `Reminder: ${r.title}`,
+          body: r.note ?? 'You asked to be reminded.',
+        })),
+      ),
+    );
     client.on('session.host', (info) => {
       this.handle(this.attention.onHost(info));
       this.cache.onHost(info);
@@ -149,11 +180,27 @@ export class Notifier {
       this.steps = stepSessions(this.runs.values());
     }, () => {});
     void client.call('later.list', {}).then((queue) => void (this.queue = queue), () => {});
+    // Other computers' sessions: their lists come as events; a computer that goes away starts over when it is back.
+    this.remote = new RemoteAttention();
+    const computers = (status: ComputersStatus) => {
+      this.computerInfo = new Map(status.computers.map((c) => [c.id, { name: c.name, notify: c.notify, mineHere: c.mineHere }]));
+      for (const computer of status.computers) if (computer.state !== 'connected') this.remote.forget(computer.id);
+    };
+    client.on('computers.changed', computers);
+    void client.call('computers.status', {}).then(computers, () => {});
+    client.on('computers.event', ({ computerId, name, payload }) => {
+      if (name !== 'sessions.changed') return;
+      const info = this.computerInfo.get(computerId);
+      this.handle(this.remote.onList({ id: computerId, name: info?.name ?? 'another computer', notify: info?.notify ?? 'all', mineHere: info?.mineHere ?? [] }, payload as unknown as RemoteSessions));
+    });
 
     // Seed state silently: only changes from here on deserve a notification.
     void Promise.all([client.call('sessions.list', {}), client.call('hosts.list', {}), client.call('terminal.list', {})])
       .then(([sessions, hosts, terminals]) => {
-        sessions.sessions.forEach((s) => this.attention.setTitle(s.id, s.title));
+        sessions.sessions.forEach((s) => {
+          this.attention.setTitle(s.id, s.title);
+          this.trackReminder(s);
+        });
         hosts.hosts.forEach((h) => {
           this.attention.onHost(h);
           this.cache.onHost(h);
@@ -244,10 +291,23 @@ export class Notifier {
     this.updateBadge();
   }
 
+  private trackReminder(s: { id: string; remindedAt?: number | null; archivedAt: number | null }): void {
+    if (s.remindedAt != null) this.reminded.add(s.id);
+    else this.reminded.delete(s.id);
+  }
+
+  /** The Dock came back after it was hidden (Hide from the Dock while no window is open): its badge again. */
+  refreshBadge(): void {
+    this.updateBadge();
+  }
+
   /** The badge, and whether the Dock's icon shows Claude working: both follow the sessions' states. */
   private updateBadge(): void {
     this.options.working?.(this.attention.working());
-    const count = this.attention.badge();
+    const needsYou = this.attention.badge();
+    this.options.counts?.({ working: this.attention.workingCount(), needsYou });
+    // Settings › Notifications: due reminders can count too (off by default: the badge is what needs you).
+    const count = needsYou + (this.options.alerts().notifications.badgeReminders ? this.reminded.size : 0);
     app.dock?.setBadge(count > 0 ? String(count) : '');
     // Windows has no badge count: a dot over the taskbar button says it instead.
     const win = this.options.window();

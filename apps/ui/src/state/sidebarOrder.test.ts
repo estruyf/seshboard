@@ -47,7 +47,8 @@ describe('sidebarGroups', () => {
   });
 
   it('puts the groups in the sidebar order', () => {
-    expect(sidebarGroups(rows, { now: NOW, archiveAfterDays: 2 }).map((g) => g.group)).toEqual(['needs-you', 'working', 'today', 'yesterday']);
+    const withUnread = [...rows, row('unread', NOW - 20 * HOUR, { unread: true })];
+    expect(sidebarGroups(withUnread, { now: NOW, archiveAfterDays: 2 }).map((g) => g.group)).toEqual(['needs-you', 'working', 'review', 'open']);
   });
 });
 

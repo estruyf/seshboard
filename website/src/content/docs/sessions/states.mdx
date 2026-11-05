@@ -37,7 +37,7 @@ A session that isn't open anywhere has no status icon at all, only its age.
 
 A session that your plan's usage limit stopped waits for the limit: its row's second line says *Usage limit · resets 15:16* with a clock, and so does its tooltip. See [When you hit a limit](/usage/#when-you-hit-a-limit).
 
-Yellow always means working, never unread. Sessions that need you or failed always stay in the main list, even when you archived them.
+Yellow always means working, never unread. Sessions that need you or failed always stay in the main list, even when you marked them done.
 
 <Aside type="note">
 The status never rests on colour alone: each icon has a label, so <Os mac="VoiceOver" windows="your screen reader" /> reads "Waiting for you" or "Claude is working", and the sidebar announces a session that starts waiting for you.
@@ -46,6 +46,12 @@ The status never rests on colour alone: each icon has a label, so <Os mac="Voice
 ## Several Claude profiles
 
 With more than one [Claude profile](/settings/claude-profiles/), the rail on every row shows the profile's colour instead, so you see at a glance which account a session uses. The state then shows through the colour of the age, the bold title, the status icon and the section the session is in. Hover a row to see its profile.
+
+## Seshboard in the menu bar
+
+Seshboard also lives in the <Os mac="menu bar" windows="notification area" />, on by default. The icon lights up while sessions work. Click it to see what needs you, with **Allow** right there, and to start new work in the background. On Linux it is a menu only.
+
+Right-click it for **Open Seshboard**, **New session…**, **Pause notifications** (for 1 hour, 3 hours or until tomorrow) and **Quit Seshboard**. Turn it off, or keep Seshboard running when you close the window, in [Settings › General](/settings/#menu-bar).
 
 ## Notifications and the badge
 
@@ -77,7 +83,7 @@ Press <Kbd shortcut="session.next-needs-you" /> to go to the next session that n
 The states can't be changed. Two settings change what you see:
 
 - **Show sessions from other apps** in [Settings, Sidebar](/settings/#sidebar) adds sessions from the terminal, Claude desktop and your editor, with their states.
-- [Claude profiles](/settings/#claude-profiles): with more than one, rows show the profile's colour.
+- [Profiles](/settings/#profiles): with more than one, rows show the profile's colour.
 
 ## Related
 

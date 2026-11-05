@@ -98,6 +98,34 @@ describe('Updater', () => {
     expect(stopped()).toBe(1);
   });
 
+  it('updates and restarts in one go, from a phone', async () => {
+    const fake = fakeUpdater({ version: '0.0.4' });
+    const { updater, states, stopped } = setup(fake);
+    await updater.updateAndRestart();
+    expect(states.map((s) => s.status)).toEqual(['checking', 'available', 'downloading', 'downloading', 'downloaded', 'installing']);
+    expect(fake.installed).toBe(1);
+    expect(stopped()).toBe(1);
+  });
+
+  it('restarts nothing when there is nothing newer, and installs what was downloaded when the check fails', async () => {
+    const current = fakeUpdater({ version: '0.0.3' });
+    const { updater } = setup(current);
+    await updater.updateAndRestart();
+    expect(updater.state.status).toBe('up-to-date');
+    expect(current.installed).toBe(0);
+
+    const offline = fakeUpdater({ version: '0.0.4' });
+    const { updater: second } = setup(offline);
+    await second.check();
+    await second.download();
+    offline.checkForUpdates = async () => {
+      throw new Error('net::ERR_INTERNET_DISCONNECTED');
+    };
+    await second.updateAndRestart();
+    expect(second.state.status).toBe('installing');
+    expect(offline.installed).toBe(1);
+  });
+
   it('turns a failed check into a retryable error, and Retry checks again', async () => {
     const fake = fakeUpdater(new Error('net::ERR_INTERNET_DISCONNECTED\nmore detail'));
     const { updater } = setup(fake);

@@ -80,7 +80,7 @@ export function StarOnGithub({ sessions }: { sessions: number }) {
   const { prompt, starring, onStar, tooltip } = useStarPrompt(sessions);
   if (prompt === 'hidden') return null;
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-t border-border px-2" data-star-prompt={prompt}>
+    <div className="flex h-9 shrink-0 items-center gap-1 px-2" data-star-prompt={prompt}>
       <Button
         variant="quiet"
         size="sm"

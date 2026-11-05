@@ -29,7 +29,7 @@ A session counts while it's on your mind:
 - it <Pill tone="needs-you">Needs you</Pill>: a permission or a question;
 - it finished something you haven't read yet (<Pill tone="unread">Unread</Pill>).
 
-Reading the result or archiving the session frees its place. Stopped sessions never count. By default only sessions you started or continued in Seshboard count; turn on *Count terminal and IDE sessions* to also count Claude Code running in your terminal or editor. Sessions on computers you paired count too (they are on by default); turn off *Count sessions on other computers* to leave them out. A computer that is offline doesn't count.
+Reading the result or marking the session done frees its place. Stopped sessions never count. By default only sessions you started or continued in Seshboard count; turn on *Count terminal and IDE sessions* to also count Claude Code running in your terminal or editor. Sessions on computers you paired count too (they are on by default); turn off *Count sessions on other computers* to leave them out. A computer that is offline doesn't count.
 
 ## The counter
 
@@ -50,7 +50,7 @@ When you are at the limit, [New session](/new-session/form/) shows a note above 
 What Start does depends on how strict you set the limit:
 
 - **Nudge** (the default): Start asks first, "Start a 4th session?", with **Add to queue**, **Start anyway** and **Cancel**. The note in New session also has **Start anyway**.
-- **Strict**: Start waits. The question says "Finish one first", with **Open** for a session that needs you, **Add to queue** and **Cancel**. Finish, read or archive a session first. In New session, **Add to queue** stays in Start's menu.
+- **Strict**: Start waits. The question says "Finish one first", with **Open** for a session that needs you, **Add to queue** and **Cancel**. Finish, read or mark a session done first. In New session, **Add to queue** stays in Start's menu.
 
 <Kbd keys="escape" /> or **Cancel** closes the question and keeps your prompt where it was. The question never starts anything over the limit without you saying so.
 
@@ -65,7 +65,7 @@ Every way of starting work goes through the same question:
 - a project action that sends Claude a prompt;
 - opening Claude in the terminal.
 
-Answering a session that already counts, stopping Claude, archiving, reviewing changes and committing are never held up.
+Answering a session that already counts, stopping Claude, marking a session done, reviewing changes and committing are never held up.
 
 A queued item that [starts by itself](/new-session/queue/#start-by-itself) never asks, since nobody may be there to answer. At the limit it waits, and its row says "waits for a free slot (focus limit)". It starts when a slot frees: when you read, archive or stop a session.
 

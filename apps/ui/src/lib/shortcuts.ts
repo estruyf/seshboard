@@ -33,11 +33,15 @@ export function shortcutFromEvent(event: {
   code?: string;
 }): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
-  // Option changes the character on macOS (⌥P = π); use the physical key instead.
+  // Option changes the character on macOS (⌥P = π, ⌥1 = ¡, ⌥Space a no-break space); use the physical key instead.
   const raw =
     event.altKey && event.code?.startsWith("Key")
       ? event.code.slice(3).toLowerCase()
-      : event.key.toLowerCase();
+      : event.altKey && event.code?.startsWith("Digit")
+        ? event.code.slice(5)
+        : event.code === "Space"
+          ? " "
+          : event.key.toLowerCase();
   const key = NAMED_KEYS[raw] ?? raw;
   return [
     event.metaKey && "cmd",
@@ -299,7 +303,7 @@ const withTerminal = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view !== "session";
 const inMessageBox = (ctx: ShortcutContext) =>
   inSession(ctx) || ctx.view === "new-session";
-/** A catch-up is on screen; folded into its strip, only Space and ↩ work. */
+/** A catch-up is on screen; folded into its strip, only Space, ↩ and S work. */
 const withCatchUp = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp !== null;
 const catchUpCard = (ctx: ShortcutContext) => inSession(ctx) && ctx.catchUp === "full";
 /** The Projects view: the list of projects and the open one. */
@@ -341,6 +345,16 @@ export const SHORTCUTS = [
   },
   { id: "home", keys: ["mod+shift+h"], action: "Home", section: "general" },
   {
+    id: "home.pick",
+    keys: ["mod+1..9"],
+    action: "Start in a project",
+    section: "general",
+    context: "On Home",
+    note: "With what you typed in the start box as the prompt",
+    when: (ctx) => ctx.view === "home" && ctx.focus !== "terminal",
+    reserve: false,
+  },
+  {
     id: "upcoming",
     keys: ["mod+shift+y"],
     action: "Upcoming: queued and scheduled",
@@ -365,6 +379,134 @@ export const SHORTCUTS = [
     keys: ["mod+/"],
     action: "Keyboard shortcuts",
     section: "general",
+  },
+  // The menu bar's panel (its own window): never in the main window, so they don't count there.
+  {
+    id: "menubar.start",
+    keys: ["mod+enter"],
+    action: "Start new work in the background",
+    section: "general",
+    context: "In the menu bar's panel",
+    when: () => false,
+  },
+  {
+    id: "menubar.open",
+    keys: ["mod+0"],
+    action: "Open Seshboard",
+    section: "general",
+    context: "In the menu bar's panel",
+    when: () => false,
+    menu: true,
+  },
+  // The quick start panel (its own window, opened by a global shortcut): never in the main window, so they don't
+  // count there, and project actions may use the panel's keys. The global shortcut itself stays reserved.
+  {
+    id: "quickstart.open",
+    keys: ["ctrl+alt+space"],
+    action: "Quick start: start a session from any app",
+    section: "general",
+    context: "In any app",
+    note: "Change it in Settings › General › Quick start",
+    when: () => false,
+  },
+  {
+    id: "quickstart.start",
+    keys: ["enter"],
+    action: "Start the session in the background",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.start-open",
+    keys: ["mod+enter"],
+    action: "Start it and open Seshboard",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.actions",
+    keys: ["mod+k"],
+    action: "Quick start actions",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.pick",
+    keys: ["mod+1..9"],
+    action: "Pick a project",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.worktree",
+    keys: ["mod+w"],
+    action: "Start in a new worktree",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.model",
+    keys: ["mod+m"],
+    action: "Change the model",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.mode",
+    keys: ["shift+tab"],
+    action: "Change the permission mode",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.profile",
+    keys: ["mod+p"],
+    action: "Change the profile",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.paste",
+    keys: ["mod+v"],
+    action: "Attach the clipboard",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.later",
+    keys: ["mod+l"],
+    action: "Add to Later instead",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
+  },
+  {
+    id: "quickstart.open-started",
+    keys: ["mod+o"],
+    action: "Open the new session",
+    section: "general",
+    context: "In the quick start panel",
+    when: () => false,
+    reserve: false,
   },
   {
     id: "quit",
@@ -473,7 +615,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.archive",
     keys: ["middleclick"],
-    action: "Archive a finished session",
+    action: "Mark a finished session done",
     section: "sessions",
     context: "In the sidebar",
     where: "sidebar",
@@ -481,7 +623,7 @@ export const SHORTCUTS = [
   {
     id: "sidebar.quick-archive",
     keys: ["e"],
-    action: "Archive the session, or unarchive it",
+    action: "Mark the session done, or reopen it",
     section: "sessions",
     context: "In the sidebar, on the focused or hovered session",
     note: "A working session asks first",
@@ -501,6 +643,24 @@ export const SHORTCUTS = [
     action: "Pin or unpin the session",
     section: "sessions",
     context: "In the sidebar, on the focused or hovered session",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.note",
+    keys: ["n"],
+    action: "Write what's left in the session",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session",
+    note: "One line under its title. Empty clears it",
+    where: "sidebar",
+  },
+  {
+    id: "sidebar.remind",
+    keys: ["l"],
+    action: "Remind me about the session later",
+    section: "sessions",
+    context: "In the sidebar, on the focused or hovered session, or the picked ones",
+    note: "It leaves the list until then, and comes back under Reminders",
     where: "sidebar",
   },
   {
@@ -1086,7 +1246,7 @@ export const SHORTCUTS = [
     keys: ["enter"],
     action: "Run the catch-up's main action",
     section: "catch-up",
-    context: "Commit, Reply, Review changes or Archive",
+    context: "Commit, Reply, Review changes or Done",
     when: withCatchUp,
     where: "view",
   },
@@ -1126,17 +1286,36 @@ export const SHORTCUTS = [
     where: "view",
   },
   {
-    id: "catchup.read",
-    keys: ["u"],
-    action: "Mark as read",
+    id: "catchup.archive",
+    keys: ["e"],
+    action: "Mark it done, and go to the next session to review",
     section: "catch-up",
     when: catchUpCard,
     where: "view",
   },
   {
-    id: "catchup.archive",
-    keys: ["e"],
-    action: "Archive, and go to the next session",
+    id: "catchup.skip",
+    keys: ["s"],
+    action: "Skip to the next session to review",
+    section: "catch-up",
+    context: "To review first, then Open",
+    note: "The skipped session stays as it is",
+    when: withCatchUp,
+    where: "view",
+  },
+  {
+    id: "catchup.note",
+    keys: ["n"],
+    action: "Write what's left in the session",
+    section: "catch-up",
+    context: "Use as note takes what the catch-up says it needs",
+    when: catchUpCard,
+    where: "view",
+  },
+  {
+    id: "catchup.remind",
+    keys: ["l"],
+    action: "Remind me later, and go to the next session to review",
     section: "catch-up",
     when: catchUpCard,
     where: "view",

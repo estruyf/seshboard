@@ -13,6 +13,23 @@ export function isTrashableSessionPath(path: string, claudeConfigDir: string): b
   return resolve(path) === path && path.startsWith(projects) && SESSION_ID.test(basename(path));
 }
 
+const SESSION_FOLDER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A GitHub Copilot session's folder (`<COPILOT_HOME>/session-state/<uuid>`): its events, its `workspace.yaml` and
+ * Copilot's file-change captures. A real folder directly inside `session-state`, never a link, the folder itself or a
+ * file in it.
+ */
+export function isTrashableCopilotSession(path: string, copilotHome: string): boolean {
+  if (resolve(path) !== path || resolve(copilotHome) !== copilotHome || copilotHome === sep) return false;
+  if (dirname(path) !== join(copilotHome, 'session-state') || !SESSION_FOLDER.test(basename(path))) return false;
+  try {
+    return lstatSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** A Claude Code config folder named by the engine: an absolute, normalised path with a projects folder. */
 export function isConfigDir(dir: unknown): dir is string {
   if (typeof dir !== 'string' || resolve(dir) !== dir || dir === sep) return false;

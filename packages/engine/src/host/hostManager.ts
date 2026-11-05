@@ -87,6 +87,11 @@ export interface HostManagerDeps {
    * the folder's hooks and MCP servers as a session does.
    */
   assertTrusted?: (cwd: string) => void;
+  /**
+   * Throws (READ_ONLY_SESSION) for another provider's session (Copilot), which Claude Code can't resume or fork. Every
+   * way to a session's process (the message box, the phone, Up next, schedules) passes `startHost`, so it is checked there.
+   */
+  assertClaudeSession?: (sessionId: string, action: string) => void;
   /** Helper processes register in the live registry while they run; the engine hides them. */
   ephemeral?: { add(sessionId: string): void; delete(sessionId: string): void };
   /** A profile's installed plugins, for sessions that aren't running (their own list comes from Claude Code). */
@@ -164,6 +169,8 @@ interface Pending {
 interface Warm {
   cwd: string;
   profileId: string;
+  /** The effort it started with: Claude Code reads it only at startup. */
+  effort: Effort | null;
   sessionId: string;
   warm: Promise<WarmQuery>;
   /** canUseTool is fixed at startup, so it forwards to whichever host adopts this process. */
@@ -180,6 +187,8 @@ export interface CreateParams {
   model: string | null;
   permissionMode: PermissionMode;
   effort: Effort | null;
+  /** Turned on before the first message goes, so that message runs fast too. Not saved: a resume starts off. */
+  fastMode?: boolean | undefined;
   worktree: ClaudeWorktreeRequest | null;
   /**
    * Runs after Claude Code has started (and created the worktree) but before
@@ -284,6 +293,8 @@ export class HostManager {
       if (params.model) await host.setModel(params.model).catch(() => {});
       if (params.permissionMode !== 'default') await host.setPermissionMode(params.permissionMode).catch(() => {});
     }
+    // Sent the same way for a warm process and a new one. If it fails the session starts at standard speed, and says so.
+    if (params.fastMode) await host.setFastMode(true).catch((error: Error) => this.deps.log('warn', `Fast mode did not turn on: ${error.message}`));
     // Claude Code has already failed (no login, a folder it can't start in): no message can go, so say why.
     if (!host.active) throw new RpcError('START_FAILED', host.info.error ?? 'Claude Code stopped before the session started');
     // Return the id now, so the window can show the session (and its setup terminals) right away.
@@ -316,6 +327,7 @@ export class HostManager {
   }
 
   private async startHost(sessionId: string, fork: boolean, busyMessage: string): Promise<SessionHost> {
+    this.deps.assertClaudeSession?.(sessionId, fork ? 'Forking' : 'Sending');
     if (!fork && this.deps.isOpenElsewhere(sessionId) && this.recentlyClosed(sessionId)) {
       await this.waitForExit(sessionId);
     }
@@ -533,6 +545,11 @@ export class HostManager {
   async setEffort(sessionId: string, effort: Effort | null): Promise<void> {
     if (this.running(sessionId)) await this.require(sessionId).setEffort(effort);
     this.settings.set(sessionId, { effort });
+  }
+
+  /** Only while it runs, and not saved like effort: it bills to usage credits, so a session never comes back with it on. */
+  async setFastMode(sessionId: string, on: boolean): Promise<void> {
+    await this.require(sessionId).setFastMode(on);
   }
 
   async context(sessionId: string): Promise<ContextUsage> {
@@ -958,13 +975,16 @@ export class HostManager {
 
   /** Bumped whenever the warm process is replaced or discarded, so a pre-warm that finishes late knows it lost. */
   private warmGeneration = 0;
-  /** The folder and profile a pre-warm is starting for, until it has stored its process. */
-  private warming: { cwd: string; profileId: string } | undefined;
+  /** The folder, profile and effort a pre-warm is starting for, until it has stored its process. */
+  private warming: { cwd: string; profileId: string; effort: Effort | null } | undefined;
 
-  /** Starts a Claude Code process for `cwd` so a new session there answers about a second faster. */
-  async prewarm(cwd: string, profileId: string): Promise<void> {
+  /**
+   * Starts a Claude Code process for `cwd` so a new session there answers about a second faster. `effort` is the one
+   * the new session will start with (its project's, profile's or the global one), since it can't change afterwards.
+   */
+  async prewarm(cwd: string, profileId: string, effort: Effort | null = null): Promise<void> {
     const target = this.warm ?? this.warming;
-    if (target?.cwd === cwd && target.profileId === profileId) return;
+    if (target?.cwd === cwd && target.profileId === profileId && target.effort === effort) return;
     try {
       this.deps.assertTrusted?.(cwd);
     } catch {
@@ -973,7 +993,7 @@ export class HostManager {
     }
     this.discardWarm();
     const generation = this.warmGeneration;
-    this.warming = { cwd, profileId };
+    this.warming = { cwd, profileId, effort };
     let env: Record<string, string>, claudePath: string | undefined, sdk: SdkRuntime;
     try {
       [env, claudePath, sdk] = await Promise.all([this.deps.env(profileId), this.deps.claudePath(), this.deps.sdk()]);
@@ -994,7 +1014,7 @@ export class HostManager {
         mode: 'new',
         model: null,
         permissionMode: 'default',
-        effort: null,
+        effort,
         worktree: null,
         chrome: this.chrome,
         env,
@@ -1006,7 +1026,7 @@ export class HostManager {
     const warm = sdk.startup({ options });
     const timer = setTimeout(() => this.discardWarm(), this.deps.warmTtlMs ?? 120_000);
     timer.unref?.();
-    const entry: Warm = { cwd, profileId, sessionId, warm, route, timer };
+    const entry: Warm = { cwd, profileId, effort, sessionId, warm, route, timer };
     this.warm = entry;
     // A process that failed (no login, crashed) is no use to a session: drop it, so the next pre-warm tries again.
     warm.catch((error: unknown) => {
@@ -1045,10 +1065,10 @@ export class HostManager {
     return host;
   }
 
-  /** A warm process is only usable for a plain new session in the same folder (effort and worktree are fixed at startup). */
+  /** A warm process is only usable for a plain new session in the same folder with the same effort (effort and worktree are fixed at startup). */
   private takeWarm(params: CreateParams): Warm | undefined {
     const warm = this.warm;
-    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || params.effort) return undefined;
+    if (!warm || warm.cwd !== params.cwd || warm.profileId !== params.profileId || params.worktree || (params.effort ?? null) !== warm.effort) return undefined;
     clearTimeout(warm.timer);
     this.warm = undefined;
     this.deps.ephemeral?.delete(warm.sessionId);

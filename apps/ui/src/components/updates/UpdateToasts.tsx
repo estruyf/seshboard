@@ -1,11 +1,12 @@
 import { ArrowDownCircle, CheckCircle2, CircleAlert, Info, LoaderCircle } from 'lucide-react';
 import { useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { claudeUpdateToast } from '../../lib/claudeUpdate.ts';
+import { claudeUpdateToast, providerUpdateCopy } from '../../lib/claudeUpdate.ts';
 import { currentPlatform } from '../../lib/platform.ts';
 import { RENAME_NOTICE_KEY, renameNotice } from '../../lib/renameNotice.ts';
 import { updateToast } from '../../lib/updates.ts';
 import { useClaudeUpdate } from '../../state/claudeUpdateStore.ts';
+import { useProviderUpdates } from '../../state/providerUpdateStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useUpdates } from '../../state/updatesStore.ts';
 import { Button } from '../ui/Button.tsx';
@@ -109,12 +110,14 @@ function RenameNotice() {
 }
 
 /**
- * News about updates to Seshboard and to Claude Code, on top of the toast stack. Closing an offer hides it until
- * the next step (or the next launch); closing "Updated" or a Claude Code version tells main or the engine it was seen.
+ * News about updates to Seshboard, to Claude Code and to the providers' CLIs (GitHub Copilot CLI), on top of the toast
+ * stack. Closing an offer hides it until the next step (or the next launch); closing "Updated" or a CLI's version tells
+ * main or the engine it was seen.
  */
 export function UpdateToasts() {
   const app = useUpdates((s) => s.state);
   const claude = useClaudeUpdate((s) => s.state);
+  const providers = useProviderUpdates((s) => s.updates);
   const { install, dialog } = useInstallUpdate();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const hide = (key: string) => setHidden((keys) => new Set(keys).add(key));
@@ -177,6 +180,39 @@ export function UpdateToasts() {
           data-claude-update-toast={claude?.status}
         />
       )}
+      {providers.map((state) => {
+        const toast = claudeUpdateToast(state, providerUpdateCopy(state));
+        const key = toast && `${state.provider}:${toast.key}`;
+        if (!toast || !key || hidden.has(key)) return null;
+        return (
+          <UpdateCard
+            key={key}
+            tone={toast.tone}
+            title={toast.title}
+            body={toast.body}
+            actions={
+              toast.action && (
+                <Button
+                  variant={toast.action.primary ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    // As Claude Code's: its output and any error show in Settings → About.
+                    useSessions.getState().openSettings('about');
+                    if (toast.action?.run === 'update') useProviderUpdates.getState().update(state.provider);
+                  }}
+                  data-tooltip={toast.action.run === 'update' && state.command ? `Runs ${state.command}` : undefined}
+                  data-provider-update-toast-action={toast.action.run}
+                >
+                  {toast.action.label}
+                </Button>
+              )
+            }
+            onClose={() => (toast.close === 'dismiss' ? useProviderUpdates.getState().dismiss(state.provider) : hide(key))}
+            closeLabel={toast.close === 'dismiss' ? `Dismiss ${state.name} update` : 'Hide'}
+            data-provider-update-toast={state.provider}
+            data-provider-update-status={state.status}
+          />
+        );
+      })}
       {/* The toasts' layer lets clicks through to the window; the confirmation must not inherit that. */}
       {dialog && createPortal(dialog, document.body)}
     </>

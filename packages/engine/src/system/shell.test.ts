@@ -22,6 +22,15 @@ describe('userShell', () => {
     expect(userShell({}, 'linux').file).toBe('/bin/bash');
   });
 
+  it("skips a Store PowerShell's own folder, which refuses to start, and uses its alias", () => {
+    const store = 'C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_arm64__8wekyb3d8bbwe';
+    const alias = 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps';
+    const everywhere = (p: string) => p.startsWith(store) || p.startsWith(alias);
+    expect(userShell({ PATH: `${store};${alias}` }, 'win32', everywhere).file).toBe(`${alias}\\pwsh.exe`);
+    // With only the package folder on PATH there is no PowerShell 7 to start: Windows PowerShell it is.
+    expect(userShell({ PATH: store, SystemRoot: 'C:\\Windows' }, 'win32', everywhere).file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+  });
+
   it('is PowerShell 7 on Windows when it is on PATH, else Windows PowerShell', () => {
     const env = { PATH: 'C:\\Windows\\System32;C:\\Program Files\\PowerShell\\7', SystemRoot: 'C:\\Windows' };
     const found = (p: string) => p === 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';

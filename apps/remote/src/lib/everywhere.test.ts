@@ -33,7 +33,7 @@ describe('every computer in one list', () => {
       { id: 'aa', sessions: { sessions: [session('s1', { status: 'needs-you', updatedAt: 5 })], prompts: [prompt('r1', 's1', 5)] } },
       { id: 'bb', sessions: { sessions: [session('s1', { status: 'needs-you', updatedAt: 3 })], prompts: [prompt('r1', 's1', 3)] } },
     ]);
-    expect(groupSessions(merged.sessions, 10)[0]!.sessions.map((s) => s.id)).toEqual(['aa:s1', 'bb:s1']);
+    expect(groupSessions(merged.sessions)[0]!.sessions.map((s) => s.id)).toEqual(['aa:s1', 'bb:s1']);
     expect(filterList(merged, 'all', '').prompts.map((p) => p.requestId)).toEqual(['bb:r1', 'aa:r1']);
     expect(nextNeedsYou(merged, null)).toBe('bb:s1');
     expect(nextNeedsYou(merged, 'bb:s1')).toBe('aa:s1');

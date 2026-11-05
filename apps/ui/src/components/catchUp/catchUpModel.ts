@@ -2,7 +2,7 @@
  * The catch-up's logic, without React or the DOM, so it can be tested: when the banner shows, what it says, which actions
  * it offers in which order, and what a key press does. `CatchUpBanner` and `CatchUpStrip` draw it.
  */
-import type { CatchUp, CatchUpNeedKind } from '@seshboard/protocol/client';
+import { cleanNote, type CatchUp, type CatchUpNeedKind } from '@seshboard/protocol/client';
 
 /** How the catch-up shows in the session: in full (the banner), folded into the strip, or not at all. */
 export type CatchUpShow = 'full' | 'strip' | null;
@@ -78,10 +78,10 @@ export function chipsOf(card: CatchUp): Chip[] {
 }
 
 /** Everything the banner can do. */
-export type CatchUpActionId = 'commit' | 'review' | 'reply' | 'read' | 'archive';
+export type CatchUpActionId = 'commit' | 'review' | 'reply' | 'archive';
 
 /** The letter that runs each action; ↩ runs the primary one too. */
-export const ACTION_KEYS: Record<CatchUpActionId, string> = { commit: 'c', review: 'd', reply: 'r', read: 'u', archive: 'e' };
+export const ACTION_KEYS: Record<CatchUpActionId, string> = { commit: 'c', review: 'd', reply: 'r', archive: 'e' };
 
 /** The primary action for what the turn needs; after a commit there is only archiving left. */
 export function primaryAction(kind: CatchUpNeedKind, committed: boolean): CatchUpActionId {
@@ -99,19 +99,19 @@ export function primaryAction(kind: CatchUpNeedKind, committed: boolean): CatchU
 }
 
 export interface ActionContext {
-  unread: boolean;
   committed: boolean;
 }
 
 /**
  * The quieter actions after the primary one, in a fixed order, leaving out the primary and what doesn't apply: Review
- * changes and Commit only with a diff (Commit not after a commit), Mark as read only while unread.
+ * changes and Commit only with a diff (Commit not after a commit). There is no Mark as read: looking at the session marks
+ * it read after a few seconds (Settings › Sessions).
  */
 export function secondaryActions(card: CatchUp, ctx: ActionContext): CatchUpActionId[] {
   const primary = primaryAction(card.need.kind, ctx.committed);
   const hasDiff = (card.signals.diff?.files ?? 0) > 0;
-  const applies: Record<CatchUpActionId, boolean> = { review: hasDiff, commit: hasDiff && !ctx.committed, reply: true, read: ctx.unread, archive: true };
-  return (['review', 'commit', 'reply', 'read', 'archive'] as const).filter((id) => applies[id] && id !== primary);
+  const applies: Record<CatchUpActionId, boolean> = { review: hasDiff, commit: hasDiff && !ctx.committed, reply: true, archive: true };
+  return (['review', 'commit', 'reply', 'archive'] as const).filter((id) => applies[id] && id !== primary);
 }
 
 /** A button's label: Review changes says Hide changes while the panel is open. */
@@ -123,10 +123,8 @@ export function actionLabel(id: CatchUpActionId, ctx: { changesOpen: boolean }):
       return ctx.changesOpen ? 'Hide changes' : 'Review changes';
     case 'reply':
       return 'Reply';
-    case 'read':
-      return 'Mark as read';
     case 'archive':
-      return 'Archive';
+      return 'Done';
   }
 }
 
@@ -153,7 +151,20 @@ export type CatchUpKey =
   | { type: 'escape' }
   /** Space: Details in the banner, or the banner from the strip. */
   | { type: 'space' }
+  /** S: on to the next session to go through, leaving this one as it is. */
+  | { type: 'skip' }
+  /** N: write what's left in the session (banner only). */
+  | { type: 'note' }
+  /** L: remind me later, then on to the next session (banner only). */
+  | { type: 'remind' }
   | { type: 'action'; id: CatchUpActionId };
+
+/** The letter that skips to the next session, in the banner and the strip. */
+export const SKIP_KEY = 's';
+/** The letter that opens the session's note, in the banner. */
+export const NOTE_KEY = 'n';
+/** The letter for Remind me later, in the banner. */
+export const REMIND_KEY = 'l';
 
 const LETTERS: Record<string, CatchUpActionId> = Object.fromEntries(Object.entries(ACTION_KEYS).map(([id, key]) => [key, id as CatchUpActionId]));
 
@@ -169,9 +180,13 @@ export function catchUpKey(event: KeyLike, ctx: { target: KeyTarget; overlay: bo
   if (key === 'Escape') return { type: 'escape' };
   if (event.shiftKey) return null;
   if (key === ' ') return ctx.target === 'control' ? null : { type: 'space' };
-  // Folded into the strip, only Space (show it) and its primary action work; the letters are for the banner.
+  // Skip works folded too: going through Open sessions, which are read, meets their strips.
+  if (key.toLowerCase() === SKIP_KEY) return { type: 'skip' };
+  // Folded into the strip, only Space (show it), Skip and its primary action work; the other letters are for the banner.
   if (ctx.show === 'strip') return key === 'Enter' && ctx.target !== 'control' ? { type: 'primary' } : null;
   if (key === 'Enter') return ctx.target === 'control' ? null : { type: 'primary' };
+  if (key.toLowerCase() === NOTE_KEY) return { type: 'note' };
+  if (key.toLowerCase() === REMIND_KEY) return { type: 'remind' };
   const id = LETTERS[key.toLowerCase()];
   return id ? { type: 'action', id } : null;
 }
@@ -190,11 +205,47 @@ export function escapeStep(state: { replying: boolean; changesOpen: boolean; det
 /** "Reply to Claude about <title>…", the message box's placeholder after Reply. */
 export const replyPlaceholder = (title: string) => `Reply to Claude about ${title.length > 60 ? `${title.slice(0, 59).trimEnd()}…` : title}…`;
 
-/** The session to open after archiving one: the next in the sidebar's order, else the one before, else none. */
-export function nextAfterArchive(order: readonly string[], archived: string): string | null {
-  const at = order.indexOf(archived);
-  const rest = order.filter((id) => id !== archived);
-  if (rest.length === 0) return null;
-  if (at === -1) return rest[0]!;
-  return rest[Math.min(at, rest.length - 1)]!;
+/**
+ * What the catch-up offers as the session's note ("Use as note"): what it needs from you, in its own words, unless it
+ * needs nothing or the note says that already. Only offered: a note is never set by itself.
+ */
+export function suggestedNote(card: CatchUp, note: string | null | undefined): string | null {
+  if (card.need.kind === 'none') return null;
+  const suggestion = cleanNote(card.need.title);
+  return suggestion && suggestion !== note ? suggestion : null;
+}
+
+/** Where you are in a pass through the sessions to go through (Skip and Done move it on). */
+export interface PassState {
+  /** The session the pass is on. */
+  current: string;
+  /** The ones you skipped: the pass doesn't come back to them. */
+  skipped: ReadonlySet<string>;
+  /** How many you skipped or archived so far. */
+  handled: number;
+}
+
+/**
+ * The session a pass goes to next: the first in `order` (To review, then Open, in the sidebar's order) that isn't the
+ * current one and that you haven't skipped. From the top each time, because reading a session moves it from To review
+ * to Open, further down. Null when there is none left.
+ */
+export function nextInPass(order: readonly string[], current: string, skipped: ReadonlySet<string>): string | null {
+  return order.find((id) => id !== current && !skipped.has(id)) ?? null;
+}
+
+/** The pass after skipping or archiving the current session, on `next`; null when there is nothing left. */
+export function advancePass(pass: PassState | null, from: string, how: 'skip' | 'done', order: readonly string[]): PassState | null {
+  // Skipping from a session the pass isn't on starts a new pass there.
+  const base = pass?.current === from ? pass : { current: from, skipped: new Set<string>(), handled: 0 };
+  const skipped = how === 'skip' ? new Set([...base.skipped, from]) : base.skipped;
+  const next = nextInPass(order, from, skipped);
+  return next ? { current: next, skipped, handled: base.handled + 1 } : null;
+}
+
+/** "2 of 7" while a pass is on this session: those handled, this one, and those still to come. Null outside a pass. */
+export function passPosition(pass: PassState | null, sessionId: string, order: readonly string[]): { position: number; total: number } | null {
+  if (!pass || pass.current !== sessionId) return null;
+  const left = order.filter((id) => id !== sessionId && !pass.skipped.has(id)).length;
+  return { position: pass.handled + 1, total: pass.handled + 1 + left };
 }

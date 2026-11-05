@@ -106,6 +106,13 @@ const EXIT_CODE = `\nif (-not $?) { ${EXIT_FAILED} }`;
  * Values are quoted for how this PowerShell hands arguments to programs: `powershellQuote` for 7.3 and later, which
  * escape double quotes themselves, `windowsPowershellQuote` for Windows PowerShell and 7.0 to 7.2.
  */
+/**
+ * A Store app's own folder (`C:\Program Files\WindowsApps\Microsoft.PowerShell_…`). It is on PATH for what a Store
+ * PowerShell starts, and starting its `pwsh.exe` from there is refused (error 5). The alias to use is in
+ * `…\Microsoft\WindowsApps`, which has no package folder after it.
+ */
+const STORE_PACKAGE_FOLDER = /\\WindowsApps\\[^\\]/i;
+
 /** The shell when `$SHELL` isn't set: zsh is macOS's own, while bash is the one every Linux has. */
 export const defaultPosixShell = (platform: NodeJS.Platform = process.platform) => (platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
 
@@ -120,7 +127,7 @@ export function userShell(
   }
   const pwsh = (env.PATH ?? '')
     .split(win32.delimiter)
-    .filter(Boolean)
+    .filter((dir) => dir && !STORE_PACKAGE_FOLDER.test(dir))
     .map((dir) => win32.join(dir, 'pwsh.exe'))
     .find(exists);
   const file = pwsh ?? win32.join(env.SystemRoot || env.SYSTEMROOT || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');

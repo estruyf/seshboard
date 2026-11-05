@@ -6,6 +6,8 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
   x: number;
   y: number;
   width?: number;
+  /** In place of `width`: the popover fits its content but is at least this wide. */
+  minWidth?: number;
   /** Puts the popover's bottom edge at y instead of its top edge. */
   above?: boolean;
   onClose(): void;
@@ -24,7 +26,7 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'styl
  * on Escape. The shared base for `Menu` and `Select`. Rendered in `body`, so a parent
  * that stacks its own layer (Settings, a dialog) can't keep it under the toasts.
  */
-export function Popover({ x, y, width, above = false, onClose, closeOnEscape = true, anchor, owner, className = '', children, ...rest }: PopoverProps) {
+export function Popover({ x, y, width, minWidth, above = false, onClose, closeOnEscape = true, anchor, owner, className = '', children, ...rest }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y });
 
@@ -109,7 +111,7 @@ export function Popover({ x, y, width, above = false, onClose, closeOnEscape = t
     <div
       ref={ref}
       {...rest}
-      style={{ left: position.left, top: position.top, width }}
+      style={{ left: position.left, top: position.top, width, minWidth }}
       // Above the toasts (z-70), so a toast never covers an open menu, and under the tooltips (z-100).
       className={`no-drag fixed z-80 max-h-[70vh] overflow-y-auto rounded-lg border overlay py-1 ${className}`}
       // Lets a dialog see that a menu or dropdown is open, so Escape closes that first.

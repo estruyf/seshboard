@@ -497,14 +497,20 @@ async function withComputer(t: Tour, take: (computerId: string) => Promise<void>
     await t.need('[data-computer][data-computer-state="connected"]', 'the demo computer did not connect', 20_000);
     const computerId = (await t.page.getAttribute('[data-computer]', 'data-computer'))!;
     await t.click('[data-close-settings]');
+    // A paired computer starts on Mine, and nothing there is mine yet: its chip's menu switches to All.
+    await t.page.locator(`[data-computers-strip] [data-computer-filter=${JSON.stringify(computerId)}]`).hover();
+    await t.click('[data-computers-strip] [data-computer-menu-button]');
+    await t.click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+    await t.page.keyboard.press('Escape');
     await t.need('[data-session-list] [data-remote-row]', 'no remote session in the sidebar');
     await take(computerId);
   } finally {
     await t.home().catch(() => {});
     await t.click('[data-open-settings]').catch(() => {});
     await t.click('[data-settings-section="remote"]').catch(() => {});
-    if (await t.page.locator('[data-computer-forget]').count()) {
-      await t.click('[data-computer-forget]');
+    if (await t.page.locator('[data-computer-more]').count()) {
+      await t.click('[data-computer-more]');
+      await t.click('[role=menu] [data-computer-forget]');
       await t.click('[data-confirm-strip] [data-confirm]');
       await t.gone('[data-computer]', 'the demo computer was not removed').catch(() => {});
     }
@@ -625,6 +631,7 @@ const screens: Screen[] = [
     name: 'home',
     async take(t) {
       await t.home();
+      await leaveOneToReview(t);
       await hideUsageStatus(t);
       await t.shot('home');
     },
@@ -633,6 +640,7 @@ const screens: Screen[] = [
     name: 'sidebar',
     async take(t) {
       await t.home();
+      await leaveOneToReview(t);
       await t.shot('sidebar', { clip: '[data-sidebar-state]' });
     },
   },
@@ -2131,7 +2139,9 @@ async function withPipelineRun(t: Tour, take: (demo: PipelineDemo) => Promise<vo
 /** Opens a parent's steps in the sidebar with its arrow. */
 async function openPipelineTree(t: Tour, parent: string): Promise<void> {
   const row = `[data-sidebar-state] [data-session-id="${parent}"]`;
-  if (await t.page.locator(`${row} [data-tree-toggle="false"]`).count()) await t.click(`${row} [data-tree-toggle="false"]`);
+  // From script: under the pointer the quick actions cover the arrow, and a real click would land on them.
+  const closedArrow = t.page.locator(`${row} [data-tree-toggle="false"]`);
+  if (await closedArrow.count()) await closedArrow.first().evaluate((el) => (el as HTMLElement).click());
   await t.until(`document.querySelectorAll('[data-sidebar-state] [data-tree-child="${parent}"]').length === 4`, "the parent's steps did not open in the sidebar");
 }
 
@@ -2424,6 +2434,21 @@ function demoCatchUps(world: DemoWorld, now: number) {
 // ---------------------------------------------------------------------------------------------------------
 // Setup: what someone would do after installing, then the state the pictures need.
 
+/**
+ * The demo's sessions are old, so the app counts them as read and To review would be empty. Marks one unread with its
+ * button, as a person would, for the pictures that show To review.
+ */
+async function leaveOneToReview(t: Tour): Promise<void> {
+  // The section's header, in capitals, not a row's "~3 min to review".
+  const listed = "/TO REVIEW/.test(document.querySelector('[data-session-list]')?.innerText ?? '')";
+  if (await t.page.evaluate(listed)) return;
+  await t.page.locator('[data-session-list] [data-session-id]', { hasText: 'Speed up the checkout page' }).first().hover();
+  await t.page.getByRole('button', { name: 'Mark as unread Speed up the checkout page' }).click();
+  await t.until(listed, 'marking a session unread did not put it under To review');
+  await t.page.mouse.move(900, 4);
+  await t.page.locator('[data-toast] button[aria-label="Dismiss"]').first().click({ timeout: 2_000 }).catch(() => {});
+}
+
 async function setUp(t: Tour): Promise<void> {
   await t.need('[data-session-id]', 'the sidebar listed no sessions', 30_000);
 
@@ -2431,12 +2456,14 @@ async function setUp(t: Tour): Promise<void> {
   await t.click('[data-open-settings]');
   await t.click('[data-settings-section="profiles"]');
   await t.click('[data-add-profile]');
+  // Its first screen asks which tool; Claude Code is picked.
+  await t.click('[data-add-profile-next]');
   await (await t.need('[data-new-profile-name]', 'the add profile form did not open')).fill('Work');
   await t.q('[data-new-profile-folder]').fill(join(t.world.home, '.claude-work'));
   // The demo folder is signed in already; off anyway, so no Claude Code starts in the terminal.
   await t.click('[data-new-profile-sign-in]');
   await t.click('[data-add-profile-submit]');
-  await t.until(`document.querySelectorAll('[data-profiles] [data-profile]').length === 2`, 'the Work profile was not added');
+  await t.until(`[...document.querySelectorAll('[data-profiles] [data-profile] input')].some((el) => el.value === 'Work')`, 'the Work profile was not added');
   await t.click('[data-close-settings]');
   await t.until(`[...document.querySelectorAll('[data-session-id]')].some((el) => el.innerText.includes(${JSON.stringify(WORKING)}))`, 'the Work profile’s sessions did not show up', 15_000);
 

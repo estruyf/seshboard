@@ -57,9 +57,31 @@ export function optionsSummary(input: SummaryInput): OptionsSummary {
   return { first, second, label: `${line(first)}, ${line(second)}` };
 }
 
-/** Whether Start (or Send) can go now, and if not, why: the words its button says to a screen reader and a long press. */
-export function startState({ connected, project, text, busy, reading }: { connected: boolean; project: boolean; text: string; busy: boolean; reading: boolean }): { ready: boolean; reason: string | null } {
+/**
+ * The Options row with another provider (GitHub Copilot): who runs it, its model and its mode. It works in the
+ * project's folder as it is: worktrees, branches and pipelines are Claude Code's.
+ */
+export function providerSummary({ provider, model, mode }: { provider: string; model: string; mode: string }): OptionsSummary {
+  const first: SummaryPart[] = [
+    { text: provider, changed: true },
+    { text: model, changed: false },
+    { text: mode, changed: false },
+  ];
+  const second: SummaryPart[] = [
+    { text: 'This folder', changed: false },
+    { text: 'one session', changed: false },
+  ];
+  const line = (parts: SummaryPart[]) => parts.map((p) => p.text).join(' · ');
+  return { first, second, label: `${line(first)}, ${line(second)}` };
+}
+
+/**
+ * Whether Start (or Send) can go now, and if not, why: the words its button says to a screen reader and a long press.
+ * `blocked`: why the provider picked can't start a session (install it, or sign in with its CLI), or that it is asked.
+ */
+export function startState({ connected, project, text, busy, reading, blocked = null }: { connected: boolean; project: boolean; text: string; busy: boolean; reading: boolean; blocked?: string | null }): { ready: boolean; reason: string | null } {
   if (!connected) return { ready: false, reason: 'Waiting for the connection' };
+  if (blocked) return { ready: false, reason: blocked };
   if (!project) return { ready: false, reason: 'Pick a project first' };
   if (!text.trim()) return { ready: false, reason: 'Type a message first' };
   if (reading) return { ready: false, reason: 'Reading the attachments…' };

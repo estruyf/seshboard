@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardE
 import { isContextMenuKey } from '../../lib/contextMenu.ts';
 import { basename, shortAge } from '../../lib/format.ts';
 import { useHosts } from '../../state/hostsStore.ts';
+import { useKeptSessions } from '../../state/keptSessions.ts';
 import { quickInfoOf, useCatchUp } from '../../state/catchUpStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -21,9 +22,10 @@ import { FocusCounter } from '../focus/FocusCounter.tsx';
 import { PROFILE_DOT } from '../profiles/ProfileBadge.tsx';
 import { RAIL_TONE, railShape } from './rail.ts';
 import { ProjectIcon } from '../ProjectIcon.tsx';
+import { useComputerTint } from '../computers/ComputerChip.tsx';
 import { useComputers } from '../../state/computersStore.ts';
 import { filterBySource, offlineLine } from '../../state/remoteRows.ts';
-import { openRow, useRemoteRows, useShownRowId } from '../../state/useRemoteRows.ts';
+import { openRow, useRemoteRows, useRemoteTreeRuns, useShownRowId } from '../../state/useRemoteRows.ts';
 import { Button } from '../ui/Button.tsx';
 import { newSessionDraftTooltip, PenBadge, remoteNewSessionDraftTooltip } from '../drafts/PenBadge.tsx';
 import { openDraft, useNewSessionDraft, useRemoteNewSessionDraft, useUnsent } from '../drafts/useUnsent.ts';
@@ -167,6 +169,7 @@ const RailRow = memo(function RailRow({
 }) {
   const project = useProjects((s) => (data.remote ? undefined : s.projects.get(data.projectRoot)));
   const remote = data.remote ?? null;
+  const tint = useComputerTint(remote?.computerId);
   const projectName = remote?.projectName ?? project?.name ?? basename(data.projectRoot);
   const status = rowStatus(data);
   // A pipeline's run row, or a session a run started from: where the run is, in the tooltip.
@@ -194,6 +197,7 @@ const RailRow = memo(function RailRow({
       data-sidebar-rail-row={data.id}
       data-run-row={runRow || undefined}
       data-remote-row={remote?.computerId}
+      style={tint}
       data-session-status={status ?? undefined}
       tabIndex={tabbable ? 0 : -1}
       aria-current={selected ? 'true' : undefined}
@@ -265,9 +269,11 @@ export function SidebarRail() {
   const newDraft = useNewSessionDraft();
   const remoteNewDraft = useRemoteNewSessionDraft();
 
-  const all = useMemo(() => toRows(sessions, live, hosts).filter((row) => inScope(row, scope)), [sessions, live, hosts, scope]);
+  const kept = useKeptSessions();
+  const all = useMemo(() => toRows(sessions, live, hosts, kept).filter((row) => inScope(row, scope)), [sessions, live, hosts, kept, scope]);
   // Other computers' sessions too, in the same groups, with the Computers filter applied: the same list as the open sidebar.
   const remoteRows = useRemoteRows();
+  const remoteRuns = useRemoteTreeRuns();
   const hidden = useComputers((s) => s.hidden);
   const listed = useMemo(() => filterBySource([...all, ...remoteRows], hidden), [all, remoteRows, hidden]);
   const shownId = useShownRowId();
@@ -276,7 +282,7 @@ export function SidebarRail() {
   const quick = useMemo(() => quickInfoOf(catchUps), [catchUps]);
   // Pipelines (#179): run rows are listed and a parent takes its children's state; its children stay out of the rail.
   const runs = usePipelines((s) => s.runs);
-  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), openParents: NO_OPEN_PARENTS }), [listed, now, archiveAfterDays, sort, quick, runs]);
+  const groups = useMemo(() => sidebarGroups(listed, { now, archiveAfterDays, sort, quick, runs: runs.values(), remoteRuns, openParents: NO_OPEN_PARENTS, kept }), [listed, now, archiveAfterDays, sort, quick, runs, remoteRuns, kept]);
   // A sub-session in the main area: its parent's icon is the one that shows it.
   const shownParent = useSessions((s) => (shownId ? (s.sessions.get(shownId)?.parentId ?? null) : null));
   const railIds = useMemo(() => new Set(groups.flatMap((g) => g.rows.map((row) => row.id))), [groups]);
@@ -362,7 +368,7 @@ export function SidebarRail() {
   }, []);
 
   return (
-    <nav aria-label="Sidebar" className="flex h-full w-20 shrink-0 flex-col border-r border-border bg-sidebar" data-sidebar-rail>
+    <nav aria-label="Sidebar" className="flex h-full w-20 shrink-0 flex-col bg-sidebar forced-colors:border-r" data-sidebar-rail>
       {/* The traffic lights sit in this strip, which doubles as a window drag handle. */}
       <div className="drag h-13 shrink-0" />
       <div className="flex shrink-0 flex-col items-center gap-1 pb-2">
@@ -451,7 +457,7 @@ export function SidebarRail() {
         </div>
       </div>
 
-      <footer className="flex shrink-0 flex-col items-center gap-1.5 border-t border-border py-2">
+      <footer className="flex shrink-0 flex-col items-center gap-1.5 py-2">
         <RailDevices />
         <FocusCounter compact />
         <RailStarButton

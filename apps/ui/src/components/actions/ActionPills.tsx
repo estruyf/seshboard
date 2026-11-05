@@ -84,7 +84,8 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
     <div role="group" aria-label="Project actions" className="flex min-w-0 flex-wrap items-center gap-1.5" data-action-pills>
       {/* Not `data-add-action`: the editor's own Add button has that hook. */}
       {pills.length === 0 && (
-        <Pill dashed icon={<Plus size={12} aria-hidden />} onClick={openEditor} data-tooltip="Add a command or prompt you run often" data-add-action-pill>
+        // Quiet until the composer area is hovered or focused: it is there when you look for it, not before.
+        <Pill ghost icon={<Plus size={12} aria-hidden />} onClick={openEditor} data-tooltip="Add a command or prompt you run often" className="opacity-60 transition-opacity group-focus-within/composer:opacity-100 group-hover/composer:opacity-100 focus-visible:opacity-100" data-add-action-pill>
           Add action
         </Pill>
       )}
@@ -124,7 +125,7 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
         </Pill>
       ) : (
         pills.length > 0 && (
-          <Pill dashed onClick={openEditor} data-tooltip="Edit project actions" aria-label="Edit project actions" className="px-1.5!" data-edit-action-pills>
+          <Pill ghost onClick={openEditor} data-tooltip="Edit project actions" aria-label="Edit project actions" className="px-1.5!" data-edit-action-pills>
             <Plus size={12} aria-hidden />
           </Pill>
         )

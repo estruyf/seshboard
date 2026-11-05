@@ -4,12 +4,11 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useCatchUp } from '../../state/catchUpStore.ts';
 import { useDrafts } from '../../state/draftsStore.ts';
 import { closeChanges, isChangesOpen, openChanges } from '../../state/changesPanelStore.ts';
-import { popoutSession } from '../../state/popoutsStore.ts';
-import { currentOrder } from '../../state/sessionNav.ts';
+import { moveOn, passOrderNow } from '../../state/catchUpPass.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { useTerminals } from '../../state/terminalsStore.ts';
 import { CommitDialog } from '../git/CommitDialog.tsx';
-import { nextAfterArchive, type CatchUpActionId } from './catchUpModel.ts';
+import type { CatchUpActionId } from './catchUpModel.ts';
 import { archiveTree } from '../pipelines/RunTreeDialogs.tsx';
 
 export interface CatchUpActions {
@@ -24,8 +23,8 @@ export interface CatchUpActions {
 
 /**
  * What the catch-up's buttons and keys do. Review changes opens the Changes panel; Commit opens the Commit dialog; Reply
- * puts you in the message box; Mark as read and Archive change the session at once (so the focus counter follows) and
- * tell the engine.
+ * puts you in the message box; Archive changes the session at once (so the focus counter follows) and tells the engine,
+ * then goes on to the next session to go through (`moveOn`).
  */
 export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: string | null; changes: GitChanges | null }): CatchUpActions {
   const connection = useEngineConnection();
@@ -51,22 +50,16 @@ export function useCatchUpActions({ card, cwd, changes }: { card: CatchUp; cwd: 
         store.setReplying(sessionId);
         useDrafts.getState().requestFocus(sessionId);
         return;
-      case 'read':
-        useSessions.getState().patchSummary(sessionId, { unread: false, viewedAt: Date.now() });
-        void client?.call('sessions.markViewed', { sessionId }).catch(fail('mark it as read'));
-        return;
       case 'archive': {
-        // The next session in the sidebar's order, worked out before this one leaves it.
-        const order = currentOrder().map((row) => row.id);
+        // The sessions to go through, worked out before this one leaves them.
+        const order = passOrderNow();
         // The parent of a pipeline run archives with its sub-sessions (asking first while the run goes on).
         if (!archiveTree(sessionId, true, useSessions.getState().sessions.get(sessionId)?.title ?? '')) {
           useSessions.getState().patchSummary(sessionId, { archivedAt: Date.now(), unread: false });
-          void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('archive it'));
+          void client?.call('sessions.setFlags', { sessionId, archived: true }).catch(fail('mark it done'));
         }
-        const next = nextAfterArchive(order, sessionId);
-        // A pop-out shows this one session: archived, its window closes (the next one would open in the main window).
-        if (next && !popoutSession) useSessions.getState().select(next);
-        else useSessions.getState().goHome();
+        // On to the next one, as Skip does; Home when none is left.
+        moveOn(sessionId, 'done', order);
         return;
       }
     }

@@ -1,34 +1,36 @@
 import type { RemoteSession } from '@seshboard/protocol/remote-client';
 import { inBackground } from './background.ts';
 
-/** The sidebar's sections on the computer (apps/ui sidebarRows.ts), without Pinned: what needs attention, then by day. */
-export type SessionGroup = 'needs-you' | 'working' | 'today' | 'yesterday' | 'earlier';
+/**
+ * The sidebar's sections on the computer (apps/ui sidebarRows.ts): what needs attention, then pinned, then what you
+ * haven't looked at (To review) and what you have but haven't finished (Open).
+ */
+export type SessionGroup = 'needs-you' | 'working' | 'pinned' | 'review' | 'open';
 
 export const GROUP_LABEL: Record<SessionGroup, string> = {
   'needs-you': 'Needs you',
   working: 'Working',
-  today: 'Today',
-  yesterday: 'Yesterday',
-  earlier: 'Earlier',
+  pinned: 'Pinned',
+  review: 'To review',
+  open: 'Open',
 };
 
-const ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'today', 'yesterday', 'earlier'];
+const ORDER: readonly SessionGroup[] = ['needs-you', 'working', 'pinned', 'review', 'open'];
 
-/** Local midnight of the day `now` falls on, so "Today" follows the calendar. */
+/** Local midnight of the day `now` falls on, so "finished today" follows the calendar. */
 export function startOfDay(now: number): number {
   const date = new Date(now);
   date.setHours(0, 0, 0, 0);
   return date.getTime();
 }
 
-export function sessionGroup(session: RemoteSession, now: number): SessionGroup {
+/** As on the computer: a pinned session that needs you or works shows there, and goes back to Pinned when it's done. */
+export function sessionGroup(session: RemoteSession): SessionGroup {
   if (session.status === 'needs-you') return 'needs-you';
   if (session.status === 'working') return 'working';
-  const today = startOfDay(now);
-  if (session.updatedAt >= today) return 'today';
-  // A day can be 23 or 25 hours long across a clock change, hence the second midnight.
-  if (session.updatedAt >= startOfDay(today - 1)) return 'yesterday';
-  return 'earlier';
+  if (session.pinned) return 'pinned';
+  if (session.status === 'unread' || session.status === 'error') return 'review';
+  return 'open';
 }
 
 /** When a working session's turn began, as the computer's Working section orders by it; the last write moves all the time. */
@@ -38,10 +40,10 @@ const workingSince = (session: RemoteSession): number => session.workingSince ??
  * The non-empty sections in order, each newest first. Working is the exception, as on the computer: the one you set
  * going last first, so sessions don't swap places each time one of them writes.
  */
-export function groupSessions<S extends RemoteSession>(sessions: readonly S[], now: number): Array<{ group: SessionGroup; sessions: S[] }> {
+export function groupSessions<S extends RemoteSession>(sessions: readonly S[]): Array<{ group: SessionGroup; sessions: S[] }> {
   const byGroup = new Map<SessionGroup, S[]>();
   for (const session of sessions) {
-    const group = sessionGroup(session, now);
+    const group = sessionGroup(session);
     byGroup.set(group, [...(byGroup.get(group) ?? []), session]);
   }
   return ORDER.filter((group) => byGroup.has(group)).map((group) => ({
@@ -105,7 +107,8 @@ export function age(at: number, now: number): string {
 export function homeHeadline(sessions: readonly RemoteSession[], now: number): { title: string; counts: string } {
   const needsYou = sessions.filter((s) => s.status === 'needs-you').length;
   const working = sessions.filter((s) => s.status === 'working').length;
-  const finished = sessions.filter((s) => sessionGroup(s, now) === 'today').length;
+  const today = startOfDay(now);
+  const finished = sessions.filter((s) => s.status !== 'needs-you' && s.status !== 'working' && s.updatedAt >= today).length;
   const title = needsYou === 0 ? 'Nothing needs you' : `${needsYou} ${needsYou === 1 ? 'session needs' : 'sessions need'} you`;
   const counts = [working ? `${working} working` : null, finished ? `${finished} finished today` : null].filter(Boolean).join(' · ');
   return { title, counts };

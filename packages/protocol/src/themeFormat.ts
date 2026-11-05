@@ -53,6 +53,13 @@ export const THEME_TOKENS = [
   'chart-cache-write',
   'chart-cache-read',
   'chart-input',
+  'working-hole',
+  'working-lit',
+  'working-glow',
+  'working-plug-a',
+  'working-plug-b',
+  'working-plug-c',
+  'working-plug-d',
 ] as const;
 export type ThemeToken = (typeof THEME_TOKENS)[number];
 /** A full set of tokens for one mode. */

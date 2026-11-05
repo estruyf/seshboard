@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   BUILT_IN_PIPELINES,
+  REMOTE_DESKTOP_ORIGIN,
   generateKeyPair,
   parseRemoteLink,
   parseBriefs,
@@ -32,12 +33,12 @@ import {
   type TranscriptMessage,
   writeStub,
 } from '@seshboard/protocol';
-import type { RemoteLimitStanding } from '@seshboard/protocol';
+import type { RemoteAppUpdate, RemoteLimitStanding } from '@seshboard/protocol';
 import { createAppStateStore } from '../db/appState.ts';
 import { commitAll, fileDiff, git, listChanges } from '../git/gitChanges.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { RemoteHub, remoteAppOrigins, type RemoteFromDevice, type RemotePipelines } from './remoteHub.ts';
-import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteSessions, sessionChoice, transcriptPage, type SessionChoice } from './remoteView.ts';
+import { autoOf, capDiff, projectIdOf, remoteCatchUp, remoteDefaults, remoteSessions, sessionChoice, transcriptPage, type GlobalModel, type SessionChoice } from './remoteView.ts';
 import { APP_ORIGIN, client, handshake, open } from './testPhone.ts';
 import { generateVapidKeys } from './webPush.ts';
 
@@ -108,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[] } = {}) {
+async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -119,6 +120,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   }) as unknown as typeof fetch;
   const identity = options.identity === undefined ? generateKeyPair().secretKey : options.identity;
   const dir = mkdtempSync(join(tmpdir(), 'seshboard-remote-hub-'));
+  /** What phones asked Seshboard's updater (with `updates`). */
+  const updateRuns: string[] = [];
   const cache = openCacheDatabase(join(dir, 'cache.sqlite'));
   const appState = createAppStateStore(cache.db);
   const sent: string[] = [];
@@ -166,6 +169,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     appState,
     appVersion: '1.2.3',
     appUrl: `${APP_ORIGIN}/remote/`,
+    ...(options.updates ? { runAppUpdate: (command: 'check' | 'install', by: string) => void updateRuns.push(`${command} by ${by}`) } : {}),
     previewApp: options.previewApp ?? false,
     filesDir: join(dir, 'remote-files'),
     logFile: join(dir, 'remote.log'),
@@ -183,6 +187,8 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
       profiles: [
         { id: 'default', name: 'Personal', color: 'yellow', defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, account: 'a'.repeat(64) },
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
+        // A GitHub Copilot profile, for the tests that ask for one.
+        ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
       ],
       defaultId: 'default',
     }),
@@ -199,6 +205,9 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     stopTask: async (sessionId, taskId) => void calls.push(`stop ${sessionId} ${taskId}`),
     respond: (requestId) => void answered.push(requestId),
     create: async (root, prompt, choice, images) => (created.push({ root, prompt, model: choice.model, choice, images }), { sessionId: 'new' }),
+    // The Copilot profile is GitHub Copilot's, with its own modes.
+    providerOfProfile: (profileId) => (profileId === 'copilot' ? { id: 'copilot', name: 'GitHub Copilot', modes: [{ value: 'default', label: 'Ask before edits', description: '' }, { value: 'auto', label: 'Autopilot', description: '' }], supports: [] } : null),
+    providerReady: async () => ({ problem: null, models: [{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false }] }),
     branches: async (root) => (root === ROOT ? { current: 'main', branches: ['main', 'feat/login', 'taken'], checkedOutElsewhere: ['taken'] } : { current: null, branches: [], checkedOutElsewhere: [] }),
     queue: (root, prompt, choice) => (queued.push({ root, prompt, choice }), { id: 'later-1' }),
     markRead: (sessionId) => void calls.push(`read ${sessionId}`),
@@ -209,6 +218,7 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
     setPermissionMode: async (sessionId, mode) => void calls.push(`mode ${sessionId} ${mode}`),
     autoModel: () => ({ enabled: true, allowed: ['sonnet', 'opus'] }),
     globalPermissionMode: () => 'default',
+    globalModel: () => options.globalModel ?? { model: null, effort: null },
     models: () => [{ value: 'opus', resolvedModel: 'claude-opus-x', displayName: 'Opus', description: 'Most capable', supportsEffort: true }],
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
@@ -281,28 +291,31 @@ async function setup(options: { identity?: Uint8Array | null; tunnel?: (port: nu
   });
   const port = await freePort();
   const on = (change: Partial<RemoteSettings> = {}) => hub.configure({ enabled: true, port, ...change });
-  return { hub, dir, port, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
+  return { hub, dir, port, updateRuns, on, watching, sent, sentImages, answered, created, queued, calls, limitOf, repo, appState, pushes, pushBodies, permissions, fromDevice, ran };
 }
 
 /** Pairs a phone through the hub, as Settings › Remote and the phone would. */
-async function pair(hub: RemoteHub, port: number) {
+async function pair(hub: RemoteHub, port: number, origin = APP_ORIGIN) {
   const { url } = hub.startPairing();
   expect(url.startsWith(`${APP_ORIGIN}/remote/#p.`)).toBe(true);
   const link = parseRemoteLink(new URL(url).hash);
   if (link?.kind !== 'pair') throw new Error('Not a pairing link');
   expect(link.address).toBe('https://quiet-river.trycloudflare.com');
   const phone = generateKeyPair();
-  const pairing = await handshake(port, 'pair', phone, link.enginePublicKey, pskFromSecret(link.secret));
+  const pairing = await handshake(port, 'pair', phone, link.enginePublicKey, pskFromSecret(link.secret), origin);
   const asked = client<RemotePairContract>(pairing.frames, pairing.session!).call('pair.request', { name: 'Phone' });
   await until(() => hub.status().pairing.request !== null);
   hub.decidePairing(hub.status().pairing.request!.id, true);
   await asked;
   pairing.ws.close();
-  const connected = await handshake(port, 'connect', phone, link.enginePublicKey);
+  const connected = await handshake(port, 'connect', phone, link.enginePublicKey, undefined, origin);
   const remote = client<RemoteContract>(connected.frames, connected.session!);
   await remote.call('hello', { client: { version: '1' } });
   return { remote, connected };
 }
+
+/** Seshboard's updater as main would send it, `status` with what goes with it. */
+const appUpdate = (status: string, rest: Partial<RemoteAppUpdate> = {}): RemoteAppUpdate => ({ status, currentVersion: '1.2.3', availableVersion: null, downloadedVersion: null, downloadPercent: null, channel: 'stable', error: null, disabledReason: null, checkedAt: null, whenIdle: false, ...rest });
 
 async function until(check: () => boolean, ms = 3_000) {
   const end = Date.now() + ms;
@@ -343,21 +356,20 @@ describe('Remote hub', () => {
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
     const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com']);
-    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com', preview, 'https://switch-dev.struyfconsulting.com']);
-    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', preview]);
+    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview]);
     expect(remoteAppOrigins('http://localhost:5199/remote/', false)).toEqual(['http://localhost:5199']);
 
     const release = await setup();
     await release.on();
     await expect(open(release.port, preview)).rejects.toThrow('HTTP 403');
     await expect(open(release.port, 'https://switch-dev.struyfconsulting.com')).rejects.toThrow('HTTP 403');
+    await expect(open(release.port, 'https://switchboard.struyfconsulting.com')).rejects.toThrow('HTTP 403');
     const beta = await setup({ previewApp: true });
     await beta.on();
     const socket = await open(beta.port, preview);
     socket.ws.close();
-    // A phone paired on the preview's old address, until 1.3.0.
-    (await open(beta.port, 'https://switch-dev.struyfconsulting.com')).ws.close();
     (await open(beta.port)).ws.close();
   });
 
@@ -431,6 +443,36 @@ describe('Remote hub', () => {
     // A paired phone learns a new address from a connect link, which holds no secret.
     const link = parseRemoteLink(new URL(hub.connectLink().url).hash);
     expect(link).toMatchObject({ kind: 'connect', address: 'https://quiet-river.trycloudflare.com' });
+  });
+
+  it('starts a session with a provider profile, in its own modes and models', async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    expect(options.profiles.find((p) => p.id === 'copilot')?.provider).toEqual({ id: 'copilot', name: 'GitHub Copilot', modes: [expect.objectContaining({ value: 'default' }), expect.objectContaining({ value: 'auto', label: 'Autopilot' })], supports: [] });
+    expect(options.profiles.find((p) => p.id === 'work')?.provider).toBeUndefined();
+    expect(await remote.call('providers.ready', { profileId: 'copilot' })).toEqual({ problem: null, models: [expect.objectContaining({ value: 'gpt-5-mini' })] });
+    await expect(remote.call('providers.ready', { profileId: 'work' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // The profile decides: the engine starts Copilot for it (`createSession`).
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'add a test', profileId: 'copilot', model: 'gpt-5-mini', permissionMode: 'auto' });
+    expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
+    // A mode the provider doesn't have is refused, not passed on.
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it("starts a provider profile's session on its own default model, not the global one", async () => {
+    const { hub, port, on, created } = await setup({ copilotProfile: true, globalModel: { model: 'haiku', effort: 'high' } });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    // The global model and effort are Claude Code's: its profiles get them, Copilot's doesn't.
+    expect(options.profiles.find((p) => p.id === 'default')?.defaults).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(options.profiles.find((p) => p.id === 'copilot')?.defaults).toMatchObject({ model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'copilot' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'copilot', model: null, effort: null });
+    await remote.call('session.create', { projectId: projectIdOf(FIRST), prompt: 'add a test', profileId: 'default' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default', model: 'haiku', effort: 'high' });
   });
 
   it('says which device sent a prompt, answered or started a session, by its id', async () => {
@@ -1090,6 +1132,72 @@ describe('Remote hub', () => {
   });
 });
 
+describe('Update and restart from another computer', () => {
+  it('shows the updater to a paired computer and runs what it asks, in its name', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true });
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    // Main hasn't said yet.
+    expect(await remote.call('app.update.get', {})).toEqual({ update: null });
+    await expect(remote.call('app.update.check', {})).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    hub.setAppUpdate(appUpdate('up-to-date'));
+    await until(() => changes.length === 1);
+    expect(changes[0]).toMatchObject({ status: 'up-to-date', channel: 'stable', whenIdle: false });
+    await remote.call('app.update.check', {});
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    await until(() => changes.length === 2);
+    expect((await remote.call('app.update.get', {})).update?.availableVersion).toBe('1.3.0');
+    // Nothing works here: idle starts at once.
+    await remote.call('app.update.install', { when: 'idle' });
+    await remote.call('app.update.install', { when: 'now' });
+    expect(updateRuns).toEqual(['check by Phone', 'install by Phone', 'install by Phone']);
+
+    hub.setAppUpdate(appUpdate('disabled', { disabledReason: 'Updates are turned off in development builds.' }));
+    await expect(remote.call('app.update.check', {})).rejects.toMatchObject({ code: 'UNAVAILABLE', message: 'Updates are turned off in development builds.' });
+  });
+
+  it('waits for idle while a session works, and Cancel update stops the wait', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true, hosts: [{ sessionId: SESSION, cwd: ROOT, state: 'running', model: 'opus', effort: null, permissionMode: 'default', profileId: 'work', backgroundTasks: [] } as unknown as SessionHostInfo] });
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    await remote.call('app.update.install', { when: 'idle' });
+    await until(() => changes.some((c) => c.whenIdle));
+    expect(updateRuns).toEqual([]);
+    expect((await remote.call('app.update.get', {})).update?.whenIdle).toBe(true);
+    await remote.call('app.update.cancel', {});
+    await until(() => changes.at(-1)?.whenIdle === false);
+    expect(updateRuns).toEqual([]);
+  });
+
+  it('gives a phone nothing: no state, no changes, and no update', async () => {
+    const { hub, port, on, updateRuns } = await setup({ updates: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const changes: RemoteAppUpdate[] = [];
+    remote.on('app.update.changed', (update) => void changes.push(update));
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    for (const call of [remote.call('app.update.get', {}), remote.call('app.update.check', {}), remote.call('app.update.install', { when: 'now' }), remote.call('app.update.cancel', {})]) await expect(call).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(changes).toEqual([]);
+    expect(updateRuns).toEqual([]);
+  });
+
+  it('answers null without an updater (no app around the engine)', async () => {
+    const { hub, port, on } = await setup();
+    await on();
+    const { remote } = await pair(hub, port, REMOTE_DESKTOP_ORIGIN);
+    hub.setAppUpdate(appUpdate('available', { availableVersion: '1.3.0' }));
+    expect(await remote.call('app.update.get', {})).toEqual({ update: null });
+    await expect(remote.call('app.update.install', { when: 'now' })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  });
+});
+
 describe('what a phone sees', () => {
   it('shows what Auto picked until you change the model, and that it is still choosing', () => {
     const pick = { model: 'sonnet' as const, reason: 'A small change', at: 1, tokens: 10, allowed: ['haiku' as const, 'sonnet' as const] };
@@ -1143,6 +1251,23 @@ describe('what a phone sees', () => {
     expect(sessionChoice({}, NO_DEFAULTS, none, 'auto').permissionMode).toBe('auto');
     expect(sessionChoice({}, NO_DEFAULTS, work, 'auto').permissionMode).toBe('plan');
     expect(sessionChoice({}, { ...NO_DEFAULTS, globalPermissionMode: true }, work, 'auto').permissionMode).toBe('auto');
+    // The global model and effort where neither sets one; what the phone picks still wins, Default model included.
+    const globals = { model: 'haiku', effort: 'max' as const };
+    expect(sessionChoice({}, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(sessionChoice({}, NO_DEFAULTS, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'high' });
+    expect(sessionChoice({ model: null, effort: null }, NO_DEFAULTS, none, 'default', globals)).toMatchObject({ model: null, effort: null });
+    // A project that skips its profile's model or effort gets the global one.
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'high' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalEffort: true }, work, 'default', globals)).toMatchObject({ model: 'sonnet', effort: 'max' });
+    expect(sessionChoice({}, { ...NO_DEFAULTS, globalModel: true }, work)).toMatchObject({ model: null });
+  });
+
+  it("shows a phone the global model and effort under a profile, and leaves a project's unset ones to its profile", () => {
+    const globals = { model: 'haiku', effort: 'max' as const };
+    const unset = { model: null, effort: null, permissionMode: null, workspace: null };
+    expect(remoteDefaults(unset, 'default', globals)).toMatchObject({ model: 'haiku', effort: 'max' });
+    expect(remoteDefaults({ ...unset, model: 'opus' }, 'default', globals)).toMatchObject({ model: 'opus', effort: 'max' });
+    expect(remoteDefaults(unset, null)).toMatchObject({ model: null, effort: null });
   });
 });
 

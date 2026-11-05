@@ -37,6 +37,17 @@ const run = (over: Partial<PipelineRunState['run']> = {}, steps: Array<Partial<P
 const ids = (rows: readonly SessionRowData[]) => rows.map((r) => r.id);
 
 describe('sidebarForest', () => {
+  it('nests a remote sub-session under its remote parent, and leaves one whose parent is not listed on its own', () => {
+    const remote = (id: string, parentRowId: string | null): SessionRowData =>
+      row(id, {
+        summary: null,
+        remote: { computerId: 'c1', computerName: 'studio', sessionId: id, projectId: 'p', projectName: 'site', status: null, waitingTool: null, workingSince: null, profile: null, offline: false, lastSeen: null, parentRowId },
+      });
+    const forest = sidebarForest([remote('remote:c1:parent', null), remote('remote:c1:step', 'remote:c1:parent'), remote('remote:c1:lone', 'remote:c1:run-row')], [], NOW);
+    expect(ids(forest.roots)).toEqual(['remote:c1:parent', 'remote:c1:lone']);
+    expect(ids(forest.children.get('remote:c1:parent') ?? [])).toEqual(['remote:c1:step']);
+  });
+
   it('nests sub-sessions under their parent in step order, and keeps them out of the top level', () => {
     const state = run({}, [
       { step: 'Plan', index: 0, sessionId: 'plan' },
@@ -61,7 +72,7 @@ describe('sidebarForest', () => {
     const forest = sidebarForest(rows, [], NOW);
     const parent = forest.roots[0]!;
     expect(rowStatus(parent)).toBe('needs-you');
-    expect(groupSessions(forest.roots, NOW)[0]).toMatchObject({ group: 'needs-you' });
+    expect(groupSessions(forest.roots)[0]).toMatchObject({ group: 'needs-you' });
     // The child itself is unchanged.
     expect(rowStatus(forest.children.get('parent')![1]!)).toBe('running');
   });
@@ -97,6 +108,9 @@ describe('sidebarForest', () => {
     const { active: up, archived } = buildSessionList(forest.roots, { search: '', project: null, now: NOW, archiveAfterDays: 1, children: forest.children });
     expect(ids(up)).toEqual(['run-a', 'run-b']);
     expect(ids(archived)).toEqual(['run-c']);
+    // With loose ends (files not committed in its worktree), the run row stays listed, as a session with them does.
+    const kept = sidebarForest(rows, [active, recent, stale], NOW, 1, new Set(['run-c']));
+    expect(ids(buildSessionList(kept.roots, { search: '', project: null, now: NOW, archiveAfterDays: 1, children: kept.children }).archived)).toEqual([]);
   });
 
   it('auto-archives a tree by its newest activity, never while its run goes on', () => {
@@ -157,7 +171,7 @@ describe('the tree in the list', () => {
   });
 
   it('keeps the parent of the open sub-session in a closed section', () => {
-    const list = buildListRows(forest.roots, [], { now: NOW, archivedOpen: false, children: forest.children, closed: new Set(['today']), selectedId: 'exec' });
+    const list = buildListRows(forest.roots, [], { now: NOW, archivedOpen: false, children: forest.children, closed: new Set(['open']), selectedId: 'exec' });
     expect(list.flatMap((r) => (r.kind === 'session' ? [r.data.id] : []))).toEqual(['parent']);
   });
 

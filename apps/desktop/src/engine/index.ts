@@ -3,8 +3,8 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
-import { createEngine, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { RemoteAppUpdate } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
 
@@ -57,8 +57,7 @@ const engine = createEngine({
   dataDir,
   trash,
   // The VS Code companion connects over a socket; SESHBOARD_NO_COMPANION=1 leaves it closed.
-  // Until 1.3.0 it also writes engine.json where companions up to 0.2.0 look: the data folder's name before the rename.
-  ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion, ...(basename(dataDir) === 'Seshboard' ? { legacyDataDir: join(dirname(dataDir), 'Switchboard') } : {}) } }),
+  ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SESHBOARD_REMOTE_APP_URL points it at a development build of the remote app
   // (`npm run dev:remote`); SESHBOARD_NO_REMOTE=1 leaves it out. Whether the website preview's remote app is let
   // in too comes from main (`remotePreview`), as it follows the update channel.
@@ -69,6 +68,8 @@ const engine = createEngine({
           appVersion,
           identity: remoteKey('identity'),
           deviceKey: remoteKey('device'),
+          // Updating from another paired computer: Seshboard's updater lives in main, which says who started it.
+          runAppUpdate: (command: 'check' | 'install', by: string) => process.parentPort.postMessage({ type: 'app-update', command, by }),
           ...(process.env.SESHBOARD_REMOTE_APP_URL ? { appUrl: process.env.SESHBOARD_REMOTE_APP_URL } : {}),
         },
       }),
@@ -84,6 +85,8 @@ const engine = createEngine({
   stubCatchUp: process.env.SESHBOARD_STUB_CATCHUP === '1',
   // The smoke test: queued items that start by themselves leave the queue without starting Claude Code.
   stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
+  // The smoke test and the screenshots: a made-up Copilot CLI, signed in, that never starts a session.
+  ...(process.env.SESHBOARD_STUB_COPILOT === '1' ? { copilot: demoCopilot() } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });
@@ -123,11 +126,22 @@ process.parentPort.on('message', (event) => {
     engine.setCatchUpSummaries((data as { summaries?: unknown }).summaries !== false);
     return;
   }
+  // The smoke run's menu bar step: New work starts a stand-in session instead of Claude Code.
+  if (data?.type === 'smokeStubCreate') {
+    engine.smokeStubCreate((data as { on?: unknown }).on === true);
+    return;
+  }
+  // The smoke run's quick start steps: a throwaway folder as a project, added and removed again.
+  if (data?.type === 'smokeProject') {
+    const { path, add } = data as { path?: unknown; add?: unknown };
+    if (typeof path === 'string') engine.smokeProject(path, add === true);
+    return;
+  }
   // The smoke run's queue step: a stand-in session for queued items to start after.
   if (data?.type === 'smokeQueueHost') {
-    const { sessionId, cwd, state, outcome, compacting } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown };
-    if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'idle' || state === 'closed')) {
-      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}) });
+    const { sessionId, cwd, state, outcome, compacting, fast } = data as { sessionId?: unknown; cwd?: unknown; state?: unknown; outcome?: unknown; compacting?: unknown; fast?: { blocked: string | null; on?: boolean } };
+    if (typeof sessionId === 'string' && typeof cwd === 'string' && (state === 'running' || state === 'needs-you' || state === 'idle' || state === 'closed')) {
+      engine.smokeQueueHost({ sessionId, cwd, state, ...(outcome === 'clean' || outcome === 'error' || outcome === 'stopped' ? { outcome } : {}), ...(typeof compacting === 'boolean' ? { compacting } : {}), ...(fast ? { fast } : {}) });
     }
     return;
   }
@@ -168,6 +182,12 @@ process.parentPort.on('message', (event) => {
     engine.setAppIcon(appIconKey((data as { key?: unknown }).key));
     return;
   }
+  // Seshboard's updater, on each change: paired phones show it.
+  if (data?.type === 'appUpdate') {
+    const update = RemoteAppUpdate.safeParse((data as { state?: unknown }).state);
+    if (update.success) engine.setAppUpdate(update.data);
+    return;
+  }
   // The preview's remote app: development and beta builds, or the Beta update channel (Settings › About).
   if (data?.type === 'remotePreview') {
     engine.setRemotePreview((data as { enabled?: unknown }).enabled === true);
@@ -176,6 +196,15 @@ process.parentPort.on('message', (event) => {
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);
+    return;
+  }
+  // Settings › General › Global model and Global effort, for sessions started from a phone.
+  if (data?.type === 'globalModel') {
+    const { model, effort } = data as { model?: unknown; effort?: unknown };
+    engine.setGlobalModel({
+      model: typeof model === 'string' && model ? model : null,
+      effort: effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max' ? effort : null,
+    });
     return;
   }
   // Settings › General › Global permission mode, for sessions started from a phone.
@@ -199,7 +228,7 @@ process.parentPort.on('message', (event) => {
   if (data?.type === 'retention') {
     const archiveAfterDays = clampDays(data.archiveAfterDays, ARCHIVE_AFTER_DAYS) ?? ARCHIVE_AFTER_DAYS.default;
     const afterDays = clampDays(data.deleteArchived?.afterDays, DELETE_AFTER_DAYS) ?? DELETE_AFTER_DAYS.default;
-    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays } });
+    engine.setRetention({ archiveAfterDays, deleteArchived: { enabled: data.deleteArchived?.enabled === true, afterDays }, doneOnMerge: (data as { doneOnMerge?: unknown }).doneOnMerge !== false });
     return;
   }
   if (data?.type === 'remote-identity-result' && typeof data.id === 'number') {

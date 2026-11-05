@@ -58,12 +58,8 @@ describe('the catch-up and the focus limit', () => {
     ['b', summary('b')],
   ]);
 
-  it('Mark as read takes the session off your mind at once', () => {
+  it('Archive takes the session off your mind at once', () => {
     expect(count(sessions)).toBe(2);
-    expect(count(patchedSessions(sessions, 'a', { unread: false, viewedAt: NOW }))).toBe(1);
-  });
-
-  it('Archive does too', () => {
     expect(count(patchedSessions(sessions, 'b', { archivedAt: NOW, unread: false }))).toBe(1);
   });
 

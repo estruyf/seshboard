@@ -1,4 +1,4 @@
-import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type TreeStatus } from '@seshboard/protocol/client';
+import { sidebarTree, type PipelineRunState, type PipelineStepStatus, type RunView, type TreeStatus } from '@seshboard/protocol/client';
 import { isRunRow, runIsActive, runTreeStatus } from './pipelines.ts';
 import type { SessionRowData } from './sessionsStore.ts';
 import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRows.ts';
@@ -8,8 +8,11 @@ import { isActive, rowStatus, type RowStatus, type TreeFacts } from './sidebarRo
 // as one. The open sidebar, the rail and the sidebar's order (⌃⇥, ⌘P) all go through `sidebarForest`, so they never
 // disagree. Pure, so it can be tested; the nesting and the parent's state are the protocol's rule (`sidebarTree`).
 
-/** A run row as the sidebar's rows hold it: keyed by the run's id, with no session (yet) behind it. */
-export function runRowData(state: PipelineRunState): SessionRowData {
+/**
+ * A run row as the sidebar's rows hold it: keyed by the run's id, with no session (yet) behind it. `kept`: it has loose
+ * ends, so it stays listed as a session with them does.
+ */
+export function runRowData(state: PipelineRunState, kept = false): SessionRowData {
   const { run } = state;
   return {
     id: run.id,
@@ -29,6 +32,7 @@ export function runRowData(state: PipelineRunState): SessionRowData {
     error: false,
     profileId: run.profileId ?? '',
     remote: null,
+    ...(kept ? { kept: true } : {}),
   };
 }
 
@@ -57,16 +61,27 @@ export interface SidebarForest {
  * A tree is archived as one (`archiveAfterDays`, and Archive on the parent): the parent carries the newest activity in
  * its tree, so it goes to Archived once the whole tree is quiet, never while its run works or waits, and its
  * sub-sessions go with it. A sub-session archived on its own leaves the tree while the parent stays up.
+ *
+ * `remoteRuns`: other computers' runs with their rows' ids (`remoteTreeRuns`), for the order of their steps and their
+ * parents' state; their run rows are in `rows` already (`remoteRunRow`).
  */
-export function sidebarForest(rows: readonly SessionRowData[], runs: Iterable<PipelineRunState>, now: number, archiveAfterDays = Number.POSITIVE_INFINITY): SidebarForest {
-  const all = [...runs];
-  const runRows = all.filter(isRunRow);
+export function sidebarForest(
+  rows: readonly SessionRowData[],
+  runs: Iterable<PipelineRunState>,
+  now: number,
+  archiveAfterDays = Number.POSITIVE_INFINITY,
+  kept: ReadonlySet<string> = new Set(),
+  remoteRuns: readonly RunView[] = [],
+): SidebarForest {
+  const local = [...runs];
+  const runRows = local.filter(isRunRow);
+  const all: RunView[] = [...local, ...remoteRuns];
   // A step's session goes under its run's parent before its transcript says so (a session still starting).
   const stepParent = new Map<string, string>();
   for (const { run, steps } of all) for (const step of steps) if (step.sessionId) stepParent.set(step.sessionId, run.parentSessionId ?? run.id);
-  const nodes = [...rows, ...runRows.map(runRowData)].map((row) => ({
+  const nodes = [...rows, ...runRows.map((state) => runRowData(state, kept.has(state.run.id)))].map((row) => ({
     id: row.id,
-    parentId: row.summary ? (row.summary.parentId ?? null) : (stepParent.get(row.id) ?? null),
+    parentId: row.summary ? (row.summary.parentId ?? null) : (row.remote?.parentRowId ?? stepParent.get(row.id) ?? null),
     status: toTreeStatus(rowStatus(row)),
     createdAt: row.summary?.createdAt ?? null,
     row,

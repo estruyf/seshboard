@@ -160,3 +160,17 @@ describe('Attention', () => {
     expect(a.onTerminals([term(1)])).toEqual([]);
   });
 });
+
+describe('Attention.workingCount', () => {
+  it('counts the sessions that start or run, not those that wait on you', () => {
+    const attention = new Attention();
+    const host = (sessionId: string, state: 'running' | 'starting' | 'needs-you' | 'idle') => ({ sessionId, cwd: '/p', state }) as unknown as Parameters<Attention['onHost']>[0];
+    attention.onHost(host('a', 'running'));
+    attention.onHost(host('b', 'starting'));
+    attention.onHost(host('c', 'needs-you'));
+    expect(attention.workingCount()).toBe(2);
+    attention.onHost(host('a', 'idle'));
+    expect(attention.workingCount()).toBe(1);
+    expect(attention.working()).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { BrowserWindow } from 'electron';
-import { until, waitInPage } from './pageDriver.ts';
+import { settle, until, waitInPage } from './pageDriver.ts';
 
 /**
  * The smoke steps of the remote app on a phone: the real app from apps/remote, served by Vite, in a hidden 390×844
@@ -55,8 +55,8 @@ async function onPhone(run: (js: (code: string) => Promise<unknown>, win: Browse
   if (typeof win === 'string') return win;
   const js = (code: string) => win.webContents.executeJavaScript(code);
   await js("document.querySelector('[data-remote-drawer-close]')?.click(); document.querySelector('[data-remote-settings-back]')?.click()");
-  // A session or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
-  if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-new-session]'))")) {
+  // A session, a run or New session (with a sheet over it, maybe): the list again, from a reload on its history entry.
+  if (await js("Boolean(document.querySelector('[data-remote-session-view], [data-remote-run-view], [data-remote-new-session]'))")) {
     await js("history.replaceState({ kind: 'list' }, ''); location.reload()");
     if (!(await waitInPage(win, "document.querySelector('[data-remote-computer-title][data-remote-connection=\"connected\"]')", 15_000))) return 'the phone did not come back to Home';
   }
@@ -148,6 +148,29 @@ export function runPhoneMoreStep(): Promise<string> {
   });
 }
 
+/**
+ * What a trigger started on the computer (the demo's: failing CI started "Fix the flaky upload test", a new issue the
+ * webhook run): the bolt on both rows, and "Started by …" with the link under the run's header.
+ */
+export function runPhoneTriggerStep(shot?: (win: BrowserWindow, name: string) => Promise<void>): Promise<string> {
+  return onPhone(async (js, win) => {
+    const row = (title: string) => `[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((r) => r.innerText.includes(${JSON.stringify(title)}))`;
+    // It waits for you: its card under Needs you has the bolt.
+    const card = `[...document.querySelectorAll('[data-remote-prompt-card]')].find((c) => c.innerText.includes('Fix the flaky upload test'))`;
+    if (!(await waitInPage(win, `Boolean(${card}?.querySelector('[data-remote-row-triggered]'))`, 5_000))) return 'the session failing CI started has no bolt on its card';
+    if (!(await js(`Boolean(${row('Retry failed webhook deliveries')}?.querySelector('[data-remote-row-triggered]'))`))) return 'the run an issue started has no bolt on its row';
+    await shot?.(win, 'phone-triggered-rows.png');
+    await js(`${row('Retry failed webhook deliveries')}.click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-run-view] [data-remote-trigger-origin]')", 5_000))) return 'the run an issue started does not say which trigger started it';
+    const line = (await js("document.querySelector('[data-remote-run-view] [data-remote-trigger-origin]').innerText.replace(/\\s+/g, ' ')")) as string;
+    if (!line.includes('Started by New bug issues') || !line.includes('#212')) return `the run's trigger line says "${line}"`;
+    if ((await js("document.querySelector('[data-remote-trigger-link]')?.href")) !== 'https://github.com/acme/harbor-api/issues/212') return 'the trigger line has no link to the issue';
+    if (!(await js("document.querySelector('[data-remote-run-meta]')?.innerText.includes('without stopping for you')"))) return 'the run a trigger started does not say it runs without stopping for you';
+    await shot?.(win, 'phone-triggered-run.png');
+    return `ok: the bolt on the Needs you card and the run's row, and "${line}" under the run's header`;
+  });
+}
+
 /** Closes the phone's window, at the end of the run. */
 export async function closeRemotePhone(): Promise<void> {
   const win = await phone;
@@ -157,8 +180,13 @@ export async function closeRemotePhone(): Promise<void> {
 
 /** Opens the demo's finished session from Home ("Add rate limits to the webhooks"), on its catch-up. */
 async function openFinished(js: (code: string) => Promise<unknown>, win: BrowserWindow): Promise<string | null> {
-  await js("[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((row) => row.innerText.startsWith('Add rate limits'))?.click()");
-  if (!(await waitInPage(win, "document.querySelector('[data-remote-session-view]')", 3_000))) return 'the finished session did not open';
+  // A row moves between To review and Open when the computer marks it read, which can replace it under the click: try again.
+  let opened = false;
+  for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+    await js("[...document.querySelectorAll('[data-remote-list] [data-remote-session]')].find((row) => row.innerText.startsWith('Add rate limits'))?.click()");
+    opened = await waitInPage(win, "document.querySelector('[data-remote-session-view]')", 2_000);
+  }
+  if (!opened) return 'the finished session did not open';
   if (!(await waitInPage(win, "document.querySelector('[data-remote-catchup-title]')", 5_000))) return 'the finished session has no catch-up';
   return null;
 }
@@ -189,6 +217,61 @@ export function runPhoneSessionMoreStep(): Promise<string> {
     if (!items.startsWith('ask,')) return `⋯ starts with ${items}, not Ask about this session`;
     await js("document.querySelector('[data-remote-session-more]').click()");
     return `ok: ⋯ has ${items.replaceAll(',', ', ')}`;
+  });
+}
+
+/**
+ * Quote on a phone, read-only: Quote under a finished reply, the Quote pill over selected text, and the pill in Read,
+ * which closes the sheet. Each puts a Markdown quote in the message box, which is emptied again; nothing is sent.
+ */
+export function runPhoneQuoteStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openFinished(js, win);
+    if (failed) return failed;
+    const view = '[data-remote-session-view]';
+    await js(`document.querySelector('${view} [data-remote-unfold]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-quote]')`, 3_000))) return 'a finished reply has no Quote';
+    const box = `${view} [data-remote-message]`;
+    const empty = `(() => { const box = document.querySelector('${box}'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ''); box.dispatchEvent(new Event('input', { bubbles: true })); box.blur(); })()`;
+    const quoted = async (what: string) => {
+      const ok = await waitInPage(win, `document.querySelector('${box}')?.value.startsWith('> ')`, 3_000);
+      const value = (await js(`document.querySelector('${box}')?.value ?? ''`)) as string;
+      await js(empty);
+      return ok ? null : `${what} put no quote in the message box (${JSON.stringify(value.slice(0, 40))})`;
+    };
+    /** Selects the first paragraph with some text under `scope`, scrolled into view first. */
+    const select = async (scope: string) => {
+      const paragraph = `[...document.querySelectorAll('${scope} [data-quote-source] p')].find((p) => p.textContent.trim().length > 20)`;
+      await js(`${paragraph}?.scrollIntoView({ block: 'center' })`);
+      await settle(win);
+      return js(`(() => { const p = ${paragraph}; if (!p) return false; const range = document.createRange(); range.selectNodeContents(p); const s = window.getSelection(); s.removeAllRanges(); s.addRange(range); return true; })()`);
+    };
+    const pill = "document.querySelector('[data-remote-quote-selection]')";
+    try {
+      await js(`[...document.querySelectorAll('${view} [data-remote-quote]')].at(-1).click()`);
+      const fromButton = await quoted('Quote under a reply');
+      if (fromButton) return fromButton;
+
+      if (!(await select(view))) return 'the conversation has no paragraph to select';
+      if (!(await waitInPage(win, `${pill} && getComputedStyle(${pill}).visibility !== 'hidden'`, 3_000))) return 'no Quote pill over the selection';
+      await js(`${pill}.click()`);
+      const fromSelection = await quoted('The Quote pill');
+      if (fromSelection) return fromSelection;
+      if (await js(`Boolean(${pill})`)) return 'the Quote pill stayed after quoting';
+
+      await js(`[...document.querySelectorAll('${view} [data-remote-read]')].at(-1).click()`);
+      if (!(await waitInPage(win, "document.querySelector('[data-remote-sheet=\"read\"] [data-quote-source]')", 3_000))) return 'Read did not open';
+      if (!(await select('[data-remote-sheet="read"]'))) return 'Read has no paragraph to select';
+      if (!(await waitInPage(win, `${pill} && getComputedStyle(${pill}).visibility !== 'hidden'`, 3_000))) return 'no Quote pill over a selection in Read';
+      await js(`${pill}.click()`);
+      if (!(await waitInPage(win, "!document.querySelector('[data-remote-sheet=\"read\"]')", 3_000))) return 'Quote in Read did not close the sheet';
+      const fromRead = await quoted('The Quote pill in Read');
+      if (fromRead) return fromRead;
+      return 'ok: Quote under a reply, the pill over a selection, and the pill in Read (which closed) each quoted into the box';
+    } finally {
+      await js('window.getSelection().removeAllRanges()');
+      await js(`document.querySelector('${box}') && ${empty}`).catch(() => {});
+    }
   });
 }
 
@@ -271,5 +354,49 @@ export function runPhoneStartStep(): Promise<string> {
     // Leave no draft behind for the next run.
     await js(TYPE(''));
     return 'ok: Start dim and saying "Type a message first" while empty, ready with a task';
+  });
+}
+
+/**
+ * New session with a provider profile (#199): picking the demo computer's Copilot profile in Options leaves Copilot's
+ * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
+ * project's Claude Code profile. Nothing is started.
+ */
+export function runPhoneProviderStep(): Promise<string> {
+  return onPhone(async (js, win) => {
+    const failed = await openNewSession(js, win);
+    if (failed) return failed;
+    const sheet = '[data-remote-sheet="options"]';
+    await js("document.querySelector('[data-remote-new-options]').click()");
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"]')`, 3_000))) return 'the Options sheet has no Profile row';
+    /** Picks an option in one of the sheet's rows by the start of its text. */
+    const pick = async (row: string, text: string): Promise<string | null> => {
+      await js(`document.querySelector('${sheet} [data-remote-choice="${row}"]').click()`);
+      const option = `[...document.querySelectorAll('[data-remote-sheet="choice-${row}"] [role=option]')].find((o) => o.innerText.startsWith(${JSON.stringify(text)}))`;
+      if (!(await waitInPage(win, option, 3_000))) return `the ${row} list has no ${text}`;
+      await js(`${option}.click()`);
+      return (await waitInPage(win, `!document.querySelector('[data-remote-sheet="choice-${row}"]')`, 3_000)) ? null : `the ${row} list did not close`;
+    };
+    const picked = await pick('profile', 'Copilot');
+    if (picked) return picked;
+    const rows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
+    if (rows !== 'profile,model,mode') return `with the Copilot profile, Options has ${rows}`;
+    const mode = await pick('mode', 'Auto mode');
+    if (mode) return mode;
+    await js("document.querySelector('[data-remote-sheet-done]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'Done did not close Options';
+    const summary = (await js("document.querySelector('[data-remote-new-options]').getAttribute('aria-label')")) as string;
+    if (!summary.includes('GitHub Copilot') || !summary.includes('Auto mode')) return `the summary reads "${summary}"`;
+    if ((await js("document.querySelector('[data-remote-new-prompt]').placeholder")) !== 'What should GitHub Copilot do?') return 'the box still asks Claude';
+    await js(TYPE('Add a health check'));
+    if (!(await waitInPage(win, "document.querySelector('[data-remote-start]').dataset.remoteStartState === 'ready'", 5_000))) return 'Start did not get ready with Copilot and a task';
+    await js(TYPE(''));
+    // Back to Claude Code for the steps after this one.
+    await js("document.querySelector('[data-remote-new-options]').click()");
+    await waitInPage(win, `document.querySelector('${sheet} [data-remote-options-reset]')`, 3_000);
+    await js(`document.querySelector('${sheet} [data-remote-options-reset]').click()`);
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"], ${sheet} [data-remote-choice="effort"]')`, 3_000))) return "Reset didn't bring Claude Code's options back";
+    await js("document.querySelector('[data-remote-sheet-done]').click()");
+    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task, Reset back to Claude Code`;
   });
 }

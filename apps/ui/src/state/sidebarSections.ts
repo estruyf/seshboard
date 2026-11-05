@@ -1,14 +1,20 @@
 import type { SessionGroup } from './sidebarRows.ts';
 
-/** The sidebar's sections that can close: every one but Needs you and Needs review (and Archived, which has its own toggle). */
-export type SectionKey = Exclude<SessionGroup, 'needs-you' | 'review'> | 'queue';
+/**
+ * The sidebar's sections that can close: every one but Needs you, To review, Reminders and Snoozed (and Archived, which
+ * has its own toggle).
+ */
+export type SectionKey = Exclude<SessionGroup, 'needs-you' | 'review' | 'reminders' | 'snoozed'> | 'queue';
 
-export const SECTION_KEYS: readonly SectionKey[] = ['working', 'queue', 'pinned', 'today', 'yesterday', 'earlier', 'read', 'still-working'];
+export const SECTION_KEYS: readonly SectionKey[] = ['working', 'queue', 'pinned', 'open', 'read', 'still-working'];
 
-/** Which sections are open. Earlier starts closed; the rest start open. */
+/** Which sections are open. They all start open. */
 export type SectionsOpen = Record<SectionKey, boolean>;
 
-export const DEFAULT_SECTIONS: SectionsOpen = { working: true, queue: true, pinned: true, today: true, yesterday: true, earlier: false, read: true, 'still-working': true };
+export const DEFAULT_SECTIONS: SectionsOpen = { working: true, queue: true, pinned: true, open: true, read: true, 'still-working': true };
+
+/** The sections by day before To review and Open: what they say about Open, when nothing is stored for it yet. */
+const BY_DAY = ['today', 'yesterday', 'earlier'] as const;
 
 export const isSectionKey = (value: unknown): value is SectionKey => typeof value === 'string' && (SECTION_KEYS as readonly string[]).includes(value);
 
@@ -18,6 +24,9 @@ export function parseSections(value: unknown): SectionsOpen {
   const open = { ...DEFAULT_SECTIONS };
   if (stored && typeof stored === 'object') {
     for (const [key, on] of Object.entries(stored)) if (isSectionKey(key) && typeof on === 'boolean') open[key] = on;
+    // Saved before Open replaced Today, Yesterday and Earlier: Open stays open unless you had closed all three.
+    const old = BY_DAY.map((key) => (stored as Record<string, unknown>)[key]).filter((on): on is boolean => typeof on === 'boolean');
+    if (!('open' in stored) && old.length > 0) open.open = old.some(Boolean);
   }
   return open;
 }

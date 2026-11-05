@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Archive, ArchiveRestore, Ellipsis, FolderSearch, Info, PanelLeft, Pin, PinOff, Search, Trash2, X } from 'lucide-react';
+import { Check, Ellipsis, FolderSearch, Info, PanelLeft, Pin, PinOff, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { ARCHIVE_AFTER_DAYS, DELETE_AFTER_DAYS, MARK_READ_SECONDS } from '@seshboard/protocol/bridge';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -70,13 +70,14 @@ function useManagerRows(now: number, archiveAfterDays: number): ManagerRow[] {
   const items = useLater((s) => s.items);
   const drafts = useDrafts((s) => s.drafts);
   return useMemo(() => {
-    const rows = toRows(sessions, live, hosts);
     const holds: Holds = {
       queued: new Set(items.flatMap((item) => (item.waitFor.kind === 'session' ? [item.waitFor.sessionId] : []))),
       drafts: new Set(sessionsWithDrafts(Object.keys(drafts), drafts)),
       // A Claude Code process this app doesn't run: a terminal, an editor or Claude desktop has it open.
       elsewhere: new Set([...live.keys()].filter((id) => !isActiveHost(hosts.get(id)))),
     };
+    // What the sidebar keeps listed (`keep`), so a session isn't counted as archived here while it is listed there.
+    const rows = toRows(sessions, live, hosts, new Set([...holds.queued, ...holds.drafts]));
     return managerRows(rows, holds, now, archiveAfterDays);
   }, [sessions, live, hosts, items, drafts, now, archiveAfterDays]);
 }
@@ -210,18 +211,18 @@ export function SessionsSettings({ scrollRef }: { scrollRef: RefObject<HTMLDivEl
 
       <section className="grid grid-cols-[minmax(0,1fr)] gap-3 py-6" aria-label="Keep the list short" data-sessions-settings>
         <Heading title="Keep the list short">
-          Archived sessions leave the sidebar but stay on disk. Deleting one moves its transcript to the {trashName()}, so <code className="font-mono text-meta">claude --resume</code> no longer lists it.
+          Sessions in Done leave the main list but stay on disk. Deleting one moves its transcript to the {trashName()}, so <code className="font-mono text-meta">claude --resume</code> no longer lists it.
         </Heading>
         <div className="grid gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
           <div>
-            <SettingRow label="Archive finished sessions after" detail="Working, needs you, unread and pinned sessions stay in the list. New activity brings a session back.">
+            <SettingRow label="Move finished sessions to Done after" detail="Working, needs you, unread and pinned sessions stay in the list, and so do ones with an unsent message or a queued prompt. New activity brings a session back.">
               <Stepper
                 ref={archiveInput}
                 value={prefs.archiveAfterDays}
                 min={ARCHIVE_AFTER_DAYS.min}
                 max={ARCHIVE_AFTER_DAYS.max}
                 onChange={onArchiveDays}
-                label="Days before a finished session is archived"
+                label="Days before a finished session goes to Done"
                 less="Fewer days"
                 more="More days"
                 hook="auto-archive"
@@ -229,22 +230,28 @@ export function SessionsSettings({ scrollRef }: { scrollRef: RefObject<HTMLDivEl
               <span className="w-8 text-ui text-muted">days</span>
             </SettingRow>
             <SettingRow
-              label="Delete archived sessions"
-              detail={`${deleting.enabled ? 'An' : 'Off. When on, an'} archived session goes to the ${trashName()} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`}
+              label="Delete Done sessions"
+              detail={`${deleting.enabled ? 'A' : 'Off. When on, a'} session in Done goes to the ${trashName()} after the days you set. Pinned and working sessions, and ones with a queued prompt or an unsent message, are kept.`}
             >
               <Stepper
                 value={deleting.afterDays}
                 min={DELETE_AFTER_DAYS.min}
                 max={DELETE_AFTER_DAYS.max}
                 onChange={onDeleteDays}
-                label="Days in Archived before a session is deleted"
+                label="Days in Done before a session is deleted"
                 less="Fewer days"
                 more="More days"
                 disabled={!deleting.enabled}
                 hook="auto-delete-days"
               />
               <span className={`w-8 text-ui ${deleting.enabled ? 'text-muted' : 'text-faint'}`}>days</span>
-              <Switch checked={deleting.enabled} onChange={onSwitch} label="Delete archived sessions" dataAttrs={{ 'data-auto-delete': true, 'data-on': deleting.enabled }} />
+              <Switch checked={deleting.enabled} onChange={onSwitch} label="Delete Done sessions" dataAttrs={{ 'data-auto-delete': true, 'data-on': deleting.enabled }} />
+            </SettingRow>
+            <SettingRow
+              label="Move to Done when its pull request merges"
+              detail={`A session whose pull request merged goes to Done, unless it is pinned, working, open in Seshboard or active since.${deleting.enabled ? ` Like every session in Done, it goes to the ${trashName()} after the days set above.` : ''}`}
+            >
+              <Switch checked={prefs.doneOnMerge} onChange={(on) => update({ doneOnMerge: on })} label="Move to Done when its pull request merges" dataAttrs={{ 'data-done-on-merge': true, 'data-on': prefs.doneOnMerge }} />
             </SettingRow>
           </div>
           {periods && readable.length > 0 && (
@@ -297,14 +304,14 @@ const STATUS_ICON: Record<ManagerStatus, ReactNode> = {
   'needs-you': <span className="size-2 rounded-full bg-warn" aria-hidden />,
   working: <span className="size-2 animate-pulse rounded-full bg-accent-ink" aria-hidden />,
   listed: <PanelLeft size={12} aria-hidden />,
-  archived: <Archive size={12} aria-hidden />,
+  archived: <Check size={12} aria-hidden />,
   pinned: <Pin size={12} aria-hidden />,
 };
 
-/** "1,284 sessions · 2.4 GB on disk · 214 archived, 89 of them for more than 30 days". */
+/** "1,284 sessions · 2.4 GB on disk · 214 in Done, 89 of them for more than 30 days". */
 function summaryText(summary: ReturnType<typeof overviewSummary>): string {
   const parts = [`${summary.count.toLocaleString()} ${summary.count === 1 ? 'session' : 'sessions'}`, `${formatBytes(summary.bytes)} on disk`];
-  if (summary.archived) parts.push(`${summary.archived.toLocaleString()} archived${summary.archivedLong ? `, ${summary.archivedLong.toLocaleString()} of them for more than 30 days` : ''}`);
+  if (summary.archived) parts.push(`${summary.archived.toLocaleString()} in Done${summary.archivedLong ? `, ${summary.archivedLong.toLocaleString()} of them for more than 30 days` : ''}`);
   return parts.join(' · ');
 }
 
@@ -415,7 +422,7 @@ function SessionOverview({ rows, now, scrollRef }: { rows: readonly ManagerRow[]
   };
   const unarchive = (targets: readonly ManagerRow[]) => {
     setFlags(targets, { archived: false });
-    toast(targets.length === 1 ? 'Unarchived 1 session' : `Unarchived ${targets.length.toLocaleString()} sessions`);
+    toast(targets.length === 1 ? 'Reopened 1 session' : `Reopened ${targets.length.toLocaleString()} sessions`);
     setSelected(new Set());
   };
 
@@ -424,8 +431,8 @@ function SessionOverview({ rows, now, scrollRef }: { rows: readonly ManagerRow[]
     return [
       { label: 'Open session', onSelect: () => open(row), data: { 'data-session-manager-open': true } },
       row.status === 'archived'
-        ? { label: 'Unarchive', icon: <ArchiveRestore size={13} aria-hidden />, onSelect: () => unarchive([row]) }
-        : { label: 'Archive', icon: <Archive size={13} aria-hidden />, disabled: row.status === 'working' || row.status === 'needs-you', onSelect: () => setFlags([row], ARCHIVE) },
+        ? { label: 'Reopen', icon: <RotateCcw size={13} aria-hidden />, onSelect: () => unarchive([row]) }
+        : { label: 'Done', icon: <Check size={13} aria-hidden />, disabled: row.status === 'working' || row.status === 'needs-you', onSelect: () => setFlags([row], ARCHIVE) },
       { label: row.data.pinned ? 'Unpin' : 'Pin', icon: row.data.pinned ? <PinOff size={13} aria-hidden /> : <Pin size={13} aria-hidden />, onSelect: () => setFlags([row], { pinned: !row.data.pinned }) },
       { label: `Reveal transcript in ${fileManagerName()}`, onSelect: () => void client?.call('session.reveal', { sessionId: row.id }).catch(fail(`show it in ${fileManagerName()}`)) },
       { label: 'Copy session ID', onSelect: () => void navigator.clipboard.writeText(row.id).then(() => toast('Copied the session ID'), fail('copy the session ID')) },
@@ -638,7 +645,7 @@ function SessionOverview({ rows, now, scrollRef }: { rows: readonly ManagerRow[]
           segments={[
             { value: 'all', label: 'All', data: { 'data-session-status-filter': 'all' } },
             { value: 'listed', label: 'In the list', data: { 'data-session-status-filter': 'listed' } },
-            { value: 'archived', label: 'Archived', data: { 'data-session-status-filter': 'archived' } },
+            { value: 'archived', label: 'Done', data: { 'data-session-status-filter': 'archived' } },
             { value: 'pinned', label: 'Pinned', data: { 'data-session-status-filter': 'pinned' } },
           ]}
           className="shrink-0"
@@ -701,8 +708,8 @@ function SessionOverview({ rows, now, scrollRef }: { rows: readonly ManagerRow[]
             {` · ${formatBytes(pickedBytes)}`}
             {pickedKept > 0 && ` · ${pickedKept.toLocaleString()} skipped`}
           </span>
-          <Button icon={<ArchiveRestore size={13} aria-hidden />} disabled={pickedArchived.length === 0} onClick={() => unarchive(pickedArchived)} data-session-unarchive-selected>
-            Unarchive
+          <Button icon={<RotateCcw size={13} aria-hidden />} disabled={pickedArchived.length === 0} onClick={() => unarchive(pickedArchived)} data-session-unarchive-selected>
+            Reopen
           </Button>
           <Button variant="danger" icon={<Trash2 size={13} aria-hidden />} onClick={() => setTrashing(picked)} data-session-move-to-trash>
             Move to {trashName()}…

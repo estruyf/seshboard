@@ -51,7 +51,7 @@ async function until<T>(read: () => T | Promise<T>, ok: (value: T) => boolean, t
 }
 
 /** An engine listening for the companion, and a window attached to it. */
-async function start(options: { legacyDataDir?: string } = {}) {
+async function start() {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-companion-'));
   const engine = createEngine({
     dataDir,
@@ -59,7 +59,7 @@ async function start(options: { legacyDataDir?: string } = {}) {
     shellEnv: Promise.resolve({ shell: '/bin/zsh', env: { PATH: '' }, resolved: false, durationMs: 0 }),
     claudeBinary: '/nonexistent/claude',
     sessionSource: source,
-    companion: { appVersion: '9.9.9', ...options },
+    companion: { appVersion: '9.9.9' },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -115,15 +115,6 @@ describe('companion socket', () => {
     }
     expect(info).toMatchObject({ protocol: COMPANION_PROTOCOL, appVersion: '9.9.9', pid: process.pid });
     expect(info.token).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('also writes engine.json where companions from before the rename look, and takes both away when it stops', async () => {
-    const legacyDataDir = join(mkdtempSync(join(tmpdir(), 'seshboard-legacy-')), 'Switchboard');
-    const { infoFile } = await start({ legacyDataDir });
-    const legacyFile = join(legacyDataDir, COMPANION_DIR, COMPANION_INFO_FILE);
-    expect(readFileSync(legacyFile, 'utf8')).toBe(readFileSync(infoFile, 'utf8'));
-    cleanups.splice(0).forEach((fn) => fn());
-    expect(existsSync(legacyFile)).toBe(false);
   });
 
   it('refuses a wrong token and closes the connection', async () => {
@@ -352,6 +343,12 @@ describe('which sessions are listed', () => {
     expect(ids(list, { archiveAfterDays: 1 })).toEqual([]);
     expect(ids(list, { archiveAfterDays: 3 })).toEqual(['two-days']);
     expect(ids(list, { archiveAfterDays: 7 })).toEqual(['two-days', 'five-days']);
+  });
+
+  it('keeps a session with an unsent message or a queued prompt, however old, as the sidebar does', () => {
+    const list = [summary('kept', { updatedAt: now - 5 * RECENT_MS }), summary('old', { updatedAt: now - 5 * RECENT_MS }), summary('kept-archived', { updatedAt: now - 5 * RECENT_MS, archivedAt: now - RECENT_MS })];
+    const kept = new Set(['kept', 'kept-archived']);
+    expect(companionSessions({ summaries: list, live: [], hosts: [], kept }, { now, scope: 'all', archiveAfterDays: DAYS }).map((s) => s.id)).toEqual(['kept']);
   });
 
   it('lists only sessions from Seshboard under its default scope', () => {

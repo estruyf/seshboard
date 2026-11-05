@@ -72,6 +72,12 @@ describe('pushTargets', () => {
     expect(pushTargets(subs, 'finished', new Set(), known).map((s) => s.deviceId)).toEqual(['tablet']);
   });
 
+  it('sends reminders to the devices that want them, and with finished turns to a phone from before', () => {
+    const withSetting = [...subs, { deviceId: 'watch', needsYou: false, finished: true, reminders: false }];
+    expect(pushTargets(withSetting, 'reminder', new Set(), new Set([...known, 'watch'])).map((s) => s.deviceId)).toEqual(['tablet']);
+    expect(pushTargets([{ deviceId: 'phone', needsYou: false, finished: false, reminders: true }], 'reminder', new Set(), known).map((s) => s.deviceId)).toEqual(['phone']);
+  });
+
   it('skips a device that has the app on screen', () => {
     expect(pushTargets(subs, 'needs-you', new Set(['phone']), known).map((s) => s.deviceId)).toEqual(['tablet']);
   });

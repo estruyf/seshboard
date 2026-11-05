@@ -4,7 +4,7 @@ import { archivedSince, rowListing, rowStatus } from '../../state/sidebarRows.ts
 
 /** Where a session is, as the overview's Status column says it. */
 export type ManagerStatus = 'needs-you' | 'working' | 'listed' | 'archived' | 'pinned';
-export const STATUS_LABEL: Record<ManagerStatus, string> = { 'needs-you': 'Needs you', working: 'Working', listed: 'In the list', archived: 'Archived', pinned: 'Pinned' };
+export const STATUS_LABEL: Record<ManagerStatus, string> = { 'needs-you': 'Needs you', working: 'Working', listed: 'In the list', archived: 'Done', pinned: 'Pinned' };
 
 /** The time filter, by last activity. */
 export type TimeFilter = 'any' | 'week' | 'month' | 'older';
@@ -240,7 +240,7 @@ export function paceText(rows: readonly ManagerRow[], now: number): string {
   if (perDay >= 0.75) return 'about one or two a day';
   if (perDay >= 1 / 7) return 'a few a week';
   if (recent > 0) return 'a few a month';
-  return 'only as sessions get archived';
+  return 'only as sessions go to Done';
 }
 
 /** "is pinned" as a count: "2 pinned", "1 with an unsent message". */

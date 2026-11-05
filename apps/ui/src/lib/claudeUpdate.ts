@@ -1,4 +1,32 @@
-import type { ClaudeInstallMethod, ClaudeUpdateState } from '@seshboard/protocol/client';
+import type { ClaudeInstallMethod, ClaudeUpdateState, ProviderUpdateState } from '@seshboard/protocol/client';
+
+/** Claude Code's check, or another provider's CLI's (GitHub Copilot CLI): the same state, with whose it is. */
+export type ToolUpdateState = ClaudeUpdateState | ProviderUpdateState;
+
+/** How a check's words name its CLI, and what an update changes for the sessions. */
+export interface ToolUpdateCopy {
+  name: string;
+  /** After "Updated to version X." in Settings › About. */
+  updated: string;
+  /** Under "X updated to vY" in the toast. */
+  updatedShort: string;
+}
+
+export const CLAUDE_UPDATE_COPY: ToolUpdateCopy = {
+  name: 'Claude Code',
+  updated: 'New sessions use it; sessions already running keep their version until they restart.',
+  updatedShort: 'New sessions use it.',
+};
+
+/**
+ * A provider's CLI. Seshboard runs one of it for all its sessions, started before the update, so the new version
+ * runs once Seshboard starts it again.
+ */
+export const providerUpdateCopy = (state: ProviderUpdateState): ToolUpdateCopy => ({
+  name: state.name,
+  updated: 'Seshboard uses it the next time it opens.',
+  updatedShort: 'Seshboard uses it the next time it opens.',
+});
 
 /** `2.1.10` is newer than `2.1.9`: compared numerically. */
 export function newer(a: string, b: string): boolean {
@@ -33,19 +61,19 @@ export interface ClaudeUpdateToast {
  * The Claude Code toast: a newer version that wasn't dismissed (unless its own auto-updater is turned off,
  * when Settings → About still says so), an update running, or one that just finished.
  */
-export function claudeUpdateToast(state: ClaudeUpdateState | null): ClaudeUpdateToast | null {
+export function claudeUpdateToast(state: ToolUpdateState | null, copy: ToolUpdateCopy = CLAUDE_UPDATE_COPY): ClaudeUpdateToast | null {
   if (!state) return null;
   if (state.status === 'updating') {
-    return { key: 'updating', title: 'Updating Claude Code…', body: null, tone: 'busy', action: { label: 'Show output', run: 'about', primary: false }, close: 'hide' };
+    return { key: 'updating', title: `Updating ${copy.name}…`, body: null, tone: 'busy', action: { label: 'Show output', run: 'about', primary: false }, close: 'hide' };
   }
   if (state.status === 'updated' && state.updatedTo) {
-    return { key: `updated:${state.updatedTo}`, title: `Claude Code updated to v${state.updatedTo}`, body: 'New sessions use it.', tone: 'ok', action: null, close: 'dismiss' };
+    return { key: `updated:${state.updatedTo}`, title: `${copy.name} updated to v${state.updatedTo}`, body: copy.updatedShort, tone: 'ok', action: null, close: 'dismiss' };
   }
   if (state.status !== 'available' || !state.latestVersion || !state.enabled || state.quiet) return null;
   if (state.dismissedVersion && !newer(state.latestVersion, state.dismissedVersion)) return null;
   return {
     key: `available:${state.latestVersion}`,
-    title: `Claude Code v${state.latestVersion} is available`,
+    title: `${copy.name} v${state.latestVersion} is available`,
     body: state.installedVersion ? `You have v${state.installedVersion}.` : null,
     tone: 'accent',
     action: state.canUpdate ? { label: 'Update', run: 'update', primary: true } : { label: 'Show how', run: 'about', primary: false },
@@ -54,24 +82,24 @@ export function claudeUpdateToast(state: ClaudeUpdateState | null): ClaudeUpdate
 }
 
 /** One line for Settings → About. */
-export function claudeUpdateStatusText(state: ClaudeUpdateState): string {
+export function claudeUpdateStatusText(state: ToolUpdateState, copy: ToolUpdateCopy = CLAUDE_UPDATE_COPY): string {
   switch (state.status) {
     case 'missing':
-      return 'Claude Code isn’t installed, or Seshboard can’t find it.';
+      return `${copy.name} isn’t installed, or Seshboard can’t find it.`;
     case 'off':
       return 'Automatic checks are off.';
     case 'idle':
       return 'Not checked yet.';
     case 'checking':
-      return 'Checking for a newer Claude Code…';
+      return `Checking for a newer ${copy.name}…`;
     case 'up-to-date':
-      return 'Claude Code is up to date.';
+      return `${copy.name} is up to date.`;
     case 'available':
       return `Version ${state.latestVersion} is available${state.channel === 'stable' ? ' on the stable channel' : ''}.`;
     case 'updating':
       return `Updating with ${state.command}…`;
     case 'updated':
-      return `Updated to version ${state.updatedTo ?? state.installedVersion}. New sessions use it; sessions already running keep their version until they restart.`;
+      return `Updated to version ${state.updatedTo ?? state.installedVersion}. ${copy.updated}`;
     case 'error':
       return state.error ?? 'Something went wrong.';
   }

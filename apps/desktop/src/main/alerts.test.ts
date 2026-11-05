@@ -4,13 +4,19 @@ import { alertFor, louder, soundEventOf, type AlertPrefs } from './alerts.ts';
 
 const KINDS = ['needs-you', 'finished', 'failed', 'action-done', 'resumed', 'checks-failed', 'checks-passed'] as const;
 const prefs = ({ notifications = true, ...sounds }: Partial<SoundPrefs> & { notifications?: boolean } = {}): AlertPrefs => ({
-  notifications: { enabled: notifications },
+  notifications: { enabled: notifications, reminders: true, badgeReminders: false },
   sounds: { ...DEFAULT_SOUNDS, ...sounds },
 });
 /** Every moment has a sound, so each one plays. */
 const ALL = { needsYou: 'Ping', finished: 'Glass', error: 'Basso', actionEnded: 'Pop' };
 
 describe('alertFor', () => {
+  it('shows a reminder unless reminders are off, with the finished sound', () => {
+    expect(alertFor('reminder', false, prefs({ enabled: true, byEvent: ALL }))).toEqual({ notify: true, sound: 'finished' });
+    const off = { ...prefs({ enabled: true, byEvent: ALL }), notifications: { enabled: true, reminders: false, badgeReminders: false } };
+    expect(alertFor('reminder', false, off)).toEqual({ notify: false, sound: null });
+  });
+
   it('notifies without a sound by default', () => {
     for (const kind of KINDS) expect(alertFor(kind, false, DEFAULT_PREFERENCES)).toEqual({ notify: true, sound: null });
   });
@@ -64,5 +70,14 @@ describe('sounds for events that arrive together', () => {
     expect(louder('needsYou', 'error')).toBe('needsYou');
     expect(louder('finished', 'error')).toBe('error');
     expect(louder('actionEnded', 'finished')).toBe('finished');
+  });
+});
+
+describe('Pause notifications', () => {
+  it('plays no notification and no sound until the pause ends', () => {
+    const prefs = { ...DEFAULT_PREFERENCES, notificationsPausedUntil: 2_000 };
+    expect(alertFor('needs-you', false, prefs, 1_000)).toEqual({ notify: false, sound: null });
+    expect(alertFor('needs-you', false, prefs, 2_000).notify).toBe(true);
+    expect(alertFor('needs-you', false, { ...prefs, notificationsPausedUntil: null }, 1_000).notify).toBe(true);
   });
 });

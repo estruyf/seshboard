@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteSession, RemoteSessions } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, REMOTE_FEATURE_STARTED_BY, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
+import { sidebarForest } from './pipelineTree.ts';
 import {
   filterBySource,
   isRemoteProjectKey,
@@ -11,7 +12,11 @@ import {
   remoteProjectKey,
   remoteRows,
   remoteRowStatus,
+  remoteTreeRuns,
+  shownList,
   showsOnly,
+  splitByScope,
+  startedByOf,
   sourceOf,
   THIS_COMPUTER,
   toggleOnly,
@@ -110,6 +115,64 @@ describe('remote rows', () => {
   });
 });
 
+describe('pipeline runs on another computer', () => {
+  const pipeline = { ...BUILT_IN_PIPELINES[0]!, builtIn: true, createdAt: 0, updatedAt: 0 };
+  const run = (over: Partial<RemoteRunState['run']> = {}, steps: Array<Partial<RemoteRunState['steps'][number]>> = []): RemoteRunState => ({
+    run: { id: 'run-1', pipelineId: pipeline.id, pipeline, parentSessionId: null, task: 'Add a toggle', title: 'Add a toggle', projectId: '0123456789abcdef', projectName: 'involv-timesheet', worktree: true, status: 'running', reason: null, waitingFor: null, hold: null, step: 0, round: 1, sentBackTo: null, pr: null, unattended: false, createdAt: NOW - 2 * HOUR, updatedAt: NOW - HOUR, endedAt: null, archivedAt: null, restoredAt: null, ...over },
+    steps: steps.map((step) => ({ runId: over.id ?? 'run-1', step: 'Plan', index: 0, round: 1, sessionId: null, status: 'done', outcome: 'clean', verdict: null, reason: null, startedAt: 0, endedAt: null, ...step })),
+  });
+
+  it('lists a run started from New session there as a run row, keyed by its run', () => {
+    const list: RemoteSessions = { sessions: [], prompts: [], runs: [run({ status: 'waiting', waitingFor: 'push' })] };
+    const [row] = remoteRows([mystic], new Map([['m1', list]]));
+    expect(row).toMatchObject({ id: 'remote:m1:run-1', title: 'Add a toggle', projectRoot: remoteProjectKey('m1', '0123456789abcdef'), isWorktree: true, remote: { sessionId: 'run-1', runRow: true, treeRunId: 'run-1', status: 'needs-you' } });
+    expect(rowStatus(row!)).toBe('needs-you');
+  });
+
+  it('names the trigger that started a session or a run there, for the bolt on its row', () => {
+    const origin = { name: 'CI fails on main', kind: 'ci' as const, ref: 'CI #4512', url: 'https://github.com/acme/app/actions/runs/4512', at: NOW - HOUR };
+    const list: RemoteSessions = { sessions: [session('s1', 'working', { trigger: origin }), session('s2', 'idle')], prompts: [], runs: [run({ trigger: { ...origin, name: 'New issues' }, unattended: true })] };
+    const rows = remoteRows([mystic], new Map([['m1', list]]));
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.remote?.trigger]))).toEqual({ 'remote:m1:s1': 'CI fails on main', 'remote:m1:s2': null, 'remote:m1:run-1': 'New issues' });
+  });
+
+  it('gives a session the run it started, and no run row for that run', () => {
+    const list: RemoteSessions = { sessions: [session('s1', 'idle')], prompts: [], runs: [run({ parentSessionId: 's1', status: 'done' })] };
+    const rows = remoteRows([mystic], new Map([['m1', list]]));
+    expect(rows.map((r) => r.id)).toEqual(['remote:m1:s1']);
+    expect(rows[0]!.remote).toMatchObject({ treeRunId: 'run-1' });
+    expect(rows[0]!.remote?.runRow).toBeUndefined();
+  });
+
+  it('puts a run row’s steps under it in step order, and lifts a parent while its run waits for you', () => {
+    const lists = new Map<string, RemoteSessions>([
+      [
+        'm1',
+        {
+          sessions: [session('parent', 'idle'), session('val', 'idle', { parentId: 'run-1' }), session('exec', 'idle', { parentId: 'run-1' }), session('plan', 'idle', { parentId: 'parent' })],
+          prompts: [],
+          runs: [
+            run({}, [
+              { step: 'Execute', index: 1, sessionId: 'exec' },
+              { step: 'Validate', index: 2, sessionId: 'val' },
+            ]),
+            run({ id: 'run-2', parentSessionId: 'parent', status: 'waiting', waitingFor: 'push' }),
+          ],
+        },
+      ],
+    ]);
+    const treeRuns = remoteTreeRuns([mystic], lists);
+    expect(treeRuns.map((state) => [state.run.id, state.run.parentSessionId])).toEqual([
+      ['remote:m1:run-1', null],
+      ['remote:m1:run-2', 'remote:m1:parent'],
+    ]);
+    const forest = sidebarForest(remoteRows([mystic], lists), [], NOW, Number.POSITIVE_INFINITY, new Set(), treeRuns);
+    expect(forest.children.get('remote:m1:run-1')?.map((r) => r.id)).toEqual(['remote:m1:exec', 'remote:m1:val']);
+    const parent = forest.roots.find((r) => r.id === 'remote:m1:parent')!;
+    expect(rowStatus(parent)).toBe('needs-you');
+  });
+});
+
 describe('local and remote sessions together', () => {
   const list: RemoteSessions = {
     sessions: [session('ask', 'idle', { updatedAt: NOW - 5 * 60_000 }), session('run', 'working'), session('old', 'idle', { updatedAt: NOW - 30 * 24 * HOUR })],
@@ -123,13 +186,12 @@ describe('local and remote sessions together', () => {
     // Another computer lists only what its sidebar does: never archived here, however old.
     expect(archived).toEqual([]);
     expect(isActive(remote[2]!, NOW, 7)).toBe(true);
-    const groups = groupsFor(active, NOW).map((g) => [g.group, g.rows.map((r) => r.id)]);
+    const groups = groupsFor(active).map((g) => [g.group, g.rows.map((r) => r.id)]);
     expect(groups).toEqual([
       ['needs-you', ['remote:m1:ask']],
       ['working', ['remote:m1:run']],
       ['pinned', ['pinned']],
-      ['today', ['here']],
-      ['earlier', ['remote:m1:old']],
+      ['open', ['here', 'remote:m1:old']],
     ]);
     const listRows = buildListRows(active, archived, { now: NOW, archivedOpen: false });
     expect(listRows.filter((r) => r.kind === 'session').length).toBe(5);
@@ -141,7 +203,7 @@ describe('local and remote sessions together', () => {
       prompts: [],
     };
     const both = remoteRows([mystic], new Map([['m1', working]]));
-    expect(groupsFor(both, NOW)[0]!.rows.map((r) => r.id)).toEqual(['remote:m1:second', 'remote:m1:first']);
+    expect(groupsFor(both)[0]!.rows.map((r) => r.id)).toEqual(['remote:m1:second', 'remote:m1:first']);
   });
 
   it('finds remote sessions by project and computer name', () => {
@@ -203,5 +265,74 @@ describe('remote profile colours', () => {
   });
   it('keeps the other computer’s colour when no profile matches', () => {
     expect(remoteProfileColor({ id: 'x', name: 'Client', color: 'blue' }, local)).toBe('blue');
+  });
+});
+
+describe('Mine and All on a shared computer', () => {
+  // Mine: what this computer started there (s-mine), one it sent a message to (s-sent), a step of someone else's run it
+  // answered (s-my-step), and their sub-sessions.
+  const shared = { ...mystic, mineHere: ['s-mine', 's-sent', 's-my-step'], ownName: 'mystic', features: [REMOTE_FEATURE_STARTED_BY] };
+  const list: RemoteSessions = {
+    sessions: [
+      session('s-mine', 'working'),
+      session('s-step', 'idle', { parentId: 's-mine' }),
+      session('s-sent', 'idle', { startedBy: 'Dmitriy' }),
+      session('s-theirs', 'needs-you', { startedBy: 'Sarah' }),
+      session('s-their-step', 'idle', { parentId: 's-theirs', startedBy: 'Sarah' }),
+      session('s-their-parent', 'idle', { startedBy: 'Dmitriy' }),
+      session('s-my-step', 'idle', { parentId: 's-their-parent' }),
+      session('s-there', 'idle', { startedBy: null }),
+    ],
+    prompts: [{ requestId: 'r1', sessionId: 's-theirs', toolName: 'Bash', input: {}, title: null, description: null, alwaysLabel: null, createdAt: 1 }],
+  };
+  const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id.replace('remote:m1:', ''));
+
+  it('marks what is mine, and says who started the rest', () => {
+    const rows = remoteRows([shared], new Map([['m1', list]]));
+    const by = Object.fromEntries(rows.map((row) => [row.id.replace('remote:m1:', ''), [row.remote!.mine, row.remote!.startedBy]]));
+    expect(by).toMatchObject({
+      's-mine': [true, null],
+      's-step': [true, null],
+      // Sent to from here: mine, so it says no name, though Dmitriy started it.
+      's-sent': [true, null],
+      's-theirs': [false, 'Sarah'],
+      // Started on that computer itself.
+      's-there': [false, 'mystic'],
+    });
+  });
+
+  it('shows only mine with Mine, keeping a parent of one of mine, and everyone’s with All', () => {
+    const rows = remoteRows([shared], new Map([['m1', list]]));
+    const mine = splitByScope(rows, new Map());
+    expect(ids(mine.shown)).toEqual(['s-mine', 's-step', 's-sent', 's-their-parent', 's-my-step']);
+    expect(ids(mine.hidden)).toEqual(['s-theirs', 's-their-step', 's-there']);
+    const all = splitByScope(rows, new Map([['m1', 'all']]));
+    expect(all.hidden).toEqual([]);
+    expect(all.shown).toHaveLength(rows.length);
+    // This computer's own rows are never filtered.
+    expect(splitByScope([local('a')], new Map()).shown).toHaveLength(1);
+  });
+
+  it('counts what needs you among what it shows', () => {
+    expect(ids(shownList(list, shared, 'mine').sessions)).not.toContain('s-theirs');
+    expect(shownList(list, shared, 'mine').prompts).toEqual([]);
+    expect(shownList(list, shared, 'all')).toBe(list);
+  });
+
+  it('says another device when that computer doesn’t say who', () => {
+    expect(startedByOf({ startedBy: undefined }, mystic)).toBe('another device');
+    expect(startedByOf({ startedBy: null }, mystic)).toBe('another device');
+    expect(startedByOf({ startedBy: null }, shared)).toBe('mystic');
+    expect(startedByOf({ startedBy: 'Sarah’s iPhone' }, mystic)).toBe('Sarah’s iPhone');
+  });
+
+  it('leaves the others’ sessions out of the sections, without a word about them', () => {
+    const rows = remoteRows([shared, { ...shared, id: 'm2', name: 'studio' }], new Map([['m1', list], ['m2', list]]));
+    const { shown } = splitByScope(rows, new Map());
+    const roots = (r: typeof rows) => r.filter((row) => !row.remote?.parentRowId || !r.some((p) => p.id === row.remote!.parentRowId));
+    const { active } = buildSessionList(roots(shown), { search: '', project: null, now: NOW, archiveAfterDays: 7 });
+    const list2 = buildListRows(active, [], { now: NOW, archivedOpen: false });
+    // Needs you only had the others' session: no empty header for it.
+    expect(list2.flatMap((r) => (r.kind === 'group' ? [`[${r.group} ${r.count}]`] : []))).toEqual(['[working 2]', '[open 4]']);
   });
 });

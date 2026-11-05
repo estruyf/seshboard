@@ -769,4 +769,88 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE pipeline_runs ADD COLUMN unattended INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // v42: Profiles of other providers (#199): a profile's config folder and login can be GitHub Copilot's
+  // (`COPILOT_HOME`). Every profile from before is Claude Code's. A user choice: keep it.
+  `
+  ALTER TABLE claude_profiles ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';
+  `,
+
+  // v43: What another provider's session showed but didn't write to its own file (#199): a slash command you ran and
+  // the words it answered, put back into the conversation when it is read. Nothing else has them: keep them.
+  `
+  CREATE TABLE provider_notes (
+    uuid TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    message_json TEXT NOT NULL
+  );
+  CREATE INDEX provider_notes_session ON provider_notes (session_id, at);
+  `,
+
+  // v44: What's left in a session, in your words (session triage): one line, shown under its title. A user choice:
+  // keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN note TEXT;
+  `,
+
+  // v45: Loose ends (session triage): what each session (or run row) left behind in git and on GitHub, as last found,
+  // so a restart or gh offline starts from what was known. Derived: fine to drop, a look finds them again.
+  `
+  CREATE TABLE loose_ends (
+    owner TEXT PRIMARY KEY,
+    root TEXT NOT NULL,
+    ends_json TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX loose_ends_root ON loose_ends (root);
+  `,
+
+  // v46: A session moved to Done because its pull request merged (session triage): the pull request's number, which
+  // its row shows ("Merged #123") and which marks the merge as handled, so Reopen sticks. A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN done_pr INTEGER;
+  `,
+
+  // v47: Remind me later (session triage): when a session comes back, and when its reminder came due (it shows under
+  // Reminders until you open it). A user choice: keep it.
+  `
+  ALTER TABLE session_flags ADD COLUMN remind_at INTEGER;
+  ALTER TABLE session_flags ADD COLUMN reminded_at INTEGER;
+  `,
+
+  // v48: A name and a colour you give a paired computer here (Settings › Remote, Other computers). `name` stays what
+  // it calls itself, updated from its `hello`. Your choices: keep them.
+  `
+  ALTER TABLE remote_computers ADD COLUMN label TEXT;
+  ALTER TABLE remote_computers ADD COLUMN color TEXT;
+  `,
+
+  // v49: Which of a paired computer's notifications show here (Settings › Remote, Other computers); null is all of
+  // them. A user choice: keep it.
+  `
+  ALTER TABLE remote_computers ADD COLUMN notify TEXT;
+  `,
+
+  // v50: The sessions this computer started on a paired computer, for its "Started here" notifications: only this
+  // computer knows them. Keep them.
+  `
+  CREATE TABLE remote_started_sessions (
+    computer_id TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    PRIMARY KEY (computer_id, session_id)
+  );
+  `,
+
+  // v51: Remote, on the computer others reach: which paired device started a session (or a pipeline run) from afar, so
+  // a computer sharing this one can say whose it is (`RemoteSession.startedBy`). Nothing else has it: keep it.
+  `
+  CREATE TABLE remote_session_origins (
+    session_id  TEXT PRIMARY KEY,
+    device_id   TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    started_at  INTEGER NOT NULL
+  );
+  `,
 ];

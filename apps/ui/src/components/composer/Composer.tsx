@@ -1,5 +1,5 @@
-import { ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
+import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -9,7 +9,7 @@ import { addChips, isLongPaste, pastedItem, pasteTooLongReason, promptWithContex
 import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
-import { besideChipRow } from './footerMeasure.ts';
+import { ComposerTray, type TrayUsage } from './ComposerTray.tsx';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -24,7 +24,7 @@ import { useSessions } from '../../state/sessionsStore.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { shortAge } from '../../lib/format.ts';
 import { useAttachments } from './useAttachments.ts';
-import { ariaKeysFor, formatKeys, keysFor, localizeKeys, matches, type ShortcutId } from '../../lib/shortcuts.ts';
+import { ariaKeysFor, formatKeys, keysFor, matches, type ShortcutId } from '../../lib/shortcuts.ts';
 import { submitKey } from '../newSession/startMenu.ts';
 import { blanksLeft, fillMessage, scopeKey, slashScore, startFill, type FillState } from '../savedPrompts/fillModel.ts';
 import { PromptFiller, type PromptFillerHandle } from '../savedPrompts/PromptFiller.tsx';
@@ -87,13 +87,19 @@ export interface ComposerProps {
   focusRequest?: number;
   /** Changing it sends what is in the box, as Enter would (New session's Start anyway). */
   submitRequest?: number;
-  /** Compact controls in the card's bottom-left corner in place of the hint line (the model, mode and effort chips). */
+  /** The options on the tray under the box (the profile, model, effort and mode chips, `ComposerChipRow`). */
   controls?: ReactNode;
-  /** Buttons in the card's bottom-right corner, before attach (a session's Tools). */
-  actions?: ReactNode;
-  /** Mods' chips (the prompt shield and statuses), first on the right of the footer; they fold before anything else moves. */
+  /** A line inside the box, right above its buttons (New session: what switching to another provider turned off). */
+  above?: ReactNode;
+  /** Tools on the tray's right, for a session that has them. */
+  tools?: (() => void) | null;
+  /** Usage on the tray's right, before the context ring (plan usage and cost, or another provider's premium requests). */
+  info?: ReactNode;
+  /** The same usage in one line, for the folded chip's menu on a narrow tray. */
+  usage?: TrayUsage | null;
+  /** Mods' chips (the prompt shield and statuses), on the right of the box's row before Ask; they fold before anything else moves. */
   status?: ReactNode;
-  /** Right before Stop and Send: the ring that stands in for the session footer while the terminal is open below. */
+  /** Last on the tray: the context ring (with plan usage in its tooltip while the terminal is open below). */
   meter?: ReactNode;
   /** A shortcut shown on the submit button, like `⌘↵`. */
   submitHint?: string;
@@ -537,32 +543,6 @@ export function Composer(props: ComposerProps) {
     useComposerTargets.getState().register({ key: draftKey, cwd });
     return () => useComposerTargets.getState().unregister(draftKey);
   }, [draftKey, cwd]);
-  // The footer's left side never gets less than the attach buttons and the chip row at its smallest level, so when the
-  // right side (mods' chips, Ask, Stop, Send) leaves less than that, the right side wraps to its own line and nothing
-  // overlaps. It doesn't depend on the level the row shows now, so the footer can't flip between one line and two.
-  const footerStartRef = useRef<HTMLDivElement>(null);
-  const hasControls = Boolean(props.controls);
-  useLayoutEffect(() => {
-    const start = footerStartRef.current;
-    if (!start) return;
-    const measure = () => {
-      const smallest = start.querySelector<HTMLElement>('[data-composer-chips] > [aria-hidden] > div:last-child');
-      if (!smallest) return;
-      start.style.minWidth = `${Math.ceil(besideChipRow(start) + smallest.getBoundingClientRect().width)}px`;
-    };
-    measure();
-    const resize = new ResizeObserver(measure);
-    resize.observe(start);
-    const smallest = start.querySelector('[data-composer-chips] > [aria-hidden] > div:last-child');
-    if (smallest) resize.observe(smallest);
-    // A chip row that mounts or changes after this runs.
-    const mutation = new MutationObserver(measure);
-    mutation.observe(start, { childList: true, subtree: true });
-    return () => {
-      resize.disconnect();
-      mutation.disconnect();
-    };
-  }, [hasControls]);
   // Claude Code may read this box, fill it or show a suggestion in it, for a mod. Never sends.
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const textNow = useRef(text);
@@ -946,6 +926,21 @@ export function Composer(props: ComposerProps) {
     const other = props.others?.find((o) => o.shortcut === shortcut);
     return other ? submit(false, (value, sent, parts) => other.onSubmit(value, sent, parts)) : Promise.resolve();
   };
+  /** The @ button: an `@` at the caret (after a space, in the middle of a word) opens the list of files and sessions, as typing it does. */
+  const mention = () => {
+    const el = ref.current;
+    if (!el || el.disabled) return;
+    const before = el.value.slice(0, el.selectionStart);
+    const pad = before && !/\s$/.test(before) ? ' ' : '';
+    const value = `${before}${pad}@${el.value.slice(el.selectionEnd)}`;
+    const caret = before.length + pad.length + 1;
+    setText(value);
+    el.focus();
+    requestAnimationFrame(() => {
+      el.setSelectionRange(caret, caret);
+      updatePalette(value, caret);
+    });
+  };
   const hasText = !!text.trim() || chips.length > 0 || !!fillState;
   const hasMessage = hasText || attachments.length > 0;
   const attach = (
@@ -986,13 +981,27 @@ export function Composer(props: ComposerProps) {
           data-add-context
         />
       )}
+      {cwd && (
+        <Button
+          variant="quiet"
+          size="sm"
+          iconOnly
+          icon={<AtSign size={14} />}
+          onClick={mention}
+          disabled={disabled || sideToken}
+          data-tooltip={props.links ? 'Mention a file or session (@)' : 'Mention a file (@)'}
+          aria-label={props.links ? 'Mention a file or session' : 'Mention a file'}
+          data-mention
+        />
+      )}
     </>
   );
 
   return (
     <div
       ref={rootRef}
-      className="relative"
+      className="@container/box relative"
+      data-composer-root
       onFocusCapture={() => {
         if (draftKey !== undefined) useComposerTargets.getState().register({ key: draftKey, cwd });
         if (promptsFor?.root && useSavedPromptsStore.getState().lastRoot !== promptsFor.root) useSavedPromptsStore.setState({ lastRoot: promptsFor.root });
@@ -1103,9 +1112,10 @@ export function Composer(props: ComposerProps) {
       <div
         ref={cardRef}
         onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
-        className={`rounded-xl border bg-card px-3 pt-2.5 pb-2 shadow-sm transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
+        className={`relative z-[1] rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
         style={props.frameColor && !sideToken ? { borderColor: props.frameColor } : undefined}
         data-side-question={sideToken || undefined}
+        data-composer-card
       >
         {fillState && (
           <>
@@ -1157,7 +1167,7 @@ export function Composer(props: ComposerProps) {
             ref.current?.focus();
           }}
         />
-        {/* Grows with the content up to max-h-80, then scrolls. CSS sizes it: collapsing it to measure scrollHeight
+        {/* At least three lines; grows with the content up to ten (New session's: max-h-80), then scrolls. CSS sizes it: collapsing it to measure scrollHeight
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
         <div className="relative flex items-start gap-2">
           {fillState && !text && !props.disabledReason && (
@@ -1217,45 +1227,34 @@ export function Composer(props: ComposerProps) {
             onBlur={() => {
               // A search still on its way must not reopen the list after focus left; the open list waits a moment so a click on it lands.
               ++searchSeq.current;
-              setTimeout(() => setPalette(null), 100);
+              // Focus back in the box by then: this list is one typed since, and closing it would let Return send the text.
+              setTimeout(() => {
+                if (document.hasFocus() && document.activeElement === ref.current) return;
+                setPalette(null);
+              }, 100);
             }}
-            className={`block field-sizing-content max-h-80 w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'min-h-24 px-1 pt-1 text-title font-normal' : 'text-body'}`}
+            className={`block field-sizing-content w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'max-h-80 min-h-24 px-1 pt-1 text-title font-normal' : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
           />
         </div>
         {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}
-        {props.controls && notice && (
-          <p role="alert" className="mt-1 truncate text-meta text-error" data-tooltip={notice}>
+        {notice && (
+          <p role="alert" className="mt-1 truncate px-1 text-meta text-error" data-tooltip={notice}>
             {notice}
           </p>
         )}
-        <div className={`mt-1.5 flex items-center justify-between gap-x-2 ${props.controls ? 'flex-wrap gap-y-1.5' : ''}`} data-composer-footer>
+        {props.above}
+        {/* The box's own row: what goes into the message on the left, what sends or asks it on the right. How it runs is on the tray. */}
+        <div className="mt-1.5 flex items-center gap-x-2" data-composer-footer>
           <span className="sr-only" role="status" aria-live="polite" data-history-announcer>
             {announcement}
           </span>
-          {props.controls ? (
-            <div ref={footerStartRef} className="-ml-1.5 flex min-w-0 flex-1 items-center" data-composer-footer-start>
-              {/* What goes into the message comes first; a thin line, then the chips that set how it runs. */}
-              <div className="flex shrink-0 items-center gap-0.5">{attach}</div>
-              <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-border" />
-              {props.controls}
-              {/* The keys still get read out with the message box; the chips take the hint's place on screen. */}
-              <span id={`${ids}-hint`} className="sr-only">
-                {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
-              </span>
-            </div>
-          ) : (
-            <span id={`${ids}-hint`} className="min-w-0 truncate text-meta text-muted">
-              {notice ? (
-                <span role="alert" className="text-error" data-tooltip={notice}>
-                  {notice}
-                </span>
-              ) : props.running ? (
-                `Esc to stop Claude · ${props.runningHint ?? `messages wait for Claude to finish${props.secondary ? ` · ${formatKeys(keysFor(props.secondary.shortcut))} sends now` : ''}`}`
-              ) : (
-                `/ for commands · @ for files${githubRoot ? ' · # for issues' : ''}${props.onCycleMode ? ` · ${localizeKeys('⇧Tab')} to change mode` : ''}`
-              )}
-            </span>
-          )}
+          <div className="-ml-1 flex shrink-0 items-center gap-0.5" data-composer-footer-start>
+            {attach}
+          </div>
+          {/* The keys are read out with the message box; on screen the placeholder carries the hint. */}
+          <span id={`${ids}-hint`} className="sr-only">
+            {sideToken ? 'Enter asks about this session. The answer is not added to the conversation. Backspace at the start goes back to a message.' : props.running ? `Esc stops Claude.${props.runningHint ? ` ${props.runningHint}` : props.secondary ? ` ${formatKeys(keysFor(props.secondary.shortcut))} sends now.` : ''}` : `/ for commands, @ for files${githubRoot ? ', # for issues' : ''}${props.onCycleMode ? ', ⇧Tab to change mode' : ''}.`}
+          </span>
           <div className="ml-auto flex shrink-0 items-center gap-1.5" data-composer-footer-end>
             {/* Said when it changes; empty (but there) once every required blank is filled. */}
             <span role="status" aria-live="polite" className={`text-meta text-caution ${left.length ? '' : 'sr-only'}`} data-blanks-left={left.length || undefined}>
@@ -1263,10 +1262,6 @@ export function Composer(props: ComposerProps) {
             </span>
             {props.status}
             {props.dropHint && !text && attachments.length === 0 && !disabled && <span className="text-meta text-muted @max-[860px]:hidden">Paste or drop images and files</span>}
-            {props.actions}
-            {/* Without chips the hint line holds the left; the attach buttons stay on the right. */}
-            {!props.controls && attach}
-            {props.meter}
             {side && (
               <span className="relative flex">
                 <Button
@@ -1280,7 +1275,8 @@ export function Composer(props: ComposerProps) {
                   data-tooltip="Ask about this session. Not added to the conversation."
                   data-ask-button={side.open ? 'open' : ''}
                 >
-                  Ask
+                  {/* Under 600px only the icon shows; the word stays for screen readers, the tooltip says the rest. */}
+                  <span className="@max-[600px]/box:sr-only">Ask</span>
                 </Button>
                 {side.ready && !side.open && <span className="pointer-events-none absolute -top-1 -right-1 size-2 rounded-full bg-link ring-2 ring-card" data-ask-ready aria-hidden />}
                 {side.ready && !side.open && <span className="sr-only">An answer is ready</span>}
@@ -1325,6 +1321,7 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
+      {(props.controls || props.info || props.meter || props.tools) && <ComposerTray controls={props.controls} tools={props.tools} info={props.info} usage={props.usage} meter={props.meter} />}
     </div>
   );
 }

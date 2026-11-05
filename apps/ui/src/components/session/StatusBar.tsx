@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { autoChipModel } from '../../lib/autoModel.ts';
 import { useAutoPick } from '../../state/autoPickStore.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { fastModeFace } from '../../lib/fastMode.ts';
 import { findModelOption } from '../../lib/models.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
@@ -58,6 +59,8 @@ export function SessionControls({ host }: { host: SessionHostInfo }) {
               : undefined,
         }}
         effort={supportsEffort ? { value: host.effort ?? '', onChange: (effort) => void client?.call('session.setEffort', { sessionId: host.sessionId, effort: effort || null }) } : null}
+        // Unlike effort, an unknown model gets no toggle: fast mode costs more, so only offer it when the model says it has it.
+        fast={modelOption?.supportsFastMode ? { face: fastModeFace(host), onToggle: (on) => void client?.call('session.setFastMode', { sessionId: host.sessionId, on }) } : null}
         mode={{ value: host.permissionMode, onChange: (mode) => void client?.call('session.setPermissionMode', { sessionId: host.sessionId, mode }) }}
       />
     </div>

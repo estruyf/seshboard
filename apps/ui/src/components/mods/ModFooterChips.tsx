@@ -5,7 +5,6 @@ import { useSessionMods } from '../../state/modsStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { Popover } from '../ui/Popover.tsx';
 import { fitModChips, plusLabel, screenedBy } from './modFooter.ts';
-import { besideChipRow } from '../composer/footerMeasure.ts';
 import { shownMods } from './modVisibility.ts';
 
 const CHIP = 'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-ui whitespace-nowrap';
@@ -56,12 +55,9 @@ export function ModFooterChips({ sessionId, profileId }: { sessionId: string; pr
     const measure = () => {
       const start = footer.querySelector<HTMLElement>('[data-composer-footer-start]');
       const end = footer.querySelector<HTMLElement>('[data-composer-footer-end]');
-      // The chip row at its full size (its first measuring copy), so the statuses fold before it steps down.
-      const rowFull = start?.querySelector<HTMLElement>('[data-composer-chips] > [aria-hidden] > div')?.getBoundingClientRect().width ?? 0;
       const others = end ? end.getBoundingClientRect().width - group.getBoundingClientRect().width : 0;
-      // Always measured against the first line, wrapped or not: a footer that has wrapped keeps the statuses folded, so
-      // widening the window is what brings it back to one line (sizing them for the second line would hold it there).
-      const left = start ? besideChipRow(start) + rowFull : 0;
+      // The box's row holds the attach buttons on the left; the chips that set how it runs are on the tray under it.
+      const left = start?.getBoundingClientRect().width ?? 0;
       const available = footer.clientWidth - left - others - 16;
       const chips = [...copies.children] as HTMLElement[];
       const width = (c: HTMLElement | undefined) => c?.getBoundingClientRect().width ?? 0;

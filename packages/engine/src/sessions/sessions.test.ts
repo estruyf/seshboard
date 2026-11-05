@@ -163,6 +163,55 @@ describe('SessionIndex', () => {
     expect(again.index.get(ID_B)!.archivedAt).toBeGreaterThan(0);
   });
 
+  it('keeps a note on a session, through Done and a restart, until you clear it', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A)], db);
+    await t.index.refresh();
+    expect(t.index.get(ID_A)).toMatchObject({ note: null });
+    t.index.setNote(ID_A, 'push after review');
+    expect(t.changes.at(-1)!.upserted[0]).toMatchObject({ id: ID_A, note: 'push after review' });
+    t.index.setFlags(ID_A, { archived: true });
+    t.index.setArchivedMany([ID_A], false);
+    expect(t.index.get(ID_A)).toMatchObject({ note: 'push after review' });
+    t.index.stop();
+    const again = setup([], db);
+    expect(again.index.get(ID_A)).toMatchObject({ note: 'push after review' });
+    again.index.setNote(ID_A, null);
+    expect(again.index.get(ID_A)).toMatchObject({ note: null });
+  });
+
+  it('moves sessions to Done for a merged pull request in one change, and keeps the merge handled after Reopen', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A), info(ID_B)], db);
+    await t.index.refresh();
+    const before = t.changes.length;
+    t.index.markMerged([{ sessionId: ID_A, pr: 12 }, { sessionId: ID_B, pr: 13 }]);
+    expect(t.changes).toHaveLength(before + 1);
+    expect(t.index.get(ID_A)).toMatchObject({ donePr: 12, restoredAt: null });
+    expect(t.index.get(ID_A)!.archivedAt).toBeGreaterThan(0);
+    t.index.setFlags(ID_A, { archived: false });
+    expect(t.index.get(ID_A)).toMatchObject({ donePr: 12, archivedAt: null });
+    t.index.stop();
+    expect(setup([], db).index.get(ID_B)).toMatchObject({ donePr: 13 });
+  });
+
+  it('snoozes sessions, brings them back when due, and takes the reminder away on Done', async () => {
+    const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    const t = setup([info(ID_A), info(ID_B)], db);
+    await t.index.refresh();
+    t.index.setReminder([ID_A, ID_B], 5_000);
+    expect(t.index.snoozed().sort()).toEqual([ID_A, ID_B].sort());
+    expect(t.index.dueReminders(4_999)).toEqual([]);
+    expect(t.index.dueReminders(5_000).map((d) => d.sessionId).sort()).toEqual([ID_A, ID_B].sort());
+    t.index.markReminded([ID_A], 6_000);
+    expect(t.index.get(ID_A)).toMatchObject({ remindAt: 5_000, remindedAt: 6_000 });
+    expect(t.index.dueReminders(7_000).map((d) => d.sessionId)).toEqual([ID_B]);
+    t.index.setFlags(ID_B, { archived: true });
+    expect(t.index.get(ID_B)).toMatchObject({ remindAt: null, remindedAt: null });
+    t.index.stop();
+    expect(setup([], db).index.get(ID_A)).toMatchObject({ remindAt: 5_000, remindedAt: 6_000 });
+  });
+
   it('archives a pipeline tree in one change, and hides sessions until they have new activity', async () => {
     const db = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
     const t = setup([info(ID_A), info(ID_B)], db);
