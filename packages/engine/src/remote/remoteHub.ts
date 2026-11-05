@@ -6,7 +6,6 @@ import {
   keyPairFromSecret,
   REMOTE_APP_URL,
   REMOTE_DEFAULT_PORT,
-  REMOTE_LEGACY_APP_URLS,
   REMOTE_PREVIEW_APP_URL,
   remoteLinkFragment,
   RemoteSettings,
@@ -280,20 +279,11 @@ export interface RemoteHubOptions {
   catchUpWaitMs?: number;
 }
 
-/**
- * The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`, each with the
- * address it had before seshboard.app (`REMOTE_LEGACY_APP_URLS`), so phones paired there keep working.
- */
+/** The origins whose remote app may open a socket: the app's, and the preview's when `previewApp`. */
 export function remoteAppOrigins(appUrl: string, previewApp: boolean): string[] {
   const urls = [appUrl];
   if (previewApp) urls.push(REMOTE_PREVIEW_APP_URL);
-  const origins: string[] = [];
-  for (const url of urls) {
-    for (const origin of [new URL(url).origin, ...(REMOTE_LEGACY_APP_URLS[url] ? [new URL(REMOTE_LEGACY_APP_URLS[url]).origin] : [])]) {
-      if (!origins.includes(origin)) origins.push(origin);
-    }
-  }
-  return origins;
+  return [...new Set(urls.map((url) => new URL(url).origin))];
 }
 
 /** What a phone watches: one transcript at a time. */

@@ -245,8 +245,7 @@ export interface EngineOptions {
    * when left out (tests). `appVersion` is the app's, for the extension; `socketParent` is where the socket's folder
    * is made (the temporary folder by default).
    */
-  /** `legacyDataDir`: the data folder from before the rename, where older VS Code companions look (until 1.3.0). */
-  companion?: { appVersion: string; socketParent?: string; legacyDataDir?: string };
+  companion?: { appVersion: string; socketParent?: string };
   /**
    * Remote, a paired phone following and steering sessions (docs/remote-access.md). `appUrl` is the remote app's
    * address (the website's by default); `previewApp` also lets in the preview's (development and beta builds, and the Beta update channel; `setRemotePreview` changes it). `identity` asks main for Remote's key, which it keeps in the system's
@@ -2427,7 +2426,6 @@ export function createEngine(options: EngineOptions): Engine {
   if (options.companion) {
     companion = new CompanionHub({
       infoDir: join(options.dataDir, COMPANION_DIR),
-      ...(options.companion.legacyDataDir ? { legacyInfoDir: join(options.companion.legacyDataDir, COMPANION_DIR) } : {}),
       appVersion: options.companion.appVersion,
       ...(options.companion.socketParent ? { socketParent: options.companion.socketParent } : {}),
       // Another provider's sessions (Copilot) take no context from the editor: Seshboard can't send to them.

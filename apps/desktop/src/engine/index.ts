@@ -3,7 +3,6 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
 import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
 import { RemoteAppUpdate } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
@@ -58,8 +57,7 @@ const engine = createEngine({
   dataDir,
   trash,
   // The VS Code companion connects over a socket; SESHBOARD_NO_COMPANION=1 leaves it closed.
-  // Until 1.3.0 it also writes engine.json where companions up to 0.2.0 look: the data folder's name before the rename.
-  ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion, ...(basename(dataDir) === 'Seshboard' ? { legacyDataDir: join(dirname(dataDir), 'Switchboard') } : {}) } }),
+  ...(process.env.SESHBOARD_NO_COMPANION === '1' ? {} : { companion: { appVersion } }),
   // Remote, for a paired phone. SESHBOARD_REMOTE_APP_URL points it at a development build of the remote app
   // (`npm run dev:remote`); SESHBOARD_NO_REMOTE=1 leaves it out. Whether the website preview's remote app is let
   // in too comes from main (`remotePreview`), as it follows the update channel.

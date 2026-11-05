@@ -356,21 +356,20 @@ describe('Remote hub', () => {
 
   it('lets in the preview\'s remote app only when asked to (development and beta builds)', async () => {
     const preview = new URL(REMOTE_PREVIEW_APP_URL).origin;
-    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com']);
-    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', 'https://switchboard.struyfconsulting.com', preview, 'https://switch-dev.struyfconsulting.com']);
-    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview, 'https://switch-dev.struyfconsulting.com']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, false)).toEqual(['https://seshboard.app']);
+    expect(remoteAppOrigins(REMOTE_APP_URL, true)).toEqual(['https://seshboard.app', preview]);
+    expect(remoteAppOrigins(REMOTE_PREVIEW_APP_URL, true)).toEqual([preview]);
     expect(remoteAppOrigins('http://localhost:5199/remote/', false)).toEqual(['http://localhost:5199']);
 
     const release = await setup();
     await release.on();
     await expect(open(release.port, preview)).rejects.toThrow('HTTP 403');
     await expect(open(release.port, 'https://switch-dev.struyfconsulting.com')).rejects.toThrow('HTTP 403');
+    await expect(open(release.port, 'https://switchboard.struyfconsulting.com')).rejects.toThrow('HTTP 403');
     const beta = await setup({ previewApp: true });
     await beta.on();
     const socket = await open(beta.port, preview);
     socket.ws.close();
-    // A phone paired on the preview's old address, until 1.3.0.
-    (await open(beta.port, 'https://switch-dev.struyfconsulting.com')).ws.close();
     (await open(beta.port)).ws.close();
   });
 

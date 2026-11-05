@@ -708,16 +708,6 @@ export const REMOTE_APP_URL = 'https://seshboard.app/remote/';
 export const REMOTE_PREVIEW_APP_URL = 'https://beta.seshboard.app/remote/';
 
 /**
- * Where the remote app and the preview lived before seshboard.app, by the address that replaced each. A phone keeps
- * its pairing on the origin it paired on, so the engine still accepts sockets from these until people have paired
- * on the new site. Remove in 1.3.0.
- */
-export const REMOTE_LEGACY_APP_URLS: Readonly<Record<string, string>> = {
-  [REMOTE_APP_URL]: 'https://switchboard.struyfconsulting.com/remote/',
-  [REMOTE_PREVIEW_APP_URL]: 'https://switch-dev.struyfconsulting.com/remote/',
-};
-
-/**
  * How a phone reaches this computer from anywhere:
  *  - `cloudflare`: a Cloudflare quick tunnel (`cloudflared`, no account; a new address each time it starts);
  *  - `ngrok`: an ngrok tunnel (an account; a fixed address with your ngrok domain);
