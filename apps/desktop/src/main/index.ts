@@ -1554,11 +1554,12 @@ ipcMain.on(IpcChannel.rendererReady, (event, report: RendererReadyReport) => {
     connectedMs: Math.round(report.connectedAt - performance.timeOrigin),
     loadedMs: Math.round(performance.now()),
   };
-  readyReports.push(timed);
   readyRenderers.add(event.sender.id);
   const win = BrowserWindow.fromWebContents(event.sender);
   // What waited for a window is for the main one; a pop-out only shows its session.
   if (!win || win !== mainWindow) return;
+  // Only the main window's: the menu bar's and Quick start's report too, in any order, and a second report here means the engine restarted.
+  readyReports.push(timed);
   for (const { channel, payload } of pendingMessages.drain()) event.sender.send(channel, payload);
   if (readyReports.length === 1) {
     console.log(`[main] engine connected ${timed.connectedMs}ms, diagnostics loaded ${timed.loadedMs}ms after process start`);
@@ -12645,7 +12646,8 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   if (!smokeOutDir || !win) return;
   mkdirSync(smokeOutDir, { recursive: true });
   if (readyReports.length > 1) {
-    await smokeRun.step(RESTART_STEP, async () => `ok: in ${Math.round(performance.now() - crashedAt)}ms`, { cleanup: false });
+    // Without this a stray report would end the run here, green, with the other steps never run.
+    await smokeRun.step(RESTART_STEP, async () => (crashedAt ? `ok: in ${Math.round(performance.now() - crashedAt)}ms` : 'the main window reported ready twice before the run stopped the engine, so no other step ran'), { cleanup: false });
     writeSmokeResult();
     exitApp(0);
     return;
