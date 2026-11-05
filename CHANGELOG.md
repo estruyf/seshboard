@@ -61,6 +61,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Code blocks in another computer's sessions work like your own.** They are the same size, with syntax colours, a copy button and Preview | Source for Markdown. Run stays on that computer.
 - **Seshboard installs on Windows on Arm.** On an Arm PC the installer finished without putting Seshboard.exe in place, so its shortcuts showed "Missing Shortcut".
 - **A session opens at the end with Reduce motion on.** With Reduce motion turned on in your system settings, a conversation could stop a little short of its last lines when you opened it.
 - **The terminal stays in the window.** With the catch-up open or in a narrow split pane, the terminal under a session could run past the bottom of the window and hide its last lines. It now gets shorter to fit.

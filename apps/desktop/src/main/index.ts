@@ -4637,6 +4637,12 @@ async function remoteQuoteAndRead(win: BrowserWindow, row: string): Promise<stri
   const box = `${view} [data-computer-composer]`;
   const reply = `${view} [data-remember-from="claude"]`;
   if (!(await waitInPage(win, `document.querySelector('${view} [data-remote-read]') && document.querySelector('${box}')`, 10_000))) return 'the finished remote session has no Read under its reply';
+  // A code block in its reply is the one of a session here, at the same size, with Copy, but no Run: nothing in it acts here.
+  const codeBlock = `${reply} .code-block`;
+  if (!(await waitInPage(win, `document.querySelector('${codeBlock} [data-code-copy]')?.getAttribute('aria-label') === 'Copy code'`, 3_000))) return 'a code block in a remote reply has no copy button';
+  if (await js(`Boolean(document.querySelector('${codeBlock} [data-code-run]'))`)) return 'a code block in a remote reply has a Run button';
+  const codeSize = (await js(`getComputedStyle(document.querySelector('${codeBlock} pre')).fontSize`)) as string;
+  if (codeSize !== '12px') return `a code block in a remote reply is ${codeSize}, not the 12px of a session here`;
   const quoted = async (what: string): Promise<string | null> => {
     const ok = await waitInPage(win, `document.querySelector('${box}')?.value.includes('> ')`, 3_000);
     const value = (await js(`document.querySelector('${box}')?.value ?? ''`)) as string;
