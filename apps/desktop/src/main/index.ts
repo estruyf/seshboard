@@ -6870,12 +6870,15 @@ async function runImageViewerStep(win: BrowserWindow): Promise<string> {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
   };
-  const rightClickImage = () =>
-    js(`(() => {
-      const image = document.querySelector('[data-lightbox] img');
+  // The full-size image shows a moment after the label moves on; until then the first image in the lightbox is a thumbnail, which has no menu.
+  const rightClickImage = async () => {
+    await waitInPage(win, "document.querySelector('[data-lightbox-image]')", 3_000);
+    await js(`(() => {
+      const image = document.querySelector('[data-lightbox-image]');
       const r = image.getBoundingClientRect();
       image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.top + 4 }));
     })()`);
+  };
   try {
     await js(`document.querySelector('[data-session-id="${row}"]')?.click()`);
     if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(row)} && ${thumbs}.length === 3 && ${thumbs}[0].querySelector('img')`, 8_000))) return `the session shows ${await js(`${thumbs}.length`)} images, not 3`;
@@ -7720,11 +7723,10 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     if (now.firstLine !== 2) return `two columns put ${now.firstLine} rows on the first line`;
     const long = dirs.find((dir) => basename(dir) === 'pointfire-document-summarization')!;
     const longRow = one(`[data-new-session-view] [data-folder-option=${JSON.stringify(long)}]`);
-    // In one column at 280px the long name is sure to be cut: pick it there if the two columns have room for it whole.
+    // In the 280px column of the wider layout the long name is sure to be cut: look there if the two columns have room for it whole.
     let cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
     if (!cutName.includes('…')) {
-      win.setContentSize(760, height);
-      await waitInPage(win, 'window.innerWidth === 760', 1_000);
+      await sizeFor(1280, height, 'two');
       await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000);
       cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
     }
