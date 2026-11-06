@@ -350,7 +350,11 @@ export interface DriveMethods {
   'turn/steer': { params: TurnSteerParams; result: { turnId: string } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: unknown };
   /** The MCP servers Codex would start, with the plugin each comes from. */
-  'mcpServerStatus/list': { params: { cursor?: string | null; limit?: number | null }; result: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } };
+  /** With `threadId`, the thread's own connections and their state; without, the config's servers (`runtimeStatus` null). */
+  'mcpServerStatus/list': {
+    params: { cursor?: string | null; limit?: number | null; threadId?: string | null; detail?: 'full' | 'toolsAndAuthOnly' | null };
+    result: { data: McpServerStatus[]; nextCursor: string | null };
+  };
   'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
 }
 
@@ -396,6 +400,69 @@ export interface FileChangeApprovalParams {
 
 /** An approval's answer. `acceptForSession` is Always allow; `cancel` also stops the turn. */
 export type ApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+
+// Phase 3 (#276): Tools (MCP servers, skills, hooks), rename and compact. Checked against codex-cli 0.167.
+
+/** An MCP server's connection in a loaded thread. */
+export type McpServerConnectionStatus = 'notStarted' | 'starting' | 'connected' | 'authenticationRequired' | 'failed' | 'cancelled' | 'disabled';
+
+export interface McpServerStatus {
+  name: string;
+  /** Null without a thread, or when its config changed. */
+  runtimeStatus?: McpServerConnectionStatus | null;
+  /** The plugin it comes with, when it does. */
+  pluginId: string | null;
+  serverInfo?: { name: string; title?: string | null; version?: string | null } | null;
+  /** By the tool's name. */
+  tools?: Record<string, unknown>;
+  /** Discovery failed (it didn't start, say). */
+  toolsError?: string | null;
+}
+
+export interface SkillMetadata {
+  name: string;
+  description: string;
+  shortDescription?: string;
+  path: string;
+  /** `system` skills are Codex's own, left out of Tools as Claude Code's built-in commands are. */
+  scope: 'user' | 'repo' | 'system' | 'admin' | (string & {});
+  enabled: boolean;
+  pluginId: string | null;
+}
+
+export interface HookMetadata {
+  key: string;
+  /** `preToolUse`, `postToolUse`, `sessionStart`, `stop`, … */
+  eventName: string;
+  matcher: string | null;
+  statusMessage: string | null;
+  /** `user`, `project`, `plugin`, `mdm`, … */
+  source: string;
+  pluginId: string | null;
+  enabled: boolean;
+  handlerType: 'command' | 'mcpTool' | 'prompt' | 'agent' | (string & {});
+  /** A `command` hook's command line. */
+  command?: string;
+  /** An `mcpTool` hook's server and tool. */
+  server?: string;
+  tool?: string;
+}
+
+/** Requests of Phase 3, merged into `DriveMethods` (and so into `Methods`). */
+export interface DriveMethods {
+  /** The skills each folder has (the user's, the repository's, Codex's own). */
+  'skills/list': { params: { cwds?: string[]; forceReload?: boolean }; result: { data: Array<{ cwd: string; skills: SkillMetadata[]; errors: unknown[] }> } };
+  /** A loaded thread's hooks (`threadId`), or each folder's (`cwds`). */
+  'hooks/list': { params: { cwds?: string[]; threadId?: string | null }; result: { data: Array<{ cwd: string; hooks: HookMetadata[]; warnings: string[]; errors: unknown[] }> } };
+  /** Reads the MCP config again and reconnects the loaded threads' servers (all of them: there is no one-server form). */
+  'config/mcpServer/reload': { params: Record<string, never>; result: unknown };
+  /** Names a thread, loaded or not; `thread/name/updated` follows. */
+  'thread/name/set': { params: { threadId: string; name: string }; result: unknown };
+  /** Codex's effective config, as seen from `cwd` (its project layers too); read for its MCP servers' names only. */
+  'config/read': { params: { cwd?: string | null; includeLayers?: boolean }; result: { config: { mcp_servers?: Record<string, { enabled?: boolean } & Record<string, unknown>> | null } & Record<string, unknown> } };
+  /** Compacts a loaded thread's context, as a turn of its own with a `contextCompaction` item. */
+  'thread/compact/start': { params: { threadId: string }; result: unknown };
+}
 
 /* --- Fork and Ask about this session (Phase 3) -------------------------------------------------------------------- */
 

@@ -163,7 +163,7 @@ describe('the wiring of notifications and requests', () => {
     const server = fakeAppServer({
       'thread/start': () => (++starts === 1 ? started(T) : new Promise((resolve) => (answerStart = resolve))),
       'thread/fork': () => started(ASK),
-      'mcpServerStatus/list': () => ({ data: [], nextCursor: null }),
+      'config/read': () => ({ config: {} }),
       'turn/start': () => ({ turn: turn('ask-turn') }),
       'thread/unsubscribe': () => ({}),
     });
@@ -192,7 +192,7 @@ describe('the wiring of notifications and requests', () => {
 describe('Ask about this session', () => {
   function setup(turnStart: () => unknown = () => ({ turn: turn('ask-turn') })) {
     const server = fakeAppServer({
-      'mcpServerStatus/list': () => ({ data: [{ name: 'github', pluginId: null }], nextCursor: null }),
+      'config/read': () => ({ config: { mcp_servers: { github: { url: 'https://example.com' } } } }),
       'thread/fork': () => started(ASK),
       'turn/start': () => turnStart() as never,
       'turn/interrupt': () => ({}),
@@ -211,7 +211,7 @@ describe('Ask about this session', () => {
     // Registered before it runs, so the sidebar never shows it.
     expect(forks).toEqual([ASK]);
     expect(server.holds).toBe(1);
-    expect(server.calls.find((c) => c.method === 'thread/fork')!.params).toEqual({ threadId: T, ephemeral: true, excludeTurns: true, cwd: '/work', approvalPolicy: 'never', sandbox: 'read-only', model: 'gpt-5-mini', config: { features: { apps: false, hooks: false }, mcp_servers: { github: { enabled: false } } } });
+    expect(server.calls.find((c) => c.method === 'thread/fork')!.params).toEqual({ threadId: T, ephemeral: true, excludeTurns: true, cwd: '/work', approvalPolicy: 'never', sandbox: 'read-only', model: 'gpt-5-mini', config: { features: { apps: false, hooks: false, plugins: false }, mcp_servers: { github: { enabled: false } } } });
     expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: ASK, input: [{ type: 'text', text: 'Why?' }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
     // Codex's commentary, then its answer: the text starts over with the second reply.
     server.notify('item/started', { threadId: ASK, turnId: 'ask-turn', item: { type: 'agentMessage', id: 'm1', text: '' } });

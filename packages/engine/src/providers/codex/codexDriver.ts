@@ -8,8 +8,9 @@ import { codexInput } from './codexInput.ts';
 import { codexItemId } from './codexEvents.ts';
 import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
+import { COMPACT_COMMAND, codexCapabilities, configuredMcp, isCompact, isCompactWithMore, MCP_RECONNECT_BUSY, MCP_RECONNECT_NOT_LOADED, MCP_TOGGLE_REFUSED, COMPACT_NO_INSTRUCTIONS, COMPACT_NOT_STEERED } from './codexTools.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
-import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
+import type { CollaborationMode, HookMetadata, McpServerStatus, Methods, Model, ServerNotification, ServerRequest, SkillMetadata, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
 /** What turns one running thread's notifications into a session's events (`CodexLive`; tests fake it). */
 export interface CodexLiveHandler {
@@ -72,18 +73,14 @@ export function refusesPlanMode(error: unknown): boolean {
  * Codex's config for a read-only thread (a pipeline's read-only step, Ask about this session's fork): no MCP server and
  * no hook at all. With approval `never`, Codex calls MCP tools without asking, and its sandbox reaches neither them nor
  * your hooks' commands (a `stop` hook runs as you configured it): the only way to keep such a thread from changing
- * things through them is not to start them. A server of a plugin goes with its plugin, ChatGPT's apps with the apps
- * feature, any other by its own `enabled`; hooks with the hooks feature (checked live against codex-cli 0.167: a
- * trusted hook runs without it, none with it).
+ * things through them is not to start them. The servers in Codex's config (`servers`, their names from `config/read`)
+ * by their own `enabled`, plugins (and their servers) with the plugins feature, ChatGPT's apps with the apps feature,
+ * hooks with the hooks feature. Checked live against codex-cli 0.167: with this, a thread starts no MCP server and runs
+ * no trusted hook.
  */
-export function noMcpConfig(servers: ReadonlyArray<{ name: string; pluginId: string | null }>, skip: ReadonlySet<string> = new Set()): Record<string, unknown> {
-  const plugins: Record<string, { enabled: false }> = {};
-  const mcp: Record<string, { enabled: false }> = {};
-  for (const { name, pluginId } of servers) {
-    if (pluginId) plugins[pluginId] = { enabled: false };
-    else if (name !== 'codex_apps' && !skip.has(name)) mcp[name] = { enabled: false };
-  }
-  return { features: { apps: false, hooks: false }, ...(Object.keys(plugins).length ? { plugins } : {}), ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
+export function noMcpConfig(servers: readonly string[], skip: ReadonlySet<string> = new Set()): Record<string, unknown> {
+  const mcp = Object.fromEntries(servers.filter((name) => !skip.has(name)).map((name) => [name, { enabled: false }]));
+  return { features: { apps: false, hooks: false, plugins: false }, ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
 }
 
 /** Codex's answer to resuming a thread it is still unloading (codex-cli 0.167). */
@@ -119,6 +116,8 @@ interface Running {
   crashed(): void;
   /** The app quits: lets go of everything, quietly. */
   letGo(): void;
+  /** A turn (a compaction too) runs or is starting. */
+  busy(): boolean;
 }
 
 /**
@@ -211,12 +210,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       throw error;
     }));
   };
-  /** Codex's MCP servers, for a read-only thread's config. */
-  const mcpServers = async () => {
-    const all: Array<{ name: string; pluginId: string | null }> = [];
+  /** Codex's MCP servers, for a read-only thread's config, and with a loaded thread's own connections for Tools. */
+  const mcpServers = async (threadId: string | null = null) => {
+    const all: McpServerStatus[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_MCP_PAGES; page++) {
-      const { data, nextCursor }: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } = await server.request('mcpServerStatus/list', { cursor });
+      // Tools needs each server's state and tools, not its resources.
+      const params: Methods['mcpServerStatus/list']['params'] = threadId ? { cursor, threadId, detail: 'toolsAndAuthOnly' } : { cursor };
+      const { data, nextCursor }: { data: McpServerStatus[]; nextCursor: string | null } = await server.request('mcpServerStatus/list', params);
       all.push(...data);
       if (!nextCursor || nextCursor === cursor) break;
       cursor = nextCursor;
@@ -224,14 +225,18 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     return all;
   };
   /**
-   * Starts or forks a read-only thread without MCP servers (`noMcpConfig`): a read-only session, and Ask about this
-   * session's fork. A server Codex lists that isn't one of its config's (a built-in) has no `enabled` to change: Codex
-   * names it, and it is left out on the next try. Without Codex's list, nothing starts.
+   * Starts or forks a read-only thread without MCP servers or hooks (`noMcpConfig`): a read-only session, and Ask about
+   * this session's fork. The servers' names come from Codex's config as seen from `cwd` (`config/read`), never from
+   * `mcpServerStatus/list`, which starts every server to list it. One Codex says isn't a config entry has no `enabled`
+   * to change: it is left out on the next try. Without Codex's config, nothing starts.
    */
-  const withoutMcp = async <T>(send: (config: Record<string, unknown>) => Promise<T>): Promise<T> => {
-    const servers = await mcpServers().catch((error: Error) => {
-      throw new Error(`Codex didn't list its MCP servers, so a read-only session can't start without them: ${error.message}`);
-    });
+  const withoutMcp = async <T>(cwd: string, send: (config: Record<string, unknown>) => Promise<T>): Promise<T> => {
+    const servers = await server
+      .request('config/read', { cwd })
+      .then((r) => configuredMcp(r.config).map((s) => s.name))
+      .catch((error: Error) => {
+        throw new Error(`Codex didn't say which MCP servers it has, so a read-only session can't start without them: ${error.message}`);
+      });
     const skip = new Set<string>();
     for (let attempt = 0; ; attempt++) {
       try {
@@ -280,7 +285,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       const done = use();
       const { sandbox, approvalPolicy } = codexModeSettings('default', true);
       // A throwaway fork answers: never written to disk, read-only, without MCP servers or hooks, and asking nothing.
-      const { thread } = await withoutMcp((config) => server.request('thread/fork', { threadId: sessionId, ephemeral: true, excludeTurns: true, cwd, approvalPolicy, sandbox, config, ...(model ? { model } : {}) })).catch((failed: unknown) => {
+      const { thread } = await withoutMcp(cwd, (config) => server.request('thread/fork', { threadId: sessionId, ephemeral: true, excludeTurns: true, cwd, approvalPolicy, sandbox, config, ...(model ? { model } : {}) })).catch((failed: unknown) => {
         done();
         throw failed;
       });
@@ -316,6 +321,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         },
         // Read-only and asking nothing: anything Codex asks anyway is declined.
         request: () => Promise.reject(new Error(READ_ONLY_REASON)),
+        // Its turn runs in this process: reconnecting MCP servers would cut it off too.
+        busy: () => true,
         crashed() {
           error = 'Codex stopped';
           sawCrash = true;
@@ -355,8 +362,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       return (await listModels()).filter((m) => !m.hidden).map(codexModelOption);
     },
 
-    // Codex's slash commands are its TUI's: none goes through the app-server as a command.
-    commands: async () => [],
+    // Codex's slash commands are its TUI's: only Compact goes through the app-server (`thread/compact/start`).
+    commands: async () => [COMPACT_COMMAND],
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       // Wired from now on, while `thread/start` runs too: an Ask or a session ending meanwhile doesn't unwire it.
@@ -376,6 +383,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       /** A `turn/start` waits for its answer: Stop pressed meanwhile waits for the turn's id (`stopAsked`). */
       let starting = false;
       let stopAsked = false;
+      /**
+       * A compaction was asked for and Codex hasn't started its turn yet: `thread/compact/start` answers without the
+       * turn's id, which comes with `turn/started`. Stop pressed meanwhile waits for it, as for `starting`.
+       */
+      let compacting = false;
       /** It crashed: the next message resumes it, with a new `CodexLive` (the old one's running items are gone). */
       let crashed = false;
       /** Loaded in the app-server process now; false after a crash, until the next message resumes it. */
@@ -408,7 +420,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
           resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
-        const response = config.readOnly ? await withoutMcp((noMcp) => request({ config: noMcp })) : await request({});
+        const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request({});
         threadModel = response.model ?? threadModel;
         loaded = true;
         // The thread lives in this process: it must not stop for being idle while the session runs here.
@@ -447,9 +459,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           if (notification.method === 'turn/started') {
             const id = str(obj(params.turn).id);
             if (id) turnKnown(id);
+            compacting = false;
           } else if (notification.method === 'turn/completed') {
             if (str(obj(params.turn).id) === turnId) turnId = null;
             stopAsked = false;
+            compacting = false;
           } else if (notification.method === 'item/started') {
             const item = obj(params.item);
             const name = item.type === 'userMessage' ? naming.get(str(item.clientId) ?? '') : undefined;
@@ -497,12 +511,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           turnId = null;
           starting = false;
           stopAsked = false;
+          compacting = false;
           release?.();
           release = null;
           dropAll();
           for (const name of naming.values()) name('');
           events.state('error', CRASHED);
         },
+        busy: () => turnId !== null || starting || compacting,
         letGo() {
           closed = true;
           release?.();
@@ -568,21 +584,67 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         effortChanged = false;
       };
 
+      /** Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`. */
+      const ensureLoaded = async () => {
+        if (loaded) return;
+        await open(threadId);
+        if (crashed) live = makeLive(threadId, events);
+        crashed = false;
+      };
+
       return {
         sessionId: threadId,
-        commands: async () => [],
-        // Codex's MCP servers, skills and agents come with Phase 3 of #276.
-        capabilities: async () => ({ live: true, mcp: [], agents: [], commands: [], plugins: [] }),
-        async mcp() {
-          throw new Error("Codex's MCP servers can't be changed from Seshboard yet");
+        commands: async () => [COMPACT_COMMAND],
+        async capabilities() {
+          // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections;
+          // otherwise the servers come from Codex's config, as listing them without a thread starts every one of them.
+          const live = loaded;
+          const [mcp, skills, hooks] = await Promise.all([
+            (live ? mcpServers(threadId) : server.request('config/read', { cwd: config.cwd }).then((r) => configuredMcp(r.config))).catch((): McpServerStatus[] => []),
+            server.request('skills/list', { cwds: [config.cwd] }).then(
+              (r) => r.data.flatMap((entry) => entry.skills),
+              (): SkillMetadata[] => [],
+            ),
+            server.request('hooks/list', live ? { threadId } : { cwds: [config.cwd] }).then(
+              (r) => r.data.flatMap((entry) => entry.hooks),
+              (): HookMetadata[] => [],
+            ),
+          ]);
+          return codexCapabilities({ live, mcp, skills, hooks });
+        },
+        async mcp(_server: string, action: 'enable' | 'disable' | 'reconnect') {
+          // Turning one on or off is Codex's config's: Seshboard doesn't write it.
+          if (action !== 'reconnect') throw new Error(MCP_TOGGLE_REFUSED);
+          // Nothing of this session's runs in Codex (it crashed): its servers start again with its next message.
+          if (!loaded) throw new Error(MCP_RECONNECT_NOT_LOADED);
+          // Codex reconnects every server of its loaded threads at once (it has no way to reach just one): a tool call in
+          // another session's turn would fail.
+          for (const other of running.values()) if (other !== session && other.busy()) throw new Error(MCP_RECONNECT_BUSY);
+          await server.request('config/mcpServer/reload', {});
+        },
+        async rename(title: string) {
+          await server.request('thread/name/set', { threadId, name: title });
         },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
           if (closed) throw new Error('This Codex session was closed');
-          // Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`.
-          if (!loaded) {
-            await open(threadId);
-            if (crashed) live = makeLive(threadId, events);
-            crashed = false;
+          // `/compact` with words or an image after it would otherwise go to the model as a message.
+          if (isCompactWithMore(text) || (isCompact(text) && attachments.length)) throw new Error(COMPACT_NO_INSTRUCTIONS);
+          const compact = isCompact(text);
+          // Send now steers into the turn under way: a compaction can't join one.
+          if (compact && steer && session.busy()) throw new Error(COMPACT_NOT_STEERED);
+          await ensureLoaded();
+          // Compact (the context meter's, or `/compact` typed): Codex compacts as a turn of its own, which `CodexLive`
+          // shows like any other (its `contextCompaction` item), and Stop stops.
+          if (compact) {
+            compacting = true;
+            try {
+              await server.request('thread/compact/start', { threadId });
+            } catch (error) {
+              compacting = false;
+              stopAsked = false;
+              throw error;
+            }
+            return `codex-compact-${randomUUID()}`;
           }
           const input = codexInput(text, attachments, config.cwd);
           const clientId = randomUUID();
@@ -611,7 +673,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           dropAll();
           if (turnId && loaded) await server.request('turn/interrupt', { threadId, turnId });
           // Sent a moment ago: Codex hasn't named the turn yet. It stops as soon as it does.
-          else if (starting) stopAsked = true;
+          else if (starting || compacting) stopAsked = true;
         },
         async setModel(next: string | null) {
           model = next;

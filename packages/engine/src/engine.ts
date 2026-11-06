@@ -538,7 +538,17 @@ export function createEngine(options: EngineOptions): Engine {
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
   /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
   const providerForks = new ProviderForks(cache.db);
-  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, log, forks: (profileId) => providerForks.of(profileId), ...(options.copilot ? { copilot: options.copilot } : {}), ...(options.codex ? { codex: options.codex } : {}) };
+  const providerOptions: ProviderOptions = {
+    env: process.env,
+    home: homedir(),
+    shellEnv: async () => (await shell.ready).env,
+    log,
+    forks: (profileId) => providerForks.of(profileId),
+    // A Codex thread's new name, which no file the watcher sees carries: the sidebar reads the session again.
+    onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
+    ...(options.copilot ? { copilot: options.copilot } : {}),
+    ...(options.codex ? { codex: options.codex } : {}),
+  };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
   const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
