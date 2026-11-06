@@ -5,7 +5,7 @@ import { isAbsolutePath, type ProjectIconChoice } from '@seshboard/protocol/clie
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProviders } from '../../state/providersStore.ts';
-import { startableProfiles } from '../providers/startable.ts';
+import { startableProfiles, startLabel } from '../providers/startable.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { openProject } from '../../state/projectPageStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
@@ -174,7 +174,7 @@ export function useProjectIconEntries() {
       },
       // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
       ...startableProfiles(profiles, catalog, linked).map(
-        (p): MenuEntry => ({ label: p.name, icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
+        (p): MenuEntry => ({ label: startLabel(p, catalog), icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
       ),
     ];
     const iconChoices: MenuEntry[] = [

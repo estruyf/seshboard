@@ -3,11 +3,20 @@ import type { ClaudeProfile, ProviderInfo, SessionProvider } from '@seshboard/pr
 type Catalog = readonly Pick<ProviderInfo, 'id' | 'canStart'>[];
 
 /**
- * Whether Seshboard can start sessions with a provider: Claude Code always, another one when the engine's catalog says
- * so (`canStart`). OpenAI Codex can't yet: its sessions are read-only. Not in the catalog (not loaded yet): no.
+ * Whether Seshboard can start sessions with a provider: no only when the engine's catalog says so (`canStart: false`,
+ * OpenAI Codex for now, whose sessions are read-only). Not in the catalog (not loaded yet, or `providers.list` failed):
+ * yes, so Copilot keeps its profiles meanwhile; the engine refuses a start that can't run anyway.
  */
 export function providerCanStart(provider: SessionProvider, catalog: Catalog): boolean {
-  return provider === 'claude' || catalog.some((p) => p.id === provider && p.canStart);
+  return provider === 'claude' || catalog.find((p) => p.id === provider)?.canStart !== false;
+}
+
+/** The word after a profile that can't start sessions, where it stays listed because it is picked (a stale default). */
+export const READ_ONLY_LABEL = 'read-only';
+
+/** A profile's name in a list of profiles to start with, marked when it can't start ("Codex (read-only)"). */
+export function startLabel(profile: Pick<ClaudeProfile, 'name' | 'provider'>, catalog: Catalog): string {
+  return providerCanStart(profile.provider, catalog) ? profile.name : `${profile.name} (${READ_ONLY_LABEL})`;
 }
 
 /**

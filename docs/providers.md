@@ -50,7 +50,7 @@ Read-only for now ([#276](https://github.com/estruyf/seshboard/issues/276), Phas
 - **Status and sign in:** the adapter's own `status()`: `codex` found (`findCodex`) and `account/read` (a ChatGPT login by its email, an API key without a name). `auth.json` is never read. Sign in runs `CODEX_HOME=<folder> codex login`.
 - **Delete:** the thread's rollout files (both spellings, and one in `archived_sessions/`) go to the Trash with `{ codexHome }`; main checks each again (`isTrashableCodexSession`). Not yet refused while Codex CLI has it open: `inUse` and `live` wait for its lock format.
 - **Resume:** `codex resume <id>`, shown in place of the message box (`ReadOnlyNotice`).
-- **No driver yet:** New session, the queue, schedules, triggers, pipelines and other computers don't offer its profiles, Add profile skips the sign in, and its profile has no Default or New session defaults. Starting and continuing sessions is Phase 2 of #276.
+- **No driver yet:** New session, the queue, schedules, triggers and pipelines on this computer don't offer its profiles (one already picked, such as a project's old default, shows as read-only), and the engine refuses to start one. The phone and other computers still list them in their Options until `options.get` leaves them out. Add profile skips the sign in, and its profile has no Default or New session defaults. Starting and continuing sessions is Phase 2 of #276.
 
 ## Driving sessions
 
