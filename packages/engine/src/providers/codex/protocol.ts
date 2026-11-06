@@ -130,7 +130,7 @@ export interface Turn {
 }
 
 export type UserInput =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; /** Spans in `text` a UI renders specially; Seshboard sends none. */ text_elements?: unknown[] }
   | { type: 'image'; url?: string; fileId?: string }
   | { type: 'localImage'; path: string }
   | { type: 'skill'; name: string; path: string }
@@ -164,7 +164,7 @@ interface ItemTimes {
   completedAtMs?: number | null;
 }
 
-export type UserMessageItem = ItemTimes & { type: 'userMessage'; id: string; content: UserInput[] };
+export type UserMessageItem = ItemTimes & { type: 'userMessage'; id: string; content: UserInput[]; /** The `clientUserMessageId` it was sent with. */ clientId?: string | null };
 export type AgentMessageItem = ItemTimes & { type: 'agentMessage'; id: string; text: string };
 export type ReasoningItem = ItemTimes & { type: 'reasoning'; id: string; summary: string[]; content: string[] };
 export type PlanItem = ItemTimes & { type: 'plan'; id: string; text: string };
@@ -301,6 +301,8 @@ export interface ThreadStartResponse {
 export interface TurnStartParams {
   threadId: string;
   input: UserInput[];
+  /** Comes back as the `userMessage` item's `clientId`, which names the message the turn starts with. */
+  clientUserMessageId?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
   sandboxPolicy?: SandboxPolicy | null;
@@ -317,6 +319,7 @@ export interface TurnStartResponse {
 export interface TurnSteerParams {
   threadId: string;
   input: UserInput[];
+  clientUserMessageId?: string | null;
   /** The turn running now: the request fails when another one is. */
   expectedTurnId: string;
 }

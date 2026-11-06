@@ -25,7 +25,7 @@ describe('the demo Codex', () => {
     const listed = await adapter.source.list();
     expect(listed.map((s) => s.sessionId).sort()).toEqual(CODEX_DEMO_THREADS.map((t) => t.id).sort());
     expect(listed.every((s) => s.provider === 'codex' && s.cwd === '/demo/acme-store' && s.origin === 'cli')).toBe(true);
-    expect(await adapter.status!()).toMatchObject({ binary: '/demo/bin/codex', signedIn: true, problem: null });
+    expect(await adapter.driver!.status()).toMatchObject({ binary: '/demo/bin/codex', signedIn: true, problem: null });
     expect([...adapter.files.files().keys()].sort()).toEqual(CODEX_DEMO_THREADS.map((t) => t.id).sort());
     const messages = await adapter.source.messages(CODEX_DEMO_THREADS[0]!.id);
     const blocks = messages.flatMap((m) => {
