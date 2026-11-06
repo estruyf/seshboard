@@ -95,8 +95,8 @@ interface Running {
   threadId: string;
   /** Codex's notification about this thread. */
   notify(notification: ServerNotification): void;
-  /** One of Codex's requests about this thread; resolves with Codex's answer. */
-  request(request: ServerRequest): Promise<unknown>;
+  /** One of Codex's requests about this thread; resolves with Codex's answer. `signal`: Codex no longer waits for it. */
+  request(request: ServerRequest, signal: AbortSignal): Promise<unknown>;
   /** The process went: the thread must be resumed in the next one. */
   crashed(): void;
   /** The app quits: lets go of everything, quietly. */
@@ -141,12 +141,12 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         for (const session of running.values()) session.crashed();
       }),
     ];
-    server.handleRequests(async (request) => {
+    server.handleRequests(async (request, signal) => {
       const threadId = threadOf(request.params);
       const session = threadId ? running.get(threadId) : undefined;
       // Nothing here asked for it (a thread another client loaded in this process): refused, never answered for you.
       if (!session) throw new Error(`No session in Seshboard for ${request.method}`);
-      return session.request(request);
+      return session.request(request, signal);
     });
   };
   const unwire = () => {
@@ -320,12 +320,6 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
             const itemId = str(item.id);
             const itemTurn = str(params.turnId) ?? turnId;
             if (name && itemId && itemTurn) name(codexItemId(itemTurn, itemId));
-          } else if (notification.method === 'serverRequest/resolved') {
-            // Codex is done with it (answered, or the turn ended): nothing waits on it any more. `CodexLive` takes the card away.
-            const requestId = codexCardId(threadId, params.requestId as string | number);
-            const open = pending.get(requestId);
-            pending.delete(requestId);
-            open?.resolve(null);
           }
           try {
             live.handle(notification);
@@ -333,7 +327,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
             log('warn', `Codex ${notification.method} for ${threadId}: ${(error as Error).message}`);
           }
         },
-        request(request) {
+        request(request, signal) {
           const requestId = codexCardId(threadId, request.id);
           let card: Omit<PermissionRequest, 'sessionId'> | null;
           try {
@@ -348,6 +342,16 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           if (!card) return Promise.reject(new Error(`Seshboard can't answer ${request.method}`));
           return new Promise((resolve, reject) => {
             pending.set(requestId, { request, resolve, reject });
+            // Codex is done with it (answered elsewhere, the turn ended, the process went): the card goes.
+            signal.addEventListener(
+              'abort',
+              () => {
+                if (!pending.delete(requestId)) return;
+                resolve(null);
+                events.permissionDone(requestId);
+              },
+              { once: true },
+            );
             events.permission(card);
           });
         },

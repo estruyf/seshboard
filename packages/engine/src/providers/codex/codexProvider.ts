@@ -7,7 +7,7 @@ import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
 import { codexDriver } from './codexDriver.ts';
-import { openThreads, type LockHolders } from './codexInUse.ts';
+import { codexLocks, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
 import type { GetAccountResponse } from './protocol.ts';
 
@@ -141,9 +141,10 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
   const files = codexRolloutFiles(folder);
   const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files) });
   /** Which of `threadIds` another Codex has open (a terminal, the Codex app): its lock, held by a process not Seshboard's. */
+  const locks = codexLocks(codexHome, lockHolders ? { holders: lockHolders } : {});
   const openElsewhere = (threadIds: readonly string[]) => {
     const pid = server.pid();
-    return openThreads(codexHome, threadIds, new Set(pid === null ? [] : [pid]), { ownThreads: driver.threads(), ...(lockHolders ? { holders: lockHolders } : {}) });
+    return locks.openThreads(threadIds, new Set(pid === null ? [] : [pid]), driver.threads());
   };
   /** Each open thread's rollout file, found once: the live scan asks every few seconds. */
   const rollouts = new Map<string, string>();

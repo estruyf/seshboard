@@ -1,4 +1,4 @@
-import type { AppServer } from './appServer.ts';
+import type { AppServer, RequestHandler } from './appServer.ts';
 import type { Methods, ServerNotification, ServerRequest, Thread } from './protocol.ts';
 
 type Handlers = { [M in keyof Methods]?: (params: Methods[M]['params']) => Methods[M]['result'] | Promise<Methods[M]['result']> };
@@ -12,6 +12,8 @@ export type FakeAppServer = AppServer & {
   notify(method: string, params: unknown): void;
   /** Sends one of Codex's requests to the handler; resolves with its answer, rejects with its refusal. */
   ask(method: string, params: unknown): Promise<unknown>;
+  /** Codex no longer waits for a request (it resolved it, or the turn ended): its signal aborts. */
+  drop(requestId: number): void;
   /** The process ends while held. */
   exit(): void;
   /** Whether a handler for Codex's requests is set. */
@@ -26,7 +28,8 @@ export function fakeAppServer(handlers: Handlers): FakeAppServer {
   const calls: Array<{ method: string; params: unknown }> = [];
   const listeners = new Set<(notification: ServerNotification) => void>();
   const exits = new Set<() => void>();
-  let handler: ((request: ServerRequest) => Promise<unknown>) | null = null;
+  let handler: RequestHandler | null = null;
+  const asked = new Map<number, AbortController>();
   let nextRequest = 1;
   const server = {
     calls,
@@ -43,7 +46,7 @@ export function fakeAppServer(handlers: Handlers): FakeAppServer {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
-    handleRequests(next: ((request: ServerRequest) => Promise<unknown>) | null) {
+    handleRequests(next: RequestHandler | null) {
       handler = next;
     },
     hold() {
@@ -63,9 +66,17 @@ export function fakeAppServer(handlers: Handlers): FakeAppServer {
     },
     async ask(method: string, params: unknown) {
       if (!handler) throw new Error('Refused: no handler');
-      return handler({ id: nextRequest++, method, params });
+      const id = nextRequest++;
+      const controller = new AbortController();
+      asked.set(id, controller);
+      const request: ServerRequest = { id, method, params };
+      return handler(request, controller.signal);
+    },
+    drop(requestId: number) {
+      asked.get(requestId)?.abort();
     },
     exit() {
+      for (const controller of asked.values()) controller.abort();
       for (const listener of [...exits]) listener();
     },
     handling: () => handler !== null,
