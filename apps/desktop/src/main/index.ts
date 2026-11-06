@@ -3447,8 +3447,10 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     if (await js(`${toggle}?.getAttribute('aria-checked') === 'true'`)) await js(`${toggle}.click()`);
     await js(`${box}.focus()`);
     await win.webContents.insertText('Smoke: a prompt for Codex');
-    if (!(await waitInPage(win, `!document.querySelector('${nsv} [data-start-session]')?.disabled`, 5_000))) return "typing in New session with Codex didn't make Start usable";
-    await js(`document.querySelector('${nsv} [data-start-session]').click()`);
+    // Start's main part (the ▾ menu's items have their own hooks).
+    const start = `document.querySelector('${nsv} [data-composer-submit]')`;
+    if (!(await waitInPage(win, `!!${start} && !${start}.disabled`, 5_000))) return "typing in New session with Codex didn't make Start usable";
+    await js(`${start}.click()`);
     const refused = await waitInPage(win, "document.body.innerText.includes('The demo has no Codex CLI to run sessions')", 10_000);
     const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
     await setFieldValue(win, `${nsv} [data-composer]`, '');
