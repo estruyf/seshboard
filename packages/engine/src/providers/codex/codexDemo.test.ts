@@ -84,3 +84,23 @@ describe('the demo Codex', () => {
     await expect(ask('thread/compact/start', { threadId: id })).rejects.toThrow(CODEX_DEMO_REFUSAL);
   });
 });
+
+describe("the demo Codex's Tools for a session not running here", () => {
+  it('lists two servers from its config with no switch, its skill and its hook, and reconnects', async () => {
+    const dir = codexHome();
+    const adapter = codexProvider({ profileId: 'codex-demo', codexHome: dir, userHome: dir, shellEnv: async () => ({}), ...demoCodex() });
+    const caps = await adapter.driver!.capabilities!('/demo/acme-store');
+    expect(caps).toMatchObject({
+      live: false,
+      mcpToggle: false,
+      mcp: [
+        { name: 'github', status: 'pending' },
+        { name: 'linear', status: 'pending' },
+      ],
+      commands: [{ name: 'release-notes' }],
+      hooks: [{ event: 'postToolUse', matcher: 'apply_patch', command: 'npm run lint' }],
+    });
+    const server = demoCodex().createAppServer({ binary: async () => null, env: async () => ({ CODEX_HOME: dir }) });
+    await expect(server.request('config/mcpServer/reload' as never, {} as never)).resolves.toEqual({});
+  });
+});

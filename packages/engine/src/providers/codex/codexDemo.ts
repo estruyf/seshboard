@@ -188,6 +188,29 @@ export const CODEX_DEMO_MCP_SERVERS = [
   { name: 'linear', pluginId: null, tools: { create_issue: { name: 'create_issue', description: 'Create a Linear issue' } }, resources: [], resourceTemplates: [], authStatus: 'bearerToken' },
 ];
 
+/**
+ * The demo's MCP servers as Codex's config has them (`config/read`), for Tools of a session not running here: names
+ * and whether they're on, with made-up commands.
+ */
+export const CODEX_DEMO_MCP_CONFIG = {
+  github: { url: 'https://example.invalid/github/mcp', enabled: true },
+  linear: { command: 'demo-linear-mcp', args: [], enabled: true },
+};
+
+/** The demo's hook (`hooks/list`), for Tools. */
+export const CODEX_DEMO_HOOK = {
+  key: 'demo-lint',
+  eventName: 'postToolUse',
+  matcher: 'apply_patch',
+  statusMessage: null,
+  source: 'user',
+  pluginId: null,
+  enabled: true,
+  handlerType: 'command',
+  command: 'npm run lint',
+  async: false,
+};
+
 /** The demo's skill (`skills/list`), for Tools, in the user's `CODEX_HOME`. */
 export const codexDemoSkills = (codexHomeDir: string, cwds: readonly string[]) => ({
   data: (cwds.length ? cwds : ['']).map((cwd) => ({
@@ -239,6 +262,14 @@ function demoAppServer(options: AppServerOptions): AppServer {
         return { data: CODEX_DEMO_MCP_SERVERS, nextCursor: null };
       case 'skills/list':
         return codexDemoSkills((await options.env()).CODEX_HOME ?? '', Array.isArray(params.cwds) ? params.cwds.map(String) : []);
+      case 'config/read':
+        return { config: { mcp_servers: CODEX_DEMO_MCP_CONFIG } };
+      case 'hooks/list': {
+        const cwds = Array.isArray(params.cwds) && params.cwds.length ? params.cwds.map(String) : [''];
+        return { data: cwds.map((cwd) => ({ cwd, hooks: [CODEX_DEMO_HOOK], warnings: [], errors: [] })) };
+      }
+      case 'config/mcpServer/reload':
+        return {};
       case 'thread/name/set': {
         const thread = await find(String(params.threadId));
         DEMO_NAMES.set(thread.id, String(params.name ?? '').trim() || thread.name || '');

@@ -207,6 +207,18 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     return usage;
   };
 
+  /**
+   * What a folder has for Tools, read without starting anything: the MCP servers' names from Codex's config (listing
+   * them without a thread starts every one of them), the folder's skills and hooks.
+   */
+  const folderCapabilities = async (cwd: string) => {
+    const [mcp, skills, hooks] = await Promise.all([
+      server.request('config/read', { cwd }).then((r) => configuredMcp(r.config), (): McpServerStatus[] => []),
+      server.request('skills/list', { cwds: [cwd] }).then((r) => r.data.flatMap((entry) => entry.skills), (): SkillMetadata[] => []),
+      server.request('hooks/list', { cwds: [cwd] }).then((r) => r.data.flatMap((entry) => entry.hooks), (): HookMetadata[] => []),
+    ]);
+    return codexCapabilities({ live: false, mcp, skills, hooks });
+  };
   const defaultModel = async () => (await listModels().catch(() => [])).find((m) => m.isDefault) ?? null;
   const defaultEffort = async (model: string | null) => {
     const models = await listModels().catch(() => []);
@@ -231,6 +243,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
 
     // Codex's slash commands are its TUI's: only Compact goes through the app-server (`thread/compact/start`).
     commands: async () => [COMPACT_COMMAND],
+
+    capabilities: (cwd: string) => folderCapabilities(cwd),
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       wire();
@@ -476,15 +490,16 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         commands: async () => [COMPACT_COMMAND],
         async capabilities() {
           // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections;
-          // otherwise the servers come from Codex's config, as listing them without a thread starts every one of them.
-          const live = loaded;
+          // otherwise (it crashed) what the folder has, without starting anything.
+          if (!loaded) return folderCapabilities(config.cwd);
+          const live = true;
           const [mcp, skills, hooks] = await Promise.all([
-            (live ? mcpServers(threadId) : server.request('config/read', { cwd: config.cwd }).then((r) => configuredMcp(r.config))).catch((): McpServerStatus[] => []),
+            mcpServers(threadId).catch((): McpServerStatus[] => []),
             server.request('skills/list', { cwds: [config.cwd] }).then(
               (r) => r.data.flatMap((entry) => entry.skills),
               (): SkillMetadata[] => [],
             ),
-            server.request('hooks/list', live ? { threadId } : { cwds: [config.cwd] }).then(
+            server.request('hooks/list', { threadId }).then(
               (r) => r.data.flatMap((entry) => entry.hooks),
               (): HookMetadata[] => [],
             ),

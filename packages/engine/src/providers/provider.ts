@@ -195,6 +195,11 @@ export interface ProviderDriver {
   models(): Promise<ModelOption[]>;
   /** The slash commands a new session has, before one runs here. */
   commands(): Promise<SlashCommand[]>;
+  /**
+   * What a session not running here can use in `cwd` (Tools, `live: false`), read without starting anything (no MCP
+   * server of the user's). Without it, Tools shows only its commands until the session runs here.
+   */
+  capabilities?(cwd: string): Promise<Capabilities>;
   start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;
   /**
    * Ask about this session: a throwaway fork of it answers `prompt` with tools that only read, beside whatever the

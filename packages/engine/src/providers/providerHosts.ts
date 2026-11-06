@@ -285,10 +285,18 @@ export class ProviderHosts {
     return this.adapterOf(this.deps.profileOf(sessionId))?.driver?.commands().catch(() => []) ?? [];
   }
 
-  /** What a session can use (Tools): its own lists once it runs here; before that, only its commands, read-only. */
-  async capabilities(sessionId: string): Promise<Capabilities> {
+  /**
+   * What a session can use (Tools): its own lists once it runs here; before that, what its driver reads for the folder
+   * without starting anything (Codex's), else only its commands. Read-only either way.
+   */
+  async capabilities(sessionId: string, cwd?: string): Promise<Capabilities> {
     const host = this.hosts.get(sessionId);
     if (host?.session) return host.session.capabilities();
+    const driver = this.adapterOf(this.deps.profileOf(sessionId))?.driver;
+    if (driver?.capabilities && cwd) {
+      const read = await driver.capabilities(cwd).catch((error: Error) => (this.deps.log('warn', `Tools for ${sessionId}: ${error.message}`), null));
+      if (read) return { ...read, live: false };
+    }
     return { live: false, mcp: [], agents: [], commands: await this.commands(sessionId), plugins: [] };
   }
 
