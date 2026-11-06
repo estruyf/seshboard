@@ -62,6 +62,12 @@ describe('codexPermissionRequest', () => {
     });
   });
 
+  it('offers Always allow only when Codex takes it', () => {
+    const only = (decisions: unknown[]) => ({ ...COMMAND, params: { ...(COMMAND.params as object), availableDecisions: decisions } });
+    expect(codexPermissionRequest('3', only(['accept', 'acceptForSession', { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['rm'] } }, 'cancel']), null, NOW)?.alwaysLabel).toBe('Allow this command in this session');
+    expect(codexPermissionRequest('3', only(['accept', 'decline', 'cancel']), null, NOW)?.alwaysLabel).toBeNull();
+  });
+
   it('takes the command from the item when the request has none', () => {
     const request = { ...COMMAND, params: { ...(COMMAND.params as object), command: null, cwd: null } };
     const item = { type: 'commandExecution', id: 'call_rm', command: "/bin/zsh -lc 'ls'", cwd: '/repo' } as unknown as ThreadItem;
