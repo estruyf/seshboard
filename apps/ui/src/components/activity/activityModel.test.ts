@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityCsv, activityMarkdown, addDays, addMonths, barHeight, calendarWeeks, countsByDay, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sameDayInMonth, sessionsOnce, standupText, statsOf, stripWeek, summaryExtras, summaryParts, summaryPlain, weekOf, type ActivityRow } from './activityModel.ts';
+import { activityCsv, activityMarkdown, addDays, addMonths, BAR_FULL, BAR_GAP, barParts, calendarWeeks, countsByDay, dayScore, dayOf, daysBetween, dayTitle, exportFileName, formatWorked, formatWorkedShort, inDays, inProject, lastActiveDay, lastDayLabel, mondayOf, neighbourLine, pickFrom, pickTill, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sameDayInMonth, sessionsOnce, standupText, statsByDay, statsOf, scoreScale, shippedOf, stripWeek, summaryExtras, summaryParts, summaryPlain, timesTypical, typicalDay, typicalLine, weekOf, type ActivityRow } from './activityModel.ts';
 
 const row = (over: Partial<ActivityRow> = {}): ActivityRow => ({
   day: '2026-11-02',
@@ -118,6 +118,15 @@ describe('formatWorked', () => {
     expect(formatWorked(125 * 60_000)).toBe('2h 05m');
     expect(formatWorked(13 * 3_600_000)).toBe('13h');
   });
+
+  it('has a short form for under a bar', () => {
+    expect(formatWorkedShort(0)).toBe('–');
+    expect(formatWorkedShort(20_000)).toBe('<1m');
+    expect(formatWorkedShort(45 * 60_000)).toBe('45m');
+    expect(formatWorkedShort(59 * 60_000)).toBe('59m');
+    expect(formatWorkedShort(16 * 3_600_000 + 16 * 60_000)).toBe('16h');
+    expect(formatWorkedShort(90 * 60_000)).toBe('2h');
+  });
 });
 
 describe('rowPrs', () => {
@@ -156,12 +165,6 @@ describe('statsOf', () => {
 describe('the strip and the ribbon', () => {
   it('counts sessions per day', () => {
     expect(countsByDay([row(), row({ sessionId: 's2' }), row({ day: '2026-11-03' })])).toEqual(new Map([['2026-11-02', 2], ['2026-11-03', 1]]));
-  });
-
-  it('fills the bar for the busiest day and keeps a stub for an empty one', () => {
-    expect(barHeight(11, 11)).toBe(44);
-    expect(barHeight(1, 100)).toBe(4);
-    expect(barHeight(0, 11)).toBe(3);
   });
 
   it('adds up the hours in levels', () => {
@@ -324,5 +327,100 @@ describe('Export', () => {
   it('names the file after its days', () => {
     expect(exportFileName('2026-11-02', '2026-11-02', 'md')).toBe('activity-2026-11-02.md');
     expect(exportFileName('2026-10-26', '2026-11-02', 'csv')).toBe('activity-2026-10-26-to-2026-11-02.csv');
+  });
+});
+
+describe('the activity score', () => {
+  const HOUR = 3_600_000;
+  const pr = (n: number) => ({ number: n, url: `https://x/pull/${n}` });
+  /** A day like every typical one: 1 hour, 10 turns, 4 commits and a pull request (7 shipped). */
+  const usual = (day: string, over: Partial<ActivityRow> = {}) => row({ day, activeMs: HOUR, turns: 10, commits: 4, prs: [pr(Number(day.slice(8)))], ...over });
+  const history = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map((day) => usual(day));
+
+  it('scores a typical day 100, in its three parts', () => {
+    const typical = typicalDay(history, [])!;
+    expect(typical).toEqual({ time: HOUR, turns: 10, shipped: 7, fromShown: false });
+    const score = dayScore(statsOf([usual('2026-11-02')]), typical);
+    expect(score.total).toBeCloseTo(100);
+    expect(score.parts.time).toBeCloseTo(45);
+    expect(score.parts.turns).toBeCloseTo(30);
+    expect(score.parts.shipped).toBeCloseTo(25);
+    expect(timesTypical(score)).toBe('1.0× a typical day');
+  });
+
+  it('takes the median of the active days, so one huge day does not move it', () => {
+    const typical = typicalDay([...history.slice(0, 4), usual('2026-10-09', { activeMs: 20 * HOUR, turns: 400 })], [])!;
+    expect(typical.time).toBe(HOUR);
+    expect(typical.turns).toBe(10);
+    // An even count of days: the middle two, averaged.
+    expect(typicalDay([...history.slice(0, 3), ...['2026-10-10', '2026-10-11', '2026-10-12'].map((d) => usual(d, { activeMs: 3 * HOUR }))], [])!.time).toBe(2 * HOUR);
+  });
+
+  it('caps each part at three typical days', () => {
+    const typical = typicalDay(history, [])!;
+    const bulk = dayScore(statsOf([usual('2026-11-02', { commits: 184 })]), typical);
+    expect(bulk.parts.shipped).toBeCloseTo(75);
+    expect(bulk.total).toBeCloseTo(150);
+    const everything = dayScore(statsOf([usual('2026-11-02', { activeMs: 30 * HOUR, turns: 900, commits: 900 })]), typical);
+    expect(everything.total).toBeCloseTo(300);
+  });
+
+  it('gives an empty day no score and a stub', () => {
+    const typical = typicalDay(history, []);
+    const empty = dayScore(statsByDay(history).get('2026-11-02'), typical);
+    expect(empty).toEqual({ total: 0, parts: { time: 0, turns: 0, shipped: 0 } });
+    expect(barParts(empty, 200)).toBeNull();
+    expect(dayScore(statsOf([usual('2026-11-02')]), null).total).toBe(0);
+  });
+
+  it('falls back to the days on screen with fewer than five active days before them', () => {
+    const shown = [usual('2026-11-02', { activeMs: 2 * HOUR }), usual('2026-11-03', { activeMs: 4 * HOUR }), usual('2026-11-04', { activeMs: 6 * HOUR })];
+    const typical = typicalDay(history.slice(0, 4), shown)!;
+    expect(typical.fromShown).toBe(true);
+    expect(typical.time).toBe(4 * HOUR);
+    expect(typicalDay(history, shown)!.fromShown).toBe(false);
+    expect(typicalDay([], [])).toBeNull();
+  });
+
+  it('keeps a floor under a typical day without commits', () => {
+    const typical = typicalDay(history.map((r) => ({ ...r, commits: 0, prs: [] })), [])!;
+    expect(typical.shipped).toBe(1);
+    expect(dayScore(statsOf([usual('2026-11-02', { commits: 1, prs: [] })]), typical).parts.shipped).toBeCloseTo(25);
+  });
+
+  it('keeps the typical day of every project when one is picked', () => {
+    // Every day, two projects worked half of it each.
+    const both = (day: string) => [
+      usual(day, { sessionId: `a${day}`, activeMs: HOUR / 2, turns: 5, commits: 2, prs: [] }),
+      usual(day, { sessionId: `b${day}`, projectRoot: '/work/other', projectName: 'other', activeMs: HOUR / 2, turns: 5, commits: 2, prs: [] }),
+    ];
+    const before = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].flatMap(both);
+    const today = both('2026-11-02');
+    const typical = typicalDay(before, today)!;
+    expect(dayScore(statsOf(today), typical).total).toBeCloseTo(100);
+    expect(dayScore(statsOf(inProject(today, '/work/other')), typical).total).toBeCloseTo(50);
+  });
+
+  it('counts a pull request once a day, however many sessions name it', () => {
+    const day = [usual('2026-11-02', { commits: 2, prs: [pr(7)] }), usual('2026-11-02', { sessionId: 's2', commits: 1, prs: [pr(7), pr(8)] })];
+    const stats = statsByDay(day).get('2026-11-02')!;
+    expect(stats.prs).toBe(2);
+    expect(shippedOf(stats)).toBe(3 + 3 * 2);
+  });
+
+  it('scales the strip to its busiest day, never under 200', () => {
+    expect(scoreScale([])).toBe(200);
+    expect(scoreScale([{ total: 80, parts: { time: 80, turns: 0, shipped: 0 } }])).toBe(200);
+    expect(scoreScale([{ total: 260, parts: { time: 135, turns: 75, shipped: 50 } }])).toBe(260);
+    expect(typicalLine(200)).toBe(BAR_FULL / 2);
+  });
+
+  it('stacks a bar from time up to shipped, with gaps, at the height of its score', () => {
+    const parts = barParts({ total: 200, parts: { time: 90, turns: 60, shipped: 50 } }, 200)!;
+    expect(parts.map((p) => p.part)).toEqual(['time', 'turns', 'shipped']);
+    expect(parts.reduce((sum, p) => sum + p.px, 0) + 2 * BAR_GAP).toBe(BAR_FULL);
+    // An empty part is left out, and a tiny day still shows each part.
+    expect(barParts({ total: 45, parts: { time: 45, turns: 0, shipped: 0 } }, 200)).toEqual([{ part: 'time', px: Math.round((45 / 200) * BAR_FULL) }]);
+    expect(barParts({ total: 1, parts: { time: 0.5, turns: 0.3, shipped: 0.2 } }, 300)!.every((p) => p.px >= 1)).toBe(true);
   });
 });

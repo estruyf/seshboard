@@ -140,6 +140,14 @@ export function formatWorked(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${pad(rest)}m`;
 }
 
+/** The same in short, for under a bar: "45m", "16h" (rounded to the hour); under a minute "<1m", none at all "–". */
+export function formatWorkedShort(ms: number): string {
+  if (ms <= 0) return '–';
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return '<1m';
+  return minutes < 60 ? `${minutes}m` : `${Math.round(minutes / 60)}h`;
+}
+
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
 /** How many pills a session's row has for its pull requests. A session can have dozens; the open row lists them all. */
@@ -177,15 +185,141 @@ export function statsOf(rows: readonly ActivityRow[]): ActivityStats {
   };
 }
 
-/** Sessions per day, for the strip. */
+/** Sessions per day: whether a day had any, and what an empty day says about the days around it. */
 export function countsByDay(rows: readonly ActivityRow[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of rows) counts.set(row.day, (counts.get(row.day) ?? 0) + 1);
   return counts;
 }
 
-/** The bar's height in the strip: the busiest day fills it, and an empty day still shows a stub. */
-export const barHeight = (count: number, max: number, full = 44) => (count <= 0 || max <= 0 ? 3 : Math.max(4, Math.round((count / max) * full)));
+/** Each day's numbers, for the strip's bars and their tooltips. A day without rows has none. */
+export function statsByDay(rows: readonly ActivityRow[]): Map<string, ActivityStats> {
+  const byDay = new Map<string, ActivityRow[]>();
+  for (const row of rows) byDay.set(row.day, [...(byDay.get(row.day) ?? []), row]);
+  return new Map([...byDay].map(([day, ofDay]) => [day, statsOf(ofDay)]));
+}
+
+// --- The activity score ----------------------------------------------------------------------------------------------
+
+/**
+ * A day's bar is its activity score: each part is the day's number over the same number on a typical day, capped at
+ * `SCORE_CAP` so one huge number (a bulk rename's 184 commits) can't take the bar over, then weighted and summed, ×100.
+ * So 100 is a typical day. Sessions and cost are left out: a session is a container, not work, and cost follows the
+ * model more than the work. Both stay in the tooltip.
+ */
+export const SCORE_WEIGHTS = { time: 0.45, turns: 0.3, shipped: 0.25 } as const;
+export type ScorePart = keyof typeof SCORE_WEIGHTS;
+/** From the bottom of the bar up. */
+export const SCORE_PARTS: readonly ScorePart[] = ['time', 'turns', 'shipped'];
+export const SCORE_CAP = 3;
+/** The strip's scale never goes under this, so a quiet week looks quiet instead of stretching to full height. */
+export const SCORE_SCALE_MIN = 200;
+/** A pull request counts as this many commits in what a day shipped. */
+export const PR_WEIGHT = 3;
+/** The typical day is the median of the active days in this many days before the strip's first day. */
+export const TYPICAL_DAYS = 28;
+/** With fewer active days than this in those weeks, the typical day is the median of the days on screen. */
+export const TYPICAL_MIN_DAYS = 5;
+/**
+ * The least a typical day counts for each part. A typical day without commits (or, in theory, without time or turns)
+ * would make any commit infinitely many typical days: the part is capped anyway, and this keeps one commit at one.
+ */
+const TYPICAL_FLOOR: Record<ScorePart, number> = { time: 60_000, turns: 1, shipped: 1 };
+
+/** What a day shipped: its commits, and each pull request (counted once that day) as `PR_WEIGHT` commits. */
+export const shippedOf = (stats: Pick<ActivityStats, 'commits' | 'prs'>) => stats.commits + PR_WEIGHT * stats.prs;
+
+const partsOf = (stats: ActivityStats): Record<ScorePart, number> => ({ time: stats.activeMs, turns: stats.turns, shipped: shippedOf(stats) });
+
+/** A typical day's numbers. `fromShown`: there was too little history, so it is the days on screen. */
+export interface TypicalDay {
+  time: number;
+  turns: number;
+  shipped: number;
+  fromShown: boolean;
+}
+
+const median = (values: readonly number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+};
+
+/**
+ * The typical day: per part, the median over the active days (days with a session) of `history`, the weeks before the
+ * strip. With fewer than `TYPICAL_MIN_DAYS` of those, the median of the active days in `shown`. Null when neither has
+ * one. Pass every project's rows: with a project picked, its bars read as a share of a normal day.
+ */
+export function typicalDay(history: readonly ActivityRow[], shown: readonly ActivityRow[]): TypicalDay | null {
+  const before = [...statsByDay(history).values()];
+  const fromShown = before.length < TYPICAL_MIN_DAYS;
+  const days = fromShown ? [...statsByDay(shown).values()] : before;
+  if (!days.length) return null;
+  const parts = days.map(partsOf);
+  const typical = (part: ScorePart) => Math.max(TYPICAL_FLOOR[part], median(parts.map((p) => p[part])));
+  return { time: typical('time'), turns: typical('turns'), shipped: typical('shipped'), fromShown };
+}
+
+/** A day's score, and what each part adds to it. */
+export interface DayScore {
+  total: number;
+  parts: Record<ScorePart, number>;
+}
+
+export function dayScore(stats: ActivityStats | undefined, typical: TypicalDay | null): DayScore {
+  const parts: Record<ScorePart, number> = { time: 0, turns: 0, shipped: 0 };
+  if (stats && typical) {
+    const values = partsOf(stats);
+    for (const part of SCORE_PARTS) parts[part] = 100 * SCORE_WEIGHTS[part] * Math.min(SCORE_CAP, values[part] / typical[part]);
+  }
+  return { total: parts.time + parts.turns + parts.shipped, parts };
+}
+
+/** The score at the top of the strip: the busiest day on it, but never under `SCORE_SCALE_MIN`. */
+export const scoreScale = (scores: Iterable<DayScore>) => Math.max(SCORE_SCALE_MIN, ...[...scores].map((s) => s.total));
+
+/** "1.5× a typical day". */
+export const timesTypical = (score: DayScore) => `${(score.total / 100).toFixed(1)}× a typical day`;
+
+/** The height of the strip's bars, and the gap between a bar's parts. */
+export const BAR_FULL = 56;
+export const BAR_GAP = 2;
+/** The bar of a day without anything to count. */
+export const BAR_STUB = 3;
+
+/**
+ * A day's bar in pixels: its parts from the bottom up, the empty ones left out, with `BAR_GAP` between them. Null for a
+ * day without a score, which shows a stub. Each part keeps at least a pixel, so a bar can come out a little taller.
+ */
+export function barParts(score: DayScore, scale: number, full = BAR_FULL): Array<{ part: ScorePart; px: number }> | null {
+  if (score.total <= 0 || scale <= 0) return null;
+  const shown = SCORE_PARTS.filter((part) => score.parts[part] > 0);
+  const gaps = BAR_GAP * (shown.length - 1);
+  const height = Math.max(4, Math.round((score.total / scale) * full));
+  const room = Math.max(shown.length, height - gaps);
+  const parts = shown.map((part) => ({ part, px: Math.max(1, Math.round((room * score.parts[part]) / score.total)) }));
+  // Rounding can leave the sum a pixel off: the largest part takes the difference.
+  const largest = parts.reduce((a, b) => (b.px > a.px ? b : a));
+  largest.px = Math.max(1, largest.px + room - parts.reduce((sum, p) => sum + p.px, 0));
+  return parts;
+}
+
+/** The strip's bars: each day's numbers and score, and the scale they are drawn on. */
+export interface StripBars {
+  stats: ReadonlyMap<string, ActivityStats>;
+  scores: ReadonlyMap<string, DayScore>;
+  scale: number;
+  typical: TypicalDay | null;
+}
+
+export function stripBars(days: readonly string[], rows: readonly ActivityRow[], typical: TypicalDay | null): StripBars {
+  const stats = statsByDay(inDays(rows, days[0] ?? '', days[days.length - 1] ?? ''));
+  const scores = new Map(days.map((day) => [day, dayScore(stats.get(day), typical)]));
+  return { stats, scores, scale: scoreScale(scores.values()), typical };
+}
+
+/** Where the typical-day line sits, in pixels from the bottom of the bars. */
+export const typicalLine = (scale: number, full = BAR_FULL) => Math.round((100 / scale) * full);
 
 /** The hour ribbon: the time worked per hour, and how strong each cell shows (0 nothing, 4 the busiest). */
 export function ribbonOf(rows: readonly ActivityRow[]): Array<{ ms: number; level: 0 | 1 | 2 | 3 | 4 }> {

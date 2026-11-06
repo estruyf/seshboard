@@ -4542,6 +4542,11 @@
       "page": "sessions/upcoming"
     },
     {
+      "id": "feature:activity-score",
+      "name": "Activity: each day's bar is an activity score against your typical day, stacked by time, turns and shipped, with a typical-day line and a tooltip per day",
+      "page": "sessions/upcoming"
+    },
+    {
       "id": "feature:activity-summary",
       "name": "Activity: the day in short, a few lines by Haiku, kept per day, with Regenerate and a setting to turn it off",
       "page": "sessions/upcoming"

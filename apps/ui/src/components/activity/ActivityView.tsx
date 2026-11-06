@@ -15,13 +15,15 @@ import { Button } from '../ui/Button.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
+import type { TooltipRow } from '../ui/Tooltip.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { LegendItem } from '../usage/charts.tsx';
 import { useCostFormat } from '../usage/useCost.ts';
 import { ActivityCopyDialog } from './ActivityCopyDialog.tsx';
 import { ActivityExportDialog } from './ActivityExportDialog.tsx';
-import { addDays, barHeight, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, statsOf, summaryParts, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type DayRange, type ProjectGroup } from './activityModel.ts';
+import { addDays, barParts, countsByDay, dayLabel, dayNumber, dayOf, daysBetween, dayShort, dayTitle, formatWorked, formatWorkedShort, inDays, inProject, mondayOf, neighbourLine, plural, projectGroups, projectShare, rangeDays, rangeTitle, ribbonOf, rowKey, rowPrs, sessionsOnce, statsOf, stripBars, summaryParts, timesTypical, typicalLine, WEEK_DAYS, weekdayShort, weekOf, type ActivityRow, type ActivityStats, type DayRange, type DayScore, type ProjectGroup, type ScorePart, type StripBars } from './activityModel.ts';
 import { RangePicker } from './RangePicker.tsx';
-import { useActivityRange, useDaySummary, type DaySummary } from './useActivity.ts';
+import { useActivityRange, useDaySummary, useTypicalDay, type DaySummary } from './useActivity.ts';
 
 /** From this many lines the list only has the rows in view: a range can hold two months of sessions. */
 const VIRTUALIZE_FROM = 150;
@@ -81,6 +83,12 @@ export function ActivityView() {
   // The project filter is on everything below the title, the strip's bars too.
   const filtered = useMemo(() => inProject(rows, project?.key ?? null), [rows, project]);
   const counts = useMemo(() => countsByDay(filtered), [filtered]);
+  // The bars are each day's activity score against a typical day. The typical day is every project's, also while one
+  // is picked, so a project's bars read as its share of a normal day.
+  const stripDays = useMemo(() => (span === 'range' ? daysBetween(rangeFrom, rangeTo) : days), [span, rangeFrom, rangeTo, days]);
+  const stripRows = useMemo(() => inDays(rows, stripDays[0]!, stripDays[stripDays.length - 1]!), [rows, stripDays]);
+  const typical = useTypicalDay(stripDays[0]!, stripRows);
+  const bars = useMemo(() => stripBars(stripDays, filtered, typical), [stripDays, filtered, typical]);
   const shown = useMemo(() => inDays(filtered, spanFrom, spanTo), [filtered, spanFrom, spanTo]);
   // The day in short is the whole day's, also while a project is picked. A week or a range has none, so it writes nothing.
   const wholeDay = useMemo(() => rows.filter((row) => row.day === day), [rows, day]);
@@ -101,6 +109,7 @@ export function ActivityView() {
     picked: (d) => (span === 'day' ? d === day : d <= today),
     today,
     counts,
+    bars,
     onDay: showDay,
     onMove: moveStrip,
     atLatest: monday >= thisMonday,
@@ -156,7 +165,7 @@ export function ActivityView() {
             {span === 'range' ? (
               <>
                 <RangePicker range={range} today={today} />
-                <RangeBars days={daysBetween(rangeFrom, rangeTo)} today={today} counts={counts} onDay={showDay} />
+                <RangeBars days={stripDays} today={today} counts={counts} bars={bars} onDay={showDay} />
               </>
             ) : (
               <WeekStrip {...strip} />
@@ -201,9 +210,72 @@ interface StripProps {
   picked(day: string): boolean;
   today: string;
   counts: ReadonlyMap<string, number>;
+  bars: StripBars;
   onDay(day: string): void;
   onMove(by: number): void;
   atLatest: boolean;
+}
+
+/** The parts of a bar, from the bottom up, in the strip's own series colours (never a status colour). */
+const PART_FILL: Record<ScorePart, string> = { time: 'bg-chart-time', turns: 'bg-chart-turns', shipped: 'bg-chart-shipped' };
+const PART_TOKEN: Record<ScorePart, string> = { time: 'chart-time', turns: 'chart-turns', shipped: 'chart-shipped' };
+const PART_LABEL: Record<ScorePart, string> = { time: 'Time', turns: 'Turns', shipped: 'Shipped' };
+
+/** A day's bar: its score stacked from time up to shipped, or a stub for a day with nothing to count. */
+function ScoreBar({ score, scale, dim = false, width }: { score: DayScore; scale: number; dim?: boolean; width: string }) {
+  const parts = barParts(score, scale);
+  if (!parts) return <span className={`relative block h-[3px] ${width} rounded-[3px] bg-faint/60 opacity-40`} data-activity-bar-stub />;
+  return (
+    <span className={`relative flex ${width} flex-col-reverse gap-0.5 ${dim ? 'opacity-50' : ''}`}>
+      {parts.map(({ part, px }, i) => (
+        <span key={part} className={`block ${PART_FILL[part]} ${i === parts.length - 1 ? 'rounded-t-[4px] rounded-b-[1px]' : 'rounded-[1px]'}`} style={{ height: px }} data-activity-bar-part={part} />
+      ))}
+    </span>
+  );
+}
+
+/** The faint dashed line where a typical day's bar would end (a score of 100). */
+function TypicalLine({ scale, inset }: { scale: number; inset: string }) {
+  return <span className={`pointer-events-none absolute ${inset} border-t border-dashed border-faint/70`} style={{ bottom: typicalLine(scale) }} aria-hidden data-activity-typical />;
+}
+
+/** What the bars are made of, under the strip. */
+function BarsLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-meta" aria-hidden data-activity-legend>
+      {(['time', 'turns', 'shipped'] as const).map((part) => (
+        <LegendItem key={part} color={`var(--sb-${PART_TOKEN[part]})`} label={PART_LABEL[part]} />
+      ))}
+      <LegendItem color="var(--sb-faint)" label="Typical day" dashed />
+    </div>
+  );
+}
+
+/**
+ * A day's tooltip, as a card: the score and how it compares with a typical day, then what went into the bar, each with
+ * its part's colour, then sessions and cost, which the score leaves out.
+ */
+function dayTooltip(day: string, stats: ActivityStats | undefined, score: DayScore, bars: StripBars, cost: ((usd: number | null) => string) | null): Record<string, string> {
+  const title = dayTitle(day);
+  if (!stats) return { 'data-tooltip': `${title}\nNo sessions`, 'data-tooltip-title': title, 'data-tooltip-meta': 'No sessions' };
+  const costText = cost && stats.costUsd !== null ? cost(stats.costUsd) : null;
+  const head = bars.typical ? `${title} · ${Math.round(score.total)}` : title;
+  const meta = bars.typical ? timesTypical(score) : '';
+  const rows: TooltipRow[] = [
+    { label: 'Claude working', value: formatWorked(stats.activeMs), swatch: PART_TOKEN.time },
+    { label: 'Turns', value: String(stats.turns), swatch: PART_TOKEN.turns },
+    { label: 'Commits', value: String(stats.commits), swatch: PART_TOKEN.shipped },
+    { label: 'Pull requests', value: String(stats.prs), swatch: PART_TOKEN.shipped },
+    { label: costText ? 'Sessions · cost' : 'Sessions', value: costText ? `${stats.sessions} · ${costText}` : String(stats.sessions), quiet: true },
+  ];
+  const hint = bars.typical?.fromShown ? 'Compared with the days shown: the 4 weeks before have fewer than 5 days of work.' : '';
+  return {
+    'data-tooltip': [head, meta, ...rows.map((row) => `${row.label}: ${row.value}`), hint].filter(Boolean).join('\n'),
+    'data-tooltip-title': head,
+    ...(meta ? { 'data-tooltip-meta': meta } : {}),
+    'data-tooltip-rows': JSON.stringify(rows),
+    ...(hint ? { 'data-tooltip-hint': hint } : {}),
+  };
 }
 
 function StripArrow({ by, atLatest, onMove }: { by: number; atLatest: boolean; onMove(by: number): void }) {
@@ -212,59 +284,80 @@ function StripArrow({ by, atLatest, onMove }: { by: number; atLatest: boolean; o
   return <Button variant="quiet" iconOnly icon={later ? <ChevronRight size={14} aria-hidden /> : <ChevronLeft size={14} aria-hidden />} aria-label={label} data-tooltip={later && atLatest ? undefined : label} disabled={later && atLatest} onClick={() => onMove(by)} {...(later ? { 'data-activity-later': true } : { 'data-activity-earlier': true })} />;
 }
 
-function WeekStrip({ days, span, picked, today, counts, onDay, onMove, atLatest }: StripProps) {
-  const max = Math.max(0, ...days.map((d) => counts.get(d) ?? 0));
+function WeekStrip({ days, span, picked, today, counts, bars, onDay, onMove, atLatest }: StripProps) {
+  const cost = useCostFormat();
   return (
-    <div className="flex items-center gap-1.5" role="group" aria-label="Pick a day" data-activity-strip>
-      <StripArrow by={-WEEK_DAYS} atLatest={atLatest} onMove={onMove} />
-      {days.map((d) => {
-        const count = counts.get(d) ?? 0;
-        const selected = picked(d);
-        return (
-          <button
-            key={d}
-            type="button"
-            disabled={d > today}
-            onClick={() => onDay(d)}
-            aria-current={selected ? (span === 'day' ? 'date' : 'true') : undefined}
-            aria-label={`${dayTitle(d)}: ${plural(count, 'session')}${d === today ? ', today' : ''}`}
-            className={`grid min-w-0 max-w-16 flex-1 justify-items-center gap-1 rounded-lg px-0.5 pt-2 pb-1.5 disabled:opacity-40 ${selected ? 'bg-selected' : 'enabled:hover:bg-border/45'}`}
-            data-activity-day={d}
-            data-activity-day-count={count}
-          >
-            <span className="text-meta text-muted">{weekdayShort(d)}</span>
-            <span className={`text-title font-semibold tabular-nums ${count === 0 ? 'text-faint' : 'text-text'}`}>{dayNumber(d)}</span>
-            <span className="flex h-11 items-end" aria-hidden>
-              <span className={`block w-[18px] rounded-[3px] ${selected ? 'bg-accent' : 'bg-faint/60'} ${count === 0 ? 'opacity-40' : ''}`} style={{ height: barHeight(count, max) }} />
-            </span>
-            <span className="text-meta text-muted tabular-nums">{count || '–'}</span>
-          </button>
-        );
-      })}
-      <StripArrow by={WEEK_DAYS} atLatest={atLatest} onMove={onMove} />
+    <div className="grid justify-items-center gap-2">
+      <div className="flex w-full items-center gap-1.5" role="group" aria-label="Pick a day" data-activity-strip>
+        <StripArrow by={-WEEK_DAYS} atLatest={atLatest} onMove={onMove} />
+        {days.map((d) => {
+          const count = counts.get(d) ?? 0;
+          const selected = picked(d);
+          const stats = bars.stats.get(d);
+          const score = bars.scores.get(d)!;
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={d > today}
+              onClick={() => onDay(d)}
+              aria-current={selected ? (span === 'day' ? 'date' : 'true') : undefined}
+              aria-label={`${dayTitle(d)}: ${plural(count, 'session')}${stats ? `, ${formatWorked(stats.activeMs)}, ${timesTypical(score)}` : ''}${d === today ? ', today' : ''}`}
+              className={`grid min-w-0 max-w-16 flex-1 justify-items-center gap-1 rounded-lg px-0.5 pt-2 pb-1.5 disabled:opacity-40 ${selected ? 'bg-selected' : 'enabled:hover:bg-border/45'}`}
+              {...(d > today ? {} : dayTooltip(d, stats, score, bars, cost))}
+              data-activity-day={d}
+              data-activity-day-count={count}
+              data-activity-day-score={Math.round(score.total)}
+            >
+              <span className="text-meta text-muted">{weekdayShort(d)}</span>
+              <span className={`text-title font-semibold tabular-nums ${count === 0 ? 'text-faint' : 'text-text'}`}>{dayNumber(d)}</span>
+              <span className="relative flex h-14 w-full items-end justify-center" aria-hidden>
+                {bars.typical && <TypicalLine scale={bars.scale} inset="-inset-x-[5px]" />}
+                <ScoreBar score={score} scale={bars.scale} dim={!selected} width="w-[18px]" />
+              </span>
+              <span className="text-meta text-muted tabular-nums">{formatWorkedShort(stats?.activeMs ?? 0)}</span>
+            </button>
+          );
+        })}
+        <StripArrow by={WEEK_DAYS} atLatest={atLatest} onMove={onMove} />
+      </div>
+      <BarsLegend />
     </div>
   );
 }
 
 /** A range's strip: too many days for a cell each, so a bar per day. A click shows that day. */
-function RangeBars({ days, today, counts, onDay }: { days: readonly string[]; today: string; counts: ReadonlyMap<string, number>; onDay(day: string): void }) {
-  const max = Math.max(0, ...days.map((d) => counts.get(d) ?? 0));
+function RangeBars({ days, today, counts, bars, onDay }: { days: readonly string[]; today: string; counts: ReadonlyMap<string, number>; bars: StripBars; onDay(day: string): void }) {
+  const cost = useCostFormat();
   return (
     <div className="grid gap-1" role="group" aria-label="Pick a day" data-activity-range-bars>
-      <div className="flex h-11 items-end gap-0.5">
+      <div className="relative flex h-14 items-end gap-0.5">
+        {bars.typical && <TypicalLine scale={bars.scale} inset="inset-x-0" />}
         {days.map((d) => {
           const count = counts.get(d) ?? 0;
-          const line = `${dayTitle(d)}: ${plural(count, 'session')}`;
+          const stats = bars.stats.get(d);
+          const score = bars.scores.get(d)!;
           return (
-            <button key={d} type="button" onClick={() => onDay(d)} aria-label={`${line}${d === today ? ', today' : ''}`} data-tooltip={line} className="flex h-full min-w-0 flex-1 items-end rounded-[3px] hover:bg-border/45" data-activity-range-day={d} data-activity-range-day-count={count}>
-              <span className={`block w-full rounded-[3px] ${count === 0 ? 'bg-faint/40' : 'bg-accent'}`} style={{ height: barHeight(count, max) }} />
+            <button
+              key={d}
+              type="button"
+              onClick={() => onDay(d)}
+              aria-label={`${dayTitle(d)}: ${plural(count, 'session')}${stats ? `, ${formatWorked(stats.activeMs)}, ${timesTypical(score)}` : ''}${d === today ? ', today' : ''}`}
+              {...dayTooltip(d, stats, score, bars, cost)}
+              className="relative flex h-full min-w-0 flex-1 items-end rounded-[3px] hover:bg-border/45"
+              data-activity-range-day={d}
+              data-activity-range-day-count={count}
+              data-activity-range-day-score={Math.round(score.total)}
+            >
+              <ScoreBar score={score} scale={bars.scale} width="w-full" />
             </button>
           );
         })}
       </div>
-      <div className="flex justify-between text-meta text-muted tabular-nums" aria-hidden>
-        <span>{dayLabel(days[0]!, today)}</span>
-        <span>{dayLabel(days[days.length - 1]!, today)}</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-meta text-muted tabular-nums">
+        <span aria-hidden>{dayLabel(days[0]!, today)}</span>
+        <BarsLegend />
+        <span aria-hidden>{dayLabel(days[days.length - 1]!, today)}</span>
       </div>
     </div>
   );
