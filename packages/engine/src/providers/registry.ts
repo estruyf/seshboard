@@ -8,6 +8,7 @@ import { copilotHome } from './copilot/copilotSource.ts';
 import { findCopilot } from './copilot/copilotBinary.ts';
 import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpdate.ts';
 import type { AppServer, AppServerOptions, CodexBinary } from './codex/appServer.ts';
+import { CODEX_MODES } from './codex/codexModes.ts';
 import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 
@@ -66,12 +67,13 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       name: PROVIDER_NAMES.codex,
       defaultFolder: codexHome(env, home),
       resumeCommand: CODEX_RESUME,
-      // Read-only for now: its sessions are read through `codex app-server`, and started in Codex CLI (#276).
-      canStart: false,
-      modes: [],
+      // Read and run through the profile's `codex app-server` (#276).
+      canStart: true,
+      modes: CODEX_MODES,
       installCommand: CODEX_INSTALL,
-      // Its rollout file goes to the Trash.
-      supports: ['delete'],
+      // Its rollout file goes to the Trash; effort per turn; the queue, schedules and triggers start it like New
+      // session does, in a worktree or on a branch Seshboard makes. Fork, rename, rewind and Ask are Phase 3.
+      supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
   ];
 }

@@ -142,7 +142,7 @@ describe('engine over a MessagePort', () => {
     ];
     writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
-    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: false })]);
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: true })]);
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
 
