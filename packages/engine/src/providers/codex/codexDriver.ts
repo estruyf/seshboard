@@ -7,8 +7,9 @@ import { codexInput } from './codexInput.ts';
 import { codexItemId } from './codexEvents.ts';
 import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
+import { COMPACT_COMMAND, codexCapabilities, isCompact, MCP_TOGGLE_REFUSED } from './codexTools.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
-import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
+import type { CollaborationMode, HookMetadata, McpServerStatus, Methods, Model, ServerNotification, ServerRequest, SkillMetadata, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
 /** What turns one running thread's notifications into a session's events (`CodexLive`; tests fake it). */
 export interface CodexLiveHandler {
@@ -177,12 +178,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       throw error;
     }));
   };
-  /** Codex's MCP servers, for a read-only thread's config. */
-  const mcpServers = async () => {
-    const all: Array<{ name: string; pluginId: string | null }> = [];
+  /** Codex's MCP servers, for a read-only thread's config, and with a loaded thread's own connections for Tools. */
+  const mcpServers = async (threadId: string | null = null) => {
+    const all: McpServerStatus[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_MCP_PAGES; page++) {
-      const { data, nextCursor }: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } = await server.request('mcpServerStatus/list', { cursor });
+      // Tools needs each server's state and tools, not its resources.
+      const params: Methods['mcpServerStatus/list']['params'] = threadId ? { cursor, threadId, detail: 'toolsAndAuthOnly' } : { cursor };
+      const { data, nextCursor }: { data: McpServerStatus[]; nextCursor: string | null } = await server.request('mcpServerStatus/list', params);
       all.push(...data);
       if (!nextCursor || nextCursor === cursor) break;
       cursor = nextCursor;
@@ -207,8 +210,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       return (await listModels()).filter((m) => !m.hidden).map(codexModelOption);
     },
 
-    // Codex's slash commands are its TUI's: none goes through the app-server as a command.
-    commands: async () => [],
+    // Codex's slash commands are its TUI's: only Compact goes through the app-server (`thread/compact/start`).
+    commands: async () => [COMPACT_COMMAND],
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       wire();
@@ -432,21 +435,51 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         effortChanged = false;
       };
 
+      /** Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`. */
+      const ensureLoaded = async () => {
+        if (loaded) return;
+        await open(threadId);
+        if (crashed) live = makeLive(threadId, events);
+        crashed = false;
+      };
+
       return {
         sessionId: threadId,
-        commands: async () => [],
-        // Codex's MCP servers, skills and agents come with Phase 3 of #276.
-        capabilities: async () => ({ live: true, mcp: [], agents: [], commands: [], plugins: [] }),
-        async mcp() {
-          throw new Error("Codex's MCP servers can't be changed from Seshboard yet");
+        commands: async () => [COMPACT_COMMAND],
+        async capabilities() {
+          // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections.
+          const live = loaded;
+          const [mcp, skills, hooks] = await Promise.all([
+            mcpServers(live ? threadId : null).catch((): McpServerStatus[] => []),
+            server.request('skills/list', { cwds: [config.cwd] }).then(
+              (r) => r.data.flatMap((entry) => entry.skills),
+              (): SkillMetadata[] => [],
+            ),
+            server.request('hooks/list', live ? { threadId } : { cwds: [config.cwd] }).then(
+              (r) => r.data.flatMap((entry) => entry.hooks),
+              (): HookMetadata[] => [],
+            ),
+          ]);
+          return codexCapabilities({ live, mcp, skills, hooks });
+        },
+        async mcp(_server: string, action: 'enable' | 'disable' | 'reconnect') {
+          // Turning one on or off is Codex's config's: Seshboard doesn't write it.
+          if (action !== 'reconnect') throw new Error(MCP_TOGGLE_REFUSED);
+          await ensureLoaded();
+          // Codex reconnects every server of its loaded threads at once: it has no way to reach just one.
+          await server.request('config/mcpServer/reload', {});
+        },
+        async rename(title: string) {
+          await server.request('thread/name/set', { threadId, name: title });
         },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
           if (closed) throw new Error('This Codex session was closed');
-          // Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`.
-          if (!loaded) {
-            await open(threadId);
-            if (crashed) live = makeLive(threadId, events);
-            crashed = false;
+          await ensureLoaded();
+          // Compact (the context meter's, or `/compact` typed): Codex compacts as a turn of its own, which `CodexLive`
+          // shows like any other (its `contextCompaction` item), and Stop stops.
+          if (!steer && !attachments.length && isCompact(text)) {
+            await server.request('thread/compact/start', { threadId });
+            return `codex-compact-${randomUUID()}`;
           }
           const input = codexInput(text, attachments, config.cwd);
           const clientId = randomUUID();

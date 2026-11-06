@@ -18,6 +18,19 @@ export type AgentSummary = z.infer<typeof AgentSummary>;
 export const PluginInfo = z.object({ name: z.string(), version: z.string().nullable(), scope: z.string().nullable(), path: z.string().nullable() });
 export type PluginInfo = z.infer<typeof PluginInfo>;
 
+/** A hook that runs at one of the agent's events (another provider's: Codex's), shown read-only in Tools. */
+export const HookInfo = z.object({
+  /** The event it runs at (`preToolUse`, `stop`, …). */
+  event: z.string(),
+  matcher: z.string().nullable(),
+  /** What it runs: a command line, or an MCP tool (`server/tool`). */
+  command: z.string(),
+  /** Where it's configured: user, project, plugin, … */
+  scope: z.string().nullable(),
+  enabled: z.boolean(),
+});
+export type HookInfo = z.infer<typeof HookInfo>;
+
 /** What Claude Code can use in a session (or a folder): MCP servers, agents, skills and commands, plugins. */
 export const Capabilities = z.object({
   /** From the session running in this app (toggles apply to it), or a short-lived helper process (read-only). */
@@ -27,5 +40,7 @@ export const Capabilities = z.object({
   /** Skills and custom, project and plugin commands (Claude Code's built-ins are left out). */
   commands: z.array(SlashCommand),
   plugins: z.array(PluginInfo),
+  /** Hooks, for a provider that lists them (Codex). */
+  hooks: z.array(HookInfo).optional(),
 });
 export type Capabilities = z.infer<typeof Capabilities>;

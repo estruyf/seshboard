@@ -26,6 +26,8 @@ export interface ProviderOptions {
   codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
   log?: (level: LogLevel, message: string) => void;
+  /** A session's details changed without a file the watcher sees (a Codex thread's new name): read it again. */
+  onSessionChanged?: (sessionId: string) => void;
 }
 
 /** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
@@ -80,9 +82,10 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       canStart: true,
       modes: CODEX_MODES,
       installCommand: CODEX_INSTALL,
-      // Its rollout file goes to the Trash; effort per turn; the queue, schedules and triggers start it like New
-      // session does, in a worktree or on a branch Seshboard makes. Fork, rename, rewind and Ask are Phase 3.
-      supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+      // Renamed with `thread/name/set`; its rollout file goes to the Trash; effort per turn; the queue, schedules and
+      // triggers start it like New session does, in a worktree or on a branch Seshboard makes. Fork, rewind and Ask are
+      // Phase 3.
+      supports: ['rename', 'delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
   ];
 }
@@ -112,12 +115,12 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, onSessionChanged }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
     case 'codex':
-      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}) });
+      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
   }
 }
