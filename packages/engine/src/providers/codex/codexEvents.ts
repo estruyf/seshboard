@@ -210,11 +210,15 @@ export function diffEdits(diff: string): Array<{ old_string: string; new_string:
     });
 }
 
-type Tool = { name: string; input: Loose };
+export type Tool = { name: string; input: Loose };
 type Result = { text: string; isError: boolean; images?: Block[] } | null;
 
-/** One `fileChange` change as Claude Code's tool: Write for a new file, Edit (MultiEdit for several hunks) for a change. */
-function fileTool(change: Loose): Tool {
+/**
+ * One `fileChange` change as Claude Code's tool: Write for a new file, Edit (MultiEdit for several hunks) for a change.
+ * The transcript's card and the permission card use the same.
+ */
+export function codexFileTool(raw: unknown): Tool {
+  const change = obj(raw);
   const path = str(change.path) ?? '';
   const kind = obj(change.kind);
   const diff = str(change.diff) ?? '';
@@ -280,6 +284,9 @@ const AGENT_FAILED = new Set(['errored', 'notFound', 'interrupted']);
 /** Codex's own fields on every item, left out of a generic card's input. */
 const ITEM_FIELDS = new Set(['type', 'id', 'startedAtMs', 'completedAtMs', 'status']);
 
+/** The id of an item's messages and tool calls: its turn's and its own, stable across reads and while it runs. */
+export const codexItemId = (turnId: string, itemId: string) => `${turnId}:${itemId}`;
+
 /** Each turn's items with the id their messages and tool calls get: the turn's and the item's, made unique should one repeat. */
 function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; items: Array<{ item: Loose; id: string }> }> {
   const seen = new Set<string>();
@@ -288,7 +295,7 @@ function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; it
     const turnId = str(turn.id) ?? `turn-${turnIndex}`;
     const items = arr(turn.items).map((raw, index) => {
       const item = obj(raw);
-      let id = `${turnId}:${str(item.id) ?? index}`;
+      let id = codexItemId(turnId, str(item.id) ?? String(index));
       if (seen.has(id)) id = `${id}#${index}`;
       seen.add(id);
       return { item, id };
@@ -323,25 +330,47 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 export function codexMessages(turns: readonly Turn[]): RawSessionMessage[] {
   const entries = itemIds(turns);
   // What each subagent last reported, from any call that waited on it: its spawn card shows it as the agent's report.
-  const agentStates = new Map<string, { status: string; message: string | null }>();
-  for (const { item } of entries.flatMap((t) => t.items)) {
-    if (item.type !== 'collabAgentToolCall') continue;
-    for (const [thread, raw] of Object.entries(obj(item.agentsStates))) {
-      const state = obj(raw);
-      const message = str(state.message);
-      if (message?.trim() || !agentStates.get(thread)?.message) agentStates.set(thread, { status: str(state.status) ?? '', message: message?.trim() ? message : null });
-    }
-  }
+  const agentStates: AgentStates = new Map();
+  for (const { item } of entries.flatMap((t) => t.items)) noteAgentStates(item, agentStates);
 
   const out: RawSessionMessage[] = [];
   for (const { turn, turnId, items } of entries) {
-    for (const { item, id } of items) convertItem(turn, item, id, agentStates, out);
+    for (const { item, id } of items) out.push(...codexItemMessages(turn, item, id, agentStates));
     out.push(...turnEnd(turn, turnId));
   }
   return out;
 }
 
-/** One item's messages, added to `out`. */
+/** Each subagent's last known state, by thread id: a finished one's `message` is its report. */
+export type AgentStates = Map<string, { status: string; message: string | null }>;
+
+/** Adds what a `collabAgentToolCall` knows of its agents to `states`, keeping a report over a later state without one. */
+export function noteAgentStates(item: unknown, states: AgentStates): void {
+  const call = obj(item);
+  if (call.type !== 'collabAgentToolCall') return;
+  for (const [thread, raw] of Object.entries(obj(call.agentsStates))) {
+    const state = obj(raw);
+    const message = str(state.message);
+    if (message?.trim() || !states.get(thread)?.message) states.set(thread, { status: str(state.status) ?? '', message: message?.trim() ? message : null });
+  }
+}
+
+/**
+ * One item's messages (`codexMessages` for one item): what the reader makes of it in a thread read back, and what a
+ * running thread reports when the item completes. `id` is `codexItemId`'s; `turn` gives the times an item lacks and,
+ * once over, ends a tool left running. `agentStates`: what subagents reported, for a spawn's result.
+ */
+export function codexItemMessages(turn: Turn, item: unknown, id: string, agentStates: ReadonlyMap<string, { status: string; message: string | null }> = new Map()): RawSessionMessage[] {
+  const out: RawSessionMessage[] = [];
+  convertItem(obj(turn) as unknown as Turn, obj(item), id, agentStates, out);
+  return out;
+}
+
+/** How a turn ended, as `codexMessages` shows it: nothing for a finished one, a notice for a stopped or failed one. */
+export function codexTurnEnd(turn: Turn): RawSessionMessage[] {
+  return turnEnd(turn, str(obj(turn).id) ?? 'turn');
+}
+
 function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyMap<string, { status: string; message: string | null }>, out: RawSessionMessage[]): void {
   const turnStart = num(turn.startedAt) ?? num(turn.completedAt);
   const started = num(item.startedAtMs) ?? num(item.completedAtMs) ?? (turnStart !== null ? turnStart * 1000 : null);
@@ -412,7 +441,7 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
     }
     case 'fileChange': {
       const changes = arr(item.changes).map(obj);
-      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}:${i}`, tool: fileTool(change), result: fileResult(change, item.status) })));
+      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}:${i}`, tool: codexFileTool(change), result: fileResult(change, item.status) })));
       break;
     }
     case 'mcpToolCall': {
