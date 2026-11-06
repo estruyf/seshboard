@@ -191,7 +191,14 @@ export type McpToolCallItem = ItemTimes & {
   result: { content: unknown[]; structuredContent: unknown } | null;
   error: { message: string } | null;
 };
-export type WebSearchItem = ItemTimes & { type: 'webSearch'; id: string; query: string; action: WebSearchAction | null };
+export type WebSearchItem = ItemTimes & {
+  type: 'webSearch';
+  id: string;
+  query: string;
+  action: WebSearchAction | null;
+  /** Opaque results of a standalone search, when Codex has them. */
+  results?: unknown[] | null;
+};
 export type ImageViewItem = ItemTimes & { type: 'imageView'; id: string; path: string };
 export type ContextCompactionItem = ItemTimes & { type: 'contextCompaction'; id: string };
 export type ReviewModeItem = ItemTimes & { type: 'enteredReviewMode' | 'exitedReviewMode'; id: string; review: string };
@@ -205,6 +212,8 @@ export type CollabAgentToolCallItem = ItemTimes & {
   receiverThreadIds: string[];
   prompt: string | null;
   model: string | null;
+  /** The last known state of each receiving agent, by thread id: a finished one's `message` is its report. */
+  agentsStates?: Record<string, { status: string; message: string | null } | undefined>;
 };
 export type SubAgentActivityItem = ItemTimes & { type: 'subAgentActivity'; id: string; kind: string; agentThreadId: string; agentPath: string; model: string | null };
 /** Any item this file doesn't describe (`hookPrompt`, `dynamicToolCall`, `sleep`, `imageGeneration`, newer ones). */
