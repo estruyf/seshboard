@@ -17,6 +17,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - New session uses the width of the window: projects on the left, the message box in the middle, and the project's sessions and defaults on the right, without scrolling.
 - At the focus limit, New session says so in one line above the box, and Start reads **Add to queue** (⌘↩). **Start anyway** is in its menu, unless your limit is Strict.
 
+### Fixed
+
+- **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
+
 ## [1.3.0] - 2026-11-05
 
 ### Added

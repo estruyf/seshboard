@@ -4,7 +4,7 @@ import type { PluggableList } from 'unified';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
-import { fileRefFromHref, parseFileRef } from './fileRefs.ts';
+import { fileRefFromHref, fileUrlTransform, parseFileRef } from './fileRefs.ts';
 import { remarkSkimFade } from './skimFade.ts';
 import { healMarkdown, splitBlocks } from './streamingMarkdown.ts';
 
@@ -92,7 +92,7 @@ const previewComponents: Components = { ...markdownComponents, code: (props) => 
 
 const PreviewBlock = memo(function PreviewBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={previewComponents}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={fileUrlTransform} components={previewComponents}>
       {text}
     </ReactMarkdown>
   );
@@ -103,7 +103,7 @@ const PLUGINS = [remarkGfm];
 const Block = memo(function Block({ text, keep = null }: { text: string; keep?: readonly number[] | null }) {
   const plugins = useMemo(() => (keep ? [remarkGfm, [remarkSkimFade, { keep }] as const] : PLUGINS), [keep]);
   return (
-    <ReactMarkdown remarkPlugins={plugins as PluggableList} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={plugins as PluggableList} urlTransform={fileUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   );

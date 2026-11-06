@@ -1,5 +1,9 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { describe, expect, it } from 'vitest';
-import { createPathResolver, fileRefFromHref, fileUrl, parseFileRef } from './fileRefs.ts';
+import { createPathResolver, fileRefFromHref, fileUrl, fileUrlTransform, parseFileRef } from './fileRefs.ts';
 
 describe('parseFileRef', () => {
   it('reads paths with and without a line', () => {
@@ -51,6 +55,50 @@ describe('fileRefFromHref', () => {
     expect(fileRefFromHref('https://github.com/a/b/blob/main/a.ts')).toBeNull();
     expect(fileRefFromHref('mailto:me@example.com')).toBeNull();
     expect(fileRefFromHref(undefined)).toBeNull();
+  });
+
+  it('reads Windows file links and drive paths', () => {
+    expect(fileRefFromHref('file:///E:/repos/switchboard/.local/activity-bars/index.html')).toEqual({ path: 'E:/repos/switchboard/.local/activity-bars/index.html' });
+    expect(fileRefFromHref('file://localhost/C:/repo/a.ts')).toEqual({ path: 'C:/repo/a.ts' });
+    expect(fileRefFromHref('E:/repos/a.ts#L4')).toEqual({ path: 'E:/repos/a.ts', line: 4 });
+    expect(fileRefFromHref('E:\\repos\\a.ts')).toEqual({ path: 'E:\\repos\\a.ts' });
+  });
+
+  it('leaves a file link to another computer alone', () => {
+    expect(fileRefFromHref('file://server/share/a.ts')).toBeNull();
+    expect(fileRefFromHref('file:a.ts')).toBeNull();
+    expect(fileRefFromHref('file:////server/share/a.ts')).toBeNull();
+    expect(fileRefFromHref('file:///%5C%5Cserver/share/a.ts')).toBeNull();
+    expect(fileRefFromHref('//server/share/a.ts')).toBeNull();
+    expect(fileRefFromHref('\\\\server\\share\\a.ts')).toBeNull();
+  });
+});
+
+describe('fileUrlTransform', () => {
+  const render = (markdown: string, urlTransform?: (url: string) => string) => renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm], urlTransform }, markdown));
+
+  it('keeps file links and drive paths, which the default empties', () => {
+    const link = '[index.html](file:///E:/repos/switchboard/.local/activity-bars/index.html)';
+    // Without it, the link points nowhere and a click does nothing.
+    expect(render(link)).toContain('href=""');
+    expect(render(link, fileUrlTransform)).toContain('href="file:///E:/repos/switchboard/.local/activity-bars/index.html"');
+    expect(render('[a.html](file:///Users/me/a.html)', fileUrlTransform)).toContain('href="file:///Users/me/a.html"');
+    expect(render('[a.ts](E:/repos/a.ts)', fileUrlTransform)).toContain('href="E:/repos/a.ts"');
+  });
+
+  it('keeps neither file pictures nor links to a share', () => {
+    expect(render('![a](file:///C:/a.png)', fileUrlTransform)).not.toContain('file:');
+    expect(render('![a](file://server/share/a.png)', fileUrlTransform)).not.toContain('file:');
+    expect(render('[a](file://server/share/a.ts)', fileUrlTransform)).toContain('href=""');
+    expect(render('[a](file:////server/share/a.ts)', fileUrlTransform)).toContain('href=""');
+  });
+
+  it('treats everything else as the default does', () => {
+    expect(fileUrlTransform('https://example.com/a')).toBe('https://example.com/a');
+    expect(fileUrlTransform('src/a.ts#L3')).toBe('src/a.ts#L3');
+    expect(fileUrlTransform('javascript:alert(1)')).toBe('');
+    expect(fileUrlTransform('vbscript:x')).toBe('');
+    expect(fileUrlTransform('data:text/html,x')).toBe('');
   });
 });
 

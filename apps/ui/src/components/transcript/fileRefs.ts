@@ -1,3 +1,5 @@
+import { defaultUrlTransform } from 'react-markdown';
+
 /** A file a reply points at: the path as written, the line to open it at, and the last line of a range (`a.ts:10-14`). */
 export interface FileRef {
   path: string;
@@ -46,15 +48,36 @@ export function fileUrl(path: string): string {
   return `file://${encodeURI(drive ? `/${path.replace(/\\/g, '/')}` : path).replace(/\?/g, '%3F').replace(/#/g, '%23')}`;
 }
 
-/** The file a Markdown link points at (`[a.ts](src/a.ts#L69)`, `file:///…`), or null for web and mail links. */
+/** A `file:` URL on this computer: `file:///…` or `file://localhost/…`, never a share (`file://server/…`, `file:////server/…`). */
+const LOCAL_FILE = /^file:\/\/(localhost)?\/(?![\\/])/i;
+
+/**
+ * The `urlTransform` of the Markdown in replies and previewed files. react-markdown's default empties every link whose
+ * protocol it doesn't know: `file:///…`, and on Windows a drive path too (`C:/a.ts` reads as the protocol `C:`). Such a
+ * link points nowhere and a click does nothing, so a link (`href`) to a file on this computer is kept, to become a file
+ * link; everything else gets the default. Images keep the default: a `file:` picture would load without a click, and on
+ * Windows one on a share connects to that server. A kept link is never followed as it is: a file link opens through the
+ * engine, on a click, and the main process refuses to open any window that isn't http(s).
+ */
+export function fileUrlTransform(url: string, key?: string): string {
+  return key === 'href' && (LOCAL_FILE.test(url) || DRIVE.test(url)) ? url : defaultUrlTransform(url);
+}
+
+/**
+ * The file a Markdown link points at (`[a.ts](src/a.ts#L69)`, `file:///…`, `C:/a.ts`), or null for web and mail links
+ * and for a `file:` link to another computer (`file://server/share/a.ts`).
+ */
 export function fileRefFromHref(href: string | undefined): FileRef | null {
   if (!href || /^(https?|mailto):/i.test(href)) return null;
-  let value = href.replace(/^file:\/\//i, '');
+  if (/^file:/i.test(href) && !LOCAL_FILE.test(href)) return null;
+  let value = href.replace(/^file:\/\/(localhost)?/i, '');
   try {
     value = decodeURI(value);
   } catch {
     return null;
   }
+  // A share (`//server/…`, `\\server\…`, also when written as `%5C%5C`): looking it up would connect to that server.
+  if (/^[\\/]{2}/.test(value)) return null;
   // `file:///C:/a.ts` is the path `C:/a.ts`, not `/C:/a.ts`.
   return parseFileRef(value.replace(/^\/(?=[A-Za-z]:[\\/])/, ''));
 }
