@@ -3557,6 +3557,11 @@
       "page": "new-session/models-and-options"
     },
     {
+      "id": "feature:copy-image",
+      "name": "Copy image",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:save-image",
       "name": "Save image",
       "page": "sessions/conversation"

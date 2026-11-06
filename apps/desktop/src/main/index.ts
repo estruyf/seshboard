@@ -6853,6 +6853,70 @@ async function runAnsweredQuestionStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * The lightbox on the demo's "Check the banner sizes": the arrows go through all of a reply's images and stop at the next
+ * prompt, and right-clicking the image offers Copy image (the clipboard is stubbed, so it stays yours) and keeps Escape
+ * for the menu first. Read-only: it opens that session and goes back to the one it was on.
+ */
+async function runImageViewerStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  if (!process.env.SESHBOARD_SMOKE_DEMO) return 'ok: needs the demo home, which has a session with images (npm run smoke:demo)';
+  const view = '[data-current-session]';
+  const thumbs = `document.querySelectorAll('${view} [data-transcript-image]')`;
+  const label = "document.querySelector('[data-lightbox-label]')?.textContent ?? ''";
+  const row = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.textContent.includes('Check the banner sizes'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!row) return 'failed: the demo session "Check the banner sizes" is not in the sidebar';
+  const back = smokeSessionId;
+  const key = (keyCode: string) => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  };
+  const rightClickImage = () =>
+    js(`(() => {
+      const image = document.querySelector('[data-lightbox] img');
+      const r = image.getBoundingClientRect();
+      image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.top + 4 }));
+    })()`);
+  try {
+    await js(`document.querySelector('[data-session-id="${row}"]')?.click()`);
+    if (!(await waitInPage(win, `document.querySelector('${view}')?.dataset.currentSession === ${JSON.stringify(row)} && ${thumbs}.length === 3 && ${thumbs}[0].querySelector('img')`, 8_000))) return `the session shows ${await js(`${thumbs}.length`)} images, not 3`;
+
+    await js(`${thumbs}[0].click()`);
+    if (!(await waitInPage(win, `(${label}).startsWith('1 / 2')`, 3_000))) return `the first reply's lightbox says ${JSON.stringify(await js(label))}, not 1 / 2`;
+    if ((await js("document.querySelectorAll('[data-lightbox-thumb]').length")) !== 2) return 'the filmstrip does not show both images of the reply';
+    key('Right');
+    if (!(await waitInPage(win, `(${label}).startsWith('2 / 2')`, 3_000))) return '→ did not go to the next image of the reply';
+    await js("document.querySelector('[data-lightbox-prev]').click()");
+    if (!(await waitInPage(win, `(${label}).startsWith('1 / 2')`, 3_000))) return 'the previous button did not go back';
+
+    await js("window.__smokeWrite = navigator.clipboard.write; window.__smokeCopied = null; navigator.clipboard.write = async (items) => { window.__smokeCopied = items[0].types; }; true");
+    await rightClickImage();
+    if (!(await waitInPage(win, "document.querySelector('[data-image-menu-copy]')", 3_000))) return 'right-clicking the full-size image shows no Copy image';
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-image-menu-copy]')", 3_000))) return 'Esc did not close the menu';
+    if (!(await js("!!document.querySelector('[data-lightbox]')"))) return 'Esc closed the lightbox along with its menu';
+    await rightClickImage();
+    if (!(await waitInPage(win, "document.querySelector('[data-image-menu-copy]')", 3_000))) return 'the menu did not open again';
+    await js("document.querySelector('[data-image-menu-copy]').click()");
+    if (!(await waitInPage(win, "document.querySelector('[data-image-copied]')", 3_000))) return 'Copy image did not confirm';
+    const copied = (await js('window.__smokeCopied')) as string[] | null;
+    if (copied?.join() !== 'image/png') return `Copy image wrote ${JSON.stringify(copied)}, not a PNG`;
+    if (!(await js("!!document.querySelector('[data-lightbox]')"))) return 'Copy image closed the lightbox';
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-lightbox]')", 3_000))) return 'Esc did not close the lightbox';
+
+    await js(`${thumbs}[2].click()`);
+    if (!(await waitInPage(win, "document.querySelector('[data-lightbox] img')", 3_000))) return "the next reply's image did not open";
+    if (await js("!!document.querySelector('[data-lightbox-next]')")) return "the next reply's only image has arrows: its gallery runs past your prompt";
+    key('Escape');
+    if (!(await waitInPage(win, "!document.querySelector('[data-lightbox]')", 3_000))) return 'Esc did not close the second lightbox';
+    return 'ok: arrows and the filmstrip go through the reply and stop at your next prompt; right-click copies the image as PNG';
+  } finally {
+    await js("if (window.__smokeWrite) { navigator.clipboard.write = window.__smokeWrite; delete window.__smokeWrite; } document.querySelector('[data-lightbox] [aria-label=\"Close\"]')?.click(); true");
+    if (back) await js(`document.querySelector('[data-session-id="${back}"]')?.click()`);
+  }
+}
+
+/**
  * Skim and Full, on the demo's finished session (`screenshot-demo.ts`): another home folder doesn't have it, so the step
  * says so and leaves. Read-only: it opens that session and goes back to the one it was on.
  */
@@ -13077,6 +13141,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('conversation view: Skim folds, shows the stats, invites to fade and fades, Show all text, find, reading mode, Full from the palette, Skim from Settings', () => runConversationViewStep(win), { timeoutMs: 60_000 });
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
+  await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));

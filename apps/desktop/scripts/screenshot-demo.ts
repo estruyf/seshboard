@@ -129,10 +129,22 @@ class Transcript {
     };
   }
 
-  results(...results: Array<{ id: string; text: string; error?: boolean }>): this {
-    const content = results.map((r) => ({ tool_use_id: r.id, type: 'tool_result', content: r.text, ...(r.error ? { is_error: true } : {}) }));
+  results(...results: Array<{ id: string; text: string; error?: boolean; image?: string }>): this {
+    const content = results.map((r) => ({
+      tool_use_id: r.id,
+      type: 'tool_result',
+      content: r.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: r.image } }] : r.text,
+      ...(r.error ? { is_error: true } : {}),
+    }));
     this.lines.push(JSON.stringify({ ...this.base('user'), message: { role: 'user', content } }));
     return this;
+  }
+
+  /** Claude reading an image file: a tool call that returns the image (base64 PNG). */
+  readImage(file_path: string, image: string): this {
+    const id = `toolu_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
+    this.assistant({ type: 'tool_use', id, name: 'Read', input: { file_path } });
+    return this.results({ id, text: '', image });
   }
 
   /** One tool call and its result, as two records. */
@@ -392,7 +404,12 @@ const ATTACHED_ISSUE = [
 // ---------------------------------------------------------------------------------------------------------
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
-export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpdir(), 'seshboard-demo-')))): DemoWorld {
+/** Plain colour PNGs, each its own shape, for the demo's images. */
+const YELLOW_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAQklEQVR4nO3OQQ0AIAwAsfnCvwP8gAuOR5MK6Jy9vjL5QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkNBjF4safw8qIqCKAAAAAElFTkSuQmCC';
+const GREEN_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAGAAAAAwCAIAAABhdOiYAAAAZElEQVR4nO3QMQ0AIADAMOziAaeYwQGc7GgyAUvH3EuXxveDeIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBygRwfkzIHS+1UEqQAAAABJRU5ErkJggg==';
+const BLUE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAABgCAIAAADU7mYnAAAAY0lEQVR4nO3OMQ0AIBAAsTeIUgSy4oJjaFIBnbXPVyYfCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkJBQPRASEhKqB0JCQkL1QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhIQeu1a0z//LyywRAAAAAElFTkSuQmCC';
+
+export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdir(), 'seshboard-demo-')))): DemoWorld {
   // Personal projects run on the personal login, payments-api on the work one.
   const configDir = join(home, '.claude');
   const workConfigDir = join(home, '.claude-work');
@@ -563,6 +580,17 @@ export function createDemoWorld(home = realpathSync.native(mkdtempSync(join(tmpd
     .tool('Read', { file_path: `${acme}/src/components/Section.tsx` }, numbered('export function Section() {}'))
     .say(READING_SECOND);
   reading.write(configDir, 'Speed up the checkout page');
+
+  // Two images in one reply and one in the next, for the lightbox (the smoke test's "image viewer").
+  new Transcript(acme, 'main', now - 6 * HOUR)
+    .user('Check the banner sizes in public/banners.')
+    .readImage(`${acme}/public/banners/square.png`, YELLOW_PNG)
+    .readImage(`${acme}/public/banners/wide.png`, GREEN_PNG)
+    .say('Both banners are sharp.')
+    .user('And the tall one?')
+    .readImage(`${acme}/public/banners/tall.png`, BLUE_PNG)
+    .say('That one is sharp too.')
+    .write(configDir, 'Check the banner sizes');
 
   // How heavy each one was, and on which model, for the Usage view.
   const usage: Record<string, TranscriptUsage> = {

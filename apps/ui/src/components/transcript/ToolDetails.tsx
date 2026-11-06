@@ -1,4 +1,5 @@
 import { Bot, ScrollText } from 'lucide-react';
+import { useContext } from 'react';
 import { openAgents } from '../../state/agentsPanelStore.ts';
 import { openCommands } from '../../state/commandsPanelStore.ts';
 import { backgroundTaskOf } from './commandRuns.ts';
@@ -6,6 +7,7 @@ import { Button } from '../ui/Button.tsx';
 import { DiffView } from './DiffView.tsx';
 import type { DisplayItem } from './displayItems.ts';
 import { SubagentRun } from './SubagentRun.tsx';
+import { ReplyImagesContext } from './replyImages.ts';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { TranscriptImage } from './TranscriptImage.tsx';
 import { editHunks } from './toolSummary.ts';
@@ -16,11 +18,16 @@ export const isAgentTool = (item: ToolItem) => item.name === 'Task' || item.name
 
 /** Images a tool returned (e.g. reading a screenshot). */
 export function ToolImages({ item, sessionId }: { item: ToolItem; sessionId: string }) {
+  const galleries = useContext(ReplyImagesContext);
   if (!item.result || item.result.images.length === 0) return null;
+  const images = item.result.images;
+  // The whole reply's images when known. A tool call's images sit side by side in that list, so one offset fits them all.
+  const gallery = galleries.get(images[0]!.imageId) ?? images;
+  const offset = gallery.findIndex((image) => image.imageId === images[0]!.imageId);
   return (
     <div className="mt-1.5 flex flex-wrap gap-2">
-      {item.result.images.map((image, index) => (
-        <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant="single" gallery={item.result!.images} index={index} />
+      {images.map((image, index) => (
+        <TranscriptImage key={image.imageId} sessionId={sessionId} image={image} variant="single" gallery={gallery} index={offset + index} />
       ))}
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { TranscriptMessage } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { buildDisplayItems } from './displayItems.ts';
+import { replyImageGalleries, ReplyImagesContext } from './replyImages.ts';
 import { TranscriptItem } from './TranscriptItem.tsx';
 
 /**
@@ -31,13 +32,16 @@ export function SubagentRun({ sessionId, toolUseId, running, cwd, fill = false }
   }, [client, sessionId, toolUseId, running]);
 
   const items = useMemo(() => buildDisplayItems(messages ?? []), [messages]);
+  const galleries = useMemo(() => replyImageGalleries(items), [items]);
   if (messages === null) return <p className="py-1 text-ui text-muted">Loading the subagent’s work…</p>;
   if (items.length === 0) return <p className="py-1 text-ui text-muted">{running ? 'The subagent is starting…' : 'No transcript was saved for this subagent.'}</p>;
   return (
     <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-l-2 border-accent-ink/30 py-1 pl-3 ${fill ? '' : 'max-h-[420px] overflow-y-auto'}`} data-subagent-run>
-      {items.map((item) => (
-        <TranscriptItem key={item.key} item={item} cwd={cwd} sessionId={sessionId} />
-      ))}
+      <ReplyImagesContext.Provider value={galleries}>
+        {items.map((item) => (
+          <TranscriptItem key={item.key} item={item} cwd={cwd} sessionId={sessionId} />
+        ))}
+      </ReplyImagesContext.Provider>
     </div>
   );
 }

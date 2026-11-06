@@ -98,6 +98,7 @@ import { useCommandRuns } from './useCommandRuns.ts';
 import { backgroundSummary } from './backgroundTasks.ts';
 import { PromptExpansionContext, type PromptExpansion } from './ClampedPrompt.tsx';
 import { buildDisplayItems, groupActivity, type RenderItem } from './displayItems.ts';
+import { replyImageGalleries, ReplyImagesContext } from './replyImages.ts';
 import { SkimContext, type SkimValue } from './MessageText.tsx';
 import { foldedMessages, latestTests } from './skim.ts';
 import { durationWords, liveParts, tokenWords } from './turnFormat.ts';
@@ -428,6 +429,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     }
   }, [actionTerminals, sessionId]);
   const items = useMemo(() => buildDisplayItems(messages), [messages]);
+  const replyImages = useMemo(() => replyImageGalleries(items), [items]);
   /** What Auto picked when this session started (null: it didn't). */
   const autoPick = useSessionAutoPick(sessionId);
   /** Your earlier messages here, for ↑ in the message box. */
@@ -1780,6 +1782,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <PreviewOpenerContext.Provider value={openPreviewHere}>
           <TurnMetaContext.Provider value={turnMeta}>
           <SkimContext.Provider value={skim}>
+          <ReplyImagesContext.Provider value={replyImages}>
             {/* The conversation, and the prompt outline beside it in the gutter (outside the scroll, so it stays put). */}
             <div className={`relative min-h-0 flex-1 flex-col ${terminalMaximized ? 'hidden' : 'flex'}`} data-transcript-area>
             <div
@@ -1892,6 +1895,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
             )}
             </div>
             {readReplyNow && createPortal(<ReadMode sessionId={sessionId} title={title} live={live} cwd={cwd} reply={readReplyNow} />, document.body)}
+          </ReplyImagesContext.Provider>
           </SkimContext.Provider>
           </TurnMetaContext.Provider>
           </PreviewOpenerContext.Provider>

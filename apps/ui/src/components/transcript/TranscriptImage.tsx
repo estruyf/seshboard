@@ -1,6 +1,6 @@
 import { sameShortcut, shortcutFromEvent } from '../../lib/shortcuts.ts';
 import { fileManagerName } from '../../lib/platform.ts';
-import { ChevronLeft, ChevronRight, Download, ImageOff, Maximize2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Download, ImageOff, Maximize2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { ImageRef } from '@seshboard/protocol/client';
@@ -65,6 +65,24 @@ async function saveImage(url: string, imageId: string) {
   }
 }
 
+/** Puts an image (a data URL) on the clipboard, which only takes PNG: any type is drawn to a canvas and copied as one. */
+async function copyImage(url: string) {
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext('2d')!.drawImage(image, 0, 0);
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!png) throw new Error('The image could not be drawn');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    toast('Image copied', { data: { 'data-image-copied': true } });
+  } catch {
+    toast('The image couldn’t be copied');
+  }
+}
 
 /** No caption to go on, so describe what kind of image it is ("PNG image, 120 KB"). */
 const describe = (image: ImageRef) => `${image.mediaType.replace(/^image\//, '').toUpperCase()} image, ${formatBytes(image.bytes)}`;
@@ -75,8 +93,14 @@ const knownSize = (image: ImageRef): Size | null => (image.width && image.height
 /** One image in the lightbox's filmstrip. */
 function FilmstripThumb({ sessionId, image, index, count, current, onSelect }: { sessionId: string; image: ImageRef; index: number; count: number; current: boolean; onSelect(): void }) {
   const { url } = useImage(sessionId, image);
+  const ref = useRef<HTMLButtonElement>(null);
+  // A long reply's strip scrolls, so the one showing stays in view as ← → move on.
+  useEffect(() => {
+    if (current) ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [current]);
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onSelect}
       aria-label={`Image ${index + 1} of ${count}`}
@@ -90,17 +114,25 @@ function FilmstripThumb({ sessionId, image, index, count, current, onSelect }: {
 }
 
 /**
- * A message's images full size: ← → (or the chevrons and the filmstrip) step through them, ⌘S saves
- * the one showing and Esc closes. Focus stays inside, and goes back to `returnFocus` on close.
+ * A message's or a reply's images full size: ← → (or the chevrons and the filmstrip) step through them, ⌘C copies
+ * the one showing, ⌘S saves it (both are in its context menu too) and Esc closes. Focus stays inside, and goes back
+ * to `returnFocus` on close.
  */
 function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionId: string; images: ImageRef[]; start: number; returnFocus: RefObject<HTMLElement | null>; onClose(): void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [index, setIndex] = useState(start);
+  const [menuAt, setMenuAt] = useState<ContextMenuPoint | null>(null);
   const image = images[index] ?? images[0]!;
   const { url } = useImage(sessionId, image);
   const many = images.length > 1;
   const description = describe(image);
   const save = () => url && void saveImage(url, image.imageId);
+  const copy = () => url && void copyImage(url);
+  const openMenu = (pointer: { x: number; y: number } | null) => {
+    const rect = imageRef.current?.getBoundingClientRect();
+    if (rect) setMenuAt(contextMenuPoint(pointer, rect, window.innerHeight));
+  };
   // Back to the image that opened it, even when that was through its context menu (which is gone by now).
   const close = () => {
     if (returnFocus.current?.isConnected) returnFocus.current.focus();
@@ -108,18 +140,25 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
   };
   const step = (delta: number) => setIndex((i) => stepIndex(i, delta, images.length));
   useModalFocus(ref);
-  const keys = useRef({ close, save, step });
-  keys.current = { close, save, step };
+  const keys = useRef({ close, save, copy, step, openMenu, menuOpen: menuAt !== null });
+  keys.current = { close, save, copy, step, openMenu, menuOpen: menuAt !== null };
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!isTopModal(ref.current) || e.defaultPrevented) return;
+      // While its context menu is open, the keys are the menu's: this listener runs first, so Escape would close both.
+      if (!isTopModal(ref.current) || e.defaultPrevented || keys.current.menuOpen) return;
       if (e.key === 'Escape') keys.current.close();
-      else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.metaKey && !e.altKey && !e.ctrlKey) {
+      else if (isContextMenuKey(e)) {
+        e.preventDefault();
+        keys.current.openMenu(null);
+      } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.metaKey && !e.altKey && !e.ctrlKey) {
         e.preventDefault();
         keys.current.step(e.key === 'ArrowLeft' ? -1 : 1);
       } else if (sameShortcut(shortcutFromEvent(e) ?? '', 'mod+s')) {
         e.preventDefault();
         keys.current.save();
+      } else if (sameShortcut(shortcutFromEvent(e) ?? '', 'mod+c')) {
+        e.preventDefault();
+        keys.current.copy();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -130,6 +169,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
   // Above dialogs (z-60), so it opens over a subagent's transcript, and under the toasts (z-70), so "Image saved" shows.
   // Its controls sit on the card surface, so they stay readable over the dark backdrop in either mode.
   return createPortal(
+    <>
     <div
       ref={ref}
       role="dialog"
@@ -146,6 +186,9 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
           {many ? `${index + 1} / ${images.length} · ${facts}` : facts}
         </span>
         <span className="overlay flex items-center gap-1 rounded-lg p-1" onClick={stop}>
+          <Button variant="quiet" icon={<Copy size={14} />} kbd="⌘C" onClick={copy} disabled={!url} data-lightbox-copy>
+            Copy
+          </Button>
           <Button variant="quiet" icon={<Download size={14} />} kbd="⌘S" onClick={save} disabled={!url} data-lightbox-save>
             Save
           </Button>
@@ -153,7 +196,20 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
         </span>
       </div>
       <div className={`relative flex min-h-0 w-full flex-1 items-center justify-center ${many ? 'px-14' : ''}`}>
-        {url ? <img src={url} alt={description} className="max-h-full max-w-full rounded-md object-contain shadow-2xl" /> : <span className="h-40 w-60 animate-pulse rounded-md bg-sidebar" />}
+        {url ? (
+          <img
+            ref={imageRef}
+            src={url}
+            alt={description}
+            className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openMenu(e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null);
+            }}
+          />
+        ) : (
+          <span className="h-40 w-60 animate-pulse rounded-md bg-sidebar" />
+        )}
         {many && (
           <>
             <span className="overlay absolute top-1/2 left-0 -translate-y-1/2 rounded-full p-0.5" onClick={stop}>
@@ -172,7 +228,23 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
           ))}
         </div>
       )}
-    </div>,
+    </div>
+    {/* Beside the lightbox, not in it: React bubbles a click in the menu up its tree, and a click in the lightbox closes it. */}
+    {menuAt && url && (
+      <Menu
+        x={menuAt.x}
+        y={menuAt.y}
+        above={menuAt.above}
+        width={180}
+        label="Image"
+        onClose={() => setMenuAt(null)}
+        entries={[
+          { label: 'Copy image', icon: <Copy size={13} />, hint: '⌘C', onSelect: copy, data: { 'data-image-menu-copy': true } },
+          { label: 'Save image…', icon: <Download size={13} />, hint: '⌘S', onSelect: save, data: { 'data-image-menu-save': true } },
+        ]}
+      />
+    )}
+    </>,
     document.body,
   );
 }
@@ -271,6 +343,7 @@ export function TranscriptImage({ sessionId, image, variant = 'single', gallery,
           onClose={() => setMenuAt(null)}
           entries={[
             { label: 'Show full size', icon: <Maximize2 size={13} />, onSelect: () => setOpen(true) },
+            { label: 'Copy image', icon: <Copy size={13} />, onSelect: () => url && void copyImage(url), data: { 'data-image-menu-copy': true } },
             { label: 'Save image…', icon: <Download size={13} />, onSelect: save, data: { 'data-image-menu-save': true } },
           ]}
         />
