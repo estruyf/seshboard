@@ -16,6 +16,10 @@ export function fakeAppServer(handlers: Handlers): AppServer & { calls: Array<{ 
       return handler(params);
     },
     pid: () => 4242,
+    onNotification: () => () => {},
+    handleRequests: () => {},
+    hold: () => () => {},
+    onExit: () => () => {},
     async dispose() {
       server.disposed++;
     },

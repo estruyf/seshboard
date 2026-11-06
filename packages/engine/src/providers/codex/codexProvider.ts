@@ -91,6 +91,18 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
       }
     },
     pid: () => made?.pid() ?? null,
+    onNotification: () => {
+      throw new Error('onNotification: not built yet');
+    },
+    handleRequests: () => {
+      throw new Error('handleRequests: not built yet');
+    },
+    hold: () => {
+      throw new Error('hold: not built yet');
+    },
+    onExit: () => {
+      throw new Error('onExit: not built yet');
+    },
     dispose: async () => {
       disposed = true;
       const running = made;

@@ -248,3 +248,142 @@ export interface ReadMethods {
   'thread/turns/list': { params: ThreadTurnsListParams; result: ThreadTurnsListResponse };
   'account/read': { params: Record<string, never>; result: GetAccountResponse };
 }
+
+/* --- Driving sessions (Phase 2) ----------------------------------------------------------------------------------- */
+
+/** When Codex asks before it acts. `untrusted` asks for anything not known to be safe; `never` doesn't ask. */
+export type AskForApproval = 'untrusted' | 'on-request' | 'never';
+
+/** `thread/start`'s sandbox. Seshboard never asks for `danger-full-access`. */
+export type SandboxMode = 'read-only' | 'workspace-write';
+
+/** `turn/start`'s sandbox, which holds for that turn and the ones after. */
+export type SandboxPolicy =
+  | { type: 'readOnly'; networkAccess: boolean }
+  | { type: 'workspaceWrite'; writableRoots: string[]; networkAccess: boolean; excludeTmpdirEnvVar: boolean; excludeSlashTmp: boolean };
+
+/**
+ * Codex's plan mode, set per turn. Experimental: `turn/start` takes it only with `initialize`'s `experimentalApi`, and
+ * `settings.model` is required.
+ */
+export interface CollaborationMode {
+  mode: 'plan' | 'default';
+  settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null };
+}
+
+export interface ThreadStartParams {
+  model?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: SandboxMode | null;
+  /** A throwaway thread, never written to disk (Ask about this session). */
+  ephemeral?: boolean | null;
+}
+
+export interface ThreadResumeParams {
+  threadId: string;
+  model?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: SandboxMode | null;
+  /** Seshboard reads the history itself (`thread/turns/list`). */
+  excludeTurns?: boolean;
+}
+
+export interface ThreadStartResponse {
+  thread: Thread;
+  model: string;
+  reasoningEffort: string | null;
+  approvalPolicy: unknown;
+  sandbox: unknown;
+}
+
+export interface TurnStartParams {
+  threadId: string;
+  input: UserInput[];
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandboxPolicy?: SandboxPolicy | null;
+  model?: string | null;
+  effort?: string | null;
+  /** Experimental (see `CollaborationMode`). */
+  collaborationMode?: CollaborationMode | null;
+}
+
+export interface TurnStartResponse {
+  turn: Turn;
+}
+
+export interface TurnSteerParams {
+  threadId: string;
+  input: UserInput[];
+  /** The turn running now: the request fails when another one is. */
+  expectedTurnId: string;
+}
+
+export interface Model {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  hidden: boolean;
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
+  defaultReasoningEffort: string;
+  inputModalities: string[];
+  isDefault: boolean;
+}
+
+/** The requests Phase 2 makes to drive a thread. */
+export interface DriveMethods {
+  'thread/start': { params: ThreadStartParams; result: ThreadStartResponse };
+  'thread/resume': { params: ThreadResumeParams; result: ThreadStartResponse };
+  /** Stops listening to a thread's events (the session closed here); Codex unloads it when nobody listens. */
+  'thread/unsubscribe': { params: { threadId: string }; result: unknown };
+  'turn/start': { params: TurnStartParams; result: TurnStartResponse };
+  'turn/steer': { params: TurnSteerParams; result: { turnId: string } };
+  'turn/interrupt': { params: { threadId: string; turnId: string }; result: unknown };
+  'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
+}
+
+export type Methods = ReadMethods & DriveMethods;
+
+/**
+ * A notification from Codex (`item/started`, `item/agentMessage/delta`, `turn/completed`, `thread/tokenUsage/updated`,
+ * …). Most carry the `threadId` they're about in `params`. Read loosely: the converter knows the shapes it uses.
+ */
+export interface ServerNotification {
+  method: string;
+  params: unknown;
+}
+
+/**
+ * A request from Codex to Seshboard (`item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+ * `item/tool/requestUserInput`, …), answered with a result or an error. Its `params` carry the `threadId`.
+ */
+export interface ServerRequest {
+  id: number | string;
+  method: string;
+  params: unknown;
+}
+
+export interface CommandApprovalParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  reason?: string | null;
+  command?: string | null;
+  cwd?: string | null;
+  commandActions?: CommandAction[] | null;
+}
+
+export interface FileChangeApprovalParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  reason?: string | null;
+  /** Codex asks to write anywhere under this folder for the rest of the session. */
+  grantRoot?: string | null;
+}
+
+/** An approval's answer. `acceptForSession` is Always allow; `cancel` also stops the turn. */
+export type ApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';

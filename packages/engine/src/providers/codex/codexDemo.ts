@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppServer, AppServerOptions, CodexBinary } from './appServer.ts';
 import { codexSessionsDir, ROLLOUT_FILE } from './codexFiles.ts';
-import type { ReadMethods, Thread, Turn } from './protocol.ts';
+import type { Methods, Thread, Turn } from './protocol.ts';
 
 /**
  * A made-up OpenAI Codex CLI for the demo home (the smoke test), in the process: installed,
@@ -166,7 +166,7 @@ function demoAppServer(options: AppServerOptions): AppServer {
     if (!thread) throw new Error(`no rollout found for thread id ${threadId}`);
     return thread;
   };
-  const answer = async (method: keyof ReadMethods, params: Record<string, unknown>): Promise<unknown> => {
+  const answer = async (method: keyof Methods, params: Record<string, unknown>): Promise<unknown> => {
     switch (method) {
       case 'thread/list':
         return { data: params.archived ? [] : await threads(), nextCursor: null };
@@ -179,11 +179,18 @@ function demoAppServer(options: AppServerOptions): AppServer {
       }
       case 'account/read':
         return { account: { type: 'chatgpt', email: 'demo-user@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true };
+      default:
+        // The demo never runs a Codex session: a smoke run must not look like it reached one.
+        throw new Error("The demo's Codex doesn't run sessions");
     }
   };
   return {
     request: (method, params) => answer(method, params as Record<string, unknown>) as never,
     pid: () => null,
+    onNotification: () => () => {},
+    handleRequests: () => {},
+    hold: () => () => {},
+    onExit: () => () => {},
     dispose: async () => {},
   };
 }

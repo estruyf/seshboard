@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { needsCmd, viaCmd } from '../../system/windowsCommand.ts';
-import type { InitializeParams, ReadMethods } from './protocol.ts';
+import type { InitializeParams, Methods, ServerNotification, ServerRequest } from './protocol.ts';
 
 /** Where `codex` is, and how to start it (an npm install on Windows runs its script with `node`). */
 export interface CodexBinary {
@@ -20,6 +20,8 @@ export interface AppServerOptions {
   timeoutMs?: number;
   /** Seshboard's version, sent in `initialize`'s `clientInfo` (Codex puts it in its user agent). */
   clientVersion?: string;
+  /** Opts into Codex's experimental API in `initialize` (`turn/start`'s `collaborationMode`, for Plan mode). */
+  experimentalApi?: boolean;
 }
 
 /**
@@ -29,7 +31,21 @@ export interface AppServerOptions {
  * Codex can't take the engine down.
  */
 export interface AppServer {
-  request<M extends keyof ReadMethods>(method: M, params: ReadMethods[M]['params']): Promise<ReadMethods[M]['result']>;
+  request<M extends keyof Methods>(method: M, params: Methods[M]['params']): Promise<Methods[M]['result']>;
+  /** Every notification Codex sends, from any process this server starts. Returns the function that stops listening. */
+  onNotification(listener: (notification: ServerNotification) => void): () => void;
+  /**
+   * The one handler of Codex's own requests (approvals, questions); its result, or its error, goes back to Codex. With
+   * none, they are refused.
+   */
+  handleRequests(handler: ((request: ServerRequest) => Promise<unknown>) | null): void;
+  /**
+   * Keeps the process from its idle stop while something needs it (a thread loaded here, which a new process would not
+   * have). Returns the function that lets go.
+   */
+  hold(): () => void;
+  /** Called when a process ends while held: its loaded threads are gone, and must be resumed in the next one. */
+  onExit(listener: () => void): () => void;
   /** The process's pid while it runs (its own locks don't mean a session is open elsewhere). */
   pid(): number | null;
   dispose(): Promise<void>;
@@ -344,6 +360,18 @@ export function createAppServer(options: AppServerOptions): AppServer {
     },
     pid() {
       return latest && !latest.exited ? (latest.child.pid ?? null) : null;
+    },
+    onNotification() {
+      throw new Error('onNotification: not built yet');
+    },
+    handleRequests() {
+      throw new Error('handleRequests: not built yet');
+    },
+    hold() {
+      throw new Error('hold: not built yet');
+    },
+    onExit() {
+      throw new Error('onExit: not built yet');
     },
     async dispose() {
       disposed = true;
