@@ -458,6 +458,8 @@ export interface DriveMethods {
   'config/mcpServer/reload': { params: Record<string, never>; result: unknown };
   /** Names a thread, loaded or not; `thread/name/updated` follows. */
   'thread/name/set': { params: { threadId: string; name: string }; result: unknown };
+  /** Codex's effective config, as seen from `cwd` (its project layers too); read for its MCP servers' names only. */
+  'config/read': { params: { cwd?: string | null; includeLayers?: boolean }; result: { config: { mcp_servers?: Record<string, { enabled?: boolean } & Record<string, unknown>> | null } & Record<string, unknown> } };
   /** Compacts a loaded thread's context, as a turn of its own with a `contextCompaction` item. */
   'thread/compact/start': { params: { threadId: string }; result: unknown };
 }

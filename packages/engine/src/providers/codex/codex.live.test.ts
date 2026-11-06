@@ -3,14 +3,14 @@
  * `~/.codex`. No prompt, no tokens and no login: it reads, and starts a thread without a turn.
  * Opt-in: SESHBOARD_LIVE_CODEX=1 npx vitest run codex.live
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAppServer } from './appServer.ts';
 import { findCodex } from './codexBinary.ts';
 import { codexLocks, lockFile } from './codexInUse.ts';
-import { codexCapabilities } from './codexTools.ts';
+import { codexCapabilities, configuredMcp } from './codexTools.ts';
 import type { ServerNotification } from './protocol.ts';
 
 const until = async (condition: () => boolean, ms = 15_000) => {
@@ -128,4 +128,50 @@ describe.skipIf(process.env.SESHBOARD_LIVE_CODEX !== '1')('live codex app-server
       await remove(cwd);
     }
   }, 90_000);
+
+  it("names a thread that isn't loaded without loading it or taking its lock, and reads the config's MCP servers without starting them", async () => {
+    const found = await findCodex(process.env, homedir());
+    expect(found).not.toBeNull();
+    const binary = { ...found!, args: [...(found!.args ?? []), '-c', 'thread_unload_delay_secs=0'] };
+    const codexHome = mkdtempSync(join(tmpdir(), 'seshboard-codex-live-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'seshboard-codex-live-cwd-'));
+    // A server that leaves a mark when it is started.
+    const marker = join(codexHome, 'mcp-started');
+    writeFileSync(join(codexHome, 'config.toml'), `[mcp_servers.marks]\ncommand = "sh"\nargs = ["-c", "echo x >> '${marker}'; exit 1"]\n`);
+    const { OPENAI_API_KEY: _key, CODEX_API_KEY: _codexKey, ...env } = process.env;
+    const options = { binary: async () => binary, env: async () => ({ ...env, CODEX_HOME: codexHome }), experimentalApi: true };
+    const first = createAppServer(options);
+    const second = createAppServer(options);
+    const notes: ServerNotification[] = [];
+    try {
+      // The config's servers, read without a thread: none of them starts.
+      const { config } = await first.request('config/read', { cwd });
+      expect(configuredMcp(config).map((s) => s.name)).toEqual(['marks']);
+      expect(existsSync(marker)).toBe(false);
+
+      // A thread with a turn (signed out, so it fails at OpenAI's door and spends nothing) is on disk; its process goes.
+      expect((await first.request('account/read', {})).account).toBeNull();
+      first.onNotification((n) => notes.push(n));
+      const { thread } = await first.request('thread/start', { cwd });
+      await first.request('turn/start', { threadId: thread.id, input: [{ type: 'text', text: 'hi' }] });
+      await until(() => notes.some((n) => n.method === 'turn/completed'), 45_000);
+      await first.dispose();
+      const locks = () => readdirSync(join(codexHome, 'thread-writer-locks')).filter((f) => f !== '.coordination.lock');
+      expect(locks()).toEqual([]);
+
+      // Another process names it: no load, no lock, and the notification comes.
+      const named: ServerNotification[] = [];
+      second.onNotification((n) => named.push(n));
+      await second.request('thread/name/set', { threadId: thread.id, name: 'Named while not loaded' });
+      await until(() => named.some((n) => n.method === 'thread/name/updated'));
+      expect(named.find((n) => n.method === 'thread/name/updated')?.params).toMatchObject({ threadId: thread.id, threadName: 'Named while not loaded' });
+      expect(locks()).toEqual([]);
+      expect((await second.request('thread/list', {})).data.find((t) => t.id === thread.id)?.name).toBe('Named while not loaded');
+    } finally {
+      await first.dispose();
+      await second.dispose();
+      await remove(codexHome);
+      await remove(cwd);
+    }
+  }, 120_000);
 });

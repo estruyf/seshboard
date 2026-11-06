@@ -7,7 +7,7 @@ import { codexInput } from './codexInput.ts';
 import { codexItemId } from './codexEvents.ts';
 import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
-import { COMPACT_COMMAND, codexCapabilities, isCompact, MCP_TOGGLE_REFUSED } from './codexTools.ts';
+import { COMPACT_COMMAND, codexCapabilities, configuredMcp, isCompact, isCompactWithMore, MCP_RECONNECT_BUSY, MCP_RECONNECT_NOT_LOADED, MCP_TOGGLE_REFUSED, COMPACT_NO_INSTRUCTIONS, COMPACT_NOT_STEERED } from './codexTools.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
 import type { CollaborationMode, HookMetadata, McpServerStatus, Methods, Model, ServerNotification, ServerRequest, SkillMetadata, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
@@ -102,6 +102,8 @@ interface Running {
   crashed(): void;
   /** The app quits: lets go of everything, quietly. */
   letGo(): void;
+  /** A turn (a compaction too) runs or is starting. */
+  busy(): boolean;
 }
 
 /**
@@ -230,6 +232,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       /** A `turn/start` waits for its answer: Stop pressed meanwhile waits for the turn's id (`stopAsked`). */
       let starting = false;
       let stopAsked = false;
+      /**
+       * A compaction was asked for and Codex hasn't started its turn yet: `thread/compact/start` answers without the
+       * turn's id, which comes with `turn/started`. Stop pressed meanwhile waits for it, as for `starting`.
+       */
+      let compacting = false;
       /** It crashed: the next message resumes it, with a new `CodexLive` (the old one's running items are gone). */
       let crashed = false;
       /** Loaded in the app-server process now; false after a crash, until the next message resumes it. */
@@ -314,9 +321,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           if (notification.method === 'turn/started') {
             const id = str(obj(params.turn).id);
             if (id) turnKnown(id);
+            compacting = false;
           } else if (notification.method === 'turn/completed') {
             if (str(obj(params.turn).id) === turnId) turnId = null;
             stopAsked = false;
+            compacting = false;
           } else if (notification.method === 'item/started') {
             const item = obj(params.item);
             const name = item.type === 'userMessage' ? naming.get(str(item.clientId) ?? '') : undefined;
@@ -364,12 +373,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           turnId = null;
           starting = false;
           stopAsked = false;
+          compacting = false;
           release?.();
           release = null;
           dropAll();
           for (const name of naming.values()) name('');
           events.state('error', CRASHED);
         },
+        busy: () => turnId !== null || starting || compacting,
         letGo() {
           closed = true;
           release?.();
@@ -447,10 +458,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         sessionId: threadId,
         commands: async () => [COMPACT_COMMAND],
         async capabilities() {
-          // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections.
+          // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections;
+          // otherwise the servers come from Codex's config, as listing them without a thread starts every one of them.
           const live = loaded;
           const [mcp, skills, hooks] = await Promise.all([
-            mcpServers(live ? threadId : null).catch((): McpServerStatus[] => []),
+            (live ? mcpServers(threadId) : server.request('config/read', { cwd: config.cwd }).then((r) => configuredMcp(r.config))).catch((): McpServerStatus[] => []),
             server.request('skills/list', { cwds: [config.cwd] }).then(
               (r) => r.data.flatMap((entry) => entry.skills),
               (): SkillMetadata[] => [],
@@ -465,8 +477,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         async mcp(_server: string, action: 'enable' | 'disable' | 'reconnect') {
           // Turning one on or off is Codex's config's: Seshboard doesn't write it.
           if (action !== 'reconnect') throw new Error(MCP_TOGGLE_REFUSED);
-          await ensureLoaded();
-          // Codex reconnects every server of its loaded threads at once: it has no way to reach just one.
+          // Nothing of this session's runs in Codex (it crashed): its servers start again with its next message.
+          if (!loaded) throw new Error(MCP_RECONNECT_NOT_LOADED);
+          // Codex reconnects every server of its loaded threads at once (it has no way to reach just one): a tool call in
+          // another session's turn would fail.
+          for (const other of running.values()) if (other !== session && other.busy()) throw new Error(MCP_RECONNECT_BUSY);
           await server.request('config/mcpServer/reload', {});
         },
         async rename(title: string) {
@@ -474,11 +489,23 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
           if (closed) throw new Error('This Codex session was closed');
+          // `/compact` with words or an image after it would otherwise go to the model as a message.
+          if (isCompactWithMore(text) || (isCompact(text) && attachments.length)) throw new Error(COMPACT_NO_INSTRUCTIONS);
+          const compact = isCompact(text);
+          // Send now steers into the turn under way: a compaction can't join one.
+          if (compact && steer && session.busy()) throw new Error(COMPACT_NOT_STEERED);
           await ensureLoaded();
           // Compact (the context meter's, or `/compact` typed): Codex compacts as a turn of its own, which `CodexLive`
           // shows like any other (its `contextCompaction` item), and Stop stops.
-          if (!steer && !attachments.length && isCompact(text)) {
-            await server.request('thread/compact/start', { threadId });
+          if (compact) {
+            compacting = true;
+            try {
+              await server.request('thread/compact/start', { threadId });
+            } catch (error) {
+              compacting = false;
+              stopAsked = false;
+              throw error;
+            }
             return `codex-compact-${randomUUID()}`;
           }
           const input = codexInput(text, attachments, config.cwd);
@@ -508,7 +535,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           dropAll();
           if (turnId && loaded) await server.request('turn/interrupt', { threadId, turnId });
           // Sent a moment ago: Codex hasn't named the turn yet. It stops as soon as it does.
-          else if (starting) stopAsked = true;
+          else if (starting || compacting) stopAsked = true;
         },
         async setModel(next: string | null) {
           model = next;

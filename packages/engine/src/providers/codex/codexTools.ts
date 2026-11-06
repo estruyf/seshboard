@@ -62,3 +62,31 @@ export const COMPACT_COMMAND: SlashCommand = { name: 'compact', description: 'Su
 
 /** Whether a message is `/compact` (nothing after it: Codex's compaction takes no instructions). */
 export const isCompact = (text: string) => /^\/compact\s*$/i.test(text.trim());
+
+/** `/compact` with words after it, which Codex's compaction can't take. */
+export const isCompactWithMore = (text: string) => /^\/compact\s+\S/i.test(text.trim());
+
+export const COMPACT_NO_INSTRUCTIONS = "Codex's compaction takes no instructions. Send /compact on its own.";
+
+export const COMPACT_NOT_STEERED = 'Codex compacts between turns: send /compact when this turn ends, or add it to Up next.';
+
+/** What Reconnect does for Codex, for the button's tooltip (the UI) and its refusals. */
+export const MCP_RECONNECT = 'Reconnects the MCP servers of every Codex session running here';
+
+export const MCP_RECONNECT_BUSY = `${MCP_RECONNECT}, and another of them is working now, so a tool call in its turn could fail. Try again when it's done.`;
+
+export const MCP_RECONNECT_NOT_LOADED = "Codex isn't running this session right now. Its MCP servers start again with your next message.";
+
+/**
+ * The MCP servers in Codex's config (`config/read`), for a session not running here: listing them without a thread
+ * starts every one of them (checked against codex-cli 0.167). A server turned off there shows as off; the others as not
+ * started. Plugins' servers aren't in it. Only names and `enabled` are read: the rest (commands, env, headers) can
+ * hold secrets.
+ */
+export function configuredMcp(config: { mcp_servers?: unknown } | null | undefined): McpServerStatus[] {
+  const servers = config?.mcp_servers;
+  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return [];
+  return Object.entries(servers as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, entry]) => ({ name, runtimeStatus: (entry as { enabled?: unknown } | null)?.enabled === false ? 'disabled' : null, pluginId: null, tools: {}, toolsError: null }));
+}

@@ -7,10 +7,11 @@ import { codexDriver } from './codexDriver.ts';
 import { fakeAppServer, thread } from './codexFakes.ts';
 import { lockFile, LOCK_DIR } from './codexInUse.ts';
 import { codexProvider } from './codexProvider.ts';
-import { codexCapabilities, codexMcpServer, isCompact, MCP_TOGGLE_REFUSED } from './codexTools.ts';
+import { codexCapabilities, codexMcpServer, COMPACT_NO_INSTRUCTIONS, COMPACT_NOT_STEERED, configuredMcp, isCompact, isCompactWithMore, MCP_RECONNECT_BUSY, MCP_RECONNECT_NOT_LOADED, MCP_TOGGLE_REFUSED } from './codexTools.ts';
 import type { HookMetadata, McpServerStatus, SkillMetadata } from './protocol.ts';
 
 const T = '019a0000-0000-7000-8000-00000000000a';
+const OTHER = '019a0000-0000-7000-8000-00000000000b';
 const CWD = '/work/app';
 
 const server = (name: string, extra: Partial<McpServerStatus> = {}): McpServerStatus => ({ name, runtimeStatus: null, pluginId: null, serverInfo: null, tools: {}, toolsError: null, ...extra });
@@ -50,18 +51,33 @@ describe('codexCapabilities', () => {
     });
   });
 
-  it('knows /compact, alone', () => {
+  it('knows /compact, alone, and with words after it', () => {
     expect(isCompact('/compact')).toBe(true);
     expect(isCompact('  /Compact \n')).toBe(true);
     expect(isCompact('/compact keep the API notes')).toBe(false);
     expect(isCompact('compact')).toBe(false);
+    expect(isCompactWithMore('/compact keep the API notes')).toBe(true);
+    expect(isCompactWithMore('/compact')).toBe(false);
+    expect(isCompactWithMore('/compacted')).toBe(false);
+  });
+
+  it("reads the config's MCP servers by name and on or off, nothing else", () => {
+    expect(configuredMcp({ mcp_servers: { web: { url: 'https://x', headers: { Authorization: 'secret' } }, off: { command: 'false', enabled: false } } })).toEqual([
+      { name: 'off', runtimeStatus: 'disabled', pluginId: null, tools: {}, toolsError: null },
+      { name: 'web', runtimeStatus: null, pluginId: null, tools: {}, toolsError: null },
+    ]);
+    expect(configuredMcp({ mcp_servers: null })).toEqual([]);
+    expect(configuredMcp(undefined)).toEqual([]);
   });
 });
 
 /** A running session over a fake app-server that has Tools, rename and compact. */
 async function running(options: { hooksFail?: boolean } = {}) {
+  let started = 0;
   const fake = fakeAppServer({
-    'thread/start': () => ({ thread: thread(T), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+    // The first session is T, a second one OTHER.
+    'thread/start': () => ({ thread: thread(started++ ? OTHER : T), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+    'config/read': () => ({ config: { mcp_servers: { docs: { command: 'docs-mcp' }, off: { command: 'x', enabled: false } } } }),
     'thread/resume': ({ threadId }) => ({ thread: thread(threadId), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
     'turn/start': () => ({ turn: { id: 'turn-1', items: [], itemsView: 'notLoaded', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } }),
     'mcpServerStatus/list': () => ({ data: [server('docs', { runtimeStatus: 'connected', tools: { search: {} } })], nextCursor: null }),
@@ -74,6 +90,7 @@ async function running(options: { hooksFail?: boolean } = {}) {
     'config/mcpServer/reload': () => ({}),
     'thread/name/set': () => ({}),
     'thread/compact/start': () => ({}),
+    'turn/interrupt': () => ({}),
   });
   const driver = codexDriver({ server: fake, status: async () => ({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: null, login: null, problem: null }), live: () => ({ handle: () => {} }) });
   const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events());
@@ -104,25 +121,70 @@ describe("a Codex session's Tools, rename and compact", () => {
     expect(fake.calls.filter((c) => c.method === 'config/mcpServer/reload')).toHaveLength(1);
   });
 
+  it("refuses to reconnect while another session's turn runs, as it reconnects theirs too, and never resumes a crashed one for it", async () => {
+    const { fake, driver, session } = await running();
+    const other = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events());
+    expect(other.sessionId).toBe(OTHER);
+    await other.send('work', []);
+    await expect(session.mcp('docs', 'reconnect')).rejects.toThrow(MCP_RECONNECT_BUSY);
+    expect(MCP_RECONNECT_BUSY).toMatch(/every Codex session running here/);
+    // Its own turn is no reason not to.
+    fake.notify('turn/completed', { threadId: OTHER, turn: { id: 'turn-1', status: 'completed' } });
+    await session.send('mine', []);
+    await session.mcp('docs', 'reconnect');
+    fake.exit();
+    await expect(session.mcp('docs', 'reconnect')).rejects.toThrow(MCP_RECONNECT_NOT_LOADED);
+    expect(fake.calls.some((c) => c.method === 'thread/resume')).toBe(false);
+  });
+
+  it("lists a crashed session's MCP servers from Codex's config, without starting them", async () => {
+    const { fake, session } = await running();
+    fake.exit();
+    const caps = await session.capabilities();
+    expect(caps.live).toBe(false);
+    expect(caps.mcp).toEqual([expect.objectContaining({ name: 'docs', status: 'pending' }), expect.objectContaining({ name: 'off', status: 'disabled' })]);
+    expect(fake.calls.some((c) => c.method === 'mcpServerStatus/list')).toBe(false);
+    expect(fake.calls.find((c) => c.method === 'config/read')?.params).toEqual({ cwd: CWD });
+    expect(fake.calls.find((c) => c.method === 'hooks/list')?.params).toEqual({ cwds: [CWD] });
+  });
+
   it('renames the thread through Codex', async () => {
     const { fake, session } = await running();
     await session.rename!('Better name');
     expect(fake.calls.at(-1)).toEqual({ method: 'thread/name/set', params: { threadId: T, name: 'Better name' } });
   });
 
-  it('runs /compact as Codex\'s compaction, not as a message, and resumes a crashed thread first', async () => {
+  it("runs /compact as Codex's compaction, not as a message, and resumes a crashed thread first", async () => {
     const { fake, session } = await running();
     expect((await session.commands()).map((c) => c.name)).toEqual(['compact']);
     const id = await session.send('/compact', []);
     expect(id).toMatch(/^codex-compact-/);
     expect(fake.calls.at(-1)).toEqual({ method: 'thread/compact/start', params: { threadId: T } });
     expect(fake.calls.some((c) => c.method === 'turn/start')).toBe(false);
-    // With words after it, or an image, it's a message like any other.
-    await session.send('/compact the notes', []);
-    expect(fake.calls.at(-1)?.method).toBe('turn/start');
+    fake.notify('turn/completed', { threadId: T, turn: { id: 'c-1', status: 'completed' } });
     fake.exit();
     await session.send('/compact', []);
     expect(fake.calls.slice(-2).map((c) => c.method)).toEqual(['thread/resume', 'thread/compact/start']);
+  });
+
+  it('refuses /compact with instructions or an image, and steered into a running turn', async () => {
+    const { fake, session } = await running();
+    await expect(session.send('/compact keep the API notes', [])).rejects.toThrow(COMPACT_NO_INSTRUCTIONS);
+    await expect(session.send('/compact', [{ data: 'aGk=', mediaType: 'image/png' } as never])).rejects.toThrow(COMPACT_NO_INSTRUCTIONS);
+    await session.send('work', []);
+    await expect(session.send('/compact', [], true)).rejects.toThrow(COMPACT_NOT_STEERED);
+    expect(fake.calls.some((c) => c.method === 'thread/compact/start')).toBe(false);
+    expect(fake.calls.filter((c) => c.method === 'turn/start')).toHaveLength(1);
+  });
+
+  it('stops a compaction asked for before Codex started its turn, as soon as it does', async () => {
+    const { fake, session } = await running();
+    await session.send('/compact', []);
+    await session.interrupt();
+    expect(fake.calls.some((c) => c.method === 'turn/interrupt')).toBe(false);
+    fake.notify('turn/started', { threadId: T, turn: { id: 'c-1' } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fake.calls.at(-1)).toEqual({ method: 'turn/interrupt', params: { threadId: T, turnId: 'c-1' } });
   });
 });
 
