@@ -42,5 +42,16 @@ export const Capabilities = z.object({
   plugins: z.array(PluginInfo),
   /** Hooks, for a provider that lists them (Codex). */
   hooks: z.array(HookInfo).optional(),
+  /**
+   * Whether an MCP server can be turned on or off here: false for a provider that can't (Codex would need its
+   * `config.toml` rewritten), and Tools then shows no switch. Left out: it can (Claude Code, Copilot).
+   */
+  mcpToggle: z.boolean().optional(),
+  /**
+   * A short note on the MCP servers' Reconnect (its tooltip, and a line above the servers), for a provider whose
+   * reconnect reaches more than the one server (Codex restarts the servers of every session of the profile running
+   * here). Left out: none.
+   */
+  reconnectNote: z.string().optional(),
 });
 export type Capabilities = z.infer<typeof Capabilities>;

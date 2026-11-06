@@ -6,9 +6,11 @@ import type { CodexLatestVersion } from './codexUpdate.ts';
 import type { Methods, Model, Thread, Turn } from './protocol.ts';
 
 /**
- * A made-up OpenAI Codex CLI for the demo home (the smoke test), in the process: installed,
- * signed in, and an app-server that answers from the demo's rollout files and the conversations below. Nothing is
- * spawned, nothing ships as a file, and nothing ever reaches a real Codex.
+ * A made-up OpenAI Codex CLI for the demo home (the smoke test and the screenshots), in the process: installed,
+ * signed in, with three models, rate limits, two MCP servers and a skill, and an app-server that answers from the
+ * demo's rollout files and the conversations below, and renames them. Starting, continuing, forking or compacting a
+ * session refuses (`CODEX_DEMO_REFUSAL`). Nothing is spawned, nothing ships as a file, and nothing ever reaches a real
+ * Codex.
  */
 
 /** One made-up thread: its id (in its rollout file's name), what it is called, and its conversation in a folder. */
@@ -162,6 +164,42 @@ export const CODEX_DEMO_MODELS: Model[] = [
   { id: 'gpt-5.2', model: 'gpt-5.2', displayName: 'GPT-5.2', description: 'General model', hidden: false, supportedReasoningEfforts: [], defaultReasoningEffort: 'none', inputModalities: ['text'], isDefault: false },
 ];
 
+/**
+ * The demo account's rate limits (`account/rateLimits/read`): a 5-hour window and a weekly one, as Codex reports them
+ * (percent used, the window's length in minutes, when it resets in seconds since the epoch).
+ */
+export function codexDemoRateLimits(now = Date.now()) {
+  const at = (hours: number) => Math.floor(now / 1000 + hours * 3600);
+  return {
+    rateLimits: {
+      limitId: 'codex',
+      limitName: null,
+      primary: { usedPercent: 23, windowDurationMins: 300, resetsAt: at(3) },
+      secondary: { usedPercent: 41, windowDurationMins: 10_080, resetsAt: at(4 * 24) },
+      credits: null,
+      planType: 'plus',
+    },
+  };
+}
+
+/** The demo's MCP servers (`mcpServerStatus/list`), for Tools. */
+export const CODEX_DEMO_MCP_SERVERS = [
+  { name: 'github', pluginId: null, tools: { create_issue: { name: 'create_issue', description: 'Open an issue' }, list_pull_requests: { name: 'list_pull_requests', description: 'List pull requests' } }, resources: [], resourceTemplates: [], authStatus: 'oAuth' },
+  { name: 'linear', pluginId: null, tools: { create_issue: { name: 'create_issue', description: 'Create a Linear issue' } }, resources: [], resourceTemplates: [], authStatus: 'bearerToken' },
+];
+
+/** The demo's skill (`skills/list`), for Tools, in the user's `CODEX_HOME`. */
+export const codexDemoSkills = (codexHomeDir: string, cwds: readonly string[]) => ({
+  data: (cwds.length ? cwds : ['']).map((cwd) => ({
+    cwd,
+    skills: [{ name: 'release-notes', description: 'Write release notes from the merged pull requests', shortDescription: 'Release notes', path: join(codexHomeDir, 'skills', 'release-notes', 'SKILL.md'), scope: 'user', enabled: true }],
+    errors: [],
+  })),
+});
+
+/** Names given in the demo (`thread/name/set`), by thread id: kept for the run, so a rename shows in the list. */
+const DEMO_NAMES = new Map<string, string>();
+
 /** The in-process app-server: answers the read methods for the demo threads that have a rollout file in `CODEX_HOME`. */
 function demoAppServer(options: AppServerOptions): AppServer {
   const threads = async (): Promise<Thread[]> => {
@@ -171,7 +209,7 @@ function demoAppServer(options: AppServerOptions): AppServer {
     return CODEX_DEMO_THREADS.flatMap((demo) => {
       const file = files.get(demo.id);
       const thread = file ? threadOf(demo, file) : undefined;
-      return thread ? [thread] : [];
+      return thread ? [{ ...thread, name: DEMO_NAMES.get(thread.id) ?? thread.name }] : [];
     }).sort((a, b) => b.updatedAt - a.updatedAt);
   };
   const find = async (threadId: string) => {
@@ -180,7 +218,8 @@ function demoAppServer(options: AppServerOptions): AppServer {
     return thread;
   };
   const answer = async (method: keyof Methods, params: Record<string, unknown>): Promise<unknown> => {
-    switch (method) {
+    // As a string: the methods Phase 3 adds (rate limits, skills, rename) may not be in `Methods` on every branch yet.
+    switch (method as string) {
       case 'thread/list':
         return { data: params.archived ? [] : await threads(), nextCursor: null };
       case 'thread/read':
@@ -194,8 +233,20 @@ function demoAppServer(options: AppServerOptions): AppServer {
         return { account: { type: 'chatgpt', email: 'demo-user@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true };
       case 'model/list':
         return { data: CODEX_DEMO_MODELS, nextCursor: null };
+      case 'account/rateLimits/read':
+        return codexDemoRateLimits();
+      case 'mcpServerStatus/list':
+        return { data: CODEX_DEMO_MCP_SERVERS, nextCursor: null };
+      case 'skills/list':
+        return codexDemoSkills((await options.env()).CODEX_HOME ?? '', Array.isArray(params.cwds) ? params.cwds.map(String) : []);
+      case 'thread/name/set': {
+        const thread = await find(String(params.threadId));
+        DEMO_NAMES.set(thread.id, String(params.name ?? '').trim() || thread.name || '');
+        return {};
+      }
       default:
-        // Starting or continuing a session refuses: a smoke run never reaches a real Codex, nor looks like it did.
+        // Starting, continuing, forking or compacting a session refuses: a smoke run never reaches a real Codex, nor
+        // looks like it did.
         throw new Error(CODEX_DEMO_REFUSAL);
     }
   };

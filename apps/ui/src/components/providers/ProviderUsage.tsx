@@ -3,7 +3,7 @@ import { levelOf, LEVEL_TEXT } from '../../lib/levels.ts';
 import { useProviderQuota } from '../../state/providersStore.ts';
 import { openUsage } from '../../state/usageViewStore.ts';
 import { Meter } from '../ui/Meter.tsx';
-import { quotaLine, quotaSummary, SHOWS_USAGE, usageNotShown, usageNotShownShort } from './quotaText.ts';
+import { quotaLine, quotaSummary } from './quotaText.ts';
 
 /** A usage bar is a button that opens the Usage view: it keeps its look and lights up on hover (as `UsageBand`'s). */
 const HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border/45';
@@ -15,16 +15,7 @@ const HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border
  * usage column draws its own, `ProfileUsageCard`.)
  */
 export function ProviderUsage({ profileId, provider, form = 'line' }: { profileId: string; provider: OptionalProvider; form?: 'line' | 'footer' }) {
-  // A provider whose usage isn't shown (Codex) isn't asked.
-  const quota = useProviderQuota(SHOWS_USAGE[provider] ? profileId : null);
-  // A provider whose usage Seshboard doesn't show yet (OpenAI Codex) says so, rather than leaving the spot empty.
-  if (!SHOWS_USAGE[provider]) {
-    return (
-      <span className={`truncate text-meta text-faint ${form === 'footer' ? 'px-1' : ''}`} data-tooltip={usageNotShown(provider)} data-provider-usage-not-shown={provider}>
-        {usageNotShownShort(provider)}
-      </span>
-    );
-  }
+  const quota = useProviderQuota(profileId);
   if (!quota) return null;
   const level = quota.entitlement === null ? null : levelOf(quota.percentUsed);
   const summary = quotaSummary(quota);

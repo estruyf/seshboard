@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useProfiles } from '../../state/profilesStore.ts';
 import { useProviderQuotas } from '../../state/providersStore.ts';
+import { hasPlanUsage } from '../providers/quotaText.ts';
 import type { SessionRowData } from '../../state/sessionsStore.ts';
 import { homeLimits, ProfileUsageCard, QuietProfileLine, useUsageForAll, type HomeProfileUsage } from '../UsageBand.tsx';
 import { SectionHeader } from '../ui/SectionHeader.tsx';
@@ -13,14 +14,15 @@ import { profileActivity, profileActivityLine, profileIsBusy, quietNumbers } fro
 export function HomeUsage({ rows, now }: { rows: readonly SessionRowData[]; now: number }) {
   const all = useProfiles((s) => s.profiles);
   const profiles = useMemo(() => [...all].filter((p) => p.exists).sort((a, b) => Number(b.isDefault) - Number(a.isDefault)), [all]);
-  const claudeIds = useMemo(() => profiles.filter((p) => p.provider === 'claude').map((p) => p.id), [profiles]);
-  const providerIds = useMemo(() => profiles.filter((p) => p.provider !== 'claude').map((p) => p.id), [profiles]);
+  // Plan windows (Claude Code's, Codex's) from `usage.get`; premium requests (Copilot's) from `providers.quota`.
+  const claudeIds = useMemo(() => profiles.filter((p) => hasPlanUsage(p.provider)).map((p) => p.id), [profiles]);
+  const providerIds = useMemo(() => profiles.filter((p) => !hasPlanUsage(p.provider)).map((p) => p.id), [profiles]);
   const entries = useUsageForAll(claudeIds);
   const quotas = useProviderQuotas(providerIds);
   const perProfile = useMemo(() => profileActivity(rows, now), [rows, now]);
   if (profiles.length === 0) return null;
 
-  const usages: HomeProfileUsage[] = profiles.map((profile) => (profile.provider === 'claude' ? { profile, entry: entries.get(profile.id) } : { profile, quota: quotas.get(profile.id) ?? null }));
+  const usages: HomeProfileUsage[] = profiles.map((profile) => (hasPlanUsage(profile.provider) ? { profile, entry: entries.get(profile.id) } : { profile, quota: quotas.get(profile.id) ?? null }));
   const busy = usages.filter((u) => profileIsBusy(perProfile.get(u.profile.id), homeLimits(u).map((l) => l.percent)));
   const quiet = usages.filter((u) => !busy.includes(u));
   return (

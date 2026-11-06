@@ -12,7 +12,7 @@ import { usePreferences } from '../state/preferencesStore.ts';
 import { useWindowCosts } from './usage/useWindowCosts.ts';
 import { openUsage } from '../state/usageViewStore.ts';
 import { thisComputerName } from '../lib/platform.ts';
-import { quotaSummary, resetDay } from './providers/quotaText.ts';
+import { hasPlanUsage, planWindowsOnly, quotaSummary, resetDay } from './providers/quotaText.ts';
 
 interface UsageState {
   /** Plan usage per Claude profile (each login has its own limits). No entry: not loaded yet. */
@@ -124,6 +124,8 @@ export function UsageBand({ profileId, compact = false, footer = false }: { prof
   const defaultId = useProfiles((s) => s.defaultId);
   const id = profileId ?? defaultId;
   const usage = useUsageFor(id)?.usage;
+  // Codex's windows have no cost: it is estimated from Claude Code's transcripts.
+  const planOnly = planWindowsOnly(useProfiles((s) => s.profiles.find((p) => p.id === id)?.provider) ?? 'claude');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -132,7 +134,7 @@ export function UsageBand({ profileId, compact = false, footer = false }: { prof
   const limits = usage ? visibleLimits(usage.limits) : [];
   const extra = usage?.extraUsage;
   // The estimated API cost of each window, after its bar (Settings › Usage), in the footer and New session's tray.
-  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer;
+  const showCost = usePreferences((s) => s.prefs.showCost && s.prefs.showBarCost) && footer && !planOnly;
   const currency = usePreferences((s) => s.prefs.costCurrency);
   const priced = useWindowCosts(id, showCost && limits.length > 0);
   const costs = limitCosts(limits, priced.windows, showCost ? currency : null);
@@ -241,7 +243,7 @@ export interface HomeProfileUsage {
 
 /** The limits a profile's line and bars show, by their short names ("5h", "Week", "Premium requests"). */
 export function homeLimits({ profile, entry, quota }: HomeProfileUsage): { label: string; percent: number }[] {
-  if (profile.provider !== 'claude') return quota && quota.entitlement !== null ? [{ label: 'Premium requests', percent: quota.percentUsed }] : [];
+  if (!hasPlanUsage(profile.provider)) return quota && quota.entitlement !== null ? [{ label: 'Premium requests', percent: quota.percentUsed }] : [];
   return entry?.usage ? visibleLimits(entry.usage.limits).map((limit) => ({ label: footerLabel(limit), percent: limit.percent })) : [];
 }
 
@@ -252,7 +254,8 @@ export function homeLimits({ profile, entry, quota }: HomeProfileUsage): { label
  */
 export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileUsage; activity: string; now: number }) {
   const { profile, entry, quota } = usage;
-  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  // Premium requests (Copilot's); plan windows (Claude Code's, Codex's) read as Claude Code's.
+  const provider = !hasPlanUsage(profile.provider) && profile.provider !== 'claude' ? profile.provider : null;
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
   const extra = entry?.usage?.extraUsage;
   return (
@@ -317,7 +320,8 @@ export function ProfileUsageCard({ usage, activity, now }: { usage: HomeProfileU
  */
 export function QuietProfileLine({ usage, numbers, now }: { usage: HomeProfileUsage; numbers: string; now: number }) {
   const { profile, entry, quota } = usage;
-  const provider = profile.provider !== 'claude' ? profile.provider : null;
+  // Premium requests (Copilot's); plan windows (Claude Code's, Codex's) read as Claude Code's.
+  const provider = !hasPlanUsage(profile.provider) && profile.provider !== 'claude' ? profile.provider : null;
   const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
   const summary = provider ? (quota ? quotaSummary(quota) : null) : limits.length ? usageSummary(limits, now) : null;
   const text = numbers || (provider ? (quota ? `${quota.used.toLocaleString()} premium requests` : '') : usageMessage(entry));

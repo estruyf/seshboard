@@ -358,7 +358,7 @@ export interface DriveMethods {
   'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
 }
 
-export type Methods = ReadMethods & DriveMethods;
+export type Methods = ReadMethods & DriveMethods & UsageMethods;
 
 /**
  * A notification from Codex (`item/started`, `item/agentMessage/delta`, `turn/completed`, `thread/tokenUsage/updated`,
@@ -462,4 +462,38 @@ export interface DriveMethods {
   'config/read': { params: { cwd?: string | null; includeLayers?: boolean }; result: { config: { mcp_servers?: Record<string, { enabled?: boolean } & Record<string, unknown>> | null } & Record<string, unknown> } };
   /** Compacts a loaded thread's context, as a turn of its own with a `contextCompaction` item. */
   'thread/compact/start': { params: { threadId: string }; result: unknown };
+}
+
+/* --- Usage (Phase 3): the account's rate limits ------------------------------------------------------------------ */
+
+/** One rate-limit window: how much of it is used, how long it is, and when it resets. */
+export interface RateLimitWindow {
+  /** 0–100. */
+  usedPercent: number;
+  windowDurationMins: number | null;
+  /** Unix seconds. */
+  resetsAt: number | null;
+}
+
+/** A bucket of limits (`limitId`, e.g. `codex`): a short window (`primary`, 5 hours) and a long one (`secondary`, a week). */
+export interface RateLimitSnapshot {
+  limitId: string | null;
+  limitName: string | null;
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
+  planType: string | null;
+  /** Set when a limit is reached (`rate_limit_reached`, a workspace's credits or usage limit). */
+  rateLimitReachedType: string | null;
+}
+
+export interface GetAccountRateLimitsResponse {
+  /** The single-bucket view (Codex's own, `codex`). */
+  rateLimits: RateLimitSnapshot;
+  /** Every bucket by its `limitId`, when Codex has more than one. */
+  rateLimitsByLimitId: Record<string, RateLimitSnapshot | undefined> | null;
+}
+
+/** The requests Phase 3 makes for usage. Reading the limits costs no tokens. */
+export interface UsageMethods {
+  'account/rateLimits/read': { params: { excludeResetCreditDetails?: boolean }; result: GetAccountRateLimitsResponse };
 }

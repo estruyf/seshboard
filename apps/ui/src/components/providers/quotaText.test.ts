@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay, SHOWS_USAGE, usageNotShown, usageNotShownShort } from './quotaText.ts';
+import { hasPlanUsage, planWindowsOnly, quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay } from './quotaText.ts';
 
 const quota = { used: 212, entitlement: 1500, percentUsed: 14.13, resetsAt: '2026-11-01' };
 
@@ -38,10 +38,9 @@ describe('the premium requests ring', () => {
   });
 });
 
-describe("a provider whose usage isn't shown", () => {
-  it('is Codex for now, said plainly in the Usage view and under the box', () => {
-    expect(SHOWS_USAGE).toEqual({ copilot: true, codex: false });
-    expect(usageNotShown('codex')).toBe("Seshboard doesn't show OpenAI Codex usage yet.");
-    expect(usageNotShownShort('codex')).toBe('Codex usage not shown yet');
+describe("how a profile's usage comes", () => {
+  it("is plan windows for Claude Code and Codex, without Claude Code's history for Codex, and premium requests for Copilot", () => {
+    expect(['claude', 'codex', 'copilot'].map((p) => hasPlanUsage(p as 'claude'))).toEqual([true, true, false]);
+    expect(['claude', 'codex', 'copilot'].map((p) => planWindowsOnly(p as 'claude'))).toEqual([false, true, false]);
   });
 });

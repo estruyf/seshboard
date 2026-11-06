@@ -1,16 +1,19 @@
-import { PROVIDER_NAMES, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderQuota } from '@seshboard/protocol/client';
+import type { OptionalProvider, ProviderQuota, SessionProvider } from '@seshboard/protocol/client';
 
 /**
- * Whether Seshboard shows a provider's usage: Copilot's premium requests. OpenAI Codex's rate limits come later (#276,
- * Phase 3). A new provider must say.
+ * How a provider's usage comes: Copilot's premium requests (`providers.quota`), or plan windows as Claude Code's
+ * (`usage.get`: Codex's rate limits, its 5-hour and weekly windows). A new provider must say.
  */
-export const SHOWS_USAGE: Record<OptionalProvider, boolean> = { copilot: true, codex: false };
+export const USAGE_KIND: Record<OptionalProvider, 'quota' | 'plan'> = { copilot: 'quota', codex: 'plan' };
 
-/** The Usage view for a provider whose usage isn't shown: "Seshboard doesn't show OpenAI Codex usage yet." */
-export const usageNotShown = (provider: OptionalProvider) => `Seshboard doesn't show ${PROVIDER_NAMES[provider]} usage yet.`;
+/** Whether a profile's usage is plan windows (`usage.get`): Claude Code's, and Codex's. */
+export const hasPlanUsage = (provider: SessionProvider): boolean => provider === 'claude' || USAGE_KIND[provider] === 'plan';
 
-/** The same under the message box, where there is little room: "Codex usage not shown yet". */
-export const usageNotShownShort = (provider: OptionalProvider) => `${PROVIDER_SHORT_NAMES[provider]} usage not shown yet`;
+/**
+ * Plan windows only (Codex): no history, costs, breakdowns or charts, which read Claude Code's transcripts and its
+ * recorded readings.
+ */
+export const planWindowsOnly = (provider: SessionProvider): boolean => provider !== 'claude' && USAGE_KIND[provider] === 'plan';
 
 /** A reset date as Copilot gives it (`2026-12-01`, or a full ISO time), as "Dec 1"; a date alone is a local day. */
 export function resetDay(resetsAt: string, locale?: string): string {
