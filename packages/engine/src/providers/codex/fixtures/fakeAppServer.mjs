@@ -2,9 +2,10 @@
 // speaks it (no `jsonrpc` field). Run as `node fakeAppServer.mjs app-server`.
 //
 // `thread/read`'s `threadId` picks what it does: `crash` exits with code 3 (after a line on stderr), `hang` never
-// answers, `ask` sends a request of its own first and answers with the client's reply to it. `thread/list` answers
-// after `limit` milliseconds, so answers can come back out of order. Every answer is written in two pieces, with a
-// notification and a line that isn't JSON before it. FAKE_CODEX_INIT=hang never answers `initialize`.
+// answers, `ask` sends a request of its own first and answers with the client's reply to it, `last` answers and exits
+// at once, `big` answers with a preview of 8 MB. `thread/list` answers after `limit` milliseconds, so answers can come
+// back out of order. Every answer is written in two pieces, with a notification and a line that isn't JSON before it.
+// FAKE_CODEX_INIT=hang never answers `initialize`. FAKE_CODEX_STUBBORN=1 ignores SIGTERM and the end of its stdin.
 import { createInterface } from 'node:readline';
 
 if (process.argv[2] !== 'app-server') {
@@ -46,6 +47,14 @@ const handle = async (message) => {
       process.exit(3);
     }
     if (params.threadId === 'hang') return;
+    if (params.threadId === 'last') {
+      process.stdout.write(`${JSON.stringify({ id, result: { thread: { ...thread('last'), preview: 'x'.repeat(2 * 1024 * 1024) } } })}\n`, () => process.exit(0));
+      return;
+    }
+    if (params.threadId === 'big') {
+      send({ id, result: { thread: { ...thread('big'), preview: 'x'.repeat(8 * 1024 * 1024) } } });
+      return;
+    }
     if (params.threadId === 'ask') {
       const reply = new Promise((resolve) => waiting.set('srv-1', resolve));
       process.stdout.write(`${JSON.stringify({ id: 'srv-1', method: 'item/commandExecution/requestApproval', params: { threadId: 'ask' } })}\n`);
@@ -81,4 +90,5 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   void handle(message);
 });
 // Codex ends when its stdin closes.
-process.stdin.on('end', () => process.exit(0));
+if (process.env.FAKE_CODEX_STUBBORN === '1') process.on('SIGTERM', () => {});
+else process.stdin.on('end', () => process.exit(0));

@@ -56,8 +56,12 @@ const DEFAULT_IDLE_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** How much of stderr is kept for the message when the process ends. */
 const STDERR_TAIL = 4096;
-/** How long `dispose` waits for the process to end before it kills it outright. */
+/** How long a stopped process gets to end before it is killed outright. */
 const KILL_GRACE_MS = 2000;
+/** How long after the process ended its output may still be read: a child of Codex's can hold the pipe open. */
+const CLOSE_GRACE_MS = 1000;
+/** Timeouts in a row after which a process that still has requests waiting is taken as stuck. */
+const STUCK_AFTER_TIMEOUTS = 2;
 
 interface Pending {
   method: string;
@@ -71,6 +75,11 @@ interface Running {
   pending: Map<number, Pending>;
   stderr: string;
   exited: boolean;
+  /** Requests that timed out since the last answer. */
+  timeouts: number;
+  /** Why it was stopped, when that wasn't dispose: what its waiting requests fail with. */
+  stopReason: (() => Error) | null;
+  killTimer: NodeJS.Timeout | null;
   /** Resolves when the process has ended. */
   done: Promise<void>;
 }
@@ -109,22 +118,30 @@ export function createAppServer(options: AppServerOptions): AppServer {
   };
 
   /** Forgets the process (the next request starts another) and ends it. */
-  const stop = (running: Running) => {
+  const stop = (running: Running, reason?: () => Error) => {
     if (latest === running) {
       latest = null;
       ready = null;
     }
+    running.stopReason ??= reason ?? null;
     end(running);
   };
 
+  /** Asks the process to end (Codex ends when its stdin closes), and kills it if it hasn't after a grace period. */
   const end = (running: Running) => {
-    if (running.exited) return;
+    if (running.exited || running.killTimer) return;
     try {
       running.child.stdin.end();
     } catch {}
     try {
       running.child.kill();
     } catch {}
+    running.killTimer = setTimeout(() => {
+      try {
+        running.child.kill('SIGKILL');
+      } catch {}
+    }, KILL_GRACE_MS);
+    running.killTimer.unref();
   };
 
   const failAll = (running: Running, error: () => Error) => {
@@ -152,6 +169,12 @@ export function createAppServer(options: AppServerOptions): AppServer {
       const timer = setTimeout(() => {
         running.pending.delete(id);
         reject(new AppServerError(`Codex didn't answer ${method} within ${Math.round(timeoutMs / 1000)}s.`, 'timeout'));
+        // A process that answers nothing would make every later request wait out its timeout too: with nothing else
+        // waiting, or after timeouts in a row, it is stopped and the next request starts a fresh one.
+        running.timeouts++;
+        if (running.pending.size === 0 || running.timeouts >= STUCK_AFTER_TIMEOUTS) {
+          stop(running, () => new AppServerError('Codex app-server stopped answering and was stopped.', 'exited'));
+        }
       }, timeoutMs);
       running.pending.set(id, { method, resolve, reject, timer });
       // Codex accepts `jsonrpc: '2.0'` but doesn't need it, and leaves it out of its own messages.
@@ -175,6 +198,7 @@ export function createAppServer(options: AppServerOptions): AppServer {
       return;
     }
     if (typeof message.id !== 'number') return;
+    running.timeouts = 0;
     const entry = running.pending.get(message.id);
     if (!entry) return;
     running.pending.delete(message.id);
@@ -208,27 +232,45 @@ export function createAppServer(options: AppServerOptions): AppServer {
       throw notStarted(error);
     }
     let markDone: () => void = () => {};
-    const running: Running = { child, pending: new Map(), stderr: '', exited: false, done: new Promise((resolve) => (markDone = resolve)) };
+    const running: Running = {
+      child,
+      pending: new Map(),
+      stderr: '',
+      exited: false,
+      timeouts: 0,
+      stopReason: null,
+      killTimer: null,
+      done: new Promise((resolve) => (markDone = resolve)),
+    };
     latest = running;
 
     let spawnError: Error | null = null;
     child.on('error', (error) => {
-      // ENOENT and EACCES arrive here, asynchronously; 'exit' may not follow, so this ends the process's life too.
+      // ENOENT and EACCES arrive here, asynchronously; 'close' may not follow, so this ends the process's life too.
       spawnError = notStarted(error);
       finish(null, null);
     });
     const finish = (code: number | null, signal: NodeJS.Signals | null) => {
       if (running.exited) return;
       running.exited = true;
+      if (running.killTimer) clearTimeout(running.killTimer);
+      if (closeTimer) clearTimeout(closeTimer);
       if (latest === running) {
         latest = null;
         ready = null;
         clearIdle();
       }
-      failAll(running, () => spawnError ?? (disposed ? disposedError() : exitError(running, code, signal)));
+      failAll(running, () => spawnError ?? running.stopReason?.() ?? (disposed ? disposedError() : exitError(running, code, signal)));
       markDone();
     };
-    child.on('exit', (code, signal) => finish(code, signal));
+    // 'close' comes once stdout is read to the end, so an answer written just before the process ended still counts.
+    // A child of Codex's that kept the pipe could hold it back, so 'exit' ends it all a moment later anyway.
+    let closeTimer: NodeJS.Timeout | null = null;
+    child.on('close', (code, signal) => finish(code, signal));
+    child.on('exit', (code, signal) => {
+      closeTimer = setTimeout(() => finish(code, signal), CLOSE_GRACE_MS);
+      closeTimer.unref();
+    });
     child.stdin.on('error', () => {});
     child.stdout.on('error', () => {});
     child.stderr.on('error', () => {});
@@ -237,18 +279,23 @@ export function createAppServer(options: AppServerOptions): AppServer {
       running.stderr = (running.stderr + chunk).slice(-STDERR_TAIL);
     });
     child.stdout.setEncoding('utf8');
-    let buffer = '';
+    // The start of a line that hasn't ended yet, in pieces: a long answer (a big thread's turns) comes in many chunks,
+    // and only each new chunk is searched for its end.
+    let partial: string[] = [];
     child.stdout.on('data', (chunk: string) => {
-      buffer += chunk;
+      let from = 0;
       let newline: number;
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
+      while ((newline = chunk.indexOf('\n', from)) >= 0) {
+        const piece = chunk.slice(from, newline);
+        const line = (partial.length ? partial.join('') + piece : piece).trim();
+        partial = [];
+        from = newline + 1;
         if (!line) continue;
         try {
           onMessage(running, line);
         } catch {}
       }
+      if (from < chunk.length) partial.push(chunk.slice(from));
     });
 
     try {
@@ -309,13 +356,7 @@ export function createAppServer(options: AppServerOptions): AppServer {
       if (!running || running.exited) return;
       failAll(running, () => disposedError());
       end(running);
-      const grace = setTimeout(() => {
-        try {
-          running.child.kill('SIGKILL');
-        } catch {}
-      }, KILL_GRACE_MS);
       await running.done;
-      clearTimeout(grace);
     },
   };
 }
