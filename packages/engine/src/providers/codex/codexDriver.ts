@@ -7,11 +7,13 @@ import { codexInput } from './codexInput.ts';
 import { CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
-import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
+import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
 /** What turns one running thread's notifications into a session's events (`CodexLive`; tests fake it). */
 export interface CodexLiveHandler {
   handle(notification: ServerNotification): void;
+  /** The latest version of an item still running (a file change's diff, for its card); null once it completed. */
+  item?(itemId: string): ThreadItem | null;
 }
 
 export interface CodexDriverOptions {
@@ -162,8 +164,22 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
       let loaded = false;
       let release: (() => void) | null = null;
       let closed = false;
-      /** Codex's requests waiting on a card, by the card's id. */
-      const pending = new Map<string, { request: ServerRequest; resolve: (answer: unknown) => void }>();
+      /**
+       * Codex's requests waiting on a card, by the card's id: Codex's own request id, which `CodexLive` takes the card
+       * away by when Codex says the request is resolved (`serverRequest/resolved`).
+       */
+      const pending = new Map<string, { request: ServerRequest; resolve: (answer: unknown) => void; reject: (error: Error) => void }>();
+      /** Sends the card's decision back; an answer Codex can't take refuses the request. */
+      const answer = (open: { request: ServerRequest; resolve: (answer: unknown) => void; reject: (error: Error) => void }, decision: PermissionDecision) => {
+        let reply: unknown = null;
+        try {
+          reply = permissions.answer(open.request, decision);
+        } catch (error) {
+          log('warn', `Codex ${open.request.method}: ${(error as Error).message}`);
+        }
+        if (reply === null || reply === undefined) open.reject(new Error(`Seshboard can't answer ${open.request.method} that way`));
+        else open.resolve(reply);
+      };
       /** Messages sent, waiting for the `userMessage` item that names them (by `clientUserMessageId`). */
       const naming = new Map<string, (id: string) => void>();
 
@@ -186,8 +202,8 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
 
       /** Answers every open request as declined (a stopped turn, a closed session, a crash) and takes its card away. */
       const dropAll = () => {
-        for (const [requestId, { request, resolve }] of pending) {
-          resolve(permissions.answer(request, { behavior: 'deny', message: 'The turn was stopped.' }));
+        for (const [requestId, open] of pending) {
+          answer(open, { behavior: 'deny', message: 'The turn was stopped.' });
           events.permissionDone(requestId);
         }
         pending.clear();
@@ -205,13 +221,11 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
             const name = item.type === 'userMessage' ? naming.get(str(item.clientId) ?? '') : undefined;
             if (name) name(`${str(params.turnId) ?? turnId ?? ''}:${str(item.id) ?? ''}`);
           } else if (notification.method === 'serverRequest/resolved') {
-            // Codex answered it some other way (the turn ended): the card goes.
-            for (const [requestId, open] of pending) {
-              if (open.request.id !== params.requestId) continue;
-              pending.delete(requestId);
-              open.resolve(null);
-              events.permissionDone(requestId);
-            }
+            // Codex is done with it (answered, or the turn ended): nothing waits on it any more. `CodexLive` takes the card away.
+            const requestId = String(params.requestId);
+            const open = pending.get(requestId);
+            pending.delete(requestId);
+            open?.resolve(null);
           }
           try {
             live.handle(notification);
@@ -220,18 +234,20 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
           }
         },
         request(request) {
-          const requestId = `codex-${randomUUID()}`;
+          const requestId = String(request.id);
           let card: Omit<PermissionRequest, 'sessionId'> | null;
           try {
-            card = permissions.request(requestId, request);
+            // A file change's card shows its diff, from the item as it is now.
+            const itemId = str(obj(request.params).itemId);
+            card = permissions.request(requestId, request, itemId ? (live.item?.(itemId) ?? null) : null);
           } catch (error) {
             log('warn', `Codex ${request.method}: ${(error as Error).message}`);
             card = null;
           }
           // One Seshboard can't show is refused: Codex then goes on without it, or says it can't.
           if (!card) return Promise.reject(new Error(`Seshboard can't answer ${request.method}`));
-          return new Promise((resolve) => {
-            pending.set(requestId, { request, resolve });
+          return new Promise((resolve, reject) => {
+            pending.set(requestId, { request, resolve, reject });
             events.permission(card);
           });
         },
@@ -357,7 +373,7 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
           const open = pending.get(requestId);
           if (!open) return;
           pending.delete(requestId);
-          open.resolve(permissions.answer(open.request, decision));
+          answer(open, decision);
           events.permissionDone(requestId);
           if (decision.behavior === 'deny' && decision.interrupt && turnId && loaded) void server.request('turn/interrupt', { threadId, turnId }).catch(() => {});
         },
