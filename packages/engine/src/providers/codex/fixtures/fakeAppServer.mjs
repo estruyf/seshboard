@@ -90,5 +90,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   void handle(message);
 });
 // Codex ends when its stdin closes.
-if (process.env.FAKE_CODEX_STUBBORN === '1') process.on('SIGTERM', () => {});
+if (process.env.FAKE_CODEX_STUBBORN === '1') {
+  process.on('SIGTERM', () => {});
+  // Without this, the end of its stdin would leave Node nothing to wait for, and it would end by itself.
+  setInterval(() => {}, 60_000);
+}
 else process.stdin.on('end', () => process.exit(0));

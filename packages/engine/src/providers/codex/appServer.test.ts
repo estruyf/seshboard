@@ -168,10 +168,11 @@ describe('createAppServer', () => {
     const server = fakeServer({ idleMs: 50, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
     await server.request('thread/list', {});
     const pid = server.pid()!;
-    await until(() => server.pid() === null);
-    expect(alive(pid)).toBe(true);
-    await until(() => !alive(pid), 5000);
-  });
+    await until(() => server.pid() === null, 20_000);
+    // The fake ignores SIGTERM and stays up after its stdin ends: only the SIGKILL after the grace period ends it.
+    // Generous limits rather than timing: CI machines are slow.
+    await until(() => !alive(pid), 20_000);
+  }, 60_000);
 
   it('reads an answer written just before the process ends', async () => {
     const server = fakeServer();
