@@ -47,7 +47,8 @@ describe('SkimHighlights', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'skim-'));
     db = new DatabaseSync(join(dir, 'cache.db'));
-    db.exec(migrations.at(-1)!);
+    // The migration that makes the table, wherever it is in the list: later ones are appended after it.
+    db.exec(migrations.find((m) => m.includes('CREATE TABLE skim_highlights'))!);
     calls = [];
     answer = '{"keep":[2]}';
     canAsk = true;
