@@ -1602,6 +1602,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:codex-session-actions",
+      "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, and Tools with Codex's MCP servers and skills",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"

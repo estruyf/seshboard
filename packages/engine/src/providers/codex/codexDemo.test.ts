@@ -65,4 +65,22 @@ describe('the demo Codex', () => {
     server.hold()();
     server.onExit(() => {})();
   });
+
+  it('answers rate limits, MCP servers, a skill and a rename, and still refuses to fork or compact', async () => {
+    const dir = codexHome();
+    const { createAppServer, binary } = demoCodex();
+    const server = createAppServer({ binary, env: async () => ({ CODEX_HOME: dir }) });
+    const ask = (method: string, params: unknown) => server.request(method as never, params as never) as Promise<Record<string, unknown>>;
+    const limits = (await ask('account/rateLimits/read', {})) as { rateLimits: { primary: { usedPercent: number; windowDurationMins: number }; secondary: { usedPercent: number; windowDurationMins: number } } };
+    expect([limits.rateLimits.primary.windowDurationMins, limits.rateLimits.secondary.windowDurationMins]).toEqual([300, 10_080]);
+    expect(((await ask('mcpServerStatus/list', {})) as { data: Array<{ name: string }> }).data.map((s) => s.name)).toEqual(['github', 'linear']);
+    const skills = (await ask('skills/list', { cwds: ['/demo/acme-store'] })) as { data: Array<{ skills: Array<{ name: string; path: string }> }> };
+    expect(skills.data[0]!.skills.map((s) => s.name)).toEqual(['release-notes']);
+    expect(skills.data[0]!.skills[0]!.path.startsWith(dir)).toBe(true);
+    const id = CODEX_DEMO_THREADS[1]!.id;
+    await ask('thread/name/set', { threadId: id, name: 'Orders test on CI' });
+    expect(((await ask('thread/read', { threadId: id })) as { thread: { name: string } }).thread.name).toBe('Orders test on CI');
+    await expect(ask('thread/fork', { threadId: id })).rejects.toThrow(CODEX_DEMO_REFUSAL);
+    await expect(ask('thread/compact/start', { threadId: id })).rejects.toThrow(CODEX_DEMO_REFUSAL);
+  });
 });
