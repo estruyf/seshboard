@@ -907,17 +907,19 @@ export function createEngine(options: EngineOptions): Engine {
   const providerUsageWatch = new Map<string, { driver: ProviderDriver; off: () => void }>();
   /**
    * A profile's plan usage, as `usage.get` answers: Claude Code's for a Claude profile, the driver's for a provider that
-   * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`.
+   * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`. Null
+   * for a provider without (Copilot's premium requests are `providers.quota`): never Claude Code's under its name.
    */
-  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }> => {
+  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
     const driver = providerProfiles.adapter(profileId)?.driver;
-    if (!driver?.planUsage) return usageFor(profileId).get(refresh);
+    if (!driver?.planUsage) return null;
     if (providerUsageWatch.get(profileId)?.driver !== driver) {
       providerUsageWatch.get(profileId)?.off();
       const off = driver.onPlanUsage?.((usage) => broadcast('usage.changed', { profileId, usage })) ?? (() => {});
       providerUsageWatch.set(profileId, { driver, off });
     }
-    return { usage: await driver.planUsage(refresh).catch(() => null), error: null };
+    return driver.planUsage(refresh).catch((error: Error) => ({ usage: null, error: error.message }));
   };
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
@@ -3550,13 +3552,12 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': ({ refresh, profileId }) => {
+    'usage.get': async ({ refresh, profileId }) => {
       // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
       // Copilot's premium requests are `providers.quota`.
-      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude' && !providerProfiles.adapter(profileId)?.driver?.planUsage) {
-        throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
-      }
-      return planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
+      return usage;
     },
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),

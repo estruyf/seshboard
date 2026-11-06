@@ -186,10 +186,10 @@ export interface ProviderDriver {
   quota?(): Promise<ProviderQuota | null>;
   /**
    * The account's rate limits as Claude Code's plan usage (Codex's 5-hour and weekly windows), when the provider has
-   * them: `usage.get` answers with it for the profile. Null when there is none to show (signed out). `refresh` reads
-   * now instead of reusing a read from the last minute.
+   * them: `usage.get` answers with it for the profile, `error` saying why there are none (signed out, an API key) or
+   * why the last read failed. `refresh` reads now instead of reusing a read from the last minute.
    */
-  planUsage?(refresh: boolean): Promise<UsageSnapshot | null>;
+  planUsage?(refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
   /** Hears every change of `planUsage` the provider reports by itself, for `usage.changed`. Returns the function that stops. */
   onPlanUsage?(listener: (usage: UsageSnapshot | null) => void): () => void;
   models(): Promise<ModelOption[]>;
