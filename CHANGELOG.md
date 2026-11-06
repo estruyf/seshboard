@@ -11,6 +11,10 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 - **Fade the less important sentences with Haiku.** Under a long reply, Seshboard asks once whether you want to try it. Haiku reads your message and the reply, and picks the sentences to keep. The rest fade, and failures, skipped work and questions always stay. **Show all text** compares the two, and **Turn off** or Settings › Conversation stops it. It uses your plan, and the tokens show as **Skim highlights** in Usage. GitHub Copilot's sessions ask separately and use the cheapest model on your Copilot account.
 - **Go through all of a reply's images, and copy them.** Full size, ← and → and the strip below now go through every image Claude returned in the reply, not only those from one tool call. Press ⌘C, click **Copy** or right-click an image to copy it, in the conversation too.
 
+### Fixed
+
+- **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
+
 ## [1.3.0] - 2026-11-05
 
 ### Added
