@@ -7,8 +7,10 @@ import { codexInput } from './codexInput.ts';
 import { codexItemId } from './codexEvents.ts';
 import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
+import { COMPACT_COMMAND, codexCapabilities, configuredMcp, isCompact, isCompactWithMore, MCP_RECONNECT_BUSY, MCP_RECONNECT_NOT_LOADED, MCP_TOGGLE_REFUSED, COMPACT_NO_INSTRUCTIONS, COMPACT_NOT_STEERED } from './codexTools.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
-import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
+import { CodexUsage } from './codexUsage.ts';
+import type { CollaborationMode, HookMetadata, McpServerStatus, Methods, Model, ServerNotification, ServerRequest, SkillMetadata, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
 /** What turns one running thread's notifications into a session's events (`CodexLive`; tests fake it). */
 export interface CodexLiveHandler {
@@ -101,6 +103,8 @@ interface Running {
   crashed(): void;
   /** The app quits: lets go of everything, quietly. */
   letGo(): void;
+  /** A turn (a compaction too) runs or is starting. */
+  busy(): boolean;
 }
 
 /**
@@ -177,17 +181,43 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       throw error;
     }));
   };
-  /** Codex's MCP servers, for a read-only thread's config. */
-  const mcpServers = async () => {
-    const all: Array<{ name: string; pluginId: string | null }> = [];
+  /** Codex's MCP servers, for a read-only thread's config, and with a loaded thread's own connections for Tools. */
+  const mcpServers = async (threadId: string | null = null) => {
+    const all: McpServerStatus[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_MCP_PAGES; page++) {
-      const { data, nextCursor }: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } = await server.request('mcpServerStatus/list', { cursor });
+      // Tools needs each server's state and tools, not its resources.
+      const params: Methods['mcpServerStatus/list']['params'] = threadId ? { cursor, threadId, detail: 'toolsAndAuthOnly' } : { cursor };
+      const { data, nextCursor }: { data: McpServerStatus[]; nextCursor: string | null } = await server.request('mcpServerStatus/list', params);
       all.push(...data);
       if (!nextCursor || nextCursor === cursor) break;
       cursor = nextCursor;
     }
     return all;
+  };
+  // The account's rate limits as plan usage: read when asked, and kept up to date from Codex's rolling updates, which
+  // come without a thread while any of its sessions runs. Listened to from the first ask: until then nothing of the
+  // server is made.
+  const usage = new CodexUsage({ read: () => server.request('account/rateLimits/read', { excludeResetCreditDetails: true }) });
+  let offUsage: (() => void) | null = null;
+  const followUsage = () => {
+    offUsage ??= server.onNotification((notification) => {
+      if (notification.method === 'account/rateLimits/updated') usage.update(notification.params);
+    });
+    return usage;
+  };
+
+  /**
+   * What a folder has for Tools, read without starting anything: the MCP servers' names from Codex's config (listing
+   * them without a thread starts every one of them), the folder's skills and hooks.
+   */
+  const folderCapabilities = async (cwd: string) => {
+    const [mcp, skills, hooks] = await Promise.all([
+      server.request('config/read', { cwd }).then((r) => configuredMcp(r.config), (): McpServerStatus[] => []),
+      server.request('skills/list', { cwds: [cwd] }).then((r) => r.data.flatMap((entry) => entry.skills), (): SkillMetadata[] => []),
+      server.request('hooks/list', { cwds: [cwd] }).then((r) => r.data.flatMap((entry) => entry.hooks), (): HookMetadata[] => []),
+    ]);
+    return codexCapabilities({ live: false, mcp, skills, hooks });
   };
   const defaultModel = async () => (await listModels().catch(() => [])).find((m) => m.isDefault) ?? null;
   const defaultEffort = async (model: string | null) => {
@@ -203,12 +233,18 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
 
     status: () => options.status(),
 
+    planUsage: (refresh) => followUsage().get(refresh),
+
+    onPlanUsage: (listener) => followUsage().onChange(listener),
+
     async models() {
       return (await listModels()).filter((m) => !m.hidden).map(codexModelOption);
     },
 
-    // Codex's slash commands are its TUI's: none goes through the app-server as a command.
-    commands: async () => [],
+    // Codex's slash commands are its TUI's: only Compact goes through the app-server (`thread/compact/start`).
+    commands: async () => [COMPACT_COMMAND],
+
+    capabilities: (cwd: string) => folderCapabilities(cwd),
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       wire();
@@ -227,6 +263,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       /** A `turn/start` waits for its answer: Stop pressed meanwhile waits for the turn's id (`stopAsked`). */
       let starting = false;
       let stopAsked = false;
+      /**
+       * A compaction was asked for and Codex hasn't started its turn yet: `thread/compact/start` answers without the
+       * turn's id, which comes with `turn/started`. Stop pressed meanwhile waits for it, as for `starting`.
+       */
+      let compacting = false;
       /** It crashed: the next message resumes it, with a new `CodexLive` (the old one's running items are gone). */
       let crashed = false;
       /** Loaded in the app-server process now; false after a crash, until the next message resumes it. */
@@ -311,9 +352,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           if (notification.method === 'turn/started') {
             const id = str(obj(params.turn).id);
             if (id) turnKnown(id);
+            compacting = false;
           } else if (notification.method === 'turn/completed') {
             if (str(obj(params.turn).id) === turnId) turnId = null;
             stopAsked = false;
+            compacting = false;
           } else if (notification.method === 'item/started') {
             const item = obj(params.item);
             const name = item.type === 'userMessage' ? naming.get(str(item.clientId) ?? '') : undefined;
@@ -361,12 +404,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           turnId = null;
           starting = false;
           stopAsked = false;
+          compacting = false;
           release?.();
           release = null;
           dropAll();
           for (const name of naming.values()) name('');
           events.state('error', CRASHED);
         },
+        busy: () => turnId !== null || starting || compacting,
         letGo() {
           closed = true;
           release?.();
@@ -432,21 +477,68 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         effortChanged = false;
       };
 
+      /** Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`. */
+      const ensureLoaded = async () => {
+        if (loaded) return;
+        await open(threadId);
+        if (crashed) live = makeLive(threadId, events);
+        crashed = false;
+      };
+
       return {
         sessionId: threadId,
-        commands: async () => [],
-        // Codex's MCP servers, skills and agents come with Phase 3 of #276.
-        capabilities: async () => ({ live: true, mcp: [], agents: [], commands: [], plugins: [] }),
-        async mcp() {
-          throw new Error("Codex's MCP servers can't be changed from Seshboard yet");
+        commands: async () => [COMPACT_COMMAND],
+        async capabilities() {
+          // Each list on its own: one Codex can't give leaves the others. A thread loaded here lists its own connections;
+          // otherwise (it crashed) what the folder has, without starting anything.
+          if (!loaded) return folderCapabilities(config.cwd);
+          const live = true;
+          const [mcp, skills, hooks] = await Promise.all([
+            mcpServers(threadId).catch((): McpServerStatus[] => []),
+            server.request('skills/list', { cwds: [config.cwd] }).then(
+              (r) => r.data.flatMap((entry) => entry.skills),
+              (): SkillMetadata[] => [],
+            ),
+            server.request('hooks/list', { threadId }).then(
+              (r) => r.data.flatMap((entry) => entry.hooks),
+              (): HookMetadata[] => [],
+            ),
+          ]);
+          return codexCapabilities({ live, mcp, skills, hooks });
+        },
+        async mcp(_server: string, action: 'enable' | 'disable' | 'reconnect') {
+          // Turning one on or off is Codex's config's: Seshboard doesn't write it.
+          if (action !== 'reconnect') throw new Error(MCP_TOGGLE_REFUSED);
+          // Nothing of this session's runs in Codex (it crashed): its servers start again with its next message.
+          if (!loaded) throw new Error(MCP_RECONNECT_NOT_LOADED);
+          // Codex reconnects every server of its loaded threads at once (it has no way to reach just one): a tool call in
+          // another session's turn would fail.
+          for (const other of running.values()) if (other !== session && other.busy()) throw new Error(MCP_RECONNECT_BUSY);
+          await server.request('config/mcpServer/reload', {});
+        },
+        async rename(title: string) {
+          await server.request('thread/name/set', { threadId, name: title });
         },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
           if (closed) throw new Error('This Codex session was closed');
-          // Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`.
-          if (!loaded) {
-            await open(threadId);
-            if (crashed) live = makeLive(threadId, events);
-            crashed = false;
+          // `/compact` with words or an image after it would otherwise go to the model as a message.
+          if (isCompactWithMore(text) || (isCompact(text) && attachments.length)) throw new Error(COMPACT_NO_INSTRUCTIONS);
+          const compact = isCompact(text);
+          // Send now steers into the turn under way: a compaction can't join one.
+          if (compact && steer && session.busy()) throw new Error(COMPACT_NOT_STEERED);
+          await ensureLoaded();
+          // Compact (the context meter's, or `/compact` typed): Codex compacts as a turn of its own, which `CodexLive`
+          // shows like any other (its `contextCompaction` item), and Stop stops.
+          if (compact) {
+            compacting = true;
+            try {
+              await server.request('thread/compact/start', { threadId });
+            } catch (error) {
+              compacting = false;
+              stopAsked = false;
+              throw error;
+            }
+            return `codex-compact-${randomUUID()}`;
           }
           const input = codexInput(text, attachments, config.cwd);
           const clientId = randomUUID();
@@ -475,7 +567,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           dropAll();
           if (turnId && loaded) await server.request('turn/interrupt', { threadId, turnId });
           // Sent a moment ago: Codex hasn't named the turn yet. It stops as soon as it does.
-          else if (starting) stopAsked = true;
+          else if (starting || compacting) stopAsked = true;
         },
         async setModel(next: string | null) {
           model = next;
@@ -516,6 +608,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     },
 
     async dispose() {
+      offUsage?.();
+      offUsage = null;
       for (const session of running.values()) session.letGo();
       running.clear();
       unwire();

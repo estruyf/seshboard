@@ -9,7 +9,7 @@ import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFil
 import { codexDriver } from './codexDriver.ts';
 import { codexLocks, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
-import type { GetAccountResponse } from './protocol.ts';
+import type { GetAccountResponse, ServerNotification } from './protocol.ts';
 
 /** Continues a session in Codex CLI. */
 export const CODEX_RESUME = 'codex resume {sessionId}';
@@ -43,6 +43,8 @@ export interface CodexProviderOptions {
   /** Who has Codex's lock files open (tests); the system's answer otherwise (`codexInUse.ts`). */
   lockHolders?: LockHolders;
   log?: (level: LogLevel, message: string) => void;
+  /** A session's details changed without a file the watcher sees (a thread's new name): it is read again. */
+  onSessionChanged?: (sessionId: string) => void;
 }
 
 const SIGN_IN = 'Not signed in to Codex CLI. Use Sign in on this profile in Settings › Profiles, or run `codex login`. Seshboard uses that login.';
@@ -76,7 +78,7 @@ function rolloutChanges(files: ProviderFiles): string {
  * with the profile's own `CODEX_HOME` and stopped when idle unless a session runs, and its rollout files
  * (`sessions/YYYY/MM/DD/rollout-*.jsonl`) watched for changes.
  */
-export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, log = () => {} }: CodexProviderOptions): ProviderAdapter {
+export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, log = () => {}, onSessionChanged }: CodexProviderOptions): ProviderAdapter {
   const folder = codexSessionsDir(codexHome);
   const lookup = binary ?? (async () => findCodex(await shellEnv(), userHome));
   // Kept once found (`codex --version` is a process of its own), and looked up again when it isn't there any more: until
@@ -98,8 +100,25 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     env: async () => ({ ...(await shellEnv()), ...homeEnv }),
     experimentalApi: true,
   };
-  /** The process's client, made (not started) on first use. */
-  const real = () => (made ??= create(serverOptions));
+  /**
+   * A name set here (Rename, running or not) or by Codex itself: the sidebar shows it now. Codex keeps names in its
+   * database, not the rollout file, so the folder's watcher doesn't see them.
+   */
+  const named = (notification: ServerNotification) => {
+    if (notification.method !== 'thread/name/updated') return;
+    const params = (notification.params ?? {}) as { threadId?: unknown; threadName?: unknown };
+    if (typeof params.threadId !== 'string') return;
+    source.named(params.threadId, typeof params.threadName === 'string' ? params.threadName : null);
+    onSessionChanged?.(params.threadId);
+  };
+  /** The process's client, made (not started) on first use, and listened to for names from then on. */
+  const real = () => {
+    if (!made) {
+      made = create(serverOptions);
+      made.onNotification(named);
+    }
+    return made;
+  };
   const server: AppServer = {
     async request(method, params) {
       // Gone with its profile (or the app quits): nothing starts a server again that nobody would stop.
@@ -163,7 +182,15 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     homeEnv,
     folder,
     files,
-    source,
+    source: {
+      ...source,
+      // Not running here: Codex names a thread without loading it. Refused while another Codex has it open, which keeps
+      // the name it had and could write it back.
+      async rename(sessionId, title) {
+        if ((await openElsewhere([sessionId])).has(sessionId)) throw new Error('This session is open in Codex CLI right now. Rename it there, or close it first.');
+        await server.request('thread/name/set', { threadId: sessionId, name: title });
+      },
+    },
     resumeCommand: CODEX_RESUME,
     signInCommand: 'codex login',
     driver,

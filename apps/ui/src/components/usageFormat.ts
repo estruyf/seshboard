@@ -1,8 +1,15 @@
 import { formatCost, safeLocale, type CurrencyCode, type UsageLimit, type UsageSnapshot, type WindowCost } from '@seshboard/protocol/client';
 
-/** "5h", "7d", "7d · Fable" for the server's meter kinds. */
+/** A 5-hour window: Claude Code's, or one of another bucket's (Codex's `session_scoped`). */
+const isSession = (limit: UsageLimit) => limit.kind === 'session' || limit.group === 'session';
+
+/**
+ * "5h", "7d", "7d · Fable" for the server's meter kinds. A window of another length (Codex's `window`) is named by its
+ * length, which comes as its scope ("3 hours").
+ */
 export function limitLabel(limit: UsageLimit): string {
-  const base = limit.kind === 'session' ? '5h' : limit.group === 'weekly' || limit.kind.startsWith('weekly') ? '7d' : limit.kind.replace(/_/g, ' ');
+  if (limit.kind === 'window') return limit.scope ?? 'Window';
+  const base = isSession(limit) ? '5h' : limit.group === 'weekly' || limit.kind.startsWith('weekly') ? '7d' : limit.kind.replace(/_/g, ' ');
   return limit.scope ? `${base} · ${limit.scope}` : base;
 }
 
@@ -62,8 +69,8 @@ export function limitCosts(limits: readonly UsageLimit[], costs: readonly Window
  * `cost` is its estimate as the bar shows it (`limitCosts`).
  */
 export function spokenLimit(limit: UsageLimit, now = Date.now(), cost: string | null = null): string {
-  const name = limit.kind === 'session' ? '5-hour limit' : limitLabel(limit).startsWith('7d') ? 'Weekly limit' : `${limit.kind.replace(/_/g, ' ')} limit`;
-  const scoped = limit.scope ? `${name} (${limit.scope})` : name;
+  const name = isSession(limit) ? '5-hour limit' : limit.kind === 'window' ? `${limit.scope ?? 'Window'} limit` : limitLabel(limit).startsWith('7d') ? 'Weekly limit' : `${limit.kind.replace(/_/g, ' ')} limit`;
+  const scoped = limit.scope && limit.kind !== 'window' ? `${name} (${limit.scope})` : name;
   const severity = limit.severity === 'critical' ? ', nearly used up' : limit.severity === 'warning' ? ', getting close' : '';
   const reset = limit.resetsAt ? `, resets in ${countdown(limit.resetsAt, now)}` : '';
   const priced = cost ? `, about ${cost.replace('≈', '')} at API prices` : '';

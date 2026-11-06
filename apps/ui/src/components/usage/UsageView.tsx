@@ -14,7 +14,8 @@ import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
 import { Button } from '../ui/Button.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { fetchUsage, useUsageFor } from '../UsageBand.tsx';
-import { LimitsTab } from './LimitsTab.tsx';
+import { LimitsTab, PlanWindows } from './LimitsTab.tsx';
+import { hasPlanUsage, planWindowsOnly } from '../providers/quotaText.ts';
 import { ProviderUsagePanel } from './ProviderUsagePanel.tsx';
 import { TokensTab } from './TokensTab.tsx';
 import { PERIOD_LABEL, PERIODS } from './usageModel.ts';
@@ -60,8 +61,10 @@ export function UsageView() {
   const paired = useComputers((s) => s.status?.computers.length ?? 0) > 0;
   const profiles = useProfiles((s) => s.profiles);
   const profile = profiles.find((p) => p.id === profileId);
-  /** A profile of another provider (GitHub Copilot): its premium requests, not Claude Code's limits and tokens. */
-  const provider = profile && profile.provider !== 'claude' ? profile.provider : null;
+  /** A profile of another provider with premium requests (GitHub Copilot): those, not Claude Code's limits and tokens. */
+  const provider = profile && profile.provider !== 'claude' && !hasPlanUsage(profile.provider) ? profile.provider : null;
+  /** A profile with plan windows only (OpenAI Codex): its windows, without Claude Code's tabs, periods, costs and charts. */
+  const windowsOnly = !!profile && planWindowsOnly(profile.provider);
   const [quotaAsked, setQuotaAsked] = useState(0);
   const entry = useUsageFor(provider ? null : profileId);
   const connection = useEngineConnection();
@@ -174,7 +177,7 @@ export function UsageView() {
             </Button>
           </div>
         </div>
-        <div className={`no-drag mt-2 flex items-end gap-3 ${provider ? 'hidden' : ''}`}>
+        <div className={`no-drag mt-2 flex items-end gap-3 ${provider || windowsOnly ? 'hidden' : ''}`}>
           <div role="tablist" aria-label="Usage" className="-mb-px flex gap-1" onKeyDown={onTabKey}>
             {TABS.map(({ id, label }) => (
               <button
@@ -224,6 +227,8 @@ export function UsageView() {
         <div role="tabpanel" id="usage-tab-panel" aria-labelledby={`usage-tab-${tab}`} className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 px-6 py-5">
           {provider ? (
             <ProviderUsagePanel profileId={profileId} provider={provider} refresh={quotaAsked} />
+          ) : windowsOnly ? (
+            <PlanWindows profileId={profileId} />
           ) : tab === 'limits' ? (
             <LimitsTab profileId={profileId} period={period} />
           ) : (

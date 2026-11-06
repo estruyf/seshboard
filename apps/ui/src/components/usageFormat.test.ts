@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol/client';
-import { costComputersNotes, limitCosts, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary } from './usageFormat.ts';
+import { costComputersNotes, limitCosts, limitLabel, nextUsageEntry, resetLabel, spokenLimit, usageMessage, usageSummary } from './usageFormat.ts';
 
 const limit = (overrides: Partial<UsageLimit>): UsageLimit => ({ kind: 'session', group: 'session', percent: 10, resetsAt: null, scope: null, severity: 'normal', isActive: false, ...overrides });
 const now = 1_000_000_000;
@@ -83,5 +83,17 @@ describe('costComputersNotes', () => {
     expect(usageSummary([limit({ percent: 38 })], now, ['≈$4.10'], ['Counts This PC and mystic'])).toBe(
       ['5h: 38% used · ≈$4.10', 'Costs are estimates at API prices, not charges', 'Counts This PC and mystic', 'Click to see what used it'].join('\n'),
     );
+  });
+});
+
+describe("Codex's windows", () => {
+  it('read as Claude Code\'s 5-hour and weekly ones, a bucket by its name, and another length by that length', () => {
+    expect(limitLabel(limit({}))).toBe('5h');
+    expect(limitLabel(limit({ kind: 'weekly_all', group: 'weekly' }))).toBe('7d');
+    expect(limitLabel(limit({ kind: 'session_scoped', group: 'session', scope: 'GPT-5 mini' }))).toBe('5h · GPT-5 mini');
+    expect(limitLabel(limit({ kind: 'weekly_scoped', group: 'weekly', scope: 'GPT-5 mini' }))).toBe('7d · GPT-5 mini');
+    expect(limitLabel(limit({ kind: 'window', group: 'window', scope: '3 hours' }))).toBe('3 hours');
+    expect(spokenLimit(limit({ kind: 'session_scoped', group: 'session', scope: 'GPT-5 mini', percent: 23 }), now)).toBe('5-hour limit (GPT-5 mini): 23% used');
+    expect(spokenLimit(limit({ kind: 'window', group: 'window', scope: '3 hours', percent: 40 }), now)).toBe('3 hours limit: 40% used');
   });
 });

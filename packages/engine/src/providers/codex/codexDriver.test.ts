@@ -409,7 +409,8 @@ describe('codexDriver', () => {
       { value: 'gpt-5-mini', displayName: 'GPT-5-MINI', description: 'About gpt-5-mini', supportsEffort: true, efforts: ['low', 'high'] },
     ]);
     expect(codexModelOption(model('plain', { supportedReasoningEfforts: [] }))).toEqual({ value: 'plain', displayName: 'PLAIN', description: 'About plain', supportsEffort: false });
-    expect(await driver.commands()).toEqual([]);
+    // Only Compact: Codex's other slash commands are its TUI's.
+    expect((await driver.commands()).map((c) => c.name)).toEqual(['compact']);
     expect(await driver.status()).toMatchObject({ signedIn: true, login: 'me@example.com' });
   });
 

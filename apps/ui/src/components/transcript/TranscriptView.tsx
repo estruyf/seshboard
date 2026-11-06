@@ -125,6 +125,7 @@ import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { ProviderMark } from '../providers/ProviderMark.tsx';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { hasPlanUsage } from '../providers/quotaText.ts';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
@@ -635,10 +636,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
-  // While the terminal folds the footer: Claude Code's windows, or another provider's premium requests.
-  const claudeUsageLines = useUsageLines(otherProvider ? null : profileId, !otherProvider);
-  const quota = useProviderQuota(otherProvider ? otherProfileId : null);
-  const usageLines = useMemo(() => (otherProvider ? (quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []) : claudeUsageLines), [otherProvider, quota, claudeUsageLines]);
+  // While the terminal folds the footer: plan windows (Claude Code's, Codex's), or another provider's premium requests.
+  const planUsage = hasPlanUsage(otherProvider ?? 'claude');
+  const usageProfileId = otherProvider ? otherProfileId : profileId;
+  const claudeUsageLines = useUsageLines(planUsage ? usageProfileId : null, planUsage);
+  const quota = useProviderQuota(otherProvider && !planUsage ? otherProfileId : null);
+  const usageLines = useMemo(() => (planUsage ? claudeUsageLines : quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []), [planUsage, quota, claudeUsageLines]);
   // Opening Changes (⌘⇧D) while the terminal fills the view brings the view back, or Changes would open out of sight.
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
@@ -1907,7 +1910,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {remember.overlay}
           <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} turn={lastTurnRef} />
 
-          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
+          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} agent={PROVIDER_NAMES[otherProvider ?? 'claude']} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
             <ConfirmDialog
               title={rewindsConversation ? 'Rewind to before this message?' : 'Undo file changes since this message?'}
@@ -2191,8 +2194,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
                   // ring, with every number in its tooltip.
                   info={
-                    foldFooter ? null : otherProvider ? (
+                    foldFooter ? null : otherProvider && !planUsage ? (
                       otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                    ) : otherProvider ? (
+                      // Codex's windows, without Claude Code's session cost (read from its transcripts).
+                      otherProfileId && <UsageBand profileId={otherProfileId} footer />
                     ) : (
                       <>
                         <UsageBand profileId={profileId} footer />

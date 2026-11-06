@@ -65,4 +65,42 @@ describe('the demo Codex', () => {
     server.hold()();
     server.onExit(() => {})();
   });
+
+  it('answers rate limits, MCP servers, a skill and a rename, and still refuses to fork or compact', async () => {
+    const dir = codexHome();
+    const { createAppServer, binary } = demoCodex();
+    const server = createAppServer({ binary, env: async () => ({ CODEX_HOME: dir }) });
+    const ask = (method: string, params: unknown) => server.request(method as never, params as never) as Promise<Record<string, unknown>>;
+    const limits = (await ask('account/rateLimits/read', {})) as { rateLimits: { primary: { usedPercent: number; windowDurationMins: number }; secondary: { usedPercent: number; windowDurationMins: number } } };
+    expect([limits.rateLimits.primary.windowDurationMins, limits.rateLimits.secondary.windowDurationMins]).toEqual([300, 10_080]);
+    expect(((await ask('mcpServerStatus/list', {})) as { data: Array<{ name: string }> }).data.map((s) => s.name)).toEqual(['github', 'linear']);
+    const skills = (await ask('skills/list', { cwds: ['/demo/acme-store'] })) as { data: Array<{ skills: Array<{ name: string; path: string }> }> };
+    expect(skills.data[0]!.skills.map((s) => s.name)).toEqual(['release-notes']);
+    expect(skills.data[0]!.skills[0]!.path.startsWith(dir)).toBe(true);
+    const id = CODEX_DEMO_THREADS[1]!.id;
+    await ask('thread/name/set', { threadId: id, name: 'Orders test on CI' });
+    expect(((await ask('thread/read', { threadId: id })) as { thread: { name: string } }).thread.name).toBe('Orders test on CI');
+    await expect(ask('thread/fork', { threadId: id })).rejects.toThrow(CODEX_DEMO_REFUSAL);
+    await expect(ask('thread/compact/start', { threadId: id })).rejects.toThrow(CODEX_DEMO_REFUSAL);
+  });
+});
+
+describe("the demo Codex's Tools for a session not running here", () => {
+  it('lists two servers from its config with no switch, its skill and its hook, and reconnects', async () => {
+    const dir = codexHome();
+    const adapter = codexProvider({ profileId: 'codex-demo', codexHome: dir, userHome: dir, shellEnv: async () => ({}), ...demoCodex() });
+    const caps = await adapter.driver!.capabilities!('/demo/acme-store');
+    expect(caps).toMatchObject({
+      live: false,
+      mcpToggle: false,
+      mcp: [
+        { name: 'github', status: 'pending' },
+        { name: 'linear', status: 'pending' },
+      ],
+      commands: [{ name: 'release-notes' }],
+      hooks: [{ event: 'postToolUse', matcher: 'apply_patch', command: 'npm run lint' }],
+    });
+    const server = demoCodex().createAppServer({ binary: async () => null, env: async () => ({ CODEX_HOME: dir }) });
+    await expect(server.request('config/mcpServer/reload' as never, {} as never)).resolves.toEqual({});
+  });
 });

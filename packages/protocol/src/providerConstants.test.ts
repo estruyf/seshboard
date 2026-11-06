@@ -32,6 +32,8 @@ describe("the ⋯ menu's Claude Code only line", () => {
     expect(claudeOnlyLine([])).toBe('Fork, Rewind, Rename and Ask about this session work with Claude Code only, for now.');
     expect(claudeOnlyLine(['fork', 'rewind'])).toBe('Rename and Ask about this session work with Claude Code only, for now.');
     expect(claudeOnlyLine(['fork', 'rewind', 'rename'])).toBe('Ask about this session works with Claude Code only, for now.');
+    // Codex once Phase 3 turns on fork, Ask and rename: only Rewind stays Claude Code's.
+    expect(claudeOnlyLine(['delete', 'effort', 'fork', 'ask', 'rename'])).toBe('Rewind works with Claude Code only, for now.');
     expect(claudeOnlyLine(['fork', 'rewind', 'rename', 'ask'])).toBeNull();
   });
 });

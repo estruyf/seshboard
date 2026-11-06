@@ -111,7 +111,7 @@ export class RoutedHostManager extends HostManager {
 
   override async capabilities(sessionId: string | undefined, cwd: string, refresh: boolean, profileId: string, reload = false): Promise<Capabilities> {
     const other = sessionId ? this.providerFor(sessionId) : null;
-    return other ? other.capabilities(sessionId!) : super.capabilities(sessionId, cwd, refresh, profileId, reload);
+    return other ? other.capabilities(sessionId!, cwd) : super.capabilities(sessionId, cwd, refresh, profileId, reload);
   }
 
   override async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
