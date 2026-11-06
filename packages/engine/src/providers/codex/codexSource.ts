@@ -13,6 +13,9 @@ const SOURCE_KINDS: ThreadSourceKind[] = ['cli', 'vscode', 'exec', 'appServer', 
 /** Threads asked for per page of `thread/list`. */
 const PAGE_SIZE = 100;
 
+/** How many forks up a fork without a preview looks for one. */
+const MAX_FORK_DEPTH = 5;
+
 /** A stop for a cursor that never ends (a Codex bug must not loop forever). */
 const MAX_PAGES = 1_000;
 
@@ -28,10 +31,11 @@ export function codexOrigin(thread: Pick<Thread, 'originator' | 'source'>): Sess
 const isSubagent = (thread: Thread) => !!thread.parentThreadId || (typeof thread.source === 'object' && thread.source !== null && 'subAgent' in thread.source);
 
 /** A thread as a session in the sidebar; undefined for a subagent's, an ephemeral one, or one without a prompt yet. */
-export function codexSessionInfo(thread: Thread): RawSessionInfo | undefined {
+export function codexSessionInfo(thread: Thread, from?: Pick<Thread, 'name' | 'preview'>): RawSessionInfo | undefined {
   if (isSubagent(thread) || thread.ephemeral) return undefined;
   const name = thread.name?.trim() || undefined;
-  const preview = thread.preview?.trim() || undefined;
+  // A fork has its source's history but no preview of its own (codex-cli 0.167): its source's first prompt stands in.
+  const preview = thread.preview?.trim() || from?.preview?.trim() || undefined;
   if (!name && !preview) return undefined;
   // The rollout file's size, for the archive clean-up's report. A thread without one (or one that can't be read) has none.
   let fileSize: number | undefined;
@@ -43,7 +47,7 @@ export function codexSessionInfo(thread: Thread): RawSessionInfo | undefined {
   return {
     sessionId: thread.id,
     provider: 'codex',
-    summary: name ?? preview!,
+    summary: name ?? from?.name?.trim() ?? preview!,
     ...(name ? { customTitle: name } : {}),
     ...(preview ? { firstPrompt: preview } : {}),
     lastModified: thread.updatedAt * 1000,
@@ -75,6 +79,12 @@ export type CodexSessionSource = SessionSource & {
   thread(threadId: string): Promise<Thread | undefined>;
   /** A thread's turns, oldest first, with every item (`itemsView: 'full'`). Throws when they can't be read. */
   turns(threadId: string): Promise<Turn[]>;
+  /**
+   * A fork made here: listed even while Codex's own list leaves it out. Codex lists a fork only once it has a turn of its
+   * own (codex-cli 0.167), so a fork made from a message would drop out of the sidebar until something is sent to it.
+   * Kept for this run only: an untouched fork goes after a restart, as it does from Codex's own list.
+   */
+  remember(threadId: string): void;
 };
 
 /**
@@ -98,6 +108,8 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
       return fallback;
     }
   };
+  /** Forks made here that Codex's list leaves out until they have a turn of their own (`remember`). */
+  const forks = new Set<string>();
   /** The last list that worked: a server that fails for a moment doesn't empty the sidebar. */
   let lastList: RawSessionInfo[] = [];
   /** When it was listed, and what the rollout files were then; null until a list worked. */
@@ -144,6 +156,20 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
     }
   };
 
+  /**
+   * For a fork without a preview, the thread it was forked from that has one (up a few forks), from the list when it's
+   * in it; undefined for any other thread.
+   */
+  const forkSource = async (t: Thread, known: ReadonlyMap<string, Thread> = new Map()): Promise<Thread | undefined> => {
+    let current: Thread | undefined = t;
+    for (let depth = 0; depth < MAX_FORK_DEPTH && current && !current.preview?.trim() && !current.name?.trim() && current.forkedFromId; depth++) {
+      const parent: string = current.forkedFromId;
+      current = known.get(parent) ?? (await thread(parent));
+      if (current && (current.preview?.trim() || current.name?.trim())) return current;
+    }
+    return undefined;
+  };
+
   return {
     async list() {
       const current = changesNow();
@@ -152,11 +178,23 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
       if (!threads) return lastList;
       const seen = new Set<string>();
       const infos: RawSessionInfo[] = [];
+      const byId = new Map(threads.map((t) => [t.id, t]));
       for (const t of threads) {
         if (seen.has(t.id)) continue;
         seen.add(t.id);
-        const info = codexSessionInfo(t);
+        const info = codexSessionInfo(t, await forkSource(t, byId));
         if (info) infos.push(info);
+      }
+      // Forks made here that Codex doesn't list yet; one it lists, or that's gone, is forgotten.
+      for (const id of [...forks]) {
+        if (seen.has(id)) {
+          forks.delete(id);
+          continue;
+        }
+        const fork = await thread(id);
+        const info = fork && codexSessionInfo(fork, await forkSource(fork, byId));
+        if (info) infos.push(info);
+        else forks.delete(id);
       }
       lastList = infos;
       listed = { at: now(), changes: current };
@@ -164,12 +202,17 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
     },
     async info(sessionId) {
       const found = await thread(sessionId);
-      return found ? codexSessionInfo(found) : undefined;
+      return found ? codexSessionInfo(found, await forkSource(found)) : undefined;
     },
     async messages(sessionId): Promise<RawSessionMessage[]> {
       return codexMessages(await turns(sessionId));
     },
     thread,
     turns,
+    remember(threadId) {
+      forks.add(threadId);
+      // Asked again at the next list, whatever the rollout files say.
+      listed = null;
+    },
   };
 }

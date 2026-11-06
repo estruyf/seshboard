@@ -396,3 +396,27 @@ export interface FileChangeApprovalParams {
 
 /** An approval's answer. `acceptForSession` is Always allow; `cancel` also stops the turn. */
 export type ApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+
+/* --- Fork and Ask about this session (Phase 3) -------------------------------------------------------------------- */
+
+export interface ThreadForkParams {
+  threadId: string;
+  /** The last turn the fork keeps, inclusive; all of them when left out. It can't be a turn in progress. */
+  lastTurnId?: string | null;
+  /** A throwaway fork, never written to disk (Ask about this session). */
+  ephemeral?: boolean;
+  /** Seshboard reads the history itself (`thread/turns/list`). */
+  excludeTurns?: boolean;
+  cwd?: string | null;
+  model?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: SandboxMode | null;
+  /** Codex's config for the fork, merged over the profile's (`noMcpConfig` for Ask). */
+  config?: Record<string, unknown> | null;
+}
+
+// Added to the requests that drive a thread (declaration merging keeps this block apart from the others').
+export interface DriveMethods {
+  /** A new thread with the source's history (through `lastTurnId`); the new one is loaded and subscribed. */
+  'thread/fork': { params: ThreadForkParams; result: ThreadStartResponse };
+}

@@ -7,6 +7,7 @@ import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
 import { codexDriver } from './codexDriver.ts';
+import { codexForkTurn } from './codexFork.ts';
 import { codexLocks, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
 import type { GetAccountResponse } from './protocol.ts';
@@ -163,7 +164,19 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     homeEnv,
     folder,
     files,
-    source,
+    source: {
+      ...source,
+      // Codex forks at the end of a turn: the message's whole turn goes with it (`codexForkTurn`).
+      async fork(sessionId, upToMessageId) {
+        const [turns, from] = await Promise.all([source.turns(sessionId), source.thread(sessionId)]);
+        const turn = codexForkTurn(turns, upToMessageId);
+        if (!turn) throw new Error('Codex can only fork at one of its own messages');
+        // On its source's model: a fork otherwise takes Codex's default.
+        const forked = await driver.fork(sessionId, turn, from?.model ?? null);
+        source.remember(forked);
+        return forked;
+      },
+    },
     resumeCommand: CODEX_RESUME,
     signInCommand: 'codex login',
     driver,

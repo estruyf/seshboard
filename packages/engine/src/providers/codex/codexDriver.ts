@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Effort, ImageAttachment, LogLevel, ModelOption, PermissionDecision, PermissionMode, PermissionRequest } from '@seshboard/protocol';
 import { effortsOf } from '../copilot/copilotActions.ts';
+import { ASK_TIMEOUT_MS, READ_ONLY_REASON } from '../../host/sideQuestions.ts';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import { AppServerError, type AppServer } from './appServer.ts';
 import { codexInput } from './codexInput.ts';
@@ -29,12 +30,20 @@ export interface CodexDriverOptions {
   log?: (level: LogLevel, message: string) => void;
   /** How long `send` waits for Codex to name the message it sent (tests shorten it). */
   messageIdMs?: number;
+  /** How long it waits before asking again to resume a thread Codex is still unloading (tests shorten it). */
+  closingRetryMs?: number;
 }
 
 /** Codex's driver, with what the adapter needs besides `ProviderDriver`. */
 export interface CodexDriver extends ProviderDriver {
   /** The threads running here: their locks are Seshboard's own (`codexInUse.ts`). */
   threads(): Set<string>;
+  /**
+   * A new thread with `threadId`'s history through `lastTurnId` (`codexForkTurn`), on `model` (a fork otherwise takes
+   * Codex's default, not its source's). Returns its id.
+   */
+  fork(threadId: string, lastTurnId: string, model?: string | null): Promise<string>;
+  ask: NonNullable<ProviderDriver['ask']>;
 }
 
 /** How long `send` waits for the `userMessage` item that names the message it sent. */
@@ -74,6 +83,10 @@ export function noMcpConfig(servers: ReadonlyArray<{ name: string; pluginId: str
   }
   return { features: { apps: false }, ...(Object.keys(plugins).length ? { plugins } : {}), ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
 }
+
+/** Tries to resume a thread Codex is still unloading, `CLOSING_RETRY_MS` apart. */
+const CLOSING_RETRIES = 25;
+const CLOSING_RETRY_MS = 200;
 
 /** What a crash says on each session it took down. */
 const CRASHED = 'Codex stopped. Send a message to continue the session.';
@@ -117,6 +130,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
   const makeLive = options.live ?? ((threadId: string, events: DriverEvents) => new CodexLive(threadId, events, { requestId: (id) => codexCardId(threadId, id) }));
   const permissions = options.permissions ?? { request: codexPermissionRequest, answer: codexAnswer };
   const messageIdMs = options.messageIdMs ?? MESSAGE_ID_MS;
+  const closingRetryMs = options.closingRetryMs ?? CLOSING_RETRY_MS;
   const running = new Map<string, Running>();
   /**
    * The app-server process (by pid) that refused `collaborationMode`: Plan mode is the read-only sandbox alone while it
@@ -189,6 +203,40 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     }
     return all;
   };
+  /**
+   * Starts or forks a read-only thread without MCP servers (`noMcpConfig`): a read-only session, and Ask about this
+   * session's fork. A server Codex lists that isn't one of its config's (a built-in) has no `enabled` to change: Codex
+   * names it, and it is left out on the next try. Without Codex's list, nothing starts.
+   */
+  const withoutMcp = async <T>(send: (config: Record<string, unknown>) => Promise<T>): Promise<T> => {
+    const servers = await mcpServers().catch((error: Error) => {
+      throw new Error(`Codex didn't list its MCP servers, so a read-only session can't start without them: ${error.message}`);
+    });
+    const skip = new Set<string>();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await send(noMcpConfig(servers, skip));
+      } catch (error) {
+        const named = error instanceof AppServerError && error.code === 'rpc' ? /in `mcp_servers\.([^`.]+)`/.exec(error.message)?.[1] : undefined;
+        if (!named || skip.has(named) || attempt >= MAX_CONFIG_RETRIES) throw error;
+        skip.add(named);
+      }
+    }
+  };
+  /**
+   * Resumes a thread, waiting while Codex still unloads it: one let go of a moment ago (closed here, or a fork just made)
+   * is "closing" until it has, and Codex asks to retry then.
+   */
+  const resumeWhenClosed = async <T>(resume: () => Promise<T>): Promise<T> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await resume();
+      } catch (error) {
+        if (!(error instanceof AppServerError) || error.code !== 'rpc' || !/is closing/.test(error.message) || attempt >= CLOSING_RETRIES) throw error;
+        await new Promise((resolve) => setTimeout(resolve, closingRetryMs));
+      }
+    }
+  };
   const defaultModel = async () => (await listModels().catch(() => [])).find((m) => m.isDefault) ?? null;
   const defaultEffort = async (model: string | null) => {
     const models = await listModels().catch(() => []);
@@ -200,6 +248,80 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     modes: CODEX_MODES,
 
     threads: () => new Set(running.keys()),
+
+    async fork(threadId, lastTurnId, model) {
+      const { thread } = await server.request('thread/fork', { threadId, lastTurnId, excludeTurns: true, ...(model ? { model } : {}) });
+      // Codex loads the fork and subscribes Seshboard to it: let go, so it unloads (and frees its lock) until it runs here.
+      await server.request('thread/unsubscribe', { threadId: thread.id }).catch((error: Error) => log('warn', `Letting go of fork ${thread.id}: ${error.message}`));
+      return thread.id;
+    },
+
+    async ask({ sessionId, cwd, model, prompt, onText, onFork }) {
+      wire();
+      const { sandbox, approvalPolicy } = codexModeSettings('default', true);
+      // A throwaway fork answers: never written to disk, read-only, without MCP servers, and asking nothing.
+      const { thread } = await withoutMcp((config) => server.request('thread/fork', { threadId: sessionId, ephemeral: true, excludeTurns: true, cwd, approvalPolicy, sandbox, config, ...(model ? { model } : {}) }));
+      const forkId = thread.id;
+      onFork(forkId);
+      const release = server.hold();
+      let answer: string | null = null;
+      let error: string | undefined;
+      let turnId: string | null = null;
+      /** The reply being written: a new one starts the text over (Codex's commentary before its final answer). */
+      let writing: string | null = null;
+      let finish: () => void = () => {};
+      const finished = new Promise<void>((resolve) => (finish = resolve));
+      const listener: Running = {
+        threadId: forkId,
+        notify({ method, params: raw }) {
+          const params = obj(raw);
+          const item = obj(params.item);
+          if (method === 'turn/started') turnId = str(obj(params.turn).id) ?? turnId;
+          else if (method === 'item/started' && item.type === 'agentMessage') {
+            if (writing !== null) onText({ reset: true });
+            writing = str(item.id);
+          } else if (method === 'item/agentMessage/delta' && typeof params.delta === 'string') onText({ delta: params.delta });
+          else if (method === 'item/completed' && item.type === 'agentMessage' && str(item.text)?.trim()) answer = str(item.text);
+          else if (method === 'error' && !obj(params).willRetry) error = str(obj(params.error).message) ?? 'Codex stopped with an error';
+          else if (method === 'turn/completed') {
+            const turn = obj(params.turn);
+            if (turn.status === 'failed') error ??= str(obj(turn.error).message) ?? 'Codex stopped with an error';
+            finish();
+          }
+        },
+        // Read-only and asking nothing: anything Codex asks anyway is declined.
+        request: () => Promise.reject(new Error(READ_ONLY_REASON)),
+        crashed() {
+          error = 'Codex stopped';
+          finish();
+        },
+        letGo() {
+          finish();
+        },
+      };
+      running.set(forkId, listener);
+      try {
+        const { turn } = await server.request('turn/start', { threadId: forkId, input: [{ type: 'text', text: prompt, text_elements: [] }], approvalPolicy, sandboxPolicy: sandboxPolicy(sandbox), ...(model ? { model } : {}) });
+        turnId ??= turn.id;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const late = new Promise<'late'>((resolve) => (timer = setTimeout(() => resolve('late'), ASK_TIMEOUT_MS)));
+        if ((await Promise.race([finished, late])) === 'late') {
+          error = 'Codex took too long to answer';
+          if (turnId) await server.request('turn/interrupt', { threadId: forkId, turnId }).catch(() => {});
+        }
+        clearTimeout(timer);
+      } catch (failed) {
+        error = (failed as Error).message;
+      } finally {
+        running.delete(forkId);
+        // Ephemeral: once nobody listens, Codex drops it, and nothing of it was written.
+        await server.request('thread/unsubscribe', { threadId: forkId }).catch(() => {});
+        release();
+        if (!running.size) unwire();
+      }
+      // Codex has no unit like Copilot's premium requests: its use shows in the account's limits.
+      return { answer, ...(error ? { error } : {}), spent: 0 };
+    },
 
     status: () => options.status(),
 
@@ -258,24 +380,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         const { sandbox, approvalPolicy } = settings();
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
-          resume ? server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true }) : server.request('thread/start', { ...common, ...extra });
-        let response: ThreadStartResponse | undefined;
-        if (config.readOnly) {
-          const servers = await mcpServers().catch((error: Error) => {
-            throw new Error(`Codex didn't list its MCP servers, so a read-only session can't start without them: ${error.message}`);
-          });
-          const skip = new Set<string>();
-          for (let attempt = 0; !response; attempt++) {
-            try {
-              response = await request({ config: noMcpConfig(servers, skip) });
-            } catch (error) {
-              // A server Codex lists that isn't one of its config's (a built-in): its `enabled` is no setting to change.
-              const named = error instanceof AppServerError && error.code === 'rpc' ? /in `mcp_servers\.([^`.]+)`/.exec(error.message)?.[1] : undefined;
-              if (!named || skip.has(named) || attempt >= MAX_CONFIG_RETRIES) throw error;
-              skip.add(named);
-            }
-          }
-        } else response = await request({});
+          resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
+        const response = config.readOnly ? await withoutMcp((noMcp) => request({ config: noMcp })) : await request({});
         threadModel = response.model ?? threadModel;
         loaded = true;
         // The thread lives in this process: it must not stop for being idle while the session runs here.

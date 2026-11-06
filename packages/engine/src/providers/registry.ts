@@ -82,7 +82,7 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       installCommand: CODEX_INSTALL,
       // Its rollout file goes to the Trash; effort per turn; the queue, schedules and triggers start it like New
       // session does, in a worktree or on a branch Seshboard makes. Fork, rename, rewind and Ask are Phase 3.
-      supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+      supports: ['fork', 'delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
   ];
 }
