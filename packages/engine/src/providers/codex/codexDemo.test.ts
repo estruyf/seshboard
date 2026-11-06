@@ -56,6 +56,8 @@ describe('the demo Codex', () => {
     ]);
     await expect(server.request('thread/start', { cwd: '/demo/acme-store' } as never)).rejects.toThrow(CODEX_DEMO_REFUSAL);
     await expect(server.request('turn/start', { threadId: CODEX_DEMO_THREADS[0]!.id, input: [] } as never)).rejects.toThrow(CODEX_DEMO_REFUSAL);
+    // Its update check says it is up to date, without the network.
+    expect(await demoCodex().latestVersion('npm', null)).toBe((await binary()).version);
     // The rest of the interface does nothing: nothing runs.
     expect(server.pid()).toBeNull();
     server.handleRequests(null);

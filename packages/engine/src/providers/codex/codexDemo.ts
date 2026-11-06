@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppServer, AppServerOptions, CodexBinary } from './appServer.ts';
 import { codexSessionsDir, ROLLOUT_FILE } from './codexFiles.ts';
+import type { CodexLatestVersion } from './codexUpdate.ts';
 import type { Methods, Model, Thread, Turn } from './protocol.ts';
 
 /**
@@ -209,7 +210,10 @@ function demoAppServer(options: AppServerOptions): AppServer {
   };
 }
 
-/** The made-up Codex CLI, as `ProviderOptions['codex']`. */
-export function demoCodex(): { binary: () => Promise<CodexBinary>; createAppServer: (options: AppServerOptions) => AppServer } {
-  return { binary: async () => ({ path: '/demo/bin/codex', version: '0.167.0' }), createAppServer: demoAppServer };
+/** The demo's Codex CLI version, which its update check also says is the latest. */
+const DEMO_VERSION = '0.167.0';
+
+/** The made-up Codex CLI, as `ProviderOptions['codex']`. Its update check says it is up to date, without the network. */
+export function demoCodex(): { binary: () => Promise<CodexBinary>; createAppServer: (options: AppServerOptions) => AppServer; latestVersion: CodexLatestVersion } {
+  return { binary: async () => ({ path: '/demo/bin/codex', version: DEMO_VERSION }), createAppServer: demoAppServer, latestVersion: async () => DEMO_VERSION };
 }
