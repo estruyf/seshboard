@@ -76,7 +76,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
-import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
+import { PermissionCard, permissionTitle, useAgentName } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { useSavedSettings } from '../../state/savedSettingsStore.ts';
 import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
@@ -273,11 +273,12 @@ function Announcer({ sessionId, working, failed, permissions, cwd, turn }: { ses
   // A trailing no-break space makes a repeated message a change, so it's read out again.
   const say = (text: string) => setMessage((current) => (current.replace(/\u00a0$/, '') === text ? `${text}\u00a0` : text));
   const announced = useRef(new Set<string>());
+  const agent = useAgentName(sessionId);
   useEffect(() => {
     const fresh = permissions.filter((p) => !announced.current.has(p.requestId));
     fresh.forEach((p) => announced.current.add(p.requestId));
-    if (fresh.length > 0) say(`${permissionTitle(fresh[0]!, cwd)}. Answer it above the message box.`);
-  }, [permissions, cwd]);
+    if (fresh.length > 0) say(`${permissionTitle(fresh[0]!, cwd, agent)}. Answer it above the message box.`);
+  }, [permissions, cwd, agent]);
   // Switching to another session isn't Claude finishing: only a change within one session counts.
   const previous = useRef({ sessionId, working });
   useEffect(() => {
