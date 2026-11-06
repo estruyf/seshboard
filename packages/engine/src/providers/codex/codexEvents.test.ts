@@ -87,9 +87,16 @@ describe('codexMessages', () => {
     expect(toolResult(`${T1}:plan-1`)).toBeUndefined();
   });
 
-  it('shows a spawned agent as an Agent card with what it reported, and finds its thread', () => {
+  it('shows a spawned agent as an Agent card, its report from a later call as its last result, and finds its thread', () => {
     expect(toolUse(`${T2}:call_spawn`)).toMatchObject({ name: 'Agent', input: { prompt: 'Review the logging change', model: 'gpt-5.5' } });
-    expect(toolResult(`${T2}:call_spawn`)).toMatchObject({ isError: false, text: 'Looks good.' });
+    const results = codexMessages(TURNS)
+      .map((m) => ({ uuid: m.uuid, blocks: normaliseMessage(m).blocks }))
+      .flatMap(({ uuid, blocks }) => blocks.flatMap((b) => (b.type === 'tool_result' && b.toolUseId === `${T2}:call_spawn` ? [[uuid, b.text, b.isError]] : [])));
+    // The spawn's own result, then the report the wait heard, which the card shows (the last result wins).
+    expect(results).toEqual([
+      [`${T2}:call_spawn:result`, 'Agent started', false],
+      [`${T2}:call_wait:report:019a0000-0000-7000-8000-00000000bbbb`, 'Looks good.', false],
+    ]);
     expect(toolUse(`${T2}:call_wait`)).toMatchObject({ name: 'wait', input: { agents: ['019a0000-0000-7000-8000-00000000bbbb'] } });
     expect(codexSubagentThread(TURNS, `${T2}:call_spawn`)).toBe('019a0000-0000-7000-8000-00000000bbbb');
     expect(codexSubagentThread(TURNS, `${T2}:call_wait`)).toBeNull();

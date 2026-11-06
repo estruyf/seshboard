@@ -13,6 +13,9 @@ const COMMAND = 'item/commandExecution/requestApproval';
 const FILE_CHANGE = 'item/fileChange/requestApproval';
 const QUESTION = 'item/tool/requestUserInput';
 
+/** Whether Codex takes this answer to the request: all of them when it doesn't list them (`availableDecisions`). */
+const offers = (params: Loose, decision: string) => !Array.isArray(params.availableDecisions) || params.availableDecisions.includes(decision);
+
 /** The last part of a path, for a title. */
 const fileName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -46,7 +49,7 @@ export function codexPermissionRequest(requestId: string, request: ServerRequest
       title = params.kind === 'writeStdin' ? 'Codex wants to type into a running command' : host ? `Codex wants network access to ${host}` : 'Codex wants to run a command';
       // What Codex's "for the session" means for a command: this command, until the session closes. Its proposed rule
       // (`proposedExecpolicyAmendment`) would be written to Codex's own settings for every session: not offered.
-      alwaysLabel = 'Allow this command in this session';
+      alwaysLabel = offers(params, 'acceptForSession') ? 'Allow this command in this session' : null;
       break;
     }
     case FILE_CHANGE: {
@@ -72,7 +75,7 @@ export function codexPermissionRequest(requestId: string, request: ServerRequest
         title = `Codex wants to write in ${root}`;
         description = [reason, `Allow lets Codex change any file in ${root} for the rest of this session.`].filter(Boolean).join('\n\n');
       }
-      alwaysLabel = 'Allow changes to these files in this session';
+      alwaysLabel = offers(params, 'acceptForSession') ? 'Allow changes to these files in this session' : null;
       break;
     }
     case QUESTION: {
@@ -125,8 +128,9 @@ export interface CodexUserInputAnswer {
  * `accept`, Always allow `acceptForSession`, Deny `decline`, Deny that stops the turn `cancel`), `{ answers }` for a
  * question. Null for a request `codexPermissionRequest` doesn't show.
  *
- * A command edited on the card (`updatedInput.command`) can't go to Codex, which runs only what it asked for: that is
- * declined, as you didn't approve the command Codex would run.
+ * An edited command (`updatedInput.command`) can't go to Codex, which runs only what it asked for: that is declined, as
+ * you didn't approve the command Codex would run. No card edits a command (only `session.respond` itself could send
+ * one), so the card doesn't mention it.
  */
 export function codexAnswer(request: ServerRequest, decision: PermissionDecision): { decision: ApprovalDecision } | CodexUserInputAnswer | null {
   const params = obj(request.params);

@@ -329,40 +329,34 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
  */
 export function codexMessages(turns: readonly Turn[]): RawSessionMessage[] {
   const entries = itemIds(turns);
-  // What each subagent last reported, from any call that waited on it: its spawn card shows it as the agent's report.
-  const agentStates: AgentStates = new Map();
-  for (const { item } of entries.flatMap((t) => t.items)) noteAgentStates(item, agentStates);
-
+  const context = codexContext();
   const out: RawSessionMessage[] = [];
   for (const { turn, turnId, items } of entries) {
-    for (const { item, id } of items) out.push(...codexItemMessages(turn, item, id, agentStates));
+    for (const { item, id } of items) out.push(...codexItemMessages(turn, item, id, context));
     out.push(...turnEnd(turn, turnId));
   }
   return out;
 }
 
-/** Each subagent's last known state, by thread id: a finished one's `message` is its report. */
-export type AgentStates = Map<string, { status: string; message: string | null }>;
-
-/** Adds what a `collabAgentToolCall` knows of its agents to `states`, keeping a report over a later state without one. */
-export function noteAgentStates(item: unknown, states: AgentStates): void {
-  const call = obj(item);
-  if (call.type !== 'collabAgentToolCall') return;
-  for (const [thread, raw] of Object.entries(obj(call.agentsStates))) {
-    const state = obj(raw);
-    const message = str(state.message);
-    if (message?.trim() || !states.get(thread)?.message) states.set(thread, { status: str(state.status) ?? '', message: message?.trim() ? message : null });
-  }
+/**
+ * What items need of the ones before them in a thread, carried from item to item in order: the subagents spawned, by
+ * their thread, with the spawn's tool_use id and the last report shown for them.
+ */
+export interface CodexContext {
+  spawns: Map<string, { toolUseId: string; reported: string | null }>;
 }
+
+export const codexContext = (): CodexContext => ({ spawns: new Map() });
 
 /**
  * One item's messages (`codexMessages` for one item): what the reader makes of it in a thread read back, and what a
  * running thread reports when the item completes. `id` is `codexItemId`'s; `turn` gives the times an item lacks and,
- * once over, ends a tool left running. `agentStates`: what subagents reported, for a spawn's result.
+ * once over, ends a tool left running. `context` carries what items need of earlier ones: give the thread's items in
+ * their order, with one context.
  */
-export function codexItemMessages(turn: Turn, item: unknown, id: string, agentStates: ReadonlyMap<string, { status: string; message: string | null }> = new Map()): RawSessionMessage[] {
+export function codexItemMessages(turn: Turn, item: unknown, id: string, context: CodexContext = codexContext()): RawSessionMessage[] {
   const out: RawSessionMessage[] = [];
-  convertItem(obj(turn) as unknown as Turn, obj(item), id, agentStates, out);
+  convertItem(obj(turn) as unknown as Turn, obj(item), id, context, out);
   return out;
 }
 
@@ -371,7 +365,7 @@ export function codexTurnEnd(turn: Turn): RawSessionMessage[] {
   return turnEnd(turn, str(obj(turn).id) ?? 'turn');
 }
 
-function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyMap<string, { status: string; message: string | null }>, out: RawSessionMessage[]): void {
+function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext, out: RawSessionMessage[]): void {
   const turnStart = num(turn.startedAt) ?? num(turn.completedAt);
   const started = num(item.startedAtMs) ?? num(item.completedAtMs) ?? (turnStart !== null ? turnStart * 1000 : null);
   const ended = num(item.completedAtMs) ?? started;
@@ -498,18 +492,33 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
       const model = str(item.model);
       const receivers = strings(item.receiverThreadIds);
       const done = item.status !== 'inProgress';
+      const states = obj(item.agentsStates);
       if (item.tool === 'spawnAgent') {
-        // The Agent card, which opens the subagent's own thread (`codexSubagentThread`). Its result is what the agent
-        // last reported, else that it started.
-        const state = receivers[0] ? agentStates.get(receivers[0]) : undefined;
-        const failed = item.status === 'failed' || AGENT_FAILED.has(state?.status ?? '');
-        const result: Result = done ? { text: state?.message ?? (failed ? 'The agent did not start' : 'Agent started'), isError: failed } : null;
+        // The Agent card, which opens the subagent's own thread (`codexSubagentThread`). Its result is what the spawn
+        // itself knew (usually that the agent started); a later call that hears back adds the report (below).
+        const state = receivers[0] ? obj(states[receivers[0]]) : {};
+        const own = str(state.message)?.trim() ? str(state.message)! : null;
+        const failed = item.status === 'failed' || AGENT_FAILED.has(str(state.status) ?? '');
+        const result: Result = done ? { text: own ?? (failed ? 'The agent did not start' : 'Agent started'), isError: failed } : null;
         tool({ name: 'Agent', input: { prompt: prompt ?? '', ...(model ? { model } : {}) } }, result);
+        if (receivers[0]) context.spawns.set(receivers[0], { toolUseId: id, reported: own });
       } else {
         // Waiting for, messaging or closing an agent: a generic card named after Codex's tool.
-        const states = Object.values(obj(item.agentsStates)).map((s) => str(obj(s).message)).filter((m): m is string => !!m?.trim());
-        const result: Result = done ? { text: states.join('\n\n'), isError: item.status === 'failed' } : null;
+        const messages = Object.values(states).map((s) => str(obj(s).message)).filter((m): m is string => !!m?.trim());
+        const result: Result = done ? { text: messages.join('\n\n'), isError: item.status === 'failed' } : null;
         tool({ name: snake(str(item.tool) ?? 'agent'), input: { ...(prompt ? { prompt } : {}), ...(receivers.length ? { agents: receivers } : {}) } }, result);
+      }
+      // An agent's report, heard by this call (often a `wait`), goes to its spawn's Agent card as a later result, which
+      // the transcript shows in place of "Agent started". A message already sent as one never changes: the running
+      // session and the thread read back show the same this way.
+      if (!done) break;
+      for (const [thread, raw] of Object.entries(states)) {
+        const spawn = context.spawns.get(thread);
+        const state = obj(raw);
+        const report = str(state.message);
+        if (!spawn || spawn.toolUseId === id || !report?.trim() || report === spawn.reported) continue;
+        spawn.reported = report;
+        out.push(message('user', `${id}:report:${thread}`, ended, { role: 'user', content: [{ type: 'tool_result', tool_use_id: spawn.toolUseId, is_error: AGENT_FAILED.has(str(state.status) ?? ''), content: report }] }));
       }
       break;
     }

@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { DriverEvents } from '../provider.ts';
-import { codexItemId, codexItemMessages, codexTurnEnd, noteAgentStates, type AgentStates } from './codexEvents.ts';
+import { codexContext, codexItemId, codexItemMessages, codexTurnEnd } from './codexEvents.ts';
 import type { ServerNotification, ThreadItem, Turn } from './protocol.ts';
 
 type Loose = Record<string, unknown>;
@@ -12,6 +13,19 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 /** What `CodexLive` reports. */
 export type CodexLiveEvents = Pick<DriverEvents, 'stream' | 'messages' | 'state' | 'usage' | 'model' | 'permissionDone'>;
 
+export interface CodexLiveOptions {
+  /** The card id of a request of Codex's, as the driver gives its cards (`codexCardId`): `String` of Codex's id when left out. */
+  requestId?: (codexId: string | number) => string;
+  /** The clock for kept notes' times. */
+  now?: () => number;
+}
+
+/**
+ * A card id for a request of Codex's. Codex numbers its requests from 0 in every app-server, and Seshboard keeps open
+ * cards by id across sessions and profiles: the thread's id makes them unique.
+ */
+export const codexCardId = (threadId: string, codexId: string | number) => `${threadId}:${codexId}`;
+
 /** Codex's plan steps' statuses as TodoWrite's. */
 const TODO_STATUS: Record<string, string> = { pending: 'pending', inProgress: 'in_progress', completed: 'completed' };
 
@@ -20,9 +34,11 @@ const TODO_STATUS: Record<string, string> = { pending: 'pending', inProgress: 'i
  * a tool runs, complete messages as items finish (built as `codexMessages` builds them, with the same ids, so the live
  * transcript and the one read later agree), the turn's state, the context meter and the model.
  *
- * Your own message is reported when its item starts (the driver sends it but doesn't report it), every other item when
- * it completes, with its result. A tool still running when its turn ends gets the result the reader gives it then
- * ("Interrupted"). Codex's plan steps (`turn/plan/updated`) and its warnings aren't in the thread Codex keeps, so they
+ * Messages go out in the order the items started, as the thread read back has them: an item that completes waits for
+ * the ones started before it (tools that run side by side, a message you steer in while a tool runs), while the stream
+ * shows what runs. Your own message goes as soon as it can, from its start (the driver sends it but doesn't report it);
+ * every other item when it completes, with its result. A tool still running when its turn ends gets the result the
+ * reader gives it then ("Interrupted"). Codex's plan steps (`turn/plan/updated`) and its warnings aren't in the thread Codex keeps, so they
  * go as notes Seshboard keeps (`keep`).
  */
 export class CodexLive {
@@ -30,23 +46,31 @@ export class CodexLive {
   private readonly items = new Map<string, Loose>();
   /** Each turn as `turn/started` had it, for its start time. */
   private readonly turns = new Map<string, Turn>();
-  /** Items started and not completed, by their message id. */
-  private readonly running = new Map<string, { turnId: string; itemId: string }>();
-  /** Messages already reported (your prompt, when it started). */
+  /** Each turn's items not reported yet, in the order they started; `item` is set once it can go (completed, or your prompt). */
+  private readonly queues = new Map<string, Array<{ id: string; itemId: string; item: Loose | null }>>();
+  /** This turn's items already reported (your prompt, from its start), so their completion doesn't report them again. */
   private readonly sent = new Set<string>();
-  private readonly agentStates: AgentStates = new Map();
+  /** What items carry to later ones (spawned agents, for their reports), fed in the items' order. */
+  private readonly context = codexContext();
   /** Reasoning items whose summary streams: their raw text, should Codex send it too, doesn't. */
   private readonly summaries = new Set<string>();
   private streaming = false;
   /** The last error Codex gave up on, for a turn that fails without one. */
   private lastError: string | null = null;
-  private notes = 0;
+
+  private readonly now: () => number;
+  private readonly requestId: (codexId: string | number) => string;
+  /** Turns whose prompt went: a later message in the turn is one you steered in. */
+  private readonly prompted = new Set<string>();
 
   constructor(
     readonly threadId: string,
     private readonly events: CodexLiveEvents,
-    private readonly now: () => number = Date.now,
-  ) {}
+    options: CodexLiveOptions = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.requestId = options.requestId ?? String;
+  }
 
   /**
    * The latest of a running item Codex reported (`item/started`, a patch update), for a permission card: a file
@@ -134,8 +158,8 @@ export class CodexLive {
         this.planUpdated(turnId, params.plan);
         break;
       case 'serverRequest/resolved':
-        // Answered here, or dropped by Codex (the turn was stopped): the card goes.
-        if (typeof params.requestId === 'string' || typeof params.requestId === 'number') this.events.permissionDone(String(params.requestId));
+        // Codex is done with it (answered, or dropped when the turn stopped): the card goes, if it's still there.
+        if (typeof params.requestId === 'string' || typeof params.requestId === 'number') this.events.permissionDone(this.requestId(params.requestId));
         break;
       default:
         // `thread/compacted` is the `contextCompaction` item's too; output deltas have no place in a stream delta.
@@ -147,20 +171,55 @@ export class CodexLive {
     return this.turns.get(turnId) ?? ({ id: turnId, items: [], itemsView: 'full', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } as Turn);
   }
 
+  private queueOf(turnId: string): Array<{ id: string; itemId: string; item: Loose | null }> {
+    let queue = this.queues.get(turnId);
+    if (!queue) this.queues.set(turnId, (queue = []));
+    return queue;
+  }
+
+  /** The turn's entry for an item, added at the end the first time it's seen. */
+  private entry(turnId: string, itemId: string): { id: string; itemId: string; item: Loose | null } {
+    const id = codexItemId(turnId, itemId);
+    const queue = this.queueOf(turnId);
+    let entry = queue.find((e) => e.id === id);
+    if (!entry) queue.push((entry = { id, itemId, item: null }));
+    return entry;
+  }
+
+  /** The messages of the items at the head of the turn's queue that can go, in order. */
+  private take(turnId: string, turn: Turn): RawSessionMessage[] {
+    const queue = this.queueOf(turnId);
+    const out: RawSessionMessage[] = [];
+    while (queue[0]?.item) {
+      const { id, item } = queue.shift()!;
+      this.sent.add(id);
+      out.push(...codexItemMessages(turn, item, id, this.context));
+    }
+    return out;
+  }
+
   private itemStarted(turnId: string, raw: Loose, startedAtMs: number | null): void {
     const itemId = str(raw.id);
     if (!turnId || !itemId) return;
+    const id = codexItemId(turnId, itemId);
+    if (this.sent.has(id)) return;
     // An item without times of its own gets the notification's, as Codex records them for the thread read back.
     const item = num(raw.startedAtMs) === null && num(raw.completedAtMs) === null && startedAtMs !== null ? { ...raw, startedAtMs } : raw;
     this.items.set(itemId, item);
-    const id = codexItemId(turnId, itemId);
+    const entry = this.entry(turnId, itemId);
     if (item.type === 'userMessage') {
-      const messages = codexItemMessages(this.turnOf(turnId), item, id);
-      this.sent.add(id);
-      if (messages.length) this.emit(messages);
+      entry.item = item;
+      // A turn starts with your prompt, even when its item comes late (Codex starts its MCP servers first on a thread's
+      // first turn): it goes before what started meanwhile. A later one is a message you steered in, in its place.
+      if (!this.prompted.has(turnId)) {
+        this.prompted.add(turnId);
+        const queue = this.queueOf(turnId);
+        queue.splice(queue.indexOf(entry), 1);
+        queue.unshift(entry);
+      }
+      this.emit(this.take(turnId, this.turnOf(turnId)));
       return;
     }
-    this.running.set(id, { turnId, itemId });
     if (item.type === 'plan') return;
     // A tool's name shows while it runs, as Claude Code's do.
     const tool = codexItemMessages(this.turnOf(turnId), item, id)
@@ -175,38 +234,31 @@ export class CodexLive {
     const itemId = str(raw.id);
     if (!turnId || !itemId) return;
     const started = this.items.get(itemId);
-    let item = raw;
-    if (num(raw.startedAtMs) === null && num(raw.completedAtMs) === null) {
-      item = { ...raw, startedAtMs: num(started?.startedAtMs), completedAtMs };
-    }
     this.items.delete(itemId);
-    noteAgentStates(item, this.agentStates);
-    const id = codexItemId(turnId, itemId);
-    this.running.delete(id);
-    if (this.sent.has(id)) return;
-    this.sent.add(id);
-    const messages = codexItemMessages(this.turnOf(turnId), item, id, this.agentStates);
-    if (messages.length) this.emit(messages);
+    if (this.sent.has(codexItemId(turnId, itemId))) return;
+    const item = num(raw.startedAtMs) === null && num(raw.completedAtMs) === null ? { ...raw, startedAtMs: num(started?.startedAtMs), completedAtMs } : raw;
+    const entry = this.entry(turnId, itemId);
+    if (!entry.item) entry.item = item;
+    this.emit(this.take(turnId, this.turnOf(turnId)));
   }
 
   private turnCompleted(raw: Turn): void {
     const turnId = str(raw.id);
     if (!turnId) return;
     const turn = { ...this.turnOf(turnId), ...raw, startedAt: num(raw.startedAt) ?? num(this.turnOf(turnId).startedAt) } as Turn;
-    // Tools the turn left running: the reader gives them their end now ("Interrupted"), and so does this.
-    const left: RawSessionMessage[] = [];
-    for (const [id, open] of this.running) {
-      if (open.turnId !== turnId) continue;
-      this.running.delete(id);
-      this.sent.add(id);
-      left.push(...codexItemMessages(turn, this.items.get(open.itemId) ?? {}, id, this.agentStates));
-      this.items.delete(open.itemId);
+    // Items the turn left running go as they are: the reader gives their tools their end now ("Interrupted").
+    for (const entry of this.queueOf(turnId)) {
+      entry.item ??= this.items.get(entry.itemId) ?? { id: entry.itemId };
+      this.items.delete(entry.itemId);
     }
-    const end = codexTurnEnd(turn);
+    const messages = [...this.take(turnId, turn), ...codexTurnEnd(turn)];
     this.clear();
-    if (left.length || end.length) this.events.messages([...left, ...end]);
+    if (messages.length) this.events.messages(messages);
     this.turns.delete(turnId);
-    for (const id of this.sent) if (id.startsWith(`${turnId}:`)) this.sent.delete(id);
+    this.queues.delete(turnId);
+    this.prompted.delete(turnId);
+    this.sent.clear();
+    this.summaries.clear();
     if (turn.status === 'failed') this.events.state('error', str(obj(turn.error).message) ?? this.lastError ?? 'Codex stopped with an error');
     else this.events.state('idle');
     this.lastError = null;
@@ -220,21 +272,23 @@ export class CodexLive {
       return content ? [{ content, status: TODO_STATUS[str(step.status) ?? ''] ?? 'pending' }] : [];
     });
     if (!todos.length) return;
-    const n = this.notes++;
-    const id = `${turnId || this.threadId}:todos:${n}`;
+    const id = `${turnId || this.threadId}:todos:${randomUUID()}`;
     this.note(turnId, [
       { role: 'assistant', content: [{ type: 'tool_use', id, name: 'TodoWrite', input: { todos } }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: false, content: 'Updated the to-do list' }] },
     ]);
   }
 
-  /** Messages Codex's thread doesn't have, which Seshboard keeps and puts back where they were when the session is read. */
+  /**
+   * Messages Codex's thread doesn't have, which Seshboard keeps and puts back by their time when the session is read.
+   * Their ids are new each time: Seshboard keeps a note once per id, and a session runs here again after a restart.
+   */
   private note(turnId: string, bodies: Array<{ role: 'user' | 'assistant' | 'system'; content: unknown[] }>): void {
     const timestamp = new Date(this.now()).toISOString();
-    const n = this.notes++;
+    const note = randomUUID();
     const messages: RawSessionMessage[] = bodies.map((body, i) => ({
       type: body.role,
-      uuid: `${turnId || this.threadId}:note:${n}:${i}`,
+      uuid: `${turnId || this.threadId}:note:${note}:${i}`,
       message: body,
       parent_tool_use_id: null,
       timestamp,
@@ -244,6 +298,7 @@ export class CodexLive {
   }
 
   private emit(messages: RawSessionMessage[]): void {
+    if (!messages.length) return;
     // The complete message takes the place of what streamed.
     this.clear();
     this.events.messages(messages);
