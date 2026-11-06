@@ -1,5 +1,5 @@
 import { AtSign, ClipboardPaste, Copy, ImagePlus, MessageCircleQuestion, Paperclip, Scissors, TextSelect } from 'lucide-react';
-import { Fragment, useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { blanksLeftText, blanksOf, githubUrl, joinPath, linkLabel, MAX_LINKS_PER_MESSAGE, MAX_SIDE_QUESTION_LENGTH, promptPreview, uniqueLabel, type ContextItem, type GithubListItem, type GithubSearchResult, type ImageAttachment, type SavedPrompt, type SessionSummary, type SlashCommand } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { Button } from '../ui/Button.tsx';
@@ -10,6 +10,7 @@ import { ContextTray } from './ContextTray.tsx';
 import { useComposerTargets } from '../../state/composerTargets.ts';
 import { hasContent } from '../../state/drafts.ts';
 import { ComposerTray, type TrayUsage } from './ComposerTray.tsx';
+import { paletteRoom, type PaletteRoom } from './paletteRoom.ts';
 import { filled, registerModComposer } from '../mods/modComposer.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { Menu, type MenuEntry } from '../Menu.tsx';
@@ -37,6 +38,13 @@ import { cachedSearch, forgetGithub, githubStatus, rememberSearch } from '../git
 import { GithubStateIcon } from '../github/GithubParts.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { startFromGithub } from '../../state/githubStartStore.ts';
+
+/**
+ * New session's box: 210px at rest in three columns, 140px in two, and it grows with the text until the column has no
+ * room left (the flex items around it shrink to its toolbar), then scrolls inside. Stacked, the page scrolls, so it stops
+ * at 320px. A short window lets the rest size go first.
+ */
+const LARGE_BOX = 'max-h-80 min-h-24 @min-[860px]/new-session:max-h-none @min-[860px]/new-session:min-h-[140px] @min-[1200px]/new-session:min-h-[210px] [@media(max-height:680px)]:@min-[860px]/new-session:min-h-24';
 
 /**
  * A row of the /, @ or # list; `prompt` makes it a saved prompt rather than a command, `session` a session to link,
@@ -212,6 +220,14 @@ export function Composer(props: ComposerProps) {
     return split.question;
   };
   const [palette, setPalette] = useState<Palette | null>(null);
+  // The large box sits high in New session's column: its lists open on the side with more room.
+  const [room, setRoom] = useState<PaletteRoom | null>(null);
+  const paletteOpen = palette !== null;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    setRoom(props.large && paletteOpen && root ? paletteRoom(root.getBoundingClientRect(), window.innerHeight) : null);
+  }, [props.large, paletteOpen]);
+  const paletteSide = room?.below ? 'top-full mt-2' : 'bottom-full mb-2';
   /** A saved prompt being filled in: the box shows it over the text, which then holds what goes after it. */
   const [fillState, setFill] = useState<FillState | null>(saved?.fill ?? null);
   const fillerRef = useRef<PromptFillerHandle>(null);
@@ -1000,7 +1016,7 @@ export function Composer(props: ComposerProps) {
   return (
     <div
       ref={rootRef}
-      className="@container/box relative"
+      className={`@container/box relative ${props.large ? 'flex min-h-0 flex-col' : ''}`}
       data-composer-root
       onFocusCapture={() => {
         if (draftKey !== undefined) useComposerTargets.getState().register({ key: draftKey, cwd });
@@ -1011,7 +1027,7 @@ export function Composer(props: ComposerProps) {
       {palette?.kind === 'issue' &&
         palette.github &&
         (palette.github.hint ? (
-          <GithubHint className="absolute right-0 bottom-full left-0 z-10 mb-2" />
+          <GithubHint className={`absolute right-0 left-0 z-10 ${paletteSide}`} />
         ) : (
           <GithubList
             id={`${ids}-palette`}
@@ -1035,7 +1051,8 @@ export function Composer(props: ComposerProps) {
               const token = el ? tokenAtCaret(el.value, el.selectionStart) : null;
               if (token?.kind === 'issue') openGithub(token.start, token.query, ++searchSeq.current, true);
             }}
-            className="absolute right-0 bottom-full left-0 z-10 mb-2"
+            className={`absolute right-0 left-0 z-10 ${paletteSide}`}
+            style={room ? { maxHeight: room.height } : undefined}
           />
         ))}
       {palette && palette.kind !== 'issue' && (
@@ -1044,7 +1061,8 @@ export function Composer(props: ComposerProps) {
         <ul
           ref={listRef}
           id={`${ids}-palette`}
-          className="absolute right-0 bottom-full left-0 z-10 mb-2 max-h-72 overflow-y-auto rounded-lg border overlay"
+          className={`absolute right-0 left-0 z-10 max-h-72 overflow-y-auto rounded-lg border overlay ${paletteSide}`}
+          style={room ? { maxHeight: room.height } : undefined}
           role="listbox"
           aria-label={palette.kind === 'slash' ? (palette.items[0]?.prompt ? 'Saved prompts and commands' : 'Commands') : palette.items[0]?.session ? 'Sessions and files' : 'Files'}
           data-palette
@@ -1112,7 +1130,7 @@ export function Composer(props: ComposerProps) {
       <div
         ref={cardRef}
         onAnimationEnd={(e) => e.animationName === 'composer-flash' && e.currentTarget.classList.remove('composer-flash')}
-        className={`relative z-[1] rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
+        className={`relative z-[1] ${props.large ? 'flex min-h-0 flex-col' : ''} rounded-[18px] border bg-card px-3 pt-3 pb-2 shadow-md transition-colors ${sideToken ? 'border-link' : props.restored ? 'border-edge' : 'border-border'} ${disabled || sideToken ? '' : 'focus-within:border-accent-ink/60'}`}
         style={props.frameColor && !sideToken ? { borderColor: props.frameColor } : undefined}
         data-side-question={sideToken || undefined}
         data-composer-card
@@ -1167,9 +1185,9 @@ export function Composer(props: ComposerProps) {
             ref.current?.focus();
           }}
         />
-        {/* At least three lines; grows with the content up to ten (New session's: max-h-80), then scrolls. CSS sizes it: collapsing it to measure scrollHeight
+        {/* At least three lines; grows with the content up to ten (New session's: up to the room its column has), then scrolls. CSS sizes it: collapsing it to measure scrollHeight
             made the conversation above taller for a moment, and the browser clamped its scroll position. */}
-        <div className="relative flex items-start gap-2">
+        <div className={`relative flex gap-2 ${props.large ? 'min-h-0 flex-col' : 'items-start'}`}>
           {fillState && !text && !props.disabledReason && (
             <span className="pointer-events-none absolute top-0 left-0 text-body leading-relaxed text-muted" aria-hidden data-context-placeholder>
               Add more context… <span className="text-faint">(optional, sent after the prompt)</span>
@@ -1233,7 +1251,7 @@ export function Composer(props: ComposerProps) {
                 setPalette(null);
               }, 100);
             }}
-            className={`block field-sizing-content w-full min-w-0 flex-1 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large && !fillState ? 'max-h-80 min-h-24 px-1 pt-1 text-title font-normal' : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
+            className={`block field-sizing-content w-full min-w-0 resize-none bg-transparent leading-relaxed text-text outline-none placeholder:text-faint disabled:opacity-60 ${props.large ? 'flex-[0_1_auto]' : 'flex-1'} ${props.large && !fillState ? `${LARGE_BOX} px-1 pt-1 text-title font-normal` : 'max-h-[10lh] min-h-[3lh] px-1 text-body'}`}
           />
         </div>
         {menuAt && <Menu x={menuAt.x} y={menuAt.y} above={menuAt.above} width={180} label="Message" onClose={() => setMenuAt(null)} entries={textMenu()} />}

@@ -53,6 +53,21 @@ function repo(dir: string, files: Files, options: { branch?: string; changes?: F
   if (options.changes) write(dir, options.changes);
 }
 
+/**
+ * Commits made during a demo session, for the Shipped part of Activity's bars: empty commits from `at` on, on a ref of
+ * their own (`refs/demo/…`, not a branch), so the working tree, the branches and their diffs stay as they are. Activity
+ * finds them because it reads `git log --all`, and gives each to the session whose moment is nearest.
+ */
+function commitsAt(dir: string, at: number, ref: string, messages: readonly string[]): void {
+  let parent = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  messages.forEach((message, i) => {
+    const date = new Date(at + i * 20_000).toISOString();
+    const env = { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date };
+    parent = execFileSync('git', ['-c', 'user.name=Demo', '-c', 'user.email=demo@example.com', 'commit-tree', `${parent}^{tree}`, '-p', parent, '-m', message], { cwd: dir, encoding: 'utf8', env }).trim();
+  });
+  git(dir, 'update-ref', ref, parent);
+}
+
 const icon = (from: string, to: string, glyph: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#g)"/>${glyph}</svg>\n`;
 
@@ -162,6 +177,11 @@ class Transcript {
 
   say(text: string): this {
     return this.assistant({ type: 'text', text });
+  }
+
+  /** When the last record so far happened. */
+  get at(): number {
+    return this.last;
   }
 
   /** Writes the transcript and returns its file. */
@@ -600,12 +620,21 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
     'Add pull to refresh on the orders list': { model: 'claude-sonnet-5-5', scale: 0.9 },
     'Add CSV export to the reports endpoint': { model: 'claude-haiku-5-5', scale: 0.6 },
   };
+  // What some of them committed, so Activity's bars have a Shipped part.
+  const commits: Record<string, string[]> = {
+    'Refactor auth middleware': ['Split session and API-key checks', 'Move routes to the new middlewares', 'Test both middlewares'],
+    'Investigate flaky checkout test': ['Wait for shipping options before paying'],
+    'Add pull to refresh on the orders list': ['Add pull to refresh to the orders list', 'Keep the scroll position on refresh'],
+    'Add CSV export to the reports endpoint': ['Stream reports as CSV for text/csv', 'Test the CSV export'],
+    'Fix broken links after the docs move': ['Fix links to the moved API docs', 'Redirect the old /api/v1 URLs'],
+  };
   const written: DemoWorld['history'] = {};
   for (const [cwd, branch, title, ago, prompt, answer] of history) {
     const t = new Transcript(cwd, branch, now - ago, usage[title])
       .user(prompt)
-      .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files')
-      .say(answer);
+      .tool('Grep', { pattern: title.split(' ').at(-1)!.toLowerCase(), path: `${cwd}/src` }, 'Found 3 files');
+    if (commits[title]) commitsAt(cwd, t.at, `refs/demo/${t.id}`, commits[title]);
+    t.say(answer);
     t.write(cwd === payments ? workConfigDir : configDir, title);
     written[title] = { id: t.id, configDir: cwd === payments ? workConfigDir : configDir };
   }

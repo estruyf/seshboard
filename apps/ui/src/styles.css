@@ -51,6 +51,10 @@
   --sb-chart-cache-write: #c2255c;
   --sb-chart-cache-read: #1c7ed6;
   --sb-chart-input: #099268;
+  /* Activity's day strip: the parts of a day's score (time, turns, shipped). Checked together for colour blindness on every theme's surfaces. */
+  --sb-chart-time: #1c7ed6;
+  --sb-chart-turns: #099268;
+  --sb-chart-shipped: #e8590c;
   /*
    * The working mark under a reply (WorkingPanel): the app icon's patch panel. Its free jacks are holes that
    * light up in turn; the plugged ones keep the cables' colours, the gold a little darker in light mode, where it washes out.
@@ -120,6 +124,9 @@
     --sb-chart-cache-write: #e64980;
     --sb-chart-cache-read: #339af0;
     --sb-chart-input: #0ca678;
+    --sb-chart-time: #339af0;
+    --sb-chart-turns: #0ca678;
+    --sb-chart-shipped: #e8590c;
     --sb-working-hole: #3d404a;
     --sb-working-lit: #fff1cc;
     --sb-working-glow: #ff961a;
@@ -183,6 +190,9 @@
   --sb-chart-cache-write: #e64980;
   --sb-chart-cache-read: #339af0;
   --sb-chart-input: #0ca678;
+  --sb-chart-time: #339af0;
+  --sb-chart-turns: #0ca678;
+  --sb-chart-shipped: #e8590c;
   --sb-working-hole: #3d404a;
   --sb-working-lit: #fff1cc;
   --sb-working-glow: #ff961a;
@@ -239,6 +249,9 @@
   --color-chart-cache-write: var(--sb-chart-cache-write);
   --color-chart-cache-read: var(--sb-chart-cache-read);
   --color-chart-input: var(--sb-chart-input);
+  --color-chart-time: var(--sb-chart-time);
+  --color-chart-turns: var(--sb-chart-turns);
+  --color-chart-shipped: var(--sb-chart-shipped);
   --color-profile-gray: var(--sb-profile-gray);
   --color-popover: var(--sb-popover);
   --color-scrim: var(--sb-scrim);

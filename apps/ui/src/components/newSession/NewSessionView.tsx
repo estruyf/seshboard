@@ -7,14 +7,18 @@ import { askWhat, offersProjectProfile, switchNoticeFor, type SwitchNoticeState 
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
 import { FolderPicker } from './FolderPicker.tsx';
-import { NEW_SESSION_COLUMN } from './ProjectRow.tsx';
+import { NewSessionContext } from './NewSessionContext.tsx';
+import { NEW_SESSION_GRID } from './newSessionLayout.ts';
+import { contextRows, contextSections, defaultsLines } from './sessionContext.ts';
+import { useNewSessionMode } from './useNewSessionLayout.ts';
 import { AddProjectDialog } from '../projects/AddProjectDialog.tsx';
 import { routeHint } from './route.ts';
 import { filterBranches } from '../worktree/branchMenu.ts';
 import { fastModeFace } from '../../lib/fastMode.ts';
-import { basename, shortAge } from '../../lib/format.ts';
+import { basename } from '../../lib/format.ts';
 import { findModelOption } from '../../lib/models.ts';
-import { nextMode, randomWorktreeName } from '../../lib/modes.ts';
+import { MODE_LABEL, nextMode, randomWorktreeName } from '../../lib/modes.ts';
+import { thisComputerName } from '../../lib/platform.ts';
 import { passFocusGate, useFocus } from '../../state/focusGate.ts';
 import { trustRepository } from '../../state/repoTrust.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
@@ -38,7 +42,7 @@ import { useProfiles } from '../../state/profilesStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { toRows, useSessions } from '../../state/sessionsStore.ts';
-import { inScope, rowStatus } from '../../state/sidebarRows.ts';
+import { inScope } from '../../state/sidebarRows.ts';
 import { PromptChips } from '../savedPrompts/PromptChips.tsx';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { Composer, type SentParts } from '../composer/Composer.tsx';
@@ -59,7 +63,7 @@ import { focusStartBlock, startButtonState } from './startMenu.ts';
 import { newDraftKey, newSessionDraftBanner, draftMessage } from '../../state/drafts.ts';
 import { useDrafts, type ComposerDraft } from '../../state/draftsStore.ts';
 import { DraftBanner } from '../drafts/DraftBanner.tsx';
-import { FocusNote } from '../focus/FocusNote.tsx';
+import { FocusLine } from '../focus/FocusLine.tsx';
 import { QueuedInProject } from '../queue/QueuedInProject.tsx';
 import { waitForEntries } from '../queue/queueMenu.tsx';
 import { Menu, useMenu } from '../Menu.tsx';
@@ -68,7 +72,6 @@ import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Notice } from '../ui/Notice.tsx';
-import { SectionHeader } from '../ui/SectionHeader.tsx';
 import { Switch } from '../ui/Toggle.tsx';
 import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
 import { SidebarToggle } from '../sidebar/SidebarToggle.tsx';
@@ -80,7 +83,7 @@ import { linkNoticeText } from './linkNotice.ts';
 import { startFromGithub, useGithubStart, type GithubStartRequest } from '../../state/githubStartStore.ts';
 import { currentCheckoutBlocked, forkCaution, linkBanner, NO_AUTOSTART, otherRepository, prBranch, readOnlyFork, startNote, startPrompt, takenWorktreeNames, uniqueWorktreeName, worktreeNameFor } from '../github/githubStart.ts';
 import { chipItem, reasonLine } from '../github/githubText.ts';
-import { activityByProject, latestBranches, orderProjects, pickUpRows, tileStatus } from './projectTiles.ts';
+import { activityByProject, latestBranches, orderProjects, tileStatus } from './projectTiles.ts';
 import { addOrSelect } from './pathInput.ts';
 import { branchLabel, branchNote } from './trayLabels.ts';
 import { baseChoices } from './worktreeBases.ts';
@@ -245,7 +248,7 @@ function LocalNewSession() {
   const [startAfterId, setStartAfterId] = useState<string | null>(null);
   const startAfterRequest = useStartAfter((s) => s.request);
   const waitMenu = useMenu();
-  /** Start anyway in the focus note sends what is in the box, without asking again. */
+  /** Start anyway in Start's menu sends what is in the box, without asking again. */
   const [submitRequest, setSubmitRequest] = useState(0);
   /**
    * Filled in from an issue or pull request (⌥↩ in the # list, the palette, a link): the request, the item once gh has
@@ -264,6 +267,9 @@ function LocalNewSession() {
   const [cloneSoon, setCloneSoon] = useState(false);
   /** The folder picked before the clone form opened, to go back to when it closes without a clone. */
   const beforeClone = useRef<string | null>(null);
+  /** The view's width picks the layout (`newSessionLayout`); the CSS follows the same breakpoints. */
+  const viewRef = useRef<HTMLDivElement>(null);
+  const layoutMode = useNewSessionMode(viewRef);
   const focus = useFocus();
   const atLimit = focus.limit !== null && focus.count >= focus.limit;
   /** Strict at the limit: Start waits (⌘↵ still asks, with the queue offered), Add to queue stays in Start's menu. */
@@ -941,7 +947,7 @@ function LocalNewSession() {
     else if (paletteRequest.kind === 'add-project') setAddingProject(true);
   }, [paletteRequest]);
 
-  const pickUp = useMemo(() => (cwd ? pickUpRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
+  const pickUp = useMemo(() => (cwd ? contextRows(rows, cwd, Date.now(), archiveAfterDays) : []), [rows, cwd, archiveAfterDays]);
 
   /** The prompt and its images with this folder and these choices, for the queue. */
   const laterDraft = (text: string, attachments: ImageAttachment[], parts?: SentParts): LaterDraft | null =>
@@ -1328,6 +1334,35 @@ function LocalNewSession() {
       </span>
     ) : null;
 
+  /**
+   * At the focus limit, Start adds to the queue: not for a question, a pipeline (the limit doesn't stop those), what is
+   * already queued or scheduled here, or a provider without the queue. Those still go through the gate.
+   */
+  const queuesAtLimit = atLimit && !question && !fromLater && !fromSchedule && !scheduleFirst && !(runAs && !noPipeline) && (!runWith || (runWithInfo?.supports.includes('later') ?? false));
+  // What a session in the picked project starts with, for the context: its profile and defaults, before anything changes here.
+  const shownDefaults = isProject && project ? firstChoices() : null;
+  const defaultsProfile = profiles.find((p) => p.id === (projectProfile ?? defaultProfile));
+  const defaults = shownDefaults
+    ? defaultsLines({
+        profile: defaultsProfile?.name ?? null,
+        model: defaultsProfile?.provider && defaultsProfile.provider !== 'claude' ? shownDefaults.model || 'Default model' : modelLabel(models, effectiveModel(shownDefaults.model, autoModel.enabled)),
+        mode: MODE_LABEL[shownDefaults.permissionMode],
+        worktree: shownDefaults.workspace === 'worktree' && canWorktree,
+        branch: inspection?.isGitRepo
+          ? branchLabel({
+              worktree: shownDefaults.workspace === 'worktree' && canWorktree,
+              baseRef: shownDefaults.baseRef,
+              remote: gitStatus?.pushRemote ?? null,
+              baseBranch: gitStatus?.baseBranch ?? null,
+              current: gitBranches.current ?? branch,
+              checkoutBranch: shownDefaults.branch || gitBranches.current,
+              isGitRepo: true,
+            })
+          : null,
+      })
+    : null;
+  const sections = contextSections({ mode: layoutMode, sessions: pickUp.length, focusLimit: focus.limit, going: focus.sessions.length, hasDefaults: defaults !== null });
+
   // The picked project has a session going: say what a queued prompt would wait for, and let "Wait for…" change it.
   const busyHere = useMemo(() => (cwd ? busyInProject(rows, cwd) : []), [rows, cwd]);
   const queueItems = useLater((s) => s.items);
@@ -1358,7 +1393,7 @@ function LocalNewSession() {
       : `${lead} it waits for ${waitLabel.startsWith('“') ? waitLabel : waitLabel.toLowerCase()} to finish, then ${startsByItself ? 'starts by itself' : 'waits for you to start it'}.`;
   // Shown while the project has a session working, or once Wait for names a session or the item above.
   const queueLine = cwd && projectName && (busyHere.length > 0 || wait.kind === 'session' || wait.kind === 'item') && (
-    <div className="-mt-3 flex min-w-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
+    <div className="flex min-w-0 shrink-0 items-center gap-1.5 px-2 text-meta text-muted" data-queue-busy-line>
       {startsByItself ? <Play size={11} fill="currentColor" className="shrink-0 text-link" aria-hidden /> : <Clock size={12} className="shrink-0 text-faint" aria-hidden />}
       <span className="min-w-0 truncate">
         {busyHere.length > 0 && `${projectName} has ${busyHere.length === 1 ? 'a session' : `${busyHere.length} sessions`} working. `}
@@ -1425,65 +1460,60 @@ function LocalNewSession() {
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className={`my-auto ${NEW_SESSION_COLUMN} pt-2 pb-12`} data-new-session-view>
-          <div className="text-center">
-            {/* The one hero heading in the app, a little larger than text-title. */}
-            <h1 className="text-hero leading-tight font-semibold">Where do we start?</h1>
-            {/* The keys that pick a project are under the list, as many as it shows. */}
-            <p className="mt-1 text-ui text-muted">Pick a project, or start typing its name</p>
+      {/* The view is a container, so the sidebar and side panels count. Stacked, it scrolls; in columns, each column does. */}
+      <div ref={viewRef} className="@container/new-session flex min-h-0 flex-1 flex-col overflow-y-auto @min-[860px]/new-session:overflow-hidden">
+        <div className={NEW_SESSION_GRID} data-new-session-view data-new-session-layout={layoutMode}>
+          <aside aria-label="Projects" className="flex min-w-0 flex-col gap-2.5 @min-[860px]/new-session:row-span-2 @min-[860px]/new-session:min-h-0 @min-[1200px]/new-session:row-span-1" data-new-session-projects>
             {/* With a paired computer: where Claude runs. */}
-            <div className="mt-3">
-              <RunOnSwitch />
-            </div>
-          </div>
-
-          {cloneForm ? (
-            <ClonePanel
-              url={cloneForm.url}
-              name={cloneForm.name}
-              job={cloneJob}
-              onUrl={(url) => useClone.getState().editForm({ url })}
-              onName={(name) => useClone.getState().editForm({ name })}
-              onStart={startClone}
-              onClose={closeClone}
-              closeLabel={clonedRoot ? 'Done' : 'Pick a project instead'}
-            />
-          ) : (
-          <FolderPicker
-            value={question ? null : cwd}
-            question={questionsDir ? { selected: question, onSelect: () => changeFolder(questionsDir) } : null}
-            folders={ordered}
-            home={home}
-            branches={folderBranches}
-            statusOf={statusOf}
-            onChange={changeFolder}
-            onAdd={(folder) => void addFolder(folder)}
-            onAddProject={() => setAddingProject(true)}
-            onChooseOther={() => void chooseFolder()}
-            shortcuts={view === 'new'}
-            openRequest={pickerRequest}
-            onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
-          />
-          )}
+            <RunOnSwitch fill />
+            {cloneForm ? (
+              <ClonePanel
+                url={cloneForm.url}
+                name={cloneForm.name}
+                job={cloneJob}
+                onUrl={(url) => useClone.getState().editForm({ url })}
+                onName={(name) => useClone.getState().editForm({ name })}
+                onStart={startClone}
+                onClose={closeClone}
+                closeLabel={clonedRoot ? 'Done' : 'Pick a project instead'}
+              />
+            ) : (
+              <FolderPicker
+                layout={layoutMode}
+                value={question ? null : cwd}
+                question={questionsDir ? { selected: question, onSelect: () => changeFolder(questionsDir) } : null}
+                folders={ordered}
+                home={home}
+                branches={folderBranches}
+                statusOf={statusOf}
+                onChange={changeFolder}
+                onAdd={(folder) => void addFolder(folder)}
+                onAddProject={() => setAddingProject(true)}
+                onChooseOther={() => void chooseFolder()}
+                onPicked={() => requestAnimationFrame(() => viewRef.current?.querySelector<HTMLElement>('[data-composer]')?.focus())}
+                shortcuts={view === 'new'}
+                openRequest={pickerRequest}
+                onClone={cloneEnabled ? (url, start) => useClone.getState().cloneInNewSession(url ?? '', { start }) : undefined}
+              />
+            )}
+          </aside>
 
           {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onDone={(root) => root && changeFolder(root)} />}
 
-          {/* At the focus limit: what is going, with Open, and a way to park this idea. Start asks first (Nudge) or waits (Strict). */}
-          {atLimit && (
-            <FocusNote
-              focus={focus}
-              now={now}
-              canSave={canQueue}
-              onSaveForLater={() => void parkInQueue(promptWithContext(draftPrompt, draftContext, cwd), draftAttachments, { typed: draftPrompt, context: draftContext }).catch(() => {})}
-              onStartAnyway={() => setSubmitRequest((n) => n + 1)}
-            />
-          )}
+          <main className="flex min-w-0 flex-col gap-3.5 @min-[860px]/new-session:min-h-0 [@media(max-height:680px)]:@min-[860px]/new-session:overflow-y-auto">
+            {/* When stacked the projects come first and say what this is: the heading is for screen readers there. */}
+            <div className="sr-only shrink-0 @min-[860px]/new-session:not-sr-only" data-new-session-heading>
+              {/* The one hero heading in the app, a little larger than text-title. */}
+              <h1 className="text-hero leading-tight font-semibold">New session</h1>
+              <p className="mt-0.5 truncate text-ui text-muted">{projectName && !question ? `in ${projectName}, on ${thisComputerName()}` : `on ${thisComputerName()}`}</p>
+            </div>
+
+            {/* At the focus limit: one line. What is going is in the context, and Start adds to the queue. */}
+            <FocusLine focus={focus} now={now} queues={queuesAtLimit} expandable={layoutMode === 'stack'} />
 
           {restored && (
             <DraftBanner
               text={newSessionDraftBanner(projectName, restored, Date.now())}
-              className="-mb-3"
               onDiscard={() => {
                 if (draftKey !== undefined) useDrafts.getState().removeDraft(draftKey);
                 clearPrompt();
@@ -1492,7 +1522,7 @@ function LocalNewSession() {
           )}
 
           {fromGithub && (fromGithub.request.link || fromGithub.error) && (
-            <div className="-mb-2 grid gap-2" data-from-link-banner={fromGithub.request.link ? true : undefined}>
+            <div className="grid shrink-0 gap-2" data-from-link-banner={fromGithub.request.link ? true : undefined}>
               {fromGithub.request.link && (
                 <Notice tone="info" icon={<GitBranch size={14} aria-hidden />}>
                   {linkBanner(fromGithub.request.type, githubNumber)}
@@ -1515,9 +1545,9 @@ function LocalNewSession() {
 
           {/* The message box with its route strip on top: the strip's bottom edge is the card's top border, so the
               card's top corners are square. With a folder picked, the strip and the card take its project's colour. */}
-          <div className="[&_[data-composer-card]]:rounded-t-none" data-project-color={projectColor ?? undefined}>
+          <div className="flex min-h-0 flex-col [&_[data-composer-card]]:rounded-t-none" data-project-color={projectColor ?? undefined}>
             <div
-              className="flex min-h-10 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
+              className="flex min-h-10 min-w-0 shrink-0 items-center gap-1 rounded-t-[18px] border border-b-0 border-border bg-border/25 px-1.5 py-1 transition-colors"
               style={projectColor ? { borderColor: projectColor } : undefined}
               data-route-tray
             >
@@ -1771,6 +1801,9 @@ function LocalNewSession() {
                 }
                 // A pipeline picked in Run as: Enter runs it, with the text as its task.
                 if (runAs && !noPipeline) return runPipelineWith(runAs.id, text, attachments);
+                // At the focus limit, Enter does what Start now says (Start anyway comes through as `requested`). With only
+                // images there is nothing to queue, so the gate asks.
+                if (queuesAtLimit && requested !== true && canQueue) return queuePrompt(text, attachments, parts);
                 return create(text, attachments, parts, { skipGate: requested === true });
               }}
               // The queue starts Claude Code sessions: not with another provider yet.
@@ -1795,6 +1828,7 @@ function LocalNewSession() {
                       queueFirst: startAfterId !== null && wait.kind === 'session' && wait.sessionId === startAfterId,
                       canSchedule: true,
                       canTrigger: !fromLater,
+                      atFocusLimit: queuesAtLimit ? focus.mode : null,
                       canPipeline,
                       runAs,
                       scheduleFirst: scheduleFirst && !fromLater,
@@ -1810,6 +1844,8 @@ function LocalNewSession() {
                             ? openTrigger()
                             : action === 'start-worktree'
                               ? box.submitWith((text, attachments, parts) => create(text, attachments, parts, { worktree: true }))
+                              : action === 'start-anyway'
+                                ? setSubmitRequest((n) => n + 1)
                               : action === 'start-one'
                                 ? (setRunAsId(null), box.submitWith((text, attachments, parts) => create(text, attachments, parts)))
                                 : action === 'pipeline' && runAs
@@ -1827,14 +1863,14 @@ function LocalNewSession() {
           {runAs && draftPrompt.trim() !== '' && <RunAsSteps name={runAs.name} steps={runAsSteps(runAs, modelWord(shownModel === AUTO_MODEL ? null : shownModel || null))} onChange={() => setRunAsMenu((n) => n + 1)} />}
 
           {notice && (
-            <div className="-mt-2 flex min-h-5 items-center px-2 text-meta text-muted" data-tray-footer>
+            <div className="flex min-h-5 shrink-0 items-center px-2 text-meta text-muted" data-tray-footer>
               <span className="flex min-w-0 items-center">{notice}</span>
             </div>
           )}
 
           {/* Its own line, so it is read whole: what starting from an issue or pull request does, and doesn't. */}
           {githubItem && (
-            <p className="-mt-3 flex items-center justify-center gap-1.5 px-2 text-center text-meta text-muted" data-github-start-note>
+            <p className="flex shrink-0 items-center justify-center gap-1.5 px-2 text-center text-meta text-muted" data-github-start-note>
               <ShieldCheck size={13} className="shrink-0" aria-hidden />
               {startNote(githubItem.type)}
             </p>
@@ -1843,43 +1879,16 @@ function LocalNewSession() {
           {queueLine}
 
           {cwd && options.addAsProject && !isProject && inspection?.exists && (
-            <Checkbox checked={addAsProject} onChange={setAddAsProject} className="-mt-3 w-fit px-2 text-meta text-muted" dataAttrs={{ 'data-add-as-project': true }}>
+            <Checkbox checked={addAsProject} onChange={setAddAsProject} className="w-fit shrink-0 px-2 text-meta text-muted" dataAttrs={{ 'data-add-as-project': true }}>
               Add {basename(cwd)} to your projects
             </Checkbox>
           )}
 
-          {cwd && pickUp.length > 0 && (
-            <section aria-label={`Pick up in ${projectName}`} data-pick-up>
-              <SectionHeader as="h2" className="px-2">
-                Pick up in {projectName}
-              </SectionHeader>
-              {/* One column no wider than the view, so a long title truncates instead of widening the list. */}
-              <ul className="mt-1 grid grid-cols-[minmax(0,1fr)]">
-                {pickUp.map((row) => {
-                  const status = rowStatus(row);
-                  const dot = status === 'needs-you' ? 'bg-warn' : status === 'running' ? 'bg-accent-ink animate-pulse' : status === 'unread' ? 'bg-unread' : 'bg-faint/50';
-                  return (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        onClick={() => select(row.id)}
-                        className="flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left hover:bg-border/45"
-                        data-pick-up-session={row.id}
-                      >
-                        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${dot}`} />
-                        <span className="min-w-0 flex-1 truncate text-ui text-text">{row.title || 'Untitled session'}</span>
-                        {status === 'needs-you' && <span className="shrink-0 text-meta text-warn">Needs you</span>}
-                        {status === 'running' && <span className="shrink-0 text-meta text-accent-ink">Working</span>}
-                        <span className="shrink-0 text-meta text-faint tabular-nums">{shortAge(row.updatedAt)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
+          </main>
 
-          {cwd && projectName && <QueuedInProject cwd={cwd} projectName={projectName} now={now} />}
+          <NewSessionContext projectName={projectName} root={cwd} sections={sections} rows={pickUp} focus={focus} now={now} defaults={defaults}>
+            {cwd && projectName && <QueuedInProject cwd={cwd} projectName={projectName} now={now} />}
+          </NewSessionContext>
         </div>
       </div>
       {scheduling && <ScheduleDialog draft={scheduling} schedule={fromSchedule} onClose={() => setScheduling(null)} onSaved={onScheduled} />}

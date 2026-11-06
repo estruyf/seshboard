@@ -18,12 +18,34 @@ interface Shown {
 const TONE_TEXT: Record<string, string> = { warn: 'text-warn', accent: 'text-accent-ink', unread: 'text-unread', ok: 'text-ok', error: 'text-error', faint: 'text-muted' };
 const TONE_DOT: Record<string, string> = { warn: 'bg-warn', accent: 'bg-accent-ink', unread: 'bg-unread', ok: 'bg-ok', error: 'bg-error', faint: 'bg-faint' };
 
+/** A line of numbers on a card: a label, its value, and the swatch of the series it belongs to (a theme token's name). */
+export interface TooltipRow {
+  label: string;
+  value: string;
+  swatch?: string;
+  /** A quieter line, for numbers that are context rather than the point. */
+  quiet?: boolean;
+}
+
 interface TooltipCard {
   title: string;
   meta: string | null;
+  rows: TooltipRow[];
   status: string | null;
   tone: string | null;
   hint: string | null;
+}
+
+/** The rows of `data-tooltip-rows` (JSON), keeping only well-formed ones. A swatch is a token name, never free CSS. */
+function readRows(json: string | null): TooltipRow[] {
+  if (!json) return [];
+  try {
+    const rows: unknown = JSON.parse(json);
+    if (!Array.isArray(rows)) return [];
+    return rows.filter((row): row is TooltipRow => !!row && typeof row.label === 'string' && typeof row.value === 'string' && (row.swatch === undefined || (typeof row.swatch === 'string' && /^[a-z][a-z-]*$/.test(row.swatch))));
+  } catch {
+    return [];
+  }
 }
 
 function readCard(target: Element): TooltipCard | null {
@@ -32,6 +54,7 @@ function readCard(target: Element): TooltipCard | null {
   return {
     title,
     meta: target.getAttribute('data-tooltip-meta'),
+    rows: readRows(target.getAttribute('data-tooltip-rows')),
     status: target.getAttribute('data-tooltip-status'),
     tone: target.getAttribute('data-tooltip-tone'),
     hint: target.getAttribute('data-tooltip-hint'),
@@ -44,9 +67,10 @@ function readCard(target: Element): TooltipCard | null {
  * rows too. The attribute is not an accessible name: icon-only buttons also need an `aria-label`.
  *
  * `data-tooltip-placement="right"` puts it beside the target instead of below. A target can also
- * describe a small card: `data-tooltip-title`, then `data-tooltip-meta`, a status line in a status
- * colour (`data-tooltip-status`, `data-tooltip-tone`: warn, accent, unread, ok, error, faint) and a
- * faint hint (`data-tooltip-hint`). `data-tooltip` stays the plain text of the same.
+ * describe a small card: `data-tooltip-title`, then `data-tooltip-meta`, lines of numbers with a
+ * series swatch (`data-tooltip-rows`, JSON `TooltipRow[]`, as a chart's tooltip), a status line in a
+ * status colour (`data-tooltip-status`, `data-tooltip-tone`: warn, accent, unread, ok, error, faint)
+ * and a faint hint (`data-tooltip-hint`). `data-tooltip` stays the plain text of the same.
  */
 export function TooltipLayer() {
   const [shown, setShown] = useState<Shown | null>(null);
@@ -144,6 +168,17 @@ export function TooltipLayer() {
           <span className="min-w-0">{card.title}</span>
         </span>
         {card.meta && <span className="text-muted">{card.meta}</span>}
+        {card.rows.length > 0 && (
+          <span className="mt-1 grid min-w-[190px] gap-0.5" data-tooltip-rows>
+            {card.rows.map((row) => (
+              <span key={row.label} className={`flex items-center gap-2 ${row.quiet ? 'mt-0.5 text-faint' : 'text-muted'}`}>
+                {row.swatch && <span aria-hidden className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--sb-${row.swatch})` }} />}
+                <span className="min-w-0">{row.label}</span>
+                <span className={`ml-auto pl-3 tabular-nums ${row.quiet ? '' : 'font-semibold text-text'}`}>{row.value}</span>
+              </span>
+            ))}
+          </span>
+        )}
         {card.status && <span className={`mt-0.5 font-medium ${TONE_TEXT[card.tone ?? ''] ?? 'text-muted'}`}>{card.status}</span>}
         {card.hint && <span className="mt-0.5 text-faint">{card.hint}</span>}
       </div>
