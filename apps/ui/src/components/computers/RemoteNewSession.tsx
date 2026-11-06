@@ -356,7 +356,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
     }
   };
   return (
-    <div className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
+    <div role="main" className="flex h-full min-h-0 flex-col" style={computerTint(computer.color)} data-remote-new-session={computer.id} data-drop-zone>
       <div className="drag flex h-13 shrink-0 items-center justify-between px-4">
         <SidebarToggle />
       </div>

@@ -4875,6 +4875,11 @@
       "id": "palette:settings-pipelines",
       "name": "Settings: Pipelines",
       "page": "sessions/pipelines"
+    },
+    {
+      "id": "feature:new-session-width",
+      "name": "New session uses the width of the window",
+      "page": "new-session/form"
     }
   ]
 }

@@ -202,6 +202,7 @@ function Lightbox({ sessionId, images, start, returnFocus, onClose }: { sessionI
             src={url}
             alt={description}
             className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
+            data-lightbox-image
             onContextMenu={(e) => {
               e.preventDefault();
               openMenu(e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null);

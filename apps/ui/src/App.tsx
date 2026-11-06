@@ -274,7 +274,8 @@ export function App() {
   return (
     <div className="flex h-full">
       <SidebarShell inert={reading} />
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
+      {/* New session has its own main (the message box, beside its projects and context): only one on a page. */}
+      <div role={view === 'new' ? undefined : 'main'} className="relative flex min-w-0 flex-1 flex-col overflow-hidden" inert={reading}>
         {/* Outside a session, the window's own terminal (⌘J) docks below or beside the view, and Settings. */}
         <AppTerminalFrame view={shownView}>
         {/* Settings is a sheet over the view it opened from, which stays on screen (inert) behind it. */}
@@ -300,7 +301,7 @@ export function App() {
         </div>
         {view === 'settings' && <SettingsView />}
         </AppTerminalFrame>
-      </main>
+      </div>
       <QuitPrompt />
       <LinkError />
       {overlay === 'search' && <SearchDialog />}
