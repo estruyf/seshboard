@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 // Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
 import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
+import { CODEX_DEMO_THREADS, codexDemoRollout } from '../../../packages/engine/src/providers/codex/codexDemo.ts';
 import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
@@ -22,7 +23,7 @@ const DAY = 24 * HOUR;
 export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
-  sessions: { hero: string; working: string; needsYou: string; copilot: string };
+  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[] };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
@@ -653,10 +654,11 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
 
   written['Speed up the checkout page'] = { id: reading.id, configDir };
   const copilot = writeCopilotDemo(home, acme, now - 3 * HOUR);
+  const codex = writeCodexDemo(home, acme, now - 2 * HOUR);
 
   return {
     home,
-    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot },
+    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
@@ -690,6 +692,24 @@ function writeCopilotDemo(home: string, cwd: string, at: number): string {
     [`id: ${id}`, `cwd: ${cwd}`, `git_root: ${cwd}`, 'branch: main', 'client_name: github/cli', 'name: Round the cart total', `created_at: ${time(0)}`, `updated_at: ${time(30)}`, ''].join('\n'),
   );
   return id;
+}
+
+/**
+ * OpenAI Codex CLI sessions on acme-store (#276), as rollout files in `~/.codex/sessions/YYYY/MM/DD/`: shown once a
+ * Codex profile is added. The demo's Codex (SESHBOARD_STUB_CODEX) lists the threads that have a file here and answers
+ * their conversations itself; a file holds only its `session_meta` line. Returns their ids, newest first.
+ */
+function writeCodexDemo(home: string, cwd: string, at: number): string[] {
+  return CODEX_DEMO_THREADS.map((thread, i) => {
+    const time = new Date(at - i * 5 * HOUR);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dir = join(home, '.codex', 'sessions', String(time.getFullYear()), pad(time.getMonth() + 1), pad(time.getDate()));
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `rollout-${time.toISOString().slice(0, 19).replace(/:/g, '-')}-${thread.id}.jsonl`);
+    writeFileSync(file, codexDemoRollout(thread, cwd, time));
+    utimesSync(file, time, time);
+    return thread.id;
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------

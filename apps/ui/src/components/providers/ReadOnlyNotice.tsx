@@ -32,7 +32,7 @@ export function ReadOnlyNotice({ provider, sessionId }: { provider: OptionalProv
         )
       }
     >
-      A {PROVIDER_NAMES[provider]} session, shown read-only.{' '}
+      {/^[AEIOU]/.test(PROVIDER_NAMES[provider]) ? 'An' : 'A'} {PROVIDER_NAMES[provider]} session, shown read-only.{' '}
       {command ? (
         <>
           To continue it, run <code className="font-mono text-meta text-text">{command}</code> in a terminal.
