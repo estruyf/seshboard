@@ -678,6 +678,15 @@ describe('Remote hub', () => {
     expect(heard).toEqual(['work']);
   });
 
+  it("leaves a read-only provider's profile out of usage: it has no plan usage to give", async () => {
+    const { hub, port, on, calls } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).not.toContain('codex');
+    expect(calls.filter((c) => c.startsWith('usage codex'))).toEqual([]);
+  });
+
   it('tells phones the app icon colourway in hello and when it changes', async () => {
     const { hub, port, on } = await setup();
     hub.setAppIcon('signal');

@@ -1192,7 +1192,8 @@ export class RemoteHub {
       },
       'usage.get': async ({ refresh }) => {
         const { profiles, defaultId } = this.options.profiles();
-        const ordered = [...profiles].sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
+        // A read-only provider's profile (OpenAI Codex) has no plan usage, and Seshboard doesn't show its own yet.
+        const ordered = profiles.filter((p) => !p.readOnly).sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
         return {
           profiles: await Promise.all(
             ordered.map(async (p) => {
