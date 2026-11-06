@@ -272,6 +272,9 @@ function searchResults(results: unknown): string {
 }
 
 const FAILED = new Set(['failed', 'declined']);
+/** A turn's statuses once it is over. */
+const ENDED = new Set(['completed', 'interrupted', 'failed']);
+
 /** An agent that ended without finishing. */
 const AGENT_FAILED = new Set(['errored', 'notFound', 'interrupted']);
 /** Codex's own fields on every item, left out of a generic card's input. */
@@ -357,8 +360,8 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
     assistant(calls.map(({ id: callId, tool }) => ({ type: 'tool_use', id: callId, name: tool.name, input: tool.input })));
     const results = calls.flatMap(({ id: callId, result: own }) => {
       // A tool still running in a turn that ended (stopped, failed) never finishes: without a result it would wait for
-      // one for good. Plans have no status and stay without one.
-      const result = own ?? (item.status === 'inProgress' && turn.status !== 'inProgress' ? { text: 'Interrupted', isError: true } : null);
+      // one for good. Plans have no status and stay without one, and so does a turn whose status is missing.
+      const result = own ?? (item.status === 'inProgress' && ENDED.has(String(turn.status)) ? { text: 'Interrupted', isError: true } : null);
       return result ? [{ type: 'tool_result', tool_use_id: callId, is_error: result.isError, content: result.images?.length ? [...(result.text ? [{ type: 'text', text: result.text }] : []), ...result.images] : result.text }] : [];
     });
     if (results.length) out.push(message('user', `${id}:result`, ended, { role: 'user', content: results }));

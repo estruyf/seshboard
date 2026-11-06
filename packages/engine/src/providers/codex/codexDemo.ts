@@ -5,7 +5,7 @@ import { codexSessionsDir, ROLLOUT_FILE } from './codexFiles.ts';
 import type { ReadMethods, Thread, Turn } from './protocol.ts';
 
 /**
- * A made-up OpenAI Codex CLI for the demo home (the smoke test and the screenshots), in the process: installed,
+ * A made-up OpenAI Codex CLI for the demo home (the smoke test), in the process: installed,
  * signed in, and an app-server that answers from the demo's rollout files and the conversations below. Nothing is
  * spawned, nothing ships as a file, and nothing ever reaches a real Codex.
  */

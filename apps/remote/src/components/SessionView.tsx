@@ -437,7 +437,7 @@ export function SessionView({
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
         <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
         {session?.readOnly ? (
-          <ReadOnlyNote provider={session.provider ? PROVIDER_NAMES[session.provider] : "its provider's"} command={session.readOnly.resumeCommand} />
+          <ReadOnlyNote provider={(session.provider && PROVIDER_NAMES[session.provider]) || "its provider's"} command={session.readOnly.resumeCommand} />
         ) : (
           <Composer
             computerId={computerId}
