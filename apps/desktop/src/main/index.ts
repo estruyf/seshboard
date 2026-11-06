@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -7651,20 +7651,12 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
         folders: rows.map((r) => r.dataset.folderOption),
       };
     })()`)) as { columns: number; rows: number; firstLine: number; cut: string[]; folders: string[] } | null;
-  /**
-   * Sizes the window so the picker is `pickerWidth` wide. A small window narrows the sidebar or folds it into the rail
-   * (over 150ms), which widens the view again: measure, adjust by the difference, and repeat until it holds.
-   */
-  const pickerWidth = () => js(`Math.round(${one('[data-project-header]')}?.getBoundingClientRect().width ?? 0)`) as Promise<number>;
-  const sizeFor = async (target: number) => {
-    for (let i = 0; i < 6; i++) {
-      const now = await pickerWidth();
-      if (Math.abs(now - target) <= 1) return;
-      const [current] = win.getContentSize() as [number, number];
-      win.setContentSize(current + target - now, height);
-      await waitInPage(win, `window.innerWidth === ${current + target - now}`, 1_000);
-      await settle(win);
-    }
+  /** Sizes the window, and waits until New session shows this layout. */
+  const sizeFor = async (windowWidth: number, windowHeight: number, layout: string) => {
+    win.setContentSize(windowWidth, windowHeight);
+    await waitInPage(win, `window.innerWidth === ${windowWidth}`, 1_000);
+    await settle(win);
+    return waitInPage(win, `${one('[data-new-session-view]')}?.dataset.newSessionLayout === ${JSON.stringify(layout)}`, 3_000);
   };
   try {
     pressKey(win, 'N', [MOD_MODIFIER]);
@@ -7685,43 +7677,66 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
       added.push(dir);
     }
 
-    // Wide (the column's 56rem less its padding): three columns, nine rows, three on the first line, any cut name cut in the middle.
+    // In columns, one column of rows: nine in a tall window, any cut name cut in the middle.
     if (!(await js("Boolean(document.querySelector('[data-sidebar-open]'))"))) {
       pressKey(win, 'B', [MOD_MODIFIER]);
       if (!(await waitInPage(win, one('[data-sidebar-open]'), 3_000))) return 'the sidebar did not open';
     }
     // The window's minimum width would clamp the narrow sizes below (how far depends on the sidebar's width).
     win.setMinimumSize(400, minHeight);
-    await sizeFor(848);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '3' && ${one(list)}.querySelectorAll('[data-project-row]').length === 9`, 3_000))) return `a wide window did not show three columns and nine rows (${JSON.stringify(await shape())})`;
+    if (!(await sizeFor(1280, 900, 'two'))) return `a 1280 window with the sidebar open is not two columns (${String(await js(`${one('[data-new-session-view]')}?.dataset.newSessionLayout`))}, sidebar ${String(await js(`${one('[data-sidebar]')}?.getBoundingClientRect().width`))})`;
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 9`, 3_000))) return `a tall window did not list nine rows in one column (${JSON.stringify(await shape())})`;
     let now = (await shape())!;
-    if (now.firstLine !== 3) return `three columns put ${now.firstLine} rows on the first line`;
-    for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end in a wide window: ${cut}`;
+    if (now.firstLine !== 1) return `one column put ${now.firstLine} rows on the first line`;
+    for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end: ${cut}`;
     if (!(await js(`${one('[data-new-session-view] [data-all-projects]')}?.innerText.startsWith('All ')`))) return 'no All N projects… under the list';
-    // ⌘2 picks the second row: left to right, so the middle of the first line.
+    // ⌘2 picks the second row, and the focus stays in the message box.
     const second = now.folders[1]!;
+    await js(`${one('[data-new-session-view] [data-composer]')}.focus()`);
     pressKey(win, '2', [MOD_MODIFIER]);
     if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(second)}`, 3_000))) return `⌘2 did not pick the second row (${String(await js(`${one(list)}?.dataset.value`))})`;
+    if (!(await js("document.activeElement?.matches('[data-composer]')"))) return '⌘2 took the focus out of the message box';
     await shot(win, 'new-session-project-list.png');
+    // A click on a row picks too, and leaves the focus where it was.
+    const third = now.folders[2]!;
+    await clickLikeAUser(win, `[data-new-session-view] [data-folder-option=${JSON.stringify(third)}]`);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(third)}`, 3_000))) return 'a click did not pick the row';
+    if (!(await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 1_000))) return 'a click on a row took the focus out of the message box';
 
-    // Two columns, eight rows.
-    await sizeFor(650);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '2' && ${one(list)}.querySelectorAll('[data-project-row]').length === 8`, 3_000))) return `a narrower window did not show two columns and eight rows (${JSON.stringify(await shape())})`;
+    // A shorter window lists as many as fit, and ⌘ only reaches those.
+    win.setContentSize(1280, 620);
+    await waitInPage(win, 'window.innerHeight === 620', 1_000);
+    await settle(win);
+    now = (await shape())!;
+    if (now.rows >= 9 || now.rows < 3) return `a short window listed ${now.rows} rows`;
+    const short = await js(`(() => { const root = ${one('[data-project-header]')}, q = ${one('[data-new-session-view] [data-quick-question]')}; return q.getBoundingClientRect().bottom <= root.getBoundingClientRect().bottom + 1 && ${one(list)}.scrollHeight <= ${one(list)}.clientHeight + 2; })()`);
+    if (!short) return `the ${now.rows} rows of a short window push Quick question out of its column`;
+    const fitted = now.rows;
+
+    // Stacked: two columns of eight, wider than the list's breakpoint, with the long name cut in the middle.
+    if (!(await sizeFor(900, height, 'stack'))) return `a 900 window with the sidebar open is not stacked (${String(await js(`${one('[data-new-session-view]')}?.dataset.newSessionLayout`))})`;
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '2' && ${one(list)}.querySelectorAll('[data-project-row]').length === 8`, 3_000))) return `stacked did not show two columns and eight rows (${JSON.stringify(await shape())})`;
     now = (await shape())!;
     if (now.firstLine !== 2) return `two columns put ${now.firstLine} rows on the first line`;
-    // Narrow columns: the long name is cut in the middle, and its tooltip and label have it whole.
-    await sizeFor(530);
     const long = dirs.find((dir) => basename(dir) === 'pointfire-document-summarization')!;
     const longRow = one(`[data-new-session-view] [data-folder-option=${JSON.stringify(long)}]`);
-    if (!(await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000))) return `a long name in a narrow column was not cut (${String(await js(`${longRow}?.querySelector('[data-project-name]').textContent`))})`;
-    const cutName = (await js(`${longRow}.querySelector('[data-project-name]').textContent`)) as string;
+    // In one column at 280px the long name is sure to be cut: pick it there if the two columns have room for it whole.
+    let cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
+    if (!cutName.includes('…')) {
+      win.setContentSize(760, height);
+      await waitInPage(win, 'window.innerWidth === 760', 1_000);
+      await waitInPage(win, `${longRow}?.querySelector('[data-project-name]').textContent.includes('…')`, 3_000);
+      cutName = (await js(`${longRow}?.querySelector('[data-project-name]').textContent ?? ''`)) as string;
+    }
     // A wider font (Linux) may cut right after the dash.
-    if (!/^pointfire-.*….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
-    if (!(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
+    if (cutName && !/^pointfire-.*….*ation$/.test(cutName)) return `a long name was not cut in the middle: ${cutName}`;
+    if (cutName && !(await js(`${longRow}.dataset.tooltip.startsWith('pointfire-document-summarization\\n') && ${longRow}.getAttribute('aria-label').startsWith('pointfire-document-summarization, ')`))) return 'the cut name has no whole name in its tooltip or label';
 
-    // One column, six rows: as a side panel would make it.
-    await sizeFor(440);
-    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 6`, 3_000))) return `a narrow view did not show one column and six rows (${JSON.stringify(await shape())})`;
+    // One column of six, as a side panel would make it: too narrow for two.
+    win.setContentSize(440, height);
+    await waitInPage(win, 'window.innerWidth === 440', 1_000);
+    await settle(win);
+    if (!(await waitInPage(win, `${one(list)}?.dataset.projectColumns === '1' && ${one(list)}.querySelectorAll('[data-project-row]').length === 6`, 3_000))) return `a narrow view did not show one column and six rows (${JSON.stringify(await shape())}, view ${String(await js(`${one('[data-project-header]')}.getBoundingClientRect().width`))})`;
     now = (await shape())!;
     // A name cut in the middle keeps its start and its end; the tooltip has it whole, with its folder.
     for (const cut of now.cut) if (!/^.+….+$/.test(cut)) return `a name was cut at its end, not in the middle: ${cut}`;
@@ -7730,10 +7745,7 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     pressKey(win, '7', [MOD_MODIFIER]);
     await settle(win);
     if ((await js(`${one(list)}.dataset.value`)) !== picked) return '⌘7 picked a project that is not on screen';
-    // Add project… keeps only its icon, with its label as the tooltip.
-    const addButton = `[...document.querySelectorAll('[data-new-session-view] [data-add-folder]')].map((b) => (b.getAttribute('aria-label') ?? '-') + ':' + b.innerText.trim())`;
-    if (!(await waitInPage(win, `${addButton}.join() === 'Add project…:'`, 2_000))) return `Add project… kept its label in one column (${String(await js(`${addButton}.join(' | ')`))}, ${String(await js(`${one(list)}?.dataset.projectColumns`))} columns)`;
-    return `ok: three columns and nine rows wide (⌘2 picked ${basename(second)}), two and eight (${cutName} in narrow ones), one and six, ⌘7 did nothing`;
+    return `ok: one column of nine in columns (⌘2 picked ${basename(second)}, the focus stayed), ${fitted} in a short window, two and eight stacked (${cutName || 'no cut name'}), one and six in a narrow view, ⌘7 did nothing`;
   } finally {
     win.setMinimumSize(minWidth, minHeight);
     win.setContentSize(width, height);
@@ -7755,6 +7767,223 @@ async function runProjectListStep(win: BrowserWindow): Promise<string> {
     } catch (error) {
       console.log(`[smoke] could not remove ${parent}: ${(error as Error).message}`);
     }
+  }
+}
+
+/**
+ * New session uses the width: three columns, two, or stacked, by the view's width. The window takes the width each
+ * layout is drawn for, with a 300px sidebar counted in (the default sidebar is 320px, so the window is sized by the view
+ * it leaves). A display too small to reach a width still has to show the layout its view gets. In columns nothing needs
+ * a page scroll at 900px tall. At the focus limit, Start reads Add to queue, with Start anyway only in Nudge. Sends
+ * nothing: what it queues it removes, the box is emptied, and the preferences and projects are put back.
+ */
+async function runNewSessionLayoutStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const one = (selector: string) => `document.querySelector(${JSON.stringify(selector)})`;
+  const view = '[data-new-session-view]';
+  const [width, height] = win.getContentSize() as [number, number];
+  const [minWidth, minHeight] = win.getMinimumSize() as [number, number];
+  const before = preferences.get();
+  const box = `${view} [data-composer]`;
+  const SIDEBAR = 300;
+  const widths = [
+    { window: 1920, layout: 'three', box: 836 },
+    { window: 1512, layout: 'three', box: 505 },
+    { window: 1280, layout: 'two', box: 588 },
+    { window: 900, layout: 'stack', box: null },
+  ];
+  const seen: string[] = [];
+  const added: string[] = [];
+  /** A process that stands in for Claude Code running in a terminal, so a session counts toward the limit (the demo home only). */
+  let sleeper: ChildProcess | null = null;
+  let liveEntry: string | null = null;
+  const home = process.env.SESHBOARD_SMOKE_DEMO ? (process.env.HOME ?? process.env.USERPROFILE ?? null) : null;
+  /** The width of the view (what the layouts go by), and the layout it should show. */
+  const viewWidth = () => js(`Math.round(${one(view)}.parentElement.clientWidth)`) as Promise<number>;
+  const expected = (w: number) => (w >= 1200 ? 'three' : w >= 860 ? 'two' : 'stack');
+  const layoutNow = () => js(`${one(view)}?.dataset.newSessionLayout ?? null`) as Promise<string | null>;
+  const sizeView = async (target: number) => {
+    for (let i = 0; i < 6; i++) {
+      const now = await viewWidth();
+      if (Math.abs(now - target) <= 1) return;
+      const [current] = win.getContentSize() as [number, number];
+      const next = current + target - now;
+      win.setContentSize(next, 900);
+      await waitInPage(win, `window.innerWidth === ${next}`, 1_000);
+      await settle(win);
+      // The display stops it here (a window can't always pass the screen's size).
+      if ((win.getContentSize()[0] as number) === current) return;
+    }
+  };
+  /** Checks the layout a width shows, and that its columns fit. Returns what went wrong. */
+  const check = async (item: (typeof widths)[number]): Promise<string | null> => {
+    win.setContentSize(Math.max(item.window, 400), 900);
+    await settle(win);
+    await sizeView(item.window - SIDEBAR);
+    const w = await viewWidth();
+    const reached = Math.abs(w - (item.window - SIDEBAR)) <= 1;
+    const want = reached ? item.layout : expected(w);
+    if (!(await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === ${JSON.stringify(want)}`, 3_000))) return `a ${w}px view shows ${String(await layoutNow())}, not ${want}`;
+    const shape = (await js(`(() => {
+      const scroller = ${one(view)}.parentElement;
+      const tray = ${one(`${view} [data-route-tray]`)}.getBoundingClientRect();
+      const card = ${one(`${view} [data-composer-card]`)}.getBoundingClientRect();
+      const text = ${one(box)}.getBoundingClientRect();
+      return { scrolls: scroller.scrollHeight > scroller.clientHeight + 1, top: tray.top, bottom: card.bottom, cardWidth: Math.round(card.width), textHeight: Math.round(text.height), tall: window.innerHeight };
+    })()`)) as { scrolls: boolean; top: number; bottom: number; cardWidth: number; textHeight: number; tall: number };
+    if (want !== 'stack') {
+      if (shape.scrolls) return `${want} columns scroll the page in a ${shape.tall}px tall window`;
+      if (shape.top < 0 || shape.bottom > shape.tall) return `the box is not all on screen in ${want} columns (${shape.top} to ${shape.bottom} of ${shape.tall})`;
+      if (shape.tall >= 900 && shape.textHeight < (want === 'three' ? 210 : 140)) return `the box is ${shape.textHeight}px tall at rest in ${want} columns`;
+      if (reached && item.box !== null && Math.abs(shape.cardWidth - item.box) > 4) return `the box is ${shape.cardWidth}px wide in a ${w}px view, not about ${item.box}px`;
+    }
+    seen.push(`${w}: ${want}${want === 'stack' ? '' : ` ${shape.cardWidth}px`}`);
+    return null;
+  };
+  try {
+    win.setMinimumSize(400, minHeight);
+    pressKey(win, 'N', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `${one(view)} && ${one(box)}`, 3_000))) return 'New session did not open';
+    if (!(await js(`Boolean(${one('[data-sidebar-open]')})`))) {
+      pressKey(win, 'B', [MOD_MODIFIER]);
+      if (!(await waitInPage(win, one('[data-sidebar-open]'), 3_000))) return 'the sidebar did not open';
+    }
+    if (!(await js(`${one('[data-new-session-projects]')}?.tagName === 'ASIDE' && ${one('main [data-composer-card]')} !== null`))) return 'the projects and the box are not their landmarks';
+    if (await js("document.querySelectorAll('main, [role=main]').length !== 1")) return 'New session has more than one main';
+
+    // The demo's projects, for what the columns are about (removed again at the end).
+    if (home) {
+      const developer = join(home, 'Developer');
+      const list = `${view} [data-folder-select][data-project-list]`;
+      for (const dir of readdirSync(developer).map((name) => join(developer, name)).filter((dir) => statSync(dir).isDirectory())) {
+        // After a pick the focus goes to the box, once it is enabled: wait for it, so the field keeps the focus below.
+        await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 2_000);
+        await js(`${one(`${view} [data-find-project]`)}.click()`);
+        if (!(await waitInPage(win, `document.activeElement === ${one('[data-folder-list] input')}`, 3_000))) return 'Find a project did not open the filter field';
+        await setFieldValue(win, '[data-folder-list] input', dir);
+        const suggestion = one(`[data-path-suggestion=${JSON.stringify(dir)}]`);
+        if (!(await waitInPage(win, `${suggestion}?.dataset.active === 'true'`, 3_000))) return `typing ${dir} did not offer the folder`;
+        pressKey(win, 'Return');
+        if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(dir)}`, 5_000))) return `↩ did not add and pick ${dir}`;
+        added.push(dir);
+      }
+      // The project with the most to show: its sessions and defaults in the context, and the focus on the box.
+      const acme = join(developer, 'acme-store');
+      const place = (await js(`[...document.querySelectorAll(${JSON.stringify(`${list} [data-folder-option]`)})].findIndex((r) => r.dataset.folderOption === ${JSON.stringify(acme)}) + 1`)) as number;
+      pressKey(win, String(place), [MOD_MODIFIER]);
+      if (!(await waitInPage(win, `${one(list)}?.dataset.value === ${JSON.stringify(acme)}`, 3_000))) return `could not pick acme-store (${String(await js(`${one(list)}?.dataset.value`))})`;
+      if (!(await waitInPage(win, `${one('[data-new-session-context] [data-pick-up]')} && ${one('[data-new-session-context] [data-edit-project-defaults]')}`, 5_000))) return 'the context does not show the project with its sessions and defaults';
+      if (!(await js("document.querySelector('[data-new-session-context]')?.tagName === 'ASIDE'"))) return 'the context is not an aside';
+      if (!(await waitInPage(win, "document.activeElement?.matches('[data-composer]')", 2_000))) return 'picking from the filter field did not put the focus in the box';
+    }
+
+    for (const item of widths) {
+      const problem = await check(item);
+      if (problem) return problem;
+      for (const scheme of ['light', 'dark'] as const) {
+        updatePreferences({ colorScheme: scheme });
+        await settle(win);
+        await shot(win, `new-session-layout-${item.window}-${scheme}.png`);
+      }
+    }
+
+    // Closing the sidebar gives the width back: a window moves up a layout.
+    await sizeView(1280 - SIDEBAR);
+    pressKey(win, 'B', [MOD_MODIFIER]);
+    if (!(await waitInPage(win, `!${one('[data-sidebar-open]')}`, 3_000))) return 'the sidebar did not close';
+    await settle(win);
+    const wide = await viewWidth();
+    if (!(await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === ${JSON.stringify(expected(wide))}`, 3_000))) return `with the sidebar closed, a ${wide}px view shows ${String(await layoutNow())}`;
+    pressKey(win, 'B', [MOD_MODIFIER]);
+    await waitInPage(win, one('[data-sidebar-open]'), 3_000);
+
+    // A long message grows the box up to the room in its column, then scrolls inside: the page still doesn't scroll.
+    await sizeView(1512 - SIDEBAR);
+    await setFieldValue(win, box, Array.from({ length: 80 }, (_, line) => `line ${line}`).join('\n'));
+    await settle(win);
+    const grown = (await js(`(() => {
+      const text = ${one(box)}, card = ${one(`${view} [data-composer-card]`)}.getBoundingClientRect(), scroller = ${one(view)}.parentElement;
+      return { height: Math.round(text.getBoundingClientRect().height), inside: text.scrollHeight > text.clientHeight, bottom: card.bottom, tall: window.innerHeight, page: scroller.scrollHeight > scroller.clientHeight + 1 };
+    })()`)) as { height: number; inside: boolean; bottom: number; tall: number; page: boolean };
+    if (grown.tall >= 900 && grown.height <= 320) return `a long message left the box at ${grown.height}px with room to grow`;
+    if (!grown.inside || grown.page || grown.bottom > grown.tall) return `a long message did not scroll inside the box (${JSON.stringify(grown)})`;
+    // The / list stays on screen and out of the drag strip, though the box sits high in its column.
+    await setFieldValue(win, box, '/');
+    if (await waitInPage(win, one(`${view} [data-palette]`), 2_000)) {
+      const list = (await js(`(() => { const r = ${one(`${view} [data-palette]`)}.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, tall: window.innerHeight }; })()`)) as { top: number; bottom: number; tall: number };
+      if (list.top < 52 || list.bottom > list.tall) return `the / list runs off the view (${JSON.stringify(list)})`;
+    }
+    await setFieldValue(win, box, '');
+    await waitInPage(win, `!${one(`${view} [data-palette]`)}`, 2_000);
+
+    // The focus limit, in three columns where the list of what is going sits beside the box. A session has to count,
+    // which needs one going (the demo's, started outside Seshboard).
+    win.setContentSize(Math.max(1600, width), 900);
+    await settle(win);
+    if (home) {
+      sleeper = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120_000)'], { stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+      liveEntry = join(process.env.CLAUDE_CONFIG_DIR ?? join(home, '.claude'), 'sessions', `${sleeper.pid}.json`);
+      const at = Date.now();
+      writeFileSync(liveEntry, JSON.stringify({ pid: sleeper.pid, sessionId: randomUUID(), cwd: join(home, 'Developer', 'docs-site'), startedAt: at, version: '2.1.0', kind: 'interactive', entrypoint: 'cli', status: 'busy', statusUpdatedAt: at, updatedAt: at }));
+    }
+    updatePreferences({ focusLimit: 1, focusMode: 'nudge', focusCountExternal: true });
+    if (!(await waitInPage(win, `${one('[data-focus-counter]')} !== null`, 2_000))) return 'the focus limit did not turn on';
+    if (!(await waitInPage(win, one('[data-focus-line]'), 15_000))) {
+      if (home) return 'a running session in the demo home did not reach the focus limit';
+      return `ok: ${seen.join(', ')}; nothing counts toward the limit here, so Add to queue is not checked`;
+    }
+    const lineText = (await js(`${one('[data-focus-line]')}.innerText`)) as string;
+    if (!/sessions? going\./.test(lineText) || !lineText.includes('Change limit')) return `the focus line says ${JSON.stringify(lineText)}`;
+    if (!(await js(`${one('[data-focus-line]')}.closest('[aria-live=polite]') !== null`))) return 'the focus line is not a polite live region';
+    await setFieldValue(win, box, 'for the queue, not sent');
+    const start = '[data-start-main]';
+    if (!(await waitInPage(win, `${one(start)}?.dataset.startMain === 'queue' && ${one(start)}.innerText.includes('Add to queue')`, 3_000))) return `at the limit, Start reads ${JSON.stringify(await js(`${one(start)}?.innerText`))}`;
+    const startKey = (await js(`${one(start)}.innerText`)) as string;
+    if (!/↵|↩|Enter/.test(startKey)) return `Add to queue shows no key: ${JSON.stringify(startKey)}`;
+    await js(`${one('[data-start-menu]')}.click()`);
+    if (!(await waitInPage(win, one('[data-start-anyway]'), 2_000))) return 'Nudge has no Start anyway in the menu';
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!${one('[data-start-anyway]')}`, 2_000);
+    if (!(await waitInPage(win, `${one('[data-new-session-context] [data-going-now] [data-focus-session]')} !== null`, 2_000))) return `three columns do not list what is going (${String(await layoutNow())})`;
+    await shot(win, 'new-session-layout-at-limit.png');
+    // ⌘↩ does what the button says: the box empties, the prompt is queued, and no gate asks.
+    await js(`${one(box)}.focus()`);
+    pressKey(win, 'Return', [MOD_MODIFIER]);
+    const queued = `${view} [data-later-item]`;
+    if (!(await waitInPage(win, `${one(queued)} !== null && ${one(box)}.value === ''`, 3_000))) return `⌘↩ at the limit did not add it to the queue (${String(await js(`${one('[role=alertdialog]')}?.innerText ?? 'no question asked'`))})`;
+    await js(`${one(`${view} [data-later-remove]`)}.click()`);
+    if (!(await waitInPage(win, `!${one(queued)}`, 3_000))) return 'the queued prompt was not removed';
+    await setFieldValue(win, box, 'for the queue, not sent');
+    updatePreferences({ focusMode: 'strict' });
+    await settle(win);
+    if (!(await waitInPage(win, `${one(start)}?.dataset.startMain === 'queue'`, 2_000))) return 'Strict did not keep Add to queue';
+    await js(`${one('[data-start-menu]')}.click()`);
+    if (!(await waitInPage(win, one('[data-queue-add]'), 2_000))) return "Start's menu did not open in Strict";
+    if (await js(`Boolean(${one('[data-start-anyway]')})`)) return 'Strict offers Start anyway';
+    pressKey(win, 'Escape');
+    await waitInPage(win, `!${one('[data-queue-add]')}`, 2_000);
+    // Stacked, the list of what is going is under the line, behind Show.
+    win.setContentSize(900, 900);
+    await waitInPage(win, `${one(view)}?.dataset.newSessionLayout === 'stack'`, 3_000);
+    if (await js(`Boolean(${one('[data-going-now]')})`)) return 'stacked still has Going now in the context';
+    await js(`${one('[data-focus-line-show]')}?.click()`);
+    if (!(await waitInPage(win, one('[data-focus-line-list]'), 2_000))) return 'Show did not open the list under the focus line';
+    await setFieldValue(win, box, '');
+    return `ok: ${seen.join(', ')}; a long message scrolls in the box; at the limit Start reads Add to queue and ⌘↩ queues, Start anyway only in Nudge, and Show opens the list when stacked`;
+  } finally {
+    await setFieldValue(win, box, '').catch(() => {});
+    updatePreferences({ focusLimit: before.focusLimit, focusMode: before.focusMode, focusCountExternal: before.focusCountExternal, colorScheme: before.colorScheme });
+    sleeper?.kill();
+    if (liveEntry) rmSync(liveEntry, { force: true });
+    win.setMinimumSize(minWidth, minHeight);
+    win.setContentSize(width, height);
+    await waitInPage(win, `window.innerWidth === ${width}`, 3_000);
+    for (const dir of added) {
+      const removed = (await removeProjectInProjects(win, dir)) && (await settle(win), await removeProjectInProjects(win, dir));
+      if (removed) console.log(`[smoke] could not remove the project ${dir}: ${removed}`);
+    }
+    pressKey(win, 'N', [MOD_MODIFIER]);
+    await waitInPage(win, one(view), 3_000);
   }
 }
 
@@ -13239,10 +13468,11 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // After the steps that need New session on no folder: picking the project it adds is remembered.
   await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
+  await step('new session layout: three columns, two and stacked by the width, no page scroll, Add to queue at the focus limit', () => runNewSessionLayoutStep(win), { timeoutMs: 90_000 });
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
   await step('clone from GitHub: the setting with its folder, a URL in the folder field, the clone of a local repository, the trust question (no session)', () => runCloneStep(win), { timeoutMs: 60_000 });
   // After projects: it adds ten projects (removed again), which the Projects view's first step must not see.
-  await step('new session project list: three columns and nine rows, two and eight, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
+  await step('new session project list: one column of nine, as many as fit, two and eight stacked, one and six, ⌘F finds, ⌘2 picks the second row', () => runProjectListStep(win), { timeoutMs: 90_000 });
   await step('about', () => runAboutStep(win));
   await step('backup', () => runBackupStep(win));
   await step('settings › remote: the three steps, the status card, Change… and Advanced, renaming a device', () => runRemoteSettingsStep(win), { timeoutMs: 45_000 });

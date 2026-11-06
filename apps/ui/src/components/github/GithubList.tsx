@@ -1,5 +1,5 @@
 import { Copy, ExternalLink, RefreshCw } from 'lucide-react';
-import { Fragment, useState, type MouseEvent } from 'react';
+import { Fragment, useState, type CSSProperties, type MouseEvent } from 'react';
 import type { GithubListItem } from '@seshboard/protocol/client';
 import { shortAge } from '../../lib/format.ts';
 import { Button } from '../ui/Button.tsx';
@@ -28,6 +28,7 @@ export interface GithubListProps {
   /** The keys under the list (left out where another control says them). */
   footer?: boolean;
   className?: string;
+  style?: CSSProperties;
 }
 
 /**
@@ -43,7 +44,7 @@ export function GithubList(props: GithubListProps) {
   ].filter((g) => g.to > g.from);
   const keep = (e: MouseEvent) => e.preventDefault();
   return (
-    <div className={`overlay flex max-h-96 flex-col overflow-hidden rounded-lg border ${props.className ?? ''}`} data-github-list>
+    <div className={`overlay flex max-h-96 flex-col overflow-hidden rounded-lg border ${props.className ?? ''}`} style={props.style} data-github-list>
       {props.notice && (
         <p className="border-b border-edge px-3 py-1.5 text-meta text-caution" role="status" data-github-notice>
           {props.notice}

@@ -1,5 +1,5 @@
 import { Folder, FolderDown, FolderGit2, FolderPlus, MessageCircleQuestion, Search } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { parseGithubRepo, repoLabel } from '@seshboard/protocol/client';
 import { basename, tildify } from '../../lib/format.ts';
 import { currentPlatform } from '../../lib/platform.ts';
@@ -8,9 +8,9 @@ import { useProjects } from '../../state/projectsStore.ts';
 import { ProjectIcon, useProjectColor } from '../ProjectIcon.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Kbd } from '../ui/Kbd.tsx';
-import { SectionHeader } from '../ui/SectionHeader.tsx';
-import { COLUMN_BREAKPOINTS, filterFolders, quickCount, quickTiles, type TileTone } from './projectTiles.ts';
-import { moveInGrid, PROJECT_GRID, ProjectListFooter, ProjectRow } from './ProjectRow.tsx';
+import { filterFolders, quickCount, quickTiles, type TileTone } from './projectTiles.ts';
+import { moveInGrid, ProjectRow } from './ProjectRow.tsx';
+import { projectsThatFit, type NewSessionMode } from './newSessionLayout.ts';
 import { useColumns } from '../ui/useColumns.ts';
 import { addOrSelect, completePath, listEnd, ghostText, isPathInput, knownFolderRows, pathRows, splitPathInput } from './pathInput.ts';
 import { useFolderSuggestions } from './useFolderSuggestions.ts';
@@ -18,16 +18,25 @@ import { matches } from '../../lib/shortcuts.ts';
 import { QUESTION_LABEL } from '../../lib/questions.ts';
 
 /** A row in the open list's other modes: a typed path's folders, or folders with Claude sessions. */
-const ROW = 'flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left';
+const ROW = 'flex min-h-9 w-full min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2.5 py-1.5 text-left';
+
+/** The rows: one column in the projects' column, two when stacked, as long as they are readable (`ROW_BREAKPOINTS`). */
+const ROW_GRID = 'grid grid-cols-1 gap-0.5 @min-[400px]:grid-cols-2 @min-[400px]:gap-1.5';
+const ROW_BREAKPOINTS = [400] as const;
+/** The space between the picker's parts (`gap-2`) and between rows in one column (`gap-0.5`), to count how many rows fit. */
+const PART_GAP = 8;
+const ROW_GAP = 2;
+/** In the projects' column a row is a quiet line that scrolls with the list, as in the sidebar. */
+const COLUMN_ROW = '@min-[860px]/new-session:border-transparent @min-[860px]/new-session:bg-transparent';
 
 /** What a folder dragged over the project area would do: add it, or nothing (files, several items). */
 type DropState = { ok: boolean } | null;
 
 /**
- * Where a new session starts: your projects (most recent, or in your order) as a list of rows in one to three columns,
- * as the picker's width allows (6, 8 or 9 of them), and with more projects, "All N projects…" under them, which opens
- * all of them with a filter field (so does Find…, ⌘F). Adding a folder is one step: Add project… opens the Add
- * project dialog (the one onboarding uses), ↩ on a typed path (`~/…`, `/…`, `C:\…`) or on a folder Claude Code already has sessions for adds it, and so
+ * Where a new session starts: Find a project (⌘F), your projects (most recent, or in your order) as a list of rows, and
+ * with more projects, "All N projects…" under them, which opens all of them with a filter field in place of Find. In
+ * New session's left column the rows are one column, as many as fit up to 9; when stacked, two columns of 8. Adding a
+ * folder is one step: Add project… opens the Add project dialog (the one onboarding uses), ↩ on a typed path (`~/…`, `/…`, `C:\…`) or on a folder Claude Code already has sessions for adds it, and so
  * does dropping a folder on the area. A folder that is already a project is selected instead. ⌘1 to ⌘9 pick the rows
  * in view, and the arrow keys move through them as the grid shows them. The open list is a combobox: focus stays in the field and `aria-activedescendant` says which option the
  * arrows are on. Under the list, Quick question starts without a project (in the scratch folder the engine keeps).
@@ -48,7 +57,13 @@ export function FolderPicker({
   openRequest = 0,
   question = null,
   onClone,
+  layout,
+  onPicked,
 }: {
+  /** New session's layout: the columns list as many rows as fit, stacked lists two columns. */
+  layout: NewSessionMode;
+  /** A project was picked or added from the filter field, which is gone now: focus goes back to the message box. */
+  onPicked?(): void;
   value: string | null;
   /** Your projects, most recently used first or in your order (the `projectOrder` preference). */
   folders: string[];
@@ -84,14 +99,15 @@ export function FolderPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
   // The CSS lays out the columns; this says how many there are, for how many rows show and for the arrow keys.
-  const columns = useColumns(rootRef, COLUMN_BREAKPOINTS);
+  const columns = useColumns(rootRef, ROW_BREAKPOINTS);
+  const [fit, setFit] = useState(9);
   const id = useId();
   const optionId = (index: number) => `${id}-option-${index}`;
   const nameOf = (folder: string) => projects.get(folder)?.name ?? basename(folder);
   /** The picked project's colour: its row's border and shadow. */
   const valueColor = useProjectColor(value ? projects.get(value) : undefined, value);
 
-  const quick = useMemo(() => quickTiles(folders, value, quickCount(columns)), [folders, value, columns]);
+  const quick = useMemo(() => quickTiles(folders, value, layout === 'stack' ? quickCount(columns) : fit), [folders, value, layout, columns, fit]);
   const all = useMemo(() => (value && !folders.includes(value) ? [value, ...folders] : folders), [folders, value]);
   const options = useMemo(() => filterFolders(all, filter, (folder) => projects.get(folder)?.name ?? basename(folder), home), [all, filter, home, projects]);
   const end = listEnd(folders.length, quick.length, folders.filter((folder) => !quick.includes(folder)).length);
@@ -120,6 +136,24 @@ export function FolderPicker({
   // Tab and the faint text complete the highlighted folder, or the first one in it while the folder itself is highlighted.
   const completion = activePath && activePath !== suggestions.here ? activePath : paths.find((p) => p !== suggestions.here);
   const ghost = mode === 'paths' ? ghostText(filter, completion?.name, platform) : '';
+
+  // How many rows fit in the column: the picker's height, less everything in it that isn't the list.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (layout === 'stack' || open || !root) return;
+    const measure = () => {
+      const list = groupRef.current;
+      if (!list) return;
+      const others = [...root.children].filter((el): el is HTMLElement => el !== list && el instanceof HTMLElement && el.dataset.folderDrop === undefined);
+      const rest = others.reduce((sum, el) => sum + el.offsetHeight + PART_GAP, 0);
+      const row = list.querySelector<HTMLElement>('[data-project-row]')?.offsetHeight;
+      if (row) setFit(projectsThatFit(root.clientHeight - rest, row, ROW_GAP));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [layout, open, folders.length > 0]);
 
   useEffect(() => {
     if (!open) return;
@@ -158,12 +192,16 @@ export function FolderPicker({
     question?.onSelect();
   };
   const choose = (folder: string) => {
+    const fromField = open;
     close(false);
     onChange(folder);
+    if (fromField) onPicked?.();
   };
   const add = (folder: string) => {
+    const fromField = open;
     close(false);
     onAdd(folder);
+    if (fromField) onPicked?.();
   };
   const chooseOther = () => {
     close(false);
@@ -301,6 +339,9 @@ export function FolderPicker({
         selected={selected}
         highlighted={highlighted}
         color={valueColor}
+        className={selected || highlighted ? '' : COLUMN_ROW}
+        // A click picks without taking the focus: it stays where it was, usually in the message box.
+        onMouseDown={(e) => e.preventDefault()}
         data-folder-option={folder}
         data-active={open ? highlighted : undefined}
         data-tooltip={`${name}\n${tildify(folder, home)}`}
@@ -327,9 +368,10 @@ export function FolderPicker({
         onClick={() => pick(index)}
         className={`${ROW} ${highlighted ? 'bg-border/45 text-text' : 'text-muted hover:bg-border/45'}`}
       >
-        {content}
+        <span className="flex min-w-0 flex-1 basis-0 items-center gap-2.5">{content}</span>
+        {/* Beside the row where it fits; under it in a narrow column, so it is always said. */}
         {highlighted && (
-          <span className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-muted @max-[600px]:hidden">
+          <span className="ml-auto flex shrink-0 items-center gap-1.5 text-meta text-muted @max-[600px]:ml-0 @max-[600px]:w-full @max-[600px]:justify-end">
             {action}
             <Kbd keys="↩" />
           </span>
@@ -338,43 +380,51 @@ export function FolderPicker({
     );
   };
 
-  // In one column the header keeps only the icons of Add project… and Clone from GitHub…, with their labels as tooltips.
-  const narrow = columns === 1;
-  const addButton = (size: 'sm' | 'lg') =>
-    narrow ? (
-      <Button size={size} iconOnly aria-label="Add project…" icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0" />
-    ) : (
-      <Button size={size} icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
-        Add project…
-      </Button>
-    );
-  const cloneButton = (size: 'sm' | 'lg') =>
-    onClone &&
-    (narrow ? (
-      <Button size={size} iconOnly aria-label="Clone from GitHub…" icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0" />
-    ) : (
-      <Button size={size} icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0">
-        Clone from GitHub…
-      </Button>
-    ));
-
-  // Not a project, so not a row of the list: one line under it, in neutral colours (a question has no project colour).
+  // Not a project, so not a row of the list: a dashed row under it, in neutral colours (a question has no project colour).
   const questionRow = question && (
     <button
       type="button"
       aria-pressed={question.selected}
       onClick={askQuestion}
+      onMouseDown={(e) => e.preventDefault()}
       data-quick-question
       data-selected={question.selected || undefined}
-      className={`flex h-9 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-left transition-colors ${
+      className={`flex min-h-11 min-w-0 shrink-0 items-center gap-2.5 rounded-lg border px-2.5 py-1 text-left transition-colors ${
         question.selected ? 'border-edge bg-selected text-text' : 'border-dashed border-border text-muted hover:bg-border/45 hover:text-text'
       }`}
     >
       <MessageCircleQuestion size={16} className="shrink-0" aria-hidden />
-      <span className="shrink-0 text-ui font-semibold">{QUESTION_LABEL}</span>
-      <span className="min-w-0 flex-1 truncate text-meta text-faint">Ask without picking a project</span>
-      <Kbd shortcut="session.question" tone="plain" className="@max-[680px]:hidden" />
+      <span className="grid min-w-0 flex-1">
+        <span className="truncate text-ui font-semibold">{QUESTION_LABEL}</span>
+        <span className="truncate text-meta text-faint">Ask without a project</span>
+      </span>
+      <Kbd shortcut="session.question" tone="plain" />
     </button>
+  );
+
+  // Under the list: the way to all of them (or back), then adding one.
+  const footer = (
+    <div className="flex min-w-0 shrink-0 items-center gap-1.5 px-0.5 text-ui" data-project-footer>
+      {open ? (
+        <button type="button" onClick={() => close(true)} aria-expanded data-folder-select data-value={value ?? ''} className="shrink-0 rounded font-semibold text-accent-ink hover:underline" data-fewer-projects>
+          Show fewer
+        </button>
+      ) : (
+        end?.kind === 'more' && (
+          <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="shrink-0 rounded font-semibold text-accent-ink hover:underline" data-all-projects>
+            All {folders.length} projects…
+          </button>
+        )
+      )}
+      <span className="min-w-0 flex-1" />
+      {onClone && <Button size="sm" variant="quiet" iconOnly aria-label="Clone from GitHub…" data-tooltip="Clone from GitHub…" icon={<FolderDown size={14} aria-hidden />} data-clone-from-github onClick={() => clone(null)} className="shrink-0" />}
+      {/* With no projects the row above is the way in. */}
+      {(open || end?.kind !== 'choose') && (
+        <Button size="sm" variant="quiet" icon={<FolderPlus size={14} aria-hidden />} data-add-folder onClick={addProject} className="shrink-0">
+          Add project…
+        </Button>
+      )}
+    </div>
   );
 
   const pathHint =
@@ -400,7 +450,7 @@ export function FolderPicker({
       </div>
     ) : mode === 'paths' ? (
       <>
-        <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders" className="grid max-h-80 gap-0.5 overflow-y-auto" data-path-list>
+        <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders" className="grid max-h-80 min-h-0 gap-0.5 overflow-y-auto @min-[860px]/new-session:max-h-none" data-path-list>
           {paths.map((folder, index) =>
             row(
               index,
@@ -422,7 +472,7 @@ export function FolderPicker({
         <p className="px-1 text-meta text-faint">{pathHint}</p>
       </>
     ) : mode === 'known' ? (
-      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders with Claude sessions" className="grid max-h-80 gap-0.5 overflow-y-auto" data-known-list>
+      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders with Claude sessions" className="grid max-h-80 min-h-0 gap-0.5 overflow-y-auto @min-[860px]/new-session:max-h-none" data-known-list>
         {known.map((p, index) =>
           row(
             index,
@@ -451,80 +501,63 @@ export function FolderPicker({
         )}
       </div>
     ) : (
-      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Your projects" className={`${PROJECT_GRID} max-h-80 overflow-y-auto p-px`} data-project-list data-project-columns={columns}>
+      <div ref={listRef} id={`${id}-list`} role="listbox" aria-label="Your projects" className={`${ROW_GRID} max-h-80 min-h-0 overflow-y-auto p-px @min-[860px]/new-session:max-h-none`} data-project-list data-project-columns={columns}>
         {options.map(tile)}
       </div>
     );
 
   return (
-    // A container: the list shows one to three columns as the picker (not the window) narrows.
-    <div ref={rootRef} className="@container relative grid gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-      <SectionHeader
-        className="h-6"
-        action={
-          !open && (
-            <div className="ml-auto flex items-center gap-2 font-normal tracking-normal normal-case">
-              {/* Opens the full list with its filter field; typing on a row does the same. */}
-              <Button size="sm" icon={<Search size={13} aria-hidden />} shortcut="new-session.find" data-find-project onClick={() => setOpen(true)}>
-                Find…
-              </Button>
-              {cloneButton('sm')}
-              {addButton('sm')}
-            </div>
-          )
-        }
-      >
-        Project
-      </SectionHeader>
+    // A container: the list shows one or two columns as the picker (not the window) narrows.
+    <div ref={rootRef} className="@container relative flex min-h-0 flex-1 flex-col gap-2" data-project-header onDragEnter={onDragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       {open ? (
-        <div className="grid gap-2" data-folder-list>
-          <div className="flex items-center gap-2">
-            <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-2.5 focus-within:border-accent-ink/60">
-              {pathMode ? <Folder size={14} className="shrink-0 text-faint" aria-hidden /> : <Search size={14} className="shrink-0 text-faint" aria-hidden />}
-              <span className="relative flex min-w-0 flex-1">
-                {/* The short list is gone while the full one is open, so the field carries its smoke hooks (value, expanded). */}
-                <input
-                  ref={fieldRef}
-                  autoFocus
-                  role="combobox"
-                  aria-expanded
-                  data-folder-select
-                  data-value={value ?? ''}
-                  aria-controls={`${id}-list`}
-                  aria-activedescendant={count ? optionId(Math.min(active, count - 1)) : undefined}
-                  aria-autocomplete="both"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  onKeyDown={onFieldKey}
-                  placeholder={onClone ? 'Filter projects, type a path, or paste a GitHub URL' : 'Filter projects, or type a path'}
-                  aria-label={onClone ? 'Filter projects, type a path, or paste a GitHub URL' : 'Filter projects, or type a path'}
-                  spellCheck={false}
-                  className={`w-full min-w-0 bg-transparent text-ui text-text outline-none placeholder:text-faint ${pathMode ? 'font-mono' : ''}`}
-                />
-                {/* The rest of the first match, faint after the text; Tab takes it. */}
-                {ghost && (
-                  <span aria-hidden className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden text-ui whitespace-pre ${pathMode ? 'font-mono' : ''}`} data-path-ghost>
-                    <span className="invisible">{filter}</span>
-                    <span className="text-faint">{ghost}</span>
-                  </span>
-                )}
-              </span>
-              {mode === 'tiles' && filter.trim() !== '' && (
-                <span className="shrink-0 text-meta text-faint tabular-nums" data-filter-count>
-                  {options.length} of {all.length}
+        <div className="flex min-h-0 flex-1 flex-col gap-2" data-folder-list>
+          <label className="flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 focus-within:border-accent-ink/60">
+            {pathMode ? <Folder size={14} className="shrink-0 text-faint" aria-hidden /> : <Search size={14} className="shrink-0 text-faint" aria-hidden />}
+            <span className="relative flex min-w-0 flex-1">
+              {/* The short list is gone while the full one is open, so the field carries its smoke hooks (value, expanded). */}
+              <input
+                ref={fieldRef}
+                autoFocus
+                role="combobox"
+                aria-expanded
+                data-folder-select
+                data-value={value ?? ''}
+                aria-controls={`${id}-list`}
+                aria-activedescendant={count ? optionId(Math.min(active, count - 1)) : undefined}
+                aria-autocomplete="both"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={onFieldKey}
+                placeholder={onClone ? 'Filter, type a path, or paste a URL' : 'Filter projects, or type a path'}
+                aria-label={onClone ? 'Filter projects, type a path, or paste a GitHub URL' : 'Filter projects, or type a path'}
+                spellCheck={false}
+                className={`w-full min-w-0 bg-transparent text-ui text-text outline-none placeholder:text-faint ${pathMode ? 'font-mono' : ''}`}
+              />
+              {/* The rest of the first match, faint after the text; Tab takes it. */}
+              {ghost && (
+                <span aria-hidden className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden text-ui whitespace-pre ${pathMode ? 'font-mono' : ''}`} data-path-ghost>
+                  <span className="invisible">{filter}</span>
+                  <span className="text-faint">{ghost}</span>
                 </span>
               )}
-            </label>
-            {addButton('lg')}
-          </div>
+            </span>
+            {mode === 'tiles' && filter.trim() !== '' && (
+              <span className="shrink-0 text-meta text-faint tabular-nums" data-filter-count>
+                {options.length} of {all.length}
+              </span>
+            )}
+          </label>
           {list}
-          <Button variant="quiet" size="sm" data-folder-select data-value={value ?? ''} aria-expanded onClick={() => close(true)} className="justify-self-end">
-            Show fewer
-          </Button>
         </div>
       ) : (
         // The list carries the picker's smoke hook (the picked folder) while the full list is closed.
         <>
+          {/* Opens the full list with its filter field in its place; typing on a row does the same. */}
+          <button type="button" onClick={() => setOpen(true)} onMouseDown={(e) => e.preventDefault()} className="flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-lg bg-text/6 px-2.5 text-left text-ui text-muted hover:bg-border/45 hover:text-text" data-find-project>
+            <Search size={14} className="shrink-0 text-faint" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">Find a project</span>
+            <Kbd shortcut="new-session.find" tone="plain" />
+          </button>
           <div
             ref={groupRef}
             role={end?.kind === 'choose' ? undefined : 'listbox'}
@@ -533,7 +566,7 @@ export function FolderPicker({
             data-value={value ?? ''}
             data-project-list
             data-project-columns={columns}
-            className={PROJECT_GRID}
+            className={`${ROW_GRID} min-h-0 p-px @min-[860px]/new-session:overflow-y-auto`}
             onKeyDown={onListKey}
           >
             {quick.map(tile)}
@@ -542,6 +575,7 @@ export function FolderPicker({
               <button
                 type="button"
                 data-add-project-tile
+                data-add-folder
                 onClick={addProject}
                 className="col-span-full flex min-w-0 items-center gap-2.5 rounded-lg border border-dashed border-border px-2.5 py-2 text-left text-muted hover:bg-border/45 hover:text-text"
               >
@@ -555,9 +589,9 @@ export function FolderPicker({
               </button>
             )}
           </div>
-          <ProjectListFooter total={folders.length} shown={quick.length} onAll={end?.kind === 'more' ? () => setOpen(true) : undefined} />
         </>
       )}
+      {footer}
       {questionRow}
       {drop && (
         <div

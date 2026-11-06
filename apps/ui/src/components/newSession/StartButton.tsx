@@ -9,6 +9,7 @@ type DataHooks = Record<`data-${string}`, string | boolean>;
 const ITEM_DATA: Record<StartAction, DataHooks> = {
   start: { 'data-start-session': true },
   'start-one': { 'data-start-one-session': true },
+  'start-anyway': { 'data-start-anyway': true },
   queue: { 'data-queue-add': true },
   schedule: { 'data-schedule-add': true },
   trigger: { 'data-trigger-add': true },
