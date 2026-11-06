@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { needsCmd, viaCmd } from '../../system/windowsCommand.ts';
 import type { InitializeParams, Methods, ServerNotification, ServerRequest } from './protocol.ts';
 
-/** Where `codex` is, and how to start it (an npm install on Windows runs its script with `node`). */
+/** Where `codex` is, and what goes before `app-server` on its command line (`-c` overrides). */
 export interface CodexBinary {
   path: string;
   args?: string[];
@@ -20,6 +20,8 @@ export interface AppServerOptions {
   timeoutMs?: number;
   /** Seshboard's version, sent in `initialize`'s `clientInfo` (Codex puts it in its user agent). */
   clientVersion?: string;
+  /** How long a stopped process gets to end before it is killed outright (tests shorten or lengthen it). */
+  killGraceMs?: number;
   /** Opts into Codex's experimental API in `initialize` (`turn/start`'s `collaborationMode`, for Plan mode). */
   experimentalApi?: boolean;
 }
@@ -36,9 +38,11 @@ export interface AppServer {
   onNotification(listener: (notification: ServerNotification) => void): () => void;
   /**
    * The one handler of Codex's own requests (approvals, questions); its result, or its error, goes back to Codex. With
-   * none, they are refused.
+   * none, they are refused. `signal` aborts when the request no longer needs an answer: Codex resolved it itself
+   * (`serverRequest/resolved`, the turn was interrupted) or its process ended. The handler then drops its card; what it
+   * returns after that is not sent.
    */
-  handleRequests(handler: ((request: ServerRequest) => Promise<unknown>) | null): void;
+  handleRequests(handler: RequestHandler | null): void;
   /**
    * Keeps the process from its idle stop while something needs it (a thread loaded here, which a new process would not
    * have). Returns the function that lets go.
@@ -50,6 +54,9 @@ export interface AppServer {
   pid(): number | null;
   dispose(): Promise<void>;
 }
+
+/** Answers one of Codex's requests; `signal` aborts when the answer is no longer wanted (see `handleRequests`). */
+export type RequestHandler = (request: ServerRequest, signal: AbortSignal) => Promise<unknown>;
 
 /**
  * Why a request failed: Codex isn't installed, it didn't answer in time, the process ended, Codex answered with an
@@ -91,8 +98,12 @@ interface Running {
   pending: Map<number, Pending>;
   stderr: string;
   exited: boolean;
-  /** Requests that timed out since the last answer. */
+  /** Requests that timed out since it last said anything. */
   timeouts: number;
+  /** Holds taken while this process ran: its loaded threads, which end with it. */
+  holds: Set<symbol>;
+  /** Codex's requests waiting for the handler, by their id. */
+  served: Map<number | string, AbortController>;
   /** Why it was stopped, when that wasn't dispose: what its waiting requests fail with. */
   stopReason: (() => Error) | null;
   killTimer: NodeJS.Timeout | null;
@@ -106,6 +117,7 @@ const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, '');
 export function createAppServer(options: AppServerOptions): AppServer {
   const idleMs = options.idleMs ?? DEFAULT_IDLE_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const killGraceMs = options.killGraceMs ?? KILL_GRACE_MS;
   let nextId = 1;
   let disposed = false;
   /** The process requests go to, once it answered `initialize`; null while none runs. */
@@ -115,6 +127,17 @@ export function createAppServer(options: AppServerOptions): AppServer {
   /** Requests waiting for the process or its answer: the idle timer only runs at zero. */
   let inFlight = 0;
   let idleTimer: NodeJS.Timeout | null = null;
+  const notificationListeners = new Set<(notification: ServerNotification) => void>();
+  const exitListeners = new Set<() => void>();
+  let requestHandler: RequestHandler | null = null;
+  /**
+   * Holds taken while no process runs (or one is being stopped): the next process takes them on. A hold belongs to one
+   * process, so one that ends never lets go of another's.
+   */
+  let nextHolds = new Set<symbol>();
+
+  /** Whether the process may stop for being idle: nothing waits on it, and nothing holds it. */
+  const idle = (running: Running) => inFlight === 0 && running.holds.size === 0 && running.served.size === 0;
 
   const clearIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
@@ -124,11 +147,11 @@ export function createAppServer(options: AppServerOptions): AppServer {
   const scheduleIdle = () => {
     clearIdle();
     // Past setTimeout's limit (about 24 days) it would fire at once: that long means never.
-    if (disposed || inFlight > 0 || !latest || !(idleMs <= 0x7fffffff)) return;
+    if (disposed || !latest || !idle(latest) || !(idleMs <= 0x7fffffff)) return;
     const running = latest;
     idleTimer = setTimeout(() => {
       idleTimer = null;
-      if (latest === running && inFlight === 0) stop(running);
+      if (latest === running && idle(running)) stop(running);
     }, idleMs);
     idleTimer.unref();
   };
@@ -140,6 +163,8 @@ export function createAppServer(options: AppServerOptions): AppServer {
       ready = null;
     }
     running.stopReason ??= reason ?? null;
+    // Stopped for being stuck: what still waits fails now, not when the process is gone (it may take the grace period).
+    if (reason) failAll(running, reason);
     end(running);
   };
 
@@ -156,7 +181,7 @@ export function createAppServer(options: AppServerOptions): AppServer {
       try {
         running.child.kill('SIGKILL');
       } catch {}
-    }, KILL_GRACE_MS);
+    }, killGraceMs);
     running.killTimer.unref();
   };
 
@@ -186,9 +211,11 @@ export function createAppServer(options: AppServerOptions): AppServer {
         running.pending.delete(id);
         reject(new AppServerError(`Codex didn't answer ${method} within ${Math.round(timeoutMs / 1000)}s.`, 'timeout'));
         // A process that answers nothing would make every later request wait out its timeout too: with nothing else
-        // waiting, or after timeouts in a row, it is stopped and the next request starts a fresh one.
+        // waiting, or after timeouts in a row with no word from it between, it is stopped and the next request starts a
+        // fresh one. A held one has threads loaded (a turn may be running) that a slow request alone is no reason to
+        // lose: only timeouts in a row stop it.
         running.timeouts++;
-        if (running.pending.size === 0 || running.timeouts >= STUCK_AFTER_TIMEOUTS) {
+        if ((running.pending.size === 0 && running.holds.size === 0) || running.timeouts >= STUCK_AFTER_TIMEOUTS) {
           stop(running, () => new AppServerError('Codex app-server stopped answering and was stopped.', 'exited'));
         }
       }, timeoutMs);
@@ -205,16 +232,22 @@ export function createAppServer(options: AppServerOptions): AppServer {
       return;
     }
     if (!message || typeof message !== 'object') return;
+    // Any word from it means it isn't stuck.
+    running.timeouts = 0;
     if (typeof message.method === 'string') {
-      // A request of Codex's own (an approval, a question): Phase 1 starts no turns, so it never takes one.
+      const params = (message as { params?: unknown }).params;
       if (message.id !== undefined && message.id !== null) {
-        write(running, { id: message.id, error: { code: -32601, message: 'Seshboard does not handle this request.' } });
+        serve(running, { id: message.id as number | string, method: message.method, params });
+        return;
       }
-      // Anything else is a notification, which reading needs none of.
+      if (message.method === 'serverRequest/resolved') {
+        const id = (params as { requestId?: unknown } | null)?.requestId;
+        if (typeof id === 'number' || typeof id === 'string') unserve(running, id);
+      }
+      notify({ method: message.method, params });
       return;
     }
     if (typeof message.id !== 'number') return;
-    running.timeouts = 0;
     const entry = running.pending.get(message.id);
     if (!entry) return;
     running.pending.delete(message.id);
@@ -225,6 +258,58 @@ export function createAppServer(options: AppServerOptions): AppServer {
     } else {
       entry.resolve(message.result);
     }
+  };
+
+  const notify = (notification: ServerNotification) => {
+    for (const listener of [...notificationListeners]) {
+      try {
+        listener(notification);
+      } catch {}
+    }
+  };
+
+  /**
+   * Answers a request of Codex's own (an approval, a question) with the handler's result, back to the process that
+   * asked. No timeout: it may wait for a person at a permission card. Without a handler it is refused.
+   */
+  const serve = (running: Running, request: ServerRequest) => {
+    const handler = requestHandler;
+    if (!handler) {
+      write(running, { id: request.id, error: { code: -32601, message: 'Seshboard does not handle this request.' } });
+      return;
+    }
+    unserve(running, request.id);
+    const controller = new AbortController();
+    running.served.set(request.id, controller);
+    clearIdle();
+    const answer = (message: object) => {
+      // Codex resolved it itself, or the process ended: nobody waits for this answer.
+      if (controller.signal.aborted) return;
+      write(running, { id: request.id, ...message });
+    };
+    void Promise.resolve()
+      .then(() => handler(request, controller.signal))
+      .then(
+        (result) => answer({ result: result ?? null }),
+        (error: unknown) => {
+          const code = (error as { rpcCode?: unknown; code?: unknown } | null)?.rpcCode ?? (error as { code?: unknown } | null)?.code;
+          answer({ error: { code: typeof code === 'number' ? code : -32603, message: error instanceof Error ? error.message : String(error) } });
+        },
+      )
+      .catch(() => {})
+      .finally(() => {
+        if (running.served.get(request.id) === controller) running.served.delete(request.id);
+        scheduleIdle();
+      });
+  };
+
+  /** A request of Codex's that no longer needs an answer: its handler is told, and it stops keeping the process. */
+  const unserve = (running: Running, id: number | string) => {
+    const controller = running.served.get(id);
+    if (!controller) return;
+    running.served.delete(id);
+    controller.abort();
+    scheduleIdle();
   };
 
   const exitError = (running: Running, code: number | null, signal: NodeJS.Signals | null) => {
@@ -254,11 +339,15 @@ export function createAppServer(options: AppServerOptions): AppServer {
       stderr: '',
       exited: false,
       timeouts: 0,
+      // Holds taken before it started (while it was being looked for) are its own.
+      holds: nextHolds,
+      served: new Map(),
       stopReason: null,
       killTimer: null,
       done: new Promise((resolve) => (markDone = resolve)),
     };
     latest = running;
+    nextHolds = new Set();
 
     let spawnError: Error | null = null;
     child.on('error', (error) => {
@@ -277,6 +366,19 @@ export function createAppServer(options: AppServerOptions): AppServer {
         clearIdle();
       }
       failAll(running, () => spawnError ?? running.stopReason?.() ?? (disposed ? disposedError() : exitError(running, code, signal)));
+      for (const controller of running.served.values()) controller.abort();
+      running.served.clear();
+      // Its loaded threads went with it: whoever held it is told, unless Seshboard ended it (dispose). Holds on a newer
+      // process are that one's.
+      const wasHeld = running.holds.size > 0;
+      running.holds.clear();
+      if (wasHeld && !disposed) {
+        for (const listener of [...exitListeners]) {
+          try {
+            listener();
+          } catch {}
+        }
+      }
       markDone();
     };
     // 'close' comes once stdout is read to the end, so an answer written just before the process ended still counts.
@@ -315,7 +417,10 @@ export function createAppServer(options: AppServerOptions): AppServer {
     });
 
     try {
-      const init: InitializeParams = { clientInfo: { name: 'seshboard', title: 'Seshboard', version: options.clientVersion ?? '0' }, capabilities: null };
+      const init: InitializeParams = {
+        clientInfo: { name: 'seshboard', title: 'Seshboard', version: options.clientVersion ?? '0' },
+        capabilities: options.experimentalApi ? { experimentalApi: true } : null,
+      };
       await send(running, 'initialize', init);
       write(running, { method: 'initialized' });
     } catch (error) {
@@ -361,17 +466,32 @@ export function createAppServer(options: AppServerOptions): AppServer {
     pid() {
       return latest && !latest.exited ? (latest.child.pid ?? null) : null;
     },
-    onNotification() {
-      throw new Error('onNotification: not built yet');
+    onNotification(listener) {
+      notificationListeners.add(listener);
+      return () => {
+        notificationListeners.delete(listener);
+      };
     },
-    handleRequests() {
-      throw new Error('handleRequests: not built yet');
+    handleRequests(handler) {
+      requestHandler = handler;
     },
     hold() {
-      throw new Error('hold: not built yet');
+      const token = Symbol('hold');
+      // The running process's, or the next one's when none runs or this one is being stopped.
+      const set = latest && !latest.exited ? latest.holds : nextHolds;
+      set.add(token);
+      clearIdle();
+      return () => {
+        // A hold on a process that ended was cleared with it, so letting go of it changes nothing.
+        if (set.delete(token)) scheduleIdle();
+      };
     },
-    onExit() {
-      throw new Error('onExit: not built yet');
+    onExit(listener) {
+      const wrapped = () => listener();
+      exitListeners.add(wrapped);
+      return () => {
+        exitListeners.delete(wrapped);
+      };
     },
     async dispose() {
       disposed = true;
