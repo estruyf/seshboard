@@ -210,11 +210,15 @@ export function diffEdits(diff: string): Array<{ old_string: string; new_string:
     });
 }
 
-type Tool = { name: string; input: Loose };
+export type Tool = { name: string; input: Loose };
 type Result = { text: string; isError: boolean; images?: Block[] } | null;
 
-/** One `fileChange` change as Claude Code's tool: Write for a new file, Edit (MultiEdit for several hunks) for a change. */
-function fileTool(change: Loose): Tool {
+/**
+ * One `fileChange` change as Claude Code's tool: Write for a new file, Edit (MultiEdit for several hunks) for a change.
+ * The transcript's card and the permission card use the same.
+ */
+export function codexFileTool(raw: unknown): Tool {
+  const change = obj(raw);
   const path = str(change.path) ?? '';
   const kind = obj(change.kind);
   const diff = str(change.diff) ?? '';
@@ -280,6 +284,19 @@ const AGENT_FAILED = new Set(['errored', 'notFound', 'interrupted']);
 /** Codex's own fields on every item, left out of a generic card's input. */
 const ITEM_FIELDS = new Set(['type', 'id', 'startedAtMs', 'completedAtMs', 'status']);
 
+/**
+ * What joins the parts of the ids Codex's messages, tool calls and cards get. Never `:`: the transcript cuts an item's
+ * key (`<uuid>:<block>`) and an image's id at the first one, so a message id must not have one. `~` is in no id Codex
+ * makes, nothing splits on it, and it is safe in a URL and a quoted CSS attribute value.
+ */
+export const ID_JOIN = '~';
+
+/** An id part from Codex, without the `:` the transcript would cut it at. */
+const idPart = (part: string) => part.replace(/:/g, '_');
+
+/** The id of an item's messages and tool calls: its turn's and its own, stable across reads and while it runs. */
+export const codexItemId = (turnId: string, itemId: string) => `${idPart(turnId)}${ID_JOIN}${idPart(itemId)}`;
+
 /** Each turn's items with the id their messages and tool calls get: the turn's and the item's, made unique should one repeat. */
 function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; items: Array<{ item: Loose; id: string }> }> {
   const seen = new Set<string>();
@@ -288,8 +305,8 @@ function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; it
     const turnId = str(turn.id) ?? `turn-${turnIndex}`;
     const items = arr(turn.items).map((raw, index) => {
       const item = obj(raw);
-      let id = `${turnId}:${str(item.id) ?? index}`;
-      if (seen.has(id)) id = `${id}#${index}`;
+      let id = codexItemId(turnId, str(item.id) ?? String(index));
+      if (seen.has(id)) id = `${id}${ID_JOIN}${index}`;
       seen.add(id);
       return { item, id };
     });
@@ -322,27 +339,43 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
  */
 export function codexMessages(turns: readonly Turn[]): RawSessionMessage[] {
   const entries = itemIds(turns);
-  // What each subagent last reported, from any call that waited on it: its spawn card shows it as the agent's report.
-  const agentStates = new Map<string, { status: string; message: string | null }>();
-  for (const { item } of entries.flatMap((t) => t.items)) {
-    if (item.type !== 'collabAgentToolCall') continue;
-    for (const [thread, raw] of Object.entries(obj(item.agentsStates))) {
-      const state = obj(raw);
-      const message = str(state.message);
-      if (message?.trim() || !agentStates.get(thread)?.message) agentStates.set(thread, { status: str(state.status) ?? '', message: message?.trim() ? message : null });
-    }
-  }
-
+  const context = codexContext();
   const out: RawSessionMessage[] = [];
   for (const { turn, turnId, items } of entries) {
-    for (const { item, id } of items) convertItem(turn, item, id, agentStates, out);
+    for (const { item, id } of items) out.push(...codexItemMessages(turn, item, id, context));
     out.push(...turnEnd(turn, turnId));
   }
   return out;
 }
 
-/** One item's messages, added to `out`. */
-function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyMap<string, { status: string; message: string | null }>, out: RawSessionMessage[]): void {
+/**
+ * What items need of the ones before them in a thread, carried from item to item in order: the subagents spawned, by
+ * their thread, with the spawn's tool_use id and the last report shown for them.
+ */
+export interface CodexContext {
+  spawns: Map<string, { toolUseId: string; reported: string | null }>;
+}
+
+export const codexContext = (): CodexContext => ({ spawns: new Map() });
+
+/**
+ * One item's messages (`codexMessages` for one item): what the reader makes of it in a thread read back, and what a
+ * running thread reports when the item completes. `id` is `codexItemId`'s; `turn` gives the times an item lacks and,
+ * once over, ends a tool left running. `context` carries what items need of earlier ones: give the thread's items in
+ * their order, with one context.
+ */
+export function codexItemMessages(turn: Turn, item: unknown, id: string, context: CodexContext = codexContext()): RawSessionMessage[] {
+  const out: RawSessionMessage[] = [];
+  convertItem(obj(turn) as unknown as Turn, obj(item), id, context, out);
+  return out;
+}
+
+/** How a turn ended, as `codexMessages` shows it: nothing for a finished one, a notice for a stopped or failed one. */
+export function codexTurnEnd(turn: Turn): RawSessionMessage[] {
+  return turnEnd(turn, str(obj(turn).id) ?? 'turn');
+}
+
+function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext, out: RawSessionMessage[]): void {
   const turnStart = num(turn.startedAt) ?? num(turn.completedAt);
   const started = num(item.startedAtMs) ?? num(item.completedAtMs) ?? (turnStart !== null ? turnStart * 1000 : null);
   const ended = num(item.completedAtMs) ?? started;
@@ -364,7 +397,7 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
       const result = own ?? (item.status === 'inProgress' && ENDED.has(String(turn.status)) ? { text: 'Interrupted', isError: true } : null);
       return result ? [{ type: 'tool_result', tool_use_id: callId, is_error: result.isError, content: result.images?.length ? [...(result.text ? [{ type: 'text', text: result.text }] : []), ...result.images] : result.text }] : [];
     });
-    if (results.length) out.push(message('user', `${id}:result`, ended, { role: 'user', content: results }));
+    if (results.length) out.push(message('user', `${id}${ID_JOIN}result`, ended, { role: 'user', content: results }));
   };
   const tool = (t: Tool, result: Result) => tools([{ id, tool: t, result }]);
 
@@ -412,7 +445,7 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
     }
     case 'fileChange': {
       const changes = arr(item.changes).map(obj);
-      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}:${i}`, tool: fileTool(change), result: fileResult(change, item.status) })));
+      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}${ID_JOIN}${i}`, tool: codexFileTool(change), result: fileResult(change, item.status) })));
       break;
     }
     case 'mcpToolCall': {
@@ -461,7 +494,7 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
       // The review's findings are in `review`: they read as a reply.
       note('Review finished');
       const review = str(item.review);
-      if (review?.trim()) out.push(message('assistant', `${id}:review`, ended, { role: 'assistant', content: [{ type: 'text', text: review }] }));
+      if (review?.trim()) out.push(message('assistant', `${id}${ID_JOIN}review`, ended, { role: 'assistant', content: [{ type: 'text', text: review }] }));
       break;
     }
     case 'collabAgentToolCall': {
@@ -469,18 +502,33 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
       const model = str(item.model);
       const receivers = strings(item.receiverThreadIds);
       const done = item.status !== 'inProgress';
+      const states = obj(item.agentsStates);
       if (item.tool === 'spawnAgent') {
-        // The Agent card, which opens the subagent's own thread (`codexSubagentThread`). Its result is what the agent
-        // last reported, else that it started.
-        const state = receivers[0] ? agentStates.get(receivers[0]) : undefined;
-        const failed = item.status === 'failed' || AGENT_FAILED.has(state?.status ?? '');
-        const result: Result = done ? { text: state?.message ?? (failed ? 'The agent did not start' : 'Agent started'), isError: failed } : null;
+        // The Agent card, which opens the subagent's own thread (`codexSubagentThread`). Its result is what the spawn
+        // itself knew (usually that the agent started); a later call that hears back adds the report (below).
+        const state = receivers[0] ? obj(states[receivers[0]]) : {};
+        const own = str(state.message)?.trim() ? str(state.message)! : null;
+        const failed = item.status === 'failed' || AGENT_FAILED.has(str(state.status) ?? '');
+        const result: Result = done ? { text: own ?? (failed ? 'The agent did not start' : 'Agent started'), isError: failed } : null;
         tool({ name: 'Agent', input: { prompt: prompt ?? '', ...(model ? { model } : {}) } }, result);
+        if (receivers[0]) context.spawns.set(receivers[0], { toolUseId: id, reported: own });
       } else {
         // Waiting for, messaging or closing an agent: a generic card named after Codex's tool.
-        const states = Object.values(obj(item.agentsStates)).map((s) => str(obj(s).message)).filter((m): m is string => !!m?.trim());
-        const result: Result = done ? { text: states.join('\n\n'), isError: item.status === 'failed' } : null;
+        const messages = Object.values(states).map((s) => str(obj(s).message)).filter((m): m is string => !!m?.trim());
+        const result: Result = done ? { text: messages.join('\n\n'), isError: item.status === 'failed' } : null;
         tool({ name: snake(str(item.tool) ?? 'agent'), input: { ...(prompt ? { prompt } : {}), ...(receivers.length ? { agents: receivers } : {}) } }, result);
+      }
+      // An agent's report, heard by this call (often a `wait`), goes to its spawn's Agent card as a later result, which
+      // the transcript shows in place of "Agent started". A message already sent as one never changes: the running
+      // session and the thread read back show the same this way.
+      if (!done) break;
+      for (const [thread, raw] of Object.entries(states)) {
+        const spawn = context.spawns.get(thread);
+        const state = obj(raw);
+        const report = str(state.message);
+        if (!spawn || spawn.toolUseId === id || !report?.trim() || report === spawn.reported) continue;
+        spawn.reported = report;
+        out.push(message('user', `${id}${ID_JOIN}report${ID_JOIN}${idPart(thread)}`, ended, { role: 'user', content: [{ type: 'tool_result', tool_use_id: spawn.toolUseId, is_error: AGENT_FAILED.has(str(state.status) ?? ''), content: report }] }));
       }
       break;
     }
@@ -527,10 +575,10 @@ const snake = (name: string) => name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase(
 function turnEnd(turn: Turn, id: string): RawSessionMessage[] {
   const at = iso(num(turn.completedAt) !== null ? num(turn.completedAt)! * 1000 : null);
   const base = { parent_tool_use_id: null, ...(at ? { timestamp: at } : {}) };
-  if (turn.status === 'interrupted') return [{ ...base, type: 'user', uuid: `${id}#end`, message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }];
+  if (turn.status === 'interrupted') return [{ ...base, type: 'user', uuid: `${idPart(id)}${ID_JOIN}end`, message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }];
   if (turn.status === 'failed') {
     const error = str(obj(turn.error).message)?.trim();
-    return [{ ...base, type: 'system', uuid: `${id}#end`, message: { role: 'system', content: [{ type: 'text', text: error ? `Codex stopped with an error: ${error}` : 'Codex stopped with an error' }] } }];
+    return [{ ...base, type: 'system', uuid: `${idPart(id)}${ID_JOIN}end`, message: { role: 'system', content: [{ type: 'text', text: error ? `Codex stopped with an error: ${error}` : 'Codex stopped with an error' }] } }];
   }
   return [];
 }
