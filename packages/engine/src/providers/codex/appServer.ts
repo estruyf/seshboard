@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { needsCmd, viaCmd } from '../../system/windowsCommand.ts';
 import type { InitializeParams, Methods, ServerNotification, ServerRequest } from './protocol.ts';
 
-/** Where `codex` is, and how to start it (an npm install on Windows runs its script with `node`). */
+/** Where `codex` is, and what goes before `app-server` on its command line (`-c` overrides). */
 export interface CodexBinary {
   path: string;
   args?: string[];
@@ -112,9 +112,14 @@ export function createAppServer(options: AppServerOptions): AppServer {
   let ready: Promise<Running> | null = null;
   /** The newest process, from its spawn on: its exit is the one that clears `ready`. */
   let latest: Running | null = null;
-  /** Requests waiting for the process or its answer: the idle timer only runs at zero. */
+  /** Requests waiting for the process or its answer, and Codex's requests being answered: the idle timer only runs at zero. */
   let inFlight = 0;
   let idleTimer: NodeJS.Timeout | null = null;
+  const notificationListeners = new Set<(notification: ServerNotification) => void>();
+  const exitListeners = new Set<() => void>();
+  let requestHandler: ((request: ServerRequest) => Promise<unknown>) | null = null;
+  /** Open holds, one token each. Cleared when a process ends: the next one has none of the threads they kept. */
+  let holds = new Set<symbol>();
 
   const clearIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
@@ -124,11 +129,11 @@ export function createAppServer(options: AppServerOptions): AppServer {
   const scheduleIdle = () => {
     clearIdle();
     // Past setTimeout's limit (about 24 days) it would fire at once: that long means never.
-    if (disposed || inFlight > 0 || !latest || !(idleMs <= 0x7fffffff)) return;
+    if (disposed || inFlight > 0 || holds.size > 0 || !latest || !(idleMs <= 0x7fffffff)) return;
     const running = latest;
     idleTimer = setTimeout(() => {
       idleTimer = null;
-      if (latest === running && inFlight === 0) stop(running);
+      if (latest === running && inFlight === 0 && holds.size === 0) stop(running);
     }, idleMs);
     idleTimer.unref();
   };
@@ -206,11 +211,9 @@ export function createAppServer(options: AppServerOptions): AppServer {
     }
     if (!message || typeof message !== 'object') return;
     if (typeof message.method === 'string') {
-      // A request of Codex's own (an approval, a question): Phase 1 starts no turns, so it never takes one.
-      if (message.id !== undefined && message.id !== null) {
-        write(running, { id: message.id, error: { code: -32601, message: 'Seshboard does not handle this request.' } });
-      }
-      // Anything else is a notification, which reading needs none of.
+      const params = (message as { params?: unknown }).params;
+      if (message.id !== undefined && message.id !== null) serve(running, { id: message.id as number | string, method: message.method, params });
+      else notify({ method: message.method, params });
       return;
     }
     if (typeof message.id !== 'number') return;
@@ -225,6 +228,42 @@ export function createAppServer(options: AppServerOptions): AppServer {
     } else {
       entry.resolve(message.result);
     }
+  };
+
+  const notify = (notification: ServerNotification) => {
+    for (const listener of [...notificationListeners]) {
+      try {
+        listener(notification);
+      } catch {}
+    }
+  };
+
+  /**
+   * Answers a request of Codex's own (an approval, a question) with the handler's result, back to the process that
+   * asked. No timeout: it may wait for a person at a permission card. Without a handler it is refused.
+   */
+  const serve = (running: Running, request: ServerRequest) => {
+    const handler = requestHandler;
+    if (!handler) {
+      write(running, { id: request.id, error: { code: -32601, message: 'Seshboard does not handle this request.' } });
+      return;
+    }
+    inFlight++;
+    clearIdle();
+    void Promise.resolve()
+      .then(() => handler(request))
+      .then(
+        (result) => write(running, { id: request.id, result: result ?? null }),
+        (error: unknown) => {
+          const code = (error as { rpcCode?: unknown; code?: unknown } | null)?.rpcCode ?? (error as { code?: unknown } | null)?.code;
+          write(running, { id: request.id, error: { code: typeof code === 'number' ? code : -32603, message: error instanceof Error ? error.message : String(error) } });
+        },
+      )
+      .catch(() => {})
+      .finally(() => {
+        inFlight--;
+        scheduleIdle();
+      });
   };
 
   const exitError = (running: Running, code: number | null, signal: NodeJS.Signals | null) => {
@@ -277,6 +316,16 @@ export function createAppServer(options: AppServerOptions): AppServer {
         clearIdle();
       }
       failAll(running, () => spawnError ?? running.stopReason?.() ?? (disposed ? disposedError() : exitError(running, code, signal)));
+      // Its loaded threads went with it: whoever held it is told, unless Seshboard ended it (dispose).
+      const wasHeld = holds.size > 0;
+      holds = new Set();
+      if (wasHeld && !disposed) {
+        for (const listener of [...exitListeners]) {
+          try {
+            listener();
+          } catch {}
+        }
+      }
       markDone();
     };
     // 'close' comes once stdout is read to the end, so an answer written just before the process ended still counts.
@@ -315,7 +364,10 @@ export function createAppServer(options: AppServerOptions): AppServer {
     });
 
     try {
-      const init: InitializeParams = { clientInfo: { name: 'seshboard', title: 'Seshboard', version: options.clientVersion ?? '0' }, capabilities: null };
+      const init: InitializeParams = {
+        clientInfo: { name: 'seshboard', title: 'Seshboard', version: options.clientVersion ?? '0' },
+        capabilities: options.experimentalApi ? { experimentalApi: true } : null,
+      };
       await send(running, 'initialize', init);
       write(running, { method: 'initialized' });
     } catch (error) {
@@ -361,17 +413,32 @@ export function createAppServer(options: AppServerOptions): AppServer {
     pid() {
       return latest && !latest.exited ? (latest.child.pid ?? null) : null;
     },
-    onNotification() {
-      throw new Error('onNotification: not built yet');
+    onNotification(listener) {
+      notificationListeners.add(listener);
+      return () => {
+        notificationListeners.delete(listener);
+      };
     },
-    handleRequests() {
-      throw new Error('handleRequests: not built yet');
+    handleRequests(handler) {
+      requestHandler = handler;
     },
     hold() {
-      throw new Error('hold: not built yet');
+      const token = Symbol('hold');
+      const set = holds;
+      set.add(token);
+      clearIdle();
+      return () => {
+        // A hold from before a process ended was cleared with it, so letting go of it changes nothing.
+        if (set !== holds || !set.delete(token)) return;
+        scheduleIdle();
+      };
     },
-    onExit() {
-      throw new Error('onExit: not built yet');
+    onExit(listener) {
+      const wrapped = () => listener();
+      exitListeners.add(wrapped);
+      return () => {
+        exitListeners.delete(wrapped);
+      };
     },
     async dispose() {
       disposed = true;

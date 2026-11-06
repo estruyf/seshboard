@@ -13,7 +13,8 @@ export interface ClientInfo {
 
 export interface InitializeParams {
   clientInfo: ClientInfo;
-  capabilities: null;
+  /** Null for the stable API; `experimentalApi` opts into the experimental methods and fields. */
+  capabilities: { experimentalApi: boolean } | null;
 }
 
 export interface InitializeResponse {
