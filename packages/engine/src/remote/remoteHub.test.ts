@@ -109,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
+async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -189,8 +189,10 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
         // A GitHub Copilot profile, for the tests that ask for one.
         ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
+        // An OpenAI Codex profile: read-only, so it can't start a session.
+        ...(options.codexProfile ? [{ id: 'codex', name: 'Codex', color: 'green' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, readOnly: true }] : []),
       ],
-      defaultId: 'default',
+      defaultId: options.codexProfile ? 'codex' : 'default',
     }),
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
@@ -223,6 +225,8 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
+      // Copilot has premium requests, not plan usage.
+      if (profileId === 'copilot') return null;
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
     },
     activity: async () => [{ day: '2026-11-02', sessionId: SESSION, title: 'A session', parentId: null, projectRoot: '/secret/folder/shop', projectName: 'shop', firstAt: 1, lastAt: 2, activeMs: 1, turns: 1, costUsd: null, hours: new Array<number>(24).fill(0), commits: 0, files: 0, prs: [], did: [], asks: [], available: true }],
@@ -462,6 +466,19 @@ describe('Remote hub', () => {
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
   });
 
+  it("never offers a read-only provider's profile for a new session, even as the default", async () => {
+    const { hub, port, on, created } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    expect(options.profiles.map((p) => p.id)).toEqual(['default', 'work']);
+    expect(options.defaultProfileId).toBe('default');
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'codex' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Its being the default leaves the first profile that can start one.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'y' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default' });
+  });
+
   it("starts a provider profile's session on its own default model, not the global one", async () => {
     const { hub, port, on, created } = await setup({ copilotProfile: true, globalModel: { model: 'haiku', effort: 'high' } });
     await on();
@@ -661,6 +678,24 @@ describe('Remote hub', () => {
     hub.usageChanged('work', null);
     await until(() => heard.length > 0);
     expect(heard).toEqual(['work']);
+  });
+
+  it('leaves out a profile without plan usage, never showing another login\'s numbers under its name', async () => {
+    const { hub, port, on, calls } = await setup({ copilotProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).toEqual(['default', 'work']);
+    expect(calls).toContain('usage copilot');
+  });
+
+  it("leaves a read-only provider's profile out of usage: it has no plan usage to give", async () => {
+    const { hub, port, on, calls } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).not.toContain('codex');
+    expect(calls.filter((c) => c.startsWith('usage codex'))).toEqual([]);
   });
 
   it('tells phones the app icon colourway in hello and when it changes', async () => {

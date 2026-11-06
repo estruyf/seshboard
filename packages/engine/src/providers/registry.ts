@@ -1,13 +1,19 @@
 import { existsSync } from 'node:fs';
-import { PROVIDER_NAMES, type OptionalProvider, type ProviderDetection, type ProviderInfo } from '@seshboard/protocol';
+import { PROVIDER_NAMES, type LogLevel, type OptionalProvider, type ProviderDetection, type ProviderInfo } from '@seshboard/protocol';
 import type { ProviderProfile } from '../profiles/profileStore.ts';
-import type { ProviderAdapter } from './provider.ts';
+import { disposeProvider, providerStatus, type ProviderAdapter } from './provider.ts';
 import { COPILOT_MODES, type CreateCopilotClient } from './copilot/copilotDriver.ts';
 import { COPILOT_INSTALL, COPILOT_RESUME, copilotProvider } from './copilot/copilotProvider.ts';
 import { copilotHome } from './copilot/copilotSource.ts';
 import { findCopilot } from './copilot/copilotBinary.ts';
 import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpdate.ts';
+import type { AppServer, AppServerOptions, CodexBinary } from './codex/appServer.ts';
+import { CODEX_MODES } from './codex/codexModes.ts';
+import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
+import { findCodex } from './codex/codexBinary.ts';
+import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
+import type { ForkRecord } from './providerForks.ts';
 
 export interface ProviderOptions {
   env: NodeJS.ProcessEnv;
@@ -17,18 +23,36 @@ export interface ProviderOptions {
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** A fake Copilot SDK and `copilot` (tests), and what its `copilot version` says (the demo). */
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
+  /** A fake `codex` and `codex app-server` (tests and the demo), and the newest version its update check finds (the demo). */
+  codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
+  /** Where a provider says what went wrong while it reads (a Codex that won't start). */
+  log?: (level: LogLevel, message: string) => void;
+  /** Where each profile's forks made here are kept (`provider_forks`); in memory when left out. */
+  forks?: (profileId: string) => ForkRecord;
+  /** A session's details changed without a file the watcher sees (a Codex thread's new name): read it again. */
+  onSessionChanged?: (sessionId: string) => void;
 }
 
-/** The update check of a provider's CLI (Settings › About), for a provider with a profile. */
-export function createProviderUpdater(provider: OptionalProvider, { home, shellEnv, copilot = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+/** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
+export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+  const stringEnv = async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string'));
   switch (provider) {
     case 'copilot':
       return copilotUpdater({
         ...deps,
         // Found again on each check: an update can move it, and installing it works without restarting Seshboard.
         binary: copilot.binary ?? (async () => findCopilot(await shellEnv(), home)),
-        env: async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string')),
+        env: stringEnv,
         ...(copilot.version ? { version: copilot.version } : {}),
+      });
+    case 'codex':
+      return codexUpdater({
+        ...deps,
+        binary: codex.binary ?? (async () => findCodex(await shellEnv(), home)),
+        // Codex's own folder, whose config may turn its update check off; a profile's folder is its own login.
+        codexHome: codexHome(env, home),
+        env: stringEnv,
+        ...(codex.latestVersion ? { latest: codex.latestVersion } : {}),
       });
   }
 }
@@ -52,18 +76,32 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       // step picks Copilot itself: a run stays Claude Code's.
       supports: ['fork', 'rewind', 'rename', 'delete', 'effort', 'ask', 'later', 'schedule', 'trigger', 'worktree', 'branch'],
     },
+    {
+      id: 'codex',
+      name: PROVIDER_NAMES.codex,
+      defaultFolder: codexHome(env, home),
+      resumeCommand: CODEX_RESUME,
+      // Read and run through the profile's `codex app-server` (#276).
+      canStart: true,
+      modes: CODEX_MODES,
+      installCommand: CODEX_INSTALL,
+      // Renamed with `thread/name/set`; forked with `thread/fork`; Ask about this session in a throwaway, read-only fork;
+      // its rollout file goes to the Trash; effort per turn; the queue, schedules and triggers start it like New session
+      // does, in a worktree or on a branch Seshboard makes. Rewind is Phase 3.
+      supports: ['fork', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+    },
   ];
 }
 
 /**
  * A provider's CLI on this computer, for its own folder, without a profile of it: the same status check a profile's
- * runtime makes (`copilot` started headless to ask about its login), then stopped. Nothing is read but its folder's
+ * runtime makes (`copilot` started headless, or `codex app-server`, to ask about its login), then stopped. Nothing is read but its folder's
  * session list.
  */
 export async function detectProvider(info: ProviderInfo, options: ProviderOptions): Promise<ProviderDetection> {
   const adapter = createProvider({ id: `detect-${info.id}`, provider: info.id, home: info.defaultFolder }, options);
   try {
-    const status = adapter.driver ? await adapter.driver.status() : null;
+    const status = await providerStatus(adapter);
     return {
       id: info.id,
       installed: !!status?.binary,
@@ -75,15 +113,17 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
       login: status?.login ?? null,
     };
   } finally {
-    await adapter.driver?.dispose().catch(() => {});
+    await disposeProvider(adapter);
   }
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {} }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, forks, onSessionChanged }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
+    case 'codex':
+      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(forks ? { forks: forks(profile.id) } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
   }
 }

@@ -6,7 +6,7 @@ import { useEngineConnection } from '../../engine/useEngine.ts';
 import { tildify } from '../../lib/format.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
-import { useProviderDetection, useProviders } from '../../state/providersStore.ts';
+import { useProviderCanStart, useProviderDetections, useProviders } from '../../state/providersStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { openTerminal, useTerminals } from '../../state/terminalsStore.ts';
@@ -18,7 +18,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Radio, RadioGroup, RadioMark } from '../ui/Radio.tsx';
 import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import { ProviderOffer, ProviderReady } from './ProviderSetup.tsx';
-import { shouldOffer, suggestedName } from './providerOffer.ts';
+import { offersToMake, suggestedName } from './providerOffer.ts';
 import { PROFILE_DOT } from './ProfileBadge.tsx';
 
 const field = 'h-7 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60';
@@ -54,12 +54,14 @@ async function signInProvider(client: EngineClient, profileId: string): Promise<
 
 /**
  * Who a provider profile is signed in as, from its own CLI (`providers.status`, which starts its runtime), and Sign in
- * when it isn't.
+ * when it isn't. A read-only provider needs no sign in to read its sessions: it says which CLI reads
+ * them, or how to install it.
  */
 function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
-  const [status, setStatus] = useState<{ account: string | null; problem: string | null } | null>(null);
+  const canStart = useProviderCanStart(profile.provider);
+  const [status, setStatus] = useState<{ account: string | null; problem: string | null; binary: string | null; version: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -67,8 +69,8 @@ function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
     let current = true;
     setStatus(null);
     void client.call('providers.status', { profileId: profile.id }).then(
-      (s) => current && setStatus({ account: s.account, problem: s.problem }),
-      (e: Error) => current && setStatus({ account: null, problem: e.message }),
+      (s) => current && setStatus({ account: s.account, problem: s.problem, binary: s.binary, version: s.version }),
+      (e: Error) => current && setStatus({ account: null, problem: e.message, binary: null, version: null }),
     );
     return () => {
       current = false;
@@ -76,6 +78,19 @@ function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
   }, [client, profile.id, version]);
   const name = PROVIDER_NAMES[profile.provider];
   if (!status) return <p className="text-ui text-muted">Asking {name}…</p>;
+  if (!canStart && status.binary) {
+    return (
+      <p className="text-ui text-muted" data-profile-account={profile.id}>
+        Shows its sessions read-only{status.version ? `, with ${PROVIDER_SHORT_NAMES[profile.provider]} CLI ${status.version}` : ''}.
+        {status.account && (
+          <>
+            {' '}
+            Signed in as <span className="text-text">{status.account}</span>.
+          </>
+        )}
+      </p>
+    );
+  }
   if (!status.problem) {
     return (
       <p className="text-ui text-muted" data-profile-account={profile.id}>
@@ -91,16 +106,19 @@ function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
       <Button variant="secondary" className="shrink-0" onClick={() => setVersion((v) => v + 1)}>
         Check again
       </Button>
-      <Button
-        variant="primary"
-        icon={<LogIn size={13} aria-hidden />}
-        className="shrink-0"
-        disabled={!client}
-        onClick={() => client && void signInProvider(client, profile.id).catch((e: Error) => setError(e.message))}
-        data-profile-sign-in={profile.id}
-      >
-        Sign in
-      </Button>
+      {/* Reading a read-only provider's sessions needs no sign in. */}
+      {canStart && (
+        <Button
+          variant="primary"
+          icon={<LogIn size={13} aria-hidden />}
+          className="shrink-0"
+          disabled={!client}
+          onClick={() => client && void signInProvider(client, profile.id).catch((e: Error) => setError(e.message))}
+          data-profile-sign-in={profile.id}
+        >
+          Sign in
+        </Button>
+      )}
       {error && (
         <p role="alert" className="w-full text-ui text-error">
           {error}
@@ -212,6 +230,8 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
   // A rename saved here (or in another window) comes back as a new name; the row stays mounted, so focus stays where Tab put it.
   useEffect(() => setName(profile.name), [profile.name]);
   const [error, setError] = useState<string | null>(null);
+  // A read-only provider's profile starts no sessions: no Default, no New session defaults.
+  const canStart = useProviderCanStart(profile.provider);
   const call = (promise: Promise<unknown> | undefined) => promise?.catch((e: Error) => setError(e.message));
   const saveName = () => {
     const trimmed = name.trim();
@@ -235,18 +255,20 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
         <ColorPicker value={profile.color} onChange={(color) => void call(client?.call('profiles.update', { id: profile.id, color }))} />
         <span className="flex-1" />
         {/* Flex, so the radio isn't set on a text baseline and lines up with the remove button. */}
-        <span className="flex" data-tooltip="Projects without a profile of their own use the default">
-          <Radio
-            checked={profile.isDefault}
-            tabbable
-            label={`Use ${profile.name} by default`}
-            onSelect={() => void call(client?.call('profiles.setDefault', { id: profile.id }))}
-            className="items-center text-ui text-muted"
-            dataAttrs={{ 'data-profile-default': profile.id }}
-          >
-            Default
-          </Radio>
-        </span>
+        {(canStart || profile.isDefault) && (
+          <span className="flex" data-tooltip="Projects without a profile of their own use the default">
+            <Radio
+              checked={profile.isDefault}
+              tabbable
+              label={`Use ${profile.name} by default`}
+              onSelect={() => void call(client?.call('profiles.setDefault', { id: profile.id }))}
+              className="items-center text-ui text-muted"
+              dataAttrs={{ 'data-profile-default': profile.id }}
+            >
+              Default
+            </Radio>
+          </span>
+        )}
         {!profile.builtin && (
           <Button
             variant="quiet"
@@ -297,7 +319,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
           <CopyCommand command={loginCommand(profile)} block />
         </div>
       )}
-      <ProfileDefaultsSection profile={profile} onError={setError} />
+      {canStart && <ProfileDefaultsSection profile={profile} onError={setError} />}
       {error && (
         <p role="alert" className="text-ui text-error">
           {error}
@@ -350,8 +372,12 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
   const [busy, setBusy] = useState(false);
   /** The provider profile just added: the ready screen, with the sessions its folder had (when it was the one counted). */
   const [added, setAdded] = useState<{ id: string; sessions: number | null } | null>(null);
-  const copilot = useProviderDetection('copilot');
-  const detection = provider === 'claude' ? null : provider === 'copilot' ? copilot : null;
+  const detected = useProviderDetections();
+  const detectionOf = (id: SessionProvider) => detected?.find((d) => d.id === id) ?? null;
+  const detection = provider === 'claude' ? null : detectionOf(provider);
+  // A provider Seshboard can't start sessions with: its sessions are read-only, and reading them
+  // needs no sign in.
+  const readOnly = provider !== 'claude' && catalog.find((p) => p.id === provider)?.canStart === false;
   const providerName = PROVIDER_NAMES[provider];
   const shownName = name ?? suggestedName(provider, PROVIDER_SHORT_NAMES[provider], profiles);
   // Another provider's own folder first (`~/.copilot`), while no profile uses it; then a folder of its own per profile.
@@ -361,7 +387,7 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
     provider !== 'claude' && ownFolder && !ownTaken ? ownFolder : home ? `${home}${separatorOf(home)}.${provider === 'claude' ? 'claude' : provider}-${slug(shownName)}` : '';
   const path = expandHome((folder ?? suggested).trim(), home);
   /** Its CLI is signed in for this very folder already (the one `providers.detect` asked about): no sign in step. */
-  const signedInHere = !!detection?.signedIn && !!ownFolder && path === ownFolder;
+  const signedInHere = readOnly || (!!detection?.signedIn && !!ownFolder && path === ownFolder);
   // Say why Add profile is unavailable instead of leaving a dimmed button to puzzle over.
   const problem = !shownName.trim() ? 'Give the profile a name.' : !path ? 'Choose a config folder.' : !isAbsolutePath(path) ? 'Use a full path to the folder, or one that starts with ~.' : null;
   const installCommand = catalog.find((p) => p.id === provider)?.installCommand ?? null;
@@ -410,17 +436,20 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
           <ToolChoice tool="claude" checked={provider === 'claude'} onSelect={() => setProvider('claude')}>
             <span className="text-ui text-muted">Another Claude account, in its own folder.</span>
           </ToolChoice>
-          {catalog.map((p) => (
-            <ToolChoice key={p.id} tool={p.id} checked={provider === p.id} onSelect={() => setProvider(p.id)}>
-              <span className="text-ui text-muted" data-new-profile-tool-note={p.id}>
-                {p.id !== 'copilot' || copilot === null
-                  ? `Looking for ${p.name} CLI…`
-                  : copilot.installed
-                    ? `Uses your ${PROVIDER_SHORT_NAMES[p.id]} CLI.${copilot.version ? ` Found copilot ${copilot.version}` : ''}`
-                    : `${PROVIDER_SHORT_NAMES[p.id]} CLI isn't installed on ${thisComputerName().replace(/^This/, 'this')}.`}
-              </span>
-            </ToolChoice>
-          ))}
+          {catalog.map((p) => {
+            const found = detectionOf(p.id);
+            return (
+              <ToolChoice key={p.id} tool={p.id} checked={provider === p.id} onSelect={() => setProvider(p.id)}>
+                <span className="text-ui text-muted" data-new-profile-tool-note={p.id}>
+                  {found === null
+                    ? `Looking for ${p.name} CLI…`
+                    : found.installed
+                      ? `${p.canStart ? 'Uses' : 'Shows its sessions read-only, with'} your ${PROVIDER_SHORT_NAMES[p.id]} CLI.${found.version ? ` Found ${p.id} ${found.version}` : ''}`
+                      : `${PROVIDER_SHORT_NAMES[p.id]} CLI isn't installed on ${thisComputerName().replace(/^This/, 'this')}.`}
+                </span>
+              </ToolChoice>
+            );
+          })}
         </RadioGroup>
         {missing && installCommand && (
           <div className="grid min-w-0 gap-1.5 text-ui text-muted" data-new-profile-install>
@@ -502,6 +531,10 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
         <Checkbox checked={signIn} onChange={setSignIn} className="w-fit text-ui text-text" dataAttrs={{ 'data-new-profile-sign-in': true }}>
           Sign in now: open Claude Code with this profile in Seshboard’s terminal
         </Checkbox>
+      ) : readOnly ? (
+        <p className="text-ui text-muted" data-new-profile-read-only>
+          Seshboard shows its sessions read-only. To continue one, copy its command into a terminal.
+        </p>
       ) : signedInHere ? (
         <p className="flex items-center gap-1.5 text-ui text-ok" data-new-profile-signed-in>
           <Check size={13} aria-hidden className="shrink-0" />
@@ -599,9 +632,10 @@ export function ProfilesSettings() {
   const [removing, setRemoving] = useState<ClaudeProfile | null>(null);
   const home = useHomeFolder();
   // A provider's CLI found on this computer, not added yet: offered under the list until it is, or Not now.
-  const copilot = useProviderDetection('copilot');
+  const detected = useProviderDetections();
+  const catalog = useProviders((s) => s.providers);
   const dismissed = usePreferences((s) => s.prefs.providerOffersDismissed);
-  const offer = shouldOffer(copilot, profiles, dismissed) ? copilot : null;
+  const offers = offersToMake(detected, profiles, dismissed);
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" data-profiles>
@@ -614,7 +648,9 @@ export function ProfilesSettings() {
         <AddProfileForm key={adding} home={home} initialTool={adding} onDone={() => setAdding(null)} />
       ) : (
         <>
-          {offer && <ProviderOffer detection={offer} onAdd={() => setAdding(offer.id)} />}
+          {offers.map((offer) => (
+            <ProviderOffer key={offer.id} detection={offer} canStart={catalog.find((p) => p.id === offer.id)?.canStart !== false} onAdd={() => setAdding(offer.id)} />
+          ))}
           <Button icon={<Plus size={13} aria-hidden />} className="w-fit" onClick={() => setAdding('claude')} data-add-profile>
             Add profile
           </Button>

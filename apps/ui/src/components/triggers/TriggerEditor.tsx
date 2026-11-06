@@ -8,7 +8,8 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
-import { useProvider, useProviderReadiness } from '../../state/providersStore.ts';
+import { useProvider, useProviderReadiness, useProviders, useStartableProfiles } from '../../state/providersStore.ts';
+import { startLabel } from '../providers/startable.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import {
   firstCheckLine,
@@ -164,6 +165,9 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   // A profile of another provider (GitHub Copilot) starts it: its models and modes, and none of what it can't do yet.
   const providerOf = (profile: string) => profiles.find((p) => p.id === profile)?.provider ?? 'claude';
   const runsWith = providerOf(form.profileId ?? project?.profileId ?? defaultProfile);
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
+  const startable = useStartableProfiles(form.profileId ?? project?.profileId ?? defaultProfile);
+  const catalog = useProviders((s) => s.providers);
   const runWith = runsWith === 'claude' ? null : runsWith;
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? (form.profileId ?? project?.profileId ?? defaultProfile) : null);
@@ -568,14 +572,14 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   dataAttrs={{ 'data-trigger-workspace': true }}
                 />
               )}
-              {profiles.length > 1 && (
+              {startable.length > 1 && (
                 <Select
                   label="Profile"
                   className={CHIP}
                   value={profileId}
                   // Another tool has other models and modes: they start from its defaults.
                   onChange={(value) => update({ profileId: value === (project?.profileId ?? defaultProfile) ? null : value, ...(providerOf(value) !== runsWith ? { model: null, effort: null, permissionMode: 'default' as const } : {}) })}
-                  options={profiles.map((p) => ({ value: p.id, label: p.name, icon: <span className={`size-2 rounded-full ${PROFILE_DOT[p.color]}`} /> }))}
+                  options={startable.map((p) => ({ value: p.id, label: startLabel(p, catalog), icon: <span className={`size-2 rounded-full ${PROFILE_DOT[p.color]}`} /> }))}
                   dataAttrs={{ 'data-trigger-profile': true }}
                 />
               )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay } from './quotaText.ts';
+import { hasPlanUsage, planWindowsOnly, quotaFooter, quotaLeft, quotaLine, quotaSummary, quotaUsed, resetDay } from './quotaText.ts';
 
 const quota = { used: 212, entitlement: 1500, percentUsed: 14.13, resetsAt: '2026-11-01' };
 
@@ -35,5 +35,12 @@ describe('the premium requests ring', () => {
   it('says the details in its tooltip', () => {
     expect(quotaSummary(quota, 'en-US')).toBe('Premium requests: 212 of 1,500 used (14%) · resets Nov 1');
     expect(quotaSummary({ ...quota, entitlement: null, resetsAt: null }, 'en-US')).toBe('Premium requests: 212 used, no limit on this plan');
+  });
+});
+
+describe("how a profile's usage comes", () => {
+  it("is plan windows for Claude Code and Codex, without Claude Code's history for Codex, and premium requests for Copilot", () => {
+    expect(['claude', 'codex', 'copilot'].map((p) => hasPlanUsage(p as 'claude'))).toEqual([true, true, false]);
+    expect(['claude', 'codex', 'copilot'].map((p) => planWindowsOnly(p as 'claude'))).toEqual([false, true, false]);
   });
 });

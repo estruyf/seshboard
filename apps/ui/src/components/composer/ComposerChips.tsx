@@ -6,7 +6,8 @@ import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import type { FastModeFace } from '../../lib/fastMode.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
-import { useProfiles } from '../../state/profilesStore.ts';
+import { useProviders, useStartableProfiles } from '../../state/providersStore.ts';
+import { providerCanStart, startLabel } from '../providers/startable.ts';
 import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
@@ -96,7 +97,9 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
 export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
-  const profiles = useProfiles((s) => s.profiles);
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
+  const profiles = useStartableProfiles(profile?.value);
+  const catalog = useProviders((s) => s.providers);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.
@@ -161,7 +164,8 @@ export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, 
           placement="auto"
           choices={byTool(profiles).map((p) => ({
             value: p.id,
-            label: profile.labelFor?.(p) ?? p.name,
+            // One that can't start (a stale project default) stays listed while picked, marked read-only.
+            label: providerCanStart(p.provider, catalog) ? (profile.labelFor?.(p) ?? p.name) : startLabel(p, catalog),
             // Another provider's profile says who runs it; a Claude Code one, its account.
             description: p.provider !== 'claude' ? PROVIDER_NAMES[p.provider] : (p.account?.email ?? undefined),
             dot: PROFILE_DOT[p.color],

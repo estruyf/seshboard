@@ -76,7 +76,7 @@ import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { SplitDirectionControl } from '../split/SplitDirectionControl.tsx';
-import { PermissionCard, permissionTitle } from '../session/PermissionCard.tsx';
+import { PermissionCard, permissionTitle, useAgentName } from '../session/PermissionCard.tsx';
 import { MoreMenu } from '../session/MoreMenu.tsx';
 import { useSavedSettings } from '../../state/savedSettingsStore.ts';
 import { SavedSessionControls, SessionControls } from '../session/StatusBar.tsx';
@@ -125,6 +125,7 @@ import { CommandsPanel } from '../commands/CommandsPanel.tsx';
 import { AskPanel } from '../ask/AskPanel.tsx';
 import { ProviderMark } from '../providers/ProviderMark.tsx';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { hasPlanUsage } from '../providers/quotaText.ts';
 import { archiveSessions } from '../drafts/ArchiveDraftDialog.tsx';
 import { ProviderSessionControls } from '../providers/ProviderSessionControls.tsx';
 import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
@@ -273,11 +274,12 @@ function Announcer({ sessionId, working, failed, permissions, cwd, turn }: { ses
   // A trailing no-break space makes a repeated message a change, so it's read out again.
   const say = (text: string) => setMessage((current) => (current.replace(/\u00a0$/, '') === text ? `${text}\u00a0` : text));
   const announced = useRef(new Set<string>());
+  const agent = useAgentName(sessionId);
   useEffect(() => {
     const fresh = permissions.filter((p) => !announced.current.has(p.requestId));
     fresh.forEach((p) => announced.current.add(p.requestId));
-    if (fresh.length > 0) say(`${permissionTitle(fresh[0]!, cwd)}. Answer it above the message box.`);
-  }, [permissions, cwd]);
+    if (fresh.length > 0) say(`${permissionTitle(fresh[0]!, cwd, agent)}. Answer it above the message box.`);
+  }, [permissions, cwd, agent]);
   // Switching to another session isn't Claude finishing: only a change within one session counts.
   const previous = useRef({ sessionId, working });
   useEffect(() => {
@@ -634,10 +636,12 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   }, [terminalOnRight]);
   // Docked below, the terminal takes the room of the footer under the message box: a ring in the box stands in for it.
   const foldFooter = terminalShown && terminalDock === 'bottom' && !terminalMaximized;
-  // While the terminal folds the footer: Claude Code's windows, or another provider's premium requests.
-  const claudeUsageLines = useUsageLines(otherProvider ? null : profileId, !otherProvider);
-  const quota = useProviderQuota(otherProvider ? otherProfileId : null);
-  const usageLines = useMemo(() => (otherProvider ? (quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []) : claudeUsageLines), [otherProvider, quota, claudeUsageLines]);
+  // While the terminal folds the footer: plan windows (Claude Code's, Codex's), or another provider's premium requests.
+  const planUsage = hasPlanUsage(otherProvider ?? 'claude');
+  const usageProfileId = otherProvider ? otherProfileId : profileId;
+  const claudeUsageLines = useUsageLines(planUsage ? usageProfileId : null, planUsage);
+  const quota = useProviderQuota(otherProvider && !planUsage ? otherProfileId : null);
+  const usageLines = useMemo(() => (planUsage ? claudeUsageLines : quota && quota.entitlement !== null ? [{ label: 'Premium', percent: quota.percentUsed }] : []), [planUsage, quota, claudeUsageLines]);
   // Opening Changes (⌘⇧D) while the terminal fills the view brings the view back, or Changes would open out of sight.
   useEffect(() => {
     if (showChanges) useTerminals.getState().setMaximized(sessionId, false);
@@ -1190,7 +1194,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       edit: (uuid, text) => {
         const before = previous.get(uuid);
         if (!before) return;
-        void client.call('session.forkAt', { sessionId, messageUuid: before }).then((r) => {
+        // `editOf`: a provider that forks only where a turn ends (Codex) forks just before the prompt itself.
+        void client.call('session.forkAt', { sessionId, messageUuid: before, editOf: uuid }).then((r) => {
           useDrafts.getState().seedDraft(r.sessionId, text);
           select(r.sessionId);
         }, fail);
@@ -1906,7 +1911,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {remember.overlay}
           <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} turn={lastTurnRef} />
 
-          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
+          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} agent={PROVIDER_NAMES[otherProvider ?? 'claude']} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
             <ConfirmDialog
               title={rewindsConversation ? 'Rewind to before this message?' : 'Undo file changes since this message?'}
@@ -2190,8 +2195,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                   // The session footer, on the tray: usage, then the context ring. With the terminal open below, only a
                   // ring, with every number in its tooltip.
                   info={
-                    foldFooter ? null : otherProvider ? (
+                    foldFooter ? null : otherProvider && !planUsage ? (
                       otherProfileId && <ProviderUsage profileId={otherProfileId} provider={otherProvider} form="footer" />
+                    ) : otherProvider ? (
+                      // Codex's windows, without Claude Code's session cost (read from its transcripts).
+                      otherProfileId && <UsageBand profileId={otherProfileId} footer />
                     ) : (
                       <>
                         <UsageBand profileId={profileId} footer />

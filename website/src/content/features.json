@@ -1597,6 +1597,16 @@
       "page": "settings"
     },
     {
+      "id": "feature:codex-sessions",
+      "name": "OpenAI Codex sessions: Settings: Profiles offers Codex CLI when it finds it (Add Codex profile, Not now); Add profile with Codex as the tool uses Codex CLI's own folder ($CODEX_HOME or ~/.codex), skips sign in when it is signed in already (else codex login in Seshboard's terminal), and ends on Codex is ready (Start a Codex session, Use Codex for a project, Make it the default); its sessions show in the sidebar with Codex's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; New session, the queue, schedules, triggers and pipeline steps start them with Codex's models, effort and the four permission modes (Ask before edits, Accept edits, Plan mode, Auto mode), and the message box continues them; Delete moves its file to the Trash",
+      "page": "settings"
+    },
+    {
+      "id": "feature:codex-session-actions",
+      "name": "OpenAI Codex session actions: Fork from a reply and Edit and resend on its messages, Ask about this session, Rename (F2, the ⋯ menu and the sidebar's menu), Compact on the context meter and in ⋯, Tools with Codex's MCP servers, skills and hooks (Reconnect, no switches to turn a server on or off), and its 5-hour and weekly limits under the message box, on Home and in Usage (the windows only)",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"

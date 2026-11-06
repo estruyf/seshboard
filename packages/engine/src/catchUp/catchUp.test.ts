@@ -314,6 +314,9 @@ describe('the fallback summary', () => {
 
   it('takes a waiting card’s next step from the request itself', () => {
     expect(waitingNeed({ toolName: 'Bash', input: { command: 'npm publish' }, title: null })).toEqual({ kind: 'permission', title: 'Allow a command', text: 'Claude wants to run npm publish' });
+    // Another provider's session names it.
+    expect(waitingNeed({ toolName: 'Bash', input: { command: 'npm publish' }, title: null }, 'Codex').text).toBe('Codex wants to run npm publish');
+    expect(waitingNeed({ toolName: 'ExitPlanMode', input: {}, title: null }, 'Codex').text).toBe('Codex has a plan. Ready to start?');
     expect(waitingNeed({ toolName: 'AskUserQuestion', input: { questions: [{ question: 'Which easing?' }, { question: 'Speed?' }] }, title: null })).toEqual({
       kind: 'question',
       title: 'Answer a question',

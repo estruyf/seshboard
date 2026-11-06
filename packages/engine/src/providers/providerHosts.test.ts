@@ -67,7 +67,7 @@ function setup(stored: StoredUpNext[] = [], extra: Partial<ProviderHostsDeps> = 
   });
   const last = () => infos.at(-1)!;
   const turn = { start: () => events!.state('running'), end: () => events!.state('idle') };
-  return { hosts, calls, saved, settings, last, turn, turns, events: () => events!, elsewhere: (on: boolean) => (busyElsewhere = on) };
+  return { hosts, driver, calls, saved, settings, last, turn, turns, events: () => events!, elsewhere: (on: boolean) => (busyElsewhere = on) };
 }
 
 const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'now') => hosts.send({ sessionId: ID, text, attachments: [], ...(mode ? { mode } : {}) });
@@ -92,6 +92,20 @@ describe('ProviderHosts session actions', () => {
     const { hosts, calls } = setup();
     await hosts.create({ profileId: 'work-copilot', cwd: '/w', prompt: 'hi', attachments: [], model: null, effort: 'high' });
     expect(calls[0]).toBe('start:new:default');
+  });
+
+  it("asks the driver what a session not running here can use, read-only, else shows its commands only", async () => {
+    const { hosts, driver } = setup();
+    expect(await hosts.capabilities(ID, '/work')).toEqual({ live: false, mcp: [], agents: [], commands: [{ name: 'init', description: '', argumentHint: '' }], plugins: [] });
+    const asked: string[] = [];
+    driver.capabilities = async (cwd) => (asked.push(cwd), { live: true, mcp: [{ name: 'docs', status: 'pending', scope: null, tools: [], error: null, version: null }], agents: [], commands: [], plugins: [], mcpToggle: false });
+    expect(await hosts.capabilities(ID, '/work')).toMatchObject({ live: false, mcp: [{ name: 'docs' }], mcpToggle: false });
+    expect(asked).toEqual(['/work']);
+    driver.capabilities = async () => Promise.reject(new Error('Codex is not installed'));
+    expect((await hosts.capabilities(ID, '/work')).commands).toEqual([{ name: 'init', description: '', argumentHint: '' }]);
+    // Once it runs here, its own lists.
+    await send(hosts, 'hi');
+    expect((await hosts.capabilities(ID, '/work')).live).toBe(true);
   });
 
   it('renames a running session through it, and leaves a stopped one to the source', async () => {

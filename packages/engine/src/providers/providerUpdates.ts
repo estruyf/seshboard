@@ -23,7 +23,8 @@ export class ProviderUpdates {
     private readonly options: {
       /** The providers with a profile now. */
       providers: () => OptionalProvider[];
-      create: (provider: OptionalProvider, onChange: () => void) => ToolUpdater<ProviderUpdateState>;
+      /** Null for a provider without an update check yet: it is left out. */
+      create: (provider: OptionalProvider, onChange: () => void) => ToolUpdater<ProviderUpdateState> | null;
       /** Check by themselves, shortly after launch and every few hours (off in tests). */
       automatic: boolean;
       /** Every check's state, after any of them changed. */
@@ -44,6 +45,7 @@ export class ProviderUpdates {
     for (const provider of wanted) {
       if (this.updaters.has(provider)) continue;
       const updater = this.options.create(provider, () => this.options.onChange(this.list()));
+      if (!updater) continue;
       this.updaters.set(provider, updater);
       if (this.options.automatic) updater.start();
       changed = true;

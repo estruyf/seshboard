@@ -1,7 +1,8 @@
 import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { PermissionDecision, PermissionRequest } from '@seshboard/protocol/client';
+import { agentName, midSentence, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
+import { useHosts } from '../../state/hostsStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { Markdown } from '../transcript/Markdown.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -119,6 +120,7 @@ export function Waiting({ since }: { since: number }) {
 /** "Why?": opens or closes the side panel that explains the request. */
 function WhyButton({ request }: { request: PermissionRequest }) {
   const open = useWhy((s) => s.open?.requestId === request.requestId);
+  const agent = useAgentName(request.sessionId);
   return (
     <Button
       variant="quiet"
@@ -126,8 +128,8 @@ function WhyButton({ request }: { request: PermissionRequest }) {
       icon={<CircleHelp size={13} aria-hidden />}
       selected={open}
       aria-expanded={open}
-      aria-label="Why is Claude asking?"
-      data-tooltip="Why is Claude asking?"
+      aria-label={`Why is ${midSentence(agent)} asking?`}
+      data-tooltip={`Why is ${midSentence(agent)} asking?`}
       onClick={() => useWhy.getState().toggle(request.sessionId, request.requestId)}
       className="shrink-0"
       data-permission-why
@@ -156,7 +158,7 @@ function Header({ icon, title, titleId, createdAt, sub, request }: { icon: React
 }
 
 /** The always-visible "no, do this instead" field; Enter in it denies with what you typed. */
-export function FeedbackField({ value, onChange, onSubmit, busy }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean }) {
+export function FeedbackField({ value, onChange, onSubmit, busy, agent = 'Claude' }: { value: string; onChange(value: string): void; onSubmit(): void; busy: boolean; agent?: string }) {
   return (
     <input
       value={value}
@@ -168,8 +170,8 @@ export function FeedbackField({ value, onChange, onSubmit, busy }: { value: stri
           onSubmit();
         }
       }}
-      placeholder="Or tell Claude what to do instead…"
-      aria-label="Or tell Claude what to do instead"
+      placeholder={`Or tell ${midSentence(agent)} what to do instead…`}
+      aria-label={`Or tell ${midSentence(agent)} what to do instead`}
       className="h-8 w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
     />
   );
@@ -191,11 +193,19 @@ export function ErrorLine({ error }: { error: string | null }) {
   ) : null;
 }
 
-/** What the card asks, in one line: its heading, and what the session announces when it appears. */
-export function permissionTitle(request: PermissionRequest, cwd: string | null): string {
-  if (request.toolName === 'AskUserQuestion') return 'Claude has a question for you';
-  if (request.toolName === 'ExitPlanMode') return 'Claude has a plan. Ready to start?';
-  return request.title ?? (request.toolName === 'Bash' ? 'Claude wants to run a command' : `Claude wants to use ${toolSummary(request.toolName, request.input, cwd).label}`);
+/**
+ * What the card asks, in one line: its heading, and what the session announces when it appears. `agent`: who asks, by
+ * its short name ("Codex has a question for you"); Claude by default.
+ */
+export function permissionTitle(request: PermissionRequest, cwd: string | null, agent = 'Claude'): string {
+  if (request.toolName === 'AskUserQuestion') return `${agent} has a question for you`;
+  if (request.toolName === 'ExitPlanMode') return `${agent} has a plan. Ready to start?`;
+  return request.title ?? (request.toolName === 'Bash' ? `${agent} wants to run a command` : `${agent} wants to use ${toolSummary(request.toolName, request.input, cwd).label}`);
+}
+
+/** Who asks in a session, by its short name: its provider's (Codex, Copilot), from its host here; Claude otherwise. */
+export function useAgentName(sessionId: string): string {
+  return agentName(useHosts((s) => s.hosts.get(sessionId)?.provider));
 }
 
 /** "Allow Bash(npm test:*) in this project" reads as "Always allow Bash(npm test:*) in this project". */
@@ -225,6 +235,7 @@ interface CardProps {
 
 function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: string | null }) {
   const { respond, busy, error } = useRespond(request);
+  const agent = useAgentName(request.sessionId);
   const [showInput, setShowInput] = useState(false);
   const [feedback, setFeedback] = useState('');
   const allowRef = useFocusIfIdle();
@@ -239,7 +250,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
       <Header
         request={request}
         icon={command !== undefined ? <SquareTerminal size={15} /> : <ShieldQuestion size={15} />}
-        title={permissionTitle(request, cwd)}
+        title={permissionTitle(request, cwd, agent)}
         titleId={titleId}
         createdAt={request.createdAt}
         sub={request.agentId ? 'From a subagent' : null}
@@ -272,7 +283,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
         </pre>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy} onClick={allow} data-tooltip="Allow this once; Claude asks again next time">
+        <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy} onClick={allow} data-tooltip={`Allow this once; ${midSentence(agent)} asks again next time`}>
           Allow
         </Button>
         {request.alwaysLabel && (
@@ -289,7 +300,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
         )}
         <DenyButton label="Deny" busy={busy} onClick={deny} />
       </div>
-      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy} />
+      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy} agent={agent} />
       <ErrorLine error={error} />
     </div>
   );
@@ -348,6 +359,7 @@ export function OptionRow({
 
 function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
   const { respond, busy, error } = useRespond(request);
+  const agent = useAgentName(request.sessionId);
   const input = request.input as { questions?: Question[] };
   const questions = input.questions ?? [];
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
@@ -421,7 +433,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
         advance();
       }}
     >
-      <Header request={request} icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<MessageCircleQuestion size={15} />} title={permissionTitle(request, null, agent)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       {questions.map((q, qi) => {
         const picked = answers[q.question] ?? [];
         const rows = q.options.map((option, i) => (
@@ -503,6 +515,7 @@ function AskUserQuestion({ request, titleId, cardRef }: CardProps) {
 
 function PlanApproval({ request, titleId, cardRef }: CardProps) {
   const { respond, busy, error } = useRespond(request);
+  const agent = useAgentName(request.sessionId);
   const connection = useEngineConnection();
   const [feedback, setFeedback] = useState('');
   const plan = (request.input as { plan?: string }).plan ?? '';
@@ -517,12 +530,12 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
   useCardShortcuts(cardRef, 'plan', 0, busy, { allow: () => void approveWithEdits(), deny: keepPlanning });
   return (
     <div className="grid gap-2.5">
-      <Header request={request} icon={<ClipboardList size={15} />} title={permissionTitle(request, null)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
+      <Header request={request} icon={<ClipboardList size={15} />} title={permissionTitle(request, null, agent)} titleId={titleId} createdAt={request.createdAt} sub={request.agentId ? 'From a subagent' : null} />
       <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-border bg-bg px-3 py-2">
         <Markdown text={plan} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-tooltip="Start, and let Claude edit files without asking each time">
+        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-tooltip={`Start, and let ${midSentence(agent)} edit files without asking each time`}>
           Approve and accept edits
         </Button>
         <Button size="lg" disabled={busy} onClick={() => void respond({ behavior: 'allow' })} data-tooltip="Start, and ask before each file edit">
@@ -530,7 +543,7 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
         </Button>
         <DenyButton label="Keep planning" busy={busy} onClick={keepPlanning} />
       </div>
-      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={keepPlanning} busy={busy} />
+      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={keepPlanning} busy={busy} agent={agent} />
       <ErrorLine error={error} />
     </div>
   );

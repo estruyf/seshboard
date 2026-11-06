@@ -60,6 +60,9 @@ export function modelName(model: string | null | undefined): string {
 /** A limit card's name and what it covers: "Session · 5 hours", "Weekly · all models", "Weekly · Fable · one model". */
 export function limitTitle(limit: UsageLimit): { name: string; scope: string } {
   if (limit.kind === 'session') return { name: 'Session', scope: '5 hours' };
+  // Another bucket's 5 hours (Codex's `session_scoped`: a model's), and a window of another length, named by it.
+  if (limit.group === 'session') return limit.scope ? { name: `Session · ${limit.scope}`, scope: '5 hours' } : { name: 'Session', scope: '5 hours' };
+  if (limit.kind === 'window') return { name: 'Window', scope: limit.scope ?? '' };
   if (limit.kind === 'weekly_all') return { name: 'Weekly', scope: 'all models' };
   if (limit.kind.startsWith('weekly') || limit.group === 'weekly') return limit.scope ? { name: `Weekly · ${limit.scope}`, scope: 'one model' } : { name: 'Weekly', scope: limit.kind.replace(/_/g, ' ') };
   const name = limit.kind.replace(/_/g, ' ');

@@ -1,4 +1,4 @@
-import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta, TokenCounts } from '@seshboard/protocol';
+import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta, TokenCounts, UsageSnapshot } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { AskText } from '../host/sideQuestions.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -26,8 +26,13 @@ export interface ProviderAdapter {
   id: OptionalProvider;
   /** The profile it is (Settings › Profiles): one adapter per profile, each with its own folder, runtime and login. */
   profileId: string;
-  /** The profile's config folder (`COPILOT_HOME`), which its CLI runs with. */
+  /** The profile's config folder (`COPILOT_HOME`, `CODEX_HOME`), which its CLI runs with. */
   home: string;
+  /**
+   * The environment that points its CLI at `home` (`{ CODEX_HOME: home }`), for a terminal of the profile and its Sign in.
+   * Left out: the CLI's own default folder.
+   */
+  homeEnv?: Record<string, string>;
   /** The folder its sessions are in. Watched once the provider is allowed; Seshboard never creates or writes it. */
   folder: string;
   files: ProviderFiles;
@@ -42,6 +47,10 @@ export interface ProviderAdapter {
   signInCommand?: string;
   /** Starts and steers its sessions. Optional: a provider without one is read-only. */
   driver?: ProviderDriver;
+  /** Whether its CLI is installed and signed in, for a provider without a driver (one with a driver asks the driver). */
+  status?(): Promise<DriverStatus>;
+  /** Stops what it runs to read its sessions (Codex's `app-server`), when the profile goes or the app quits. */
+  dispose?(): Promise<void>;
   /** The session is open in the provider's own app right now (not through Seshboard), so it can't be resumed here. */
   inUse?(sessionId: string): Promise<boolean>;
   /**
@@ -52,10 +61,20 @@ export interface ProviderAdapter {
   /** A subagent's own conversation, by the tool call that started it (the Agents panel); empty while it has none. */
   subagent?(sessionId: string, toolUseId: string): Promise<{ agentType: string | null; messages: RawSessionMessage[] }>;
   /**
-   * What Delete moves to the Trash for a session (its folder in the provider's), all inside `folder`. Without it, its
-   * sessions can't be deleted here.
+   * What Delete moves to the Trash for a session (its folder in the provider's, Codex's rollout file), all inside `home`.
+   * Without it, its sessions can't be deleted here.
    */
   trashPaths?(sessionId: string): string[];
+}
+
+/** The provider's CLI as Settings › Profiles shows it: its driver's status, else the adapter's own; null without either. */
+export function providerStatus(adapter: ProviderAdapter): Promise<DriverStatus> | null {
+  return adapter.driver?.status() ?? adapter.status?.() ?? null;
+}
+
+/** Stops an adapter's runtime and whatever else it runs. Never throws. */
+export async function disposeProvider(adapter: ProviderAdapter): Promise<void> {
+  await Promise.all([adapter.driver?.dispose().catch(() => {}), adapter.dispose?.().catch(() => {})]);
 }
 
 /**
@@ -165,9 +184,22 @@ export interface ProviderDriver {
   status(): Promise<DriverStatus>;
   /** The account's premium requests this period (Copilot's), when the provider has them. */
   quota?(): Promise<ProviderQuota | null>;
+  /**
+   * The account's rate limits as Claude Code's plan usage (Codex's 5-hour and weekly windows), when the provider has
+   * them: `usage.get` answers with it for the profile, `error` saying why there are none (signed out, an API key) or
+   * why the last read failed. `refresh` reads now instead of reusing a read from the last minute.
+   */
+  planUsage?(refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
+  /** Hears every change of `planUsage` the provider reports by itself, for `usage.changed`. Returns the function that stops. */
+  onPlanUsage?(listener: (usage: UsageSnapshot | null) => void): () => void;
   models(): Promise<ModelOption[]>;
   /** The slash commands a new session has, before one runs here. */
   commands(): Promise<SlashCommand[]>;
+  /**
+   * What a session not running here can use in `cwd` (Tools, `live: false`), read without starting anything (no MCP
+   * server of the user's). Without it, Tools shows only its commands until the session runs here.
+   */
+  capabilities?(cwd: string): Promise<Capabilities>;
   start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession>;
   /**
    * Ask about this session: a throwaway fork of it answers `prompt` with tools that only read, beside whatever the

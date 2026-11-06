@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
+  agentName,
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
   PROVIDER_NAMES,
@@ -167,8 +168,10 @@ import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
+import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
+import { ProviderForks } from './providers/providerForks.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -225,6 +228,8 @@ export interface EngineOptions {
   sessionSource?: SessionSource;
   /** A fake Copilot SDK and `copilot` (tests, and the demo's `demoCopilot`). Defaults to the SDK and the user's own `copilot`. */
   copilot?: ProviderOptions['copilot'];
+  /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
+  codex?: ProviderOptions['codex'];
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -354,8 +359,11 @@ export interface ArchivedCleanup {
 }
 
 /** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
-/** What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session folders, new files in a repository, memory. */
-export type TrashScope = { configDir: string } | { copilotHome: string } | { repoRoot: string } | MemoryTrashScope;
+/**
+ * What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session
+ * folders, a Codex profile's rollout files, new files in a repository, memory.
+ */
+export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -528,7 +536,19 @@ export function createEngine(options: EngineOptions): Engine {
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
-  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, ...(options.copilot ? { copilot: options.copilot } : {}) };
+  /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
+  const providerForks = new ProviderForks(cache.db);
+  const providerOptions: ProviderOptions = {
+    env: process.env,
+    home: homedir(),
+    shellEnv: async () => (await shell.ready).env,
+    log,
+    forks: (profileId) => providerForks.of(profileId),
+    // A Codex thread's new name, which no file the watcher sees carries: the sidebar reads the session again.
+    onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
+    ...(options.copilot ? { copilot: options.copilot } : {}),
+    ...(options.codex ? { codex: options.codex } : {}),
+  };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
   const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
@@ -895,6 +915,24 @@ export function createEngine(options: EngineOptions): Engine {
       usageMonitors.set(profileId, monitor);
     }
     return monitor;
+  };
+  /** The provider drivers whose plan usage changes are broadcast, by profile (the driver of a profile can be made anew). */
+  const providerUsageWatch = new Map<string, { driver: ProviderDriver; off: () => void }>();
+  /**
+   * A profile's plan usage, as `usage.get` answers: Claude Code's for a Claude profile, the driver's for a provider that
+   * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`. Null
+   * for a provider without (Copilot's premium requests are `providers.quota`): never Claude Code's under its name.
+   */
+  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null> => {
+    if (!profiles.has(profileId) || profiles.providerOf(profileId) === 'claude') return usageFor(profileId).get(refresh);
+    const driver = providerProfiles.adapter(profileId)?.driver;
+    if (!driver?.planUsage) return null;
+    if (providerUsageWatch.get(profileId)?.driver !== driver) {
+      providerUsageWatch.get(profileId)?.off();
+      const off = driver.onPlanUsage?.((usage) => broadcast('usage.changed', { profileId, usage })) ?? (() => {});
+      providerUsageWatch.set(profileId, { driver, off });
+    }
+    return driver.planUsage(refresh).catch((error: Error) => ({ usage: null, error: error.message }));
   };
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
@@ -1392,6 +1430,7 @@ export function createEngine(options: EngineOptions): Engine {
     transcript: (id) => source.messages(id),
     cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
+    agentOf: (id) => agentName(providerAdapterOf(id)?.id),
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,
@@ -2324,7 +2363,7 @@ export function createEngine(options: EngineOptions): Engine {
   const profileEnv = (profileId: string): Record<string, string> => {
     // A provider profile's terminal runs its CLI with the profile's own folder and login.
     const provider = providerProfiles.adapter(profileId);
-    if (provider) return provider.id === 'copilot' ? { COPILOT_HOME: provider.home } : {};
+    if (provider) return provider.homeEnv ?? {};
     const { envDir } = profiles.runtime(profileId);
     return envDir ? { CLAUDE_CONFIG_DIR: envDir } : {};
   };
@@ -2543,8 +2582,14 @@ export function createEngine(options: EngineOptions): Engine {
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
       profiles: () => {
         const tags = new Map(profiles.accounts().map((p) => [p.id, accountTag(p.account)]));
-        return { profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null })), defaultId: profiles.defaultId() };
+        // A profile of a provider that can't start sessions (Codex, read-only for now) is never offered for a new one.
+        const startable = new Set(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
+        return {
+          profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null, ...(p.provider !== 'claude' && !startable.has(p.provider) ? { readOnly: true } : {}) })),
+          defaultId: profiles.defaultId(),
+        };
       },
+      readOnlyProviders: () => new Map(providerCatalog(providerOptions).filter((p) => !p.canStart).map((p) => [p.id, p.resumeCommand])),
       readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
@@ -2619,7 +2664,7 @@ export function createEngine(options: EngineOptions): Engine {
       globalPermissionMode: () => globalPermissionMode,
       // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
       globalModel: () => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model }),
-      usage: (profileId, refresh) => usageFor(profileId).get(refresh),
+      usage: (profileId, refresh) => planUsage(profileId, refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
         return match ? insights.breakdown(match, params) : null;
@@ -2877,7 +2922,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.release(sessionId);
       const paths = adapter.trashPaths(sessionId).filter((p) => existsSync(p));
       if (!paths.length) throw new RpcError('NOT_FOUND', 'No files found for this session');
-      await toTrash(paths, { copilotHome: adapter.home });
+      await toTrash(paths, adapter.id === 'codex' ? { codexHome: adapter.home } : { copilotHome: adapter.home });
     } else {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
@@ -2899,6 +2944,7 @@ export function createEngine(options: EngineOptions): Engine {
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
+    providerForks.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -3187,9 +3233,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'providers.list': () => ({ providers: providerCatalog(providerOptions) }),
     'providers.status': async ({ profileId }) => {
-      const driver = providerProfiles.adapter(profileId)?.driver;
-      if (!driver) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
-      return driver.status();
+      const adapter = providerProfiles.adapter(profileId);
+      const status = adapter && providerStatus(adapter);
+      if (!status) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
+      return status;
     },
     'providers.detect': async ({ refresh }) => ({ providers: await detectProviders(refresh) }),
     'providers.openInCli': async ({ sessionId }) => {
@@ -3199,7 +3246,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (providerHosts.has(sessionId)) throw new RpcError('SESSION_RUNNING_HERE', `Stop it here first: ${PROVIDER_NAMES[adapter.id]} can't run it in two places`);
       const cwd = sessionCwd(sessionId) ?? homedir();
       try {
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         const command = adapter.resumeCommand.replaceAll('{sessionId}', sessionId);
         return await terminals.open({ sessionId, cwd, kind: 'action', command, title: `${PROVIDER_NAMES[adapter.id]} CLI`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
@@ -3228,7 +3275,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (!adapter?.signInCommand) throw new RpcError('NOT_FOUND', 'This profile has no sign in of its own');
       try {
         // The provider's own sign in, in its own CLI, with the profile's folder: Seshboard never sees the credential.
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         return await terminals.open({ sessionId: null, cwd: homedir(), kind: 'action', command: adapter.signInCommand, title: `Sign in to ${PROVIDER_NAMES[adapter.id]}`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
         throw new RpcError('TERMINAL_FAILED', (error as Error).message);
@@ -3368,12 +3415,12 @@ export function createEngine(options: EngineOptions): Engine {
       await continueAfterSignIn(sessionProfile(sessionId));
       return {};
     },
-    'session.forkAt': async ({ sessionId, messageUuid }) => {
+    'session.forkAt': async ({ sessionId, messageUuid, editOf }) => {
       assertClaudeSession(sessionId, 'Forking', 'fork');
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
       try {
-        forked = await source.fork(sessionId, messageUuid);
+        forked = await source.fork(sessionId, messageUuid, editOf ? { editing: editOf } : undefined);
       } catch (error) {
         throw new RpcError('FORK_FAILED', (error as Error).message);
       }
@@ -3519,10 +3566,12 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
-    'usage.get': ({ refresh, profileId }) => {
-      // Plan usage is Claude Code's: another provider's profile has its own (`providers.quota`), never a Claude profile's.
-      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude') throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
-      return usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh);
+    'usage.get': async ({ refresh, profileId }) => {
+      // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
+      // Copilot's premium requests are `providers.quota`.
+      const usage = await planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
+      if (!usage) throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId!)]} has premium requests, not plan usage`);
+      return usage;
     },
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
@@ -4371,7 +4420,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
     'skim.highlights': (params) => skimHighlights.get(params),
-    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : ((await providerHosts.cheapModel(sessionId))?.name ?? null) }),
+    // A provider without a driver (Codex, read-only) has no cheap model to ask: null, as for one without `cheapModel`.
+    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : providerAdapterOf(sessionId)?.driver ? ((await providerHosts.cheapModel(sessionId))?.name ?? null) : null }),
     'skim.usage': ({ profileId }) => skimUsage.totals(providerScope(profileId), Date.now() - USAGE_WINDOW_MS),
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
@@ -4658,6 +4708,7 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.closeAll();
       awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
+      for (const watch of providerUsageWatch.values()) watch.off();
       insights.close();
       checksWatcher.close();
       looseEnds?.close();

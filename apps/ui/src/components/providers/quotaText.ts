@@ -1,4 +1,19 @@
-import type { ProviderQuota } from '@seshboard/protocol/client';
+import type { OptionalProvider, ProviderQuota, SessionProvider } from '@seshboard/protocol/client';
+
+/**
+ * How a provider's usage comes: Copilot's premium requests (`providers.quota`), or plan windows as Claude Code's
+ * (`usage.get`: Codex's rate limits, its 5-hour and weekly windows). A new provider must say.
+ */
+export const USAGE_KIND: Record<OptionalProvider, 'quota' | 'plan'> = { copilot: 'quota', codex: 'plan' };
+
+/** Whether a profile's usage is plan windows (`usage.get`): Claude Code's, and Codex's. */
+export const hasPlanUsage = (provider: SessionProvider): boolean => provider === 'claude' || USAGE_KIND[provider] === 'plan';
+
+/**
+ * Plan windows only (Codex): no history, costs, breakdowns or charts, which read Claude Code's transcripts and its
+ * recorded readings.
+ */
+export const planWindowsOnly = (provider: SessionProvider): boolean => provider !== 'claude' && USAGE_KIND[provider] === 'plan';
 
 /** A reset date as Copilot gives it (`2026-12-01`, or a full ISO time), as "Dec 1"; a date alone is a local day. */
 export function resetDay(resetsAt: string, locale?: string): string {

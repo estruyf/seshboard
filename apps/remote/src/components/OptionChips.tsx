@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ClaudeIcon } from './ClaudeIcon.tsx';
+import { CodexIcon } from './CodexIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 import { createPortal } from 'react-dom';
 import { FolderGit2, Folder, Gauge, GitBranch, WandSparkles } from 'lucide-react';
@@ -18,6 +19,15 @@ type Look = 'chip' | 'row';
 
 const DEFAULT = '__default__';
 
+/** Each other provider's mark, by its id. */
+const PROVIDER_ICONS: Record<NonNullable<RemoteProfile['provider']>['id'], typeof CopilotIcon> = { copilot: CopilotIcon, codex: CodexIcon };
+
+/** Another provider's mark (GitHub Copilot's, OpenAI Codex's). */
+function ProviderIcon({ id, ...rest }: { id: keyof typeof PROVIDER_ICONS } & Parameters<typeof CopilotIcon>[0]) {
+  const Icon = PROVIDER_ICONS[id];
+  return <Icon {...rest} />;
+}
+
 /**
  * The Claude profile (login) a new session runs with, as on the computer: only with more than one profile. The
  * project's own (or the default) says so in the list.
@@ -33,10 +43,9 @@ export function ProfileChip({ options, projectId, value, onPick, look }: { optio
       label="Claude profile"
       face={current?.name ?? 'Profile'}
       icon={
-        // Whose profile it is (Claude Code's, or another provider's: the phone has one, GitHub Copilot), in the
-        // profile's colour, so it needs no dot.
+        // Whose profile it is (Claude Code's, or another provider's), in the profile's colour, so it needs no dot.
         current?.provider ? (
-          <CopilotIcon size={14} aria-label={current.provider.name} role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider={current.provider.id} />
+          <ProviderIcon id={current.provider.id} size={14} aria-label={current.provider.name} role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider={current.provider.id} />
         ) : current ? (
           <ClaudeIcon size={14} aria-label="Claude Code" role="img" className={`shrink-0 ${PROFILE_TEXT[current.color]}`} data-remote-profile-provider="claude" />
         ) : (

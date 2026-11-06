@@ -2,17 +2,33 @@
  * The agents Seshboard reads sessions from. Claude Code is always on; the others stay hidden until a profile of theirs
  * is added in Settings › Profiles. Kept free of zod for the renderer.
  */
-export const SESSION_PROVIDERS = ['claude', 'copilot'] as const;
+export const SESSION_PROVIDERS = ['claude', 'copilot', 'codex'] as const;
 export type SessionProvider = (typeof SESSION_PROVIDERS)[number];
 
 /** The providers besides Claude Code, which can be allowed or not. */
-export const OPTIONAL_PROVIDERS = ['copilot'] as const satisfies readonly SessionProvider[];
+export const OPTIONAL_PROVIDERS = ['copilot', 'codex'] as const satisfies readonly SessionProvider[];
 export type OptionalProvider = (typeof OPTIONAL_PROVIDERS)[number];
 
-export const PROVIDER_NAMES: Record<SessionProvider, string> = { claude: 'Claude Code', copilot: 'GitHub Copilot' };
+export const PROVIDER_NAMES: Record<SessionProvider, string> = { claude: 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex' };
 
 /** The short name in copy around the message box ("What should Copilot work on?"). */
-export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: 'Claude', copilot: 'Copilot' };
+export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: 'Claude', copilot: 'Copilot', codex: 'Codex' };
+
+/** Who works in a session of a provider this build doesn't know (a newer computer's), at the start of a sentence. */
+export const UNKNOWN_AGENT = 'The agent';
+
+/**
+ * Who works in a session, by its short name, for copy such as "Codex has a question for you": "Claude" for Claude
+ * Code's (no provider), the provider's short name, and `UNKNOWN_AGENT` for one this build doesn't know (a newer
+ * computer's), so a card never reads "undefined has a question".
+ */
+export function agentName(provider: string | null | undefined): string {
+  if (!provider) return PROVIDER_SHORT_NAMES.claude;
+  return (SESSION_PROVIDERS as readonly string[]).includes(provider) ? PROVIDER_SHORT_NAMES[provider as SessionProvider] : UNKNOWN_AGENT;
+}
+
+/** `agentName` inside a sentence ("Why is the agent asking?"): only the unknown one changes case. */
+export const midSentence = (agent: string): string => (agent === UNKNOWN_AGENT ? 'the agent' : agent);
 
 /**
  * Claude Code's own features another provider may or may not have yet: in a session (⋯) and in New session. A

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  agentName,
   type ActivityEntry,
   DEFAULT_APP_ICON,
   defuseStubs,
@@ -125,6 +126,8 @@ export interface RemoteHubProfile {
   defaults: ProfileDefaults;
   /** Its account's `accountTag`, for `usage.get`; null without an account. */
   account?: string | null;
+  /** A profile of a provider that can't start sessions here (OpenAI Codex, read-only): never offered for a new one. */
+  readOnly?: boolean;
 }
 
 /** A run's button, as the computer's step tree has it. */
@@ -212,6 +215,8 @@ export interface RemoteHubOptions {
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
+  /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
+  readOnlyProviders?(): ReadonlyMap<string, string>;
   /** Whether a provider profile can start a session now, and its models. */
   providerReady?(profileId: string): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
   /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
@@ -233,8 +238,11 @@ export interface RemoteHubOptions {
   globalPermissionMode(): PermissionMode;
   /** Settings › General › Global model and Global effort: what a session starts with where its profile and project set none. */
   globalModel(): GlobalModel;
-  /** A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). */
-  usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }>;
+  /**
+   * A profile's plan usage, as `usage.get` on the computer (`refresh`: check now). Null for a profile without plan usage
+   * (Copilot's premium requests), which the phone leaves out.
+   */
+  usage(profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null } | null>;
   /**
    * Where the tokens of the profile signed in to an account (its `accountKey`) went, as `usage.breakdown`; null when
    * no profile here signs in to it.
@@ -603,7 +611,7 @@ export class RemoteHub {
   permissionAsked(request: PermissionRequest): void {
     const session = this.list().sessions.find((s) => s.id === request.sessionId);
     if (!session) return;
-    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request), ...promptAnswers(request) });
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request, agentName(session.provider)), ...promptAnswers(request) });
   }
 
   /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
@@ -799,7 +807,7 @@ export class RemoteHub {
     if (!session) return;
     // A turn that ends in a step of a run that goes on is the run's news: it says when it needs you, stops or is done.
     if (this.options.pipelines?.runs().some(({ run, steps }) => run.status !== 'done' && run.status !== 'stopped' && steps.some((s) => s.sessionId === sessionId))) return;
-    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId)) });
+    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId), agentName(session.provider)) });
   }
 
   /**
@@ -835,7 +843,7 @@ export class RemoteHub {
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}) });
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
   private projectName(root: string): string {
@@ -883,7 +891,9 @@ export class RemoteHub {
 
   /** The profile a new session in `project` runs with: the one the phone chose, else the project's, else the default. */
   private profileFor(project: RemoteProject, chosen: string | undefined): RemoteHubProfile {
-    const { profiles, defaultId } = this.options.profiles();
+    // A read-only provider's profile can't start a session: as if it weren't there.
+    const { defaultId } = this.options.profiles();
+    const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
     const find = (id: string | null | undefined) => (id ? profiles.find((p) => p.id === id) : undefined);
     if (chosen && !find(chosen)) throw new RpcError('NOT_FOUND', 'That Claude profile no longer exists');
     const profile = find(chosen) ?? find(project.profileId) ?? find(defaultId) ?? profiles[0];
@@ -1158,7 +1168,9 @@ export class RemoteHub {
         return this.options.providerReady(profileId);
       },
       'options.get': () => {
-        const { profiles, defaultId } = this.options.profiles();
+        const { defaultId } = this.options.profiles();
+        // New session's choices: a read-only provider's profile (Codex) can't start one.
+        const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
         const globalMode = this.options.globalPermissionMode();
         const globalModel = this.options.globalModel();
         return {
@@ -1169,7 +1181,7 @@ export class RemoteHub {
             const provider = this.options.providerOfProfile?.(p.id) ?? null;
             return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, provider ? NO_GLOBAL_MODEL : globalModel), ...(provider ? { provider } : {}) };
           }),
-          defaultProfileId: defaultId,
+          defaultProfileId: profiles.some((p) => p.id === defaultId) ? defaultId : (profiles[0]?.id ?? defaultId),
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),
@@ -1184,15 +1196,16 @@ export class RemoteHub {
       },
       'usage.get': async ({ refresh }) => {
         const { profiles, defaultId } = this.options.profiles();
-        const ordered = [...profiles].sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
-        return {
-          profiles: await Promise.all(
-            ordered.map(async (p) => {
-              const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
-              return { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
-            }),
-          ),
-        };
+        // A read-only provider's profile has no plan usage, and a profile whose provider has none of its own (Copilot) is left
+        // out (`usage` is null): only real numbers, never another login's. Codex's rate limits come as plan usage.
+        const ordered = profiles.filter((p) => !p.readOnly).sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
+        const answers = await Promise.all(
+          ordered.map(async (p) => {
+            const result = await this.options.usage(p.id, refresh).catch((error: Error) => ({ usage: null, error: error.message }));
+            return result && { profile: { id: p.id, name: p.name, color: p.color }, ...result, account: p.account ?? null };
+          }),
+        );
+        return { profiles: answers.filter((answer) => answer !== null) };
       },
       'usage.tokens': ({ account, ...params }) => {
         const breakdown = this.options.tokens(account, params);

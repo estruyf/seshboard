@@ -277,7 +277,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
           </div>
           <Toggle
             label="Show sessions from other apps"
-            detail="Also list sessions from Terminal, Claude desktop, your editor and GitHub Copilot. Off shows only sessions you started or continued in Seshboard."
+            detail="Also list sessions from Terminal, Claude desktop, your editor, GitHub Copilot and OpenAI Codex. Off shows only sessions you started or continued in Seshboard."
             checked={prefs.sessionScope === 'all'}
             attr="data-session-scope"
             onChange={(all) => update({ sessionScope: all ? 'all' : 'switchboard' })}
@@ -458,7 +458,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Profiles"
-          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code or GitHub Copilot with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
+          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code, GitHub Copilot or OpenAI Codex with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>

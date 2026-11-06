@@ -512,8 +512,12 @@ export const contract = {
       params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
       result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
     },
-    /** A new session with this one's conversation up to and including `messageUuid`. */
-    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string() }), result: z.object({ sessionId: z.string() }) },
+    /**
+     * A new session with this one's conversation up to and including `messageUuid`. `editOf`: the prompt Edit and resend
+     * is for (`messageUuid` is the message before it): a provider that forks only where a turn ends (Codex) forks just
+     * before that prompt instead.
+     */
+    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string(), editOf: z.string().optional() }), result: z.object({ sessionId: z.string() }) },
     /**
      * Restores the files Claude changed to how they were before one of your messages
      * (`dryRun` reports what would change). The conversation itself is untouched.
@@ -578,8 +582,10 @@ export const contract = {
     },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
-     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report. Cached for a minute;
-     * `refresh` fetches now. `usage` is null without a claude.ai plan or before the first fetch.
+     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report, or for a Codex profile its rate limits in
+     * the same meters (`session`, `weekly_all`, a model's `weekly_scoped`). Cached for a minute; `refresh` fetches now.
+     * `usage` is null without a plan (signed out, an API key) or before the first fetch. A Copilot profile is refused
+     * (`NOT_CLAUDE_PROFILE`): its premium requests are `providers.quota`.
      */
     'usage.get': {
       /** The profile whose plan to report (default: the default profile). */

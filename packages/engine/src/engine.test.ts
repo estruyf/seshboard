@@ -5,7 +5,8 @@ import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRpcClient, messagePortTransport, type Contract, type DomLikePort, type LogEntry, type AskEvent, type TranscriptUpdate } from '@seshboard/protocol';
 import type { SessionSource } from './claude/sessionSource.ts';
-import { createEngine, type EngineOptions } from './engine.ts';
+import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
+import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
 import type { CopilotSdkClient, CopilotSdkSession, CopilotSessionOptions } from './providers/copilot/copilotDriver.ts';
 import type { CopilotEvent } from './providers/copilot/copilotEvents.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
@@ -71,7 +72,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
+function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -79,7 +80,7 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
   writeFileSync(join(projectDir, `${SESSION_ID}.jsonl`), '{"entrypoint":"cli"}\n');
   mkdirSync(join(projectDir, SESSION_ID, 'subagents'), { recursive: true });
   const engine = createEngine({
-    ...(extra.noTrash ? {} : { trash: async (paths: string[]) => void extra.trashed?.push(paths) }),
+    ...(extra.noTrash ? {} : { trash: async (paths: string[], scope: TrashScope) => void (extra.trashed?.push(paths), extra.trashScopes?.push(scope)) }),
     dataDir,
     claudeConfigDir: join(dataDir, 'claude'),
     // No login shell and an empty PATH, so the test never depends on the machine (a test that runs git with it passes its own).
@@ -90,6 +91,8 @@ function connect(extra: { trashed?: string[][]; noTrash?: boolean; source?: Sess
     ...(extra.onKeepAwake ? { onKeepAwake: extra.onKeepAwake } : {}),
     // Never the machine's own `copilot`: without a fake, Copilot CLI isn't installed.
     copilot: extra.copilot ?? { binary: async () => null },
+    // Never the machine's own `codex`, nor its `~/.codex`.
+    codex: extra.codex ?? { binary: async () => null },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -139,7 +142,7 @@ describe('engine over a MessagePort', () => {
     ];
     writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
-    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true })]);
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: true })]);
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
 
@@ -162,6 +165,56 @@ describe('engine over a MessagePort', () => {
     // Delete moves the session's whole folder to the Trash, named with its Copilot home for main's check.
     await client.call('session.delete', { sessionId: id });
     expect(trashed).toEqual([[folder]]);
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+  });
+
+  it("reads, continues and starts a Codex profile's sessions through its app-server, and trashes a rollout file", async () => {
+    const trashed: string[][] = [];
+    const trashScopes: TrashScope[] = [];
+    const id = '019a0000-0000-7000-8000-00000000000a';
+    let codexHome = '';
+    let rollout = '';
+    const server = fakeAppServer({
+      // As Codex does: a thread whose rollout file is gone is left out.
+      'thread/list': () => ({ data: existsSync(rollout) ? [thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout })] : [], nextCursor: null }),
+      'thread/read': () => ({ thread: thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout }) }),
+      'account/read': () => ({ account: { type: 'chatgpt', email: 'me@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true }),
+      'thread/resume': ({ threadId }) => ({ thread: thread(threadId, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'thread/start': () => ({ thread: thread(NEW, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'turn/start': () => ({ turn: { id: `turn-${server.calls.length}`, items: [], itemsView: 'notLoaded', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } }),
+      'thread/unsubscribe': () => ({}),
+      'model/list': () => ({ data: [{ id: 'gpt-5-mini', model: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }], defaultReasoningEffort: 'low', inputModalities: ['text'], isDefault: true }], nextCursor: null }),
+    });
+    const NEW = '019a0000-0000-7000-8000-00000000000c';
+    const { client, dataDir } = connect({ trashed, trashScopes, codex: { binary: async () => ({ path: '/fake/codex', version: '0.167.0' }), createAppServer: () => server } });
+    // A Codex profile's folder in the test's own folder, never the machine's ~/.codex.
+    codexHome = join(dataDir, 'codex');
+    rollout = join(codexHome, 'sessions', '2026', '11', '06', `rollout-2026-11-06T10-00-00-${id}.jsonl`);
+    mkdirSync(join(codexHome, 'sessions', '2026', '11', '06'), { recursive: true });
+    writeFileSync(rollout, '{}\n');
+
+    const { id: profileId } = await client.call('profiles.add', { name: 'Codex', color: 'green', configDir: codexHome, provider: 'codex' });
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.find((s) => s.id === id)).toMatchObject({ provider: 'codex', profileId, title: 'Parser fix', cwd: PARSER, origin: 'cli' });
+    // The driver's status, through `account/read`.
+    expect(await client.call('providers.status', { profileId })).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
+    expect((await client.call('providers.models', { profileId })).models).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low'] }]);
+    // Sending resumes the thread here, in the mode's sandbox.
+    await client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false });
+    expect(server.calls.filter((c) => c.method !== 'thread/list' && c.method !== 'thread/read' && c.method !== 'account/read' && c.method !== 'model/list').map((c) => c.method)).toEqual(['thread/resume', 'turn/start']);
+    expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: id, input: [{ type: 'text', text: 'hi' }], sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
+    // No cheap model for Skim.
+    expect(await client.call('skim.model', { sessionId: id })).toEqual({ model: null });
+
+    // New session with the Codex profile starts a thread in the folder, with the model picked.
+    const created = await client.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', permissionMode: 'acceptEdits' });
+    expect(created.sessionId).toBe(NEW);
+    expect(server.calls.find((c) => c.method === 'thread/start')!.params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'on-request', model: 'gpt-5-mini' });
+    expect(server.calls.filter((c) => c.method === 'turn/start').at(-1)!.params).toMatchObject({ threadId: NEW, model: 'gpt-5-mini', sandboxPolicy: { type: 'workspaceWrite' } });
+
+    await client.call('session.delete', { sessionId: id });
+    expect(trashed).toEqual([[rollout]]);
+    expect(trashScopes).toEqual([{ codexHome }]);
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
   });
 

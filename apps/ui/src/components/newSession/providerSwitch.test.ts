@@ -3,6 +3,22 @@ import { askWhat, byTool, offersProjectProfile, switchNoticeFor, type SwitchFrom
 
 const claude: SwitchFrom = { profileOverride: null, provider: 'claude', worktree: false, checkoutBranch: null, runAsId: null, later: false, schedule: false };
 
+describe('switching New session to a Codex profile', () => {
+  // What the engine's catalog says Codex has (registry.ts).
+  const codex = ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'] as const;
+
+  it('keeps the worktree, the branch, the queue and a schedule, and turns a pipeline off', () => {
+    expect(switchNoticeFor({ ...claude, worktree: true, later: true, schedule: true }, 'codex', codex)).toBeNull();
+    expect(switchNoticeFor({ ...claude, checkoutBranch: 'feat/login' }, 'codex', codex)).toBeNull();
+    expect(switchNoticeFor({ ...claude, worktree: true, runAsId: 'review' }, 'codex', codex)).toEqual({
+      back: null,
+      provider: 'codex',
+      losses: ['pipeline'],
+      text: "Pipeline turned off. OpenAI Codex can't run pipelines yet.",
+    });
+  });
+});
+
 describe('switching New session to a Copilot profile', () => {
   it('says the worktree was turned off, and Back goes to the profile it had', () => {
     expect(switchNoticeFor({ ...claude, worktree: true, profileOverride: 'work' }, 'copilot', [])).toEqual({

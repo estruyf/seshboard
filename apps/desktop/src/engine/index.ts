@@ -3,7 +3,7 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { createEngine, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { createEngine, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
 import { RemoteAppUpdate } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
@@ -87,6 +87,9 @@ const engine = createEngine({
   stubQueueStarts: process.env.SESHBOARD_STUB_QUEUE === '1',
   // The smoke test and the screenshots: a made-up Copilot CLI, signed in, that never starts a session.
   ...(process.env.SESHBOARD_STUB_COPILOT === '1' ? { copilot: demoCopilot() } : {}),
+  // The smoke test and the screenshots: a made-up Codex CLI, signed in, whose app-server answers in the process from the
+  // demo home's rollout files. Nothing reaches a real Codex.
+  ...(process.env.SESHBOARD_STUB_CODEX === '1' ? { codex: demoCodex() } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });

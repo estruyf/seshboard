@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteOptions } from '@seshboard/protocol/remote-client';
-import { autoDescription, autoFace, autoOn, changedFrom, defaultChoice, modelLabel, profilesOf, projectProfile, takesEffort } from './options.ts';
+import { autoDescription, autoFace, autoOn, changedFrom, defaultChoice, modelLabel, profilesOf, projectProfile, sessionCan, takesEffort } from './options.ts';
 
 const options: RemoteOptions = {
   models: [
@@ -84,5 +84,18 @@ describe('New session choices', () => {
     expect(autoFace({ picked: null, choosing: false })).toBe('Auto · Default model');
     expect(autoFace(null)).toBeNull();
     expect(autoFace(undefined)).toBeNull();
+  });
+});
+
+describe("a Codex session's actions on the phone", () => {
+  const codex = (supports: string[]): RemoteOptions => ({
+    ...options,
+    profiles: [...options.profiles!, { id: 'codex', name: 'Codex', color: 'green', defaults: { model: null, effort: null, permissionMode: null, worktree: null }, provider: { id: 'codex', name: 'OpenAI Codex', modes: [], supports } }],
+  }) as RemoteOptions;
+
+  it('offers Ask once the computer says Codex has it, with nothing of its own', () => {
+    expect(sessionCan(codex(['delete', 'effort']), 'codex', 'ask')).toBe(false);
+    expect(sessionCan(codex(['delete', 'effort', 'ask']), 'codex', 'ask')).toBe(true);
+    expect(sessionCan(codex(['ask']), null, 'ask')).toBe(true);
   });
 });

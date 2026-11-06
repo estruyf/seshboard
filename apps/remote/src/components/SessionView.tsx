@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { PARENT_PLACEHOLDER, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -435,56 +435,60 @@ export function SessionView({
           />
         )}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
-        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
-        <Composer
-          computerId={computerId}
-          sessionId={sessionId}
-          fill={fill}
-          features={features}
-          wide={wide}
-          modelMode={
-            claudeChips && options && session ? (
-              <ModelModeChip
-                options={options}
-                session={session}
-                disabled={!client}
-                onModel={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)}
-                onEffort={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)}
-                onMode={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)}
-              />
-            ) : null
-          }
-          chips={
-            claudeChips && options && session ? (
-              <>
-                <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
-                {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
-                {session.effort !== undefined && takesEffort(options.models, session.model) && (
-                  <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
-                )}
-                <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
-              </>
-            ) : null
-          }
-          disabled={!client}
-          working={working}
-          answering={Boolean(open)}
-          idle={idlePlaceholder}
-          onStop={stop}
-          onSend={async (text, images, files, mode) => {
-            // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
-            if (open) {
-              if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
-              const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
-              if (result === 'gone') onRefresh();
-              if (result === 'failed') throw new Error("The answer didn't reach your computer.");
-              return;
+        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} agent={agentName(session?.provider)} />
+        {session?.readOnly ? (
+          <ReadOnlyNote provider={(session.provider && PROVIDER_NAMES[session.provider]) || "its provider's"} command={session.readOnly.resumeCommand} />
+        ) : (
+          <Composer
+            computerId={computerId}
+            sessionId={sessionId}
+            fill={fill}
+            features={features}
+            wide={wide}
+            modelMode={
+              claudeChips && options && session ? (
+                <ModelModeChip
+                  options={options}
+                  session={session}
+                  disabled={!client}
+                  onModel={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)}
+                  onEffort={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)}
+                  onMode={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)}
+                />
+              ) : null
             }
-            await send(text, images, files, mode);
-          }}
-          onError={setError}
-          onFocusChange={setTyping}
-        />
+            chips={
+              claudeChips && options && session ? (
+                <>
+                  <ModelChip options={options} value={session.model} auto={session.auto} placement="above" disabled={!client} onPick={(model) => void client?.call('session.setModel', { sessionId, model }).catch(fail)} />
+                  {/* Only from a Seshboard that sends the effort, and for a model that takes one. */}
+                  {session.effort !== undefined && takesEffort(options.models, session.model) && (
+                    <EffortChip options={options} value={session.effort} placement="above" disabled={!client} onPick={(effort) => void client?.call('session.setEffort', { sessionId, effort }).catch(fail)} />
+                  )}
+                  <ModeChip options={options} value={session.permissionMode!} placement="above" disabled={!client} onPick={(mode) => void client?.call('session.setPermissionMode', { sessionId, mode }).catch(fail)} />
+                </>
+              ) : null
+            }
+            disabled={!client}
+            working={working}
+            answering={Boolean(open)}
+            idle={idlePlaceholder}
+            onStop={stop}
+            onSend={async (text, images, files, mode) => {
+              // With a prompt open, what you type is the answer: no, and do this instead (as on the computer).
+              if (open) {
+                if (images.length || files.length) throw new Error("Attachments can't go with an answer. Remove them, or answer the prompt first.");
+                const result = await answer(client!, open, { behavior: 'deny', message: text }, session?.title);
+                if (result === 'gone') onRefresh();
+                if (result === 'failed') throw new Error("The answer didn't reach your computer.");
+                return;
+              }
+              await send(text, images, files, mode);
+            }}
+            onError={setError}
+            onFocusChange={setTyping}
+          />
+        )}
       </div>
       {runSheet && runState && <RunSheet state={runState} client={client} canOpen={(id) => listed.has(id) && id !== sessionId} onOpenStep={(id) => onOpenSession?.(id)} onClose={() => setRunSheet(false)} />}
       {pipelineSheet && session && <RunPipelineSheet client={client} projectId={session.projectId} sessionId={sessionId} onClose={() => setPipelineSheet(false)} />}
@@ -769,6 +773,27 @@ function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemo
  * chip (`modelMode`, its sheet has the choices) and a round Send, grey until there is text. On a wide screen the chips
  * sit under the box, as on the computer.
  */
+/** In place of the message box for a session its provider can't continue here (a read-only provider): the command that continues it. */
+function ReadOnlyNote({ provider, command }: { provider: string; command: string }) {
+  const copy = () =>
+    void navigator.clipboard.writeText(command).then(
+      () => toast('Copied the command'),
+      () => toast("Couldn't copy the command.", { tone: 'error' }),
+    );
+  return (
+    <div className="safe-bottom px-3 pt-2 sm:px-6" data-remote-read-only>
+      <div className="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-lg border border-edge bg-card px-3 py-2 text-ui text-muted">
+        <p className="min-w-0 flex-1">
+          Read-only here. Continue it in {provider} CLI on your computer: <code className="break-all text-text select-all">{command}</code>
+        </p>
+        <Button variant="quiet" size="md" aria-label="Copy the command" onClick={copy} className="shrink-0 px-2!">
+          <Copy className="size-4" aria-hidden />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Composer({
   computerId,
   sessionId,

@@ -1,0 +1,564 @@
+{
+  "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+  "notifications": [
+    {
+      "method": "turn/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turn": {
+          "id": "019a0002-0000-7000-8000-000000000001",
+          "rootTurnId": null,
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1778600000,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "userMessage",
+          "id": "item-1",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Add a health check",
+              "text_elements": []
+            }
+          ],
+          "startedAtMs": null,
+          "completedAtMs": 1778600001000
+        },
+        "startedAtMs": 1778600001000
+      }
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "userMessage",
+          "id": "item-1",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Add a health check",
+              "text_elements": []
+            }
+          ],
+          "startedAtMs": null,
+          "completedAtMs": 1778600001000
+        },
+        "completedAtMs": 1778600001000
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "reasoning",
+          "id": "rs_1",
+          "summary": [],
+          "content": [],
+          "startedAtMs": 1778600002000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600002000
+      }
+    },
+    {
+      "method": "item/reasoning/summaryPartAdded",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "rs_1",
+        "summaryIndex": 0
+      }
+    },
+    {
+      "method": "item/reasoning/summaryTextDelta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "rs_1",
+        "delta": "**Checking the routes**",
+        "summaryIndex": 0
+      }
+    },
+    {
+      "method": "item/reasoning/summaryPartAdded",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "rs_1",
+        "summaryIndex": 1
+      }
+    },
+    {
+      "method": "item/reasoning/summaryTextDelta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "rs_1",
+        "delta": "Then the tests",
+        "summaryIndex": 1
+      }
+    },
+    {
+      "method": "item/reasoning/textDelta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "rs_1",
+        "delta": "raw",
+        "contentIndex": 0
+      }
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "reasoning",
+          "id": "rs_1",
+          "summary": [
+            "**Checking the routes**",
+            "Then the tests"
+          ],
+          "content": [],
+          "startedAtMs": 1778600002000,
+          "completedAtMs": 1778600003000
+        },
+        "completedAtMs": 1778600003000
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000ffff",
+        "turnId": "other-turn",
+        "item": {
+          "type": "agentMessage",
+          "id": "elsewhere",
+          "text": "",
+          "phase": null,
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null,
+          "startedAtMs": 1778600007000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600003500
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "commandExecution",
+          "id": "call_ls",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'ls src'",
+          "cwd": "/repo",
+          "processId": "501",
+          "source": "agent",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "listFiles",
+              "command": "ls src",
+              "path": "src"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null,
+          "startedAtMs": 1778600004000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600004000
+      }
+    },
+    {
+      "method": "item/commandExecution/outputDelta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "call_ls",
+        "delta": "app.ts\n"
+      }
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "commandExecution",
+          "id": "call_ls",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'ls src'",
+          "cwd": "/repo",
+          "processId": "501",
+          "source": "agent",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "listFiles",
+              "command": "ls src",
+              "path": "src"
+            }
+          ],
+          "aggregatedOutput": "app.ts\nroutes.ts\n",
+          "exitCode": 0,
+          "durationMs": 30,
+          "startedAtMs": 1778600004000,
+          "completedAtMs": 1778600004030
+        },
+        "completedAtMs": 1778600004030
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "fileChange",
+          "id": "call_patch",
+          "changes": [],
+          "status": "inProgress",
+          "startedAtMs": 1778600005000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600005000
+      }
+    },
+    {
+      "method": "item/fileChange/patchUpdated",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "call_patch",
+        "changes": [
+          {
+            "path": "/repo/src/routes.ts",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -1,2 +1,3 @@\n import { app } from './app';\n+app.get('/health', () => 'ok');\n export {};\n"
+          }
+        ]
+      }
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "fileChange",
+          "id": "call_patch",
+          "changes": [
+            {
+              "path": "/repo/src/routes.ts",
+              "kind": {
+                "type": "update",
+                "move_path": null
+              },
+              "diff": "@@ -1,2 +1,3 @@\n import { app } from './app';\n+app.get('/health', () => 'ok');\n export {};\n"
+            }
+          ],
+          "status": "completed",
+          "startedAtMs": 1778600005000,
+          "completedAtMs": 1778600006000
+        },
+        "completedAtMs": 1778600006000
+      }
+    },
+    {
+      "method": "thread/tokenUsage/updated",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 90000,
+            "inputTokens": 80000,
+            "cachedInputTokens": 60000,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 10000,
+            "reasoningOutputTokens": 4000
+          },
+          "last": {
+            "totalTokens": 31000,
+            "inputTokens": 30000,
+            "cachedInputTokens": 20000,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 1000,
+            "reasoningOutputTokens": 400
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_1",
+          "text": "",
+          "phase": null,
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null,
+          "startedAtMs": 1778600007000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600007000
+      }
+    },
+    {
+      "method": "item/agentMessage/delta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "msg_1",
+        "delta": "Added "
+      }
+    },
+    {
+      "method": "item/agentMessage/delta",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "itemId": "msg_1",
+        "delta": "GET /health."
+      }
+    },
+    {
+      "method": "item/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_1",
+          "text": "Added GET /health.",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null,
+          "startedAtMs": 1778600007000,
+          "completedAtMs": 1778600008000
+        },
+        "completedAtMs": 1778600008000
+      }
+    },
+    {
+      "method": "model/rerouted",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "fromModel": "gpt-5.5",
+        "toModel": "gpt-5.5-mini",
+        "reason": "highRiskCyberActivity"
+      }
+    },
+    {
+      "method": "item/started",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turnId": "019a0002-0000-7000-8000-000000000001",
+        "item": {
+          "type": "commandExecution",
+          "id": "call_test",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/bin/zsh -lc 'npm test'",
+          "cwd": "/repo",
+          "processId": "502",
+          "source": "agent",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "npm test"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null,
+          "startedAtMs": 1778600009000,
+          "completedAtMs": null
+        },
+        "startedAtMs": 1778600009000
+      }
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "requestId": 7
+      }
+    },
+    {
+      "method": "somethingNew/happened",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "whatever": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "019a0002-0000-7000-8000-00000000aaaa",
+        "turn": {
+          "id": "019a0002-0000-7000-8000-000000000001",
+          "rootTurnId": null,
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "interrupted",
+          "error": null,
+          "startedAt": 1778600000,
+          "completedAt": 1778600010,
+          "durationMs": 10000
+        }
+      }
+    }
+  ],
+  "readBack": {
+    "id": "019a0002-0000-7000-8000-000000000001",
+    "rootTurnId": null,
+    "items": [
+      {
+        "type": "userMessage",
+        "id": "item-1",
+        "clientId": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Add a health check",
+            "text_elements": []
+          }
+        ],
+        "startedAtMs": null,
+        "completedAtMs": 1778600001000
+      },
+      {
+        "type": "reasoning",
+        "id": "rs_1",
+        "summary": [
+          "**Checking the routes**",
+          "Then the tests"
+        ],
+        "content": [],
+        "startedAtMs": 1778600002000,
+        "completedAtMs": 1778600003000
+      },
+      {
+        "type": "commandExecution",
+        "id": "call_ls",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/bin/zsh -lc 'ls src'",
+        "cwd": "/repo",
+        "processId": "501",
+        "source": "agent",
+        "status": "completed",
+        "commandActions": [
+          {
+            "type": "listFiles",
+            "command": "ls src",
+            "path": "src"
+          }
+        ],
+        "aggregatedOutput": "app.ts\nroutes.ts\n",
+        "exitCode": 0,
+        "durationMs": 30,
+        "startedAtMs": 1778600004000,
+        "completedAtMs": 1778600004030
+      },
+      {
+        "type": "fileChange",
+        "id": "call_patch",
+        "changes": [
+          {
+            "path": "/repo/src/routes.ts",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -1,2 +1,3 @@\n import { app } from './app';\n+app.get('/health', () => 'ok');\n export {};\n"
+          }
+        ],
+        "status": "completed",
+        "startedAtMs": 1778600005000,
+        "completedAtMs": 1778600006000
+      },
+      {
+        "type": "agentMessage",
+        "id": "msg_1",
+        "text": "Added GET /health.",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null,
+        "startedAtMs": 1778600007000,
+        "completedAtMs": 1778600008000
+      },
+      {
+        "type": "commandExecution",
+        "id": "call_test",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/bin/zsh -lc 'npm test'",
+        "cwd": "/repo",
+        "processId": "502",
+        "source": "agent",
+        "status": "inProgress",
+        "commandActions": [
+          {
+            "type": "unknown",
+            "command": "npm test"
+          }
+        ],
+        "aggregatedOutput": null,
+        "exitCode": null,
+        "durationMs": null,
+        "startedAtMs": 1778600009000,
+        "completedAtMs": null
+      }
+    ],
+    "itemsView": "full",
+    "status": "interrupted",
+    "error": null,
+    "startedAt": 1778600000,
+    "completedAt": 1778600010,
+    "durationMs": 10000
+  }
+}
