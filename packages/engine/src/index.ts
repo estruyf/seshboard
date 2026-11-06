@@ -2,5 +2,6 @@ export { createEngine, type ArchivedCleanup, type DemoUsage, type Engine, type E
 export type { RetentionPolicy } from './sessions/retention.ts';
 export { resolveShellEnv, type ShellEnv } from './system/shellEnv.ts';
 export { demoCopilot } from './providers/copilot/copilotDemo.ts';
+export { demoCodex } from './providers/codex/codexDemo.ts';
 export type { SessionSource, RawSessionInfo } from './claude/sessionSource.ts';
 export type { RawSessionMessage } from './claude/transcript.ts';

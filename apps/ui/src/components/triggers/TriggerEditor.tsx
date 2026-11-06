@@ -8,7 +8,8 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { pipelinesFor } from '../../state/pipelines.ts';
 import { usePipelines } from '../../state/pipelinesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
-import { useProvider, useProviderReadiness, useStartableProfiles } from '../../state/providersStore.ts';
+import { useProvider, useProviderReadiness, useProviders, useStartableProfiles } from '../../state/providersStore.ts';
+import { startLabel } from '../providers/startable.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import {
   firstCheckLine,
@@ -166,6 +167,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   const runsWith = providerOf(form.profileId ?? project?.profileId ?? defaultProfile);
   // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
   const startable = useStartableProfiles(form.profileId ?? project?.profileId ?? defaultProfile);
+  const catalog = useProviders((s) => s.providers);
   const runWith = runsWith === 'claude' ? null : runsWith;
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? (form.profileId ?? project?.profileId ?? defaultProfile) : null);
@@ -577,7 +579,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
                   value={profileId}
                   // Another tool has other models and modes: they start from its defaults.
                   onChange={(value) => update({ profileId: value === (project?.profileId ?? defaultProfile) ? null : value, ...(providerOf(value) !== runsWith ? { model: null, effort: null, permissionMode: 'default' as const } : {}) })}
-                  options={startable.map((p) => ({ value: p.id, label: p.name, icon: <span className={`size-2 rounded-full ${PROFILE_DOT[p.color]}`} /> }))}
+                  options={startable.map((p) => ({ value: p.id, label: startLabel(p, catalog), icon: <span className={`size-2 rounded-full ${PROFILE_DOT[p.color]}`} /> }))}
                   dataAttrs={{ 'data-trigger-profile': true }}
                 />
               )}

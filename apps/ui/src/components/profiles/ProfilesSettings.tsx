@@ -377,7 +377,7 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
   const detection = provider === 'claude' ? null : detectionOf(provider);
   // A provider Seshboard can't start sessions with yet (OpenAI Codex): its sessions are read-only, and reading them
   // needs no sign in.
-  const readOnly = provider !== 'claude' && !catalog.find((p) => p.id === provider)?.canStart;
+  const readOnly = provider !== 'claude' && catalog.find((p) => p.id === provider)?.canStart === false;
   const providerName = PROVIDER_NAMES[provider];
   const shownName = name ?? suggestedName(provider, PROVIDER_SHORT_NAMES[provider], profiles);
   // Another provider's own folder first (`~/.copilot`), while no profile uses it; then a folder of its own per profile.
@@ -649,7 +649,7 @@ export function ProfilesSettings() {
       ) : (
         <>
           {offers.map((offer) => (
-            <ProviderOffer key={offer.id} detection={offer} canStart={catalog.find((p) => p.id === offer.id)?.canStart ?? false} onAdd={() => setAdding(offer.id)} />
+            <ProviderOffer key={offer.id} detection={offer} canStart={catalog.find((p) => p.id === offer.id)?.canStart !== false} onAdd={() => setAdding(offer.id)} />
           ))}
           <Button icon={<Plus size={13} aria-hidden />} className="w-fit" onClick={() => setAdding('claude')} data-add-profile>
             Add profile

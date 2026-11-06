@@ -3313,6 +3313,98 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
   }
 }
 
+/**
+ * OpenAI Codex, read-only (#276). Settings › Profiles offers Codex CLI found on this computer, for its sessions only;
+ * Add profile on Codex needs no sign in, and Codex is added has no way to start one. Its profile has no Default. Its
+ * session in the sidebar has Codex's mark, its transcript shows Codex's tool calls as cards, and the command to continue
+ * it in Codex CLI (`codex resume <id>`) replaces the message box. Nothing is sent or started. The demo's Codex is made up
+ * (SESHBOARD_STUB_CODEX): installed, signed in, with two sessions in `~/.codex`, read through an app-server that answers
+ * in the engine. Elsewhere the step is skipped: it never reads a real Codex. The profile is removed again.
+ */
+async function runCodexStep(win: BrowserWindow): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_STUB_CODEX !== '1') return 'ok: skipped, only with the demo\'s made-up Codex (npm run smoke:demo)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"codex\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="codex"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  // Codex's sessions started outside Seshboard show only with sessions from other apps shown.
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  try {
+    // 1. The offer: for its sessions, without promising new ones.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return 'no offer for Codex CLI in Settings › Profiles';
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/OpenAI Codex CLI is on this (Mac|PC)/.test(offerText) || !offerText.includes('see its 2 sessions here.') || offerText.includes('start new ones')) return `the Codex offer reads ${JSON.stringify(offerText)}`;
+    // 2. Add profile on Codex: its own folder, read-only, no sign in.
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="codex"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Codex profile did not open Add profile with Codex picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return 'Next stays off for Codex (the demo Codex was not found)';
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.codex$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Codex offers ${String(await js(`${folderField}?.value`))}, not ~/.codex`;
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-read-only]')`, 3_000))) return "Add profile with Codex doesn't say its sessions are read-only";
+    const submit = (await js(`${page}.querySelector('[data-add-profile-submit]').textContent.trim()`)) as string;
+    if (submit !== 'Add profile') return `for Codex, the button reads ${JSON.stringify(submit)}`;
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    // 3. Codex is added: read-only, nothing to start.
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Codex is added') && !!${ready}.querySelector('[data-profile-ready-read-only]')`, 10_000))) return 'adding the profile did not end on Codex is added';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (await js(`!!${ready}.querySelector('[data-profile-ready-start], [data-profile-ready-default]')`)) return 'Codex is added offers to start a session or make it the default';
+    await js(`${ready}.querySelector('[data-profile-ready-done]').click()`);
+    const row = `document.querySelector('[data-profile="${profileId}"]')`;
+    if (!(await waitInPage(win, `!!${row}`, 3_000))) return 'the Codex profile is not listed';
+    if (await js(`!!${row}.querySelector('[data-profile-default], [data-profile-defaults]')`)) return 'the Codex profile has a Default or New session defaults';
+    if (!(await waitInPage(win, `(${row}.querySelector('[data-profile-account]')?.textContent ?? '').includes('read-only')`, 5_000))) return `the Codex profile reads ${JSON.stringify(await js(`${row}.textContent`))}`;
+    await js("document.querySelector('[data-close-settings]')?.click()");
+
+    // 4. Its session: Codex's mark, its tool calls as cards, and codex resume in place of the message box.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Codex session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    const notice = `${view}?.querySelector('[data-read-only-session="codex"]')`;
+    if (!(await waitInPage(win, `(${notice}?.textContent ?? '').includes(${JSON.stringify(`codex resume ${id}`)})`, 10_000))) {
+      return `the Codex session has no read-only notice with codex resume (${String(await js(`${notice}?.textContent ?? 'none'`))})`;
+    }
+    if (await js(`!!${view}.querySelector('[data-composer]')`)) return 'the Codex session has a message box';
+    // A finished turn folds its tool calls into one line (Skim); opened, each is a step, with Codex's file read as a Read.
+    const fold = `${view}.querySelector('[data-activity] > button')`;
+    if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Codex transcript shows no tool activity';
+    if ((await js(`${fold}.getAttribute('aria-expanded')`)) !== 'true') await js(`${fold}.click()`);
+    const steps = `[...${view}.querySelectorAll('[data-activity] [data-step]')].map((s) => s.textContent.trim())`;
+    if (!(await waitInPage(win, `${steps}.some((t) => t.includes('ProductList.tsx'))`, 5_000))) return `the Codex transcript's steps have no read of ProductList.tsx (${JSON.stringify(await js(steps))})`;
+    const tools = ((await js(steps)) as string[]).join(', ');
+    await shot(win, 'codex-session.png');
+    return `ok: offered for its 2 sessions, added without a sign in and without Default, its session has Codex's mark, tool steps (${tools}), and codex resume in place of the box`;
+  } finally {
+    // Back as it was: the Codex profile removed (its folder and sessions stay on disk), and the sidebar's scope.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+  }
+}
+
 async function runSettingsGroupsStep(win: BrowserWindow): Promise<string> {
   const js = (code: string) => win.webContents.executeJavaScript(code);
   const key = (keyCode: string) => {
@@ -13489,6 +13581,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('profiles', () => runProfilesStep(win));
   // After the steps that need New session on no folder: picking the project it adds is remembered.
   await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
+  await step('codex: Codex CLI offered for its sessions, added without a sign in, its session read-only with tool steps and codex resume, removed again', () => runCodexStep(win), { timeoutMs: 60_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('new session layout: three columns, two and stacked by the width, no page scroll, Add to queue at the focus limit', () => runNewSessionLayoutStep(win), { timeoutMs: 90_000 });
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));
