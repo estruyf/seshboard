@@ -172,7 +172,7 @@ export function useProjectIconEntries() {
         hint: linked === null ? '✓' : undefined,
         onSelect: () => void actions.setProfile(root, null),
       },
-      // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+      // Only profiles that can start a session (not a read-only provider's), and the one it has.
       ...startableProfiles(profiles, catalog, linked).map(
         (p): MenuEntry => ({ label: startLabel(p, catalog), icon: <ProfileDot color={p.color} />, hint: linked === p.id ? '✓' : undefined, onSelect: () => void actions.setProfile(root, p.id) }),
       ),

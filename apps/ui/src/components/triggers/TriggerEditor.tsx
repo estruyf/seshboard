@@ -165,7 +165,7 @@ function TriggerEditor({ request, onClose }: { request: TriggerEditorRequest; on
   // A profile of another provider (GitHub Copilot) starts it: its models and modes, and none of what it can't do yet.
   const providerOf = (profile: string) => profiles.find((p) => p.id === profile)?.provider ?? 'claude';
   const runsWith = providerOf(form.profileId ?? project?.profileId ?? defaultProfile);
-  // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
   const startable = useStartableProfiles(form.profileId ?? project?.profileId ?? defaultProfile);
   const catalog = useProviders((s) => s.providers);
   const runWith = runsWith === 'claude' ? null : runsWith;

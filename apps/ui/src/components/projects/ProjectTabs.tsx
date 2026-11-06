@@ -432,7 +432,7 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const [removing, setRemoving] = useState(false);
   const projectActions = useProjectActions();
   const profiles = useProfiles((s) => s.profiles);
-  // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
   const startable = useStartableProfiles(project.profileId);
   const catalog = useProviders((s) => s.providers);
   const home = useHomeFolder();

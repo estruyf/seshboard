@@ -773,7 +773,7 @@ function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemo
  * chip (`modelMode`, its sheet has the choices) and a round Send, grey until there is text. On a wide screen the chips
  * sit under the box, as on the computer.
  */
-/** In place of the message box for a session its provider can't continue here (Codex): the command that continues it. */
+/** In place of the message box for a session its provider can't continue here (a read-only provider): the command that continues it. */
 function ReadOnlyNote({ provider, command }: { provider: string; command: string }) {
   const copy = () =>
     void navigator.clipboard.writeText(command).then(

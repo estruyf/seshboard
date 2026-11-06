@@ -43,6 +43,8 @@ const PROFILES = [
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
   // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
   { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
+  // An OpenAI Codex profile, the same way.
+  { id: 'codex', name: 'Codex', color: 'green' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -696,9 +698,22 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
-  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  // The Copilot profile is GitHub Copilot's and the Codex one OpenAI Codex's, each with its modes and two models; their
+  // sessions start like the others.
   providerOfProfile: (profileId) =>
-    profileId === 'copilot'
+    profileId === 'codex'
+      ? {
+          id: 'codex',
+          name: 'OpenAI Codex',
+          modes: [
+            { value: 'default', label: 'Ask before edits', description: 'Approve every edit, and commands that leave the sandbox' },
+            { value: 'acceptEdits', label: 'Accept edits', description: 'Edits in the folder apply, commands outside it still ask' },
+            { value: 'plan', label: 'Plan mode', description: 'Codex plans before it changes anything' },
+            { value: 'auto', label: 'Auto mode', description: "Codex keeps going in the folder's sandbox, without asking" },
+          ],
+          supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+        }
+      : profileId === 'copilot'
       ? {
           id: 'copilot',
           name: 'GitHub Copilot',
@@ -711,9 +726,12 @@ const hub: RemoteHub = new RemoteHub({
           supports: [],
         }
       : null,
-  providerReady: async () => ({
+  providerReady: async (profileId) => ({
     problem: null,
-    models: [
+    models: profileId === 'codex' ? [
+      { value: 'gpt-5.3-codex', displayName: 'GPT-5.3 Codex', description: '', supportsEffort: true },
+      { value: 'gpt-5.3-codex-mini', displayName: 'GPT-5.3 Codex Mini', description: '', supportsEffort: true },
+    ] : [
       { value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false },
       { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
     ],

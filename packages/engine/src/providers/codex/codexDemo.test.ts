@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CODEX_DEMO_THREADS, codexDemoRollout, demoCodex } from './codexDemo.ts';
+import { CODEX_DEMO_REFUSAL, CODEX_DEMO_THREADS, codexDemoRollout, demoCodex } from './codexDemo.ts';
 import { codexProvider } from './codexProvider.ts';
 
 const dirs: string[] = [];
@@ -42,5 +42,25 @@ describe('the demo Codex', () => {
     rmSync(join(dir, 'sessions', '2026', '11', '06', `rollout-2026-11-06T10-00-00-${CODEX_DEMO_THREADS[1]!.id}.jsonl`));
     const adapter = codexProvider({ profileId: 'codex', codexHome: dir, userHome: dir, shellEnv: async () => ({}), ...demoCodex() });
     expect((await adapter.source.list()).map((s) => s.sessionId)).toEqual([CODEX_DEMO_THREADS[0]!.id]);
+  });
+
+  it('lists its models with their efforts, and refuses to start or continue a session', async () => {
+    const dir = codexHome();
+    const { createAppServer, binary } = demoCodex();
+    const server = createAppServer({ binary, env: async () => ({ CODEX_HOME: dir }) });
+    const { data } = await server.request('model/list', {});
+    expect(data.map((m) => [m.id, m.supportedReasoningEfforts.map((e) => e.reasoningEffort), m.isDefault])).toEqual([
+      ['gpt-5.3-codex', ['low', 'medium', 'high', 'xhigh'], true],
+      ['gpt-5.3-codex-mini', ['medium', 'high'], false],
+      ['gpt-5.2', [], false],
+    ]);
+    await expect(server.request('thread/start', { cwd: '/demo/acme-store' } as never)).rejects.toThrow(CODEX_DEMO_REFUSAL);
+    await expect(server.request('turn/start', { threadId: CODEX_DEMO_THREADS[0]!.id, input: [] } as never)).rejects.toThrow(CODEX_DEMO_REFUSAL);
+    // The rest of the interface does nothing: nothing runs.
+    expect(server.pid()).toBeNull();
+    server.handleRequests(null);
+    server.onNotification(() => {})();
+    server.hold()();
+    server.onExit(() => {})();
   });
 });

@@ -49,7 +49,7 @@ export function useProviderDetections(): ProviderDetection[] | null {
   return detected;
 }
 
-/** Whether Seshboard can start sessions with a provider (Claude Code, Copilot; not Codex yet). */
+/** Whether Seshboard can start sessions with a provider (`canStart`); a read-only one's are only shown. */
 export function useProviderCanStart(provider: SessionProvider | null | undefined): boolean {
   return useProviders((s) => providerCanStart(provider ?? 'claude', s.providers));
 }

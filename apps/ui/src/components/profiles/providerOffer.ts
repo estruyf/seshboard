@@ -14,7 +14,7 @@ export const sessionCount = (count: number) => `${count} ${count === 1 ? 'sessio
 
 /**
  * The offer's line under its title; the count only when the folder has sessions. `canStart`: Seshboard can start its
- * sessions too (a read-only provider's, OpenAI Codex's, are only shown).
+ * sessions too (a read-only provider's are only shown).
  */
 export function offerText(count: number, canStart = true): string {
   if (!canStart) return count > 0 ? `Add it as a profile to see its ${sessionCount(count)} here.` : 'Add it as a profile to see its sessions here.';

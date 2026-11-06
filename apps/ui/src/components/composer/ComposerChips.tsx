@@ -97,7 +97,7 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
 export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
-  // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+  // Only profiles that can start a session (not a read-only provider's), and the one it has.
   const profiles = useStartableProfiles(profile?.value);
   const catalog = useProviders((s) => s.providers);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;

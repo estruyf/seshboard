@@ -17,7 +17,7 @@ import { needsOtherApps, offerText, readySessionsLine } from './providerOffer.ts
 /**
  * A provider's CLI found on this computer with no profile of it yet (Settings › Profiles, under the list): Add opens
  * Add profile with the provider picked, Not now puts the offer away for good. `canStart`: Seshboard can start its
- * sessions too (not OpenAI Codex's yet).
+ * sessions too (not a read-only provider's).
  */
 export function ProviderOffer({ detection, canStart, onAdd }: { detection: ProviderDetection; canStart: boolean; onAdd(): void }) {
   const Icon = PROVIDER_ICONS[detection.id];
@@ -49,7 +49,7 @@ export function ProviderOffer({ detection, canStart, onAdd }: { detection: Provi
 
 /**
  * Add profile's last screen for a provider profile: who it is signed in as (waiting while its sign in runs in the
- * terminal), what now shows in the sidebar, and three ways to start using it. A read-only provider's (OpenAI Codex's)
+ * terminal), what now shows in the sidebar, and three ways to start using it. A read-only provider's
  * needs no sign in and starts nothing: it says its sessions show read-only.
  */
 export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudeProfile; sessions: number | null; onDone(): void }) {
