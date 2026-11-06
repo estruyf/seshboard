@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync } from 'node:fs';
-import { join, posix } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import type { LogLevel, ProviderUpdateState } from '@seshboard/protocol';
 import type { AppStateStore } from '../../db/appState.ts';
 import type { ClaudeInstallInfo } from '../../system/claudeInstall.ts';
@@ -17,13 +17,27 @@ const NPM_DIST_TAGS_URL = 'https://registry.npmjs.org/-/package/@openai/codex/di
 const FETCH_TIMEOUT_MS = 15_000;
 
 /**
- * Works out how `codex` was installed from where it lives (`realPath`: symlinks followed), and so how to update it, as
- * Codex's own update prompt does. Homebrew's cask and npm's package update with their own command (npm's next to the
- * package, so the same Node install is updated); anything else, Codex's own installer included (in
- * `~/.codex/packages/standalone`, linked from `~/.local/bin`), with `codex update`, which reruns that installer.
+ * Works out how `codex` was installed from where it lives (`realPath`: symlinks followed), and so how to update it, the
+ * way Codex itself tells installs apart (codex-rs/install-context). Codex's own installer (a release below
+ * `<codexHome>/packages/standalone/releases`, linked from `~/.local/bin`) updates with `codex update`, which reruns it;
+ * Homebrew and npm with their own command (npm's next to the package, so the same Node install is updated). pnpm, bun,
+ * Scoop and WinGet installs, and a binary put somewhere by hand, are left to the person, with the command to run where
+ * there is one: `npm install -g` would put a second Codex next to them, and `codex update` doesn't know how to.
  */
-export function detectCodexInstall(path: string, realPath: string, platform: NodeJS.Platform = process.platform): ClaudeInstallInfo {
-  if (platform === 'win32') {
+export function detectCodexInstall(path: string, realPath: string, options: { codexHome: string; platform?: NodeJS.Platform }): ClaudeInstallInfo {
+  const { codexHome, platform = process.platform } = options;
+  const windows = platform === 'win32';
+  const { join, sep } = windows ? win32 : posix;
+  // Windows paths compare without regard to case, as Windows does.
+  const same = (a: string) => (windows ? a.toLowerCase() : a);
+  const releases = join(codexHome, 'packages', 'standalone', 'releases');
+  if (same(realPath).startsWith(same(`${releases}${sep}`))) return { method: 'native', cask: null, command: 'codex update', run: { file: path, args: ['update'] } };
+  const manual = (method: ClaudeInstallInfo['method'], command: string): ClaudeInstallInfo => ({ method, cask: null, command, run: null });
+  if (/[\\/]\.bun[\\/]install[\\/]global[\\/]/i.test(realPath)) return manual('unknown', 'bun install -g @openai/codex@latest');
+  if (/[\\/](?:\.pnpm|pnpm[\\/]global)[\\/]/i.test(realPath)) return manual('unknown', 'pnpm add -g @openai/codex@latest');
+  if (windows) {
+    if (/\\WinGet\\(?:Packages|Links)\\/i.test(realPath)) return manual('winget', 'winget upgrade OpenAI.Codex');
+    if (/\\scoop\\(?:apps|shims)\\/i.test(realPath)) return manual('unknown', 'scoop update codex');
     // npm's `codex.exe` is in the platform package, nested in Codex's or next to it, below npm's prefix.
     const npmPrefix = /^(.*?)\\node_modules\\@openai\\codex(?:-win32-[\w]+)?\\/i.exec(realPath)?.[1];
     if (npmPrefix) {
@@ -36,18 +50,17 @@ export function detectCodexInstall(path: string, realPath: string, platform: Nod
       };
     }
   } else {
-    const { join } = posix;
     const cask = /^(.*)\/Caskroom\/(codex(?:@[\w.-]+)?)\//.exec(realPath);
     if (cask) return { method: 'homebrew', cask: cask[2]!, command: `brew upgrade --cask ${cask[2]}`, run: { file: join(cask[1]!, 'bin', 'brew'), args: ['upgrade', '--cask', cask[2]!] } };
     const formula = /^(.*)\/Cellar\/(codex(?:@[\w.-]+)?)\//.exec(realPath);
     if (formula) return { method: 'homebrew', cask: null, command: `brew upgrade ${formula[2]}`, run: { file: join(formula[1]!, 'bin', 'brew'), args: ['upgrade', formula[2]!] } };
-    const npm = /^(.*?)\/lib\/node_modules\/@openai\/codex(?:-[\w-]+)?\//.exec(realPath) ?? /^(.*?)\/node_modules\/@openai\/codex(?:-[\w-]+)?\//.exec(realPath);
-    if (npm) {
-      const prefix = realPath.includes('/lib/node_modules/') ? npm[1]! : null;
-      return { method: 'npm', cask: null, command: 'npm install -g @openai/codex@latest', run: { file: prefix ? join(prefix, 'bin', 'npm') : 'npm', args: ['install', '-g', '@openai/codex@latest'] } };
-    }
+    // npm's global prefix (`<prefix>/lib/node_modules`), with its own npm in `<prefix>/bin`.
+    const npm = /^(.*?)\/lib\/node_modules\/@openai\/codex(?:-[\w-]+)?\//.exec(realPath);
+    if (npm) return { method: 'npm', cask: null, command: 'npm install -g @openai/codex@latest', run: { file: join(npm[1]!, 'bin', 'npm'), args: ['install', '-g', '@openai/codex@latest'] } };
+    // Some other package manager's folder: which one is unknown, so its command isn't run.
+    if (/\/node_modules\/@openai\/codex(?:-[\w-]+)?\//.test(realPath)) return manual('npm', 'npm install -g @openai/codex@latest');
   }
-  return { method: 'native', cask: null, command: 'codex update', run: { file: path, args: ['update'] } };
+  return manual('unknown', 'codex update');
 }
 
 /** A release's tag (`rust-v0.167.0`) → `0.167.0`. */
@@ -127,7 +140,7 @@ export function codexUpdater(options: CodexUpdaterOptions): ToolUpdater<Provider
   const find = async (): Promise<FoundInstall<string | null> | null> => {
     const found = await options.binary();
     if (!found) return null;
-    const info = detectCodexInstall(found.path, realPath(found.path));
+    const info = detectCodexInstall(found.path, realPath(found.path), { codexHome: realPath(options.codexHome) });
     install = info;
     const quiet = codexUpdatesOff(readText(join(options.codexHome, 'config.toml')), await options.env());
     return { path: found.path, version: found.version, info, channel: null, override: false, quiet };

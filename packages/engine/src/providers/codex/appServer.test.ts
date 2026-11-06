@@ -80,7 +80,7 @@ describe('createAppServer', () => {
   });
 
   it('stops a process that does not answer in time when nothing else waits, and starts a fresh one', async () => {
-    const server = fakeServer({ timeoutMs: 300 });
+    const server = fakeServer({ timeoutMs: 1500 });
     await server.request('thread/list', {});
     const first = server.pid()!;
     await expect(server.request('thread/read', { threadId: 'hang' })).rejects.toMatchObject({ code: 'timeout' });
@@ -90,38 +90,23 @@ describe('createAppServer', () => {
     expect(server.pid()).not.toBe(first);
   });
 
-  it('keeps the process after one timeout while another request waits', async () => {
+  it('keeps the process after one timeout while another request waits, and stops it after two in a row', async () => {
     const server = fakeServer({ timeoutMs: 1500 });
     await server.request('thread/list', {});
-    const pid = server.pid();
-    const hanging = server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e);
-    // Sent later, so it is still waiting (answered at about 1700 ms) when the first times out (at 1500 ms).
-    await sleep(500);
-    const slow = server.request('thread/list', { limit: 1200 });
-    expect(await hanging).toMatchObject({ code: 'timeout' });
-    await expect(slow).resolves.toMatchObject({ data: [{ id: 't-1200' }] });
-    expect(server.pid()).toBe(pid);
-  });
-
-  it('stops a process after two timeouts in a row, failing what still waits', async () => {
-    const server = fakeServer({ timeoutMs: 1000 });
-    await server.request('thread/list', {});
     const first = server.pid()!;
-    const results: Promise<unknown>[] = [];
-    // A little apart, all sent well before the first times out.
-    for (let i = 0; i < 3; i++) {
-      results.push(server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e));
-      await sleep(100);
-    }
-    const [one, two, three] = await Promise.all(results);
-    expect(one).toMatchObject({ code: 'timeout' });
-    expect(two).toMatchObject({ code: 'timeout' });
-    expect(three).toMatchObject({ code: 'exited', message: 'Codex app-server stopped answering and was stopped.' });
-    await until(() => !alive(first));
+    // Sent together, they time out in the order sent, in one turn of the event loop: after the first, the others still
+    // wait (the process is kept); the second is two in a row with no word from Codex between (stuck), which fails the third.
+    const results = [0, 1, 2].map(() => server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e));
+    expect(await results[0]).toMatchObject({ code: 'timeout' });
+    expect(server.pid()).toBe(first);
+    expect(await results[1]).toMatchObject({ code: 'timeout' });
+    expect(await results[2]).toMatchObject({ code: 'exited', message: 'Codex app-server stopped answering and was stopped.' });
+    expect(server.pid()).toBeNull();
+    await until(() => !alive(first), 15_000);
   });
 
   it('ends a process that does not answer initialize, and tries again on the next request', async () => {
-    const server = fakeServer({ timeoutMs: 300, fakeEnv: { FAKE_CODEX_INIT: 'hang' } });
+    const server = fakeServer({ timeoutMs: 500, fakeEnv: { FAKE_CODEX_INIT: 'hang' } });
     await expect(server.request('thread/list', {})).rejects.toMatchObject({ code: 'timeout' });
     await until(() => server.pid() === null);
     await expect(server.request('thread/list', {})).rejects.toMatchObject({ code: 'timeout' });
@@ -166,15 +151,15 @@ describe('createAppServer', () => {
   });
 
   it('kills a process that ignores the idle stop', async () => {
-    const server = fakeServer({ idleMs: 50, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
+    const server = fakeServer({ idleMs: 50, killGraceMs: 200, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
     const notifications: string[] = [];
     server.onNotification((n) => notifications.push(n.method));
     await server.request('thread/list', {});
     const pid = server.pid()!;
-    // It said it got SIGTERM and stayed: only the SIGKILL after the grace period ends it, however slow the machine.
-    await until(() => notifications.includes('fake/sigterm'), 15_000);
-    await until(() => !alive(pid), 15_000);
-  }, 30_000);
+    // It said it got SIGTERM and stayed: only the SIGKILL ends it. Events, not time: however slow the machine.
+    await until(() => notifications.includes('fake/sigterm'), 20_000);
+    await until(() => !alive(pid), 20_000);
+  }, 60_000);
 
   it('reads an answer written just before the process ends', async () => {
     const server = fakeServer();
@@ -212,14 +197,14 @@ describe('createAppServer', () => {
   });
 
   it("answers Codex's requests with the handler's result or error, however long it takes", async () => {
-    const server = fakeServer({ timeoutMs: 200 });
+    const server = fakeServer({ timeoutMs: 1000 });
     const replies: unknown[] = [];
     server.onNotification((n) => n.method === 'fake/reply' && replies.push(n.params));
     const asked: unknown[] = [];
     server.handleRequests(async (request) => {
       asked.push(request);
       // Longer than a request may take: a person answers at the permission card.
-      await sleep(500);
+      await sleep(1500);
       return { decision: 'accept' };
     });
     await server.request('thread/read', { threadId: 'ask-later' });
@@ -275,6 +260,87 @@ describe('createAppServer', () => {
     await until(() => server.pid() === null);
     release();
     expect(exits).toBe(1);
+  });
+
+  it("a process that ends after the next one started never lets go of the next one's hold", async () => {
+    // Stubborn, with no SIGKILL in the test's time: the idle-stopped process lives on until the test kills it, while
+    // the next one runs.
+    const server = fakeServer({ idleMs: 100, killGraceMs: 600_000, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
+    let exits = 0;
+    server.onExit(() => exits++);
+    const notifications: string[] = [];
+    server.onNotification((n) => notifications.push(n.method));
+    const pids: number[] = [];
+    try {
+      await server.request('thread/list', {});
+      const first = server.pid()!;
+      pids.push(first);
+      await until(() => notifications.includes('fake/sigterm'), 20_000);
+      server.hold();
+      await server.request('thread/list', {});
+      const second = server.pid()!;
+      pids.push(second);
+      expect(second).not.toBe(first);
+      expect(alive(first)).toBe(true);
+      process.kill(first, 'SIGKILL');
+      await until(() => !alive(first), 20_000);
+      // Its end is handled once its output closes, or at most a second after it exited. Waiting shows nothing happened.
+      await sleep(2500);
+      expect(exits).toBe(0);
+      expect(server.pid()).toBe(second);
+    } finally {
+      // They ignore SIGTERM and their SIGKILL is far off: ended here, so dispose doesn't wait for them.
+      for (const pid of pids) if (alive(pid)) process.kill(pid, 'SIGKILL');
+    }
+  }, 60_000);
+
+  it('keeps a held process after a slow request, and stops it only after timeouts in a row', async () => {
+    const server = fakeServer({ timeoutMs: 1500 });
+    server.hold();
+    await server.request('thread/list', {});
+    const pid = server.pid();
+    await expect(server.request('thread/read', { threadId: 'hang' })).rejects.toMatchObject({ code: 'timeout' });
+    expect(server.pid()).toBe(pid);
+    // An answer between means it isn't stuck; then two at once time out together, with no word from Codex between: stuck.
+    await server.request('thread/list', {});
+    const both = await Promise.all([0, 1].map(() => server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e)));
+    expect(both.map((e) => (e as AppServerError).code)).toEqual(['timeout', 'timeout']);
+    expect(server.pid()).toBeNull();
+    await until(() => !alive(pid!));
+  });
+
+  it("aborts a request of Codex's once Codex resolved it itself, and it no longer keeps the process", async () => {
+    const server = fakeServer({ idleMs: 50 });
+    const signals: AbortSignal[] = [];
+    server.handleRequests((_request, signal) => {
+      signals.push(signal);
+      // Never answered: a card nobody looks at.
+      return new Promise(() => {});
+    });
+    const notifications: string[] = [];
+    server.onNotification((n) => notifications.push(n.method));
+    await server.request('thread/read', { threadId: 'ask-resolved' });
+    await until(() => signals.length === 1);
+    expect(signals[0]!.aborted).toBe(false);
+    await until(() => notifications.includes('serverRequest/resolved'));
+    expect(signals[0]!.aborted).toBe(true);
+    await until(() => server.pid() === null);
+  });
+
+  it("aborts a request of Codex's when its process ends, and sends nothing after", async () => {
+    const server = fakeServer();
+    const signals: AbortSignal[] = [];
+    let answer: (value: unknown) => void = () => {};
+    server.handleRequests((_request, signal) => {
+      signals.push(signal);
+      return new Promise((resolve) => (answer = resolve));
+    });
+    await server.request('thread/read', { threadId: 'ask-later' });
+    await until(() => signals.length === 1);
+    await server.request('thread/read', { threadId: 'crash' }).catch(() => {});
+    expect(signals[0]!.aborted).toBe(true);
+    answer({ decision: 'accept' });
+    await expect(server.request('thread/list', {})).resolves.toMatchObject({ data: [{ id: 't-0' }] });
   });
 
   it('does not call onExit for the idle stop, an unheld crash or dispose', async () => {

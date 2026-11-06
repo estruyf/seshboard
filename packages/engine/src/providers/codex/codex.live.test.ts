@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAppServer } from './appServer.ts';
 import { findCodex } from './codexBinary.ts';
-import { lockFile, openThreads } from './codexInUse.ts';
+import { codexLocks, lockFile } from './codexInUse.ts';
 import type { ServerNotification } from './protocol.ts';
 
 const until = async (condition: () => boolean, ms = 15_000) => {
@@ -67,8 +67,8 @@ describe.skipIf(process.env.SESHBOARD_LIVE_CODEX !== '1')('live codex app-server
       expect(existsSync(lock)).toBe(true);
       // Held by Seshboard's own app-server: open elsewhere only for someone who doesn't count its pid as their own.
       if (process.platform === 'darwin') {
-        expect(await openThreads(codexHome, [thread.id], new Set([server.pid()!]))).toEqual(new Set());
-        expect(await openThreads(codexHome, [thread.id], new Set())).toEqual(new Set([thread.id]));
+        expect(await codexLocks(codexHome).openThreads([thread.id], new Set([server.pid()!]))).toEqual(new Set());
+        expect(await codexLocks(codexHome).openThreads([thread.id], new Set())).toEqual(new Set([thread.id]));
       }
       expect(await server.request('thread/unsubscribe', { threadId: thread.id })).toMatchObject({ status: 'unsubscribed' });
       await until(() => notifications.some((n) => n.method === 'thread/closed'));

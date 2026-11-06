@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,26 +7,29 @@ import { appStateFake } from '../../system/testing.ts';
 import { codexUpdater, codexUpdatesOff, detectCodexInstall, versionFromTag, type CodexUpdaterOptions } from './codexUpdate.ts';
 
 describe('detectCodexInstall', () => {
+  const mac = { codexHome: '/Users/me/.codex', platform: 'darwin' as const };
+  const win = { codexHome: 'C:\\Users\\me\\.codex', platform: 'win32' as const };
+
   it("updates Codex's own installer with codex update, through the same binary", () => {
-    expect(detectCodexInstall('/Users/me/.local/bin/codex', '/Users/me/.codex/packages/standalone/releases/0.167.0-aarch64-apple-darwin/codex', 'darwin')).toEqual({
+    expect(detectCodexInstall('/Users/me/.local/bin/codex', '/Users/me/.codex/packages/standalone/releases/0.167.0-aarch64-apple-darwin/bin/codex', mac)).toEqual({
       method: 'native',
       cask: null,
       command: 'codex update',
       run: { file: '/Users/me/.local/bin/codex', args: ['update'] },
     });
-    expect(detectCodexInstall('C:\\Users\\me\\.local\\bin\\codex.exe', 'C:\\Users\\me\\.local\\bin\\codex.exe', 'win32')).toMatchObject({ method: 'native', command: 'codex update' });
+    expect(detectCodexInstall('C:\\x\\codex.exe', 'c:\\users\\me\\.codex\\packages\\standalone\\releases\\0.167.0-x86_64-pc-windows-msvc\\bin\\codex.exe', win)).toMatchObject({ method: 'native', run: { args: ['update'] } });
   });
 
   it('updates Homebrew and npm installs with their own command', () => {
-    expect(detectCodexInstall('/opt/homebrew/bin/codex', '/opt/homebrew/Caskroom/codex/0.167.0/codex-aarch64-apple-darwin', 'darwin')).toMatchObject({
+    expect(detectCodexInstall('/opt/homebrew/bin/codex', '/opt/homebrew/Caskroom/codex/0.167.0/codex-aarch64-apple-darwin', mac)).toMatchObject({
       method: 'homebrew',
       cask: 'codex',
       command: 'brew upgrade --cask codex',
       run: { file: '/opt/homebrew/bin/brew', args: ['upgrade', '--cask', 'codex'] },
     });
-    expect(detectCodexInstall('/home/linuxbrew/.linuxbrew/bin/codex', '/home/linuxbrew/.linuxbrew/Cellar/codex/0.167.0/bin/codex', 'linux')).toMatchObject({ method: 'homebrew', cask: null, command: 'brew upgrade codex' });
+    expect(detectCodexInstall('/home/linuxbrew/.linuxbrew/bin/codex', '/home/linuxbrew/.linuxbrew/Cellar/codex/0.167.0/bin/codex', { ...mac, platform: 'linux' })).toMatchObject({ method: 'homebrew', cask: null, command: 'brew upgrade codex' });
     // npm's link runs its script, which execs the native binary.
-    expect(detectCodexInstall('/Users/me/.nvm/versions/node/v24.21.0/bin/codex', '/Users/me/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/bin/codex.js', 'darwin')).toMatchObject({
+    expect(detectCodexInstall('/Users/me/.nvm/versions/node/v24.21.0/bin/codex', '/Users/me/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/bin/codex.js', mac)).toMatchObject({
       method: 'npm',
       command: 'npm install -g @openai/codex@latest',
       run: { file: '/Users/me/.nvm/versions/node/v24.21.0/bin/npm', args: ['install', '-g', '@openai/codex@latest'] },
@@ -37,8 +40,24 @@ describe('detectCodexInstall', () => {
       `${npm}\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`,
       `${npm}\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`,
     ]) {
-      expect(detectCodexInstall(exe, exe, 'win32')).toMatchObject({ method: 'npm', run: { file: 'npm', args: ['install', '-g', '--prefix', npm, '@openai/codex@latest'] } });
+      expect(detectCodexInstall(exe, exe, win)).toMatchObject({ method: 'npm', run: { file: 'npm', args: ['install', '-g', '--prefix', npm, '@openai/codex@latest'] } });
     }
+  });
+
+  it('leaves pnpm, bun, Scoop, WinGet and hand-placed installs to the person, with their command', () => {
+    const manual = (path: string, options: typeof mac | typeof win) => {
+      const info = detectCodexInstall(path, path, options);
+      expect(info.run).toBeNull();
+      return info.command;
+    };
+    expect(manual('/Users/me/Library/pnpm/global/5/node_modules/.pnpm/@openai+codex@0.167.0/node_modules/@openai/codex/bin/codex.js', mac)).toBe('pnpm add -g @openai/codex@latest');
+    expect(manual('/Users/me/.bun/install/global/node_modules/@openai/codex/bin/codex.js', mac)).toBe('bun install -g @openai/codex@latest');
+    expect(manual('C:\\Users\\me\\.bun\\install\\global\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe', win)).toBe('bun install -g @openai/codex@latest');
+    expect(manual('C:\\Users\\me\\AppData\\Local\\pnpm\\global\\5\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe', win)).toBe('pnpm add -g @openai/codex@latest');
+    expect(manual('C:\\Users\\me\\scoop\\apps\\codex\\current\\codex.exe', win)).toBe('scoop update codex');
+    expect(manual('C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\OpenAI.Codex_x\\codex-x86_64-pc-windows-msvc.exe', win)).toBe('winget upgrade OpenAI.Codex');
+    expect(manual('/usr/local/bin/codex', mac)).toBe('codex update');
+    expect(manual('/opt/project/node_modules/@openai/codex/bin/codex.js', mac)).toBe('npm install -g @openai/codex@latest');
   });
 });
 
@@ -71,12 +90,17 @@ describe('codexUpdater', () => {
     let version = installed;
     const codexHome = mkdtempSync(join(tmpdir(), 'seshboard-codex-update-'));
     homes.push(codexHome);
+    // Codex's own installer: a release below its folder.
+    const release = join(codexHome, 'packages', 'standalone', 'releases', '0.167.0-aarch64-apple-darwin', 'bin');
+    mkdirSync(release, { recursive: true });
+    const binary = join(release, 'codex');
+    writeFileSync(binary, '');
     const states: ProviderUpdateState[] = [];
     const ran: string[] = [];
     const asked: Array<[string, string | null]> = [];
     const updater = codexUpdater({
       store: appStateFake(),
-      binary: async () => ({ path: '/Users/me/.local/bin/codex', version }),
+      binary: async () => ({ path: binary, version }),
       codexHome,
       env: async () => ({ PATH: '/usr/bin' }),
       ready: Promise.resolve(),
@@ -91,16 +115,16 @@ describe('codexUpdater', () => {
       },
       ...extra,
     });
-    return { updater, states, ran, asked, codexHome };
+    return { updater, states, ran, asked, codexHome, binary };
   }
 
   it('finds a newer version and updates with codex update', async () => {
-    const { updater, ran, asked } = setup('0.167.0', '0.168.0');
+    const { updater, ran, asked, binary } = setup('0.167.0', '0.168.0');
     await updater.check();
     expect(updater.state).toMatchObject({ provider: 'codex', name: 'Codex CLI', status: 'available', method: 'native', command: 'codex update', canUpdate: true, installedVersion: '0.167.0', latestVersion: '0.168.0' });
     expect(asked).toEqual([['native', null]]);
     await updater.update();
-    expect(ran).toEqual(['/Users/me/.local/bin/codex update']);
+    expect(ran).toEqual([`${binary} update`]);
     expect(updater.state).toMatchObject({ status: 'updated', installedVersion: '0.168.0', updatedTo: '0.168.0' });
   });
 
