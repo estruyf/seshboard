@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
 import type { CodexBinary } from './appServer.ts';
 
 /**
  * Where OpenAI's Codex CLI may be, in order: PATH first, then the usual install spots (its installer's `~/.local/bin`,
  * Homebrew, npm's global prefix when the environment names it). On Windows only a `codex.exe`: npm's install leaves a
- * `codex.cmd`, which needs a shell (`npmCodex` runs its script with `node` instead).
+ * `codex.cmd`, which needs a shell (`npmCodex` finds the `codex.exe` it starts instead).
  */
 export function codexCandidates(env: Record<string, string | undefined>, home: string, platform: NodeJS.Platform = process.platform): string[] {
   const { delimiter, join } = platform === 'win32' ? win32 : posix;
@@ -25,30 +25,37 @@ export function codexCandidates(env: Record<string, string | undefined>, home: s
   return [...new Set([...dirs.map((dir) => join(dir, 'codex')), ...wellKnown])];
 }
 
+/** The Rust target npm's Codex package names its Windows binaries by, per architecture. */
+const WINDOWS_TRIPLES: Partial<Record<NodeJS.Architecture, string>> = { x64: 'x86_64-pc-windows-msvc', arm64: 'aarch64-pc-windows-msvc' };
+
 /**
- * On Windows, `npm install -g @openai/codex` leaves only a `codex.cmd`, which Node can't start without a shell. Its
- * package's script runs with the user's own `node` instead: the command (`node.exe` on PATH) and its first argument
- * (the script npm's `.cmd` runs). Looks on PATH and in npm's default global folder (`%APPDATA%\npm`). Null elsewhere, or
- * when either isn't there.
+ * On Windows, `npm install -g @openai/codex` leaves only a `codex.cmd`, which Node can't start without a shell. And its
+ * script (`bin/codex.js`) doesn't replace itself with Codex there, as it does on macOS and Linux: it starts the native
+ * `codex.exe` as a child, so the pid and a kill would be node's and Codex would be left running. So the `codex.exe`
+ * is found the way that script finds it: in the platform package `@openai/codex-win32-<arch>` (nested in Codex's
+ * package or next to it), else in Codex's own `vendor` folder, under `vendor/<target>/bin`. Looks next to each
+ * `codex.cmd` on PATH and in npm's default global folder (`%APPDATA%\npm`). Null elsewhere, or when it isn't there.
  */
 export function npmCodex(
   env: Record<string, string | undefined>,
   platform: NodeJS.Platform,
-  files: { exists(path: string): boolean; readJson(path: string): unknown },
+  files: { exists(path: string): boolean },
+  arch: NodeJS.Architecture = process.arch,
 ): { path: string; args: string[] } | null {
-  if (platform !== 'win32') return null;
+  const triple = WINDOWS_TRIPLES[arch];
+  if (platform !== 'win32' || !triple) return null;
   const { delimiter, join } = win32;
   const path = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean);
-  const node = path.map((dir) => join(dir, 'node.exe')).find((file) => files.exists(file));
-  if (!node) return null;
   const dirs = [...new Set([...path, ...(env.APPDATA ? [join(env.APPDATA, 'npm')] : [])])];
+  const platformPackage = `codex-win32-${arch}`;
   for (const dir of dirs) {
     if (!files.exists(join(dir, 'codex.cmd'))) continue;
     // npm's global prefix keeps the package next to its `.cmd`.
-    const pkg = join(dir, 'node_modules', '@openai', 'codex');
-    const json = files.readJson(join(pkg, 'package.json')) as { bin?: string | Record<string, string> } | null;
-    const bin = typeof json?.bin === 'string' ? json.bin : json?.bin?.codex;
-    if (bin && files.exists(join(pkg, bin))) return { path: node, args: [join(pkg, bin)] };
+    const modules = join(dir, 'node_modules');
+    const codex = join(modules, '@openai', 'codex');
+    const vendors = [join(codex, 'node_modules', '@openai', platformPackage, 'vendor'), join(modules, '@openai', platformPackage, 'vendor'), join(codex, 'vendor')];
+    const exe = vendors.map((vendor) => join(vendor, triple, 'bin', 'codex.exe')).find((file) => files.exists(file));
+    if (exe) return { path: exe, args: [] };
   }
   return null;
 }
@@ -65,21 +72,13 @@ const isExecutable = (path: string) => {
   }
 };
 
-const readJson = (path: string): unknown => {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
-};
-
 /**
- * The user's own `codex` and its version, or null when it isn't installed. `args` go before `app-server`: on Windows,
- * npm's install runs as `node <its script>` (`npmCodex`).
+ * The user's own `codex` and its version, or null when it isn't installed. On Windows, npm's install is run by its
+ * native `codex.exe` (`npmCodex`).
  */
 export async function findCodex(env: Record<string, string | undefined>, home: string): Promise<CodexBinary | null> {
   const exe = codexCandidates(env, home).find(isExecutable);
-  const found = exe ? { path: exe, args: [] as string[] } : npmCodex(env, process.platform, { exists: existsSync, readJson });
+  const found = exe ? { path: exe, args: [] as string[] } : npmCodex(env, process.platform, { exists: existsSync });
   if (!found) return null;
   const version = await new Promise<string | null>((resolve) =>
     execFile(found.path, [...found.args, '--version'], { env: env as NodeJS.ProcessEnv, timeout: 10_000, windowsHide: true }, (error, stdout) => resolve(error ? null : parseCodexVersion(stdout))),

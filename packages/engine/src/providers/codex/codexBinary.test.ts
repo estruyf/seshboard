@@ -28,27 +28,32 @@ describe('codexCandidates', () => {
 
 describe('npmCodex', () => {
   const npm = 'C:\\Users\\me\\AppData\\Roaming\\npm';
-  const node = 'C:\\Program Files\\nodejs\\node.exe';
-  const script = `${npm}\\node_modules\\@openai\\codex\\bin\\codex.js`;
-  const files = (present: string[]) => ({
-    exists: (path: string) => present.includes(path),
-    readJson: (path: string) => (path === `${npm}\\node_modules\\@openai\\codex\\package.json` ? { bin: { codex: 'bin/codex.js' } } : null),
-  });
-  const all = [node, `${npm}\\codex.cmd`, script];
+  const codex = `${npm}\\node_modules\\@openai\\codex`;
+  const nested = `${codex}\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`;
+  const hoisted = `${npm}\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`;
+  const vendored = `${codex}\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`;
+  const files = (present: string[]) => ({ exists: (path: string) => present.includes(path) });
+  const PATH = `C:\\Program Files\\nodejs;${npm}`;
 
-  it("runs npm's script with the user's node on Windows", () => {
-    expect(npmCodex({ PATH: `C:\\Program Files\\nodejs;${npm}` }, 'win32', files(all))).toEqual({ path: node, args: [script] });
+  it("runs the native codex.exe from the platform package, not npm's node script", () => {
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`, nested, vendored]), 'x64')).toEqual({ path: nested, args: [] });
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`, hoisted, vendored]), 'x64')).toEqual({ path: hoisted, args: [] });
+  });
+
+  it("falls back to Codex's own vendor folder, and picks the architecture's", () => {
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`, vendored]), 'x64')).toEqual({ path: vendored, args: [] });
+    const arm = `${codex}\\node_modules\\@openai\\codex-win32-arm64\\vendor\\aarch64-pc-windows-msvc\\bin\\codex.exe`;
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`, nested, arm]), 'arm64')).toEqual({ path: arm, args: [] });
   });
 
   it("finds npm's default global folder when it isn't on PATH", () => {
-    expect(npmCodex({ PATH: 'C:\\Program Files\\nodejs', APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }, 'win32', files(all))).toEqual({ path: node, args: [script] });
+    expect(npmCodex({ PATH: 'C:\\Windows', APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }, 'win32', files([`${npm}\\codex.cmd`, nested]), 'x64')).toEqual({ path: nested, args: [] });
   });
 
-  it('is null without node, the .cmd or the script, and elsewhere than Windows', () => {
-    const PATH = `C:\\Program Files\\nodejs;${npm}`;
-    expect(npmCodex({ PATH }, 'win32', files(all.slice(1)))).toBeNull();
-    expect(npmCodex({ PATH }, 'win32', files([all[0]!, all[2]!]))).toBeNull();
-    expect(npmCodex({ PATH }, 'win32', files(all.slice(0, 2)))).toBeNull();
-    expect(npmCodex({ PATH }, 'darwin', files(all))).toBeNull();
+  it('is null without the .cmd or the exe, on an architecture Codex has no build for, and elsewhere than Windows', () => {
+    expect(npmCodex({ PATH }, 'win32', files([nested]), 'x64')).toBeNull();
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`]), 'x64')).toBeNull();
+    expect(npmCodex({ PATH }, 'win32', files([`${npm}\\codex.cmd`, nested]), 'ia32')).toBeNull();
+    expect(npmCodex({ PATH }, 'darwin', files([`${npm}\\codex.cmd`, nested]), 'x64')).toBeNull();
   });
 });

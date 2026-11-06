@@ -27,6 +27,8 @@ const alive = (pid: number) => {
   }
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const until = async (condition: () => boolean, ms = 5000) => {
   const end = Date.now() + ms;
   while (!condition()) {
@@ -77,12 +79,44 @@ describe('createAppServer', () => {
     expect(result.reply).toMatchObject({ id: 'srv-1', error: { code: -32601 } });
   });
 
-  it('fails a request Codex does not answer in time, and keeps the process for the next', async () => {
+  it('stops a process that does not answer in time when nothing else waits, and starts a fresh one', async () => {
     const server = fakeServer({ timeoutMs: 300 });
+    await server.request('thread/list', {});
+    const first = server.pid()!;
     await expect(server.request('thread/read', { threadId: 'hang' })).rejects.toMatchObject({ code: 'timeout' });
-    const pid = server.pid();
+    expect(server.pid()).toBeNull();
+    await until(() => !alive(first));
     await expect(server.request('thread/list', {})).resolves.toMatchObject({ data: [{ id: 't-0' }] });
+    expect(server.pid()).not.toBe(first);
+  });
+
+  it('keeps the process after one timeout while another request waits', async () => {
+    const server = fakeServer({ timeoutMs: 400 });
+    await server.request('thread/list', {});
+    const pid = server.pid();
+    const hanging = server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e);
+    // Sent later, so it is still waiting (answered at 500 ms) when the first times out (at 400 ms).
+    await sleep(200);
+    const slow = server.request('thread/list', { limit: 300 });
+    expect(await hanging).toMatchObject({ code: 'timeout' });
+    await expect(slow).resolves.toMatchObject({ data: [{ id: 't-300' }] });
     expect(server.pid()).toBe(pid);
+  });
+
+  it('stops a process after two timeouts in a row, failing what still waits', async () => {
+    const server = fakeServer({ timeoutMs: 300 });
+    await server.request('thread/list', {});
+    const first = server.pid()!;
+    const results: Promise<unknown>[] = [];
+    for (let i = 0; i < 3; i++) {
+      results.push(server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e));
+      await sleep(100);
+    }
+    const [one, two, three] = await Promise.all(results);
+    expect(one).toMatchObject({ code: 'timeout' });
+    expect(two).toMatchObject({ code: 'timeout' });
+    expect(three).toMatchObject({ code: 'exited', message: 'Codex app-server stopped answering and was stopped.' });
+    await until(() => !alive(first));
   });
 
   it('ends a process that does not answer initialize, and tries again on the next request', async () => {
@@ -122,7 +156,32 @@ describe('createAppServer', () => {
 
   it('does not stop while a request is in flight', async () => {
     const server = fakeServer({ idleMs: 50 });
-    await expect(server.request('thread/list', { limit: 300 })).resolves.toMatchObject({ data: [{ id: 't-300' }] });
+    const slow = server.request('thread/list', { limit: 300 });
+    await server.request('thread/list', { limit: 0 });
+    const pid = server.pid();
+    // The quick one is done: only the slow one, still waiting, keeps the idle stop off.
+    await expect(slow).resolves.toMatchObject({ data: [{ id: 't-300' }] });
+    expect(server.pid()).toBe(pid);
+  });
+
+  it('kills a process that ignores the idle stop', async () => {
+    const server = fakeServer({ idleMs: 50, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
+    await server.request('thread/list', {});
+    const pid = server.pid()!;
+    await until(() => server.pid() === null);
+    expect(alive(pid)).toBe(true);
+    await until(() => !alive(pid), 5000);
+  });
+
+  it('reads an answer written just before the process ends', async () => {
+    const server = fakeServer();
+    await expect(server.request('thread/read', { threadId: 'last' })).resolves.toMatchObject({ thread: { id: 'last' } });
+  });
+
+  it('reads an answer that comes in many chunks', async () => {
+    const server = fakeServer();
+    const result = await server.request('thread/read', { threadId: 'big' });
+    expect(result.thread.preview).toHaveLength(8 * 1024 * 1024);
   });
 
   it("says Codex CLI isn't installed when there is no binary, or it is gone", async () => {
@@ -147,7 +206,7 @@ describe('createAppServer', () => {
     const pid = server.pid()!;
     const hanging = server.request('thread/read', { threadId: 'hang' }).catch((e: unknown) => e);
     // Nothing to wait on: the fake never answers, so give the request time to reach it.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
     await server.dispose();
     expect(await hanging).toMatchObject({ code: 'disposed' });
     expect(server.pid()).toBeNull();
