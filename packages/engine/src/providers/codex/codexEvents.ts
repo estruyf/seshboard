@@ -138,18 +138,34 @@ export function shellCommand(command: string): string {
 }
 
 /**
+ * Whether a command prints one whole file and nothing else (`cat file`), so a Read card says what it did. Codex also
+ * calls `sed -n 1,80p file` or `cat file | head` a read; the Read card shows only the path, as if the whole file was
+ * read, so those stay Bash cards with their command.
+ */
+function isWholeFileRead(command: string): boolean {
+  const cat = /^cat (.+)$/s.exec(command.trim());
+  return !!cat && !cat[1]!.startsWith('-') && shellWord(cat[1]!) !== null;
+}
+
+/**
  * A unified diff's hunks as Edit's `old_string`/`new_string` pairs: each hunk's context and removed lines before, its
  * context and added lines after. The Edit card diffs the two, so the hunk shows as it does for Claude Code. File
- * headers and `\ No newline` markers are left out; a hunk header without line counts (`@@`) runs to the next one.
+ * headers are left out; a hunk header without line counts (`@@`) runs to the next one. Each line keeps its newline
+ * unless a `\ No newline at end of file` marker follows it, so a change to only the last newline still shows; the
+ * newline both sides end with is then dropped, as Claude Code's own edits have none. A CRLF line's `\r` is dropped.
  */
 export function diffEdits(diff: string): Array<{ old_string: string; new_string: string }> {
-  const hunks: Array<{ before: string[]; after: string[] }> = [];
-  let hunk: { before: string[]; after: string[] } | null = null;
+  type Hunk = { before: string[]; after: string[] };
+  const hunks: Hunk[] = [];
+  let hunk: Hunk | null = null;
+  /** The sides the last line went to, which a `\ No newline` marker applies to. */
+  let last: Array<'before' | 'after'> = [];
   let oldLeft = 0;
   let newLeft = 0;
   const lines = diff.split('\n');
   if (lines.at(-1) === '') lines.pop();
-  for (const line of lines) {
+  for (const raw of lines) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
     if (line.startsWith('@@')) {
       const counts = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
       // A count left out means one line.
@@ -157,24 +173,41 @@ export function diffEdits(diff: string): Array<{ old_string: string; new_string:
       newLeft = counts ? (counts[2] === undefined ? 1 : Number(counts[2])) : Infinity;
       hunk = { before: [], after: [] };
       hunks.push(hunk);
+      last = [];
       continue;
     }
-    if (!hunk || (oldLeft <= 0 && newLeft <= 0) || line.startsWith('\\')) continue;
+    if (!hunk) continue;
+    if (line.startsWith('\\')) {
+      for (const side of last) hunk[side][hunk[side].length - 1] = hunk[side].at(-1)!.replace(/\n$/, '');
+      last = [];
+      continue;
+    }
+    if (oldLeft <= 0 && newLeft <= 0) continue;
     if (line.startsWith('+')) {
-      hunk.after.push(line.slice(1));
+      hunk.after.push(`${line.slice(1)}\n`);
+      last = ['after'];
       newLeft--;
     } else if (line.startsWith('-')) {
-      hunk.before.push(line.slice(1));
+      hunk.before.push(`${line.slice(1)}\n`);
+      last = ['before'];
       oldLeft--;
     } else if (line.startsWith(' ') || line === '') {
       // An empty line is a blank context line whose space was dropped.
-      hunk.before.push(line.slice(1));
-      hunk.after.push(line.slice(1));
+      hunk.before.push(`${line.slice(1)}\n`);
+      hunk.after.push(`${line.slice(1)}\n`);
+      last = ['before', 'after'];
       oldLeft--;
       newLeft--;
     }
   }
-  return hunks.filter((h) => h.before.length || h.after.length).map((h) => ({ old_string: h.before.join('\n'), new_string: h.after.join('\n') }));
+  return hunks
+    .filter((h) => h.before.length || h.after.length)
+    .map((h) => {
+      const before = h.before.join('');
+      const after = h.after.join('');
+      const trim = before.endsWith('\n') && after.endsWith('\n');
+      return { old_string: trim ? before.slice(0, -1) : before, new_string: trim ? after.slice(0, -1) : after };
+    });
 }
 
 type Tool = { name: string; input: Loose };
@@ -190,6 +223,8 @@ function fileTool(change: Loose): Tool {
   if (kind.type === 'delete') return { name: 'Delete', input: { file_path: path } };
   const moved = str(kind.move_path);
   const edits = diffEdits(diff);
+  // A rename without changes: a card of its own, with both paths (the Edit card would show an empty diff).
+  if (moved && !edits.length) return { name: 'Move', input: { from: path, to: moved } };
   const file = moved ?? path;
   if (edits.length > 1) return { name: 'MultiEdit', input: { file_path: file, edits } };
   return { name: 'Edit', input: { file_path: file, ...(edits[0] ?? { old_string: '', new_string: '' }) } };
@@ -320,9 +355,12 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
   const tools = (calls: Array<{ id: string; tool: Tool; result: Result }>) => {
     if (!calls.length) return;
     assistant(calls.map(({ id: callId, tool }) => ({ type: 'tool_use', id: callId, name: tool.name, input: tool.input })));
-    const results = calls.flatMap(({ id: callId, result }) =>
-      result ? [{ type: 'tool_result', tool_use_id: callId, is_error: result.isError, content: result.images?.length ? [...(result.text ? [{ type: 'text', text: result.text }] : []), ...result.images] : result.text }] : [],
-    );
+    const results = calls.flatMap(({ id: callId, result: own }) => {
+      // A tool still running in a turn that ended (stopped, failed) never finishes: without a result it would wait for
+      // one for good. Plans have no status and stay without one.
+      const result = own ?? (item.status === 'inProgress' && turn.status !== 'inProgress' ? { text: 'Interrupted', isError: true } : null);
+      return result ? [{ type: 'tool_result', tool_use_id: callId, is_error: result.isError, content: result.images?.length ? [...(result.text ? [{ type: 'text', text: result.text }] : []), ...result.images] : result.text }] : [];
+    });
     if (results.length) out.push(message('user', `${id}:result`, ended, { role: 'user', content: results }));
   };
   const tool = (t: Tool, result: Result) => tools([{ id, tool: t, result }]);
@@ -357,14 +395,15 @@ function convertItem(turn: Turn, item: Loose, id: string, agentStates: ReadonlyM
       const output = str(item.aggregatedOutput) ?? '';
       const result: Result =
         status === 'inProgress' ? null : { text: output || (status === 'declined' ? 'Declined' : ''), isError: FAILED.has(String(status)) || (exitCode !== null && exitCode !== 0) };
+      const command = shellCommand(str(item.command) ?? '');
       const actions = arr(item.commandActions).map(obj);
       const read = actions.length === 1 && actions[0]!.type === 'read' ? str(actions[0]!.path) : null;
-      if (read) {
-        // `cat`, `sed -n` and the like: a Read card for the file, its output as the content.
+      if (read && isWholeFileRead(command)) {
+        // `cat file`: a Read card for the file, its output as the content.
         const cwd = str(item.cwd);
         tool({ name: 'Read', input: { file_path: !isAbsolutePath(read) && cwd ? joinPath(cwd, read) : read } }, result);
       } else {
-        tool({ name: 'Bash', input: { command: shellCommand(str(item.command) ?? '') } }, result);
+        tool({ name: 'Bash', input: { command } }, result);
       }
       break;
     }

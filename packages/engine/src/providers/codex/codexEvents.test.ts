@@ -108,9 +108,39 @@ describe('codexMessages', () => {
     expect(last).toEqual({ role: 'system', uuid: `${T3}#end`, blocks: [{ type: 'text', text: 'Codex stopped with an error: Rate limit reached' }] });
   });
 
-  it('leaves a running tool without a result', () => {
-    const turn = { id: 't', items: [{ type: 'commandExecution', id: 'c', command: 'ls', cwd: '/r', status: 'inProgress', commandActions: [], aggregatedOutput: null, exitCode: null, durationMs: null }], itemsView: 'full', status: 'inProgress', error: null, startedAt: 1, completedAt: null, durationMs: null } as Turn;
-    expect(codexMessages([turn]).map((m) => m.type)).toEqual(['assistant']);
+  it('leaves a running tool without a result, and ends one its turn left running as interrupted', () => {
+    const running = { type: 'commandExecution', id: 'c', command: 'ls', cwd: '/r', status: 'inProgress', commandActions: [], aggregatedOutput: null, exitCode: null, durationMs: null };
+    const spawn = { type: 'collabAgentToolCall', id: 's', tool: 'spawnAgent', status: 'inProgress', senderThreadId: 'a', receiverThreadIds: ['b'], prompt: 'Go', model: null };
+    const plan = { type: 'plan', id: 'p', text: '1. Go' };
+    const turn = (status: string) => ({ id: 't', items: [running, spawn, plan], itemsView: 'full', status, error: null, startedAt: 1, completedAt: null, durationMs: null }) as unknown as Turn;
+    expect(codexMessages([turn('inProgress')]).map((m) => m.type)).toEqual(['assistant', 'assistant', 'assistant']);
+    for (const status of ['interrupted', 'failed', 'completed']) {
+      const blocks = codexMessages([turn(status)]).flatMap((m) => normaliseMessage(m).blocks);
+      expect(blocks.filter((b) => b.type === 'tool_result').map((b) => b.type === 'tool_result' && [b.toolUseId, b.isError, b.text])).toEqual([
+        ['t:c', true, 'Interrupted'],
+        ['t:s', true, 'Interrupted'],
+      ]);
+    }
+  });
+
+  it('shows a command that does more than print a whole file as Bash, with its command', () => {
+    const read = (command: string) =>
+      ({ type: 'commandExecution', id: command, command, cwd: '/r', status: 'completed', commandActions: [{ type: 'read', command, name: 'f.ts', path: '/r/f.ts' }], aggregatedOutput: 'x', exitCode: 0, durationMs: 1 });
+    const turn = { id: 't', items: ["/bin/zsh -lc 'cat f.ts'", "/bin/zsh -lc 'cat f.ts | head'", "/bin/zsh -lc 'nl -ba f.ts | sed -n 1,80p'", "/bin/zsh -lc 'cat -n f.ts'"].map(read), status: 'completed' } as unknown as Turn;
+    const uses = codexMessages([turn]).flatMap((m) => normaliseMessage(m).blocks).filter((b) => b.type === 'tool_use');
+    expect(uses.map((b) => b.type === 'tool_use' && [b.name, b.input])).toEqual([
+      ['Read', { file_path: '/r/f.ts' }],
+      ['Bash', { command: 'cat f.ts | head' }],
+      ['Bash', { command: 'nl -ba f.ts | sed -n 1,80p' }],
+      ['Bash', { command: 'cat -n f.ts' }],
+    ]);
+  });
+
+  it('shows a rename without changes as a move', () => {
+    const turn = { id: 't', status: 'completed', items: [{ type: 'fileChange', id: 'f', status: 'completed', changes: [{ path: '/r/a.ts', kind: { type: 'update', move_path: '/r/b.ts' }, diff: '' }] }] } as unknown as Turn;
+    const blocks = codexMessages([turn]).flatMap((m) => normaliseMessage(m).blocks);
+    expect(blocks[0]).toMatchObject({ type: 'tool_use', name: 'Move', input: { from: '/r/a.ts', to: '/r/b.ts' } });
+    expect(blocks[1]).toMatchObject({ type: 'tool_result', isError: false, text: 'Moved /r/a.ts to /r/b.ts' });
   });
 
   it('never throws on data it does not expect', () => {
@@ -153,10 +183,20 @@ describe('shellCommand', () => {
 
 describe('diffEdits', () => {
   it('turns hunks into before and after text, past headers and markers', () => {
-    expect(diffEdits('--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n\\ No newline at end of file\n')).toEqual([{ old_string: 'a\nb', new_string: 'a\nc' }]);
+    expect(diffEdits('--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n')).toEqual([{ old_string: 'a\nb', new_string: 'a\nc' }]);
     // An empty line in a hunk is a blank context line.
     expect(diffEdits('@@ -1,3 +1,3 @@\n a\n\n-b\n+c\n')).toEqual([{ old_string: 'a\n\nb', new_string: 'a\n\nc' }]);
     expect(diffEdits('@@\n-x\n+y\n')).toEqual([{ old_string: 'x', new_string: 'y' }]);
     expect(diffEdits('')).toEqual([]);
+  });
+
+  it('keeps a change to only the last newline', () => {
+    expect(diffEdits('@@ -1 +1 @@\n-x\n\\ No newline at end of file\n+x\n')).toEqual([{ old_string: 'x', new_string: 'x\n' }]);
+    // The marker after an added line: only the new side ends without one.
+    expect(diffEdits('@@ -1,2 +1,2 @@\n a\n-b\n+c\n\\ No newline at end of file\n')).toEqual([{ old_string: 'a\nb\n', new_string: 'a\nc' }]);
+  });
+
+  it('reads CRLF diffs without their carriage returns, blank context lines included', () => {
+    expect(diffEdits('@@ -1,3 +1,3 @@\r\n a\r\n\r\n-b\r\n+c\r\n')).toEqual([{ old_string: 'a\n\nb', new_string: 'a\n\nc' }]);
   });
 });
