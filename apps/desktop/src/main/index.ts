@@ -3415,16 +3415,35 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
       pressKey(win, 'Escape');
       return `the Codex session's ⋯ menu has ${JSON.stringify(menuSeen)}, not Compact, Tools, Rename and Open in Codex CLI`;
     }
-    // Tools: the session doesn't run here (the demo's Codex runs nothing), so it reads from the folder, without an error,
-    // and with no switch to turn a server on or off (Codex can't: its config.toml holds that).
+    // Tools: the session doesn't run here (the demo's Codex runs nothing), so it reads Codex's config for the folder: the
+    // demo's github and linear servers, with no switch to turn one on or off (Codex keeps that in its config.toml), and
+    // its hook in a Hooks tab. Reconnect and its note come only while the session runs here.
     await js("document.querySelector('[role=menu] [data-provider-tools]').click()");
-    const toolsShown = await waitInPage(win, "(document.querySelector('[data-capabilities]')?.innerText ?? '').includes('Read from this folder.') && !document.querySelector('[data-capabilities] [role=alert]')", 10_000);
-    const toolsText = toolsShown ? '' : String(await js("document.querySelector('[data-capabilities]')?.innerText.slice(0, 300) ?? 'no Tools dialog'"));
-    const switches = (await js("document.querySelectorAll('[data-capabilities] [role=switch]').length")) as number;
+    const caps = "document.querySelector('[data-capabilities]')";
+    const toolsShown = await waitInPage(win, `(${caps}?.innerText ?? '').includes('Read from this folder.') && ['github', 'linear'].every((n) => (${caps}.querySelector('[data-capabilities-list="mcp"]')?.innerText ?? '').includes(n)) && !${caps}.querySelector('[role=alert]')`, 10_000);
+    const toolsText = toolsShown ? '' : String(await js(`${caps}?.innerText.slice(0, 300) ?? 'no Tools dialog'`));
+    const switches = (await js(`${caps}?.querySelectorAll('[role=switch]').length ?? 0`)) as number;
+    let hookText = '';
+    if (toolsShown && switches === 0) {
+      await js(`${caps}.querySelector('[data-capabilities-tab="hooks"]')?.click()`);
+      if (await waitInPage(win, `!!${caps}.querySelector('[data-capabilities-list="hooks"]') && !(${caps}.querySelector('[data-capabilities-list="hooks"]').innerText ?? '').includes('No hooks')`, 5_000)) {
+        hookText = String(await js(`${caps}.querySelector('[data-capabilities-list="hooks"]').innerText.split(String.fromCharCode(10))[0]`));
+      }
+      await shot(win, 'codex-tools.png');
+    }
     pressKey(win, 'Escape');
     await waitInPage(win, "!document.querySelector('[data-capabilities]')", 2_000);
-    if (!toolsShown) return `Tools for the Codex session didn't open as read from its folder (${toolsText})`;
+    if (!toolsShown) return `Tools for the Codex session doesn't list github and linear from its config (${toolsText})`;
     if (switches > 0) return `Tools for the Codex session shows ${switches} switches to turn MCP servers on or off`;
+    if (!hookText) return "Tools for the Codex session has no Hooks tab with the demo's hook";
+
+    // Fork from a reply and Ask about this session, as for Copilot (not picked: the demo's Codex refuses them).
+    const forkAsk = await waitInPage(
+      win,
+      `[...${view}.querySelectorAll('[data-message-actions] button')].some((b) => (b.getAttribute('aria-label') ?? '').startsWith('Fork from here')) && !!${view}.querySelector('[data-toggle-ask]')`,
+      5_000,
+    );
+    if (!forkAsk) return 'the Codex session has no Fork on its replies, or no Ask';
 
     // 5. New session on the Codex profile, with Codex's mark, models, efforts and modes.
     await js("document.querySelector('[data-new-session]')?.click()");
@@ -3489,7 +3508,7 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
     await setFieldValue(win, `${nsv} [data-composer]`, '');
     if (!refused) return `Start with the demo's Codex didn't say it has no Codex CLI to run sessions (${said || 'nothing said'})`;
-    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, and a ⋯ menu with Compact, Tools and Rename`;
+    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, Fork and Ask, a ⋯ menu with Compact, Tools and Rename, and Tools lists github and linear without switches and its hook (${hookText})`;
   } finally {
     // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
     if (profileId) {
