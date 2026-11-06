@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentWidthOf, NEW_SESSION_GRID, newSessionLayout, projectsThatFit, type NewSessionMode } from './newSessionLayout.ts';
+import { CONTENT_MAX, contentWidthOf, HOME_WIDTH, NARROW_VIEW, NEW_SESSION_GRID, newSessionLayout, projectsThatFit, VIEW_PADDING, type NewSessionMode } from './newSessionLayout.ts';
 
 const SIDEBAR = 300;
 const atWindow = (width: number, sidebar = SIDEBAR) => newSessionLayout(contentWidthOf(width - sidebar));
@@ -60,6 +60,16 @@ describe('newSessionLayout', () => {
     expect(NEW_SESSION_GRID).toContain('@min-[1200px]/new-session:grid-cols-[clamp(280px,calc(280px+(100cqw-1200px)*0.0952381),320px)');
     expect(NEW_SESSION_GRID).toContain('max-w-[1620px]');
     expect(280 + (1620 - 1200) * 0.0952381).toBeCloseTo(320, 3);
+  });
+
+  it('gives Home the same width and padding', () => {
+    const widest = `max-w-[${CONTENT_MAX + 2 * VIEW_PADDING}px]`;
+    expect(NEW_SESSION_GRID).toContain(widest);
+    expect(HOME_WIDTH).toContain(widest);
+    expect(HOME_WIDTH).toContain('px-6 ');
+    expect(NEW_SESSION_GRID).toContain('px-6 ');
+    expect(HOME_WIDTH).toContain(`@min-[${NARROW_VIEW}px]:px-10`);
+    expect(NEW_SESSION_GRID).toContain(`@min-[${NARROW_VIEW}px]/new-session:px-10`);
   });
 });
 

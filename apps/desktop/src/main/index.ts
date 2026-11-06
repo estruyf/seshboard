@@ -3816,6 +3816,7 @@ async function runProjectsStep(win: BrowserWindow): Promise<string> {
   await smokeRun.step('worktree name', () => runWorktreeNameStep(win), { cleanup: false });
   // Home without projects is the way to add the first one: its lanes, projects and start box need this one.
   await smokeRun.step('home: three lanes and usage on the right when wide, two lanes at 900px, one under 760px', () => runHomeLayoutStep(win), { cleanup: false, timeoutMs: 60_000 });
+  await smokeRun.step('home width: the same as New session, wide and narrow', () => runHomeWidthStep(win), { cleanup: false });
   await smokeRun.step('home: a To review card opens its session with the catch-up', () => runHomeReviewStep(win), { cleanup: false });
   await smokeRun.step('home: a project name and Enter in the start box open New session in it', () => runHomeStartStep(win), { cleanup: false });
 
@@ -10849,6 +10850,42 @@ async function homeViewWidth(win: BrowserWindow, width: number): Promise<number>
     await waitInPage(win, `Math.abs(${view} - ${width}) <= 2`, 1_500);
   }
   return (await js(view)) as number;
+}
+
+/**
+ * Home and New session have the same width and padding, so nothing jumps between them: past their limit, and just under
+ * the view width where the padding changes. Inside the projects step: without a project Home shows the way to add the
+ * first one. Widths are only compared past the limit, where Home's scrollbar (it scrolls, New session doesn't) can't count.
+ */
+async function runHomeWidthStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const column = (selector: string) => js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); return { width: Math.round(el.getBoundingClientRect().width), padding: parseFloat(getComputedStyle(el).paddingLeft) }; })()`) as Promise<{ width: number; padding: number }>;
+  const openNew = () => {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'N', modifiers: [MOD_MODIFIER] });
+    return waitInPage(win, "!!document.querySelector('[data-new-session-view]')", 3_000);
+  };
+  if (!(await goHome(win))) return 'Home did not open with its column';
+  const [width, height] = win.getContentSize();
+  try {
+    const wideView = await homeViewWidth(win, 1700);
+    const wideHome = await column('[data-home]');
+    if (!(await openNew())) return 'New session did not open';
+    const wideNew = await column('[data-new-session-view]');
+    if (wideHome.padding !== wideNew.padding) return `wide, Home is ${wideHome.padding}px in and New session ${wideNew.padding}px`;
+    // A screen too small for a view past the limit can't show the limit; the padding still counts.
+    if (wideView > 1620 && (wideHome.width !== 1620 || wideNew.width !== 1620)) return `past the limit, Home is ${wideHome.width}px wide and New session ${wideNew.width}px`;
+
+    if (!(await goHome(win))) return 'Home did not open again';
+    await homeViewWidth(win, 770);
+    const narrowHome = await column('[data-home]');
+    if (!(await openNew())) return 'New session did not open narrow';
+    const narrowNew = await column('[data-new-session-view]');
+    if (narrowHome.padding !== narrowNew.padding) return `narrow, Home is ${narrowHome.padding}px in and New session ${narrowNew.padding}px`;
+    return `ok: ${wideHome.width}px wide in a ${wideView}px view, ${wideHome.padding}px in, ${narrowHome.padding}px in when narrow`;
+  } finally {
+    win.setContentSize(width!, height!);
+    await goHome(win);
+  }
 }
 
 /**

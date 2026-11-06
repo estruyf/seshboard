@@ -36,6 +36,12 @@ export const NEW_SESSION_GRID =
   '@min-[860px]/new-session:my-0 @min-[860px]/new-session:min-h-0 @min-[860px]/new-session:flex-1 @min-[860px]/new-session:grid-cols-[280px_minmax(0,1fr)] @min-[860px]/new-session:grid-rows-[minmax(0,auto)_minmax(auto,1fr)] @min-[860px]/new-session:gap-x-8 @min-[860px]/new-session:gap-y-4 @min-[860px]/new-session:pb-6 ' +
   '@min-[1200px]/new-session:grid-cols-[clamp(280px,calc(280px+(100cqw-1200px)*0.0952381),320px)_minmax(0,1fr)_clamp(280px,calc(280px+(100cqw-1200px)*0.0952381),320px)] @min-[1200px]/new-session:grid-rows-[minmax(0,1fr)]';
 
+/**
+ * Home's width and padding: New session's, so nothing jumps going from one to the other. The same numbers as
+ * `NEW_SESSION_GRID`, for Home's own `@container`. A test keeps them in step.
+ */
+export const HOME_WIDTH = 'max-w-[1620px] px-6 @min-[780px]:px-10';
+
 /** The content's width in a view this wide. */
 export function contentWidthOf(viewWidth: number): number {
   return viewWidth - 2 * (viewWidth < NARROW_VIEW ? VIEW_PADDING_NARROW : VIEW_PADDING);

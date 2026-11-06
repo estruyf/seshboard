@@ -15,6 +15,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 ### Changed
 
 - New session uses the width of the window: projects on the left, the message box in the middle, and the project's sessions and defaults on the right, without scrolling.
+- **Home is as wide as New session.** On a large screen Home now grows just as far, with the same margins, so nothing jumps when you go from one to the other.
 - At the focus limit, New session says so in one line above the box, and Start reads **Add to queue** (⌘↩). **Start anyway** is in its menu, unless your limit is Strict.
 
 ### Fixed

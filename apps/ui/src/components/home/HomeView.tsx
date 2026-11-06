@@ -15,6 +15,7 @@ import { Button } from '../ui/Button.tsx';
 import { SchedulesCard } from '../schedules/SchedulesCard.tsx';
 import { StartInProject, UpNext } from './HomeBelow.tsx';
 import { NeedsLane, ReviewLane, WorkingLane } from './HomeLanes.tsx';
+import { HOME_WIDTH } from '../newSession/newSessionLayout.ts';
 import { greeting, homeSessions, homeSummary, reviewSessions } from './homeModel.ts';
 import { HomeStartBox } from './HomeStartBox.tsx';
 import { HomeUsage } from './HomeUsage.tsx';
@@ -34,7 +35,7 @@ function Onboarding() {
 }
 
 /**
- * What the window shows when no session is open, using its width (up to 1400px, from the left): a start box, three
+ * What the window shows when no session is open, using its width (as far as New session does, centred): a start box, three
  * lanes (Needs you, Working, To review), then your projects with Up next, and usage on the right. A container, so it
  * follows the view: three lanes from 1200px, two from 760px (an empty Needs you left out, the line under the greeting
  * says it), one below; usage goes under the rest below 1100px. Without projects it asks you to add the first one.
@@ -82,7 +83,7 @@ export function HomeView() {
       </div>
       {/* The container: the breakpoints follow the view (beside the sidebar and panels), not the window. */}
       <div className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[minmax(0,1fr)] gap-7 px-12 pt-2 pb-12 @max-[760px]:px-6" data-home>
+        <div className={`mx-auto grid w-full ${HOME_WIDTH} grid-cols-[minmax(0,1fr)] gap-7 pt-2 pb-12`} data-home>
           <header className="min-w-0">
             {/* The view's hero heading, a little larger than text-title. */}
             <h1 className="text-hero leading-tight font-semibold">{greeting(now)}</h1>
