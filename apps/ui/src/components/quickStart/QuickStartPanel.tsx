@@ -12,6 +12,7 @@ import { useHosts } from '../../state/hostsStore.ts';
 import { addToQueue } from '../../state/laterStore.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useProfiles } from '../../state/profilesStore.ts';
+import { useStartableProfiles } from '../../state/providersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { useSignIn } from '../../state/signInStore.ts';
 import { useListedRows, useProjectName } from '../../state/useQueue.ts';
@@ -92,6 +93,8 @@ export function QuickStartPanel() {
   const projects = useProjects((s) => s.projects);
   const questionsDir = useProjects((s) => s.questionsDir);
   const profiles = useProfiles((s) => s.profiles);
+  // The profile chip only when there is another profile to start with (a read-only provider's, Codex's, can't).
+  const startableCount = useStartableProfiles().length;
   const defaultProfile = useProfiles((s) => s.defaultId);
   const models = useHosts((s) => s.models);
   const permissions = useHosts((s) => s.permissions);
@@ -592,7 +595,7 @@ export function QuickStartPanel() {
             busy={busy}
             canSend={canSend}
             worktree={!!setup?.data.isGitRepo}
-            hidden={[...(profiles.length > 1 ? [] : ['profile']), ...(provider ? ['model', 'mode'] : [])]}
+            hidden={[...(startableCount > 1 ? [] : ['profile']), ...(provider ? ['model', 'mode'] : [])]}
             onRun={runAction}
             onClose={() => {
               setActionsOpen(false);

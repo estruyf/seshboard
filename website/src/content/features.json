@@ -1597,6 +1597,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:codex-sessions",
+      "name": "OpenAI Codex sessions, read-only: Settings: Profiles offers Codex CLI when it finds it (Add Codex profile, Not now); Add profile with Codex as the tool uses Codex CLI's own folder ($CODEX_HOME or ~/.codex) and needs no sign in; its sessions show in the sidebar with Codex's mark, in search, catch-up and on the phone, with their transcript, tool calls and diffs; in place of the message box, the command to continue one in Codex CLI (codex resume, Copy command); Delete moves its file to the Trash",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"

@@ -6,7 +6,7 @@ import { PROVIDER_ICONS } from '../providers/ProviderMark.tsx';
 import type { FastModeFace } from '../../lib/fastMode.ts';
 import { formatKeys, keysFor } from '../../lib/shortcuts.ts';
 import { MODE_CHOICES, MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
-import { useProfiles } from '../../state/profilesStore.ts';
+import { useStartableProfiles } from '../../state/providersStore.ts';
 import type { BoxChoiceUse } from '../../state/pipelines.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
 import { CHOICE_PILL, ChoiceMenu, type Choice, type ChoiceAction } from '../newSession/ChoiceMenu.tsx';
@@ -96,7 +96,8 @@ const Dot = ({ className }: { className: string }) => <span aria-hidden classNam
  * a hidden copy of the row at every level is measured against the room the footer leaves.
  */
 export function ComposerChipRow({ profile, model, effort, fast, mode, disabled, names = NEW_SESSION_NAMES, pipeline, lead }: ComposerChipRowProps) {
-  const profiles = useProfiles((s) => s.profiles);
+  // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+  const profiles = useStartableProfiles(profile?.value);
   const current = profile ? profiles.find((p) => p.id === profile.value) : undefined;
   const fixed = !profile?.onChange;
   // A mode set elsewhere (bypass, say) is listed too, so the checked one is always there.

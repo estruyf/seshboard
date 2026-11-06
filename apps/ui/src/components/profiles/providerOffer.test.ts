@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderDetection } from '@seshboard/protocol/client';
-import { needsOtherApps, offerText, readySessionsLine, shouldOffer, suggestedName } from './providerOffer.ts';
+import { needsOtherApps, offersToMake, offerText, readySessionsLine, shouldOffer, suggestedName } from './providerOffer.ts';
 
 const found: ProviderDetection = { id: 'copilot', installed: true, version: '1.0.4', folder: '/Users/me/.copilot', folderExists: true, sessions: 38, signedIn: true, login: 'estruyf' };
 
@@ -20,6 +20,18 @@ describe('the offer to add a provider found on this computer', () => {
     expect(offerText(38)).toBe('Add it as a profile to see its 38 sessions here and start new ones.');
     expect(offerText(1)).toBe('Add it as a profile to see its 1 session here and start new ones.');
     expect(offerText(0)).toBe('Add it as a profile to start sessions with it here.');
+  });
+
+  it('does not promise new sessions for a read-only provider', () => {
+    expect(offerText(5, false)).toBe('Add it as a profile to see its 5 sessions here.');
+    expect(offerText(0, false)).toBe('Add it as a profile to see its sessions here.');
+  });
+
+  it('is made for each provider found, Copilot and Codex alike', () => {
+    const codex: ProviderDetection = { ...found, id: 'codex', folder: '/Users/me/.codex', sessions: 5, signedIn: false, login: null };
+    expect(offersToMake([found, codex], [{ provider: 'claude' }], []).map((d) => d.id)).toEqual(['copilot', 'codex']);
+    expect(offersToMake([found, codex], [{ provider: 'codex' }], ['copilot'])).toEqual([]);
+    expect(offersToMake(null, [], [])).toEqual([]);
   });
 });
 
