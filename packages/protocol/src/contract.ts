@@ -512,8 +512,12 @@ export const contract = {
       params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
       result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
     },
-    /** A new session with this one's conversation up to and including `messageUuid`. */
-    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string() }), result: z.object({ sessionId: z.string() }) },
+    /**
+     * A new session with this one's conversation up to and including `messageUuid`. `editOf`: the prompt Edit and resend
+     * is for (`messageUuid` is the message before it): a provider that forks only where a turn ends (Codex) forks just
+     * before that prompt instead.
+     */
+    'session.forkAt': { params: z.object({ sessionId: SessionId, messageUuid: z.string(), editOf: z.string().optional() }), result: z.object({ sessionId: z.string() }) },
     /**
      * Restores the files Claude changed to how they were before one of your messages
      * (`dryRun` reports what would change). The conversation itself is untouched.

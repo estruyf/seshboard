@@ -913,4 +913,15 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX skim_usage_scope_at ON skim_usage (scope, at);
   `,
+
+  // v54: Forks Seshboard made of another provider's sessions (Codex, #276). Codex's own list leaves out a fork without a
+  // turn of its own, so this is the only record that it exists until something is sent to it: keep it when rebuilding.
+  `
+  CREATE TABLE provider_forks (
+    session_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX provider_forks_profile ON provider_forks (profile_id);
+  `,
 ];

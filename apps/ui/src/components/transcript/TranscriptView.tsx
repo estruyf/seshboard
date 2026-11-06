@@ -1194,7 +1194,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       edit: (uuid, text) => {
         const before = previous.get(uuid);
         if (!before) return;
-        void client.call('session.forkAt', { sessionId, messageUuid: before }).then((r) => {
+        // `editOf`: a provider that forks only where a turn ends (Codex) forks just before the prompt itself.
+        void client.call('session.forkAt', { sessionId, messageUuid: before, editOf: uuid }).then((r) => {
           useDrafts.getState().seedDraft(r.sessionId, text);
           select(r.sessionId);
         }, fail);

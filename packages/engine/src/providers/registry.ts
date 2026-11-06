@@ -13,6 +13,7 @@ import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/c
 import { findCodex } from './codex/codexBinary.ts';
 import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
+import type { ForkRecord } from './providerForks.ts';
 
 export interface ProviderOptions {
   env: NodeJS.ProcessEnv;
@@ -26,6 +27,8 @@ export interface ProviderOptions {
   codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
   log?: (level: LogLevel, message: string) => void;
+  /** Where each profile's forks made here are kept (`provider_forks`); in memory when left out. */
+  forks?: (profileId: string) => ForkRecord;
   /** A session's details changed without a file the watcher sees (a Codex thread's new name): read it again. */
   onSessionChanged?: (sessionId: string) => void;
 }
@@ -82,10 +85,10 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       canStart: true,
       modes: CODEX_MODES,
       installCommand: CODEX_INSTALL,
-      // Renamed with `thread/name/set`; its rollout file goes to the Trash; effort per turn; the queue, schedules and
-      // triggers start it like New session does, in a worktree or on a branch Seshboard makes. Fork, rewind and Ask are
-      // Phase 3.
-      supports: ['rename', 'delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+      // Renamed with `thread/name/set`; forked with `thread/fork`; Ask about this session in a throwaway, read-only fork;
+      // its rollout file goes to the Trash; effort per turn; the queue, schedules and triggers start it like New session
+      // does, in a worktree or on a branch Seshboard makes. Rewind is Phase 3.
+      supports: ['fork', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
   ];
 }
@@ -115,12 +118,12 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, onSessionChanged }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, forks, onSessionChanged }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
     case 'codex':
-      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
+      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(forks ? { forks: forks(profile.id) } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
   }
 }

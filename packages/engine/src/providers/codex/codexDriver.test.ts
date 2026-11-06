@@ -49,7 +49,7 @@ function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown
     'turn/steer': () => (extra.steer?.() as never) ?? { turnId: 'turn-1' },
     'turn/interrupt': () => ({}),
     'thread/unsubscribe': () => ({}),
-    'mcpServerStatus/list': () => (extra.mcp?.() as never) ?? { data: [], nextCursor: null },
+    'config/read': () => (extra.mcp?.() as never) ?? { config: {} },
     'model/list': () => ({ data: [model('gpt-5.5', { isDefault: true }), model('gpt-5-mini', { defaultReasoningEffort: 'low' }), model('secret', { hidden: true })], nextCursor: null }),
   });
   const handled: ServerNotification[] = [];
@@ -134,7 +134,7 @@ describe('codexDriver', () => {
   it('runs a read-only session in the read-only sandbox, never asking, whatever its mode', async () => {
     const { server, driver, turnStarts } = setup();
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
-    expect(server.calls[1]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never', config: { features: { apps: false } } });
+    expect(server.calls[1]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never', config: { features: { apps: false, hooks: false, plugins: false } } });
     await session.send('look', []);
     expect(turnStarts()[0]).toMatchObject({ approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
   });
@@ -222,11 +222,11 @@ describe('codexDriver', () => {
     ]);
   });
 
-  it('starts a read-only thread without MCP servers: by plugin, the apps feature, or their own setting', async () => {
+  it('starts a read-only thread without MCP servers or hooks: those of its config by their own setting, plugins, apps and hooks by feature', async () => {
     let refusedOnce = false;
     const server = fakeAppServer({
-      'mcpServerStatus/list': ({ cursor }) =>
-        cursor ? { data: [{ name: 'node_repl', pluginId: null }], nextCursor: null } : { data: [{ name: 'github', pluginId: null }, { name: 'codex_apps', pluginId: null }, { name: 'cua_repl', pluginId: 'computer-use@bundled' }, { name: 'builtin', pluginId: null }], nextCursor: 'p2' },
+      // The names come from the config: listing the servers' status without a thread would start every one of them.
+      'config/read': ({ cwd }) => ({ config: { mcp_servers: cwd === CWD ? { github: { command: 'secret' }, node_repl: { enabled: true }, builtin: {} } : null } }),
       'thread/start': (params) => {
         // A server Codex lists without a config entry: its `enabled` is no setting (codex-cli 0.167 says so).
         if (!refusedOnce && (params.config as { mcp_servers?: Record<string, unknown> }).mcp_servers?.builtin) {
@@ -240,14 +240,15 @@ describe('codexDriver', () => {
     await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
     const starts = server.calls.filter((c) => c.method === 'thread/start').map((c) => c.params as { config: unknown });
     expect(starts).toHaveLength(2);
-    expect(starts[1]!.config).toEqual({ features: { apps: false }, plugins: { 'computer-use@bundled': { enabled: false } }, mcp_servers: { github: { enabled: false }, node_repl: { enabled: false } } });
+    expect(starts[1]!.config).toEqual({ features: { apps: false, hooks: false, plugins: false }, mcp_servers: { github: { enabled: false }, node_repl: { enabled: false } } });
+    expect(server.calls.some((c) => c.method === 'mcpServerStatus/list')).toBe(false);
     // A session that may write keeps its MCP servers (it asks before they run).
     const plain = setup();
     await plain.driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);
     expect(plain.server.calls[0]!.params).not.toHaveProperty('config');
   });
 
-  it("won't start a read-only thread when Codex doesn't list its MCP servers", async () => {
+  it("won't start a read-only thread when Codex doesn't say which MCP servers it has", async () => {
     const { driver } = setup({
       mcp: () => {
         throw new AppServerError('timed out', 'timeout');

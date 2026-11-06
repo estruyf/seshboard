@@ -171,6 +171,7 @@ import { createProvider, createProviderUpdater, detectProvider, providerCatalog,
 import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
+import { ProviderForks } from './providers/providerForks.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -535,11 +536,14 @@ export function createEngine(options: EngineOptions): Engine {
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
+  /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
+  const providerForks = new ProviderForks(cache.db);
   const providerOptions: ProviderOptions = {
     env: process.env,
     home: homedir(),
     shellEnv: async () => (await shell.ready).env,
     log,
+    forks: (profileId) => providerForks.of(profileId),
     // A Codex thread's new name, which no file the watcher sees carries: the sidebar reads the session again.
     onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
     ...(options.copilot ? { copilot: options.copilot } : {}),
@@ -2938,6 +2942,7 @@ export function createEngine(options: EngineOptions): Engine {
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
+    providerForks.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -3408,12 +3413,12 @@ export function createEngine(options: EngineOptions): Engine {
       await continueAfterSignIn(sessionProfile(sessionId));
       return {};
     },
-    'session.forkAt': async ({ sessionId, messageUuid }) => {
+    'session.forkAt': async ({ sessionId, messageUuid, editOf }) => {
       assertClaudeSession(sessionId, 'Forking', 'fork');
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
       try {
-        forked = await source.fork(sessionId, messageUuid);
+        forked = await source.fork(sessionId, messageUuid, editOf ? { editing: editOf } : undefined);
       } catch (error) {
         throw new RpcError('FORK_FAILED', (error as Error).message);
       }
