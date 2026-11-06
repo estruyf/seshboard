@@ -1,4 +1,5 @@
 import type { UsageLimit, UsageSnapshot } from '@seshboard/protocol';
+import { AppServerError } from './appServer.ts';
 import type { GetAccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow } from './protocol.ts';
 
 type Loose = Record<string, unknown>;
@@ -83,6 +84,33 @@ export function mergeRateLimits(known: GetAccountRateLimitsResponse | null, upda
   return { rateLimits: single, rateLimitsByLimitId: { ...(known?.rateLimitsByLimitId ?? {}), [id]: merged } };
 }
 
+/** What `usage.get` answers: the numbers, or why there are none (a plain state like "signed out", or a failure). */
+export interface CodexPlanUsage {
+  usage: UsageSnapshot | null;
+  error: string | null;
+}
+
+/** Signed in with an API key, Codex has no rate limits to report. */
+export const NO_LIMITS = 'No rate limits to show (API key sign-in)';
+/** Codex refuses to read the limits without a ChatGPT login. */
+export const SIGNED_OUT = 'Not signed in to Codex';
+
+/**
+ * Why a read of the limits failed, in the words `usage.get` gives (Claude Code's are plain sentences too): signed out,
+ * Codex missing or slow, else Codex's own message. `keep`: a passing failure (slow, crashed), after which the last
+ * numbers stay, as Claude Code's do after a miss; signed out or missing, there are none.
+ */
+export function readFailure(error: unknown): { error: string; keep: boolean } {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof AppServerError) {
+    if (error.code === 'notInstalled') return { error: 'Codex isn\'t installed', keep: false };
+    if (error.code === 'timeout') return { error: 'Codex did not report its rate limits in time', keep: true };
+    if (error.code === 'exited' || error.code === 'disposed') return { error: message, keep: true };
+  }
+  if (/auth|sign.?in|log.?in|chatgpt|unauthori[sz]ed|401/i.test(message)) return { error: SIGNED_OUT, keep: false };
+  return { error: message, keep: true };
+}
+
 export interface CodexUsageOptions {
   /** `account/rateLimits/read` on the profile's app-server. */
   read(): Promise<GetAccountRateLimitsResponse>;
@@ -96,14 +124,18 @@ const MAX_AGE_MS = 60_000;
 
 /**
  * One Codex profile's rate limits as plan usage: read when asked (reused for a minute), and kept up to date from the
- * rolling updates Codex sends while it runs. Signed out, or Codex missing, the usage is null. Listeners hear every
- * change (not a read that changed nothing).
+ * rolling updates Codex sends while it runs. A read that answers after an update laid over it: the update stays. Why
+ * there are none (signed out, an API key, Codex missing) comes with them. Listeners hear every change of the numbers
+ * (not a read that changed nothing).
  */
 export class CodexUsage {
   private known: GetAccountRateLimitsResponse | null = null;
   private snapshot: UsageSnapshot | null = null;
+  private error: string | null = null;
   private readAt = 0;
-  private reading: Promise<UsageSnapshot | null> | null = null;
+  private reading: Promise<CodexPlanUsage> | null = null;
+  /** Updates that came while a read was on its way: laid over its answer, as they are newer. */
+  private during: unknown[] | null = null;
   private readonly listeners = new Set<(usage: UsageSnapshot | null) => void>();
 
   constructor(private readonly options: CodexUsageOptions) {}
@@ -113,37 +145,43 @@ export class CodexUsage {
   }
 
   /** The limits now: the last read when it is fresh, else a new one. */
-  get(refresh = false): Promise<UsageSnapshot | null> {
-    if (!refresh && this.readAt && this.now() - this.readAt < (this.options.maxAgeMs ?? MAX_AGE_MS)) return Promise.resolve(this.snapshot);
-    this.reading ??= this.options
-      .read()
-      .then(
-        (response) => {
-          this.known = response;
-          return codexUsageSnapshot(response, this.now());
-        },
-        // Signed out (Codex refuses), or Codex isn't there: no usage to show.
-        () => {
-          this.known = null;
-          return null;
-        },
-      )
-      .then((snapshot) => {
-        this.readAt = this.now();
-        this.set(snapshot);
-        return snapshot;
-      })
-      .finally(() => {
-        this.reading = null;
-      });
+  get(refresh = false): Promise<CodexPlanUsage> {
+    if (!refresh && this.readAt && this.now() - this.readAt < (this.options.maxAgeMs ?? MAX_AGE_MS)) return Promise.resolve({ usage: this.snapshot, error: this.error });
+    this.reading ??= this.read().finally(() => {
+      this.reading = null;
+      this.during = null;
+    });
     return this.reading;
+  }
+
+  private async read(): Promise<CodexPlanUsage> {
+    this.during = [];
+    let snapshot: UsageSnapshot | null;
+    try {
+      let known = await this.options.read();
+      for (const update of this.during ?? []) known = mergeRateLimits(known, update);
+      this.known = known;
+      snapshot = codexUsageSnapshot(known, this.now());
+      this.error = snapshot ? null : NO_LIMITS;
+    } catch (error) {
+      const failure = readFailure(error);
+      this.error = failure.error;
+      if (!failure.keep) this.known = null;
+      snapshot = failure.keep ? this.snapshot : null;
+    }
+    this.readAt = this.now();
+    this.set(snapshot);
+    return { usage: this.snapshot, error: this.error };
   }
 
   /** A rolling update from Codex (`account/rateLimits/updated`'s params). */
   update(params: unknown): void {
     if (!Object.keys(obj(obj(params).rateLimits)).length) return;
+    this.during?.push(params);
     this.known = mergeRateLimits(this.known, params);
-    this.set(codexUsageSnapshot(this.known, this.now()));
+    const snapshot = codexUsageSnapshot(this.known, this.now());
+    if (snapshot) this.error = null;
+    this.set(snapshot);
   }
 
   onChange(listener: (usage: UsageSnapshot | null) => void): () => void {

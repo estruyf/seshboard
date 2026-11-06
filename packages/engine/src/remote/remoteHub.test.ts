@@ -225,6 +225,8 @@ async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean
     usage: async (profileId, refresh) => {
       calls.push(`usage ${profileId}${refresh ? ' refresh' : ''}`);
       if (profileId === 'work') return { usage: null, error: 'Not logged in' };
+      // Copilot has premium requests, not plan usage.
+      if (profileId === 'copilot') return null;
       return { usage: { fetchedAt: 1, limits: [{ kind: 'session', group: 'session', percent: 44, resetsAt: 2, scope: null, severity: 'normal', isActive: true }], extraUsage: null }, error: null };
     },
     activity: async () => [{ day: '2026-11-02', sessionId: SESSION, title: 'A session', parentId: null, projectRoot: '/secret/folder/shop', projectName: 'shop', firstAt: 1, lastAt: 2, activeMs: 1, turns: 1, costUsd: null, hours: new Array<number>(24).fill(0), commits: 0, files: 0, prs: [], did: [], asks: [], available: true }],
@@ -676,6 +678,15 @@ describe('Remote hub', () => {
     hub.usageChanged('work', null);
     await until(() => heard.length > 0);
     expect(heard).toEqual(['work']);
+  });
+
+  it('leaves out a profile without plan usage, never showing another login\'s numbers under its name', async () => {
+    const { hub, port, on, calls } = await setup({ copilotProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const { profiles } = await remote.call('usage.get', { refresh: false });
+    expect(profiles.map((p) => p.profile.id)).toEqual(['default', 'work']);
+    expect(calls).toContain('usage copilot');
   });
 
   it("leaves a read-only provider's profile out of usage: it has no plan usage to give", async () => {
