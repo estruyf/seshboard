@@ -9757,6 +9757,8 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   // A day's bar is its activity score, stacked from the time worked up, with a typical-day line and a legend.
   if (!(await waitInPage(win, `Number(${busiest}.dataset.activityDayScore) > 0 && !!${busiest}.querySelector('[data-activity-bar-part="time"]')`, 5_000))) return `the busiest day has no score bar: ${await js(`${busiest}.dataset.activityDayScore`)}`;
   if (!(await js(`!!document.querySelector('${view} [data-activity-typical]') && !!document.querySelector('${view} [data-activity-legend]')`))) return 'the strip has no typical-day line or legend';
+  // The demo's sessions made commits this week (screenshot-demo.ts), so a bar has its Shipped part.
+  if (process.env.SESHBOARD_SMOKE_DEMO && !(await waitInPage(win, `!!document.querySelector('${view} [data-activity-bar-part="shipped"]')`, 5_000))) return 'no bar in the strip has a Shipped part, though the demo has commits';
   if (!(await js(`JSON.parse(${busiest}.dataset.tooltipRows ?? '[]').some((row) => row.label === 'Claude working') && ${busiest}.dataset.tooltipMeta.endsWith('a typical day')`))) return `the busiest day's tooltip has no breakdown: ${await js(`${busiest}.dataset.tooltip`)}`;
   await js(`${busiest}.click()`);
   const list = `${view} [data-activity-list]`;
