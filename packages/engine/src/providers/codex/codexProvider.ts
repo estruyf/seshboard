@@ -7,6 +7,7 @@ import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
 import { codexDriver } from './codexDriver.ts';
+import { openThreads, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
 import type { GetAccountResponse } from './protocol.ts';
 
@@ -23,6 +24,9 @@ export function codexHome(env: NodeJS.ProcessEnv, home: string): string {
 
 const INSTALL = 'Install OpenAI Codex CLI to run Codex sessions here.';
 
+/** A thread open elsewhere whose rollout was written this recently counts as working. */
+const WORKING_MS = 15_000;
+
 export interface CodexProviderOptions {
   /** The Codex profile this is (Settings › Profiles). */
   profileId: string;
@@ -36,6 +40,8 @@ export interface CodexProviderOptions {
   binary?: () => Promise<CodexBinary | null>;
   /** A fake `codex app-server` (tests). */
   createAppServer?: (options: AppServerOptions) => AppServer;
+  /** Who has Codex's lock files open (tests); the system's answer otherwise (`codexInUse.ts`). */
+  lockHolders?: LockHolders;
   log?: (level: LogLevel, message: string) => void;
 }
 
@@ -70,7 +76,7 @@ function rolloutChanges(files: ProviderFiles): string {
  * with the profile's own `CODEX_HOME` and stopped when idle unless a session runs, and its rollout files
  * (`sessions/YYYY/MM/DD/rollout-*.jsonl`) watched for changes.
  */
-export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, log = () => {} }: CodexProviderOptions): ProviderAdapter {
+export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, log = () => {} }: CodexProviderOptions): ProviderAdapter {
   const folder = codexSessionsDir(codexHome);
   const lookup = binary ?? (async () => findCodex(await shellEnv(), userHome));
   // Kept once found (`codex --version` is a process of its own), and looked up again when it isn't there any more: until
@@ -82,7 +88,16 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
   let made: AppServer | undefined;
   let disposed = false;
   // The experimental API is for Plan mode (`turn/start`'s `collaborationMode`); everything else is stable.
-  const serverOptions: AppServerOptions = { binary: findBinary, env: async () => ({ ...(await shellEnv()), ...homeEnv }), experimentalApi: true };
+  const serverOptions: AppServerOptions = {
+    // A thread closed here unloads at once (Codex waits a minute by default), so its lock goes with it and Codex CLI can
+    // open it straight away.
+    binary: async () => {
+      const codex = await findBinary();
+      return codex && { ...codex, args: [...(codex.args ?? []), '-c', 'thread_unload_delay_secs=0'] };
+    },
+    env: async () => ({ ...(await shellEnv()), ...homeEnv }),
+    experimentalApi: true,
+  };
   /** The process's client, made (not started) on first use. */
   const real = () => (made ??= create(serverOptions));
   const server: AppServer = {
@@ -125,6 +140,21 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
   const driver = codexDriver({ server, status, log });
   const files = codexRolloutFiles(folder);
   const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files) });
+  /** Which of `threadIds` another Codex has open (a terminal, the Codex app): its lock, held by a process not Seshboard's. */
+  const openElsewhere = (threadIds: readonly string[]) => {
+    const pid = server.pid();
+    return openThreads(codexHome, threadIds, new Set(pid === null ? [] : [pid]), { ownThreads: driver.threads(), ...(lockHolders ? { holders: lockHolders } : {}) });
+  };
+  /** Each open thread's rollout file, found once: the live scan asks every few seconds. */
+  const rollouts = new Map<string, string>();
+  const rolloutOf = (threadId: string) => {
+    const known = rollouts.get(threadId);
+    if (known && statSync(known, { throwIfNoEntry: false })) return known;
+    const found = codexRolloutsOf(codexHome, threadId).find((p) => p.endsWith('.jsonl'));
+    if (found) rollouts.set(threadId, found);
+    else rollouts.delete(threadId);
+    return found ?? null;
+  };
   return {
     id: 'codex',
     profileId,
@@ -136,7 +166,20 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     resumeCommand: CODEX_RESUME,
     signInCommand: 'codex login',
     driver,
-    // `inUse` and `live` wait for Codex's per-thread lock (`thread-writer-locks/`), whose format isn't verified yet.
+    inUse: async (sessionId) => (await openElsewhere([sessionId])).has(sessionId),
+    /**
+     * Threads another Codex has open, from their locks. Codex writes its rollout as it works, so one written in the last
+     * few seconds is working, else between turns; whether it waits on an approval doesn't show in a file it appends to.
+     */
+    async live(sessionIds) {
+      const open = await openElsewhere(sessionIds);
+      const now = Date.now();
+      return [...open].map((sessionId) => {
+        const path = rolloutOf(sessionId);
+        const written = path ? (statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? null) : null;
+        return { sessionId, pid: 0, status: written !== null && now - written < WORKING_MS ? ('running' as const) : ('idle' as const), updatedAt: written === null ? null : Math.round(written) };
+      });
+    },
     async subagent(sessionId, toolUseId) {
       const threadId = codexSubagentThread(await source.turns(sessionId), toolUseId);
       // Codex doesn't name a subagent's type in a way that is verified yet.

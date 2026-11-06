@@ -206,7 +206,8 @@ describe('codexDriver', () => {
     await session.interrupt();
     expect(server.calls.at(-1)).toEqual({ method: 'turn/interrupt', params: { threadId: T, turnId: 'turn-1' } });
     expect(await asked).toEqual({ decision: 'decline' });
-    expect(log.some((l) => l.startsWith('done codex-'))).toBe(true);
+    // The card's id is Codex's own request id.
+    expect(log).toContain('done 1');
   });
 
   it("shows Codex's requests as cards and sends the answer back; refuses what it can't show or what isn't its", async () => {
@@ -227,14 +228,35 @@ describe('codexDriver', () => {
     await expect(server.ask('item/commandExecution/requestApproval', { threadId: OTHER, turnId: 't', itemId: 'i' })).rejects.toThrow(/No session in Seshboard/);
   });
 
-  it('takes a card away when Codex resolved its request some other way', async () => {
-    const { server, driver } = setup();
-    const { events, permissions, log } = recorder();
-    await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
-    void server.ask('item/fileChange/requestApproval', { threadId: T, turnId: 'turn-1', itemId: 'f1' });
+  it('lets go of a request Codex resolved some other way, and shows its card with the item as it is now', async () => {
+    const seen: unknown[] = [];
+    const { server, driver, answers } = setup({
+      options: {
+        live: () => ({ handle: () => {}, item: (id) => ({ type: 'fileChange', id, changes: [], status: 'inProgress' }) }),
+        permissions: { request: (requestId, _request, item) => (seen.push(item), { requestId, toolName: 'Edit', input: {}, toolUseId: 'f1', createdAt: 1 } as never), answer: (r, d) => (answers.push({ request: r, decision: d }), { decision: 'accept' }) },
+      },
+    });
+    const { events, permissions } = recorder();
+    const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
+    const asked = server.ask('item/fileChange/requestApproval', { threadId: T, turnId: 'turn-1', itemId: 'f1' });
     await vi.waitFor(() => expect(permissions).toHaveLength(1));
+    expect(permissions[0]!.requestId).toBe('1');
+    expect(seen).toEqual([{ type: 'fileChange', id: 'f1', changes: [], status: 'inProgress' }]);
+    // The turn ended: Codex wants no answer any more (CodexLive takes the card away), and a late one goes nowhere.
     server.notify('serverRequest/resolved', { threadId: T, requestId: 1 });
-    expect(log).toContain(`done ${permissions[0]!.requestId}`);
+    expect(await asked).toBeNull();
+    session.respond('1', { behavior: 'allow' });
+    expect(answers).toEqual([]);
+  });
+
+  it("refuses a request whose answer Codex can't take", async () => {
+    const { server, driver } = setup({ options: { permissions: { request: (requestId) => ({ requestId, toolName: 'AskUserQuestion', input: {}, toolUseId: 'q', createdAt: 1 }) as never, answer: () => null } } });
+    const { events, permissions } = recorder();
+    const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
+    const asked = server.ask('item/tool/requestUserInput', { threadId: T, turnId: 'turn-1', itemId: 'q' });
+    await vi.waitFor(() => expect(permissions).toHaveLength(1));
+    session.respond('1', { behavior: 'allow' });
+    await expect(asked).rejects.toThrow(/can't answer/);
   });
 
   it("hands each thread's notifications to its own live handler, and survives one that fails", async () => {

@@ -30,6 +30,12 @@ export interface CodexDriverOptions {
   messageIdMs?: number;
 }
 
+/** Codex's driver, with what the adapter needs besides `ProviderDriver`. */
+export interface CodexDriver extends ProviderDriver {
+  /** The threads running here: their locks are Seshboard's own (`codexInUse.ts`). */
+  threads(): Set<string>;
+}
+
 /** How long `send` waits for the `userMessage` item that names the message it sent. */
 const MESSAGE_ID_MS = 2000;
 
@@ -71,7 +77,7 @@ interface Running {
  * through `codexPermissions.ts`. The sandbox does what Copilot's driver does by answering requests itself: Seshboard
  * answers none of Codex's on its own. Signing in stays Codex's own.
  */
-export function codexDriver(options: CodexDriverOptions): ProviderDriver {
+export function codexDriver(options: CodexDriverOptions): CodexDriver {
   const { server } = options;
   const log = options.log ?? (() => {});
   const makeLive = options.live ?? ((threadId: string, events: DriverEvents) => new CodexLive(threadId, events));
@@ -136,6 +142,8 @@ export function codexDriver(options: CodexDriverOptions): ProviderDriver {
 
   return {
     modes: CODEX_MODES,
+
+    threads: () => new Set(running.keys()),
 
     status: () => options.status(),
 

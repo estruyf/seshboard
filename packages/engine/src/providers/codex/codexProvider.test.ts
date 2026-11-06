@@ -40,9 +40,32 @@ describe('codexProvider', () => {
     expect(adapter.driver?.modes.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
     // The driver's status is the profile's.
     expect(adapter.status).toBeUndefined();
-    // Waiting for Codex's lock format (#276).
-    expect(adapter.inUse).toBeUndefined();
-    expect(adapter.live).toBeUndefined();
+  });
+
+  it("finds threads another Codex has open by their locks, and Seshboard's own aren't", async () => {
+    const dir = home();
+    const day = join(dir, 'sessions', '2026', '11', '06');
+    mkdirSync(day, { recursive: true });
+    mkdirSync(join(dir, 'thread-writer-locks'));
+    for (const id of [A, B]) writeFileSync(join(dir, 'thread-writer-locks', `${id}.lock`), '');
+    writeFileSync(join(day, `rollout-2026-11-06T10-00-00-${A}.jsonl`), '{}\n');
+    // A is open in a terminal (pid 777); B only in Seshboard's own app-server (pid 4242, the fake's).
+    const holders = async (files: readonly string[]) => new Map(files.map((f) => [f, f.includes(A) ? [777] : [4242]]));
+    const server = fakeAppServer({ 'thread/list': () => ({ data: [], nextCursor: null }) });
+    const adapter = provider(dir, { createAppServer: () => server, lockHolders: holders });
+    await adapter.source.list();
+    expect(await adapter.inUse!(A)).toBe(true);
+    expect(await adapter.inUse!(B)).toBe(false);
+    expect(await adapter.inUse!(SUB)).toBe(false);
+    // Its rollout was just written: working.
+    expect(await adapter.live!([A, B, SUB])).toEqual([{ sessionId: A, pid: 0, status: 'running', updatedAt: expect.any(Number) }]);
+  });
+
+  it("runs Seshboard's own app-server with threads unloading as soon as they close", async () => {
+    const made: AppServerOptions[] = [];
+    const adapter = provider(home(), { createAppServer: (options) => (made.push(options), fakeAppServer({ 'thread/list': () => ({ data: [], nextCursor: null }) })) });
+    await adapter.source.list();
+    expect(await made[0]!.binary()).toEqual({ path: '/fake/codex', version: '0.167.0', args: ['-c', 'thread_unload_delay_secs=0'] });
   });
 
   it("finds rollout files by day, plain or compressed, and maps a watcher's path with either separator", () => {
