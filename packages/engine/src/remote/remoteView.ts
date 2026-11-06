@@ -55,6 +55,8 @@ export interface ListOptions {
   starters?: ReadonlyMap<string, string>;
   /** The sessions and runs triggers started (by session or run id): the bolt and "Started by …" on the phone too. */
   triggers?: readonly TriggerSession[];
+  /** Providers whose sessions are read-only here (Codex), with the command that continues one (`{sessionId}` in it). */
+  readOnlyProviders?: ReadonlyMap<string, string>;
   now?: number;
 }
 
@@ -96,6 +98,10 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
     parentId: flags.get(s.id)?.parentId ?? stepParent.get(s.id) ?? null,
   }));
   // Who started it: the device that did, or the one that started what it sits under (a pipeline's step, an agent).
+  for (const session of sessions) {
+    const resume = session.provider ? options.readOnlyProviders?.get(session.provider) : undefined;
+    if (resume) session.readOnly = { resumeCommand: resume.replaceAll('{sessionId}', session.id) };
+  }
   if (options.starters) {
     const starters = options.starters;
     for (const session of sessions) session.startedBy = starters.get(session.id) ?? (session.parentId ? starters.get(session.parentId) : undefined) ?? null;

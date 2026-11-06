@@ -1,7 +1,8 @@
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LogLevel } from '@seshboard/protocol';
-import type { DriverStatus, ProviderAdapter } from '../provider.ts';
-import { createAppServer, type AppServer, type AppServerOptions, type CodexBinary } from './appServer.ts';
+import type { DriverStatus, ProviderAdapter, ProviderFiles } from '../provider.ts';
+import { AppServerError, createAppServer, type AppServer, type AppServerOptions, type CodexBinary } from './appServer.ts';
 import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
@@ -20,7 +21,6 @@ export function codexHome(env: NodeJS.ProcessEnv, home: string): string {
 }
 
 const INSTALL = 'Install OpenAI Codex CLI to show its sessions here.';
-const SIGN_IN = 'Not signed in to Codex CLI. Use Sign in on this profile in Settings › Profiles, or run `codex login`. Seshboard uses that login.';
 
 export interface CodexProviderOptions {
   /** The Codex profile this is (Settings › Profiles). */
@@ -38,12 +38,28 @@ export interface CodexProviderOptions {
   log?: (level: LogLevel, message: string) => void;
 }
 
-/** What `account/read` says, as Settings › Profiles shows it. Seshboard never reads `auth.json`. */
+/**
+ * What `account/read` says, as Settings › Profiles shows it. Seshboard never reads `auth.json`. Reading sessions needs
+ * no login, so being signed out is no problem while Codex is read-only here (the profile still offers Sign in).
+ */
 export function codexAccountStatus(binary: CodexBinary, { account, requiresOpenaiAuth }: GetAccountResponse): DriverStatus {
   // A model provider that needs no OpenAI login (set in Codex's config) counts as signed in.
   const signedIn = account !== null || !requiresOpenaiAuth;
   const email = account?.type === 'chatgpt' ? account.email : null;
-  return { binary: binary.path, version: binary.version, signedIn, account: email, login: email, problem: signedIn ? null : SIGN_IN };
+  return { binary: binary.path, version: binary.version, signedIn, account: email, login: email, problem: null };
+}
+
+/**
+ * The rollout files as they are now: each one's path, size and time. Codex writes a thread's rollout on every turn and
+ * moves it when it archives one, so an unchanged answer means an unchanged list (but for names, see `maxListAgeMs`).
+ */
+function rolloutChanges(files: ProviderFiles): string {
+  const parts: string[] = [];
+  for (const path of [...files.files().values()].sort()) {
+    const stat = statSync(path, { throwIfNoEntry: false });
+    parts.push(`${path}\0${stat?.size ?? -1}\0${stat?.mtimeMs ?? -1}`);
+  }
+  return parts.join('\n');
 }
 
 /**
@@ -53,40 +69,56 @@ export function codexAccountStatus(binary: CodexBinary, { account, requiresOpena
  */
 export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, log = () => {} }: CodexProviderOptions): ProviderAdapter {
   const folder = codexSessionsDir(codexHome);
-  // Looked up each time until found: installing Codex CLI works without restarting Seshboard.
-  const findBinary = binary ?? (async () => findCodex(await shellEnv(), userHome));
+  const lookup = binary ?? (async () => findCodex(await shellEnv(), userHome));
+  // Kept once found (`codex --version` is a process of its own), and looked up again when it isn't there any more: until
+  // found, each time, so installing Codex CLI works without restarting Seshboard.
+  let found: CodexBinary | null = null;
+  const findBinary = async () => (found ??= await lookup());
   const homeEnv = { CODEX_HOME: codexHome };
   // Made on the first request: a profile whose sessions are never read starts nothing.
   let made: AppServer | undefined;
+  let disposed = false;
   const serverOptions: AppServerOptions = { binary: findBinary, env: async () => ({ ...(await shellEnv()), ...homeEnv }) };
   const server: AppServer = {
-    request: async (method, params) => (made ??= create(serverOptions)).request(method, params),
+    async request(method, params) {
+      // Gone with its profile (or the app quits): nothing starts a server again that nobody would stop.
+      if (disposed) throw new AppServerError('Codex app-server was disposed.', 'disposed');
+      try {
+        return await (made ??= create(serverOptions)).request(method, params);
+      } catch (error) {
+        if (error instanceof AppServerError && error.code === 'notInstalled') found = null;
+        throw error;
+      }
+    },
     pid: () => made?.pid() ?? null,
     dispose: async () => {
+      disposed = true;
       const running = made;
       made = undefined;
       await running?.dispose();
     },
   };
-  const source = codexSessionSource(server, { log });
+  const files = codexRolloutFiles(folder);
+  const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files) });
   return {
     id: 'codex',
     profileId,
     home: codexHome,
     homeEnv,
     folder,
-    files: codexRolloutFiles(folder),
+    files,
     source,
     resumeCommand: CODEX_RESUME,
     signInCommand: 'codex login',
     // No driver yet: its sessions are read-only here.
     async status() {
-      const found = await findBinary().catch(() => null);
-      if (!found) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
+      const codex = await findBinary().catch(() => null);
+      if (!codex) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
       try {
-        return codexAccountStatus(found, await server.request('account/read', {}));
+        return codexAccountStatus(codex, await server.request('account/read', {}));
       } catch (error) {
-        return { binary: found.path, version: found.version, signedIn: false, account: null, login: null, problem: (error as Error).message };
+        if (error instanceof AppServerError && error.code === 'notInstalled') return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
+        return { binary: codex.path, version: codex.version, signedIn: false, account: null, login: null, problem: (error as Error).message };
       }
     },
     // `inUse` and `live` wait for Codex's per-thread lock (`thread-writer-locks/`), whose format isn't verified yet.

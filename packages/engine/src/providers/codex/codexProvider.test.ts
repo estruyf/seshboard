@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Turn } from './protocol.ts';
-import type { AppServerOptions } from './appServer.ts';
+import { AppServerError, type AppServerOptions } from './appServer.ts';
 import { fakeAppServer, thread } from './codexFakes.ts';
 import { codexProvider, type CodexProviderOptions } from './codexProvider.ts';
 
@@ -106,6 +106,39 @@ describe('codexProvider', () => {
     expect(server.disposed).toBe(1);
   });
 
+  it('starts no server once disposed', async () => {
+    const made = vi.fn(() => fakeAppServer({ 'thread/list': () => ({ data: [thread(A)], nextCursor: null }) }));
+    const adapter = provider(home(), { createAppServer: made });
+    await adapter.source.list();
+    await adapter.dispose!();
+    // The list keeps what it had; nothing new is started for it.
+    expect((await adapter.source.list()).map((s) => s.sessionId)).toEqual([A]);
+    expect((await adapter.status!()).problem).toMatch(/disposed/);
+    expect(made).toHaveBeenCalledTimes(1);
+  });
+
+  it('looks for `codex` once, and again only after it went missing', async () => {
+    const lookups = vi.fn(async () => ({ path: '/fake/codex', version: '0.167.0' }));
+    let missing = false;
+    const server = (options: AppServerOptions) => ({
+      ...fakeAppServer({}),
+      async request() {
+        await options.binary();
+        if (missing) throw new AppServerError("Codex CLI isn't installed.", 'notInstalled');
+        return { account: null, requiresOpenaiAuth: false };
+      },
+    }) as never;
+    const adapter = provider(home(), { binary: lookups, createAppServer: server });
+    await adapter.status!();
+    await adapter.status!();
+    expect(lookups).toHaveBeenCalledTimes(1);
+    missing = true;
+    expect((await adapter.status!()).problem).toMatch(/Install OpenAI Codex CLI/);
+    missing = false;
+    await adapter.status!();
+    expect(lookups).toHaveBeenCalledTimes(2);
+  });
+
   it("reads a subagent's own thread through the call that started it", async () => {
     const server = fakeAppServer({ 'thread/turns/list': ({ threadId }) => ({ data: threadId === A ? [turn('spawn-call')] : [turn('sub-1'), turn('sub-2')], nextCursor: null }) });
     const adapter = provider(home(), { createAppServer: () => server });
@@ -129,9 +162,9 @@ describe('codexProvider', () => {
       expect(await provider(home(), { createAppServer: () => apiKey }).status!()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: null, login: null, problem: null });
     });
 
-    it('says how to sign in when signed out, and what failed when Codex does', async () => {
+    it('is no problem signed out (reading needs no login), and says what failed when Codex does', async () => {
       const signedOut = fakeAppServer({ 'account/read': () => ({ account: null, requiresOpenaiAuth: true }) });
-      expect(await provider(home(), { createAppServer: () => signedOut }).status!()).toMatchObject({ binary: '/fake/codex', signedIn: false, problem: expect.stringMatching(/codex login/) });
+      expect(await provider(home(), { createAppServer: () => signedOut }).status!()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: false, account: null, login: null, problem: null });
       // A model provider that needs no OpenAI login (set in Codex's config).
       const noLogin = fakeAppServer({ 'account/read': () => ({ account: null, requiresOpenaiAuth: false }) });
       expect(await provider(home(), { createAppServer: () => noLogin }).status!()).toMatchObject({ signedIn: true, problem: null });

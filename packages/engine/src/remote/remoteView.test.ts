@@ -128,6 +128,17 @@ describe('remoteSessions with runs', () => {
     expect(remoteSessions({ summaries: [summary('parent', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), now: NOW }).sessions[0]).not.toHaveProperty('startedBy');
   });
 
+  it("gives a read-only provider's session its resume command, in place of the message box", () => {
+    const codex = { ...summary('019a-codex', null), provider: 'codex' } as SessionSummary;
+    const copilot = { ...summary('copilot-1', null), provider: 'copilot' } as SessionSummary;
+    const list = remoteSessions({ summaries: [codex, copilot, summary('claude-1', null)], live: [], hosts: [] }, { archiveAfterDays: 7, scope: 'switchboard', projectNames: new Map(), readOnlyProviders: new Map([['codex', 'codex resume {sessionId}']]), now: NOW });
+    const byId = new Map(list.sessions.map((s) => [s.id, s]));
+    expect(byId.get('019a-codex')!.readOnly).toEqual({ resumeCommand: 'codex resume 019a-codex' });
+    expect(byId.get('copilot-1')).not.toHaveProperty('readOnly');
+    expect(byId.get('claude-1')).not.toHaveProperty('readOnly');
+    expect(RemoteSessions.parse(list).sessions.find((s) => s.id === '019a-codex')!.readOnly).toEqual({ resumeCommand: 'codex resume 019a-codex' });
+  });
+
   it('says which trigger started a session or a run, and nothing for the rest', () => {
     const link = (sessionId: string) => ({ sessionId, triggerId: 't1', eventId: 'e1', triggerName: 'CI fails on main', kind: 'ci' as const, ref: 'CI #4512', url: 'https://github.com/acme/web/actions/runs/4512', at: NOW - 60_000 });
     const row = runState({ id: 'run-row', parentSessionId: null, task: 'Fix CI', unattended: true });
