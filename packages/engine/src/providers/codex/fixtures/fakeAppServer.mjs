@@ -3,9 +3,11 @@
 //
 // `thread/read`'s `threadId` picks what it does: `crash` exits with code 3 (after a line on stderr), `hang` never
 // answers, `ask` sends a request of its own first and answers with the client's reply to it, `last` answers and exits
-// at once, `big` answers with a preview of 8 MB. `thread/list` answers after `limit` milliseconds, so answers can come
+// at once, `big` answers with a preview of 8 MB, `ask-later` answers at once, then sends a request of its own (id 7)
+// and reports the client's reply in a `fake/reply` notification, `notify` sends `thread/started` before answering. `thread/list` answers after `limit` milliseconds, so answers can come
 // back out of order. Every answer is written in two pieces, with a notification and a line that isn't JSON before it.
-// FAKE_CODEX_INIT=hang never answers `initialize`. FAKE_CODEX_STUBBORN=1 ignores SIGTERM and the end of its stdin.
+// FAKE_CODEX_INIT=hang never answers `initialize`. FAKE_CODEX_STUBBORN=1 ignores SIGTERM and the end of its stdin, and
+// says so with a `fake/sigterm` notification.
 import { createInterface } from 'node:readline';
 
 if (process.argv[2] !== 'app-server') {
@@ -51,6 +53,18 @@ const handle = async (message) => {
       process.stdout.write(`${JSON.stringify({ id, result: { thread: { ...thread('last'), preview: 'x'.repeat(2 * 1024 * 1024) } } })}\n`, () => process.exit(0));
       return;
     }
+    if (params.threadId === 'ask-later') {
+      send({ id, result: { thread: thread('ask-later') } });
+      const reply = new Promise((resolve) => waiting.set(7, resolve));
+      setTimeout(() => process.stdout.write(`${JSON.stringify({ id: 7, method: 'item/fileChange/requestApproval', params: { threadId: 'ask-later' } })}\n`), 20);
+      process.stdout.write(`${JSON.stringify({ method: 'fake/reply', params: await reply })}\n`);
+      return;
+    }
+    if (params.threadId === 'notify') {
+      process.stdout.write(`${JSON.stringify({ method: 'thread/started', params: { thread: thread('notify') } })}\n`);
+      send({ id, result: { thread: thread('notify') } });
+      return;
+    }
     if (params.threadId === 'big') {
       send({ id, result: { thread: { ...thread('big'), preview: 'x'.repeat(8 * 1024 * 1024) } } });
       return;
@@ -90,5 +104,5 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   void handle(message);
 });
 // Codex ends when its stdin closes.
-if (process.env.FAKE_CODEX_STUBBORN === '1') process.on('SIGTERM', () => {});
+if (process.env.FAKE_CODEX_STUBBORN === '1') process.on('SIGTERM', () => process.stdout.write(`${JSON.stringify({ method: 'fake/sigterm', params: {} })}\n`));
 else process.stdin.on('end', () => process.exit(0));

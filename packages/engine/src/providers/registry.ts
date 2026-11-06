@@ -10,6 +10,8 @@ import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpd
 import type { AppServer, AppServerOptions, CodexBinary } from './codex/appServer.ts';
 import { CODEX_MODES } from './codex/codexModes.ts';
 import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
+import { findCodex } from './codex/codexBinary.ts';
+import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 
 export interface ProviderOptions {
@@ -20,26 +22,33 @@ export interface ProviderOptions {
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** A fake Copilot SDK and `copilot` (tests), and what its `copilot version` says (the demo). */
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
-  /** A fake `codex` and `codex app-server` (tests and the demo). */
-  codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer };
+  /** A fake `codex` and `codex app-server` (tests and the demo), and the newest version its update check finds (the demo). */
+  codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
   log?: (level: LogLevel, message: string) => void;
 }
 
 /** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
-export function createProviderUpdater(provider: OptionalProvider, { home, shellEnv, copilot = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+  const stringEnv = async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string'));
   switch (provider) {
     case 'copilot':
       return copilotUpdater({
         ...deps,
         // Found again on each check: an update can move it, and installing it works without restarting Seshboard.
         binary: copilot.binary ?? (async () => findCopilot(await shellEnv(), home)),
-        env: async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string')),
+        env: stringEnv,
         ...(copilot.version ? { version: copilot.version } : {}),
       });
     case 'codex':
-      // Comes with its driver (#276, Phase 2).
-      return null;
+      return codexUpdater({
+        ...deps,
+        binary: codex.binary ?? (async () => findCodex(await shellEnv(), home)),
+        // Codex's own folder, whose config may turn its update check off; a profile's folder is its own login.
+        codexHome: codexHome(env, home),
+        env: stringEnv,
+        ...(codex.latestVersion ? { latest: codex.latestVersion } : {}),
+      });
   }
 }
 
