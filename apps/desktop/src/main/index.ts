@@ -9754,6 +9754,10 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   // The transcripts' first read may still be going: wait for a day with sessions.
   const busiest = `[...document.querySelectorAll('${view} [data-activity-day]')].filter((d) => Number(d.dataset.activityDayCount) > 0).sort((a, b) => b.dataset.activityDayCount - a.dataset.activityDayCount)[0]`;
   if (!(await waitInPage(win, `!!${busiest}`, 15_000))) return process.env.SESHBOARD_SMOKE_DEMO ? 'no day in the strip has sessions' : 'ok: no sessions this week to show';
+  // A day's bar is its activity score, stacked from the time worked up, with a typical-day line and a legend.
+  if (!(await waitInPage(win, `Number(${busiest}.dataset.activityDayScore) > 0 && !!${busiest}.querySelector('[data-activity-bar-part="time"]')`, 5_000))) return `the busiest day has no score bar: ${await js(`${busiest}.dataset.activityDayScore`)}`;
+  if (!(await js(`!!document.querySelector('${view} [data-activity-typical]') && !!document.querySelector('${view} [data-activity-legend]')`))) return 'the strip has no typical-day line or legend';
+  if (!(await js(`JSON.parse(${busiest}.dataset.tooltipRows ?? '[]').some((row) => row.label === 'Claude working') && ${busiest}.dataset.tooltipMeta.endsWith('a typical day')`))) return `the busiest day's tooltip has no breakdown: ${await js(`${busiest}.dataset.tooltip`)}`;
   await js(`${busiest}.click()`);
   const list = `${view} [data-activity-list]`;
   if (!(await waitInPage(win, `!!document.querySelector('${list} [data-activity-session]') && !!document.querySelector('${view} [data-activity-numbers]')`, 5_000))) return 'a day with sessions listed none';
@@ -9860,8 +9864,10 @@ async function runActivityPageStep(win: BrowserWindow): Promise<string> {
   if (!(await waitInPage(win, "!!document.querySelector('[data-activity-export-dialog]') && !document.querySelector('[data-activity-export-span]')", 2_000))) return 'Export of a range still asks which days';
   pressKey(win, 'Escape');
   if (!(await waitInPage(win, "!document.querySelector('[data-activity-export-dialog]')", 2_000))) return 'Escape did not close Export';
-  // A bar shows its day.
-  await js(`[...document.querySelectorAll('${view} [data-activity-range-day]')].find((d) => Number(d.dataset.activityRangeDayCount) > 0).click()`);
+  // A bar shows its day. Its height is the day's score, as in the strip.
+  const rangeBusy = `[...document.querySelectorAll('${view} [data-activity-range-day]')].find((d) => Number(d.dataset.activityRangeDayCount) > 0)`;
+  if (!(await js(`Number(${rangeBusy}.dataset.activityRangeDayScore) > 0 && !!${rangeBusy}.querySelector('[data-activity-bar-part]')`))) return 'a day of the range with sessions has no score bar';
+  await js(`${rangeBusy}.click()`);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-span="day"]').getAttribute('aria-checked') === 'true' && document.querySelectorAll('${view} [data-activity-day]').length === 7 && !document.querySelector('${view} [data-activity-loading]')`, 5_000))) return 'a bar of the range did not show its day';
   await js(`${busiest}.click()`);
   if (!(await waitInPage(win, `document.querySelector('${view} [data-activity-title]').innerText === ${JSON.stringify(dayTitleText)} && !!document.querySelector('${list} [data-activity-session]')`, 5_000))) return 'back from the range, the day did not return';

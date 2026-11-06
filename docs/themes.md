@@ -102,6 +102,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "profile-yellow": "#b08300", "profile-blue": "#1f6feb", "profile-green": "#1a7f37", "profile-purple": "#8250df",
       "profile-red": "#cf222e", "profile-orange": "#d1600a", "profile-gray": "#6e7781",
       "chart-output": "#7048e8", "chart-cache-write": "#c2255c", "chart-cache-read": "#1c7ed6", "chart-input": "#099268",
+      "chart-time": "#1c7ed6", "chart-turns": "#099268", "chart-shipped": "#e8590c",
       "working-hole": "#d6d4ce", "working-lit": "#ff961a", "working-glow": "#ffb85c", "working-plug-a": "#f3a27f", "working-plug-b": "#c95f3d", "working-plug-c": "#dcb058", "working-plug-d": "#ec9f33"
     }
   },
@@ -120,6 +121,7 @@ And Demo Time, the built-in theme, which sets every token (exporting it from Set
       "profile-yellow": "#ffd43b", "profile-blue": "#74c0fc", "profile-green": "#51cf66", "profile-purple": "#b197fc",
       "profile-red": "#ff8787", "profile-orange": "#ffa94d", "profile-gray": "#9ba4b7",
       "chart-output": "#9775fa", "chart-cache-write": "#e64980", "chart-cache-read": "#339af0", "chart-input": "#0ca678",
+      "chart-time": "#339af0", "chart-turns": "#0ca678", "chart-shipped": "#e8590c",
       "working-hole": "#3d404a", "working-lit": "#fff1cc", "working-glow": "#ff961a", "working-plug-a": "#f3a27f", "working-plug-b": "#c95f3d", "working-plug-c": "#ffd27a", "working-plug-d": "#ec9f33"
     },
     "terminal": {
@@ -218,6 +220,7 @@ The names are the `--sb-*` CSS variables without the prefix. Values are Demo Tim
 | `terminal-shadow` | the shadow the terminal panel casts on the conversation | `#15181f29` | `#0000008c` |
 | `profile-yellow`, `-blue`, `-green`, `-purple`, `-red`, `-orange`, `-gray` | the dots, tags and rails that tell Claude profiles apart | see Demo Time above | |
 | `chart-output`, `chart-cache-write`, `chart-cache-read`, `chart-input` | the token types in the Usage view's charts, and its plan windows' lines (Weekly, a model's weekly, Session). Checked together for colour blindness; generated themes keep Demo Time's | `#7048e8`, `#c2255c`, `#1c7ed6`, `#099268` | `#9775fa`, `#e64980`, `#339af0`, `#0ca678` |
+| `chart-time`, `chart-turns`, `chart-shipped` | the parts of a day's bar in Activity's day strip, from the bottom up: the time Claude worked, your turns, and the commits and pull requests. Checked together for colour blindness on every built-in theme's surfaces; generated themes keep Demo Time's | `#1c7ed6`, `#099268`, `#e8590c` | `#339af0`, `#0ca678`, `#e8590c` |
 | `working-hole`, `working-lit`, `working-glow` | the working mark under a reply (the app icon's patch panel): a free jack while dark, when the light is on it, and the ring of glow around it. A theme without them gets a light in its accent: a warm white with an accent ring in dark, the accent with a softer ring in light | `#d6d4ce`, `#ff961a`, `#ffb85c` | `#3d404a`, `#fff1cc`, `#ff961a` |
 | `working-plug-a`, `working-plug-b`, `working-plug-c`, `working-plug-d` | the working mark's plugged jacks: top left and middle right (one cable), bottom left and bottom middle (the other). Demo Time's are the app icon's cable colours, the gold a little darker in light mode; the themes named after an app icon colourway take that colourway's | `#f3a27f`, `#c95f3d`, `#dcb058`, `#ec9f33` | `#f3a27f`, `#c95f3d`, `#ffd27a`, `#ec9f33` |
 

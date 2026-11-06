@@ -6,7 +6,7 @@ import { usePreferences } from '../../state/preferencesStore.ts';
 import { scopeOf } from '../../state/remoteRows.ts';
 import { callComputer } from '../computers/callComputer.ts';
 import { computersToAsk } from '../usage/usageMerge.ts';
-import { dayOf, summaryExtras, type ActivityRow } from './activityModel.ts';
+import { addDays, dayOf, summaryExtras, TYPICAL_DAYS, typicalDay, type ActivityRow, type TypicalDay } from './activityModel.ts';
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 /** New tokens come in bursts while a session works, and without a pause during a first read: the page follows at this pace. */
@@ -29,11 +29,15 @@ export interface ActivityRange {
   scanning: boolean;
 }
 
-/** What every session did from `from` through `to`, on this computer and on the paired ones that answer. */
-export function useActivityRange(from: string, to: string, options: { git?: boolean } = {}): ActivityRange {
+/**
+ * What every session did from `from` through `to`, on this computer and on the paired ones that answer. `past`: the days
+ * are over, so new tokens only change them while the transcripts are first read.
+ */
+export function useActivityRange(from: string, to: string, options: { git?: boolean; past?: boolean } = {}): ActivityRange {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const git = options.git ?? true;
+  const past = options.past ?? false;
   const [local, setLocal] = useState<{ key: string; rows: ActivityRow[] } | null>(null);
   const [scanning, setScanning] = useState(false);
   const key = `${from}|${to}`;
@@ -49,8 +53,12 @@ export function useActivityRange(from: string, to: string, options: { git?: bool
       );
     };
     load();
+    let wasScanning = false;
     const off = client.on('usage.tokens', ({ scan }) => {
       setScanning(!!scan);
+      // Past days only fill up during the first read, and once more as it ends.
+      if (past && !scan && !wasScanning) return;
+      wasScanning = !!scan;
       timer ??= setTimeout(() => {
         timer = undefined;
         load();
@@ -61,7 +69,7 @@ export function useActivityRange(from: string, to: string, options: { git?: bool
       clearTimeout(timer);
       off();
     };
-  }, [client, from, to, git, key]);
+  }, [client, from, to, git, past, key]);
 
   // The other computers. The status changes all the time: only who is asked matters.
   const computers = useComputers((s) => s.status?.computers);
@@ -170,4 +178,18 @@ export function useDaySummary(day: string | null, rows: readonly ActivityRow[], 
 
   const current = answer?.day === day ? answer : null;
   return { summary: current?.summary ?? null, state: enabled ? (current?.state ?? 'ok') : 'off', writing, regenerate: () => ask(true) };
+}
+
+/**
+ * The typical day for a strip that starts on `first`: the median of the active days in the `TYPICAL_DAYS` before it,
+ * on this computer and the paired ones (`typicalDay`). `shown` is every project's rows on the strip, for when there is
+ * too little history. One fetch per strip position; while the next one loads, the last typical day stays, so the bars
+ * don't jump.
+ */
+export function useTypicalDay(first: string, shown: readonly ActivityRow[]): TypicalDay | null {
+  const history = useActivityRange(addDays(first, -TYPICAL_DAYS), addDays(first, -1), { past: true });
+  const fresh = useMemo(() => (history.loading ? null : typicalDay(history.rows, shown)), [history.loading, history.rows, shown]);
+  const kept = useRef<TypicalDay | null>(null);
+  if (fresh) kept.current = fresh;
+  return fresh ?? kept.current ?? typicalDay([], shown);
 }

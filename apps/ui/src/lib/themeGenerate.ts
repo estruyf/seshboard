@@ -189,6 +189,9 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'chart-cache-write': demo['chart-cache-write'],
     'chart-cache-read': demo['chart-cache-read'],
     'chart-input': demo['chart-input'],
+    'chart-time': demo['chart-time'],
+    'chart-turns': demo['chart-turns'],
+    'chart-shipped': demo['chart-shipped'],
     // The working mark: holes a step from the canvas (warm on a light one, as the accent), a light in the theme's
     // accent (see `workingLight`), and the icon's cable colours, darkened only where they would wash out on the canvas.
     'working-hole': hex(surface(steps.hole, mode === 'light' ? 2 : 0)),
