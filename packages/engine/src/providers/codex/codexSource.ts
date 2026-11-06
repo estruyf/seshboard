@@ -75,6 +75,11 @@ export type CodexSessionSource = SessionSource & {
   thread(threadId: string): Promise<Thread | undefined>;
   /** A thread's turns, oldest first, with every item (`itemsView: 'full'`). Throws when they can't be read. */
   turns(threadId: string): Promise<Turn[]>;
+  /**
+   * A thread got a new name (`thread/name/updated`): the last list says so straight away. A name doesn't touch the
+   * rollout files, so the list would otherwise keep the old one until it is asked again.
+   */
+  named(threadId: string, name: string | null): void;
 };
 
 /**
@@ -171,5 +176,13 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
     },
     thread,
     turns,
+    named(threadId, name) {
+      const trimmed = name?.trim() || undefined;
+      lastList = lastList.map((info) => {
+        if (info.sessionId !== threadId) return info;
+        const { customTitle: _old, ...rest } = info;
+        return trimmed ? { ...rest, summary: trimmed, customTitle: trimmed } : { ...rest, summary: info.firstPrompt ?? info.summary };
+      });
+    },
   };
 }
