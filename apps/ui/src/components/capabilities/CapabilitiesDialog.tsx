@@ -6,8 +6,9 @@ import { ProfileBadge } from '../profiles/ProfileBadge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Switch } from '../ui/Toggle.tsx';
+import { canToggleMcp, toolsTabs, type ToolsTab } from './toolsModel.ts';
 
-type Tab = 'mcp' | 'commands' | 'agents' | 'plugins';
+type Tab = ToolsTab;
 
 /** `hint` says what to do about a server that isn't working, when Claude Code gave no error of its own. */
 const MCP_TONE: Record<McpServerInfo['status'], { dot: string; label: string; hint?: string }> = {
@@ -35,7 +36,7 @@ function Row({ title, meta, children, detail }: { title: ReactNode; meta?: React
  * What Claude can use in this session: MCP servers (turn on or off and reconnect when the
  * session runs here), skills and commands, agents and plugins.
  */
-export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { sessionId: string; cwd: string; profileId: string | null; onClose(): void }) {
+export function CapabilitiesDialog({ sessionId, cwd, profileId, agent = 'Claude Code', onClose }: { sessionId: string; cwd: string; profileId: string | null; /** Who runs the session, by its name ("OpenAI Codex"). */ agent?: string; onClose(): void }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [caps, setCaps] = useState<Capabilities | null>(null);
@@ -55,7 +56,7 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
       .call('session.capabilities', { sessionId, cwd, refresh: version > 0, reload: reloading })
       .then(
         (result) => !cancelled && (setCaps(result), setError(null)),
-        (e: Error) => !cancelled && setError(`Couldn't ask Claude Code what's available: ${e.message}`),
+        (e: Error) => !cancelled && setError(`Couldn't ask ${agent} what's available: ${e.message}`),
       )
       .finally(() => !cancelled && setReloading(false));
     return () => {
@@ -91,17 +92,16 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
       commands: caps?.commands.filter((c) => matches(c.name, c.description)) ?? [],
       agents: caps?.agents.filter((a) => matches(a.name, a.description)) ?? [],
       plugins: caps?.plugins.filter((p) => matches(p.name, p.scope)) ?? [],
+      hooks: caps?.hooks?.filter((h) => matches(h.event, h.matcher, h.command, h.scope)) ?? [],
     }),
     // `matches` only reads `needle`.
     [caps, needle],
   );
-  const tabs: Array<{ id: Tab; label: string; count: number | null }> = [
-    { id: 'mcp', label: 'MCP servers', count: caps?.mcp.length ?? null },
-    { id: 'commands', label: 'Skills & commands', count: caps?.commands.length ?? null },
-    { id: 'agents', label: 'Agents', count: caps?.agents.length ?? null },
-    { id: 'plugins', label: 'Plugins', count: caps?.plugins.length ?? null },
-  ];
-  const tabLabel = tabs.find((t) => t.id === tab)!.label;
+  // Hooks only for a provider that lists them (Codex), read-only.
+  const tabs = toolsTabs(caps);
+  // A provider that can't turn a server on or off (Codex) shows no switch, rather than one that fails.
+  const toggles = canToggleMcp(caps);
+  const tabLabel = tabs.find((t) => t.id === tab)?.label ?? tabs[0]!.label;
 
   // ← → Home End move between the tabs and open the one they land on.
   const onTabKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -113,7 +113,7 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
     setTab(tabs[next]!.id);
     document.getElementById(`${ids}-tab-${tabs[next]!.id}`)?.focus();
   };
-  const subtitle = caps === null ? 'Asking Claude Code…' : caps.live ? 'Live from this session' : 'Read from this folder. Run the session here to turn MCP servers on or off.';
+  const subtitle = caps === null ? `Asking ${agent}…` : caps.live ? 'Live from this session' : toggles ? 'Read from this folder. Run the session here to turn MCP servers on or off.' : 'Read from this folder.';
 
   return (
     <Dialog
@@ -132,7 +132,7 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
             size="sm"
             iconOnly
             icon={<RefreshCw size={12} className={reloading ? 'animate-spin' : ''} />}
-            data-tooltip={caps?.live ? 'Reload MCP servers and plugins' : 'Ask Claude Code again'}
+            data-tooltip={caps?.live ? 'Reload MCP servers and plugins' : `Ask ${agent} again`}
             aria-label="Refresh"
             aria-busy={reloading}
             onClick={reload}
@@ -187,6 +187,12 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
             Loading…
           </p>
         )}
+        {/* Where a reconnect reaches more than its server (Codex): said once, above the servers. */}
+        {caps?.live && tab === 'mcp' && caps.reconnectNote && lists.mcp.length > 0 && (
+          <p className="border-b border-edge px-4 py-2 text-meta text-muted" data-capabilities-reconnect-note>
+            {caps.reconnectNote}
+          </p>
+        )}
         {caps && tab === 'mcp' && (lists.mcp.length === 0 ? <p className="p-4 text-ui text-muted">No MCP servers{needle ? ' match' : ' configured'}.</p> : lists.mcp.map((server) => {
           const tone = MCP_TONE[server.status];
           return (
@@ -210,13 +216,13 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
                     </button>
                   )}
                   {/* The switch's state (aria-checked) says on or off; its name says which server. */}
-                  <Switch
+                  {toggles && <Switch
                     checked={server.status !== 'disabled'}
                     label={server.name}
                     disabled={busy === server.name}
                     onChange={(on) => void mcp(server.name, on ? 'enable' : 'disable')}
                     dataAttrs={{ 'data-tooltip': server.status === 'disabled' ? 'Turn on' : 'Turn off' }}
-                  />
+                  />}
                 </>
               )}
             </Row>
@@ -227,6 +233,14 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, onClose }: { ses
         )))}
         {caps && tab === 'agents' && (lists.agents.length === 0 ? <p className="p-4 text-ui text-muted">No agents{needle ? ' match' : ''}.</p> : lists.agents.map((a) => (
           <Row key={a.name} title={<span className="font-medium">{a.name}</span>} meta={a.model ?? undefined} detail={a.description} />
+        )))}
+        {caps && tab === 'hooks' && (lists.hooks.length === 0 ? <p className="p-4 text-ui text-muted">No hooks{needle ? ' match' : ''}.</p> : lists.hooks.map((h, i) => (
+          <Row
+            key={`${h.event}:${h.matcher ?? ''}:${h.command}:${i}`}
+            title={<span className="font-mono">{h.matcher ? `${h.event} · ${h.matcher}` : h.event}</span>}
+            meta={[h.scope, h.enabled ? null : 'Off'].filter(Boolean).join(' · ') || undefined}
+            detail={<span className="font-mono">{h.command}</span>}
+          />
         )))}
         {caps && tab === 'plugins' && (lists.plugins.length === 0 ? <p className="p-4 text-ui text-muted">No plugins installed{needle ? ' that match' : ''}.</p> : lists.plugins.map((p) => (
           <Row key={p.name} title={<span className="font-medium">{p.name}</span>} meta={[p.version && `v${p.version}`, p.scope].filter(Boolean).join(' · ') || undefined} detail={p.path} />

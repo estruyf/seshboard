@@ -1907,7 +1907,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           {remember.overlay}
           <Announcer sessionId={sessionId} working={working} failed={host?.state === 'error'} permissions={permissions} cwd={cwd} turn={lastTurnRef} />
 
-          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} onClose={() => useOverlay.getState().close()} />}
+          {toolsOpen && cwd && <CapabilitiesDialog sessionId={sessionId} cwd={cwd} profileId={profileId} agent={PROVIDER_NAMES[otherProvider ?? 'claude']} onClose={() => useOverlay.getState().close()} />}
       {rewinding && (
             <ConfirmDialog
               title={rewindsConversation ? 'Rewind to before this message?' : 'Undo file changes since this message?'}

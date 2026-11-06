@@ -3401,13 +3401,16 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
       pressKey(win, 'Escape');
       return `the Codex session's ⋯ menu has ${JSON.stringify(menuSeen)}, not Compact, Tools, Rename and Open in Codex CLI`;
     }
-    // Tools: Codex's MCP servers and skill, from its app-server (the demo's github and linear, and release-notes).
+    // Tools: the session doesn't run here (the demo's Codex runs nothing), so it reads from the folder, without an error,
+    // and with no switch to turn a server on or off (Codex can't: its config.toml holds that).
     await js("document.querySelector('[role=menu] [data-provider-tools]').click()");
-    const toolsShown = await waitInPage(win, "(document.querySelector('[data-capabilities]')?.innerText ?? '').includes('github')", 10_000);
-    const toolsText = toolsShown ? '' : String(await js("document.querySelector('[data-capabilities]')?.innerText.slice(0, 200) ?? 'no Tools dialog'"));
+    const toolsShown = await waitInPage(win, "(document.querySelector('[data-capabilities]')?.innerText ?? '').includes('Read from this folder.') && !document.querySelector('[data-capabilities] [role=alert]')", 10_000);
+    const toolsText = toolsShown ? '' : String(await js("document.querySelector('[data-capabilities]')?.innerText.slice(0, 300) ?? 'no Tools dialog'"));
+    const switches = (await js("document.querySelectorAll('[data-capabilities] [role=switch]').length")) as number;
     pressKey(win, 'Escape');
     await waitInPage(win, "!document.querySelector('[data-capabilities]')", 2_000);
-    if (!toolsShown) return `Tools for the Codex session doesn't list its MCP servers (${toolsText})`;
+    if (!toolsShown) return `Tools for the Codex session didn't open as read from its folder (${toolsText})`;
+    if (switches > 0) return `Tools for the Codex session shows ${switches} switches to turn MCP servers on or off`;
 
     // 5. New session on the Codex profile, with Codex's mark, models, efforts and modes.
     await js("document.querySelector('[data-new-session]')?.click()");
@@ -3472,7 +3475,7 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
     await setFieldValue(win, `${nsv} [data-composer]`, '');
     if (!refused) return `Start with the demo's Codex didn't say it has no Codex CLI to run sessions (${said || 'nothing said'})`;
-    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box and a ⋯ menu with Compact, Tools (its MCP servers) and Rename`;
+    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box and a ⋯ menu with Compact, Tools and Rename`;
   } finally {
     // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
     if (profileId) {
