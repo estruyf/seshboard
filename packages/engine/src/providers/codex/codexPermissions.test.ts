@@ -50,7 +50,7 @@ describe('codexPermissionRequest', () => {
     expect(codexPermissionRequest('3', COMMAND, null, NOW)).toEqual({
       requestId: '3',
       toolName: 'Bash',
-      toolUseId: 'tu:call_rm',
+      toolUseId: 'tu~call_rm',
       input: { command: 'rm -rf dist', cwd: '/repo', description: 'Remove the build output' },
       title: 'Codex wants to run a command',
       description: 'Remove the build output',
@@ -77,7 +77,7 @@ describe('codexPermissionRequest', () => {
   it('shows a file change with the diff from its item', () => {
     expect(codexPermissionRequest('4', FILE_CHANGE, CHANGE_ITEM, NOW)).toMatchObject({
       toolName: 'Edit',
-      toolUseId: 'tu:call_patch',
+      toolUseId: 'tu~call_patch',
       input: { file_path: '/repo/src/app.ts', old_string: 'a', new_string: 'b' },
       title: 'Codex wants to edit app.ts',
       alwaysLabel: 'Allow changes to these files in this session',
@@ -106,7 +106,7 @@ describe('codexPermissionRequest', () => {
   it('shows questions on the question card', () => {
     expect(codexPermissionRequest('5', QUESTION, null, NOW)).toMatchObject({
       toolName: 'AskUserQuestion',
-      toolUseId: 'tu:call_ask',
+      toolUseId: 'tu~call_ask',
       alwaysLabel: null,
       input: {
         questions: [

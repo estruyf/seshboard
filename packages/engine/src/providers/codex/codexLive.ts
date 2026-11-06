@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { DriverEvents } from '../provider.ts';
-import { codexContext, codexItemId, codexItemMessages, codexTurnEnd } from './codexEvents.ts';
+import { codexContext, codexItemId, codexItemMessages, codexTurnEnd, ID_JOIN } from './codexEvents.ts';
 import type { ServerNotification, ThreadItem, Turn } from './protocol.ts';
 
 type Loose = Record<string, unknown>;
@@ -24,7 +24,7 @@ export interface CodexLiveOptions {
  * A card id for a request of Codex's. Codex numbers its requests from 0 in every app-server, and Seshboard keeps open
  * cards by id across sessions and profiles: the thread's id makes them unique.
  */
-export const codexCardId = (threadId: string, codexId: string | number) => `${threadId}:${codexId}`;
+export const codexCardId = (threadId: string, codexId: string | number) => `${threadId}${ID_JOIN}${String(codexId).replace(/:/g, '_')}`;
 
 /** Codex's plan steps' statuses as TodoWrite's. */
 const TODO_STATUS: Record<string, string> = { pending: 'pending', inProgress: 'in_progress', completed: 'completed' };
@@ -272,7 +272,7 @@ export class CodexLive {
       return content ? [{ content, status: TODO_STATUS[str(step.status) ?? ''] ?? 'pending' }] : [];
     });
     if (!todos.length) return;
-    const id = `${turnId || this.threadId}:todos:${randomUUID()}`;
+    const id = [turnId || this.threadId, 'todos', randomUUID()].join(ID_JOIN).replace(/:/g, '_');
     this.note(turnId, [
       { role: 'assistant', content: [{ type: 'tool_use', id, name: 'TodoWrite', input: { todos } }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: false, content: 'Updated the to-do list' }] },
@@ -288,7 +288,7 @@ export class CodexLive {
     const note = randomUUID();
     const messages: RawSessionMessage[] = bodies.map((body, i) => ({
       type: body.role,
-      uuid: `${turnId || this.threadId}:note:${note}:${i}`,
+      uuid: [turnId || this.threadId, 'note', note, i].join(ID_JOIN).replace(/:/g, '_'),
       message: body,
       parent_tool_use_id: null,
       timestamp,
