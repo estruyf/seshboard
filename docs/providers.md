@@ -23,7 +23,7 @@ Each reader turns its provider's records into the messages Seshboard reads from 
 1. Add its id to `SESSION_PROVIDERS` and `OPTIONAL_PROVIDERS`, and its names to `PROVIDER_NAMES` and `PROVIDER_SHORT_NAMES` (`providerConstants.ts`). TypeScript then points at the two places that need it: `PROVIDER_ICONS` in `ProviderMark.tsx`, and the registry.
 2. Write its adapter in `packages/engine/src/providers/<id>/`: a `SessionSource` (list, info, messages), its `ProviderFiles`, and a pure converter to `RawSessionMessage` with tests next to it. Use real temporary folders in the tests, with records copied from the agent's own files.
 3. Add it to `providerCatalog()` and `createProvider()` in `registry.ts`, with its `installCommand` and its capability list, `supports`: which of Claude Code's own features (`PROVIDER_FEATURES`: fork, rewind, rename, delete, effort, Ask, worktrees, branches, pipelines, the queue, schedules, triggers) it has. The rest stay off for its profiles: New session turns them off with a notice and a "Not with <provider> yet" tooltip (`switchLosses`, `notWithYet`), and its session's ⋯ menu ends with one faint line that names the session actions it doesn't have yet (`claudeOnlyLine`). The list grows as it gets them. Its profiles then work like Copilot's: Add profile offers it, and its adapter gets the profile's folder.
-4. Give `detectProvider()` what it needs (it uses the driver's `status()` and `files()`, so a provider with both gets the offer in Settings › Profiles), and add a line to `CHANGELOG.md`.
+4. Give `detectProvider()` what it needs (it uses `files()` and the driver's `status()`, or the adapter's own `status()` for a provider without a driver, so a provider with both gets the offer in Settings › Profiles), and add a line to `CHANGELOG.md`. Set `homeEnv` (`{ COPILOT_HOME: home }`): a terminal of the profile and its Sign in run the CLI with it. Anything the adapter runs to read (Codex's app-server) stops in its `dispose()`.
 
 Read through the agent's own API where it has one that only reads. Parse its files where it doesn't, and degrade quietly: a missing or changed field leaves a session with less (no title, the folder from another record), never an error. Never write to the agent's folder.
 
@@ -36,6 +36,18 @@ Read through the agent's own API where it has one that only reads. Parse its fil
 - **Origin:** `client_name` `github/cli` is the CLI, `vscode` an editor; anything else is unknown.
 - **Left out of the transcript:** `report_intent` (Copilot's own status line) and the steps of subagents (events with a `parentToolCallId`), as Claude Code's subagents are left out of the main conversation.
 - **Resume:** `copilot --resume=<id>`.
+
+## OpenAI Codex CLI
+
+Read-only for now ([#276](https://github.com/estruyf/seshboard/issues/276), Phase 1): no driver, `supports: ['delete']`.
+
+- **Where:** `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread id>.jsonl` (or `.jsonl.zst` once Codex compressed it), else `~/.codex`. The index watches these files only to know a thread changed (`codexFiles.ts`).
+- **What is read:** nothing from the files. `codexSource.ts` asks `codex app-server` (one per profile, with its `CODEX_HOME`, started on the first request and stopped when idle): `thread/list` for the list (every page, every source but subagents, never archived, never `useStateDbOnly`, so a trashed rollout drops out), `thread/read` when a file changes, `thread/turns/list` with `itemsView: 'full'` for the conversation. Codex keeps paginated history in its own database, so the API is the only complete reader. Subagent and ephemeral threads are left out of the sidebar; a subagent opens from its parent's call (`subagent`).
+- **Fails quietly:** a Codex that isn't installed or a server that crashed or timed out keeps the last list (none before the first), logs once until it works again, and reads nothing else.
+- **Origin:** `originator` `seshboard` is the app, source `cli` the CLI, `vscode` an editor; anything else is unknown.
+- **Status and sign in:** the adapter's own `status()`: `codex` found (`findCodex`) and `account/read` (a ChatGPT login by its email, an API key without a name). `auth.json` is never read. Sign in runs `CODEX_HOME=<folder> codex login`.
+- **Delete:** the thread's rollout files (both spellings, and one in `archived_sessions/`) go to the Trash with `{ codexHome }`; main checks each again (`isTrashableCodexSession`). Not yet refused while Codex CLI has it open: `inUse` and `live` wait for its lock format.
+- **Resume:** `codex resume <id>`.
 
 ## Driving sessions
 

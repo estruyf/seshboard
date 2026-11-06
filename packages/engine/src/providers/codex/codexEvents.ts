@@ -13,3 +13,11 @@ export function codexMessages(_turns: readonly Turn[]): RawSessionMessage[] {
 export function codexFirstPrompt(_turns: readonly Turn[]): string | undefined {
   throw new Error('codexFirstPrompt: not built yet');
 }
+
+/**
+ * The thread of the subagent a tool call started (`toolUseId`, as `codexMessages` names it), from the parent's turns.
+ * Undefined when the call started none.
+ */
+export function codexSubagentThread(_turns: readonly Turn[], _toolUseId: string): string | undefined {
+  throw new Error('codexSubagentThread: not built yet');
+}
