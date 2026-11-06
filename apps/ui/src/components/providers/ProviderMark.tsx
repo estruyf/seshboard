@@ -1,12 +1,13 @@
 import type { ComponentType, SVGProps } from 'react';
 import { PROVIDER_NAMES, providerOf, type SessionProvider } from '@seshboard/protocol/client';
 import { ClaudeIcon } from './ClaudeIcon.tsx';
+import { CodexIcon } from './CodexIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
 
 type ProviderIcon = ComponentType<{ size?: number } & Omit<SVGProps<SVGSVGElement>, 'width' | 'height' | 'viewBox' | 'fill'>>;
 
 /** Each provider's mark. A new provider fails to compile until it has one. */
-export const PROVIDER_ICONS: Record<SessionProvider, ProviderIcon> = { claude: ClaudeIcon, copilot: CopilotIcon };
+export const PROVIDER_ICONS: Record<SessionProvider, ProviderIcon> = { claude: ClaudeIcon, copilot: CopilotIcon, codex: CodexIcon };
 
 /**
  * Says whose a session is (Claude Code's, GitHub Copilot's) on its row, and another provider's in its header. Neutral,

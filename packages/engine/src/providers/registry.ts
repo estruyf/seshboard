@@ -7,6 +7,8 @@ import { COPILOT_INSTALL, COPILOT_RESUME, copilotProvider } from './copilot/copi
 import { copilotHome } from './copilot/copilotSource.ts';
 import { findCopilot } from './copilot/copilotBinary.ts';
 import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpdate.ts';
+import type { CodexBinary } from './codex/appServer.ts';
+import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 
 export interface ProviderOptions {
@@ -17,9 +19,11 @@ export interface ProviderOptions {
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** A fake Copilot SDK and `copilot` (tests), and what its `copilot version` says (the demo). */
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
+  /** A fake `codex` (tests and the demo). */
+  codex?: { binary?: () => Promise<CodexBinary | null> };
 }
 
-/** The update check of a provider's CLI (Settings › About), for a provider with a profile. */
+/** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
 export function createProviderUpdater(provider: OptionalProvider, { home, shellEnv, copilot = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
   switch (provider) {
     case 'copilot':
@@ -30,6 +34,9 @@ export function createProviderUpdater(provider: OptionalProvider, { home, shellE
         env: async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string')),
         ...(copilot.version ? { version: copilot.version } : {}),
       });
+    case 'codex':
+      // Comes with its driver (#276, Phase 2).
+      return null;
   }
 }
 
@@ -51,6 +58,18 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       // schedules and triggers start it like New session does, in a worktree or on a branch Seshboard makes. A pipeline's
       // step picks Copilot itself: a run stays Claude Code's.
       supports: ['fork', 'rewind', 'rename', 'delete', 'effort', 'ask', 'later', 'schedule', 'trigger', 'worktree', 'branch'],
+    },
+    {
+      id: 'codex',
+      name: PROVIDER_NAMES.codex,
+      defaultFolder: codexHome(env, home),
+      resumeCommand: CODEX_RESUME,
+      // Read-only for now: its sessions are read through `codex app-server`, and started in Codex CLI (#276).
+      canStart: false,
+      modes: [],
+      installCommand: CODEX_INSTALL,
+      // Its rollout file goes to the Trash.
+      supports: ['delete'],
     },
   ];
 }
@@ -80,10 +99,12 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {} }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {} }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
+    case 'codex':
+      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex });
   }
 }
