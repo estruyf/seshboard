@@ -284,8 +284,18 @@ const AGENT_FAILED = new Set(['errored', 'notFound', 'interrupted']);
 /** Codex's own fields on every item, left out of a generic card's input. */
 const ITEM_FIELDS = new Set(['type', 'id', 'startedAtMs', 'completedAtMs', 'status']);
 
+/**
+ * What joins the parts of the ids Codex's messages, tool calls and cards get. Never `:`: the transcript cuts an item's
+ * key (`<uuid>:<block>`) and an image's id at the first one, so a message id must not have one. `~` is in no id Codex
+ * makes, nothing splits on it, and it is safe in a URL and a quoted CSS attribute value.
+ */
+export const ID_JOIN = '~';
+
+/** An id part from Codex, without the `:` the transcript would cut it at. */
+const idPart = (part: string) => part.replace(/:/g, '_');
+
 /** The id of an item's messages and tool calls: its turn's and its own, stable across reads and while it runs. */
-export const codexItemId = (turnId: string, itemId: string) => `${turnId}:${itemId}`;
+export const codexItemId = (turnId: string, itemId: string) => `${idPart(turnId)}${ID_JOIN}${idPart(itemId)}`;
 
 /** Each turn's items with the id their messages and tool calls get: the turn's and the item's, made unique should one repeat. */
 function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; items: Array<{ item: Loose; id: string }> }> {
@@ -296,7 +306,7 @@ function itemIds(turns: readonly Turn[]): Array<{ turn: Turn; turnId: string; it
     const items = arr(turn.items).map((raw, index) => {
       const item = obj(raw);
       let id = codexItemId(turnId, str(item.id) ?? String(index));
-      if (seen.has(id)) id = `${id}#${index}`;
+      if (seen.has(id)) id = `${id}${ID_JOIN}${index}`;
       seen.add(id);
       return { item, id };
     });
@@ -387,7 +397,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
       const result = own ?? (item.status === 'inProgress' && ENDED.has(String(turn.status)) ? { text: 'Interrupted', isError: true } : null);
       return result ? [{ type: 'tool_result', tool_use_id: callId, is_error: result.isError, content: result.images?.length ? [...(result.text ? [{ type: 'text', text: result.text }] : []), ...result.images] : result.text }] : [];
     });
-    if (results.length) out.push(message('user', `${id}:result`, ended, { role: 'user', content: results }));
+    if (results.length) out.push(message('user', `${id}${ID_JOIN}result`, ended, { role: 'user', content: results }));
   };
   const tool = (t: Tool, result: Result) => tools([{ id, tool: t, result }]);
 
@@ -435,7 +445,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
     }
     case 'fileChange': {
       const changes = arr(item.changes).map(obj);
-      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}:${i}`, tool: codexFileTool(change), result: fileResult(change, item.status) })));
+      tools(changes.map((change, i) => ({ id: changes.length === 1 ? id : `${id}${ID_JOIN}${i}`, tool: codexFileTool(change), result: fileResult(change, item.status) })));
       break;
     }
     case 'mcpToolCall': {
@@ -484,7 +494,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
       // The review's findings are in `review`: they read as a reply.
       note('Review finished');
       const review = str(item.review);
-      if (review?.trim()) out.push(message('assistant', `${id}:review`, ended, { role: 'assistant', content: [{ type: 'text', text: review }] }));
+      if (review?.trim()) out.push(message('assistant', `${id}${ID_JOIN}review`, ended, { role: 'assistant', content: [{ type: 'text', text: review }] }));
       break;
     }
     case 'collabAgentToolCall': {
@@ -518,7 +528,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
         const report = str(state.message);
         if (!spawn || spawn.toolUseId === id || !report?.trim() || report === spawn.reported) continue;
         spawn.reported = report;
-        out.push(message('user', `${id}:report:${thread}`, ended, { role: 'user', content: [{ type: 'tool_result', tool_use_id: spawn.toolUseId, is_error: AGENT_FAILED.has(str(state.status) ?? ''), content: report }] }));
+        out.push(message('user', `${id}${ID_JOIN}report${ID_JOIN}${idPart(thread)}`, ended, { role: 'user', content: [{ type: 'tool_result', tool_use_id: spawn.toolUseId, is_error: AGENT_FAILED.has(str(state.status) ?? ''), content: report }] }));
       }
       break;
     }
@@ -565,10 +575,10 @@ const snake = (name: string) => name.replace(/[A-Z]/g, (c) => `_${c.toLowerCase(
 function turnEnd(turn: Turn, id: string): RawSessionMessage[] {
   const at = iso(num(turn.completedAt) !== null ? num(turn.completedAt)! * 1000 : null);
   const base = { parent_tool_use_id: null, ...(at ? { timestamp: at } : {}) };
-  if (turn.status === 'interrupted') return [{ ...base, type: 'user', uuid: `${id}#end`, message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }];
+  if (turn.status === 'interrupted') return [{ ...base, type: 'user', uuid: `${idPart(id)}${ID_JOIN}end`, message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }];
   if (turn.status === 'failed') {
     const error = str(obj(turn.error).message)?.trim();
-    return [{ ...base, type: 'system', uuid: `${id}#end`, message: { role: 'system', content: [{ type: 'text', text: error ? `Codex stopped with an error: ${error}` : 'Codex stopped with an error' }] } }];
+    return [{ ...base, type: 'system', uuid: `${idPart(id)}${ID_JOIN}end`, message: { role: 'system', content: [{ type: 'text', text: error ? `Codex stopped with an error: ${error}` : 'Codex stopped with an error' }] } }];
   }
   return [];
 }

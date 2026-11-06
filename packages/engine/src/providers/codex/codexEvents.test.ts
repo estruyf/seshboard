@@ -21,9 +21,9 @@ const toolResult = (id: string) =>
 
 describe('codexMessages', () => {
   it('turns prompts, reasoning and replies into transcript messages, leaving out what Codex injects', () => {
-    expect(byUuid(`${T1}:item-1`)).toEqual({ role: 'user', uuid: `${T1}:item-1`, blocks: [{ type: 'text', text: 'Add logging to the worker\n\n[Image: /repo/screenshot.png]' }] });
-    expect(byUuid(`${T1}:rs_01`)!.blocks).toEqual([{ type: 'thinking', text: '**Looking at the worker**' }]);
-    expect(byUuid(`${T1}:item-2`)).toEqual({ role: 'assistant', uuid: `${T1}:item-2`, blocks: [{ type: 'text', text: 'Done. I added a logger to the worker.' }] });
+    expect(byUuid(`${T1}~item-1`)).toEqual({ role: 'user', uuid: `${T1}~item-1`, blocks: [{ type: 'text', text: 'Add logging to the worker\n\n[Image: /repo/screenshot.png]' }] });
+    expect(byUuid(`${T1}~rs_01`)!.blocks).toEqual([{ type: 'thinking', text: '**Looking at the worker**' }]);
+    expect(byUuid(`${T1}~item-2`)).toEqual({ role: 'assistant', uuid: `${T1}~item-2`, blocks: [{ type: 'text', text: 'Done. I added a logger to the worker.' }] });
   });
 
   it('gives every message a unique id that stays the same on the next read', () => {
@@ -34,27 +34,27 @@ describe('codexMessages', () => {
 
   it('dates items by their own times, else by their turn', () => {
     const messages = codexMessages(TURNS);
-    expect(messages.find((m) => m.uuid === `${T1}:item-1`)!.timestamp).toBe(new Date(1778592901000).toISOString());
-    expect(messages.find((m) => m.uuid === `${T1}:call_read`)!.timestamp).toBe(new Date(1778592903000).toISOString());
-    expect(messages.find((m) => m.uuid === `${T1}:call_read:result`)!.timestamp).toBe(new Date(1778592903040).toISOString());
-    expect(messages.find((m) => m.uuid === `${T2}:item-1`)!.timestamp).toBe(new Date(1778593000 * 1000).toISOString());
+    expect(messages.find((m) => m.uuid === `${T1}~item-1`)!.timestamp).toBe(new Date(1778592901000).toISOString());
+    expect(messages.find((m) => m.uuid === `${T1}~call_read`)!.timestamp).toBe(new Date(1778592903000).toISOString());
+    expect(messages.find((m) => m.uuid === `${T1}~call_read~result`)!.timestamp).toBe(new Date(1778592903040).toISOString());
+    expect(messages.find((m) => m.uuid === `${T2}~item-1`)!.timestamp).toBe(new Date(1778593000 * 1000).toISOString());
   });
 
   it('shows a command that reads one file as a Read of it, and others as Bash without the shell around them', () => {
-    expect(toolUse(`${T1}:call_read`)).toMatchObject({ name: 'Read', input: { file_path: '/repo/src/Worker.cs' } });
-    expect(toolResult(`${T1}:call_read`)).toMatchObject({ isError: false, text: 'using System;\nclass Worker {}\n' });
-    expect(toolUse(`${T1}:call_test`)).toMatchObject({ name: 'Bash', input: { command: "dotnet test --filter 'Worker'" } });
+    expect(toolUse(`${T1}~call_read`)).toMatchObject({ name: 'Read', input: { file_path: '/repo/src/Worker.cs' } });
+    expect(toolResult(`${T1}~call_read`)).toMatchObject({ isError: false, text: 'using System;\nclass Worker {}\n' });
+    expect(toolUse(`${T1}~call_test`)).toMatchObject({ name: 'Bash', input: { command: "dotnet test --filter 'Worker'" } });
     // A non-zero exit code is a failure, as Claude Code's Bash shows one.
-    expect(toolResult(`${T1}:call_test`)).toMatchObject({ isError: true, text: 'Failed: 1\n' });
+    expect(toolResult(`${T1}~call_test`)).toMatchObject({ isError: true, text: 'Failed: 1\n' });
   });
 
   it('shows file changes as Edit (MultiEdit for several hunks), Write and Delete cards, in one message', () => {
-    const call = byUuid(`${T1}:call_patch`)!;
+    const call = byUuid(`${T1}~call_patch`)!;
     expect(call.role).toBe('assistant');
     expect(call.blocks).toEqual([
       {
         type: 'tool_use',
-        id: `${T1}:call_patch:0`,
+        id: `${T1}~call_patch~0`,
         name: 'MultiEdit',
         input: {
           file_path: '/repo/src/Worker.cs',
@@ -65,54 +65,54 @@ describe('codexMessages', () => {
         },
         truncated: false,
       },
-      { type: 'tool_use', id: `${T1}:call_patch:1`, name: 'Write', input: { file_path: '/repo/src/Log.cs', content: 'static class Log {}\n' }, truncated: false },
-      { type: 'tool_use', id: `${T1}:call_patch:2`, name: 'Delete', input: { file_path: '/repo/src/Old.cs' }, truncated: false },
+      { type: 'tool_use', id: `${T1}~call_patch~1`, name: 'Write', input: { file_path: '/repo/src/Log.cs', content: 'static class Log {}\n' }, truncated: false },
+      { type: 'tool_use', id: `${T1}~call_patch~2`, name: 'Delete', input: { file_path: '/repo/src/Old.cs' }, truncated: false },
     ]);
-    expect(byUuid(`${T1}:call_patch:result`)!.blocks.map((b) => b.type === 'tool_result' && [b.toolUseId, b.text])).toEqual([
-      [`${T1}:call_patch:0`, 'Updated /repo/src/Worker.cs'],
-      [`${T1}:call_patch:1`, 'Created /repo/src/Log.cs'],
-      [`${T1}:call_patch:2`, 'Deleted /repo/src/Old.cs'],
+    expect(byUuid(`${T1}~call_patch~result`)!.blocks.map((b) => b.type === 'tool_result' && [b.toolUseId, b.text])).toEqual([
+      [`${T1}~call_patch~0`, 'Updated /repo/src/Worker.cs'],
+      [`${T1}~call_patch~1`, 'Created /repo/src/Log.cs'],
+      [`${T1}~call_patch~2`, 'Deleted /repo/src/Old.cs'],
     ]);
     // One change keeps the item's id; a declined one is an error.
-    expect(toolUse(`${T1}:call_rename`)).toMatchObject({ name: 'Edit', input: { file_path: '/repo/src/Program.cs', old_string: 'using Foo;\n', new_string: 'using Foo;\nusing Bar;\n' } });
-    expect(toolResult(`${T1}:call_rename`)).toMatchObject({ isError: true, text: 'Declined' });
+    expect(toolUse(`${T1}~call_rename`)).toMatchObject({ name: 'Edit', input: { file_path: '/repo/src/Program.cs', old_string: 'using Foo;\n', new_string: 'using Foo;\nusing Bar;\n' } });
+    expect(toolResult(`${T1}~call_rename`)).toMatchObject({ isError: true, text: 'Declined' });
   });
 
   it('shows web searches, pages, MCP tools and plans with their cards', () => {
-    expect(toolUse(`${T1}:ws_01`)).toMatchObject({ name: 'WebSearch', input: { query: 'serilog worker service', queries: ['serilog worker service', 'dotnet worker logging'] } });
-    expect(toolUse(`${T1}:ws_02`)).toMatchObject({ name: 'WebFetch', input: { url: 'https://example.com/logging' } });
-    expect(toolUse(`${T1}:call_mcp`)).toMatchObject({ name: 'mcp__docs__search', input: { q: 'ILogger' } });
-    expect(toolResult(`${T1}:call_mcp`)).toMatchObject({ isError: false, text: 'ILogger<T> is the generic logger.' });
-    expect(toolUse(`${T1}:plan-1`)).toMatchObject({ name: 'ExitPlanMode', input: { plan: '1. Add the logger\n2. Run the tests' } });
-    expect(toolResult(`${T1}:plan-1`)).toBeUndefined();
+    expect(toolUse(`${T1}~ws_01`)).toMatchObject({ name: 'WebSearch', input: { query: 'serilog worker service', queries: ['serilog worker service', 'dotnet worker logging'] } });
+    expect(toolUse(`${T1}~ws_02`)).toMatchObject({ name: 'WebFetch', input: { url: 'https://example.com/logging' } });
+    expect(toolUse(`${T1}~call_mcp`)).toMatchObject({ name: 'mcp__docs__search', input: { q: 'ILogger' } });
+    expect(toolResult(`${T1}~call_mcp`)).toMatchObject({ isError: false, text: 'ILogger<T> is the generic logger.' });
+    expect(toolUse(`${T1}~plan-1`)).toMatchObject({ name: 'ExitPlanMode', input: { plan: '1. Add the logger\n2. Run the tests' } });
+    expect(toolResult(`${T1}~plan-1`)).toBeUndefined();
   });
 
   it('shows a spawned agent as an Agent card, its report from a later call as its last result, and finds its thread', () => {
-    expect(toolUse(`${T2}:call_spawn`)).toMatchObject({ name: 'Agent', input: { prompt: 'Review the logging change', model: 'gpt-5.5' } });
+    expect(toolUse(`${T2}~call_spawn`)).toMatchObject({ name: 'Agent', input: { prompt: 'Review the logging change', model: 'gpt-5.5' } });
     const results = codexMessages(TURNS)
       .map((m) => ({ uuid: m.uuid, blocks: normaliseMessage(m).blocks }))
-      .flatMap(({ uuid, blocks }) => blocks.flatMap((b) => (b.type === 'tool_result' && b.toolUseId === `${T2}:call_spawn` ? [[uuid, b.text, b.isError]] : [])));
+      .flatMap(({ uuid, blocks }) => blocks.flatMap((b) => (b.type === 'tool_result' && b.toolUseId === `${T2}~call_spawn` ? [[uuid, b.text, b.isError]] : [])));
     // The spawn's own result, then the report the wait heard, which the card shows (the last result wins).
     expect(results).toEqual([
-      [`${T2}:call_spawn:result`, 'Agent started', false],
-      [`${T2}:call_wait:report:019a0000-0000-7000-8000-00000000bbbb`, 'Looks good.', false],
+      [`${T2}~call_spawn~result`, 'Agent started', false],
+      [`${T2}~call_wait~report~019a0000-0000-7000-8000-00000000bbbb`, 'Looks good.', false],
     ]);
-    expect(toolUse(`${T2}:call_wait`)).toMatchObject({ name: 'wait', input: { agents: ['019a0000-0000-7000-8000-00000000bbbb'] } });
-    expect(codexSubagentThread(TURNS, `${T2}:call_spawn`)).toBe('019a0000-0000-7000-8000-00000000bbbb');
-    expect(codexSubagentThread(TURNS, `${T2}:call_wait`)).toBeNull();
+    expect(toolUse(`${T2}~call_wait`)).toMatchObject({ name: 'wait', input: { agents: ['019a0000-0000-7000-8000-00000000bbbb'] } });
+    expect(codexSubagentThread(TURNS, `${T2}~call_spawn`)).toBe('019a0000-0000-7000-8000-00000000bbbb');
+    expect(codexSubagentThread(TURNS, `${T2}~call_wait`)).toBeNull();
     expect(codexSubagentThread(TURNS, 'nope')).toBeNull();
   });
 
   it('shows compactions, stopped and failed turns as notices, and unknown items as generic cards', () => {
     const turn2 = blocksOf(codexMessages(TURNS)).filter((m) => m.uuid.startsWith(T2!));
-    expect(turn2.find((m) => m.uuid === `${T2}:cc-1`)).toEqual({ role: 'system', uuid: `${T2}:cc-1`, blocks: [{ type: 'unknown', kind: 'compact_boundary' }] });
-    expect(turn2.some((m) => m.uuid === `${T2}:sa-1`)).toBe(false);
-    expect(toolUse(`${T2}:sl-1`)).toMatchObject({ name: 'sleep', input: { durationMs: 5000 } });
+    expect(turn2.find((m) => m.uuid === `${T2}~cc-1`)).toEqual({ role: 'system', uuid: `${T2}~cc-1`, blocks: [{ type: 'unknown', kind: 'compact_boundary' }] });
+    expect(turn2.some((m) => m.uuid === `${T2}~sa-1`)).toBe(false);
+    expect(toolUse(`${T2}~sl-1`)).toMatchObject({ name: 'sleep', input: { durationMs: 5000 } });
     // Nothing to show: left out.
-    expect(turn2.some((m) => m.uuid === `${T2}:x-1`)).toBe(false);
-    expect(turn2.at(-1)).toEqual({ role: 'user', uuid: `${T2}#end`, blocks: [{ type: 'text', text: '[Request interrupted by user]' }] });
+    expect(turn2.some((m) => m.uuid === `${T2}~x-1`)).toBe(false);
+    expect(turn2.at(-1)).toEqual({ role: 'user', uuid: `${T2}~end`, blocks: [{ type: 'text', text: '[Request interrupted by user]' }] });
     const last = blocksOf(codexMessages(TURNS)).at(-1);
-    expect(last).toEqual({ role: 'system', uuid: `${T3}#end`, blocks: [{ type: 'text', text: 'Codex stopped with an error: Rate limit reached' }] });
+    expect(last).toEqual({ role: 'system', uuid: `${T3}~end`, blocks: [{ type: 'text', text: 'Codex stopped with an error: Rate limit reached' }] });
   });
 
   it('leaves a running tool without a result, and ends one its turn left running as interrupted', () => {
@@ -124,8 +124,8 @@ describe('codexMessages', () => {
     for (const status of ['interrupted', 'failed', 'completed']) {
       const blocks = codexMessages([turn(status)]).flatMap((m) => normaliseMessage(m).blocks);
       expect(blocks.filter((b) => b.type === 'tool_result').map((b) => b.type === 'tool_result' && [b.toolUseId, b.isError, b.text])).toEqual([
-        ['t:c', true, 'Interrupted'],
-        ['t:s', true, 'Interrupted'],
+        ['t~c', true, 'Interrupted'],
+        ['t~s', true, 'Interrupted'],
       ]);
     }
   });
@@ -158,7 +158,7 @@ describe('codexMessages', () => {
     ] as unknown as Turn[];
     expect(() => codexMessages(odd)).not.toThrow();
     expect(() => codexFirstPrompt(odd)).not.toThrow();
-    const mcp = codexMessages(odd).flatMap((m) => normaliseMessage(m).blocks).find((b) => b.type === 'tool_result' && b.toolUseId === 'a:m');
+    const mcp = codexMessages(odd).flatMap((m) => normaliseMessage(m).blocks).find((b) => b.type === 'tool_result' && b.toolUseId === 'a~m');
     expect(mcp).toMatchObject({ type: 'tool_result', images: [{ mediaType: 'image/png' }] });
   });
 });
