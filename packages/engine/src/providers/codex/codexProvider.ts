@@ -7,9 +7,10 @@ import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
 import { codexDriver } from './codexDriver.ts';
-import { codexForkTurn } from './codexFork.ts';
+import { codexEditTurn, codexForkTurn } from './codexFork.ts';
 import { codexLocks, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
+import type { ForkRecord } from '../providerForks.ts';
 import type { GetAccountResponse } from './protocol.ts';
 
 /** Continues a session in Codex CLI. */
@@ -41,6 +42,8 @@ export interface CodexProviderOptions {
   binary?: () => Promise<CodexBinary | null>;
   /** A fake `codex app-server` (tests). */
   createAppServer?: (options: AppServerOptions) => AppServer;
+  /** Where the forks made here are kept (`provider_forks`); in memory when left out (tests, detection). */
+  forks?: ForkRecord;
   /** Who has Codex's lock files open (tests); the system's answer otherwise (`codexInUse.ts`). */
   lockHolders?: LockHolders;
   log?: (level: LogLevel, message: string) => void;
@@ -77,7 +80,7 @@ function rolloutChanges(files: ProviderFiles): string {
  * with the profile's own `CODEX_HOME` and stopped when idle unless a session runs, and its rollout files
  * (`sessions/YYYY/MM/DD/rollout-*.jsonl`) watched for changes.
  */
-export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, log = () => {} }: CodexProviderOptions): ProviderAdapter {
+export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, forks, log = () => {} }: CodexProviderOptions): ProviderAdapter {
   const folder = codexSessionsDir(codexHome);
   const lookup = binary ?? (async () => findCodex(await shellEnv(), userHome));
   // Kept once found (`codex --version` is a process of its own), and looked up again when it isn't there any more: until
@@ -140,7 +143,7 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
   };
   const driver = codexDriver({ server, status, log });
   const files = codexRolloutFiles(folder);
-  const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files) });
+  const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files), ...(forks ? { forks } : {}) });
   /** Which of `threadIds` another Codex has open (a terminal, the Codex app): its lock, held by a process not Seshboard's. */
   const locks = codexLocks(codexHome, lockHolders ? { holders: lockHolders } : {});
   const openElsewhere = (threadIds: readonly string[]) => {
@@ -167,9 +170,10 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     source: {
       ...source,
       // Codex forks at the end of a turn: the message's whole turn goes with it (`codexForkTurn`).
-      async fork(sessionId, upToMessageId) {
+      // Edit and resend: through the turn before the prompt's own (`codexEditTurn`), whatever came between them.
+      async fork(sessionId, upToMessageId, options) {
         const [turns, from] = await Promise.all([source.turns(sessionId), source.thread(sessionId)]);
-        const turn = codexForkTurn(turns, upToMessageId);
+        const turn = options?.editing ? codexEditTurn(turns, options.editing) : codexForkTurn(turns, upToMessageId);
         if (!turn) throw new Error('Codex can only fork at one of its own messages');
         // On its source's model: a fork otherwise takes Codex's default.
         const forked = await driver.fork(sessionId, turn, from?.model ?? null);

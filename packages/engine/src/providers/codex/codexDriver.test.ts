@@ -134,7 +134,7 @@ describe('codexDriver', () => {
   it('runs a read-only session in the read-only sandbox, never asking, whatever its mode', async () => {
     const { server, driver, turnStarts } = setup();
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
-    expect(server.calls[1]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never', config: { features: { apps: false } } });
+    expect(server.calls[1]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never', config: { features: { apps: false, hooks: false } } });
     await session.send('look', []);
     expect(turnStarts()[0]).toMatchObject({ approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
   });
@@ -240,7 +240,7 @@ describe('codexDriver', () => {
     await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
     const starts = server.calls.filter((c) => c.method === 'thread/start').map((c) => c.params as { config: unknown });
     expect(starts).toHaveLength(2);
-    expect(starts[1]!.config).toEqual({ features: { apps: false }, plugins: { 'computer-use@bundled': { enabled: false } }, mcp_servers: { github: { enabled: false }, node_repl: { enabled: false } } });
+    expect(starts[1]!.config).toEqual({ features: { apps: false, hooks: false }, plugins: { 'computer-use@bundled': { enabled: false } }, mcp_servers: { github: { enabled: false }, node_repl: { enabled: false } } });
     // A session that may write keeps its MCP servers (it asks before they run).
     const plain = setup();
     await plain.driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);

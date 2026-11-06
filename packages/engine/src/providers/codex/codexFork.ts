@@ -15,3 +15,20 @@ export function codexForkTurn(turns: readonly Turn[], messageId: string): string
   const found = turns.find((turn) => typeof turn.id === 'string' && codexItemId(turn.id, '').slice(0, -ID_JOIN.length) === prefix);
   return found?.id ?? null;
 }
+
+/**
+ * Where Edit and resend forks for a prompt (`promptId`): through the turn before the prompt's own, so the fork ends just
+ * before it. A prompt sent into a running turn (steered) isn't where a turn starts, and Codex forks only where one
+ * ends: no fork is just before it, so it is refused, as is the thread's first prompt (nothing before it to keep).
+ */
+export function codexEditTurn(turns: readonly Turn[], promptId: string): string {
+  const turnId = codexForkTurn(turns, promptId);
+  const index = turnId === null ? -1 : turns.findIndex((t) => t.id === turnId);
+  const turn = turns[index];
+  if (!turn) throw new Error('Codex can only fork at one of its own messages');
+  const first = turn.items.find((item) => item.type === 'userMessage');
+  if (!first || codexItemId(turn.id, first.id) !== promptId) throw new Error('This message was sent while Codex was working, so a fork can’t end just before it. Fork from a reply instead.');
+  const before = turns[index - 1];
+  if (!before) throw new Error('There is nothing before the first message to keep: start a new session instead.');
+  return before.id;
+}

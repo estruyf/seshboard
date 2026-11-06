@@ -5,6 +5,7 @@ import type { RawSessionMessage } from '../../claude/transcript.ts';
 import type { AppServer } from './appServer.ts';
 import { codexMessages } from './codexEvents.ts';
 import { THREAD_ID } from './codexFiles.ts';
+import type { ForkRecord } from '../providerForks.ts';
 import type { Thread, ThreadSourceKind, Turn } from './protocol.ts';
 
 /** Every kind of thread but a subagent's: those open from their parent's tool call (the Agents panel). */
@@ -69,6 +70,14 @@ export interface CodexSourceOptions {
   /** How long a list is used while nothing changed: names set elsewhere don't touch the rollout files. */
   maxListAgeMs?: number;
   now?: () => number;
+  /** Where the forks made here are kept (`provider_forks`, so they outlive a restart); in memory when left out. */
+  forks?: ForkRecord;
+}
+
+/** Forks kept for this run only. */
+function memoryForks(): ForkRecord {
+  const ids = new Set<string>();
+  return { list: () => [...ids], add: (id) => void ids.add(id), remove: (id) => void ids.delete(id) };
 }
 
 /** A list is asked again at least this often, even when no rollout file changed. */
@@ -82,7 +91,7 @@ export type CodexSessionSource = SessionSource & {
   /**
    * A fork made here: listed even while Codex's own list leaves it out. Codex lists a fork only once it has a turn of its
    * own (codex-cli 0.167), so a fork made from a message would drop out of the sidebar until something is sent to it.
-   * Kept for this run only: an untouched fork goes after a restart, as it does from Codex's own list.
+   * Kept in `forks` (`provider_forks`), so an untouched fork is still listed after a restart.
    */
   remember(threadId: string): void;
 };
@@ -94,7 +103,7 @@ export type CodexSessionSource = SessionSource & {
  * out, leaves the sessions as they were last listed (none before the first list) and is logged once until it works
  * again. A conversation that can't be read throws, so the transcript says so rather than show nothing.
  */
-export function codexSessionSource(server: AppServer, { log = () => {}, changes, maxListAgeMs = MAX_LIST_AGE_MS, now = Date.now }: CodexSourceOptions = {}): CodexSessionSource {
+export function codexSessionSource(server: AppServer, { log = () => {}, changes, maxListAgeMs = MAX_LIST_AGE_MS, now = Date.now, forks = memoryForks() }: CodexSourceOptions = {}): CodexSessionSource {
   /** What failed and was logged: logged again only after it worked once. */
   const failing = new Set<string>();
   const attempt = async <T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> => {
@@ -108,8 +117,6 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
       return fallback;
     }
   };
-  /** Forks made here that Codex's list leaves out until they have a turn of their own (`remember`). */
-  const forks = new Set<string>();
   /** The last list that worked: a server that fails for a moment doesn't empty the sidebar. */
   let lastList: RawSessionInfo[] = [];
   /** When it was listed, and what the rollout files were then; null until a list worked. */
@@ -185,16 +192,16 @@ export function codexSessionSource(server: AppServer, { log = () => {}, changes,
         const info = codexSessionInfo(t, await forkSource(t, byId));
         if (info) infos.push(info);
       }
-      // Forks made here that Codex doesn't list yet; one it lists, or that's gone, is forgotten.
-      for (const id of [...forks]) {
+      // Forks made here that Codex doesn't list yet, read one by one (only those); one Codex lists is its own now.
+      for (const id of forks.list()) {
         if (seen.has(id)) {
-          forks.delete(id);
+          forks.remove(id);
           continue;
         }
+        // One that can't be read now (Codex stopped for a moment) is asked again next time.
         const fork = await thread(id);
         const info = fork && codexSessionInfo(fork, await forkSource(fork, byId));
         if (info) infos.push(info);
-        else forks.delete(id);
       }
       lastList = infos;
       listed = { at: now(), changes: current };

@@ -96,9 +96,9 @@ export class ProviderSources implements SessionSource {
   }
 
   /** Forks through the session's own provider (Copilot's `sessions.fork`), when it can. */
-  fork(sessionId: string, upToMessageId: string): Promise<string> {
+  fork(sessionId: string, upToMessageId: string, options?: { editing?: string }): Promise<string> {
     const other = this.sourceOf(sessionId);
-    if (other) return other.source.fork ? other.source.fork(sessionId, upToMessageId) : Promise.reject(new Error('Forking is not available for this provider'));
+    if (other) return other.source.fork ? other.source.fork(sessionId, upToMessageId, options) : Promise.reject(new Error('Forking is not available for this provider'));
     return this.claude.fork(sessionId, upToMessageId);
   }
 

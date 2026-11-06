@@ -69,10 +69,12 @@ export function refusesPlanMode(error: unknown): boolean {
 }
 
 /**
- * Codex's config for a read-only thread (a pipeline's read-only step): no MCP server at all. With approval `never`,
- * Codex calls MCP tools without asking, and its sandbox doesn't reach them: the only way to keep such a thread from
- * changing things through one is not to start them. A server of a plugin goes with its plugin, ChatGPT's apps with the
- * apps feature, any other by its own `enabled`.
+ * Codex's config for a read-only thread (a pipeline's read-only step, Ask about this session's fork): no MCP server and
+ * no hook at all. With approval `never`, Codex calls MCP tools without asking, and its sandbox reaches neither them nor
+ * your hooks' commands (a `stop` hook runs as you configured it): the only way to keep such a thread from changing
+ * things through them is not to start them. A server of a plugin goes with its plugin, ChatGPT's apps with the apps
+ * feature, any other by its own `enabled`; hooks with the hooks feature (checked live against codex-cli 0.167: a
+ * trusted hook runs without it, none with it).
  */
 export function noMcpConfig(servers: ReadonlyArray<{ name: string; pluginId: string | null }>, skip: ReadonlySet<string> = new Set()): Record<string, unknown> {
   const plugins: Record<string, { enabled: false }> = {};
@@ -81,8 +83,11 @@ export function noMcpConfig(servers: ReadonlyArray<{ name: string; pluginId: str
     if (pluginId) plugins[pluginId] = { enabled: false };
     else if (name !== 'codex_apps' && !skip.has(name)) mcp[name] = { enabled: false };
   }
-  return { features: { apps: false }, ...(Object.keys(plugins).length ? { plugins } : {}), ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
+  return { features: { apps: false, hooks: false }, ...(Object.keys(plugins).length ? { plugins } : {}), ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
 }
+
+/** Codex's answer to resuming a thread it is still unloading (codex-cli 0.167). */
+const CLOSING = /\bthread \S+ is closing; retry thread\/resume after the thread is closed\b/;
 
 /** Tries to resume a thread Codex is still unloading, `CLOSING_RETRY_MS` apart. */
 const CLOSING_RETRIES = 25;
@@ -168,6 +173,21 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     if (wired) server.handleRequests(null);
     wired = null;
   };
+  /**
+   * What needs the wiring now: each session from its start until it closes, and each Ask while it runs. Wired with the
+   * first and let go with the last, so one that ends never takes it from one that is starting.
+   */
+  let users = 0;
+  const use = () => {
+    users++;
+    wire();
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      if (--users === 0) unwire();
+    };
+  };
 
   /** The account's models, read once per app-server process (they change with a Codex update, which restarts it). */
   let models: Promise<Model[]> | undefined;
@@ -232,7 +252,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       try {
         return await resume();
       } catch (error) {
-        if (!(error instanceof AppServerError) || error.code !== 'rpc' || !/is closing/.test(error.message) || attempt >= CLOSING_RETRIES) throw error;
+        if (!(error instanceof AppServerError) || error.code !== 'rpc' || !CLOSING.test(error.message) || attempt >= CLOSING_RETRIES) throw error;
         await new Promise((resolve) => setTimeout(resolve, closingRetryMs));
       }
     }
@@ -257,16 +277,21 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     },
 
     async ask({ sessionId, cwd, model, prompt, onText, onFork }) {
-      wire();
+      const done = use();
       const { sandbox, approvalPolicy } = codexModeSettings('default', true);
-      // A throwaway fork answers: never written to disk, read-only, without MCP servers, and asking nothing.
-      const { thread } = await withoutMcp((config) => server.request('thread/fork', { threadId: sessionId, ephemeral: true, excludeTurns: true, cwd, approvalPolicy, sandbox, config, ...(model ? { model } : {}) }));
+      // A throwaway fork answers: never written to disk, read-only, without MCP servers or hooks, and asking nothing.
+      const { thread } = await withoutMcp((config) => server.request('thread/fork', { threadId: sessionId, ephemeral: true, excludeTurns: true, cwd, approvalPolicy, sandbox, config, ...(model ? { model } : {}) })).catch((failed: unknown) => {
+        done();
+        throw failed;
+      });
       const forkId = thread.id;
       onFork(forkId);
       const release = server.hold();
       let answer: string | null = null;
       let error: string | undefined;
       let turnId: string | null = null;
+      /** The process ended: the fork went with it, and asking a new one to let go would only start it. */
+      let sawCrash = false;
       /** The reply being written: a new one starts the text over (Codex's commentary before its final answer). */
       let writing: string | null = null;
       let finish: () => void = () => {};
@@ -293,6 +318,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         request: () => Promise.reject(new Error(READ_ONLY_REASON)),
         crashed() {
           error = 'Codex stopped';
+          sawCrash = true;
           finish();
         },
         letGo() {
@@ -315,9 +341,9 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       } finally {
         running.delete(forkId);
         // Ephemeral: once nobody listens, Codex drops it, and nothing of it was written.
-        await server.request('thread/unsubscribe', { threadId: forkId }).catch(() => {});
+        if (!sawCrash) await server.request('thread/unsubscribe', { threadId: forkId }).catch(() => {});
         release();
-        if (!running.size) unwire();
+        done();
       }
       // Codex has no unit like Copilot's premium requests: its use shows in the account's limits.
       return { answer, ...(error ? { error } : {}), spent: 0 };
@@ -333,7 +359,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     commands: async () => [],
 
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
-      wire();
+      // Wired from now on, while `thread/start` runs too: an Ask or a session ending meanwhile doesn't unwire it.
+      const done = use();
       let mode: PermissionMode = config.permissionMode;
       /** What Seshboard asked for (null: Codex's default), and whether a change is still to go with the next turn. */
       let model = config.model;
@@ -390,7 +417,10 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         return response;
       };
 
-      const started = await open(config.resume ?? null);
+      const started = await open(config.resume ?? null).catch((failed: unknown) => {
+        done();
+        throw failed;
+      });
       const threadId = started.thread.id;
       let live = makeLive(threadId, events);
       /** The turn's id is known now: a Stop pressed while it started goes out. */
@@ -615,7 +645,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
             release?.();
             release = null;
             loaded = false;
-            if (!running.size) unwire();
+            done();
           }
         },
       };
@@ -624,6 +654,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     async dispose() {
       for (const session of running.values()) session.letGo();
       running.clear();
+      users = 0;
       unwire();
       models = undefined;
     },

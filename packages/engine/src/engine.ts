@@ -171,6 +171,7 @@ import { createProvider, createProviderUpdater, detectProvider, providerCatalog,
 import { providerStatus } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
+import { ProviderForks } from './providers/providerForks.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
 import { ProviderSources } from './providers/providerSources.ts';
 import { openCacheDatabase } from './db/database.ts';
@@ -535,7 +536,9 @@ export function createEngine(options: EngineOptions): Engine {
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
-  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, log, ...(options.copilot ? { copilot: options.copilot } : {}), ...(options.codex ? { codex: options.codex } : {}) };
+  /** Forks made here of another provider's sessions (Codex's), which its own list leaves out until they have a turn. */
+  const providerForks = new ProviderForks(cache.db);
+  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, log, forks: (profileId) => providerForks.of(profileId), ...(options.copilot ? { copilot: options.copilot } : {}), ...(options.codex ? { codex: options.codex } : {}) };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
   const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
@@ -2913,6 +2916,7 @@ export function createEngine(options: EngineOptions): Engine {
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
+    providerForks.forget(sessionId);
     owned.delete(sessionId);
     unmarkOwned.run(sessionId);
     continued.delete(sessionId);
@@ -3383,12 +3387,12 @@ export function createEngine(options: EngineOptions): Engine {
       await continueAfterSignIn(sessionProfile(sessionId));
       return {};
     },
-    'session.forkAt': async ({ sessionId, messageUuid }) => {
+    'session.forkAt': async ({ sessionId, messageUuid, editOf }) => {
       assertClaudeSession(sessionId, 'Forking', 'fork');
       if (!source.fork) throw new RpcError('UNSUPPORTED', 'Forking is not available');
       let forked: string;
       try {
-        forked = await source.fork(sessionId, messageUuid);
+        forked = await source.fork(sessionId, messageUuid, editOf ? { editing: editOf } : undefined);
       } catch (error) {
         throw new RpcError('FORK_FAILED', (error as Error).message);
       }

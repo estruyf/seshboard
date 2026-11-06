@@ -7,7 +7,9 @@ import { AppServerError } from './appServer.ts';
 import { codexDriver } from './codexDriver.ts';
 import { codexItemId, ID_JOIN } from './codexEvents.ts';
 import { fakeAppServer, thread } from './codexFakes.ts';
-import { codexForkTurn } from './codexFork.ts';
+import { codexEditTurn, codexForkTurn } from './codexFork.ts';
+import { openCacheDatabase } from '../../db/database.ts';
+import { ProviderForks } from '../providerForks.ts';
 import { codexProvider } from './codexProvider.ts';
 import { codexSessionSource } from './codexSource.ts';
 import type { Turn } from './protocol.ts';
@@ -39,6 +41,23 @@ describe('codexForkTurn', () => {
   });
 });
 
+describe('codexEditTurn', () => {
+  const prompt = (id: string) => ({ type: 'userMessage' as const, id, content: [] });
+  const reply = (id: string) => ({ type: 'agentMessage' as const, id, text: 'ok' });
+  const turns = [turn('t1', [prompt('u1'), reply('m1')]), turn('t2', [prompt('u2'), reply('m2'), prompt('steer'), reply('m3')])];
+
+  it("forks through the turn before the prompt's own, whatever came between them (a note, say)", () => {
+    expect(codexEditTurn(turns, codexItemId('t2', 'u2'))).toBe('t1');
+  });
+
+  it('refuses a prompt sent into a running turn, the first prompt, and a message that is no prompt of the thread', () => {
+    expect(() => codexEditTurn(turns, codexItemId('t2', 'steer'))).toThrow(/sent while Codex was working/);
+    expect(() => codexEditTurn(turns, codexItemId('t1', 'u1'))).toThrow(/nothing before the first message/);
+    expect(() => codexEditTurn(turns, codexItemId('t2', 'm2'))).toThrow(/sent while Codex was working/);
+    expect(() => codexEditTurn(turns, 'note-1')).toThrow(/its own messages/);
+  });
+});
+
 describe('forking a Codex session', () => {
   it("forks through the message's turn on the source's model, lets go of the fork, and lists it before Codex does", async () => {
     let forked = false;
@@ -60,6 +79,36 @@ describe('forking a Codex session', () => {
     // Started here: origin app, named after its source.
     expect((await adapter.source.list()).find((s) => s.sessionId === F)).toMatchObject({ provider: 'codex', origin: 'app', summary: 'Parser', firstPrompt: 'Fix the parser' });
     await expect(adapter.source.fork!(T, 'note-1')).rejects.toThrow(/its own messages/);
+    // Edit and resend names the prompt: the fork ends just before its turn.
+    await adapter.source.fork!(T, 'note-before-the-prompt', { editing: codexItemId('t2', 'u2') }).catch(() => {});
+    expect(server.calls.filter((c) => c.method === 'thread/fork').at(-1)?.params).toMatchObject({ lastTurnId: 't1' });
+  });
+
+  it('keeps the forks made here across a restart until Codex lists them, and forgets a deleted one', async () => {
+    const cache = openCacheDatabase(join(realpathSync(mkdtempSync(join(tmpdir(), 'codex-forks-'))), 'cache.sqlite'));
+    try {
+      const store = new ProviderForks(cache.db);
+      let listsFork = false;
+      const server = fakeAppServer({
+        'thread/list': () => ({ data: [thread(T, { preview: 'Fix the parser' }), ...(listsFork ? [thread(F, { forkedFromId: T, preview: 'Fix the parser' })] : [])], nextCursor: null }),
+        'thread/read': ({ threadId }) => ({ thread: threadId === T ? thread(T, { preview: 'Fix the parser' }) : thread(F, { forkedFromId: T, preview: '' }) }),
+      });
+      codexSessionSource(server, { forks: store.of('codex-1') }).remember(F);
+      // After a restart: a new source, the same record. Another profile's record has none of them.
+      const again = codexSessionSource(server, { forks: store.of('codex-1') });
+      expect((await again.list()).map((s) => s.sessionId)).toEqual([T, F]);
+      expect(store.of('codex-2').list()).toEqual([]);
+      // Only the forks Codex left out are read one by one.
+      expect(server.calls.filter((c) => c.method === 'thread/read').map((c) => (c.params as { threadId: string }).threadId)).toEqual([F]);
+      listsFork = true;
+      await again.list();
+      expect(store.of('codex-1').list()).toEqual([]);
+      store.of('codex-1').add(F);
+      store.forget(F);
+      expect(store.of('codex-1').list()).toEqual([]);
+    } finally {
+      cache.close();
+    }
   });
 
   it("names a fork without a preview after the thread it came from, and forgets one Codex lists or that's gone", async () => {
@@ -95,6 +144,48 @@ describe('forking a Codex session', () => {
     const session = await driver.start({ cwd: '/work', model: null, permissionMode: 'default', resume: F }, { stream() {}, messages() {}, state() {}, permission() {}, permissionDone() {}, usage() {}, model() {} });
     expect(session.sessionId).toBe(F);
     expect(server.calls.filter((c) => c.method === 'thread/resume')).toHaveLength(3);
+    // Only Codex's own wording: another failure that says "is closing" isn't waited out.
+    const other = fakeAppServer({
+      'thread/resume': () => {
+        throw new AppServerError('the database is closing', 'rpc', -32603);
+      },
+    });
+    const driver2 = codexDriver({ server: other, status: async () => ({}) as never, live: () => ({ handle: () => {} }), closingRetryMs: 1 });
+    await expect(driver2.start({ cwd: '/work', model: null, permissionMode: 'default', resume: F }, { stream() {}, messages() {}, state() {}, permission() {}, permissionDone() {}, usage() {}, model() {} })).rejects.toThrow('database');
+    expect(other.calls).toHaveLength(1);
+  });
+});
+
+describe('the wiring of notifications and requests', () => {
+  it('stays while a session starts, whatever ends meanwhile: an Ask, or another session closing', async () => {
+    let answerStart: (value: ReturnType<typeof started>) => void = () => {};
+    let starts = 0;
+    const server = fakeAppServer({
+      'thread/start': () => (++starts === 1 ? started(T) : new Promise((resolve) => (answerStart = resolve))),
+      'thread/fork': () => started(ASK),
+      'mcpServerStatus/list': () => ({ data: [], nextCursor: null }),
+      'turn/start': () => ({ turn: turn('ask-turn') }),
+      'thread/unsubscribe': () => ({}),
+    });
+    const handled: string[] = [];
+    const driver = codexDriver({ server, status: async () => ({}) as never, live: (threadId) => ({ handle: (n) => void handled.push(`${threadId} ${n.method}`) }) });
+    const events = { stream() {}, messages() {}, state() {}, permission() {}, permissionDone() {}, usage() {}, model() {} };
+    const first = await driver.start({ cwd: '/work', model: null, permissionMode: 'default' }, events);
+    const asking = driver.ask!({ sessionId: T, cwd: '/work', model: null, prompt: 'Why?', onText: () => {}, onFork: () => {} });
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'turn/start')).toBe(true), { interval: 2 });
+    // A second session is starting while the Ask ends and the first session closes.
+    const second = driver.start({ cwd: '/work', model: null, permissionMode: 'default' }, events);
+    await vi.waitFor(() => expect(starts).toBe(2), { interval: 2 });
+    server.notify('turn/completed', { threadId: ASK, turn: turn('ask-turn') });
+    await asking;
+    await first.close();
+    expect(server.handling()).toBe(true);
+    answerStart(started(F));
+    await second;
+    server.notify('item/agentMessage/delta', { threadId: F, delta: 'hi' });
+    expect(handled).toContain(`${F} item/agentMessage/delta`);
+    (await second).close();
+    await vi.waitFor(() => expect(server.handling()).toBe(false), { interval: 2 });
   });
 });
 
@@ -120,7 +211,7 @@ describe('Ask about this session', () => {
     // Registered before it runs, so the sidebar never shows it.
     expect(forks).toEqual([ASK]);
     expect(server.holds).toBe(1);
-    expect(server.calls.find((c) => c.method === 'thread/fork')!.params).toEqual({ threadId: T, ephemeral: true, excludeTurns: true, cwd: '/work', approvalPolicy: 'never', sandbox: 'read-only', model: 'gpt-5-mini', config: { features: { apps: false }, mcp_servers: { github: { enabled: false } } } });
+    expect(server.calls.find((c) => c.method === 'thread/fork')!.params).toEqual({ threadId: T, ephemeral: true, excludeTurns: true, cwd: '/work', approvalPolicy: 'never', sandbox: 'read-only', model: 'gpt-5-mini', config: { features: { apps: false, hooks: false }, mcp_servers: { github: { enabled: false } } } });
     expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: ASK, input: [{ type: 'text', text: 'Why?' }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
     // Codex's commentary, then its answer: the text starts over with the second reply.
     server.notify('item/started', { threadId: ASK, turnId: 'ask-turn', item: { type: 'agentMessage', id: 'm1', text: '' } });
@@ -140,6 +231,15 @@ describe('Ask about this session', () => {
     expect(server.calls.at(-1)).toEqual({ method: 'thread/unsubscribe', params: { threadId: ASK } });
     expect(server.holds).toBe(0);
     expect(server.handling()).toBe(false);
+  });
+
+  it("doesn't start a new app-server to let go of a fork the crash took", async () => {
+    const { server, driver } = setup();
+    const asking = driver.ask!({ sessionId: T, cwd: '/work', model: null, prompt: 'Why?', onText: () => {}, onFork: () => {} });
+    await vi.waitFor(() => expect(server.calls.some((c) => c.method === 'turn/start')).toBe(true), { interval: 2 });
+    server.exit();
+    expect(await asking).toEqual({ answer: null, error: 'Codex stopped', spent: 0 });
+    expect(server.calls.some((c) => c.method === 'thread/unsubscribe')).toBe(false);
   });
 
   it("says what went wrong: a failed turn, a turn that wouldn't start", async () => {
