@@ -30,6 +30,33 @@ export function isTrashableCopilotSession(path: string, copilotHome: string): bo
   }
 }
 
+/** A Codex rollout file's name: `rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex compressed it. */
+const CODEX_ROLLOUT = /^rollout-[0-9A-Za-z.-]+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl(?:\.zst)?$/i;
+
+/**
+ * An OpenAI Codex session's rollout file: a real file directly in a day's folder (`<CODEX_HOME>/sessions/YYYY/MM/DD/`)
+ * or in `<CODEX_HOME>/archived_sessions/`, named like a rollout. Never a folder, a link, or a file anywhere else, and
+ * the folders above it must really be inside `CODEX_HOME` (no linked day or year folder leading out).
+ */
+export function isTrashableCodexSession(path: string, codexHome: string): boolean {
+  if (resolve(path) !== path || resolve(codexHome) !== codexHome || codexHome === sep) return false;
+  if (!CODEX_ROLLOUT.test(basename(path))) return false;
+  const folder = dirname(path);
+  const day = basename(folder);
+  const month = basename(dirname(folder));
+  const year = basename(dirname(dirname(folder)));
+  const inDay = dirname(dirname(dirname(folder))) === join(codexHome, 'sessions') && /^\d{4}$/.test(year) && /^\d{2}$/.test(month) && /^\d{2}$/.test(day);
+  if (!inDay && folder !== join(codexHome, 'archived_sessions')) return false;
+  try {
+    const realHome = realpathSync(codexHome);
+    if (realpathSync(folder) !== join(realHome, folder.slice(codexHome.length + 1))) return false;
+    return lstatSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    // A missing folder, ENOTDIR, EACCES or a link loop: refuse rather than fail the request.
+    return false;
+  }
+}
+
 /** A Claude Code config folder named by the engine: an absolute, normalised path with a projects folder. */
 export function isConfigDir(dir: unknown): dir is string {
   if (typeof dir !== 'string' || resolve(dir) !== dir || dir === sep) return false;

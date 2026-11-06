@@ -1,5 +1,5 @@
 import type { ProviderProfile } from '../profiles/profileStore.ts';
-import type { ProviderAdapter } from './provider.ts';
+import { disposeProvider, type ProviderAdapter } from './provider.ts';
 
 /**
  * One adapter per provider profile (Settings › Profiles), made when the profile is added and kept while its folder
@@ -20,7 +20,7 @@ export class ProviderProfiles {
     for (const [key, adapter] of this.made) {
       if (keys.has(key)) continue;
       this.made.delete(key);
-      void adapter.driver?.dispose().catch(() => {});
+      void disposeProvider(adapter);
     }
     return wanted.map((profile) => {
       const key = keyOf(profile);
@@ -36,7 +36,7 @@ export class ProviderProfiles {
 
   /** Stops every runtime (the engine closes). */
   dispose(): void {
-    for (const adapter of this.made.values()) void adapter.driver?.dispose().catch(() => {});
+    for (const adapter of this.made.values()) void disposeProvider(adapter);
     this.made.clear();
   }
 }

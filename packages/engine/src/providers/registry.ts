@@ -1,13 +1,13 @@
 import { existsSync } from 'node:fs';
-import { PROVIDER_NAMES, type OptionalProvider, type ProviderDetection, type ProviderInfo } from '@seshboard/protocol';
+import { PROVIDER_NAMES, type LogLevel, type OptionalProvider, type ProviderDetection, type ProviderInfo } from '@seshboard/protocol';
 import type { ProviderProfile } from '../profiles/profileStore.ts';
-import type { ProviderAdapter } from './provider.ts';
+import { disposeProvider, providerStatus, type ProviderAdapter } from './provider.ts';
 import { COPILOT_MODES, type CreateCopilotClient } from './copilot/copilotDriver.ts';
 import { COPILOT_INSTALL, COPILOT_RESUME, copilotProvider } from './copilot/copilotProvider.ts';
 import { copilotHome } from './copilot/copilotSource.ts';
 import { findCopilot } from './copilot/copilotBinary.ts';
 import { copilotUpdater, type CopilotVersionCommand } from './copilot/copilotUpdate.ts';
-import type { CodexBinary } from './codex/appServer.ts';
+import type { AppServer, AppServerOptions, CodexBinary } from './codex/appServer.ts';
 import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 
@@ -19,8 +19,10 @@ export interface ProviderOptions {
   shellEnv: () => Promise<Record<string, string | undefined>>;
   /** A fake Copilot SDK and `copilot` (tests), and what its `copilot version` says (the demo). */
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
-  /** A fake `codex` (tests and the demo). */
-  codex?: { binary?: () => Promise<CodexBinary | null> };
+  /** A fake `codex` and `codex app-server` (tests and the demo). */
+  codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer };
+  /** Where a provider says what went wrong while it reads (a Codex that won't start). */
+  log?: (level: LogLevel, message: string) => void;
 }
 
 /** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
@@ -76,13 +78,13 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
 
 /**
  * A provider's CLI on this computer, for its own folder, without a profile of it: the same status check a profile's
- * runtime makes (`copilot` started headless to ask about its login), then stopped. Nothing is read but its folder's
+ * runtime makes (`copilot` started headless, or `codex app-server`, to ask about its login), then stopped. Nothing is read but its folder's
  * session list.
  */
 export async function detectProvider(info: ProviderInfo, options: ProviderOptions): Promise<ProviderDetection> {
   const adapter = createProvider({ id: `detect-${info.id}`, provider: info.id, home: info.defaultFolder }, options);
   try {
-    const status = adapter.driver ? await adapter.driver.status() : null;
+    const status = await providerStatus(adapter);
     return {
       id: info.id,
       installed: !!status?.binary,
@@ -94,17 +96,17 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
       login: status?.login ?? null,
     };
   } finally {
-    await adapter.driver?.dispose().catch(() => {});
+    await disposeProvider(adapter);
   }
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {} }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
     case 'codex':
-      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex });
+      return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}) });
   }
 }

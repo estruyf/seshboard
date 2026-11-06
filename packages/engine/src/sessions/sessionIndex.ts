@@ -99,6 +99,8 @@ export class SessionIndex {
   private started = false;
   private timer: ReturnType<typeof setInterval> | undefined;
   private readonly perFile = new Map<string, ReturnType<typeof coalesce>>();
+  /** The file each session's last change was reported for: it can move (Codex compresses a rollout to `.jsonl.zst`). */
+  private readonly changedPath = new Map<string, string>();
   /** Sessions changed or forgotten while a full scan awaited the source; that scan's older view must not undo them. */
   private touchedDuringScan: Set<string> | undefined;
   private readonly statements;
@@ -394,6 +396,7 @@ export class SessionIndex {
     if (this.timer) clearInterval(this.timer);
     for (const c of this.perFile.values()) c.stop();
     this.perFile.clear();
+    this.changedPath.clear();
   }
 
   /** Full reconcile with ~/.claude. Concurrent calls share one run. */
@@ -538,9 +541,10 @@ export class SessionIndex {
   }
 
   private fileChanged(sessionId: string, path: string, profileId: string): void {
+    this.changedPath.set(sessionId, path);
     let runner = this.perFile.get(sessionId);
     if (!runner) {
-      runner = coalesce(() => this.updateOne(sessionId, path, profileId), 200);
+      runner = coalesce(() => this.updateOne(sessionId, this.changedPath.get(sessionId) ?? path, profileId), 200);
       this.perFile.set(sessionId, runner);
     }
     runner.trigger();

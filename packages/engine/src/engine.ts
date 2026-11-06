@@ -167,6 +167,7 @@ import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
+import { providerStatus } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
@@ -225,6 +226,8 @@ export interface EngineOptions {
   sessionSource?: SessionSource;
   /** A fake Copilot SDK and `copilot` (tests, and the demo's `demoCopilot`). Defaults to the SDK and the user's own `copilot`. */
   copilot?: ProviderOptions['copilot'];
+  /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
+  codex?: ProviderOptions['codex'];
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -354,8 +357,11 @@ export interface ArchivedCleanup {
 }
 
 /** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
-/** What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session folders, new files in a repository, memory. */
-export type TrashScope = { configDir: string } | { copilotHome: string } | { repoRoot: string } | MemoryTrashScope;
+/**
+ * What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session
+ * folders, a Codex profile's rollout files, new files in a repository, memory.
+ */
+export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -528,7 +534,7 @@ export function createEngine(options: EngineOptions): Engine {
   const claudeSource = new MultiProfileSource(() => profiles.runtimes().map((profile) => ({ profileId: profile.id, source: sourceFor(profile) })));
   // --- Providers: other agents' sessions, through profiles of theirs ----------------------------------------------------
   // Profiles of other providers (Settings › Profiles): one adapter each, with its own folder, runtime and login.
-  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, ...(options.copilot ? { copilot: options.copilot } : {}) };
+  const providerOptions: ProviderOptions = { env: process.env, home: homedir(), shellEnv: async () => (await shell.ready).env, log, ...(options.copilot ? { copilot: options.copilot } : {}), ...(options.codex ? { codex: options.codex } : {}) };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
   const ALLOWED_PROVIDERS_KEY = 'providers.allowed';
@@ -2324,7 +2330,7 @@ export function createEngine(options: EngineOptions): Engine {
   const profileEnv = (profileId: string): Record<string, string> => {
     // A provider profile's terminal runs its CLI with the profile's own folder and login.
     const provider = providerProfiles.adapter(profileId);
-    if (provider) return provider.id === 'copilot' ? { COPILOT_HOME: provider.home } : {};
+    if (provider) return provider.homeEnv ?? {};
     const { envDir } = profiles.runtime(profileId);
     return envDir ? { CLAUDE_CONFIG_DIR: envDir } : {};
   };
@@ -2877,7 +2883,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.release(sessionId);
       const paths = adapter.trashPaths(sessionId).filter((p) => existsSync(p));
       if (!paths.length) throw new RpcError('NOT_FOUND', 'No files found for this session');
-      await toTrash(paths, { copilotHome: adapter.home });
+      await toTrash(paths, adapter.id === 'codex' ? { codexHome: adapter.home } : { copilotHome: adapter.home });
     } else {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');
@@ -3187,9 +3193,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'providers.list': () => ({ providers: providerCatalog(providerOptions) }),
     'providers.status': async ({ profileId }) => {
-      const driver = providerProfiles.adapter(profileId)?.driver;
-      if (!driver) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
-      return driver.status();
+      const adapter = providerProfiles.adapter(profileId);
+      const status = adapter && providerStatus(adapter);
+      if (!status) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: 'This profile is not one of a provider that can start sessions.' };
+      return status;
     },
     'providers.detect': async ({ refresh }) => ({ providers: await detectProviders(refresh) }),
     'providers.openInCli': async ({ sessionId }) => {
@@ -3199,7 +3206,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (providerHosts.has(sessionId)) throw new RpcError('SESSION_RUNNING_HERE', `Stop it here first: ${PROVIDER_NAMES[adapter.id]} can't run it in two places`);
       const cwd = sessionCwd(sessionId) ?? homedir();
       try {
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         const command = adapter.resumeCommand.replaceAll('{sessionId}', sessionId);
         return await terminals.open({ sessionId, cwd, kind: 'action', command, title: `${PROVIDER_NAMES[adapter.id]} CLI`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
@@ -3228,7 +3235,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (!adapter?.signInCommand) throw new RpcError('NOT_FOUND', 'This profile has no sign in of its own');
       try {
         // The provider's own sign in, in its own CLI, with the profile's folder: Seshboard never sees the credential.
-        const env = { ...(await shell.ready).env, ...(adapter.id === 'copilot' ? { COPILOT_HOME: adapter.home } : {}) };
+        const env = { ...(await shell.ready).env, ...adapter.homeEnv };
         return await terminals.open({ sessionId: null, cwd: homedir(), kind: 'action', command: adapter.signInCommand, title: `Sign in to ${PROVIDER_NAMES[adapter.id]}`, cols: 100, rows: 20, fork: false, env });
       } catch (error) {
         throw new RpcError('TERMINAL_FAILED', (error as Error).message);
