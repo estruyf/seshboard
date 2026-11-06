@@ -55,6 +55,7 @@ import { useRemoteOptions } from './RemoteChips.tsx';
 import { remoteModelChoice, remoteModelLabel, remoteTakesEffort } from './remoteNewSession.ts';
 import { ComposerChipRow } from '../composer/ComposerChips.tsx';
 import { ComposerTray } from '../composer/ComposerTray.tsx';
+import { ReadOnlyNotice } from '../providers/ReadOnlyNotice.tsx';
 import { RemoteText } from './RemoteText.tsx';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { RemoteSessionCost } from '../usage/SessionCost.tsx';
@@ -632,7 +633,12 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         )}
         {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
         {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
-        <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
+        {session.readOnly ? (
+          // Its provider can't continue it there (OpenAI Codex, for now): that computer's command to continue it in its CLI.
+          <ReadOnlyNotice provider={session.provider ?? null} sessionId={session.id} command={session.readOnly.resumeCommand} />
+        ) : (
+          <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />
+        )}
       </div>
       </div>
       {panel === 'changes' && (
