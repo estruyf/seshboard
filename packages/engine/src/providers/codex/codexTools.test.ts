@@ -48,6 +48,9 @@ describe('codexCapabilities', () => {
         { event: 'preToolUse', matcher: 'apply_patch', command: 'npm run lint', scope: 'user', enabled: true },
         { event: 'stop', matcher: null, command: 'notes/save', scope: 'plugin', enabled: true },
       ],
+      // Tools shows no on/off switch, and says what Reconnect reaches.
+      mcpToggle: false,
+      reconnectNote: 'Reconnects the MCP servers of every Codex session running here',
     });
   });
 

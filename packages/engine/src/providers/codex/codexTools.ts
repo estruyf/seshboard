@@ -50,7 +50,18 @@ export function codexHooks(hooks: readonly HookMetadata[]): HookInfo[] {
  * and skills.
  */
 export function codexCapabilities(lists: { live: boolean; mcp: readonly McpServerStatus[]; skills: readonly SkillMetadata[]; hooks: readonly HookMetadata[] }): Capabilities {
-  return { live: lists.live, mcp: lists.mcp.map(codexMcpServer), agents: [], commands: codexSkills(lists.skills), plugins: [], hooks: codexHooks(lists.hooks) };
+  return {
+    live: lists.live,
+    mcp: lists.mcp.map(codexMcpServer),
+    agents: [],
+    commands: codexSkills(lists.skills),
+    plugins: [],
+    hooks: codexHooks(lists.hooks),
+    // No switch: Codex turns a server on or off only in its config, which Seshboard doesn't write. Reconnect reaches
+    // every session's servers, which the note says.
+    mcpToggle: false,
+    reconnectNote: MCP_RECONNECT,
+  };
 }
 
 /** Why a server can't be turned on or off here: Codex keeps that in its config, which Seshboard doesn't write. */
