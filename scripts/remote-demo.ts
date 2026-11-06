@@ -25,6 +25,7 @@ import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 import { SessionOrigins } from '../packages/engine/src/remote/sessionOrigins.ts';
+import { CODEX_MODES } from '../packages/engine/src/providers/codex/codexModes.ts';
 
 const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -705,12 +706,8 @@ const hub: RemoteHub = new RemoteHub({
       ? {
           id: 'codex',
           name: 'OpenAI Codex',
-          modes: [
-            { value: 'default', label: 'Ask before edits', description: 'Approve every edit, and commands that leave the sandbox' },
-            { value: 'acceptEdits', label: 'Accept edits', description: 'Edits in the folder apply, commands outside it still ask' },
-            { value: 'plan', label: 'Plan mode', description: 'Codex plans before it changes anything' },
-            { value: 'auto', label: 'Auto mode', description: "Codex keeps going in the folder's sandbox, without asking" },
-          ],
+          // Codex's own modes, as this computer's catalog has them.
+          modes: CODEX_MODES,
           supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
         }
       : profileId === 'copilot'

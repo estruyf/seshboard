@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
+  agentName,
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
   PROVIDER_NAMES,
@@ -1398,6 +1399,7 @@ export function createEngine(options: EngineOptions): Engine {
     transcript: (id) => source.messages(id),
     cwd: (id) => sessionCwd(id),
     profileOf: sessionProfile,
+    agentOf: (id) => agentName(providerAdapterOf(id)?.id),
     changes: (cwd) => listChanges(cwd, 'uncommitted').catch(() => null),
     summarize: (profileId, sessionId, input, system) => summarizer.ask(profileId, sessionId, input, system),
     useModel: () => catchUpSummaries,

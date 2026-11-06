@@ -49,20 +49,20 @@ function toolLine(request: Pick<PermissionRequest, 'toolName' | 'input'>): strin
   return subject ? `Allow ${request.toolName}: ${subject}` : `Allow ${request.toolName}?`;
 }
 
-/** What a prompt asks, in one line. */
-export function needsYouLine(request: Pick<PermissionRequest, 'toolName' | 'input'>): string {
+/** What a prompt asks, in one line. `agent`: who asks, by its short name (`agentName`: "Codex"); Claude by default. */
+export function needsYouLine(request: Pick<PermissionRequest, 'toolName' | 'input'>, agent = 'Claude'): string {
   const input = (request.input ?? {}) as Record<string, unknown>;
   if (request.toolName === 'AskUserQuestion') {
     const first = (input.questions as Array<{ question?: unknown }> | undefined)?.find((q) => typeof q?.question === 'string')?.question;
-    return typeof first === 'string' ? short(`Question: ${first}`) : 'Claude has a question';
+    return typeof first === 'string' ? short(`Question: ${first}`) : `${agent} has a question`;
   }
-  if (request.toolName === 'ExitPlanMode') return 'Claude has a plan. Ready to start?';
+  if (request.toolName === 'ExitPlanMode') return `${agent} has a plan. Ready to start?`;
   return short(toolLine(request));
 }
 
 /** A finished turn in one line, from its catch-up when there is one: the tests, and how long it takes to review. */
-export function finishedLine(card: CatchUp | null): string {
-  if (!card) return 'Claude finished a turn.';
+export function finishedLine(card: CatchUp | null, agent = 'Claude'): string {
+  if (!card) return `${agent} finished a turn.`;
   const { tests } = card.signals;
   const parts = [
     tests.state === 'passed' ? (tests.passed ? `${tests.passed} ${tests.passed === 1 ? 'test' : 'tests'} passed` : 'Tests passed') : tests.state === 'failed' ? (tests.failed ? `${tests.failed} ${tests.failed === 1 ? 'test fails' : 'tests fail'}` : 'Tests failed') : null,

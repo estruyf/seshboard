@@ -28,6 +28,14 @@ describe('RemoteAttention', () => {
     ]);
   });
 
+  it("names another provider's sessions, and a newer computer's unknown one neutrally", () => {
+    const attention = new RemoteAttention();
+    const codex = (id: string, status: Session['status'], provider: string) => ({ ...session(id, status), provider }) as Session;
+    attention.onList(studio, list([codex('a', 'working', 'codex'), codex('b', 'working', 'codex'), codex('c', 'working', 'cursor')]));
+    const events = attention.onList(studio, list([codex('a', 'unread', 'codex'), codex('b', 'error', 'codex'), codex('c', 'needs-you', 'cursor')], [prompt('p1', 'c', 'AskUserQuestion')]));
+    expect(events.map((e) => e.title)).toEqual(['The agent has a question', 'Codex finished', 'OpenAI Codex stopped with an error']);
+  });
+
   it('shows only needs you, or nothing, as the computer\'s notifications say, and keeps up while they are off', () => {
     const attention = new RemoteAttention();
     const needsYou = { ...studio, notify: 'needs-you' as const };

@@ -15,7 +15,8 @@ const HOVER = 'no-drag cursor-pointer hover:bg-border/45 focus-visible:bg-border
  * usage column draws its own, `ProfileUsageCard`.)
  */
 export function ProviderUsage({ profileId, provider, form = 'line' }: { profileId: string; provider: OptionalProvider; form?: 'line' | 'footer' }) {
-  const quota = useProviderQuota(profileId);
+  // A provider whose usage isn't shown (Codex) isn't asked.
+  const quota = useProviderQuota(SHOWS_USAGE[provider] ? profileId : null);
   // A provider whose usage Seshboard doesn't show yet (OpenAI Codex) says so, rather than leaving the spot empty.
   if (!SHOWS_USAGE[provider]) {
     return (

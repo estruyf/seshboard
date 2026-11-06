@@ -1,6 +1,6 @@
 import { Check, CircleHelp, ClipboardList, MessageCircleQuestion, ShieldQuestion, SquareTerminal } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { PROVIDER_SHORT_NAMES, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol/client';
+import { agentName, midSentence, type PermissionDecision, type PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { useHosts } from '../../state/hostsStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
@@ -128,8 +128,8 @@ function WhyButton({ request }: { request: PermissionRequest }) {
       icon={<CircleHelp size={13} aria-hidden />}
       selected={open}
       aria-expanded={open}
-      aria-label={`Why is ${agent} asking?`}
-      data-tooltip={`Why is ${agent} asking?`}
+      aria-label={`Why is ${midSentence(agent)} asking?`}
+      data-tooltip={`Why is ${midSentence(agent)} asking?`}
       onClick={() => useWhy.getState().toggle(request.sessionId, request.requestId)}
       className="shrink-0"
       data-permission-why
@@ -170,8 +170,8 @@ export function FeedbackField({ value, onChange, onSubmit, busy, agent = 'Claude
           onSubmit();
         }
       }}
-      placeholder={`Or tell ${agent} what to do instead…`}
-      aria-label={`Or tell ${agent} what to do instead`}
+      placeholder={`Or tell ${midSentence(agent)} what to do instead…`}
+      aria-label={`Or tell ${midSentence(agent)} what to do instead`}
       className="h-8 w-full min-w-0 rounded-md border border-border bg-bg px-2.5 text-ui outline-none placeholder:text-faint focus:border-accent-ink/60"
     />
   );
@@ -205,7 +205,7 @@ export function permissionTitle(request: PermissionRequest, cwd: string | null, 
 
 /** Who asks in a session, by its short name: its provider's (Codex, Copilot), from its host here; Claude otherwise. */
 export function useAgentName(sessionId: string): string {
-  return PROVIDER_SHORT_NAMES[useHosts((s) => s.hosts.get(sessionId)?.provider) ?? 'claude'];
+  return agentName(useHosts((s) => s.hosts.get(sessionId)?.provider));
 }
 
 /** "Allow Bash(npm test:*) in this project" reads as "Always allow Bash(npm test:*) in this project". */
@@ -283,7 +283,7 @@ function ToolPermission({ request, cwd, titleId, cardRef }: CardProps & { cwd: s
         </pre>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy} onClick={allow} data-tooltip={`Allow this once; ${agent} asks again next time`}>
+        <Button ref={allowRef} variant="primary" size="lg" shortcut="permission.allow" data-permission-allow disabled={busy} onClick={allow} data-tooltip={`Allow this once; ${midSentence(agent)} asks again next time`}>
           Allow
         </Button>
         {request.alwaysLabel && (
@@ -535,7 +535,7 @@ function PlanApproval({ request, titleId, cardRef }: CardProps) {
         <Markdown text={plan} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-tooltip={`Start, and let ${agent} edit files without asking each time`}>
+        <Button variant="primary" size="lg" shortcut="permission.allow" disabled={busy} onClick={() => void approveWithEdits()} data-tooltip={`Start, and let ${midSentence(agent)} edit files without asking each time`}>
           Approve and accept edits
         </Button>
         <Button size="lg" disabled={busy} onClick={() => void respond({ behavior: 'allow' })} data-tooltip="Start, and ask before each file edit">

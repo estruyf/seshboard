@@ -57,7 +57,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
   // While you type, one line: a tap unfolds it and puts the keyboard away, so there is room to read it.
   if (typing) {
     return (
-      <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId} data-remote-prompt-line>
+      <section aria-label={`${agent} needs you`} className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId} data-remote-prompt-line>
         <button
           type="button"
           onPointerDown={(event) => event.preventDefault()}
@@ -67,7 +67,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
           }}
           className="mx-auto flex min-h-11 w-full max-w-3xl items-center gap-2 rounded-xl border-2 border-warn bg-card px-3 text-left"
         >
-          <span className="shrink-0 text-meta font-semibold text-warn">Claude needs you</span>
+          <span className="shrink-0 text-meta font-semibold text-warn">{agent} needs you</span>
           <span aria-hidden className="text-faint">
             ·
           </span>
@@ -80,10 +80,10 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
   }
 
   return (
-    <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>
+    <section aria-label={`${agent} needs you`} className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>
       <div className="mx-auto flex max-h-[min(55dvh,32rem)] w-full max-w-3xl flex-col rounded-xl border-2 border-warn bg-card">
         <div className="flex shrink-0 items-center gap-2 py-1.5 pr-1.5 pl-3">
-          <span className="rounded-md bg-warn/12 px-1.5 py-0.5 text-meta font-semibold text-warn">Claude needs you</span>
+          <span className="rounded-md bg-warn/12 px-1.5 py-0.5 text-meta font-semibold text-warn">{agent} needs you</span>
           {collapsed && <span className="min-w-0 flex-1 truncate text-ui font-semibold">{promptTitle(prompt, agent)}</span>}
           {!collapsed && <span className="flex-1" />}
           {prompts.length > 1 && (

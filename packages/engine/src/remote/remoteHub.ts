@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  agentName,
   type ActivityEntry,
   DEFAULT_APP_ICON,
   defuseStubs,
@@ -607,7 +608,7 @@ export class RemoteHub {
   permissionAsked(request: PermissionRequest): void {
     const session = this.list().sessions.find((s) => s.id === request.sessionId);
     if (!session) return;
-    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request), ...promptAnswers(request) });
+    this.push({ kind: 'needs-you', sessionId: session.id, title: session.title, project: session.projectName, ...profileOf(session), line: needsYouLine(request, agentName(session.provider)), ...promptAnswers(request) });
   }
 
   /** A session's process changed state: a turn that ended sends its push once the catch-up is in (or soon without). */
@@ -803,7 +804,7 @@ export class RemoteHub {
     if (!session) return;
     // A turn that ends in a step of a run that goes on is the run's news: it says when it needs you, stops or is done.
     if (this.options.pipelines?.runs().some(({ run, steps }) => run.status !== 'done' && run.status !== 'stopped' && steps.some((s) => s.sessionId === sessionId))) return;
-    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId)) });
+    this.push({ kind: 'finished', sessionId, title: session.title, project: session.projectName, ...profileOf(session), line: finishedLine(this.options.catchUp(sessionId), agentName(session.provider)) });
   }
 
   /**

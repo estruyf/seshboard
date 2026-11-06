@@ -1,6 +1,6 @@
 import { useMemo, type MouseEvent } from 'react';
 import { User, Users } from 'lucide-react';
-import { isMine, PROVIDER_SHORT_NAMES, type Computer, type Contract, type RemoteSession, type RemoteSessions, type RpcClient } from '@seshboard/protocol/client';
+import { agentName, isMine, type Computer, type Contract, type RemoteSession, type RemoteSessions, type RpcClient } from '@seshboard/protocol/client';
 import { shortAge } from '../../lib/format.ts';
 import { useComputers } from '../../state/computersStore.ts';
 import { offlineLine, remoteRowStatus, scopeOf, startedByOf, type ComputerScope } from '../../state/remoteRows.ts';
@@ -141,7 +141,7 @@ function Waiting({ computer, waiting, client, now }: { computer: Computer; waiti
           </button>
           <span className="shrink-0 truncate text-meta text-muted">{where(session)}</span>
         </div>
-        <ComputerPrompt key={first.requestId} prompt={first} respond={(decision) => respondRemote(client, computer.id, first, decision)} agent={PROVIDER_SHORT_NAMES[session.provider ?? 'claude']} />
+        <ComputerPrompt key={first.requestId} prompt={first} respond={(decision) => respondRemote(client, computer.id, first, decision)} agent={agentName(session.provider)} />
         {prompts.length > 1 && <p className="px-1 text-meta text-muted">{prompts.length - 1} more in the session.</p>}
       </div>
     );

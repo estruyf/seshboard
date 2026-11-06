@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
-import type { PermissionRequest } from '@seshboard/protocol/client';
+import { midSentence, type PermissionRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -48,9 +48,9 @@ export function WhyPanel({ request, cwd }: { request: PermissionRequest; cwd: st
   const why = result?.status === 'done' ? result.why : null;
   const agent = useAgentName(request.sessionId);
   return (
-    <aside aria-label={`Why ${agent} asks`} className="flex w-80 max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar forced-colors:border-l" data-why-panel>
+    <aside aria-label={`Why ${midSentence(agent)} asks`} className="flex w-80 max-w-[85%] min-w-0 shrink-0 flex-col bg-sidebar forced-colors:border-l" data-why-panel>
       <div className="edge-b flex h-10 shrink-0 items-center gap-2 px-3" data-scrolled={!edge.atTop || undefined}>
-        <h2 className="min-w-0 flex-1 truncate text-ui font-semibold">Why {agent} asks</h2>
+        <h2 className="min-w-0 flex-1 truncate text-ui font-semibold">Why {midSentence(agent)} asks</h2>
         <Button variant="quiet" size="sm" iconOnly icon={<X size={14} aria-hidden />} aria-label="Close (Esc)" data-tooltip="Close (Esc)" onClick={() => useWhy.getState().close()} data-why-close />
       </div>
       <div ref={scroller} className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-3 text-body select-text">
