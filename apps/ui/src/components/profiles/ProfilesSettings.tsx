@@ -54,7 +54,7 @@ async function signInProvider(client: EngineClient, profileId: string): Promise<
 
 /**
  * Who a provider profile is signed in as, from its own CLI (`providers.status`, which starts its runtime), and Sign in
- * when it isn't. A read-only provider (OpenAI Codex) needs no sign in to read its sessions: it says which CLI reads
+ * when it isn't. A read-only provider needs no sign in to read its sessions: it says which CLI reads
  * them, or how to install it.
  */
 function ProviderAccount({ profile }: { profile: ClaudeProfile }) {
@@ -230,7 +230,7 @@ function ProfileRow({ profile, home, onRemove }: { profile: ClaudeProfile; home:
   // A rename saved here (or in another window) comes back as a new name; the row stays mounted, so focus stays where Tab put it.
   useEffect(() => setName(profile.name), [profile.name]);
   const [error, setError] = useState<string | null>(null);
-  // A read-only provider's profile (OpenAI Codex) starts no sessions: no Default, no New session defaults.
+  // A read-only provider's profile starts no sessions: no Default, no New session defaults.
   const canStart = useProviderCanStart(profile.provider);
   const call = (promise: Promise<unknown> | undefined) => promise?.catch((e: Error) => setError(e.message));
   const saveName = () => {
@@ -375,7 +375,7 @@ function AddProfileForm({ home, initialTool, onDone }: { home: string | null; in
   const detected = useProviderDetections();
   const detectionOf = (id: SessionProvider) => detected?.find((d) => d.id === id) ?? null;
   const detection = provider === 'claude' ? null : detectionOf(provider);
-  // A provider Seshboard can't start sessions with yet (OpenAI Codex): its sessions are read-only, and reading them
+  // A provider Seshboard can't start sessions with: its sessions are read-only, and reading them
   // needs no sign in.
   const readOnly = provider !== 'claude' && catalog.find((p) => p.id === provider)?.canStart === false;
   const providerName = PROVIDER_NAMES[provider];

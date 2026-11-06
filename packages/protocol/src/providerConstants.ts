@@ -14,6 +14,22 @@ export const PROVIDER_NAMES: Record<SessionProvider, string> = { claude: 'Claude
 /** The short name in copy around the message box ("What should Copilot work on?"). */
 export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: 'Claude', copilot: 'Copilot', codex: 'Codex' };
 
+/** Who works in a session of a provider this build doesn't know (a newer computer's), at the start of a sentence. */
+export const UNKNOWN_AGENT = 'The agent';
+
+/**
+ * Who works in a session, by its short name, for copy such as "Codex has a question for you": "Claude" for Claude
+ * Code's (no provider), the provider's short name, and `UNKNOWN_AGENT` for one this build doesn't know (a newer
+ * computer's), so a card never reads "undefined has a question".
+ */
+export function agentName(provider: string | null | undefined): string {
+  if (!provider) return PROVIDER_SHORT_NAMES.claude;
+  return (SESSION_PROVIDERS as readonly string[]).includes(provider) ? PROVIDER_SHORT_NAMES[provider as SessionProvider] : UNKNOWN_AGENT;
+}
+
+/** `agentName` inside a sentence ("Why is the agent asking?"): only the unknown one changes case. */
+export const midSentence = (agent: string): string => (agent === UNKNOWN_AGENT ? 'the agent' : agent);
+
 /**
  * Claude Code's own features another provider may or may not have yet: in a session (⋯) and in New session. A
  * provider lists the ones it has (`ProviderInfo.supports`); the rest say "Claude Code only, for now", and the list

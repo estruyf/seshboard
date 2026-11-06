@@ -104,7 +104,7 @@ function SkimReply({ item, turn, skim }: { item: Extract<DisplayItem, { kind: 't
     <>
       {parts.length > 0 && <SkimStats parts={parts} />}
       <Markdown text={item.text} keep={fades && !showAll && !skim.finding ? keep : null} />
-      {!on && !asked && long && request.ask && <SkimInvitation model={model} account={copilot ? `your ${PROVIDER_NAMES.copilot} account` : 'your plan'} onAnswer={setOn} />}
+      {!on && !asked && long && request.ask && <SkimInvitation model={model} account={copilot ? `your ${PROVIDER_NAMES[skim.provider as keyof typeof PROVIDER_NAMES] ?? PROVIDER_NAMES.copilot} account` : 'your plan'} onAnswer={setOn} />}
       {highlight?.state === 'loading' && request.ask && (
         <div className="mt-1 flex items-center gap-1.5 text-meta text-muted" role="status" aria-busy data-skim-fading>
           <Loader2 size={12} className="animate-spin" aria-hidden />

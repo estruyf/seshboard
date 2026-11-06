@@ -29,5 +29,5 @@ export type { Pipeline, PipelineClaudeStep, PipelinePushStep, PipelineRunStatus,
 export { mostUrgent, outOfRounds, roundOf, runProgress, sidebarTree, stepStateWord, stepTitle, type SidebarTree, type TreeRow, type TreeStatus } from './pipelines.ts';
 export * from './pipelineView.ts';
 export { gerund, toolStepLabel, type StepLabel } from './toolSteps.ts';
-export { PROVIDER_NAMES, notWithYet, switchLosses, switchNotice, type ProviderFeature, type SessionProvider, type SwitchChoices, type SwitchLoss } from './providerConstants.ts';
+export { PROVIDER_NAMES, PROVIDER_SHORT_NAMES, agentName, midSentence, notWithYet, switchLosses, switchNotice, type ProviderFeature, type SessionProvider, type SwitchChoices, type SwitchLoss } from './providerConstants.ts';
 export * from './triggerOrigin.ts';

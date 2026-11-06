@@ -43,8 +43,8 @@ export function PipelineEditor({ initial, saved, defaultRoot, onDirty, onSave, o
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
   const models = useHosts((s) => s.models);
-  // Another provider can run a step once there is a profile of it and it can start sessions (GitHub Copilot; not
-  // OpenAI Codex, which is read-only): the first profile's models, and the provider's modes.
+  // Another provider can run a step once there is a profile of it and it can start sessions (GitHub Copilot, OpenAI
+  // Codex): the first profile's models, and the provider's modes.
   const profiles = useProfiles((s) => s.profiles);
   const catalog = useProviders((s) => s.providers);
   const toolProfiles = useMemo(() => stepToolProfiles(profiles, catalog), [profiles, catalog]);

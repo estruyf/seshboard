@@ -1,5 +1,5 @@
-import { isMine, type CompanionStatus, type ComputerNotify, type RemoteSessions } from '@seshboard/protocol/client';
-import type { AttentionEvent } from './attention.ts';
+import { agentName, isMine, type CompanionStatus, type ComputerNotify, type RemoteSessions } from '@seshboard/protocol/client';
+import { askWords, stoppedWords, type AttentionEvent } from './attention.ts';
 
 /**
  * The row id the windows give a session on another computer (`remoteRowId` in apps/ui/src/state/remoteSelection.ts):
@@ -12,8 +12,6 @@ interface Seen {
   prompts: Set<string>;
 }
 
-/** What a waiting prompt asks, as the local notification says it (`Attention.onPermission`). */
-const askWords = (toolName: string) => (toolName === 'AskUserQuestion' ? 'Claude has a question' : toolName === 'ExitPlanMode' ? 'Claude has a plan for you' : `Claude wants to use ${toolName}`);
 
 /**
  * Notifications for the sessions of paired computers (docs/remote-access.md, Other computers), from each computer's
@@ -37,18 +35,21 @@ export class RemoteAttention {
     // Only mine: started or acted on from here, or a sub-session of one (a pipeline's step, a fork's agent).
     const mine = { mineHere: computer.mineHere ?? [] };
     const kept = (sessionId: string) => computer.notify !== 'started-here' || isMine(sessionId, parents.get(sessionId), mine);
+    // Another provider's sessions there (Codex, Copilot) name it; a newer computer's unknown one, neutrally.
+    const providers = new Map(list.sessions.map((s) => [s.id, s.provider ?? null]));
+    const agent = (sessionId: string) => agentName(providers.get(sessionId));
     const where = (sessionId: string) => `${titles.get(sessionId) ?? 'A session'} · on ${computer.name}`;
     const events: AttentionEvent[] = [];
     for (const prompt of list.prompts) {
       if (before.prompts.has(prompt.requestId) || !kept(prompt.sessionId)) continue;
-      events.push({ kind: 'needs-you', sessionId: remoteRowId(computer.id, prompt.sessionId), title: askWords(prompt.toolName), body: where(prompt.sessionId) });
+      events.push({ kind: 'needs-you', sessionId: remoteRowId(computer.id, prompt.sessionId), title: askWords(prompt.toolName, agent(prompt.sessionId)), body: where(prompt.sessionId) });
     }
     if (computer.notify === 'needs-you') return events;
     for (const session of list.sessions) {
       if (before.status.get(session.id) !== 'working' || !kept(session.id)) continue;
-      if (session.status === 'error') events.push({ kind: 'failed', sessionId: remoteRowId(computer.id, session.id), title: 'Claude Code stopped with an error', body: where(session.id) });
+      if (session.status === 'error') events.push({ kind: 'failed', sessionId: remoteRowId(computer.id, session.id), title: stoppedWords(session.provider), body: where(session.id) });
       else if ((session.status === 'unread' || session.status === 'idle') && !session.parentId) {
-        events.push({ kind: 'finished', sessionId: remoteRowId(computer.id, session.id), title: 'Claude finished', body: where(session.id) });
+        events.push({ kind: 'finished', sessionId: remoteRowId(computer.id, session.id), title: `${agent(session.id)} finished`, body: where(session.id) });
       }
     }
     return events;

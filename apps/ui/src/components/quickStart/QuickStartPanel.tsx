@@ -93,7 +93,7 @@ export function QuickStartPanel() {
   const projects = useProjects((s) => s.projects);
   const questionsDir = useProjects((s) => s.questionsDir);
   const profiles = useProfiles((s) => s.profiles);
-  // The profile chip only when there is another profile to start with (a read-only provider's, Codex's, can't).
+  // The profile chip only when there is another profile to start with (a read-only provider's can't).
   const startableCount = useStartableProfiles().length;
   const defaultProfile = useProfiles((s) => s.defaultId);
   const models = useHosts((s) => s.models);

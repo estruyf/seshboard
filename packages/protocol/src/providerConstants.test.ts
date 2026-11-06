@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudeOnlyLine, notWithYet, switchLosses, switchNotice, type SwitchChoices } from './providerConstants.ts';
+import { agentName, claudeOnlyLine, midSentence, notWithYet, switchLosses, switchNotice, type SwitchChoices } from './providerConstants.ts';
 
 const nothing: SwitchChoices = { worktree: false, branch: null, pipeline: null, later: false, schedule: false };
 
@@ -33,5 +33,21 @@ describe("the ⋯ menu's Claude Code only line", () => {
     expect(claudeOnlyLine(['fork', 'rewind'])).toBe('Rename and Ask about this session work with Claude Code only, for now.');
     expect(claudeOnlyLine(['fork', 'rewind', 'rename'])).toBe('Ask about this session works with Claude Code only, for now.');
     expect(claudeOnlyLine(['fork', 'rewind', 'rename', 'ask'])).toBeNull();
+  });
+});
+
+describe("who works in a session, by name", () => {
+  it('is Claude for Claude Code, the short name for another provider, and neutral for one this build does not know', () => {
+    expect(agentName(null)).toBe('Claude');
+    expect(agentName(undefined)).toBe('Claude');
+    expect(agentName('claude')).toBe('Claude');
+    expect(agentName('codex')).toBe('Codex');
+    expect(agentName('copilot')).toBe('Copilot');
+    expect(agentName('cursor')).toBe('The agent');
+  });
+
+  it('lowers only the unknown one inside a sentence', () => {
+    expect(midSentence(agentName('cursor'))).toBe('the agent');
+    expect(midSentence(agentName('codex'))).toBe('Codex');
   });
 });

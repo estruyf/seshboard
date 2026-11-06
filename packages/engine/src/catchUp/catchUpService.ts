@@ -15,6 +15,8 @@ export interface CatchUpServiceOptions {
   /** The folder the session works in (a worktree's own folder). */
   cwd(sessionId: string): string | null;
   profileOf(sessionId: string): string;
+  /** Who works in the session, by its short name ("Codex"), for the words of a waiting card. Claude when left out. */
+  agentOf?(sessionId: string): string;
   /** The checkout's uncommitted changes; null outside git. */
   changes(cwd: string): Promise<GitChanges | null>;
   /** Asks Haiku (told `system`, the summary's prompt when left out); null when it gave nothing in time. */
@@ -244,7 +246,7 @@ export class CatchUpService {
       turnId: `${turn.id}:${request.requestId}`,
       source: 'fallback',
       state: 'waiting',
-      summary: { did: lines.did, skipped: lines.skipped, need: waitingNeed(request) },
+      summary: { did: lines.did, skipped: lines.skipped, need: waitingNeed(request, this.options.agentOf?.(sessionId)) },
       signals,
       minutes: reviewMinutes({ waiting: true, diff: signals.diff, testsFailed: false, outOfScope: 0 }),
     });

@@ -25,6 +25,7 @@ import { NO_GLOBAL_MODEL } from '../packages/engine/src/remote/remoteView.ts';
 import { openCacheDatabase } from '../packages/engine/src/db/database.ts';
 import { RemoteHub, type RemotePipelines } from '../packages/engine/src/remote/remoteHub.ts';
 import { SessionOrigins } from '../packages/engine/src/remote/sessionOrigins.ts';
+import { CODEX_MODES } from '../packages/engine/src/providers/codex/codexModes.ts';
 
 const APP_URL = process.env.SESHBOARD_REMOTE_APP_URL ?? 'http://localhost:5199/remote/';
 const PORT = Number(process.env.PORT ?? 47699);
@@ -43,6 +44,8 @@ const PROFILES = [
   { id: 'work', name: 'Work', color: 'blue' as const, defaults: { ...NO_DEFAULTS, workspace: 'worktree' as const }, account: accountTag({ email: 'demo@example.com', organization: 'Acme' }) },
   // A GitHub Copilot profile: its sessions run with Copilot (`providerOfProfile` below).
   { id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: NO_DEFAULTS },
+  // An OpenAI Codex profile, the same way.
+  { id: 'codex', name: 'Codex', color: 'green' as const, defaults: NO_DEFAULTS },
 ];
 /** The profile a demo session runs with: its project's. */
 const profileOf = (root: string) => PROJECTS.find((p) => p.root === root)?.profileId ?? 'default';
@@ -696,9 +699,18 @@ const hub: RemoteHub = new RemoteHub({
     setTimeout(() => hub.sessionsChanged(), 0);
     return { sessionId: id };
   },
-  // The Copilot profile is GitHub Copilot's, with its modes and two models; its sessions start like the others.
+  // The Copilot profile is GitHub Copilot's and the Codex one OpenAI Codex's, each with its modes and two models; their
+  // sessions start like the others.
   providerOfProfile: (profileId) =>
-    profileId === 'copilot'
+    profileId === 'codex'
+      ? {
+          id: 'codex',
+          name: 'OpenAI Codex',
+          // Codex's own modes, as this computer's catalog has them.
+          modes: CODEX_MODES,
+          supports: ['delete', 'effort', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+        }
+      : profileId === 'copilot'
       ? {
           id: 'copilot',
           name: 'GitHub Copilot',
@@ -711,9 +723,12 @@ const hub: RemoteHub = new RemoteHub({
           supports: [],
         }
       : null,
-  providerReady: async () => ({
+  providerReady: async (profileId) => ({
     problem: null,
-    models: [
+    models: profileId === 'codex' ? [
+      { value: 'gpt-5.3-codex', displayName: 'GPT-5.3 Codex', description: '', supportsEffort: true },
+      { value: 'gpt-5.3-codex-mini', displayName: 'GPT-5.3 Codex Mini', description: '', supportsEffort: true },
+    ] : [
       { value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: false },
       { value: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', description: '', supportsEffort: true },
     ],

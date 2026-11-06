@@ -16,10 +16,10 @@ interface Question {
 }
 
 /** The panel's heading: what Claude asks, as the card on the computer says it. */
-export function promptTitle(prompt: RemotePrompt): string {
+export function promptTitle(prompt: RemotePrompt, agent = 'Claude'): string {
   const kind = promptKind(prompt);
-  if (kind === 'question') return 'Claude has a question for you';
-  if (kind === 'plan') return 'Claude has a plan. Ready to start?';
+  if (kind === 'question') return `${agent} has a question for you`;
+  if (kind === 'plan') return `${agent} has a plan. Ready to start?`;
   return prompt.title ?? `Allow ${toolLabel(prompt.toolName)}?`;
 }
 
@@ -28,7 +28,7 @@ export function promptTitle(prompt: RemotePrompt): string {
  * you", and the same choices as the card on the computer. The chevron folds it to one line to read the conversation
  * first; a new prompt opens it again. With more than one, "1 of 2" and arrows step through them.
  */
-export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = false, typing = false }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void; /** Key hints on the buttons (a wide screen). */ hints?: boolean; /** The keyboard is up: one line, so the message box stays above it. */ typing?: boolean }) {
+export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = false, typing = false, agent = 'Claude' }: { prompts: RemotePrompt[]; client: Client; sessionTitle: string | undefined; onGone: () => void; /** Who asks, by its short name (Codex); Claude by default. */ agent?: string; /** Key hints on the buttons (a wide screen). */ hints?: boolean; /** The keyboard is up: one line, so the message box stays above it. */ typing?: boolean }) {
   const [index, setIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,7 +57,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
   // While you type, one line: a tap unfolds it and puts the keyboard away, so there is room to read it.
   if (typing) {
     return (
-      <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId} data-remote-prompt-line>
+      <section aria-label={`${agent} needs you`} className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId} data-remote-prompt-line>
         <button
           type="button"
           onPointerDown={(event) => event.preventDefault()}
@@ -67,7 +67,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
           }}
           className="mx-auto flex min-h-11 w-full max-w-3xl items-center gap-2 rounded-xl border-2 border-warn bg-card px-3 text-left"
         >
-          <span className="shrink-0 text-meta font-semibold text-warn">Claude needs you</span>
+          <span className="shrink-0 text-meta font-semibold text-warn">{agent} needs you</span>
           <span aria-hidden className="text-faint">
             ·
           </span>
@@ -80,11 +80,11 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
   }
 
   return (
-    <section aria-label="Claude needs you" className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>
+    <section aria-label={`${agent} needs you`} className="px-3 pt-2 sm:px-6" data-remote-prompt={prompt.requestId}>
       <div className="mx-auto flex max-h-[min(55dvh,32rem)] w-full max-w-3xl flex-col rounded-xl border-2 border-warn bg-card">
         <div className="flex shrink-0 items-center gap-2 py-1.5 pr-1.5 pl-3">
-          <span className="rounded-md bg-warn/12 px-1.5 py-0.5 text-meta font-semibold text-warn">Claude needs you</span>
-          {collapsed && <span className="min-w-0 flex-1 truncate text-ui font-semibold">{promptTitle(prompt)}</span>}
+          <span className="rounded-md bg-warn/12 px-1.5 py-0.5 text-meta font-semibold text-warn">{agent} needs you</span>
+          {collapsed && <span className="min-w-0 flex-1 truncate text-ui font-semibold">{promptTitle(prompt, agent)}</span>}
           {!collapsed && <span className="flex-1" />}
           {prompts.length > 1 && (
             <span className="flex items-center text-meta text-muted tabular-nums" data-remote-prompt-pager>
@@ -103,7 +103,7 @@ export function DockedPrompt({ prompts, client, sessionTitle, onGone, hints = fa
         </div>
         {!collapsed && (
           <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3">
-            <PromptBody key={prompt.requestId} prompt={prompt} disabled={disabled} respond={respond} hints={hints} />
+            <PromptBody key={prompt.requestId} prompt={prompt} disabled={disabled} respond={respond} hints={hints} agent={agent} />
           </div>
         )}
       </div>
@@ -119,6 +119,8 @@ type Props = {
   hints?: boolean;
   /** On a card that has its own heading (the home view): no title, a question's options as chips. */
   compact?: boolean;
+  /** Who asks, by its short name (Codex); Claude by default. */
+  agent?: string;
 };
 
 /** A prompt's choices: a tool's Deny, Always and Allow, a question's options, or a plan's Keep planning and Start. */
@@ -127,11 +129,11 @@ export function PromptBody(props: Props) {
   return kind === 'question' ? <Questions {...props} /> : kind === 'plan' ? <Plan {...props} /> : <ToolPrompt {...props} />;
 }
 
-function ToolPrompt({ prompt, disabled, respond, hints, compact }: Props) {
+function ToolPrompt({ prompt, disabled, respond, hints, compact, agent }: Props) {
   const diff = editLines(prompt.toolName, prompt.input);
   return (
     <div className="flex flex-col gap-2">
-      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt, agent)}</h2>}
       {prompt.description && <p className="text-ui text-muted">{prompt.description}</p>}
       {/* All of it, every line: Allow approves all of it. */}
       <pre className="max-h-48 overflow-auto rounded-lg bg-code p-2 font-mono text-meta break-words whitespace-pre-wrap" data-remote-prompt-text>
@@ -158,7 +160,7 @@ function ToolPrompt({ prompt, disabled, respond, hints, compact }: Props) {
   );
 }
 
-function Questions({ prompt, disabled, respond, hints, compact }: Props) {
+function Questions({ prompt, disabled, respond, hints, compact, agent }: Props) {
   const questions = ((prompt.input as { questions?: Question[] } | null)?.questions ?? []).filter((q) => q && typeof q.question === 'string');
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
@@ -175,7 +177,7 @@ function Questions({ prompt, disabled, respond, hints, compact }: Props) {
   };
   return (
     <div className="flex flex-col gap-3">
-      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt, agent)}</h2>}
       {questions.map((q) => (
         <fieldset key={q.question} className={compact ? 'flex flex-wrap gap-1.5' : 'flex flex-col gap-2'}>
           <legend className="pb-1 text-body">{q.question}</legend>
@@ -238,11 +240,11 @@ function Questions({ prompt, disabled, respond, hints, compact }: Props) {
   );
 }
 
-function Plan({ prompt, disabled, respond, hints, compact }: Props) {
+function Plan({ prompt, disabled, respond, hints, compact, agent }: Props) {
   const plan = (prompt.input as { plan?: unknown } | null)?.plan;
   return (
     <div className="flex flex-col gap-2">
-      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt)}</h2>}
+      {!compact && <h2 className="text-title font-semibold">{promptTitle(prompt, agent)}</h2>}
       {typeof plan === 'string' && (
         <div className="max-h-72 overflow-auto rounded-lg bg-code p-3">
           <Markdown text={plan} />

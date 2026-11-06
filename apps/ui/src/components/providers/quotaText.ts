@@ -1,4 +1,16 @@
-import type { ProviderQuota } from '@seshboard/protocol/client';
+import { PROVIDER_NAMES, PROVIDER_SHORT_NAMES, type OptionalProvider, type ProviderQuota } from '@seshboard/protocol/client';
+
+/**
+ * Whether Seshboard shows a provider's usage: Copilot's premium requests. OpenAI Codex's rate limits come later (#276,
+ * Phase 3). A new provider must say.
+ */
+export const SHOWS_USAGE: Record<OptionalProvider, boolean> = { copilot: true, codex: false };
+
+/** The Usage view for a provider whose usage isn't shown: "Seshboard doesn't show OpenAI Codex usage yet." */
+export const usageNotShown = (provider: OptionalProvider) => `Seshboard doesn't show ${PROVIDER_NAMES[provider]} usage yet.`;
+
+/** The same under the message box, where there is little room: "Codex usage not shown yet". */
+export const usageNotShownShort = (provider: OptionalProvider) => `${PROVIDER_SHORT_NAMES[provider]} usage not shown yet`;
 
 /** A reset date as Copilot gives it (`2026-12-01`, or a full ISO time), as "Dec 1"; a date alone is a local day. */
 export function resetDay(resetsAt: string, locale?: string): string {

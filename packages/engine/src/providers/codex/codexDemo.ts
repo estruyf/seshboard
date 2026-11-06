@@ -2,7 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppServer, AppServerOptions, CodexBinary } from './appServer.ts';
 import { codexSessionsDir, ROLLOUT_FILE } from './codexFiles.ts';
-import type { Methods, Thread, Turn } from './protocol.ts';
+import type { CodexLatestVersion } from './codexUpdate.ts';
+import type { Methods, Model, Thread, Turn } from './protocol.ts';
 
 /**
  * A made-up OpenAI Codex CLI for the demo home (the smoke test), in the process: installed,
@@ -149,6 +150,18 @@ function threadOf(demo: DemoThread, file: string): Thread | undefined {
   }
 }
 
+/** What the demo's Codex says when asked to start or continue a session. */
+export const CODEX_DEMO_REFUSAL = 'The demo has no Codex CLI to run sessions';
+
+const efforts = (...levels: string[]) => levels.map((reasoningEffort) => ({ reasoningEffort, description: `${reasoningEffort} reasoning` }));
+
+/** The demo's models (`model/list`): the default one with every effort, a smaller one with fewer, and one without. */
+export const CODEX_DEMO_MODELS: Model[] = [
+  { id: 'gpt-5.3-codex', model: 'gpt-5.3-codex', displayName: 'GPT-5.3 Codex', description: 'Codex for coding', hidden: false, supportedReasoningEfforts: efforts('low', 'medium', 'high', 'xhigh'), defaultReasoningEffort: 'medium', inputModalities: ['text', 'image'], isDefault: true },
+  { id: 'gpt-5.3-codex-mini', model: 'gpt-5.3-codex-mini', displayName: 'GPT-5.3 Codex Mini', description: 'Faster and cheaper', hidden: false, supportedReasoningEfforts: efforts('medium', 'high'), defaultReasoningEffort: 'medium', inputModalities: ['text'], isDefault: false },
+  { id: 'gpt-5.2', model: 'gpt-5.2', displayName: 'GPT-5.2', description: 'General model', hidden: false, supportedReasoningEfforts: [], defaultReasoningEffort: 'none', inputModalities: ['text'], isDefault: false },
+];
+
 /** The in-process app-server: answers the read methods for the demo threads that have a rollout file in `CODEX_HOME`. */
 function demoAppServer(options: AppServerOptions): AppServer {
   const threads = async (): Promise<Thread[]> => {
@@ -179,9 +192,11 @@ function demoAppServer(options: AppServerOptions): AppServer {
       }
       case 'account/read':
         return { account: { type: 'chatgpt', email: 'demo-user@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true };
+      case 'model/list':
+        return { data: CODEX_DEMO_MODELS, nextCursor: null };
       default:
-        // The demo never runs a Codex session: a smoke run must not look like it reached one.
-        throw new Error("The demo's Codex doesn't run sessions");
+        // Starting or continuing a session refuses: a smoke run never reaches a real Codex, nor looks like it did.
+        throw new Error(CODEX_DEMO_REFUSAL);
     }
   };
   return {
@@ -195,7 +210,10 @@ function demoAppServer(options: AppServerOptions): AppServer {
   };
 }
 
-/** The made-up Codex CLI, as `ProviderOptions['codex']`. */
-export function demoCodex(): { binary: () => Promise<CodexBinary>; createAppServer: (options: AppServerOptions) => AppServer } {
-  return { binary: async () => ({ path: '/demo/bin/codex', version: '0.167.0' }), createAppServer: demoAppServer };
+/** The demo's Codex CLI version, which its update check also says is the latest. */
+const DEMO_VERSION = '0.167.0';
+
+/** The made-up Codex CLI, as `ProviderOptions['codex']`. Its update check says it is up to date, without the network. */
+export function demoCodex(): { binary: () => Promise<CodexBinary>; createAppServer: (options: AppServerOptions) => AppServer; latestVersion: CodexLatestVersion } {
+  return { binary: async () => ({ path: '/demo/bin/codex', version: DEMO_VERSION }), createAppServer: demoAppServer, latestVersion: async () => DEMO_VERSION };
 }

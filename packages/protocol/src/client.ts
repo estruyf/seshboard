@@ -30,7 +30,7 @@ export type * from './backup.ts';
 export type * from './later.ts';
 export { BACKUP_SECTIONS, SETTINGS_FILE_FORMAT, settingsFileName, type BackupSection } from './backupConstants.ts';
 export { BUILTIN_PROFILE_ID, PROFILE_COLORS } from './profileConstants.ts';
-export { OPTIONAL_PROVIDERS, PROVIDER_FEATURES, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, SESSION_PROVIDERS, claudeOnlyLine, isOtherProviderSession, joinWords, notWithYet, otherProviderOf, providerOf, switchLosses, switchNotice, type OptionalProvider, type ProviderFeature, type SessionProvider, type SwitchChoices, type SwitchLoss } from './providerConstants.ts';
+export { OPTIONAL_PROVIDERS, PROVIDER_FEATURES, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, SESSION_PROVIDERS, UNKNOWN_AGENT, agentName, claudeOnlyLine, midSentence, isOtherProviderSession, joinWords, notWithYet, otherProviderOf, providerOf, switchLosses, switchNotice, type OptionalProvider, type ProviderFeature, type SessionProvider, type SwitchChoices, type SwitchLoss } from './providerConstants.ts';
 export { PROJECT_NAME_MAX } from './projectConstants.ts';
 export { cleanNote, SESSION_NOTE_MAX } from './sessionNote.ts';
 export { looseEndText, sameLooseEnds, type GitLooseEnd, type LooseEnd } from './looseEnds.ts';

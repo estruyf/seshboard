@@ -359,8 +359,8 @@ export function runPhoneStartStep(): Promise<string> {
 
 /**
  * New session with a provider profile (#199): picking the demo computer's Copilot profile in Options leaves Copilot's
- * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task, and Reset goes back to the
- * project's Claude Code profile. Nothing is started.
+ * models and modes (Auto mode), the box asks Copilot, Start gets ready with a task; its Codex profile (#276) leaves
+ * Codex's (Plan mode), and the box asks Codex. Reset goes back to the project's Claude Code profile. Nothing is started.
  */
 export function runPhoneProviderStep(): Promise<string> {
   return onPhone(async (js, win) => {
@@ -391,12 +391,29 @@ export function runPhoneProviderStep(): Promise<string> {
     await js(TYPE('Add a health check'));
     if (!(await waitInPage(win, "document.querySelector('[data-remote-start]').dataset.remoteStartState === 'ready'", 5_000))) return 'Start did not get ready with Copilot and a task';
     await js(TYPE(''));
+    // The Codex profile (#276) the same way: Codex's models and modes, and a box that asks Codex.
+    await js("document.querySelector('[data-remote-new-options]').click()");
+    if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"]')`, 3_000))) return 'the Options sheet did not open again';
+    const codex = await pick('profile', 'Codex');
+    if (codex) return codex;
+    const codexRows = (await js(`[...document.querySelectorAll('${sheet} [data-remote-choice]')].map((el) => el.dataset.remoteChoice).join(',')`)) as string;
+    // Codex runs in a worktree or on a branch too (its `supports`), so those rows stay.
+    if (codexRows !== 'profile,model,mode,worktree,branch') return `with the Codex profile, Options has ${codexRows}`;
+    const codexModel = await pick('model', 'GPT-5.3 Codex Mini');
+    if (codexModel) return codexModel;
+    const codexMode = await pick('mode', 'Plan mode');
+    if (codexMode) return codexMode;
+    await js("document.querySelector('[data-remote-sheet-done]').click()");
+    if (!(await waitInPage(win, `!document.querySelector('${sheet}')`, 3_000))) return 'Done did not close Options';
+    const codexSummary = (await js("document.querySelector('[data-remote-new-options]').getAttribute('aria-label')")) as string;
+    if (!codexSummary.includes('OpenAI Codex') || !codexSummary.includes('Plan mode')) return `with Codex, the summary reads "${codexSummary}"`;
+    if ((await js("document.querySelector('[data-remote-new-prompt]').placeholder")) !== 'What should OpenAI Codex do?') return "the box doesn't ask Codex";
     // Back to Claude Code for the steps after this one.
     await js("document.querySelector('[data-remote-new-options]').click()");
     await waitInPage(win, `document.querySelector('${sheet} [data-remote-options-reset]')`, 3_000);
     await js(`document.querySelector('${sheet} [data-remote-options-reset]').click()`);
     if (!(await waitInPage(win, `document.querySelector('${sheet} [data-remote-choice="profile"], ${sheet} [data-remote-choice="effort"]')`, 3_000))) return "Reset didn't bring Claude Code's options back";
     await js("document.querySelector('[data-remote-sheet-done]').click()");
-    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task, Reset back to Claude Code`;
+    return `ok: the Copilot profile left Copilot's models and modes ("${summary.replace('Options: ', '')}"), Start ready with a task; the Codex profile Codex's ("${codexSummary.replace('Options: ', '')}"); Reset back to Claude Code`;
   });
 }

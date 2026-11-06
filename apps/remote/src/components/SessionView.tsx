@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, Copy, FileDiff, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Send, Square, X, Zap } from 'lucide-react';
-import { PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
+import { agentName, PARENT_PLACEHOLDER, PROVIDER_NAMES, REMOTE_FEATURE_PIPELINES, REMOTE_FEATURE_QUEUE_SEND_NOW, replyToStepPlaceholder, waitsOnStep, type CatchUp, type QueuedMessage, type RemoteLimitStanding, type RemoteFile, type RemoteImage, type RemoteMessage, type RemoteOptions, type RemoteSessions, type SendMode } from '@seshboard/protocol/remote-client';
 import { backgroundLine, inBackground } from '../lib/background.ts';
 import { runsOf } from '../lib/runs.ts';
 import { RunBar, RunPipelineSheet, RunSheet } from './RunParts.tsx';
@@ -435,7 +435,7 @@ export function SessionView({
           />
         )}
         {tasks.length > 0 && <BackgroundTasks tasks={tasks} onStop={client ? stopTask : null} />}
-        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} />
+        <DockedPrompt prompts={prompts} client={client} sessionTitle={session?.title} onGone={onRefresh} hints={wide} typing={typing && !fine} agent={agentName(session?.provider)} />
         {session?.readOnly ? (
           <ReadOnlyNote provider={(session.provider && PROVIDER_NAMES[session.provider]) || "its provider's"} command={session.readOnly.resumeCommand} />
         ) : (
@@ -773,7 +773,7 @@ function UpNext({ queue, onRemove, onSendNow }: { queue: QueuedMessage[]; onRemo
  * chip (`modelMode`, its sheet has the choices) and a round Send, grey until there is text. On a wide screen the chips
  * sit under the box, as on the computer.
  */
-/** In place of the message box for a session its provider can't continue here (Codex): the command that continues it. */
+/** In place of the message box for a session its provider can't continue here (a read-only provider): the command that continues it. */
 function ReadOnlyNote({ provider, command }: { provider: string; command: string }) {
   const copy = () =>
     void navigator.clipboard.writeText(command).then(

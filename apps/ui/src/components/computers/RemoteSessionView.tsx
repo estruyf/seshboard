@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, BookOpen, MessageCircleQuestion, ChevronDown, ChevronRight, Ellipsis, FileDiff, GitBranch, LoaderCircle, RefreshCw, SquareTerminal } from 'lucide-react';
-import { triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
+import { agentName, triggerOriginOf, type Computer, type Contract, type PermissionDecision, type PermissionMode, type RemotePermissionMode, type QueuedMessage, type RemoteLimitStanding, type RemoteMessage, type RemotePrompt, type RemoteSession, type RpcClient, type SendMode } from '@seshboard/protocol/client';
 import { MODE_DOT, MODE_LABEL } from '../../lib/modes.ts';
 import { ariaKeysFor, formatKeys, keysFor, matches, shortcutGlyphs } from '../../lib/shortcuts.ts';
 import { clearRemoteDraft, loadRemoteDraft, remoteSessionDraftKey, saveRemoteDraft } from '../../state/remoteDrafts.ts';
@@ -627,14 +627,14 @@ export function RemoteSessionView({ client, computer, session, prompts, pane }: 
         {connected && prompts.length > 0 && (
           <div className="-m-1 grid max-h-[55vh] gap-2 overflow-y-auto p-1" data-permissions>
             {prompts.map((prompt) => (
-              <ComputerPrompt key={prompt.requestId} prompt={prompt} respond={(decision) => respond(prompt, decision)} />
+              <ComputerPrompt key={prompt.requestId} prompt={prompt} respond={(decision) => respond(prompt, decision)} agent={agentName(session.provider)} />
             ))}
           </div>
         )}
         {connected && <RemoteLimitNotice client={client} computer={computer} sessionId={session.id} limit={limit} held={queue.length} busy={working || prompts.length > 0} />}
         {connected && <RemoteUpNext client={client} computer={computer} sessionId={session.id} queue={queue} limited={limit?.stopped === true} />}
         {session.readOnly ? (
-          // Its provider can't continue it there (OpenAI Codex, for now): that computer's command to continue it in its CLI.
+          // Its provider can't continue it there (a read-only provider): that computer's command to continue it in its CLI.
           <ReadOnlyNotice provider={session.provider ?? null} sessionId={session.id} command={session.readOnly.resumeCommand} />
         ) : (
           <RemoteComposer client={client} computer={computer} session={session} working={working} onSent={() => (atBottom.current = true)} onStop={stop} />

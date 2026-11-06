@@ -15,7 +15,7 @@ type Respond = (decision: PermissionDecision) => Promise<boolean>;
  * The decisions are the ones the card on that computer sends; `respond` sends them there. The plan is shown as
  * remote text: nothing in it acts here.
  */
-export function ComputerPrompt({ prompt, respond }: { prompt: RemotePrompt; respond(decision: PermissionDecision): Promise<boolean> }) {
+export function ComputerPrompt({ prompt, respond, agent = 'Claude' }: { prompt: RemotePrompt; respond(decision: PermissionDecision): Promise<boolean>; /** Who asks, by its short name (Codex); Claude by default. */ agent?: string }) {
   const titleId = useId();
   const cardRef = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false);
@@ -36,11 +36,11 @@ export function ComputerPrompt({ prompt, respond }: { prompt: RemotePrompt; resp
       data-computer-prompt={prompt.requestId}
     >
       {kind === 'question' ? (
-        <Questions prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} />
+        <Questions prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} agent={agent} />
       ) : kind === 'plan' ? (
-        <Plan prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} />
+        <Plan prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} agent={agent} />
       ) : (
-        <Tool prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} />
+        <Tool prompt={prompt} titleId={titleId} cardRef={cardRef} busy={busy} respond={send} agent={agent} />
       )}
     </section>
   );
@@ -52,23 +52,24 @@ interface CardProps {
   cardRef: RefObject<HTMLElement | null>;
   busy: boolean;
   respond: Respond;
+  agent: string;
 }
 
-function Header({ icon, prompt, titleId }: { icon: ReactNode; prompt: RemotePrompt; titleId: string }) {
+function Header({ icon, prompt, titleId, agent }: { icon: ReactNode; prompt: RemotePrompt; titleId: string; agent: string }) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-warn/15 text-warn" aria-hidden>
         {icon}
       </span>
       <h2 id={titleId} className="min-w-0 flex-1 truncate text-body font-semibold">
-        {promptTitle(prompt)}
+        {promptTitle(prompt, agent)}
       </h2>
       <Waiting since={prompt.createdAt} />
     </div>
   );
 }
 
-function Tool({ prompt, titleId, cardRef, busy, respond }: CardProps) {
+function Tool({ prompt, titleId, cardRef, busy, respond, agent }: CardProps) {
   const [feedback, setFeedback] = useState('');
   const subject = promptSubject(prompt);
   const command = typeof (prompt.input as { command?: unknown } | null)?.command === 'string';
@@ -77,7 +78,7 @@ function Tool({ prompt, titleId, cardRef, busy, respond }: CardProps) {
   useCardShortcuts(cardRef, 'tool', 0, busy, { allow, deny });
   return (
     <div className="grid gap-2.5">
-      <Header prompt={prompt} titleId={titleId} icon={command ? <SquareTerminal size={15} /> : <ShieldQuestion size={15} />} />
+      <Header prompt={prompt} titleId={titleId} agent={agent} icon={command ? <SquareTerminal size={15} /> : <ShieldQuestion size={15} />} />
       {subject && <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-bg px-3 py-2 font-mono text-ui whitespace-pre-wrap break-all select-text">{subject}</pre>}
       {prompt.description && prompt.description.trim() !== subject.trim() && <p className="text-ui text-muted">{prompt.description}</p>}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -91,12 +92,12 @@ function Tool({ prompt, titleId, cardRef, busy, respond }: CardProps) {
         )}
         <DenyButton label="Deny" busy={busy} onClick={deny} />
       </div>
-      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy} />
+      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={deny} busy={busy} agent={agent} />
     </div>
   );
 }
 
-function Questions({ prompt, titleId, cardRef, busy, respond }: CardProps) {
+function Questions({ prompt, titleId, cardRef, busy, respond, agent }: CardProps) {
   const questions = promptQuestions(prompt);
   const [picks, setPicks] = useState<Record<string, string[]>>({});
   const [step, setStep] = useState(0);
@@ -123,7 +124,7 @@ function Questions({ prompt, titleId, cardRef, busy, respond }: CardProps) {
   });
   return (
     <div className="grid gap-3">
-      <Header prompt={prompt} titleId={titleId} icon={<MessageCircleQuestion size={15} />} />
+      <Header prompt={prompt} titleId={titleId} agent={agent} icon={<MessageCircleQuestion size={15} />} />
       {questions.map((q, qi) => {
         const picked = picks[q.question] ?? [];
         const rows = q.options.map((option, i) => (
@@ -164,7 +165,7 @@ function Questions({ prompt, titleId, cardRef, busy, respond }: CardProps) {
   );
 }
 
-function Plan({ prompt, titleId, cardRef, busy, respond }: CardProps) {
+function Plan({ prompt, titleId, cardRef, busy, respond, agent }: CardProps) {
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState<string | null>(null);
   const plan = typeof (prompt.input as { plan?: unknown } | null)?.plan === 'string' ? (prompt.input as { plan: string }).plan : '';
@@ -173,7 +174,7 @@ function Plan({ prompt, titleId, cardRef, busy, respond }: CardProps) {
   useCardShortcuts(cardRef, 'plan', 0, busy, { allow: start, deny: keepPlanning });
   return (
     <div className="grid gap-2.5">
-      <Header prompt={prompt} titleId={titleId} icon={<ClipboardList size={15} />} />
+      <Header prompt={prompt} titleId={titleId} agent={agent} icon={<ClipboardList size={15} />} />
       <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-border bg-bg px-3 py-2">
         <RemoteText text={plan} />
       </div>
@@ -183,7 +184,7 @@ function Plan({ prompt, titleId, cardRef, busy, respond }: CardProps) {
         </Button>
         <DenyButton label="Keep planning" busy={busy} onClick={keepPlanning} />
       </div>
-      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={keepPlanning} busy={busy} />
+      <FeedbackField value={feedback} onChange={setFeedback} onSubmit={keepPlanning} busy={busy} agent={agent} />
       <ErrorLine error={error} />
     </div>
   );

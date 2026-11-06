@@ -458,7 +458,7 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
       return (
         <Section
           title="Profiles"
-          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code, GitHub Copilot or OpenAI Codex with its own login. Codex's sessions are read-only for now. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
+          description="Use more than one account, for example a personal Claude plan and a work one, or GitHub Copilot. Each profile is a config folder of Claude Code, GitHub Copilot or OpenAI Codex with its own login. Link a project to a profile from its menu or the Projects view: its new sessions run with that profile; other projects use the default. Each profile can have defaults for new sessions, which a project's own settings override."
         >
           <ProfilesSettings />
         </Section>
