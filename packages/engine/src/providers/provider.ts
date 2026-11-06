@@ -1,4 +1,4 @@
-import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta, TokenCounts } from '@seshboard/protocol';
+import type { BackgroundTask, Capabilities, Effort, ImageAttachment, LiveStatus, ModelOption, OptionalProvider, PermissionDecision, PermissionMode, PermissionRequest, ProviderMode, ProviderQuota, RewindResult, SlashCommand, StreamDelta, TokenCounts, UsageSnapshot } from '@seshboard/protocol';
 import type { SessionSource } from '../claude/sessionSource.ts';
 import type { AskText } from '../host/sideQuestions.ts';
 import type { RawSessionMessage } from '../claude/transcript.ts';
@@ -184,6 +184,14 @@ export interface ProviderDriver {
   status(): Promise<DriverStatus>;
   /** The account's premium requests this period (Copilot's), when the provider has them. */
   quota?(): Promise<ProviderQuota | null>;
+  /**
+   * The account's rate limits as Claude Code's plan usage (Codex's 5-hour and weekly windows), when the provider has
+   * them: `usage.get` answers with it for the profile. Null when there is none to show (signed out). `refresh` reads
+   * now instead of reusing a read from the last minute.
+   */
+  planUsage?(refresh: boolean): Promise<UsageSnapshot | null>;
+  /** Hears every change of `planUsage` the provider reports by itself, for `usage.changed`. Returns the function that stops. */
+  onPlanUsage?(listener: (usage: UsageSnapshot | null) => void): () => void;
   models(): Promise<ModelOption[]>;
   /** The slash commands a new session has, before one runs here. */
   commands(): Promise<SlashCommand[]>;

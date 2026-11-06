@@ -1193,7 +1193,8 @@ export class RemoteHub {
       },
       'usage.get': async ({ refresh }) => {
         const { profiles, defaultId } = this.options.profiles();
-        // A read-only provider's profile (OpenAI Codex) has no plan usage, and Seshboard doesn't show its own yet.
+        // A read-only provider's profile has no plan usage. Codex's rate limits come as plan usage (`usage` answers for its
+        // profile from its driver), so its 5-hour and weekly windows show as Claude Code's do.
         const ordered = profiles.filter((p) => !p.readOnly).sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
         return {
           profiles: await Promise.all(
