@@ -168,7 +168,7 @@ import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
-import { providerStatus } from './providers/provider.ts';
+import { providerStatus, type ProviderDriver } from './providers/provider.ts';
 import { ProviderHosts } from './providers/providerHosts.ts';
 import { ProviderNotes } from './providers/providerNotes.ts';
 import { RoutedHostManager } from './providers/routedHosts.ts';
@@ -902,6 +902,22 @@ export function createEngine(options: EngineOptions): Engine {
       usageMonitors.set(profileId, monitor);
     }
     return monitor;
+  };
+  /** The provider drivers whose plan usage changes are broadcast, by profile (the driver of a profile can be made anew). */
+  const providerUsageWatch = new Map<string, { driver: ProviderDriver; off: () => void }>();
+  /**
+   * A profile's plan usage, as `usage.get` answers: Claude Code's for a Claude profile, the driver's for a provider that
+   * has plan usage of its own (Codex's rate limits; `ProviderDriver.planUsage`), each followed by `usage.changed`.
+   */
+  const planUsage = async (profileId: string, refresh: boolean): Promise<{ usage: UsageSnapshot | null; error: string | null }> => {
+    const driver = providerProfiles.adapter(profileId)?.driver;
+    if (!driver?.planUsage) return usageFor(profileId).get(refresh);
+    if (providerUsageWatch.get(profileId)?.driver !== driver) {
+      providerUsageWatch.get(profileId)?.off();
+      const off = driver.onPlanUsage?.((usage) => broadcast('usage.changed', { profileId, usage })) ?? (() => {});
+      providerUsageWatch.set(profileId, { driver, off });
+    }
+    return { usage: await driver.planUsage(refresh).catch(() => null), error: null };
   };
   /** Where each profile's tokens went (from its transcripts) and its plan % over time, for the Usage view. */
   const insights = new UsageInsights({
@@ -2633,7 +2649,7 @@ export function createEngine(options: EngineOptions): Engine {
       globalPermissionMode: () => globalPermissionMode,
       // Auto, while it is off in Settings, starts on Claude Code's default, as in New session.
       globalModel: () => ({ ...globalModel, model: globalModel.model === AUTO_MODEL && !autoModel.enabled ? null : globalModel.model }),
-      usage: (profileId, refresh) => usageFor(profileId).get(refresh),
+      usage: (profileId, refresh) => planUsage(profileId, refresh),
       tokens: (account, params) => {
         const match = profileOfAccount(account);
         return match ? insights.breakdown(match, params) : null;
@@ -3535,9 +3551,12 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'models.list': () => ({ models: withStandInModel(hosts.listModels()) }),
     'usage.get': ({ refresh, profileId }) => {
-      // Plan usage is Claude Code's: another provider's profile has its own (`providers.quota`), never a Claude profile's.
-      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude') throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
-      return usageFor(profileId && profiles.has(profileId) ? profileId : profiles.defaultId()).get(refresh);
+      // Plan usage is Claude Code's, and a provider's whose driver reports windows of its own (Codex's rate limits).
+      // Copilot's premium requests are `providers.quota`.
+      if (profileId && profiles.has(profileId) && profiles.providerOf(profileId) !== 'claude' && !providerProfiles.adapter(profileId)?.driver?.planUsage) {
+        throw new RpcError('NOT_CLAUDE_PROFILE', `${PROVIDER_NAMES[profiles.providerOf(profileId)]} has premium requests, not plan usage`);
+      }
+      return planUsage(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), refresh);
     },
     'usage.breakdown': ({ profileId, ...params }) => insights.breakdown(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
     'usage.history': ({ profileId, ...params }) => insights.planHistory(profileId && profiles.has(profileId) ? profileId : profiles.defaultId(), params),
@@ -4674,6 +4693,7 @@ export function createEngine(options: EngineOptions): Engine {
       hosts.closeAll();
       awake.dispose();
       for (const monitor of usageMonitors.values()) monitor.stop();
+      for (const watch of providerUsageWatch.values()) watch.off();
       insights.close();
       checksWatcher.close();
       looseEnds?.close();

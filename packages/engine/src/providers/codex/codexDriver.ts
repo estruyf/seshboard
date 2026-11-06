@@ -8,6 +8,7 @@ import { codexItemId } from './codexEvents.ts';
 import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
+import { CodexUsage } from './codexUsage.ts';
 import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
 
 /** What turns one running thread's notifications into a session's events (`CodexLive`; tests fake it). */
@@ -189,6 +190,18 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     }
     return all;
   };
+  // The account's rate limits as plan usage: read when asked, and kept up to date from Codex's rolling updates, which
+  // come without a thread while any of its sessions runs. Listened to from the first ask: until then nothing of the
+  // server is made.
+  const usage = new CodexUsage({ read: () => server.request('account/rateLimits/read', { excludeResetCreditDetails: true }) });
+  let offUsage: (() => void) | null = null;
+  const followUsage = () => {
+    offUsage ??= server.onNotification((notification) => {
+      if (notification.method === 'account/rateLimits/updated') usage.update(notification.params);
+    });
+    return usage;
+  };
+
   const defaultModel = async () => (await listModels().catch(() => [])).find((m) => m.isDefault) ?? null;
   const defaultEffort = async (model: string | null) => {
     const models = await listModels().catch(() => []);
@@ -202,6 +215,10 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     threads: () => new Set(running.keys()),
 
     status: () => options.status(),
+
+    planUsage: (refresh) => followUsage().get(refresh),
+
+    onPlanUsage: (listener) => followUsage().onChange(listener),
 
     async models() {
       return (await listModels()).filter((m) => !m.hidden).map(codexModelOption);
@@ -516,6 +533,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     },
 
     async dispose() {
+      offUsage?.();
+      offUsage = null;
       for (const session of running.values()) session.letGo();
       running.clear();
       unwire();

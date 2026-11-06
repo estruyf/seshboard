@@ -578,8 +578,10 @@ export const contract = {
     },
     'models.list': { params: z.object({}), result: z.object({ models: z.array(ModelOption) }) },
     /**
-     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report. Cached for a minute;
-     * `refresh` fetches now. `usage` is null without a claude.ai plan or before the first fetch.
+     * Plan usage (5-hour and weekly limits) from Claude Code's /usage report, or for a Codex profile its rate limits in
+     * the same meters (`session`, `weekly_all`, a model's `weekly_scoped`). Cached for a minute; `refresh` fetches now.
+     * `usage` is null without a plan (signed out, an API key) or before the first fetch. A Copilot profile is refused
+     * (`NOT_CLAUDE_PROFILE`): its premium requests are `providers.quota`.
      */
     'usage.get': {
       /** The profile whose plan to report (default: the default profile). */
