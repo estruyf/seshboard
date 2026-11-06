@@ -109,7 +109,7 @@ function runOf(id: string, parent: string | null): PipelineRunState {
   };
 }
 
-async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
+async function setup(options: { copilotProfile?: boolean; codexProfile?: boolean; globalModel?: GlobalModel; identity?: Uint8Array | null; tunnel?: (port: number) => { file: string; args: string[] }; tools?: boolean; pushStatus?: number; hosts?: SessionHostInfo[]; archived?: Set<string>; previewApp?: boolean; runs?: PipelineRunState[]; updates?: boolean } = {}) {
   const pushes: Array<{ url: string; urgency: string }> = [];
   /** Each push's VAPID header and body, apart so the tests that only count pushes stay as they are. */
   const pushBodies: Array<{ authorization: string; body: Uint8Array }> = [];
@@ -189,8 +189,10 @@ async function setup(options: { copilotProfile?: boolean; globalModel?: GlobalMo
         { id: 'work', name: 'Work', color: 'blue', defaults: { model: 'sonnet', effort: 'high', permissionMode: null, workspace: 'worktree', baseRef: null } },
         // A GitHub Copilot profile, for the tests that ask for one.
         ...(options.copilotProfile ? [{ id: 'copilot', name: 'Copilot', color: 'purple' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null } }] : []),
+        // An OpenAI Codex profile: read-only, so it can't start a session.
+        ...(options.codexProfile ? [{ id: 'codex', name: 'Codex', color: 'green' as const, defaults: { model: null, effort: null, permissionMode: null, workspace: null, baseRef: null }, readOnly: true }] : []),
       ],
-      defaultId: 'default',
+      defaultId: options.codexProfile ? 'codex' : 'default',
     }),
     readTranscript: async () => ['a', 'b', 'c'].map(message),
     watchTranscript: (sessionId) => (watching.add(sessionId), () => void watching.delete(sessionId)),
@@ -460,6 +462,19 @@ describe('Remote hub', () => {
     expect(created.at(-1)).toMatchObject({ root: ROOT, prompt: 'add a test', model: 'gpt-5-mini', choice: expect.objectContaining({ profileId: 'copilot', permissionMode: 'auto' }) });
     // A mode the provider doesn't have is refused, not passed on.
     await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'copilot', permissionMode: 'plan' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+  });
+
+  it("never offers a read-only provider's profile for a new session, even as the default", async () => {
+    const { hub, port, on, created } = await setup({ codexProfile: true });
+    await on();
+    const { remote } = await pair(hub, port);
+    const options = await remote.call('options.get', {});
+    expect(options.profiles.map((p) => p.id)).toEqual(['default', 'work']);
+    expect(options.defaultProfileId).toBe('default');
+    await expect(remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'x', profileId: 'codex' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    // Its being the default leaves the first profile that can start one.
+    await remote.call('session.create', { projectId: projectIdOf(ROOT), prompt: 'y' });
+    expect(created.at(-1)?.choice).toMatchObject({ profileId: 'default' });
   });
 
   it("starts a provider profile's session on its own default model, not the global one", async () => {

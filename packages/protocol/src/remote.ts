@@ -64,6 +64,11 @@ export const RemoteSession = z.object({
    * don't apply. Null or left out: Claude Code.
    */
   provider: z.enum(OPTIONAL_PROVIDERS).nullable().optional(),
+  /**
+   * Its provider can't continue it here (OpenAI Codex, read-only for now): the phone shows the command that continues it
+   * in the provider's own CLI in place of the message box. Left out: it can be sent to.
+   */
+  readOnly: z.object({ resumeCommand: z.string() }).optional(),
   /** While it runs in Seshboard: its model, effort and permission mode, for the chips in the message box. */
   model: z.string().nullable(),
   /** Null: the model's own. Left out by a Seshboard from before a phone could change it. */

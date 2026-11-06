@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -302,6 +302,46 @@ describe('SessionIndex', () => {
     await index.refresh();
     fake.infos.set(ID_B, info(ID_B));
     await writeUntilSeen(join(later, 'projects', '-repo', `${ID_B}.jsonl`), () => index.get(ID_B) !== null);
+  });
+
+  it("follows a provider's session file that moves (Codex compresses a rollout), with the latest profile", async () => {
+    const dir = join(tempDir(), 'sessions');
+    mkdirSync(dir);
+    const fake = fakeSource([]);
+    const cache = openCacheDatabase(join(tempDir(), 'cache.sqlite'));
+    cleanups.push(() => cache.close());
+    const plain = join(dir, `${ID_A}.jsonl`);
+    const packed = `${plain}.zst`;
+    // As Codex's files do: the session stands for whichever of its two files is there now.
+    const provider = {
+      sessionOf: (relative: string) => (relative.startsWith(ID_A) ? { sessionId: ID_A, file: existsSync(plain) ? plain : packed } : null),
+      files: () => new Map([[ID_A, existsSync(plain) ? plain : packed]]),
+    };
+    const index = new SessionIndex({
+      baseline: 1500,
+      db: cache.db,
+      source: fake.source,
+      projectsDirs: () => [{ profileId: 'codex', dir, provider }],
+      resolver: createProjectResolver('/nonexistent-home'),
+      log: () => {},
+      onChange: () => {},
+      onTranscriptChanged: () => {},
+    });
+    cleanups.push(() => index.stop());
+    index.start();
+    await index.refresh();
+    fake.infos.set(ID_A, info(ID_A, { provider: 'codex', summary: 'First' }));
+    await writeUntilSeen(plain, () => index.get(ID_A) !== null);
+    // Compressed: the `.zst` is written and the plain file goes. The session stays, and later changes still reach it.
+    writeFileSync(packed, '{}\n');
+    unlinkSync(plain);
+    fake.infos.set(ID_A, info(ID_A, { provider: 'codex', summary: 'Second' }));
+    await until(() => {
+      if (index.get(ID_A)?.title === 'Second') return true;
+      appendFileSync(packed, '{}\n');
+      return false;
+    });
+    expect(index.get(ID_A)).toMatchObject({ title: 'Second', profileId: 'codex' });
   });
 
   it('does not let a slow full scan undo a delete or a write that happened meanwhile', async () => {

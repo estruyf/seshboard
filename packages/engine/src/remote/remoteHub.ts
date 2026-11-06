@@ -125,6 +125,8 @@ export interface RemoteHubProfile {
   defaults: ProfileDefaults;
   /** Its account's `accountTag`, for `usage.get`; null without an account. */
   account?: string | null;
+  /** A profile of a provider that can't start sessions here (OpenAI Codex, read-only): never offered for a new one. */
+  readOnly?: boolean;
 }
 
 /** A run's button, as the computer's step tree has it. */
@@ -212,6 +214,8 @@ export interface RemoteHubOptions {
   create(root: string, prompt: string, choice: SessionChoice, images: RemoteImage[]): Promise<{ sessionId: string }>;
   /** The provider a profile of another provider is (GitHub Copilot), with its own modes; null for Claude Code's. */
   providerOfProfile?(profileId: string): RemoteProfile['provider'] | null;
+  /** Providers whose sessions are read-only here (Codex), with the command that continues one in its own CLI. */
+  readOnlyProviders?(): ReadonlyMap<string, string>;
   /** Whether a provider profile can start a session now, and its models. */
   providerReady?(profileId: string): Promise<{ problem: string | null; models: Array<Pick<ModelOption, 'value' | 'displayName' | 'description' | 'supportsEffort'>> }>;
   /** The local branches of the folder `root`, as `git.branches` on the computer (none outside a git repository). */
@@ -835,7 +839,7 @@ export class RemoteHub {
     const runs = this.options.pipelines?.runs();
     const starters = this.origins.starters(new Map(this.devices.list().map((d) => [d.id, d.name])));
     const triggers = this.options.triggerSessions?.();
-    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}) });
+    return remoteSessions(this.options.sources(), { archiveAfterDays: this.options.archiveAfterDays(), scope: this.options.scope(), projectNames, profiles: this.options.profiles().profiles, starters, ...(runs ? { runs } : {}), ...(triggers ? { triggers } : {}), ...(this.options.readOnlyProviders ? { readOnlyProviders: this.options.readOnlyProviders() } : {}) });
   }
 
   private projectName(root: string): string {
@@ -883,7 +887,9 @@ export class RemoteHub {
 
   /** The profile a new session in `project` runs with: the one the phone chose, else the project's, else the default. */
   private profileFor(project: RemoteProject, chosen: string | undefined): RemoteHubProfile {
-    const { profiles, defaultId } = this.options.profiles();
+    // A read-only provider's profile can't start a session: as if it weren't there.
+    const { defaultId } = this.options.profiles();
+    const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
     const find = (id: string | null | undefined) => (id ? profiles.find((p) => p.id === id) : undefined);
     if (chosen && !find(chosen)) throw new RpcError('NOT_FOUND', 'That Claude profile no longer exists');
     const profile = find(chosen) ?? find(project.profileId) ?? find(defaultId) ?? profiles[0];
@@ -1158,7 +1164,9 @@ export class RemoteHub {
         return this.options.providerReady(profileId);
       },
       'options.get': () => {
-        const { profiles, defaultId } = this.options.profiles();
+        const { defaultId } = this.options.profiles();
+        // New session's choices: a read-only provider's profile (Codex) can't start one.
+        const profiles = this.options.profiles().profiles.filter((p) => !p.readOnly);
         const globalMode = this.options.globalPermissionMode();
         const globalModel = this.options.globalModel();
         return {
@@ -1169,7 +1177,7 @@ export class RemoteHub {
             const provider = this.options.providerOfProfile?.(p.id) ?? null;
             return { id: p.id, name: p.name, color: p.color, defaults: remoteDefaults(p.defaults, globalMode, provider ? NO_GLOBAL_MODEL : globalModel), ...(provider ? { provider } : {}) };
           }),
-          defaultProfileId: defaultId,
+          defaultProfileId: profiles.some((p) => p.id === defaultId) ? defaultId : (profiles[0]?.id ?? defaultId),
           auto: this.options.autoModel(),
           projects: this.yourProjects().map((p) => ({
             id: projectIdOf(p.root),

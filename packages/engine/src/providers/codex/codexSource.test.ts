@@ -106,7 +106,7 @@ describe('codexSessionSource', () => {
     ]);
   });
 
-  it('degrades quietly when Codex is missing or fails: empty, logged once until it works again', async () => {
+  it('degrades quietly when Codex is missing or fails: empty, logged once until it works again; a conversation says it failed', async () => {
     const log = vi.fn();
     let fail = true;
     const server = fakeAppServer({
@@ -125,18 +125,67 @@ describe('codexSessionSource', () => {
     expect(await source.list()).toEqual([]);
     expect(await source.list()).toEqual([]);
     expect(await source.info(A)).toBeUndefined();
-    expect(await source.messages(A)).toEqual([]);
-    expect(await source.turns(A)).toEqual([]);
+    // Not an empty transcript: the window says it couldn't read it (the transcript hub logs it).
+    await expect(source.messages(A)).rejects.toThrow("Couldn't read this Codex session: crashed");
+    await expect(source.turns(A)).rejects.toThrow('crashed');
     expect(log.mock.calls).toEqual([
       ['warn', 'Codex: listing sessions failed: codex is not installed'],
       ['warn', 'Codex: reading a thread failed: timed out'],
-      ['warn', 'Codex: reading a conversation failed: crashed'],
     ]);
     // Works again, then fails for a moment: the sidebar keeps what it listed last, and the new failure is logged.
     fail = false;
     expect((await source.list()).map((s) => s.sessionId)).toEqual([A]);
     fail = true;
     expect((await source.list()).map((s) => s.sessionId)).toEqual([A]);
-    expect(log).toHaveBeenCalledTimes(4);
+    expect(log).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the last whole list when a later page fails, and lists a thread whose file it can\'t stat', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-source-'));
+    try {
+      // A file where a folder should be: stat throws ENOTDIR, not "missing".
+      writeFileSync(join(dir, 'file'), '');
+      let second = (): { data: ReturnType<typeof thread>[]; nextCursor: string | null } => ({ data: [thread(B, { path: join(dir, 'file', 'rollout.jsonl') })], nextCursor: null });
+      const server = fakeAppServer({ 'thread/list': ({ cursor }) => (cursor ? second() : { data: [thread(A)], nextCursor: 'next' }) });
+      const source = codexSessionSource(server);
+      const first = await source.list();
+      expect(first.map((s) => s.sessionId)).toEqual([A, B]);
+      expect(first[1]).not.toHaveProperty('fileSize');
+      second = () => {
+        throw new Error('timed out');
+      };
+      expect((await source.list()).map((s) => s.sessionId)).toEqual([A, B]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('answers from the last list while no rollout file changed, and asks again when one did or the list got old', async () => {
+    let changes = 'one';
+    let now = 0;
+    const server = fakeAppServer({ 'thread/list': () => ({ data: [thread(A)], nextCursor: null }) });
+    const source = codexSessionSource(server, { changes: () => changes, maxListAgeMs: 600_000, now: () => now });
+    await source.list();
+    now = 120_000;
+    expect((await source.list()).map((s) => s.sessionId)).toEqual([A]);
+    expect(server.calls).toHaveLength(1);
+    changes = 'two';
+    await source.list();
+    expect(server.calls).toHaveLength(2);
+    now = 800_000;
+    await source.list();
+    expect(server.calls).toHaveLength(3);
+  });
+
+  it('asks every time when it can\'t tell what changed', async () => {
+    const server = fakeAppServer({ 'thread/list': () => ({ data: [thread(A)], nextCursor: null }) });
+    const source = codexSessionSource(server, {
+      changes: () => {
+        throw new Error('EACCES');
+      },
+    });
+    await source.list();
+    await source.list();
+    expect(server.calls).toHaveLength(2);
   });
 });

@@ -194,6 +194,8 @@ describe('engine over a MessagePort', () => {
     expect(await client.call('providers.status', { profileId })).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
     // Read-only: nothing is sent to it.
     await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
+    // No driver, so no cheap model for Skim.
+    expect(await client.call('skim.model', { sessionId: id })).toEqual({ model: null });
 
     await client.call('session.delete', { sessionId: id });
     expect(trashed).toEqual([[rollout]]);

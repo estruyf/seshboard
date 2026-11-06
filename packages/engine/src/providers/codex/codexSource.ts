@@ -33,8 +33,13 @@ export function codexSessionInfo(thread: Thread): RawSessionInfo | undefined {
   const name = thread.name?.trim() || undefined;
   const preview = thread.preview?.trim() || undefined;
   if (!name && !preview) return undefined;
-  // The rollout file's size, for the archive clean-up's report. A thread without one has none to give.
-  const fileSize = thread.path ? statSync(thread.path, { throwIfNoEntry: false })?.size : undefined;
+  // The rollout file's size, for the archive clean-up's report. A thread without one (or one that can't be read) has none.
+  let fileSize: number | undefined;
+  try {
+    fileSize = thread.path ? statSync(thread.path, { throwIfNoEntry: false })?.size : undefined;
+  } catch {
+    fileSize = undefined;
+  }
   return {
     sessionId: thread.id,
     provider: 'codex',
@@ -52,12 +57,23 @@ export function codexSessionInfo(thread: Thread): RawSessionInfo | undefined {
 
 export interface CodexSourceOptions {
   log?: (level: LogLevel, message: string) => void;
+  /**
+   * What the rollout files are now (their names, sizes and times). While it stays the same, a timed `list()` answers
+   * from the last list instead of asking Codex, so an idle app-server isn't started again on every refresh.
+   */
+  changes?: () => string;
+  /** How long a list is used while nothing changed: names set elsewhere don't touch the rollout files. */
+  maxListAgeMs?: number;
+  now?: () => number;
 }
+
+/** A list is asked again at least this often, even when no rollout file changed. */
+const MAX_LIST_AGE_MS = 10 * 60_000;
 
 export type CodexSessionSource = SessionSource & {
   /** One thread as Codex has it (a subagent's too); undefined when it can't be read. */
   thread(threadId: string): Promise<Thread | undefined>;
-  /** A thread's turns, oldest first, with every item (`itemsView: 'full'`); empty when they can't be read. */
+  /** A thread's turns, oldest first, with every item (`itemsView: 'full'`). Throws when they can't be read. */
   turns(threadId: string): Promise<Turn[]>;
 };
 
@@ -65,9 +81,10 @@ export type CodexSessionSource = SessionSource & {
  * Reads OpenAI Codex's sessions through `codex app-server` (`thread/list`, `thread/read`, `thread/turns/list`), never
  * from its files: Codex keeps paginated history in its own database. Lists without `useStateDbOnly`, so a rollout file
  * moved to the Trash takes its thread out of the list. A Codex that isn't installed, or a server that crashed or timed
- * out, leaves the sessions as they were last listed (none before the first list) and is logged once until it works again.
+ * out, leaves the sessions as they were last listed (none before the first list) and is logged once until it works
+ * again. A conversation that can't be read throws, so the transcript says so rather than show nothing.
  */
-export function codexSessionSource(server: AppServer, { log = () => {} }: CodexSourceOptions = {}): CodexSessionSource {
+export function codexSessionSource(server: AppServer, { log = () => {}, changes, maxListAgeMs = MAX_LIST_AGE_MS, now = Date.now }: CodexSourceOptions = {}): CodexSessionSource {
   /** What failed and was logged: logged again only after it worked once. */
   const failing = new Set<string>();
   const attempt = async <T>(what: string, run: () => Promise<T>, fallback: T): Promise<T> => {
@@ -83,6 +100,8 @@ export function codexSessionSource(server: AppServer, { log = () => {} }: CodexS
   };
   /** The last list that worked: a server that fails for a moment doesn't empty the sidebar. */
   let lastList: RawSessionInfo[] = [];
+  /** When it was listed, and what the rollout files were then; null until a list worked. */
+  let listed: { at: number; changes: string | null } | null = null;
 
   const listThreads = async (): Promise<Thread[]> => {
     const threads: Thread[] = [];
@@ -99,36 +118,48 @@ export function codexSessionSource(server: AppServer, { log = () => {} }: CodexS
   const thread = (threadId: string) =>
     THREAD_ID.test(threadId) ? attempt('reading a thread', async () => (await server.request('thread/read', { threadId, includeTurns: false })).thread, undefined) : Promise.resolve(undefined);
 
-  const turns = (threadId: string) =>
-    THREAD_ID.test(threadId)
-      ? attempt(
-          'reading a conversation',
-          async () => {
-            const all: Turn[] = [];
-            let cursor: string | null = null;
-            for (let page = 0; page < MAX_PAGES; page++) {
-              const { data, nextCursor }: { data: Turn[]; nextCursor: string | null } = await server.request('thread/turns/list', { threadId, cursor, sortDirection: 'asc', itemsView: 'full' });
-              all.push(...data);
-              if (!nextCursor || nextCursor === cursor) break;
-              cursor = nextCursor;
-            }
-            return all;
-          },
-          [] as Turn[],
-        )
-      : Promise.resolve([] as Turn[]);
+  const turns = async (threadId: string): Promise<Turn[]> => {
+    if (!THREAD_ID.test(threadId)) return [];
+    const all: Turn[] = [];
+    let cursor: string | null = null;
+    try {
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { data, nextCursor }: { data: Turn[]; nextCursor: string | null } = await server.request('thread/turns/list', { threadId, cursor, sortDirection: 'asc', itemsView: 'full' });
+        all.push(...data);
+        if (!nextCursor || nextCursor === cursor) break;
+        cursor = nextCursor;
+      }
+    } catch (error) {
+      throw new Error(`Couldn't read this Codex session: ${(error as Error).message}`);
+    }
+    return all;
+  };
+
+  /** What the rollout files are now; null when that can't be told (then Codex is asked). */
+  const changesNow = () => {
+    try {
+      return changes?.() ?? null;
+    } catch {
+      return null;
+    }
+  };
 
   return {
     async list() {
+      const current = changesNow();
+      if (listed && current !== null && current === listed.changes && now() - listed.at < maxListAgeMs) return lastList;
       const threads = await attempt('listing sessions', listThreads, null);
       if (!threads) return lastList;
       const seen = new Set<string>();
-      lastList = [];
+      const infos: RawSessionInfo[] = [];
       for (const t of threads) {
-        const info = seen.has(t.id) ? undefined : codexSessionInfo(t);
+        if (seen.has(t.id)) continue;
         seen.add(t.id);
-        if (info) lastList.push(info);
+        const info = codexSessionInfo(t);
+        if (info) infos.push(info);
       }
+      lastList = infos;
+      listed = { at: now(), changes: current };
       return lastList;
     },
     async info(sessionId) {

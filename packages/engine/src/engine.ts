@@ -2549,8 +2549,14 @@ export function createEngine(options: EngineOptions): Engine {
       projects: () => listProjects().map((p) => ({ root: p.root, name: p.name, exists: p.exists, added: p.added, order: p.order, defaults: p.defaults, profileId: p.profileId })),
       profiles: () => {
         const tags = new Map(profiles.accounts().map((p) => [p.id, accountTag(p.account)]));
-        return { profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null })), defaultId: profiles.defaultId() };
+        // A profile of a provider that can't start sessions (Codex, read-only for now) is never offered for a new one.
+        const startable = new Set(providerCatalog(providerOptions).filter((p) => p.canStart).map((p) => p.id));
+        return {
+          profiles: profiles.exportEntries().map((p) => ({ ...p, account: tags.get(p.id) ?? null, ...(p.provider !== 'claude' && !startable.has(p.provider) ? { readOnly: true } : {}) })),
+          defaultId: profiles.defaultId(),
+        };
       },
+      readOnlyProviders: () => new Map(providerCatalog(providerOptions).filter((p) => !p.canStart).map((p) => [p.id, p.resumeCommand])),
       readTranscript: (sessionId) => transcripts.readWithHeld(sessionId),
       watchTranscript: (sessionId, listener) => transcripts.watch(sessionId, listener),
       send: async (sessionId, text, mode, images) => {
@@ -4378,7 +4384,8 @@ export function createEngine(options: EngineOptions): Engine {
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
     'skim.highlights': (params) => skimHighlights.get(params),
-    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : ((await providerHosts.cheapModel(sessionId))?.name ?? null) }),
+    // A provider without a driver (Codex, read-only) has no cheap model to ask: null, as for one without `cheapModel`.
+    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : providerAdapterOf(sessionId)?.driver ? ((await providerHosts.cheapModel(sessionId))?.name ?? null) : null }),
     'skim.usage': ({ profileId }) => skimUsage.totals(providerScope(profileId), Date.now() - USAGE_WINDOW_MS),
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
