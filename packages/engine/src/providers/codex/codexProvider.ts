@@ -6,6 +6,8 @@ import { AppServerError, createAppServer, type AppServer, type AppServerOptions,
 import { findCodex } from './codexBinary.ts';
 import { codexMessages, codexSubagentThread } from './codexEvents.ts';
 import { codexRolloutFiles, codexRolloutsOf, codexSessionsDir } from './codexFiles.ts';
+import { codexDriver } from './codexDriver.ts';
+import { codexLocks, type LockHolders } from './codexInUse.ts';
 import { codexSessionSource } from './codexSource.ts';
 import type { GetAccountResponse } from './protocol.ts';
 
@@ -20,7 +22,10 @@ export function codexHome(env: NodeJS.ProcessEnv, home: string): string {
   return env.CODEX_HOME || join(home, '.codex');
 }
 
-const INSTALL = 'Install OpenAI Codex CLI to show its sessions here.';
+const INSTALL = 'Install OpenAI Codex CLI to run Codex sessions here.';
+
+/** A thread open elsewhere whose rollout was written this recently counts as working. */
+const WORKING_MS = 15_000;
 
 export interface CodexProviderOptions {
   /** The Codex profile this is (Settings › Profiles). */
@@ -35,18 +40,22 @@ export interface CodexProviderOptions {
   binary?: () => Promise<CodexBinary | null>;
   /** A fake `codex app-server` (tests). */
   createAppServer?: (options: AppServerOptions) => AppServer;
+  /** Who has Codex's lock files open (tests); the system's answer otherwise (`codexInUse.ts`). */
+  lockHolders?: LockHolders;
   log?: (level: LogLevel, message: string) => void;
 }
 
+const SIGN_IN = 'Not signed in to Codex CLI. Use Sign in on this profile in Settings › Profiles, or run `codex login`. Seshboard uses that login.';
+
 /**
- * What `account/read` says, as Settings › Profiles shows it. Seshboard never reads `auth.json`. Reading sessions needs
- * no login, so being signed out is no problem while Codex is read-only here (the profile still offers Sign in).
+ * What `account/read` says, as Settings › Profiles shows it. Seshboard never reads `auth.json`. Its sessions are read
+ * signed out too; running one needs the login, so signed out is the problem New session shows.
  */
 export function codexAccountStatus(binary: CodexBinary, { account, requiresOpenaiAuth }: GetAccountResponse): DriverStatus {
   // A model provider that needs no OpenAI login (set in Codex's config) counts as signed in.
   const signedIn = account !== null || !requiresOpenaiAuth;
   const email = account?.type === 'chatgpt' ? account.email : null;
-  return { binary: binary.path, version: binary.version, signedIn, account: email, login: email, problem: null };
+  return { binary: binary.path, version: binary.version, signedIn, account: email, login: email, problem: signedIn ? null : SIGN_IN };
 }
 
 /**
@@ -63,11 +72,11 @@ function rolloutChanges(files: ProviderFiles): string {
 }
 
 /**
- * One OpenAI Codex profile, read-only: its sessions listed and read through `codex app-server`, started with the
- * profile's own `CODEX_HOME` and stopped when idle, and its rollout files (`sessions/YYYY/MM/DD/rollout-*.jsonl`)
- * watched for changes. Sessions are started and continued in Codex CLI (#276, Phase 2 adds a driver).
+ * One OpenAI Codex profile: its sessions listed, read and run through `codex app-server` (`codexDriver.ts`), started
+ * with the profile's own `CODEX_HOME` and stopped when idle unless a session runs, and its rollout files
+ * (`sessions/YYYY/MM/DD/rollout-*.jsonl`) watched for changes.
  */
-export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, log = () => {} }: CodexProviderOptions): ProviderAdapter {
+export function codexProvider({ profileId, codexHome, userHome, shellEnv = async () => process.env, binary, createAppServer: create = createAppServer, lockHolders, log = () => {} }: CodexProviderOptions): ProviderAdapter {
   const folder = codexSessionsDir(codexHome);
   const lookup = binary ?? (async () => findCodex(await shellEnv(), userHome));
   // Kept once found (`codex --version` is a process of its own), and looked up again when it isn't there any more: until
@@ -78,31 +87,38 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
   // Made on the first request: a profile whose sessions are never read starts nothing.
   let made: AppServer | undefined;
   let disposed = false;
-  const serverOptions: AppServerOptions = { binary: findBinary, env: async () => ({ ...(await shellEnv()), ...homeEnv }) };
+  // The experimental API is for Plan mode (`turn/start`'s `collaborationMode`); everything else is stable.
+  const serverOptions: AppServerOptions = {
+    // A thread closed here unloads at once (Codex waits a minute by default), so its lock goes with it and Codex CLI can
+    // open it straight away.
+    binary: async () => {
+      const codex = await findBinary();
+      return codex && { ...codex, args: [...(codex.args ?? []), '-c', 'thread_unload_delay_secs=0'] };
+    },
+    env: async () => ({ ...(await shellEnv()), ...homeEnv }),
+    experimentalApi: true,
+  };
+  /** The process's client, made (not started) on first use. */
+  const real = () => (made ??= create(serverOptions));
   const server: AppServer = {
     async request(method, params) {
       // Gone with its profile (or the app quits): nothing starts a server again that nobody would stop.
       if (disposed) throw new AppServerError('Codex app-server was disposed.', 'disposed');
       try {
-        return await (made ??= create(serverOptions)).request(method, params);
+        return await real().request(method, params);
       } catch (error) {
         if (error instanceof AppServerError && error.code === 'notInstalled') found = null;
         throw error;
       }
     },
     pid: () => made?.pid() ?? null,
-    onNotification: () => {
-      throw new Error('onNotification: not built yet');
+    // After dispose these do nothing: nothing may start or keep a server that nobody would stop.
+    onNotification: (listener) => (disposed ? () => {} : real().onNotification(listener)),
+    handleRequests: (handler) => {
+      if (!disposed) real().handleRequests(handler);
     },
-    handleRequests: () => {
-      throw new Error('handleRequests: not built yet');
-    },
-    hold: () => {
-      throw new Error('hold: not built yet');
-    },
-    onExit: () => {
-      throw new Error('onExit: not built yet');
-    },
+    hold: () => (disposed ? () => {} : real().hold()),
+    onExit: (listener) => (disposed ? () => {} : real().onExit(listener)),
     dispose: async () => {
       disposed = true;
       const running = made;
@@ -110,8 +126,36 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
       await running?.dispose();
     },
   };
+  /** Whether `codex` is there, and who it is signed in as (`account/read`). */
+  const status = async (): Promise<DriverStatus> => {
+    const codex = await findBinary().catch(() => null);
+    if (!codex) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
+    try {
+      return codexAccountStatus(codex, await server.request('account/read', {}));
+    } catch (error) {
+      if (error instanceof AppServerError && error.code === 'notInstalled') return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
+      return { binary: codex.path, version: codex.version, signedIn: false, account: null, login: null, problem: (error as Error).message };
+    }
+  };
+  const driver = codexDriver({ server, status, log });
   const files = codexRolloutFiles(folder);
   const source = codexSessionSource(server, { log, changes: () => rolloutChanges(files) });
+  /** Which of `threadIds` another Codex has open (a terminal, the Codex app): its lock, held by a process not Seshboard's. */
+  const locks = codexLocks(codexHome, lockHolders ? { holders: lockHolders } : {});
+  const openElsewhere = (threadIds: readonly string[]) => {
+    const pid = server.pid();
+    return locks.openThreads(threadIds, new Set(pid === null ? [] : [pid]), driver.threads());
+  };
+  /** Each open thread's rollout file, found once: the live scan asks every few seconds. */
+  const rollouts = new Map<string, string>();
+  const rolloutOf = (threadId: string) => {
+    const known = rollouts.get(threadId);
+    if (known && statSync(known, { throwIfNoEntry: false })) return known;
+    const found = codexRolloutsOf(codexHome, threadId).find((p) => p.endsWith('.jsonl'));
+    if (found) rollouts.set(threadId, found);
+    else rollouts.delete(threadId);
+    return found ?? null;
+  };
   return {
     id: 'codex',
     profileId,
@@ -122,18 +166,21 @@ export function codexProvider({ profileId, codexHome, userHome, shellEnv = async
     source,
     resumeCommand: CODEX_RESUME,
     signInCommand: 'codex login',
-    // No driver yet: its sessions are read-only here.
-    async status() {
-      const codex = await findBinary().catch(() => null);
-      if (!codex) return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
-      try {
-        return codexAccountStatus(codex, await server.request('account/read', {}));
-      } catch (error) {
-        if (error instanceof AppServerError && error.code === 'notInstalled') return { binary: null, version: null, signedIn: false, account: null, login: null, problem: INSTALL };
-        return { binary: codex.path, version: codex.version, signedIn: false, account: null, login: null, problem: (error as Error).message };
-      }
+    driver,
+    inUse: async (sessionId) => (await openElsewhere([sessionId])).has(sessionId),
+    /**
+     * Threads another Codex has open, from their locks. Codex writes its rollout as it works, so one written in the last
+     * few seconds is working, else between turns; whether it waits on an approval doesn't show in a file it appends to.
+     */
+    async live(sessionIds) {
+      const open = await openElsewhere(sessionIds);
+      const now = Date.now();
+      return [...open].map((sessionId) => {
+        const path = rolloutOf(sessionId);
+        const written = path ? (statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? null) : null;
+        return { sessionId, pid: 0, status: written !== null && now - written < WORKING_MS ? ('running' as const) : ('idle' as const), updatedAt: written === null ? null : Math.round(written) };
+      });
     },
-    // `inUse` and `live` wait for Codex's per-thread lock (`thread-writer-locks/`), whose format isn't verified yet.
     async subagent(sessionId, toolUseId) {
       const threadId = codexSubagentThread(await source.turns(sessionId), toolUseId);
       // Codex doesn't name a subagent's type in a way that is verified yet.

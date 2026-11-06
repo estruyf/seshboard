@@ -168,7 +168,7 @@ describe('engine over a MessagePort', () => {
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
   });
 
-  it("reads a Codex profile's sessions through its app-server, says who it is signed in as, and trashes a rollout file", async () => {
+  it("reads, continues and starts a Codex profile's sessions through its app-server, and trashes a rollout file", async () => {
     const trashed: string[][] = [];
     const trashScopes: TrashScope[] = [];
     const id = '019a0000-0000-7000-8000-00000000000a';
@@ -179,7 +179,13 @@ describe('engine over a MessagePort', () => {
       'thread/list': () => ({ data: existsSync(rollout) ? [thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout })] : [], nextCursor: null }),
       'thread/read': () => ({ thread: thread(id, { name: 'Parser fix', cwd: PARSER, path: rollout }) }),
       'account/read': () => ({ account: { type: 'chatgpt', email: 'me@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true }),
+      'thread/resume': ({ threadId }) => ({ thread: thread(threadId, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'thread/start': () => ({ thread: thread(NEW, { cwd: PARSER }), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'on-request', sandbox: {} }),
+      'turn/start': () => ({ turn: { id: `turn-${server.calls.length}`, items: [], itemsView: 'notLoaded', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } }),
+      'thread/unsubscribe': () => ({}),
+      'model/list': () => ({ data: [{ id: 'gpt-5-mini', model: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'low', description: '' }], defaultReasoningEffort: 'low', inputModalities: ['text'], isDefault: true }], nextCursor: null }),
     });
+    const NEW = '019a0000-0000-7000-8000-00000000000c';
     const { client, dataDir } = connect({ trashed, trashScopes, codex: { binary: async () => ({ path: '/fake/codex', version: '0.167.0' }), createAppServer: () => server } });
     // A Codex profile's folder in the test's own folder, never the machine's ~/.codex.
     codexHome = join(dataDir, 'codex');
@@ -190,12 +196,21 @@ describe('engine over a MessagePort', () => {
     const { id: profileId } = await client.call('profiles.add', { name: 'Codex', color: 'green', configDir: codexHome, provider: 'codex' });
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.find((s) => s.id === id)).toMatchObject({ provider: 'codex', profileId, title: 'Parser fix', cwd: PARSER, origin: 'cli' });
-    // No driver: the status comes from the adapter, through `account/read`.
+    // The driver's status, through `account/read`.
     expect(await client.call('providers.status', { profileId })).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
-    // Read-only: nothing is sent to it.
-    await expect(client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false })).rejects.toMatchObject({ code: 'READ_ONLY_SESSION' });
-    // No driver, so no cheap model for Skim.
+    expect((await client.call('providers.models', { profileId })).models).toEqual([{ value: 'gpt-5-mini', displayName: 'GPT-5 mini', description: '', supportsEffort: true, efforts: ['low'] }]);
+    // Sending resumes the thread here, in the mode's sandbox.
+    await client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false });
+    expect(server.calls.filter((c) => c.method !== 'thread/list' && c.method !== 'thread/read' && c.method !== 'account/read' && c.method !== 'model/list').map((c) => c.method)).toEqual(['thread/resume', 'turn/start']);
+    expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: id, input: [{ type: 'text', text: 'hi' }], sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
+    // No cheap model for Skim.
     expect(await client.call('skim.model', { sessionId: id })).toEqual({ model: null });
+
+    // New session with the Codex profile starts a thread in the folder, with the model picked.
+    const created = await client.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', permissionMode: 'acceptEdits' });
+    expect(created.sessionId).toBe(NEW);
+    expect(server.calls.find((c) => c.method === 'thread/start')!.params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'on-request', model: 'gpt-5-mini' });
+    expect(server.calls.filter((c) => c.method === 'turn/start').at(-1)!.params).toMatchObject({ threadId: NEW, model: 'gpt-5-mini', sandboxPolicy: { type: 'workspaceWrite' } });
 
     await client.call('session.delete', { sessionId: id });
     expect(trashed).toEqual([[rollout]]);

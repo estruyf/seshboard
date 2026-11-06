@@ -33,14 +33,39 @@ function provider(codexHome: string, extra: Partial<CodexProviderOptions> = {}) 
 }
 
 describe('codexProvider', () => {
-  it('is read-only, with Codex CLI to continue and sign in, and its own CODEX_HOME', () => {
+  it('runs its sessions through its driver, with Codex CLI to continue and sign in, and its own CODEX_HOME', () => {
     const dir = home();
     const adapter = provider(dir);
     expect(adapter).toMatchObject({ id: 'codex', profileId: 'codex-1', home: dir, homeEnv: { CODEX_HOME: dir }, folder: join(dir, 'sessions'), resumeCommand: 'codex resume {sessionId}', signInCommand: 'codex login' });
-    expect(adapter.driver).toBeUndefined();
-    // Waiting for Codex's lock format (#276).
-    expect(adapter.inUse).toBeUndefined();
-    expect(adapter.live).toBeUndefined();
+    expect(adapter.driver?.modes.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto']);
+    // The driver's status is the profile's.
+    expect(adapter.status).toBeUndefined();
+  });
+
+  it("finds threads another Codex has open by their locks, and Seshboard's own aren't", async () => {
+    const dir = home();
+    const day = join(dir, 'sessions', '2026', '11', '06');
+    mkdirSync(day, { recursive: true });
+    mkdirSync(join(dir, 'thread-writer-locks'));
+    for (const id of [A, B]) writeFileSync(join(dir, 'thread-writer-locks', `${id}.lock`), '');
+    writeFileSync(join(day, `rollout-2026-11-06T10-00-00-${A}.jsonl`), '{}\n');
+    // A is open in a terminal (pid 777); B only in Seshboard's own app-server (pid 4242, the fake's).
+    const holders = async (files: readonly string[]) => new Map(files.map((f) => [f, f.includes(A) ? [777] : [4242]]));
+    const server = fakeAppServer({ 'thread/list': () => ({ data: [], nextCursor: null }) });
+    const adapter = provider(dir, { createAppServer: () => server, lockHolders: holders });
+    await adapter.source.list();
+    expect(await adapter.inUse!(A)).toBe(true);
+    expect(await adapter.inUse!(B)).toBe(false);
+    expect(await adapter.inUse!(SUB)).toBe(false);
+    // Its rollout was just written: working.
+    expect(await adapter.live!([A, B, SUB])).toEqual([{ sessionId: A, pid: 0, status: 'running', updatedAt: expect.any(Number) }]);
+  });
+
+  it("runs Seshboard's own app-server with threads unloading as soon as they close", async () => {
+    const made: AppServerOptions[] = [];
+    const adapter = provider(home(), { createAppServer: (options) => (made.push(options), fakeAppServer({ 'thread/list': () => ({ data: [], nextCursor: null }) })) });
+    await adapter.source.list();
+    expect(await made[0]!.binary()).toEqual({ path: '/fake/codex', version: '0.167.0', args: ['-c', 'thread_unload_delay_secs=0'] });
   });
 
   it("finds rollout files by day, plain or compressed, and maps a watcher's path with either separator", () => {
@@ -102,6 +127,8 @@ describe('codexProvider', () => {
     await adapter.source.list();
     expect(made).toHaveLength(1);
     expect(await made[0]!.env()).toEqual({ PATH: '/bin', CODEX_HOME: dir });
+    // For Plan mode: `turn/start`'s `collaborationMode` is experimental.
+    expect(made[0]!.experimentalApi).toBe(true);
     await adapter.dispose!();
     expect(server.disposed).toBe(1);
   });
@@ -113,7 +140,7 @@ describe('codexProvider', () => {
     await adapter.dispose!();
     // The list keeps what it had; nothing new is started for it.
     expect((await adapter.source.list()).map((s) => s.sessionId)).toEqual([A]);
-    expect((await adapter.status!()).problem).toMatch(/disposed/);
+    expect((await adapter.driver!.status()).problem).toMatch(/disposed/);
     expect(made).toHaveBeenCalledTimes(1);
   });
 
@@ -129,13 +156,13 @@ describe('codexProvider', () => {
       },
     }) as never;
     const adapter = provider(home(), { binary: lookups, createAppServer: server });
-    await adapter.status!();
-    await adapter.status!();
+    await adapter.driver!.status();
+    await adapter.driver!.status();
     expect(lookups).toHaveBeenCalledTimes(1);
     missing = true;
-    expect((await adapter.status!()).problem).toMatch(/Install OpenAI Codex CLI/);
+    expect((await adapter.driver!.status()).problem).toMatch(/Install OpenAI Codex CLI/);
     missing = false;
-    await adapter.status!();
+    await adapter.driver!.status();
     expect(lookups).toHaveBeenCalledTimes(2);
   });
 
@@ -151,25 +178,25 @@ describe('codexProvider', () => {
     it('is not installed without `codex`, and starts nothing', async () => {
       const made = vi.fn();
       const adapter = provider(home(), { binary: async () => null, createAppServer: made });
-      expect(await adapter.status!()).toEqual({ binary: null, version: null, signedIn: false, account: null, login: null, problem: expect.stringMatching(/Install OpenAI Codex CLI/) });
+      expect(await adapter.driver!.status()).toEqual({ binary: null, version: null, signedIn: false, account: null, login: null, problem: expect.stringMatching(/Install OpenAI Codex CLI/) });
       expect(made).not.toHaveBeenCalled();
     });
 
     it("names a ChatGPT login by its email, and an API key's without a name", async () => {
       const chatgpt = fakeAppServer({ 'account/read': () => ({ account: { type: 'chatgpt', email: 'me@example.com', planType: 'plus', workspaceName: null }, requiresOpenaiAuth: true }) });
-      expect(await provider(home(), { createAppServer: () => chatgpt }).status!()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
+      expect(await provider(home(), { createAppServer: () => chatgpt }).driver!.status()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
       const apiKey = fakeAppServer({ 'account/read': () => ({ account: { type: 'apiKey' }, requiresOpenaiAuth: true }) });
-      expect(await provider(home(), { createAppServer: () => apiKey }).status!()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: null, login: null, problem: null });
+      expect(await provider(home(), { createAppServer: () => apiKey }).driver!.status()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: true, account: null, login: null, problem: null });
     });
 
-    it('is no problem signed out (reading needs no login), and says what failed when Codex does', async () => {
+    it('says how to sign in when signed out (running a session needs the login), and what failed when Codex does', async () => {
       const signedOut = fakeAppServer({ 'account/read': () => ({ account: null, requiresOpenaiAuth: true }) });
-      expect(await provider(home(), { createAppServer: () => signedOut }).status!()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: false, account: null, login: null, problem: null });
+      expect(await provider(home(), { createAppServer: () => signedOut }).driver!.status()).toEqual({ binary: '/fake/codex', version: '0.167.0', signedIn: false, account: null, login: null, problem: expect.stringMatching(/codex login/) });
       // A model provider that needs no OpenAI login (set in Codex's config).
       const noLogin = fakeAppServer({ 'account/read': () => ({ account: null, requiresOpenaiAuth: false }) });
-      expect(await provider(home(), { createAppServer: () => noLogin }).status!()).toMatchObject({ signedIn: true, problem: null });
+      expect(await provider(home(), { createAppServer: () => noLogin }).driver!.status()).toMatchObject({ signedIn: true, problem: null });
       const broken = fakeAppServer({});
-      expect(await provider(home(), { createAppServer: () => broken }).status!()).toMatchObject({ binary: '/fake/codex', signedIn: false, problem: 'No handler for account/read' });
+      expect(await provider(home(), { createAppServer: () => broken }).driver!.status()).toMatchObject({ binary: '/fake/codex', signedIn: false, problem: 'No handler for account/read' });
     });
   });
 });

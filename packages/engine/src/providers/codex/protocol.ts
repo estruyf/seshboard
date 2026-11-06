@@ -131,7 +131,7 @@ export interface Turn {
 }
 
 export type UserInput =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; /** Spans in `text` a UI renders specially; Seshboard sends none. */ text_elements?: unknown[] }
   | { type: 'image'; url?: string; fileId?: string }
   | { type: 'localImage'; path: string }
   | { type: 'skill'; name: string; path: string }
@@ -165,7 +165,7 @@ interface ItemTimes {
   completedAtMs?: number | null;
 }
 
-export type UserMessageItem = ItemTimes & { type: 'userMessage'; id: string; content: UserInput[] };
+export type UserMessageItem = ItemTimes & { type: 'userMessage'; id: string; content: UserInput[]; /** The `clientUserMessageId` it was sent with. */ clientId?: string | null };
 export type AgentMessageItem = ItemTimes & { type: 'agentMessage'; id: string; text: string };
 export type ReasoningItem = ItemTimes & { type: 'reasoning'; id: string; summary: string[]; content: string[] };
 export type PlanItem = ItemTimes & { type: 'plan'; id: string; text: string };
@@ -279,10 +279,13 @@ export interface ThreadStartParams {
   sandbox?: SandboxMode | null;
   /** A throwaway thread, never written to disk (Ask about this session). */
   ephemeral?: boolean | null;
+  /** Codex's config for this thread, merged over the profile's (`{ mcp_servers: { name: { enabled: false } } }`). */
+  config?: Record<string, unknown> | null;
 }
 
 export interface ThreadResumeParams {
   threadId: string;
+  config?: Record<string, unknown> | null;
   model?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
@@ -302,6 +305,8 @@ export interface ThreadStartResponse {
 export interface TurnStartParams {
   threadId: string;
   input: UserInput[];
+  /** Comes back as the `userMessage` item's `clientId`, which names the message the turn starts with. */
+  clientUserMessageId?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
   sandboxPolicy?: SandboxPolicy | null;
@@ -318,6 +323,7 @@ export interface TurnStartResponse {
 export interface TurnSteerParams {
   threadId: string;
   input: UserInput[];
+  clientUserMessageId?: string | null;
   /** The turn running now: the request fails when another one is. */
   expectedTurnId: string;
 }
@@ -343,6 +349,8 @@ export interface DriveMethods {
   'turn/start': { params: TurnStartParams; result: TurnStartResponse };
   'turn/steer': { params: TurnSteerParams; result: { turnId: string } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: unknown };
+  /** The MCP servers Codex would start, with the plugin each comes from. */
+  'mcpServerStatus/list': { params: { cursor?: string | null; limit?: number | null }; result: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } };
   'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
 }
 
