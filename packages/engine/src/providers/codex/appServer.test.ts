@@ -156,8 +156,9 @@ describe('createAppServer', () => {
     server.onNotification((n) => notifications.push(n.method));
     await server.request('thread/list', {});
     const pid = server.pid()!;
-    // It said it got SIGTERM and stayed: only the SIGKILL ends it. Events, not time: however slow the machine.
-    await until(() => notifications.includes('fake/sigterm'), 20_000);
+    // It said it got SIGTERM and stayed: only the SIGKILL ends it. Events, not time: however slow the machine. Windows
+    // has no SIGTERM to ignore (Node's kill there always ends the process), so it just ends.
+    if (process.platform !== 'win32') await until(() => notifications.includes('fake/sigterm'), 20_000);
     await until(() => !alive(pid), 20_000);
   }, 60_000);
 
@@ -262,7 +263,8 @@ describe('createAppServer', () => {
     expect(exits).toBe(1);
   });
 
-  it("a process that ends after the next one started never lets go of the next one's hold", async () => {
+  // Needs a process that outlives the idle stop's SIGTERM, which Windows can't have: its kill always ends the process.
+  it.skipIf(process.platform === 'win32')("a process that ends after the next one started never lets go of the next one's hold", async () => {
     // Stubborn, with no SIGKILL in the test's time: the idle-stopped process lives on until the test kills it, while
     // the next one runs.
     const server = fakeServer({ idleMs: 100, killGraceMs: 600_000, fakeEnv: { FAKE_CODEX_STUBBORN: '1' } });
