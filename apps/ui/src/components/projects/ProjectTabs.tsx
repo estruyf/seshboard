@@ -12,6 +12,7 @@ import { fileManagerName } from '../../lib/platform.ts';
 import { useHomeFolder } from '../../state/homeStore.ts';
 import { useTriggers } from '../../state/triggersStore.ts';
 import { useMultipleProfiles, useProfile, useProfiles } from '../../state/profilesStore.ts';
+import { useStartableProfiles } from '../../state/providersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { projectOf } from '../../state/queue.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
@@ -430,6 +431,8 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
   const [removing, setRemoving] = useState(false);
   const projectActions = useProjectActions();
   const profiles = useProfiles((s) => s.profiles);
+  // Only profiles that can start a session (not a read-only provider's, OpenAI Codex's), and the one it has.
+  const startable = useStartableProfiles(project.profileId);
   const home = useHomeFolder();
   // Fields the project leaves unset come from its profile's defaults.
   const profile = useProfile(project.profileId);
@@ -481,14 +484,14 @@ export function ProjectSettingsTab({ project, isGitRepo }: { project: ProjectInf
         </Button>
         {!project.exists && <span className="text-meta text-warn">Folder not found</span>}
       </SettingRow>
-      {profiles.length > 1 && (
+      {startable.length > 1 && (
         <SettingRow label="Claude profile">
           <Select
             label="Claude profile"
             className="h-8 min-w-0 rounded-md border border-border bg-bg px-2 text-ui text-text outline-none focus:border-accent-ink/60"
             value={project.profileId ?? ''}
             onChange={(value) => void projectActions.setProfile(project.root, value || null)}
-            options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...profiles.map((p) => ({ value: p.id, label: p.name, hint: p.account?.email ?? undefined }))]}
+            options={[{ value: '', label: `Default${fallback ? ` (${fallback.name})` : ''}` }, ...startable.map((p) => ({ value: p.id, label: p.name, hint: p.account?.email ?? undefined }))]}
             menuWidth={320}
             dataAttrs={{ 'data-project-profile': true }}
           />

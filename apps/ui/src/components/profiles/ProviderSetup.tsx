@@ -4,6 +4,7 @@ import { PROVIDER_NAMES, PROVIDER_SHORT_NAMES, type ClaudeProfile, type Optional
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { thisComputerName } from '../../lib/platform.ts';
 import { usePreferences } from '../../state/preferencesStore.ts';
+import { useProviderCanStart } from '../../state/providersStore.ts';
 import { useProjects } from '../../state/projectsStore.ts';
 import { addedProjects } from '../../state/projectList.ts';
 import { useSessions } from '../../state/sessionsStore.ts';
@@ -15,9 +16,10 @@ import { needsOtherApps, offerText, readySessionsLine } from './providerOffer.ts
 
 /**
  * A provider's CLI found on this computer with no profile of it yet (Settings › Profiles, under the list): Add opens
- * Add profile with the provider picked, Not now puts the offer away for good.
+ * Add profile with the provider picked, Not now puts the offer away for good. `canStart`: Seshboard can start its
+ * sessions too (not OpenAI Codex's yet).
  */
-export function ProviderOffer({ detection, onAdd }: { detection: ProviderDetection; onAdd(): void }) {
+export function ProviderOffer({ detection, canStart, onAdd }: { detection: ProviderDetection; canStart: boolean; onAdd(): void }) {
   const Icon = PROVIDER_ICONS[detection.id];
   const name = PROVIDER_NAMES[detection.id];
   const dismiss = () => {
@@ -31,7 +33,7 @@ export function ProviderOffer({ detection, onAdd }: { detection: ProviderDetecti
         <p className="text-ui font-medium text-text">
           {name} CLI is on {thisComputerName().replace(/^This/, 'this')}
         </p>
-        <p className="text-ui text-muted">{offerText(detection.sessions)}</p>
+        <p className="text-ui text-muted">{offerText(detection.sessions, canStart)}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Button onClick={dismiss} data-provider-offer-dismiss>
@@ -47,10 +49,12 @@ export function ProviderOffer({ detection, onAdd }: { detection: ProviderDetecti
 
 /**
  * Add profile's last screen for a provider profile: who it is signed in as (waiting while its sign in runs in the
- * terminal), what now shows in the sidebar, and three ways to start using it.
+ * terminal), what now shows in the sidebar, and three ways to start using it. A read-only provider's (OpenAI Codex's)
+ * needs no sign in and starts nothing: it says its sessions show read-only.
  */
 export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudeProfile; sessions: number | null; onDone(): void }) {
   const provider = profile.provider as OptionalProvider;
+  const canStart = useProviderCanStart(provider);
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const Icon = PROVIDER_ICONS[provider];
@@ -68,7 +72,7 @@ export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudePr
 
   // Asked until it says signed in: a sign in running in the terminal lands here when it is done.
   useEffect(() => {
-    if (!client) return;
+    if (!client || !canStart) return;
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ask = () =>
@@ -86,7 +90,7 @@ export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudePr
       current = false;
       clearTimeout(timer);
     };
-  }, [client, profile.id]);
+  }, [client, profile.id, canStart]);
 
   const startSession = () => {
     useSessions.getState().openNewSession();
@@ -108,7 +112,14 @@ export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudePr
       <div className="flex min-w-0 items-start gap-3">
         <Icon size={28} aria-hidden className="mt-0.5 shrink-0 text-text" />
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          {signedIn === false ? (
+          {!canStart ? (
+            <>
+              <h3 className="text-title font-semibold text-text">{short} is added</h3>
+              <p className="text-ui text-muted" data-profile-ready-read-only>
+                Seshboard shows its sessions read-only. To continue one, copy its command into a terminal.
+              </p>
+            </>
+          ) : signedIn === false ? (
             <>
               <h3 className="text-title font-semibold text-text">Finish signing in</h3>
               <p className="text-ui text-muted">Sign in to {name} CLI in the terminal. This updates when it's done.</p>
@@ -122,7 +133,7 @@ export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudePr
             </>
           )}
         </div>
-        {signedIn === null && <Loader2 size={14} aria-hidden className="mt-1 shrink-0 animate-spin text-muted" />}
+        {canStart && signedIn === null && <Loader2 size={14} aria-hidden className="mt-1 shrink-0 animate-spin text-muted" />}
       </div>
       <p className="text-ui text-muted">
         {readySessionsLine(sessions, short)}
@@ -136,39 +147,41 @@ export function ProviderReady({ profile, sessions, onDone }: { profile: ClaudePr
           </>
         )}
       </p>
-      <ul className="grid min-w-0 gap-0.5 border-y border-border py-1.5" aria-label={`Start using ${short}`}>
-        <li>
-          <button type="button" className={row} onClick={startSession} data-profile-ready-start>
-            <Play size={14} aria-hidden className="shrink-0 text-muted" />
-            <span className="min-w-0 flex-1">Start a {short} session</span>
-            <ArrowRight size={13} aria-hidden className="shrink-0 text-faint" />
-          </button>
-        </li>
-        <li>
-          <ChoiceMenu
-            name="ready-project"
-            value=""
-            onChange={(root) => void useForProject(root)}
-            heading="Use for a project"
-            search={projects.length > 8 ? 'Search projects' : undefined}
-            width={300}
-            label={`Use ${short} for a project`}
-            disabled={projects.length === 0}
-            choices={projects.map((p) => ({ value: p.root, label: p.name, description: p.profileId === profile.id ? `Already on ${short}` : undefined, disabled: p.profileId === profile.id }))}
-          >
-            <span className="flex w-full min-w-0 items-center gap-2.5 py-1 text-text" data-profile-ready-project>
-              <FolderGit2 size={14} aria-hidden className="shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 text-left">Use {short} for a project…</span>
-            </span>
-          </ChoiceMenu>
-        </li>
-        <li>
-          <button type="button" className={row} disabled={profile.isDefault} onClick={() => setConfirmDefault(true)} data-profile-ready-default>
-            <Star size={14} aria-hidden className="shrink-0 text-muted" />
-            <span className="min-w-0 flex-1">{profile.isDefault ? `${short} is the default` : 'Make it the default'}</span>
-          </button>
-        </li>
-      </ul>
+      {canStart && (
+        <ul className="grid min-w-0 gap-0.5 border-y border-border py-1.5" aria-label={`Start using ${short}`}>
+          <li>
+            <button type="button" className={row} onClick={startSession} data-profile-ready-start>
+              <Play size={14} aria-hidden className="shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">Start a {short} session</span>
+              <ArrowRight size={13} aria-hidden className="shrink-0 text-faint" />
+            </button>
+          </li>
+          <li>
+            <ChoiceMenu
+              name="ready-project"
+              value=""
+              onChange={(root) => void useForProject(root)}
+              heading="Use for a project"
+              search={projects.length > 8 ? 'Search projects' : undefined}
+              width={300}
+              label={`Use ${short} for a project`}
+              disabled={projects.length === 0}
+              choices={projects.map((p) => ({ value: p.root, label: p.name, description: p.profileId === profile.id ? `Already on ${short}` : undefined, disabled: p.profileId === profile.id }))}
+            >
+              <span className="flex w-full min-w-0 items-center gap-2.5 py-1 text-text" data-profile-ready-project>
+                <FolderGit2 size={14} aria-hidden className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1 text-left">Use {short} for a project…</span>
+              </span>
+            </ChoiceMenu>
+          </li>
+          <li>
+            <button type="button" className={row} disabled={profile.isDefault} onClick={() => setConfirmDefault(true)} data-profile-ready-default>
+              <Star size={14} aria-hidden className="shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">{profile.isDefault ? `${short} is the default` : 'Make it the default'}</span>
+            </button>
+          </li>
+        </ul>
+      )}
       {done && (
         <p role="status" className="text-ui text-accent-ink" data-profile-ready-done-note>
           {done}
