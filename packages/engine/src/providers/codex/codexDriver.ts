@@ -4,7 +4,8 @@ import { effortsOf } from '../copilot/copilotActions.ts';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
 import { AppServerError, type AppServer } from './appServer.ts';
 import { codexInput } from './codexInput.ts';
-import { CodexLive } from './codexLive.ts';
+import { codexItemId } from './codexEvents.ts';
+import { codexCardId, CodexLive } from './codexLive.ts';
 import { CODEX_MODES, codexModeSettings, sandboxPolicy } from './codexModes.ts';
 import { codexAnswer, codexPermissionRequest } from './codexPermissions.ts';
 import type { CollaborationMode, Model, ServerNotification, ServerRequest, ThreadItem, ThreadStartResponse, TurnStartParams, UserInput } from './protocol.ts';
@@ -41,6 +42,38 @@ const MESSAGE_ID_MS = 2000;
 
 /** Pages of `model/list` read at most. */
 const MAX_MODEL_PAGES = 20;
+
+/** MCP servers in Codex's list read at most, for a read-only thread. */
+const MAX_MCP_PAGES = 20;
+
+/** Tries to start a read-only thread with a server left out that Codex says isn't one of the config's. */
+const MAX_CONFIG_RETRIES = 10;
+
+/**
+ * Codex refusing Plan mode itself, not the turn: `collaborationMode` without the experimental API, or a Codex that
+ * doesn't know it or its modes (`-32600`, checked against codex-cli 0.167: "turn/start.collaborationMode requires
+ * experimentalApi capability", "unknown variant `plan`").
+ */
+export function refusesPlanMode(error: unknown): boolean {
+  if (!(error instanceof AppServerError) || error.code !== 'rpc' || error.rpcCode !== -32600) return false;
+  return /collaborationMode|experimentalApi|unknown variant `(?:plan|default)`/.test(error.message);
+}
+
+/**
+ * Codex's config for a read-only thread (a pipeline's read-only step): no MCP server at all. With approval `never`,
+ * Codex calls MCP tools without asking, and its sandbox doesn't reach them: the only way to keep such a thread from
+ * changing things through one is not to start them. A server of a plugin goes with its plugin, ChatGPT's apps with the
+ * apps feature, any other by its own `enabled`.
+ */
+export function noMcpConfig(servers: ReadonlyArray<{ name: string; pluginId: string | null }>, skip: ReadonlySet<string> = new Set()): Record<string, unknown> {
+  const plugins: Record<string, { enabled: false }> = {};
+  const mcp: Record<string, { enabled: false }> = {};
+  for (const { name, pluginId } of servers) {
+    if (pluginId) plugins[pluginId] = { enabled: false };
+    else if (name !== 'codex_apps' && !skip.has(name)) mcp[name] = { enabled: false };
+  }
+  return { features: { apps: false }, ...(Object.keys(plugins).length ? { plugins } : {}), ...(Object.keys(mcp).length ? { mcp_servers: mcp } : {}) };
+}
 
 /** What a crash says on each session it took down. */
 const CRASHED = 'Codex stopped. Send a message to continue the session.';
@@ -80,12 +113,17 @@ interface Running {
 export function codexDriver(options: CodexDriverOptions): CodexDriver {
   const { server } = options;
   const log = options.log ?? (() => {});
-  const makeLive = options.live ?? ((threadId: string, events: DriverEvents) => new CodexLive(threadId, events));
+  // Cards are named by thread and Codex's request id: Codex numbers its requests from 0 in each process.
+  const makeLive = options.live ?? ((threadId: string, events: DriverEvents) => new CodexLive(threadId, events, { requestId: (id) => codexCardId(threadId, id) }));
   const permissions = options.permissions ?? { request: codexPermissionRequest, answer: codexAnswer };
   const messageIdMs = options.messageIdMs ?? MESSAGE_ID_MS;
   const running = new Map<string, Running>();
-  /** Codex refused `collaborationMode` once: Plan mode is the read-only sandbox alone from then on. */
-  let noPlanMode = false;
+  /**
+   * The app-server process (by pid) that refused `collaborationMode`: Plan mode is the read-only sandbox alone while it
+   * runs. Another process (Codex updated, restarted) is asked again.
+   */
+  let refusedPlanIn: number | null | undefined;
+  const noPlanMode = () => refusedPlanIn !== undefined && refusedPlanIn === server.pid();
 
   // Wired once, on the first session: the server is the profile's, shared with reading its sessions.
   let wired: Array<() => void> | null = null;
@@ -98,6 +136,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         session?.notify(notification);
       }),
       server.onExit(() => {
+        // The next process may be another Codex: its models are read again.
+        models = undefined;
         for (const session of running.values()) session.crashed();
       }),
     ];
@@ -115,10 +155,12 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
     wired = null;
   };
 
-  /** The account's models, read once per driver (they change with a Codex update, which restarts the app-server). */
+  /** The account's models, read once per app-server process (they change with a Codex update, which restarts it). */
   let models: Promise<Model[]> | undefined;
-  const listModels = () =>
-    (models ??= (async () => {
+  let modelsIn: number | null = null;
+  const listModels = () => {
+    if (models && modelsIn !== null && modelsIn !== server.pid()) models = undefined;
+    return (models ??= (async () => {
       const all: Model[] = [];
       let cursor: string | null = null;
       for (let page = 0; page < MAX_MODEL_PAGES; page++) {
@@ -127,12 +169,26 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         if (!nextCursor || nextCursor === cursor) break;
         cursor = nextCursor;
       }
+      modelsIn = server.pid();
       return all;
     })().catch((error: unknown) => {
       // Not kept: signing in later should work without restarting Seshboard.
       models = undefined;
       throw error;
     }));
+  };
+  /** Codex's MCP servers, for a read-only thread's config. */
+  const mcpServers = async () => {
+    const all: Array<{ name: string; pluginId: string | null }> = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_MCP_PAGES; page++) {
+      const { data, nextCursor }: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } = await server.request('mcpServerStatus/list', { cursor });
+      all.push(...data);
+      if (!nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    }
+    return all;
+  };
   const defaultModel = async () => (await listModels().catch(() => [])).find((m) => m.isDefault) ?? null;
   const defaultEffort = async (model: string | null) => {
     const models = await listModels().catch(() => []);
@@ -168,6 +224,11 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       let planSent = false;
       /** The turn under way, which steering and Stop name. */
       let turnId: string | null = null;
+      /** A `turn/start` waits for its answer: Stop pressed meanwhile waits for the turn's id (`stopAsked`). */
+      let starting = false;
+      let stopAsked = false;
+      /** It crashed: the next message resumes it, with a new `CodexLive` (the old one's running items are gone). */
+      let crashed = false;
       /** Loaded in the app-server process now; false after a crash, until the next message resumes it. */
       let loaded = false;
       let release: (() => void) | null = null;
@@ -192,10 +253,29 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
       const naming = new Map<string, (id: string) => void>();
 
       const settings = () => codexModeSettings(mode, config.readOnly === true);
+      /** Starts or resumes the thread; a read-only one without MCP servers (`noMcpConfig`). */
       const open = async (resume: string | null): Promise<ThreadStartResponse> => {
         const { sandbox, approvalPolicy } = settings();
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
-        const response = resume ? await server.request('thread/resume', { threadId: resume, ...common, excludeTurns: true }) : await server.request('thread/start', common);
+        const request = (extra: { config?: Record<string, unknown> }) =>
+          resume ? server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true }) : server.request('thread/start', { ...common, ...extra });
+        let response: ThreadStartResponse | undefined;
+        if (config.readOnly) {
+          const servers = await mcpServers().catch((error: Error) => {
+            throw new Error(`Codex didn't list its MCP servers, so a read-only session can't start without them: ${error.message}`);
+          });
+          const skip = new Set<string>();
+          for (let attempt = 0; !response; attempt++) {
+            try {
+              response = await request({ config: noMcpConfig(servers, skip) });
+            } catch (error) {
+              // A server Codex lists that isn't one of its config's (a built-in): its `enabled` is no setting to change.
+              const named = error instanceof AppServerError && error.code === 'rpc' ? /in `mcp_servers\.([^`.]+)`/.exec(error.message)?.[1] : undefined;
+              if (!named || skip.has(named) || attempt >= MAX_CONFIG_RETRIES) throw error;
+              skip.add(named);
+            }
+          }
+        } else response = await request({});
         threadModel = response.model ?? threadModel;
         loaded = true;
         // The thread lives in this process: it must not stop for being idle while the session runs here.
@@ -206,7 +286,14 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
 
       const started = await open(config.resume ?? null);
       const threadId = started.thread.id;
-      const live = makeLive(threadId, events);
+      let live = makeLive(threadId, events);
+      /** The turn's id is known now: a Stop pressed while it started goes out. */
+      const turnKnown = (id: string) => {
+        turnId = id;
+        if (!stopAsked) return;
+        stopAsked = false;
+        void server.request('turn/interrupt', { threadId, turnId: id }).catch((error: Error) => log('warn', `Stopping ${threadId}: ${error.message}`));
+      };
 
       /** Answers every open request as declined (a stopped turn, a closed session, a crash) and takes its card away. */
       const dropAll = () => {
@@ -221,16 +308,21 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         threadId,
         notify(notification) {
           const params = obj(notification.params);
-          if (notification.method === 'turn/started') turnId = str(obj(params.turn).id) ?? turnId;
-          else if (notification.method === 'turn/completed') {
+          if (notification.method === 'turn/started') {
+            const id = str(obj(params.turn).id);
+            if (id) turnKnown(id);
+          } else if (notification.method === 'turn/completed') {
             if (str(obj(params.turn).id) === turnId) turnId = null;
+            stopAsked = false;
           } else if (notification.method === 'item/started') {
             const item = obj(params.item);
             const name = item.type === 'userMessage' ? naming.get(str(item.clientId) ?? '') : undefined;
-            if (name) name(`${str(params.turnId) ?? turnId ?? ''}:${str(item.id) ?? ''}`);
+            const itemId = str(item.id);
+            const itemTurn = str(params.turnId) ?? turnId;
+            if (name && itemId && itemTurn) name(codexItemId(itemTurn, itemId));
           } else if (notification.method === 'serverRequest/resolved') {
             // Codex is done with it (answered, or the turn ended): nothing waits on it any more. `CodexLive` takes the card away.
-            const requestId = String(params.requestId);
+            const requestId = codexCardId(threadId, params.requestId as string | number);
             const open = pending.get(requestId);
             pending.delete(requestId);
             open?.resolve(null);
@@ -242,7 +334,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           }
         },
         request(request) {
-          const requestId = String(request.id);
+          const requestId = codexCardId(threadId, request.id);
           let card: Omit<PermissionRequest, 'sessionId'> | null;
           try {
             // A file change's card shows its diff, from the item as it is now.
@@ -261,7 +353,10 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         },
         crashed() {
           loaded = false;
+          crashed = true;
           turnId = null;
+          starting = false;
+          stopAsked = false;
           release?.();
           release = null;
           dropAll();
@@ -289,7 +384,7 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         if (out.model === null) delete out.model;
         if (out.effort === null) delete out.effort;
         const planModel = out.model ?? model ?? threadModel;
-        if (!noPlanMode && planModel && (plan || planSent)) {
+        if (!noPlanMode() && planModel && (plan || planSent)) {
           const collaborationMode: CollaborationMode = { mode: plan ? 'plan' : 'default', settings: { model: planModel, reasoning_effort: out.effort ?? effort ?? null, developer_instructions: null } };
           out.collaborationMode = collaborationMode;
         }
@@ -310,19 +405,25 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
 
       const startTurn = async (input: UserInput[], clientId: string) => {
         const turn = await turnSettings();
+        starting = true;
         try {
-          const { turn: started } = await server.request('turn/start', { threadId, input, clientUserMessageId: clientId, ...turn });
-          turnId = started.id;
-        } catch (error) {
-          // Plan mode is experimental: a Codex that refuses it runs the turn in the read-only sandbox alone, from now on.
-          if (!turn.collaborationMode || !(error instanceof AppServerError) || error.code !== 'rpc') throw error;
-          log('warn', `Codex refused Plan mode (${error.message}): it runs in the read-only sandbox instead`);
-          noPlanMode = true;
-          const { collaborationMode: _dropped, ...without } = turn;
-          const { turn: started } = await server.request('turn/start', { threadId, input, clientUserMessageId: clientId, ...without });
-          turnId = started.id;
+          let started: { id: string };
+          try {
+            ({ turn: started } = await server.request('turn/start', { threadId, input, clientUserMessageId: clientId, ...turn }));
+          } catch (error) {
+            // Plan mode is experimental: a Codex that refuses it runs the turn in the read-only sandbox alone, in this process.
+            if (!turn.collaborationMode || !refusesPlanMode(error)) throw error;
+            const { collaborationMode: _dropped, ...without } = turn;
+            // Only a turn that then starts shows it was Plan mode Codex refused.
+            ({ turn: started } = await server.request('turn/start', { threadId, input, clientUserMessageId: clientId, ...without }));
+            refusedPlanIn = server.pid();
+            log('warn', `Codex refused Plan mode (${(error as Error).message}): it runs in the read-only sandbox instead`);
+          }
+          turnKnown(started.id);
+        } finally {
+          starting = false;
         }
-        planSent = !noPlanMode && settings().plan;
+        planSent = !noPlanMode() && settings().plan;
         modelChanged = false;
         effortChanged = false;
       };
@@ -337,8 +438,12 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         },
         async send(text: string, attachments: readonly ImageAttachment[], steer?: boolean) {
           if (closed) throw new Error('This Codex session was closed');
-          // Gone with a crashed process: the thread is resumed in the next one first.
-          if (!loaded) await open(threadId);
+          // Gone with a crashed process: the thread is resumed in the next one first, read by a new `CodexLive`.
+          if (!loaded) {
+            await open(threadId);
+            if (crashed) live = makeLive(threadId, events);
+            crashed = false;
+          }
           const input = codexInput(text, attachments, config.cwd);
           const clientId = randomUUID();
           const named = nameOf(clientId);
@@ -365,6 +470,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         async interrupt() {
           dropAll();
           if (turnId && loaded) await server.request('turn/interrupt', { threadId, turnId });
+          // Sent a moment ago: Codex hasn't named the turn yet. It stops as soon as it does.
+          else if (starting) stopAsked = true;
         },
         async setModel(next: string | null) {
           model = next;
@@ -391,6 +498,8 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
           dropAll();
           running.delete(threadId);
           try {
+            if (loaded && turnId) await server.request('turn/interrupt', { threadId, turnId }).catch((error: Error) => log('warn', `Stopping ${threadId}: ${error.message}`));
+            else if (starting) stopAsked = true;
             if (loaded) await server.request('thread/unsubscribe', { threadId });
           } finally {
             release?.();

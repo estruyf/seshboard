@@ -279,10 +279,13 @@ export interface ThreadStartParams {
   sandbox?: SandboxMode | null;
   /** A throwaway thread, never written to disk (Ask about this session). */
   ephemeral?: boolean | null;
+  /** Codex's config for this thread, merged over the profile's (`{ mcp_servers: { name: { enabled: false } } }`). */
+  config?: Record<string, unknown> | null;
 }
 
 export interface ThreadResumeParams {
   threadId: string;
+  config?: Record<string, unknown> | null;
   model?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
@@ -346,6 +349,8 @@ export interface DriveMethods {
   'turn/start': { params: TurnStartParams; result: TurnStartResponse };
   'turn/steer': { params: TurnSteerParams; result: { turnId: string } };
   'turn/interrupt': { params: { threadId: string; turnId: string }; result: unknown };
+  /** The MCP servers Codex would start, with the plugin each comes from. */
+  'mcpServerStatus/list': { params: { cursor?: string | null; limit?: number | null }; result: { data: Array<{ name: string; pluginId: string | null }>; nextCursor: string | null } };
   'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
 }
 

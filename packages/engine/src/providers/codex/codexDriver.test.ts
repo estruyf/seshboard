@@ -40,7 +40,7 @@ function recorder() {
 }
 
 /** A driver over a fake app-server, with a live handler and permission cards that only record what they get. */
-function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown; steer?: () => unknown; options?: Partial<CodexDriverOptions> } = {}) {
+function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown; steer?: () => unknown; mcp?: () => unknown; options?: Partial<CodexDriverOptions> } = {}) {
   let turns = 0;
   const server = fakeAppServer({
     'thread/start': () => ({ thread: thread(T, { source: 'appServer' }), model: 'gpt-5.5', reasoningEffort: 'medium', approvalPolicy: 'on-request', sandbox: {} }),
@@ -49,16 +49,18 @@ function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown
     'turn/steer': () => (extra.steer?.() as never) ?? { turnId: 'turn-1' },
     'turn/interrupt': () => ({}),
     'thread/unsubscribe': () => ({}),
+    'mcpServerStatus/list': () => (extra.mcp?.() as never) ?? { data: [], nextCursor: null },
     'model/list': () => ({ data: [model('gpt-5.5', { isDefault: true }), model('gpt-5-mini', { defaultReasoningEffort: 'low' }), model('secret', { hidden: true })], nextCursor: null }),
   });
   const handled: ServerNotification[] = [];
   const answers: Array<{ request: ServerRequest; decision: PermissionDecision }> = [];
   const status: DriverStatus = { binary: '/fake/codex', version: '0.167.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null };
   const logged: string[] = [];
+  const lives: string[] = [];
   const driver = codexDriver({
     server,
     status: async () => status,
-    live: (threadId) => ({
+    live: (threadId) => (lives.push(threadId), {
       handle: (n) => {
         if (n.method === 'boom') throw new Error('converter failed');
         handled.push({ method: `${threadId} ${n.method}`, params: n.params });
@@ -73,7 +75,7 @@ function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown
     ...extra.options,
   });
   const turnStarts = () => server.calls.filter((c) => c.method === 'turn/start').map((c) => c.params as Record<string, unknown>);
-  return { server, driver, handled, answers, logged, turnStarts };
+  return { server, driver, handled, answers, logged, turnStarts, lives };
 }
 
 describe('codexDriver', () => {
@@ -132,7 +134,7 @@ describe('codexDriver', () => {
   it('runs a read-only session in the read-only sandbox, never asking, whatever its mode', async () => {
     const { server, driver, turnStarts } = setup();
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
-    expect(server.calls[0]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never' });
+    expect(server.calls[1]!.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never', config: { features: { apps: false } } });
     await session.send('look', []);
     expect(turnStarts()[0]).toMatchObject({ approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' } });
   });
@@ -140,7 +142,8 @@ describe('codexDriver', () => {
   it('falls back to the read-only sandbox alone when Codex refuses Plan mode, and remembers', async () => {
     const { driver, turnStarts, logged } = setup({
       turnStart: (params) => {
-        if (params.collaborationMode) throw new AppServerError('unknown field `collaborationMode`', 'rpc', -32602);
+        // What codex-cli 0.167 answers without the experimental API.
+        if (params.collaborationMode) throw new AppServerError('turn/start.collaborationMode requires experimentalApi capability', 'rpc', -32600);
         return undefined;
       },
     });
@@ -163,6 +166,96 @@ describe('codexDriver', () => {
     expect(broken.turnStarts()).toHaveLength(1);
   });
 
+  it("keeps Plan mode on for an error that isn't Codex refusing it, or a retry that fails too, and asks a new process again", async () => {
+    let failing: AppServerError | null = new AppServerError('failed to submit turn input: EmptyInput', 'rpc', -32603);
+    let refuse = false;
+    const { server, driver, turnStarts } = setup({
+      turnStart: (params) => {
+        if (failing) throw failing;
+        if (refuse && params.collaborationMode) throw new AppServerError('turn/start.collaborationMode requires experimentalApi capability', 'rpc', -32600);
+        return undefined;
+      },
+    });
+    const session = await driver.start({ cwd: CWD, model: 'gpt-5-mini', permissionMode: 'plan' }, recorder().events);
+    await expect(session.send('plan', [])).rejects.toThrow('EmptyInput');
+    expect(turnStarts()).toHaveLength(1);
+    // Refused, but the retry fails as well: no proof it was Plan mode.
+    failing = new AppServerError('turn/start.collaborationMode requires experimentalApi capability', 'rpc', -32600);
+    await expect(session.send('plan', [])).rejects.toThrow();
+    expect(turnStarts().map((p) => 'collaborationMode' in p)).toEqual([true, true, false]);
+    failing = null;
+    await session.send('plan', []);
+    expect(turnStarts().at(-1)).toHaveProperty('collaborationMode');
+    // Refused for real in this process: off while it runs, asked again in the next one.
+    refuse = true;
+    await session.send('plan', []);
+    await session.send('plan', []);
+    expect(turnStarts().slice(-3).map((p) => 'collaborationMode' in p)).toEqual([true, false, false]);
+    (server as { pid: () => number }).pid = () => 5151;
+    refuse = false;
+    await session.send('plan', []);
+    expect(turnStarts().at(-1)).toHaveProperty('collaborationMode');
+  });
+
+  it('stops a turn that was sent a moment ago, as soon as Codex names it', async () => {
+    let answer: (value: unknown) => void = () => {};
+    const { server, driver } = setup({ turnStart: () => new Promise((resolve) => (answer = resolve)) });
+    const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);
+    const sent = session.send('go', []);
+    await vi.waitFor(() => expect(server.calls.at(-1)!.method).toBe('turn/start'), { interval: 5 });
+    await session.interrupt();
+    expect(server.calls.some((c) => c.method === 'turn/interrupt')).toBe(false);
+    answer({ turn: turn('turn-9') });
+    await sent;
+    await vi.waitFor(() => expect(server.calls.at(-1)).toEqual({ method: 'turn/interrupt', params: { threadId: T, turnId: 'turn-9' } }), { interval: 5 });
+    expect(server.calls.filter((c) => c.method === 'turn/interrupt')).toHaveLength(1);
+  });
+
+  it('stops the turn under way before letting go of the thread', async () => {
+    const { server, driver } = setup();
+    const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);
+    await session.send('go', []);
+    await session.close();
+    expect(server.calls.slice(-2)).toEqual([
+      { method: 'turn/interrupt', params: { threadId: T, turnId: 'turn-1' } },
+      { method: 'thread/unsubscribe', params: { threadId: T } },
+    ]);
+  });
+
+  it('starts a read-only thread without MCP servers: by plugin, the apps feature, or their own setting', async () => {
+    let refusedOnce = false;
+    const server = fakeAppServer({
+      'mcpServerStatus/list': ({ cursor }) =>
+        cursor ? { data: [{ name: 'node_repl', pluginId: null }], nextCursor: null } : { data: [{ name: 'github', pluginId: null }, { name: 'codex_apps', pluginId: null }, { name: 'cua_repl', pluginId: 'computer-use@bundled' }, { name: 'builtin', pluginId: null }], nextCursor: 'p2' },
+      'thread/start': (params) => {
+        // A server Codex lists without a config entry: its `enabled` is no setting (codex-cli 0.167 says so).
+        if (!refusedOnce && (params.config as { mcp_servers?: Record<string, unknown> }).mcp_servers?.builtin) {
+          refusedOnce = true;
+          throw new AppServerError('failed to load configuration: invalid transport\nin `mcp_servers.builtin`\n', 'rpc', -32600);
+        }
+        return { thread: thread(T), model: 'gpt-5.5', reasoningEffort: null, approvalPolicy: 'never', sandbox: {} };
+      },
+    });
+    const driver = codexDriver({ server, status: async () => ({}) as DriverStatus, live: () => ({ handle: () => {} }) });
+    await driver.start({ cwd: CWD, model: null, permissionMode: 'auto', readOnly: true }, recorder().events);
+    const starts = server.calls.filter((c) => c.method === 'thread/start').map((c) => c.params as { config: unknown });
+    expect(starts).toHaveLength(2);
+    expect(starts[1]!.config).toEqual({ features: { apps: false }, plugins: { 'computer-use@bundled': { enabled: false } }, mcp_servers: { github: { enabled: false }, node_repl: { enabled: false } } });
+    // A session that may write keeps its MCP servers (it asks before they run).
+    const plain = setup();
+    await plain.driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);
+    expect(plain.server.calls[0]!.params).not.toHaveProperty('config');
+  });
+
+  it("won't start a read-only thread when Codex doesn't list its MCP servers", async () => {
+    const { driver } = setup({
+      mcp: () => {
+        throw new AppServerError('timed out', 'timeout');
+      },
+    });
+    await expect(driver.start({ cwd: CWD, model: null, permissionMode: 'default', readOnly: true }, recorder().events)).rejects.toThrow(/read-only session can't start/);
+  });
+
   it('returns the id the transcript gives the message, or its own when Codex says nothing in time', async () => {
     const { server, driver, turnStarts } = setup({ options: { messageIdMs: 400 } });
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, recorder().events);
@@ -170,7 +263,8 @@ describe('codexDriver', () => {
     await vi.waitFor(() => expect(turnStarts()).toHaveLength(1), { interval: 5 });
     const clientId = turnStarts()[0]!.clientUserMessageId as string;
     server.notify('item/started', { threadId: T, turnId: 'turn-1', item: { type: 'userMessage', id: 'item-0', clientId, content: [] }, startedAtMs: 1 });
-    expect(await sent).toBe('turn-1:item-0');
+    // As the transcript names it: no `:`, which the window cuts ids at.
+    expect(await sent).toBe('turn-1~item-0');
     const quiet = await session.send('nobody names this', []);
     expect(quiet).toBe(turnStarts()[1]!.clientUserMessageId);
   });
@@ -207,7 +301,7 @@ describe('codexDriver', () => {
     expect(server.calls.at(-1)).toEqual({ method: 'turn/interrupt', params: { threadId: T, turnId: 'turn-1' } });
     expect(await asked).toEqual({ decision: 'decline' });
     // The card's id is Codex's own request id.
-    expect(log).toContain('done 1');
+    expect(log).toContain(`done ${T}~1`);
   });
 
   it("shows Codex's requests as cards and sends the answer back; refuses what it can't show or what isn't its", async () => {
@@ -240,12 +334,12 @@ describe('codexDriver', () => {
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
     const asked = server.ask('item/fileChange/requestApproval', { threadId: T, turnId: 'turn-1', itemId: 'f1' });
     await vi.waitFor(() => expect(permissions).toHaveLength(1));
-    expect(permissions[0]!.requestId).toBe('1');
+    expect(permissions[0]!.requestId).toBe(`${T}~1`);
     expect(seen).toEqual([{ type: 'fileChange', id: 'f1', changes: [], status: 'inProgress' }]);
     // The turn ended: Codex wants no answer any more (CodexLive takes the card away), and a late one goes nowhere.
     server.notify('serverRequest/resolved', { threadId: T, requestId: 1 });
     expect(await asked).toBeNull();
-    session.respond('1', { behavior: 'allow' });
+    session.respond(`${T}~1`, { behavior: 'allow' });
     expect(answers).toEqual([]);
   });
 
@@ -255,7 +349,7 @@ describe('codexDriver', () => {
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
     const asked = server.ask('item/tool/requestUserInput', { threadId: T, turnId: 'turn-1', itemId: 'q' });
     await vi.waitFor(() => expect(permissions).toHaveLength(1));
-    session.respond('1', { behavior: 'allow' });
+    session.respond(`${T}~1`, { behavior: 'allow' });
     await expect(asked).rejects.toThrow(/can't answer/);
   });
 
@@ -270,7 +364,8 @@ describe('codexDriver', () => {
   });
 
   it('reports a crash on each session, and resumes the thread with the next message', async () => {
-    const { server, driver, turnStarts } = setup();
+    const { server, driver, turnStarts, lives } = setup();
+    await driver.models();
     const { events, log } = recorder();
     const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default' }, events);
     await session.send('start', []);
@@ -285,6 +380,10 @@ describe('codexDriver', () => {
     expect(server.calls.at(-2)!.params).toMatchObject({ threadId: T, excludeTurns: true });
     expect(turnStarts()).toHaveLength(2);
     expect(server.holds).toBe(1);
+    // A new reader for the new process (the old one's running items are gone), and the models are read again.
+    expect(lives).toEqual([T, T]);
+    await driver.models();
+    expect(server.calls.filter((c) => c.method === 'model/list')).toHaveLength(2);
   });
 
   it('sends a model or effort change with the next turn, and Codex\'s default when set back', async () => {
