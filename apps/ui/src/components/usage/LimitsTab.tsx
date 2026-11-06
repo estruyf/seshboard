@@ -244,6 +244,31 @@ function WindowSessions({ profileId }: { profileId: string }) {
 }
 
 /** The Limits tab: a card per plan window, % used over time, and which sessions used the current window. */
+/**
+ * The Usage view for a profile whose windows are all Seshboard has (Codex's rate limits): a card per window, without
+ * the costs, history and breakdowns that read Claude Code's transcripts and recorded readings.
+ */
+export function PlanWindows({ profileId }: { profileId: string }) {
+  const entry = useUsageFor(profileId);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const limits = entry?.usage ? visibleLimits(entry.usage.limits) : [];
+  return limits.length === 0 ? (
+    <p className="rounded-xl border border-border bg-card p-4 text-ui text-muted" data-tooltip={entry?.error ?? undefined} data-usage-status>
+      {usageMessage(entry)}
+    </p>
+  ) : (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4" data-usage-plan-windows>
+      {limits.map((limit) => (
+        <LimitCard key={`${limit.kind}:${limit.scope ?? ''}`} limit={limit} now={now} costWhere="" cost={null} />
+      ))}
+    </div>
+  );
+}
+
 export function LimitsTab({ profileId, period }: { profileId: string; period: UsagePeriod }) {
   const entry = useUsageFor(profileId);
   const history = usePlanHistory(profileId, period);

@@ -19,6 +19,9 @@ const MCP_TONE: Record<McpServerInfo['status'], { dot: string; label: string; hi
   disabled: { dot: 'bg-faint', label: 'Off' },
 };
 
+/** A server read from the folder that hasn't started (its session doesn't run here): no state to show. */
+const NOT_STARTED = { dot: 'bg-faint', label: 'Starts with the session', hint: undefined };
+
 function Row({ title, meta, children, detail }: { title: ReactNode; meta?: ReactNode; children?: ReactNode; detail?: ReactNode }) {
   return (
     <div className="border-b border-edge px-4 py-2 last:border-b-0">
@@ -194,7 +197,9 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, agent = 'Claude 
           </p>
         )}
         {caps && tab === 'mcp' && (lists.mcp.length === 0 ? <p className="p-4 text-ui text-muted">No MCP servers{needle ? ' match' : ' configured'}.</p> : lists.mcp.map((server) => {
-          const tone = MCP_TONE[server.status];
+          // Read from the folder (not running here), a server Codex hasn't started has no state yet: no dot that pulses.
+          const unstarted = !caps.live && server.status === 'pending';
+          const tone = unstarted ? NOT_STARTED : MCP_TONE[server.status];
           return (
             <Row
               key={server.name}
@@ -205,13 +210,13 @@ export function CapabilitiesDialog({ sessionId, cwd, profileId, agent = 'Claude 
                   {server.scope && <span className="shrink-0 rounded bg-border/60 px-1.5 text-[10.5px] text-muted">{server.scope}</span>}
                 </span>
               }
-              meta={server.status === 'connected' ? `${server.tools.length} tools` : tone.label}
+              meta={server.status === 'connected' ? `${server.tools.length} tools` : unstarted ? undefined : tone.label}
               detail={server.error ?? tone.hint ?? (server.tools.length ? server.tools.slice(0, 12).join(', ') + (server.tools.length > 12 ? ', …' : '') : null)}
             >
               {caps.live && (
                 <>
                   {server.status !== 'disabled' && (
-                    <button type="button" data-tooltip="Reconnect" aria-label={`Reconnect ${server.name}`} disabled={busy === server.name} onClick={() => void mcp(server.name, 'reconnect')} className="flex size-6 items-center justify-center rounded text-faint hover:text-text disabled:opacity-40">
+                    <button type="button" data-tooltip={caps.reconnectNote ?? 'Reconnect'} aria-label={`Reconnect ${server.name}`} disabled={busy === server.name} onClick={() => void mcp(server.name, 'reconnect')} className="flex size-6 items-center justify-center rounded text-faint hover:text-text disabled:opacity-40">
                       <RotateCw size={12} className={busy === server.name ? 'animate-spin' : ''} />
                     </button>
                   )}

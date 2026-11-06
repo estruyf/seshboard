@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, notWithYet, PROVIDER_NAMES, PROVIDER_SHORT_NAMES, projectOf, type OptionalProvider, type SessionProvider, type ContextItem, type Effort, type GithubIssueDetail, type ProviderFeature, type GithubPrDetail, type ImageAttachment, type LaterDraft, type LaterItem, type PermissionMode, type ProjectInspection, type Schedule, type QueueWaitFor, type SlashCommand, type WorktreeStatus } from '@seshboard/protocol/client';
 import { useProvider, useProviderReadiness, useProviders } from '../../state/providersStore.ts';
 import { ProviderUsage } from '../providers/ProviderUsage.tsx';
+import { hasPlanUsage } from '../providers/quotaText.ts';
 import { askWhat, offersProjectProfile, switchNoticeFor, type SwitchNoticeState } from './providerSwitch.ts';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { ChoiceMenu } from './ChoiceMenu.tsx';
@@ -296,7 +297,8 @@ function LocalNewSession() {
   const chosenProvider = profiles.find((p) => p.id === profileId)?.provider ?? 'claude';
   const runWith: OptionalProvider | null = chosenProvider === 'claude' ? null : chosenProvider;
   // The plan usage on the tray, in one line for its folded chip's menu (Claude Code's profiles only).
-  const usageLines = useUsageLines(runWith ? null : profileId, !runWith);
+  const planUsage = hasPlanUsage(runWith ?? 'claude');
+  const usageLines = useUsageLines(planUsage ? profileId : null, planUsage);
   const runWithInfo = useProvider(runWith);
   const readiness = useProviderReadiness(runWith ? profileId : null);
   /** The project's defaults, then the profile's: picking another profile brings its defaults, until the user changes something. */
@@ -1768,7 +1770,7 @@ function LocalNewSession() {
               onContextChange={setDraftContext}
               controls={controls}
               // Claude Code's plan usage for the profile; another provider's, its premium requests.
-              info={runWith ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
+              info={runWith && !planUsage ? <ProviderUsage profileId={profileId} provider={runWith} form="footer" /> : <UsageBand profileId={profileId} footer />}
               usage={usageLines.length ? { text: usageLines.map((line) => `${line.label} ${Math.round(line.percent)}%`).join(' · '), onOpen: () => openUsage(profileId) } : null}
               above={
                 <div role="status" aria-live="polite" className="empty:hidden">

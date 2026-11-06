@@ -3383,7 +3383,21 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Codex session has no message box';
     if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Codex session still says it is read-only';
     if (!(await waitInPage(win, `(${view}.querySelector('[data-session-elsewhere]')?.textContent ?? '').includes('OpenAI Codex')`, 5_000))) return "the Codex session doesn't say a message continues it here with Codex";
-    if (!(await waitInPage(win, `!!${view}.querySelector('[data-provider-usage-not-shown="codex"]')`, 5_000))) return "the Codex session's tray doesn't say its usage isn't shown yet";
+    // Its usage: Codex's rate limits as plan windows (the demo's 23% of 5 hours and 41% of the week), without a cost.
+    const band = `(${view}.querySelector('[data-usage-band]')?.getAttribute('aria-label') ?? '')`;
+    if (!(await waitInPage(win, `${band}.includes('5-hour limit: 23% used') && ${band}.includes('Weekly limit: 41% used') && !${view}.querySelector('[data-usage-cost]')`, 10_000))) {
+      return `the Codex session's tray doesn't show its windows (${JSON.stringify(await js(band))})`;
+    }
+    // Usage for the Codex profile: its windows, without Claude Code's tabs, periods, costs and charts.
+    await js(`${view}.querySelector('[data-usage-band]').click()`);
+    const usageOk = await waitInPage(win, "document.querySelectorAll('[data-usage-view] [data-usage-plan-windows] > *').length === 2 && !document.querySelector('[data-usage-view] [data-usage-tab]')?.offsetParent && !document.querySelector('[data-usage-view] [data-usage-history]')", 10_000);
+    const usageText = usageOk ? '' : String(await js("document.querySelector('[data-usage-view]')?.innerText.slice(0, 200) ?? 'no Usage view'"));
+    if (usageOk) await shot(win, 'usage-codex.png');
+    await js("document.querySelector('[data-usage-back]')?.click()");
+    await waitInPage(win, "!document.querySelector('[data-usage-view]')", 3_000);
+    if (!usageOk) return `Usage for the Codex profile doesn't show just its two windows (${usageText})`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 5_000))) return 'the Codex session did not open again after Usage';
     // A finished turn folds its tool calls into one line (Skim); opened, each is a step, with Codex's file read as a Read.
     const fold = `${view}.querySelector('[data-activity] > button')`;
     if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Codex transcript shows no tool activity';
@@ -3475,7 +3489,7 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
     await setFieldValue(win, `${nsv} [data-composer]`, '');
     if (!refused) return `Start with the demo's Codex didn't say it has no Codex CLI to run sessions (${said || 'nothing said'})`;
-    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box and a ⋯ menu with Compact, Tools and Rename`;
+    return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, and a ⋯ menu with Compact, Tools and Rename`;
   } finally {
     // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
     if (profileId) {

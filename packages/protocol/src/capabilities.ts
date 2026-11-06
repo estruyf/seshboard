@@ -48,8 +48,9 @@ export const Capabilities = z.object({
    */
   mcpToggle: z.boolean().optional(),
   /**
-   * A short note under the MCP servers' Reconnect, for a provider whose reconnect reaches more than the one server
-   * (Codex restarts the servers of every session of the profile running here). Left out: none.
+   * A short note on the MCP servers' Reconnect (its tooltip, and a line above the servers), for a provider whose
+   * reconnect reaches more than the one server (Codex restarts the servers of every session of the profile running
+   * here). Left out: none.
    */
   reconnectNote: z.string().optional(),
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { PROVIDER_NAMES, type OptionalProvider, type ProviderQuota } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { levelOf, LEVEL_FILL, LEVEL_TEXT } from '../../lib/levels.ts';
-import { quotaLeft, quotaUsed, resetDay, SHOWS_USAGE, usageNotShown } from '../providers/quotaText.ts';
+import { quotaLeft, quotaUsed, resetDay } from '../providers/quotaText.ts';
 
 /**
  * The Usage view for a profile of another provider (GitHub Copilot): its premium requests this period, from the
@@ -13,8 +13,7 @@ export function ProviderUsagePanel({ profileId, provider, refresh }: { profileId
   const client = connection.status === 'connected' ? connection.client : null;
   const [state, setState] = useState<{ profileId: string; quota: ProviderQuota | null; error: string | null } | null>(null);
   useEffect(() => {
-    // A provider whose usage isn't shown yet (Codex) isn't asked: the panel says so.
-    if (!client || !SHOWS_USAGE[provider]) return;
+    if (!client) return;
     let current = true;
     void client.call('providers.quota', { profileId }).then(
       ({ quota }) => current && setState({ profileId, quota, error: null }),
@@ -23,7 +22,7 @@ export function ProviderUsagePanel({ profileId, provider, refresh }: { profileId
     return () => {
       current = false;
     };
-  }, [client, profileId, provider, refresh]);
+  }, [client, profileId, refresh]);
 
   const [skim, setSkim] = useState<{ calls: number; tokens: number } | null>(null);
   useEffect(() => {
@@ -37,8 +36,8 @@ export function ProviderUsagePanel({ profileId, provider, refresh }: { profileId
 
   const name = PROVIDER_NAMES[provider];
   const shown = state?.profileId === profileId ? state : null;
-  if (!SHOWS_USAGE[provider] || !shown || !shown.quota) {
-    const text = !SHOWS_USAGE[provider] ? usageNotShown(provider) : !shown ? `Asking ${name}…` : (shown.error ?? `${name} didn't say how many premium requests are left. Sign in on this profile in Settings › Profiles, then refresh.`);
+  if (!shown || !shown.quota) {
+    const text = !shown ? `Asking ${name}…` : (shown.error ?? `${name} didn't say how many premium requests are left. Sign in on this profile in Settings › Profiles, then refresh.`);
     return (
       <p className="rounded-xl border border-border bg-card p-4 text-ui text-muted" data-usage-status data-provider-quota-status>
         {text}
