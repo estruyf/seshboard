@@ -111,7 +111,7 @@ export function WorkingLane({ rows, ctx }: { rows: readonly SessionRowData[]; ct
             <CardTop row={row} ctx={ctx} />
             <span className="truncate text-meta text-muted">{where(row, ctx.nameOf(row.projectRoot))}</span>
             <span className="flex min-w-0 items-center gap-2 text-ui text-muted">
-              <WorkingPanel />
+              <WorkingPanel state={host?.compacting === true ? 'compacting' : 'working'} />
               <span className="truncate">{label}</span>
             </span>
           </CardLink>
