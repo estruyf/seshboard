@@ -529,9 +529,10 @@ export class ProviderHosts {
       },
       permission: (request: Omit<PermissionRequest, 'sessionId'>) => {
         // A read-only step answers by itself, with the same rule as Claude Code's read-only hook: reads run, the rest not.
+        // Input cut short for the card is refused: what was cut off (the end of a command) isn't what the rule read.
         if (host.readOnly && host.session) {
           const input = request.input && typeof request.input === 'object' && !Array.isArray(request.input) ? (request.input as Record<string, unknown>) : {};
-          host.session.respond(request.requestId, isReadOnlyTool(request.toolName, input) ? { behavior: 'allow' } : { behavior: 'deny', message: READ_ONLY_REASON });
+          host.session.respond(request.requestId, !request.truncated && isReadOnlyTool(request.toolName, input) ? { behavior: 'allow' } : { behavior: 'deny', message: READ_ONLY_REASON });
           return;
         }
         const full = { ...request, sessionId: id() };

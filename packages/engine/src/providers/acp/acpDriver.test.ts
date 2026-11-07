@@ -129,22 +129,86 @@ describe('acpDriver', () => {
     expect(seen.stream.filter((d) => d.kind === 'text')).toEqual([{ kind: 'text', text: 'new reply' }]);
   });
 
-  it('sends a message steered into a turn as soon as that turn ends, and refuses one that is not', async () => {
+  it('sends a message steered into a turn when its prompt ends, in the same turn, and refuses one that is not', async () => {
     const first = promptGate();
     const second = promptGate();
     const answers = [first, second];
     const { agent, driver } = driverWith({ 'session/prompt': () => answers.shift()!.answer() });
-    const { events } = recorder();
+    const { seen, events } = recorder();
     const session = await driver.start({ cwd: '/repo', model: null, permissionMode: 'default' }, events);
     await session.send('one', []);
     await expect(session.send('two', [])).rejects.toThrow('Agent CLI is still working on the last message');
-    const steered = session.send('three', [], true);
-    await tick();
+    // It answers at once: the message waits in the driver.
+    expect(await session.send('three', [], true)).toMatch(/^acp-/);
     expect(agent.requests.filter((r) => r.method === 'session/prompt')).toHaveLength(1);
     first.end();
-    await steered;
+    await tick();
+    await tick();
     expect(agent.requests.filter((r) => r.method === 'session/prompt').map((r) => (r.params.prompt as Array<{ text: string }>)[0]!.text)).toEqual(['one', 'three']);
+    // No idle between the two prompts: one turn.
+    expect(seen.states).toEqual(['running', 'running']);
     second.end();
+    await tick();
+    expect(seen.states.at(-1)).toBe('idle');
+  });
+
+  it('drops what was steered into a turn that is stopped or closed, and says nothing after close', async () => {
+    const turns = [promptGate(), promptGate()];
+    const gates = [...turns];
+    const { agent, driver } = driverWith({ 'session/prompt': () => gates.shift()!.answer() });
+    const { seen, events } = recorder();
+    const session = await driver.start({ cwd: '/repo', model: null, permissionMode: 'default' }, events);
+    await session.send('one', []);
+    await session.send('steered', [], true);
+    await session.interrupt();
+    turns[0]!.end('cancelled');
+    await tick();
+    expect(agent.requests.filter((r) => r.method === 'session/prompt')).toHaveLength(1);
+    expect(seen.states.at(-1)).toBe('idle');
+
+    await session.send('two', []);
+    await session.send('steered again', [], true);
+    const before = seen.states.length;
+    await session.close();
+    expect(agent.holds()).toBe(0);
+    turns[1]!.end('cancelled');
+    await tick();
+    expect(agent.requests.filter((r) => r.method === 'session/prompt')).toHaveLength(2);
+    expect(seen.states.slice(before)).toEqual([]);
+  });
+
+  it('waits for the history from the answer to session/load on, however long loading takes', async () => {
+    const turn = promptGate();
+    let answer: (value: unknown) => void = () => {};
+    const { agent, driver } = driverWith({ 'session/load': () => new Promise((resolve) => (answer = resolve)), 'session/prompt': turn.answer });
+    const { seen, events } = recorder();
+    const starting = driver.start({ cwd: '/repo', resume: SESSION, model: null, permissionMode: 'default' }, events);
+    // Loading takes longer than the quiet the replay waits for.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    answer({});
+    const session = await starting;
+    const sending = session.send('new', []);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    agent.update(SESSION, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'OLD HISTORY' } });
+    await sending;
+    turn.end();
+    await tick();
+    expect(seen.stream.filter((d) => d.kind === 'text')).toEqual([]);
+  });
+
+  it('does not send a prompt that Stop came before, while the session loaded again', async () => {
+    let answer: (value: unknown) => void = () => {};
+    const { agent, driver } = driverWith({ 'session/load': () => new Promise((resolve) => (answer = resolve)), 'session/prompt': { stopReason: 'end_turn' } }, { replayMs: 0 });
+    const { seen, events } = recorder();
+    const session = await driver.start({ cwd: '/repo', model: null, permissionMode: 'default' }, events);
+    agent.exit();
+    const sending = session.send('again', []);
+    await tick();
+    await session.interrupt();
+    answer({});
+    await sending;
+    expect(agent.requests.some((r) => r.method === 'session/prompt')).toBe(false);
+    expect(seen.states.at(-1)).toBe('idle');
   });
 
   it("keeps a slash command's answer, which the agent doesn't write down", async () => {

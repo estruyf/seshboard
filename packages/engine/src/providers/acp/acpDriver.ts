@@ -63,7 +63,7 @@ interface Live {
  * The transcript is the agent's own file, which its reader reads (Gemini CLI writes each message as it goes): the
  * driver streams the reply and the tool running from `session/update`, and leaves the complete messages to the file,
  * so the live transcript and the file are the same messages with the same ids. ACP has no steering: a message sent with
- * `steer` goes as soon as the turn under way ends. A slash command's answer the agent doesn't write is kept
+ * `steer` goes as soon as the prompt under way ends, as part of the same turn (Stop drops it with the turn). A slash command's answer the agent doesn't write is kept
  * (`DriverEvents.messages`' `keep`).
  */
 export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live(): ReadonlySet<string> } {
@@ -137,32 +137,49 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
       let loaded = false;
       let closed = false;
       /** The history `session/load` sends again: none of it is this turn's. Ends when it goes quiet. */
-      let replay: { quiet: Promise<void>; bump: () => void } | null = null;
-      /** The turn under way: its `session/prompt`, which answers when it ends. */
+      let replay: { quiet: Promise<void>; bump: () => void; arm: () => void; done: () => void } | null = null;
+      /** The turn under way, from before its `session/prompt` goes (the session may load first) until it answers. */
       let turn: Promise<void> | null = null;
+      /** The turn's `session/prompt` went: only then can the agent stop it. */
+      let prompting = false;
+      /** Stop (or close) came before the prompt went: it doesn't go. */
+      let stopAsked = false;
+      /** Messages sent with `steer` while a turn runs: each goes when the turn before it ends, as part of the same turn. */
+      const steered: Array<{ text: string; attachments: readonly ImageAttachment[] }> = [];
       /** A command the agent answers without a turn of its own: its words are kept, as it writes none of them. */
       let command: { text: string; reply: string; at: string } | null = null;
       let release: (() => void) | null = null;
       const pending = new Map<string, { options: AcpPermissionOption[]; resolve: (outcome: AcpPermissionOutcome) => void }>();
 
-      /** Waits until the replayed history has stopped coming, or a few seconds at most. */
+      /**
+       * Waits until the replayed history has stopped coming, or a few seconds at most. The wait counts from the agent's
+       * answer to `session/load` (`arm`): the agent sends the history after it, and loading can take seconds.
+       */
       const startReplay = () => {
         let timer: NodeJS.Timeout | null = null;
+        let cap: NodeJS.Timeout | null = null;
+        let armed = false;
         let finish: () => void = () => {};
         const quiet = new Promise<void>((resolve) => (finish = resolve));
-        const cap = setTimeout(() => done(), replayMs);
         const done = () => {
           if (timer) clearTimeout(timer);
-          clearTimeout(cap);
+          if (cap) clearTimeout(cap);
           if (replay?.quiet === quiet) replay = null;
           finish();
         };
         const bump = () => {
+          if (!armed) return;
           if (timer) clearTimeout(timer);
           timer = setTimeout(done, REPLAY_QUIET_MS);
         };
-        replay = { quiet, bump };
-        bump();
+        const arm = () => {
+          armed = true;
+          cap = setTimeout(done, replayMs);
+          bump();
+        };
+        const started = { quiet, bump, arm, done };
+        replay = started;
+        return started;
       };
 
       /** Starts or loads the session in the agent's process, in the mode and on the model asked for. */
@@ -170,17 +187,17 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
         release?.();
         release = connection.hold();
         let response: AcpSessionResponse;
+        // Seshboard listens before it asks: the history the agent sends again comes right after its answer.
+        const replaying = resume ? startReplay() : null;
         try {
-          if (resume) {
-            // Seshboard listens before it asks: the history the agent sends again comes right after its answer.
-            startReplay();
-            response = await connection.request<AcpSessionResponse>('session/load', { sessionId: resume, cwd: config.cwd, mcpServers: [] });
-          } else response = await connection.request<AcpSessionResponse>('session/new', { cwd: config.cwd, mcpServers: [] });
+          response = await connection.request<AcpSessionResponse>(resume ? 'session/load' : 'session/new', resume ? { sessionId: resume, cwd: config.cwd, mcpServers: [] } : { cwd: config.cwd, mcpServers: [] });
         } catch (error) {
+          replaying?.done();
           release?.();
           release = null;
           throw startError(error);
         }
+        replaying?.arm();
         const id = resume ?? response.sessionId;
         if (typeof id !== 'string' || !id) {
           release?.();
@@ -318,6 +335,7 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
         // drop the first).
         let ended: () => void = () => {};
         turn = new Promise<void>((resolve) => (ended = resolve));
+        stopAsked = false;
         try {
           await ensureLoaded();
           if (replay) await replay.quiet;
@@ -326,10 +344,19 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
           ended();
           throw error;
         }
+        // Stopped or closed while the session loaded: the prompt never goes.
+        if (closed || stopAsked) {
+          turn = null;
+          ended();
+          steered.length = 0;
+          if (!closed) events.state('idle');
+          return `acp-${randomUUID()}`;
+        }
         const since = Date.now();
         const name = text.trim().split(/\s/)[0]?.slice(1);
         command = text.trimStart().startsWith('/') && commands.some((c) => c.name === name) ? { text, reply: '', at: new Date(since).toISOString() } : null;
         const prompt = connection.request<AcpPromptResponse>('session/prompt', { sessionId, prompt: acpPrompt(text, attachments, config.cwd) }, { timeoutMs: null });
+        prompting = true;
         events.state('running');
         void prompt
           .then(
@@ -341,9 +368,24 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
         return id ?? `acp-${randomUUID()}`;
       };
 
+      /** Stops the turn: the agent's, once its prompt went; else the prompt doesn't go. What was steered into it goes too. */
+      const stop = () => {
+        dropAll();
+        steered.length = 0;
+        if (!turn) return;
+        if (prompting && loaded) connection.notify('session/cancel', { sessionId });
+        else stopAsked = true;
+      };
+
       const finish = (response: AcpPromptResponse | null, error: unknown) => {
         turn = null;
+        prompting = false;
         dropAll();
+        // Closed: nobody listens, and nothing more goes to the agent.
+        if (closed) {
+          steered.length = 0;
+          return;
+        }
         events.stream({ kind: 'clear', text: '' });
         const ran = command;
         command = null;
@@ -356,20 +398,31 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
           events.messages(notes, { keep: true });
         }
         if (error) {
+          steered.length = 0;
           const message = error instanceof AcpError && error.rpcCode === AUTH_REQUIRED ? options.signInMessage : error instanceof Error ? error.message : String(error);
           events.state('error', message);
-        } else if (response?.stopReason === 'refusal') events.state('error', `${agentName} refused to go on`);
-        else events.state('idle');
+        } else if (response?.stopReason === 'refusal') {
+          steered.length = 0;
+          events.state('error', `${agentName} refused to go on`);
+        } else if (response?.stopReason !== 'cancelled' && steered.length) {
+          // A message steered into the turn goes now, in the same turn: no idle between them.
+          const next = steered.shift()!;
+          void startTurn(next.text, next.attachments).catch((failed: unknown) => events.state('error', failed instanceof Error ? failed.message : String(failed)));
+        } else {
+          steered.length = 0;
+          events.state('idle');
+        }
       };
 
       return {
         sessionId,
         async send(text, attachments, steer) {
           if (closed) throw new Error(`This ${agentName} session was closed`);
-          // ACP has no way into a turn under way: the message goes as soon as it ends.
-          while (turn) {
+          if (turn) {
             if (!steer) throw new Error(`${agentName} is still working on the last message`);
-            await turn;
+            // ACP has no way into a turn under way: the message goes as soon as this prompt ends, in the same turn.
+            steered.push({ text, attachments });
+            return `acp-${randomUUID()}`;
           }
           return startTurn(text, attachments);
         },
@@ -388,8 +441,7 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
           throw new Error(`${agentName} has no way to change its MCP servers from Seshboard yet`);
         },
         async interrupt() {
-          dropAll();
-          if (turn && loaded) connection.notify('session/cancel', { sessionId });
+          stop();
         },
         async setModel(next: string | null) {
           model = next;
@@ -404,13 +456,12 @@ export function acpDriver(options: AcpDriverOptions): ProviderDriver & { live():
           pending.delete(requestId);
           open.resolve(acpOutcome(decision, open.options));
           events.permissionDone(requestId);
-          if (decision.behavior === 'deny' && decision.interrupt && turn && loaded) connection.notify('session/cancel', { sessionId });
+          if (decision.behavior === 'deny' && decision.interrupt) stop();
         },
         async close() {
           if (closed) return;
           closed = true;
-          dropAll();
-          if (turn && loaded) connection.notify('session/cancel', { sessionId });
+          stop();
           sessions.delete(sessionId);
           // ACP has no way to close a session yet (Gemini CLI keeps it until its process ends): letting go of the process
           // lets it stop when nothing else runs in it.
