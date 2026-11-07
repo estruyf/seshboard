@@ -3,11 +3,12 @@ import { PROVIDER_NAMES, providerOf, type SessionProvider } from '@seshboard/pro
 import { ClaudeIcon } from './ClaudeIcon.tsx';
 import { CodexIcon } from './CodexIcon.tsx';
 import { CopilotIcon } from './CopilotIcon.tsx';
+import { GeminiIcon } from './GeminiIcon.tsx';
 
 type ProviderIcon = ComponentType<{ size?: number } & Omit<SVGProps<SVGSVGElement>, 'width' | 'height' | 'viewBox' | 'fill'>>;
 
 /** Each provider's mark. A new provider fails to compile until it has one. */
-export const PROVIDER_ICONS: Record<SessionProvider, ProviderIcon> = { claude: ClaudeIcon, copilot: CopilotIcon, codex: CodexIcon };
+export const PROVIDER_ICONS: Record<SessionProvider, ProviderIcon> = { claude: ClaudeIcon, copilot: CopilotIcon, codex: CodexIcon, gemini: GeminiIcon };
 
 /**
  * Says whose a session is (Claude Code's, GitHub Copilot's) on its row, and another provider's in its header. Neutral,

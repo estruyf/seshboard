@@ -12,6 +12,7 @@ import { delimiter, dirname, join } from 'node:path';
 // Straight from the source file: Node runs these scripts as they are, and the package's index has TypeScript it can't strip.
 import { BUILT_IN_PIPELINES, changesMessage, fillStepPrompt } from '../../../packages/protocol/src/pipelines.ts';
 import { CODEX_DEMO_THREADS, codexDemoRollout } from '../../../packages/engine/src/providers/codex/codexDemo.ts';
+import { geminiDemoFiles } from '../../../packages/engine/src/providers/gemini/geminiDemo.ts';
 import type { PipelineClaudeStep, StepActionResult } from '../../../packages/protocol/src/pipelineSchema.ts';
 
 const VERSION = '2.1.287';
@@ -23,7 +24,7 @@ const DAY = 24 * HOUR;
 export interface DemoWorld {
   home: string;
   /** Session ids the screenshot tour opens. */
-  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[] };
+  sessions: { hero: string; working: string; needsYou: string; copilot: string; codex: string[]; gemini: string[] };
   /** The older sessions by title, with the config folder each was written to (the website's Auto model pictures). */
   history: Record<string, { id: string; configDir: string }>;
   /** Processes that stand in for Claude Code running in a terminal; stop them when done. */
@@ -655,10 +656,11 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
   written['Speed up the checkout page'] = { id: reading.id, configDir };
   const copilot = writeCopilotDemo(home, acme, now - 3 * HOUR);
   const codex = writeCodexDemo(home, acme, now - 2 * HOUR);
+  const gemini = writeGeminiDemo(home, acme, now - 1 * HOUR);
 
   return {
     home,
-    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex },
+    sessions: { hero: hero.id, working: working.id, needsYou: needsYou.id, copilot, codex, gemini },
     history: written,
     stop: () => sleepers.forEach((child) => child.kill()),
   };
@@ -710,6 +712,24 @@ function writeCodexDemo(home: string, cwd: string, at: number): string[] {
     utimesSync(file, time, time);
     return thread.id;
   });
+}
+
+/**
+ * Google Gemini CLI sessions on acme-store (#272), as Gemini writes them in `~/.gemini/tmp/<project>/chats/`, with the
+ * files that say it is signed in: shown once a Gemini profile is added. The demo's Gemini (SESHBOARD_STUB_GEMINI) runs
+ * nothing. Returns their ids, newest first.
+ */
+function writeGeminiDemo(home: string, cwd: string, at: number): string[] {
+  const ids: string[] = [];
+  for (const file of geminiDemoFiles(cwd, at)) {
+    const path = join(home, file.path);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, file.content);
+    utimesSync(path, file.at, file.at);
+    const id = /"sessionId":"([^"]+)"/.exec(file.content)?.[1];
+    if (id) ids.push(id);
+  }
+  return ids;
 }
 
 // ---------------------------------------------------------------------------------------------------------

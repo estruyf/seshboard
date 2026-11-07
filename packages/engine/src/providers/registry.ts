@@ -12,6 +12,13 @@ import { CODEX_MODES } from './codex/codexModes.ts';
 import { CODEX_INSTALL, CODEX_RESUME, codexHome, codexProvider } from './codex/codexProvider.ts';
 import { findCodex } from './codex/codexBinary.ts';
 import { codexUpdater, type CodexLatestVersion } from './codex/codexUpdate.ts';
+import type { AcpConnection, AcpConnectionOptions } from './acp/acpConnection.ts';
+import type { GeminiBinary } from './gemini/geminiBinary.ts';
+import { findGemini } from './gemini/geminiBinary.ts';
+import { GEMINI_MODES } from './gemini/geminiDriver.ts';
+import { GEMINI_INSTALL, GEMINI_RESUME, geminiProvider } from './gemini/geminiProvider.ts';
+import { geminiDataDir, geminiHome } from './gemini/geminiSource.ts';
+import { geminiUpdater, type GeminiLatestVersion } from './gemini/geminiUpdate.ts';
 import type { ProviderUpdaterDeps } from './providerUpdates.ts';
 import type { ForkRecord } from './providerForks.ts';
 
@@ -25,6 +32,8 @@ export interface ProviderOptions {
   copilot?: { createClient?: CreateCopilotClient; binary?: () => Promise<{ path: string; args?: string[]; version: string | null } | null>; version?: CopilotVersionCommand };
   /** A fake `codex` and `codex app-server` (tests and the demo), and the newest version its update check finds (the demo). */
   codex?: { binary?: () => Promise<CodexBinary | null>; createAppServer?: (options: AppServerOptions) => AppServer; latestVersion?: CodexLatestVersion };
+  /** A fake `gemini` and its ACP agent (tests and the demo), and the newest version its update check finds (the demo). */
+  gemini?: { binary?: () => Promise<GeminiBinary | null>; createConnection?: (options: AcpConnectionOptions) => AcpConnection; latestVersion?: GeminiLatestVersion };
   /** Where a provider says what went wrong while it reads (a Codex that won't start). */
   log?: (level: LogLevel, message: string) => void;
   /** Where each profile's forks made here are kept (`provider_forks`); in memory when left out. */
@@ -34,7 +43,7 @@ export interface ProviderOptions {
 }
 
 /** The update check of a provider's CLI (Settings › About), for a provider with a profile. Null for one without it yet. */
-export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
+export function createProviderUpdater(provider: OptionalProvider, { env, home, shellEnv, copilot = {}, codex = {}, gemini = {} }: ProviderOptions, deps: ProviderUpdaterDeps) {
   const stringEnv = async () => Object.fromEntries(Object.entries(await shellEnv()).filter((e): e is [string, string] => typeof e[1] === 'string'));
   switch (provider) {
     case 'copilot':
@@ -53,6 +62,15 @@ export function createProviderUpdater(provider: OptionalProvider, { env, home, s
         codexHome: codexHome(env, home),
         env: stringEnv,
         ...(codex.latestVersion ? { latest: codex.latestVersion } : {}),
+      });
+    case 'gemini':
+      return geminiUpdater({
+        ...deps,
+        binary: gemini.binary ?? (async () => findGemini(await shellEnv(), home)),
+        // Gemini's own folder, whose settings may turn its update nag off; a profile's folder is its own login.
+        geminiDir: geminiDataDir(geminiHome(env, home)),
+        env: stringEnv,
+        ...(gemini.latestVersion ? { latest: gemini.latestVersion } : {}),
       });
   }
 }
@@ -90,12 +108,25 @@ export function providerCatalog({ env, home }: Pick<ProviderOptions, 'env' | 'ho
       // does, in a worktree or on a branch Seshboard makes. Rewind is Phase 3.
       supports: ['fork', 'rename', 'delete', 'effort', 'ask', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
     },
+    {
+      id: 'gemini',
+      name: PROVIDER_NAMES.gemini,
+      defaultFolder: geminiHome(env, home),
+      resumeCommand: GEMINI_RESUME,
+      // Read from its files, run through its ACP agent (`gemini --acp`, #272).
+      canStart: true,
+      modes: GEMINI_MODES,
+      installCommand: GEMINI_INSTALL,
+      // Its session's files go to the Trash; the queue, schedules and triggers start it like New session does, in a
+      // worktree or on a branch Seshboard makes. Gemini's ACP agent has no fork, rewind, rename, effort or Ask yet.
+      supports: ['delete', 'worktree', 'branch', 'later', 'schedule', 'trigger'],
+    },
   ];
 }
 
 /**
  * A provider's CLI on this computer, for its own folder, without a profile of it: the same status check a profile's
- * runtime makes (`copilot` started headless, or `codex app-server`, to ask about its login), then stopped. Nothing is read but its folder's
+ * runtime makes (`copilot` started headless, `codex app-server`, or Gemini's files read, to ask about its login), then stopped. Nothing is read but its folder's
  * session list.
  */
 export async function detectProvider(info: ProviderInfo, options: ProviderOptions): Promise<ProviderDetection> {
@@ -118,12 +149,14 @@ export async function detectProvider(info: ProviderInfo, options: ProviderOption
 }
 
 /** The adapter for one provider profile: its folder, its runtime and its login. */
-export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, log, forks, onSessionChanged }: ProviderOptions): ProviderAdapter {
+export function createProvider(profile: ProviderProfile, { home, shellEnv, copilot = {}, codex = {}, gemini = {}, log, forks, onSessionChanged }: ProviderOptions): ProviderAdapter {
   const kind: OptionalProvider = profile.provider;
   switch (kind) {
     case 'copilot':
       return copilotProvider({ profileId: profile.id, copilotHome: profile.home, userHome: home, shellEnv, ...copilot });
     case 'codex':
       return codexProvider({ profileId: profile.id, codexHome: profile.home, userHome: home, shellEnv, ...codex, ...(log ? { log } : {}), ...(forks ? { forks: forks(profile.id) } : {}), ...(onSessionChanged ? { onSessionChanged } : {}) });
+    case 'gemini':
+      return geminiProvider({ profileId: profile.id, geminiHome: profile.home, userHome: home, shellEnv, ...(gemini.binary ? { binary: gemini.binary } : {}), ...(gemini.createConnection ? { createConnection: gemini.createConnection } : {}), ...(log ? { log } : {}) });
   }
 }
