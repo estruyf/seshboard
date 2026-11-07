@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
@@ -7,6 +8,8 @@ import { createRpcClient, messagePortTransport, type Contract, type DomLikePort,
 import type { SessionSource } from './claude/sessionSource.ts';
 import { createEngine, type EngineOptions, type TrashScope } from './engine.ts';
 import { fakeAppServer, thread } from './providers/codex/codexFakes.ts';
+import { fakeAcpConnection } from './providers/acp/acpFakes.ts';
+import { sessionJsonl } from './providers/gemini/geminiFixtures.ts';
 import type { CopilotSdkClient, CopilotSdkSession, CopilotSessionOptions } from './providers/copilot/copilotDriver.ts';
 import type { CopilotEvent } from './providers/copilot/copilotEvents.ts';
 import type { SdkRuntime } from './host/hostManager.ts';
@@ -72,7 +75,7 @@ const asDomPort = (port: MessagePort) => port as unknown as DomLikePort;
 const cleanups: Array<() => void> = [];
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()));
 
-function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
+function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; codex?: EngineOptions['codex']; gemini?: EngineOptions['gemini']; noTrash?: boolean; source?: SessionSource | ((dataDir: string) => SessionSource); sdk?: SdkRuntime; path?: string; onKeepAwake?: (on: boolean) => void; copilot?: EngineOptions['copilot'] } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'seshboard-engine-'));
   // A real transcript file, so the index knows where the session lives.
   const projectDir = join(dataDir, 'claude', 'projects', '-work-parser');
@@ -93,6 +96,8 @@ function connect(extra: { trashed?: string[][]; trashScopes?: TrashScope[]; code
     copilot: extra.copilot ?? { binary: async () => null },
     // Never the machine's own `codex`, nor its `~/.codex`.
     codex: extra.codex ?? { binary: async () => null },
+    // Never the machine's own `gemini`, nor its `~/.gemini`.
+    gemini: extra.gemini ?? { binary: async () => null },
   });
   const { port1, port2 } = new MessageChannel();
   const detach = engine.attach(messagePortTransport(asDomPort(port1)));
@@ -142,7 +147,7 @@ describe('engine over a MessagePort', () => {
     ];
     writeFileSync(join(folder, 'events.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
-    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: true })]);
+    expect((await client.call('providers.list', {})).providers).toEqual([expect.objectContaining({ id: 'copilot', name: 'GitHub Copilot', canStart: true }), expect.objectContaining({ id: 'codex', canStart: true }), expect.objectContaining({ id: 'gemini', name: 'Google Gemini', canStart: true })]);
     await client.call('sessions.refresh', {});
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
 
@@ -215,6 +220,69 @@ describe('engine over a MessagePort', () => {
     await client.call('session.delete', { sessionId: id });
     expect(trashed).toEqual([[rollout]]);
     expect(trashScopes).toEqual([{ codexHome }]);
+    expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
+  });
+
+  it("reads, continues and starts a Gemini profile's sessions over ACP, and trashes its files", async () => {
+    const trashed: string[][] = [];
+    const trashScopes: TrashScope[] = [];
+    const id = '8e189f48-0f7b-4c63-98b4-c867bf4ae604';
+    const NEW = '9f000000-0000-4000-8000-000000000001';
+    let chats = '';
+    const fileOf = (sessionId: string) => join(chats, `session-2026-11-07T10-00-${sessionId.slice(0, 8)}.jsonl`);
+    const agent = fakeAcpConnection({
+      'session/load': { modes: { currentModeId: 'default' }, models: { availableModels: [{ modelId: 'auto', name: 'Auto' }, { modelId: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' }], currentModelId: 'auto' } },
+      // Gemini writes a session's file as it starts, and each prompt to it as its turn starts.
+      'session/new': () => (writeFileSync(fileOf(NEW), `${JSON.stringify({ sessionId: NEW, projectHash: 'x', startTime: new Date().toISOString(), kind: 'main' })}\n`), { sessionId: NEW, models: { availableModels: [{ modelId: 'auto', name: 'Auto' }], currentModelId: 'auto' } }),
+      'session/set_mode': {},
+      'session/set_model': {},
+      'session/prompt': ({ sessionId, prompt }: Record<string, unknown>) => {
+        const text = (prompt as Array<{ text?: string }>)[0]!.text;
+        appendFileSync(fileOf(String(sessionId)), `${JSON.stringify({ id: `p-${randomUUID()}`, timestamp: new Date().toISOString(), type: 'user', content: [{ text }] })}\n`);
+        return { stopReason: 'end_turn' };
+      },
+    });
+    const { client, dataDir } = connect({ trashed, trashScopes, gemini: { binary: async () => ({ path: '/fake/gemini', version: '0.67.0' }), createConnection: () => agent.connection } });
+    // A Gemini profile's folder in the test's own folder, never the machine's ~/.gemini.
+    const geminiDir = join(dataDir, 'gemini', '.gemini');
+    chats = join(geminiDir, 'tmp', 'parser', 'chats');
+    mkdirSync(chats, { recursive: true });
+    writeFileSync(join(geminiDir, 'tmp', 'parser', '.project_root'), PARSER);
+    writeFileSync(fileOf(id), sessionJsonl({ summary: 'Round the cart total' }));
+    writeFileSync(join(geminiDir, 'settings.json'), JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }));
+    writeFileSync(join(geminiDir, 'google_accounts.json'), JSON.stringify({ active: 'me@example.com' }));
+
+    const { id: profileId } = await client.call('profiles.add', { name: 'Gemini', color: 'blue', configDir: geminiDir, provider: 'gemini' });
+    await client.call('sessions.refresh', {});
+    expect((await client.call('sessions.list', {})).sessions.find((s) => s.id === id)).toMatchObject({ provider: 'gemini', profileId, title: 'Round the cart total', cwd: PARSER });
+    expect(await client.call('providers.status', { profileId })).toEqual({ binary: '/fake/gemini', version: '0.67.0', signedIn: true, account: 'me@example.com', login: 'me@example.com', problem: null });
+    // Before a session ran here, Gemini CLI's own list.
+    expect((await client.call('providers.models', { profileId })).models[0]).toMatchObject({ value: 'auto', displayName: 'Auto' });
+
+    // Sending loads the session in Gemini's ACP agent, in the mode asked for, and the prompt is a turn.
+    const sent = await client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false });
+    expect(agent.requests.map((r) => r.method)).toEqual(['session/load', 'session/set_mode', 'session/prompt']);
+    expect(agent.requests[0]!.params).toEqual({ sessionId: id, cwd: PARSER, mcpServers: [] });
+    expect(agent.requests[1]!.params).toEqual({ sessionId: id, modeId: 'default' });
+    expect(agent.requests[2]!.params).toEqual({ sessionId: id, prompt: [{ type: 'text', text: 'hi' }] });
+    // The message's id is the one Gemini wrote to its file, so the transcript has it once.
+    expect(sent.messageUuid).toMatch(/^p-/);
+    // The account's models, once a session said.
+    expect((await client.call('providers.models', { profileId })).models.map((m) => m.value)).toEqual(['auto', 'gemini-2.5-flash']);
+
+    // New session with the Gemini profile starts one in the folder, in Accept edits, on the model picked.
+    const created = await client.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gemini-2.5-flash', permissionMode: 'acceptEdits' });
+    expect(created.sessionId).toBe(NEW);
+    expect(agent.requests.slice(3).map((r) => [r.method, r.params])).toEqual([
+      ['session/new', { cwd: dataDir, mcpServers: [] }],
+      ['session/set_mode', { sessionId: NEW, modeId: 'autoEdit' }],
+      ['session/set_model', { sessionId: NEW, modelId: 'gemini-2.5-flash' }],
+      ['session/prompt', { sessionId: NEW, prompt: [{ type: 'text', text: 'Add a test' }] }],
+    ]);
+
+    await client.call('session.delete', { sessionId: id });
+    expect(trashed).toEqual([[fileOf(id)]]);
+    expect(trashScopes).toEqual([{ geminiDir }]);
     expect((await client.call('sessions.list', {})).sessions.some((s) => s.id === id)).toBe(false);
   });
 

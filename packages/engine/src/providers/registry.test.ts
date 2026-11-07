@@ -6,6 +6,8 @@ import { demoCopilot } from './copilot/copilotDemo.ts';
 import { fakeAppServer } from './codex/codexFakes.ts';
 import { appStateFake } from '../system/testing.ts';
 import { createProviderUpdater, detectProvider, providerCatalog } from './registry.ts';
+import { sessionJsonl } from './gemini/geminiFixtures.ts';
+import { fakeAcpConnection } from './acp/acpFakes.ts';
 
 const home = () => realpathSync(mkdtempSync(join(tmpdir(), 'seshboard-detect-')));
 const shellEnv = async () => ({});
@@ -52,6 +54,33 @@ describe('detecting a provider without a profile', () => {
   });
 });
 
+describe('detecting Gemini CLI', () => {
+  it('finds its sessions and who it is signed in as from its own files, without starting it', async () => {
+    const userHome = home();
+    const gemini = join(userHome, '.gemini');
+    const chats = join(gemini, 'tmp', 'repo', 'chats');
+    mkdirSync(chats, { recursive: true });
+    writeFileSync(join(chats, 'session-2026-11-07T10-00-8e189f48.jsonl'), sessionJsonl());
+    writeFileSync(join(gemini, 'settings.json'), JSON.stringify({ security: { auth: { selectedType: 'oauth-personal' } } }));
+    writeFileSync(join(gemini, 'google_accounts.json'), JSON.stringify({ active: 'me@example.com', old: [] }));
+    const agent = fakeAcpConnection();
+    const options = { env: {}, home: userHome, shellEnv, gemini: { binary: async () => ({ path: '/fake/gemini', version: '0.67.0' }), createConnection: () => agent.connection } };
+    const info = providerCatalog(options).find((p) => p.id === 'gemini')!;
+    expect(info).toMatchObject({ name: 'Google Gemini', defaultFolder: gemini, resumeCommand: 'gemini --resume {sessionId}', canStart: true, supports: ['delete', 'worktree', 'branch', 'later', 'schedule', 'trigger'] });
+    expect(await detectProvider(info, options)).toEqual({ id: 'gemini', installed: true, version: '0.67.0', folder: gemini, folderExists: true, sessions: 1, signedIn: true, login: 'me@example.com' });
+    // Nothing was asked of its ACP agent, so no `gemini --acp` started; it is stopped with the throwaway adapter.
+    expect(agent.requests).toEqual([]);
+    expect(agent.disposed()).toBe(1);
+  });
+
+  it('is signed out without a way to sign in in its settings or a login of Google’s', async () => {
+    const userHome = home();
+    const options = { env: {}, home: userHome, shellEnv, gemini: { binary: async () => ({ path: '/fake/gemini', version: '0.67.0' }) } };
+    const info = providerCatalog(options).find((p) => p.id === 'gemini')!;
+    expect(await detectProvider(info, options)).toMatchObject({ installed: true, signedIn: false, login: null, folderExists: false, sessions: 0 });
+  });
+});
+
 describe('update checks of providers', () => {
   const deps = { store: appStateFake(), ready: Promise.resolve(), onChange: () => {}, log: () => {} };
 
@@ -64,5 +93,16 @@ describe('update checks of providers', () => {
     expect(codex!.state).toMatchObject({ provider: 'codex', name: 'Codex CLI', status: 'available', installedVersion: '0.167.0', latestVersion: '0.168.0', command: 'codex update' });
     copilot?.close();
     codex!.close();
+  });
+
+  it("checks Gemini CLI against npm's latest, updating it with npm", async () => {
+    const userHome = home();
+    const pkg = join(userHome, 'npm', 'lib', 'node_modules', '@google', 'gemini-cli', 'bundle');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, 'gemini.js'), '');
+    const gemini = createProviderUpdater('gemini', { env: {}, home: userHome, shellEnv, gemini: { binary: async () => ({ path: join(pkg, 'gemini.js'), version: '0.66.0' }), latestVersion: async () => '0.67.0' } }, deps);
+    await gemini!.check();
+    expect(gemini!.state).toMatchObject({ provider: 'gemini', name: 'Gemini CLI', status: 'available', installedVersion: '0.66.0', latestVersion: '0.67.0', command: 'npm install -g @google/gemini-cli@latest' });
+    gemini!.close();
   });
 });

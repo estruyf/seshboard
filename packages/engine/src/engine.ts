@@ -166,6 +166,7 @@ import { AccountWatcher } from './profiles/accountWatcher.ts';
 import { ProfileStore, type ProfileRuntime } from './profiles/profileStore.ts';
 import { MultiProfileSource } from './profiles/profileSources.ts';
 import { copilotHome } from './providers/copilot/copilotSource.ts';
+import { geminiDataDir } from './providers/gemini/geminiSource.ts';
 import { ProviderProfiles } from './providers/providerProfiles.ts';
 import { createProvider, createProviderUpdater, detectProvider, providerCatalog, type ProviderOptions } from './providers/registry.ts';
 import { providerStatus, type ProviderDriver } from './providers/provider.ts';
@@ -230,6 +231,8 @@ export interface EngineOptions {
   copilot?: ProviderOptions['copilot'];
   /** A fake `codex` and `codex app-server` (tests). Defaults to the user's own `codex`. */
   codex?: ProviderOptions['codex'];
+  /** A fake `gemini` and its ACP agent (tests, and the demo's `demoGemini`). Defaults to the user's own `gemini`. */
+  gemini?: ProviderOptions['gemini'];
   /** Start watching ~/.claude immediately. Defaults to true. */
   watchSessions?: boolean;
   /** Claude Code itself. Defaults to the Agent SDK (tests pass a fake). */
@@ -361,9 +364,9 @@ export interface ArchivedCleanup {
 /** Session files go by their config folder, a revert's files by their repository, memory files by their folder. */
 /**
  * What may go to the Trash, which main checks again: a Claude profile's session files, a Copilot profile's session
- * folders, a Codex profile's rollout files, new files in a repository, memory.
+ * folders, a Codex profile's rollout files, a Gemini profile's session files, new files in a repository, memory.
  */
-export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { repoRoot: string } | MemoryTrashScope;
+export type TrashScope = { configDir: string } | { copilotHome: string } | { codexHome: string } | { geminiDir: string } | { repoRoot: string } | MemoryTrashScope;
 
 export interface Engine {
   /** Serves the contract over a transport (one per window). Returns a detach function. */
@@ -548,6 +551,7 @@ export function createEngine(options: EngineOptions): Engine {
     onSessionChanged: (sessionId) => void sessions.reread(sessionId).catch((error: Error) => log('warn', `Reading ${sessionId} again failed: ${error.message}`)),
     ...(options.copilot ? { copilot: options.copilot } : {}),
     ...(options.codex ? { codex: options.codex } : {}),
+    ...(options.gemini ? { gemini: options.gemini } : {}),
   };
   const providerProfiles = new ProviderProfiles(() => profiles.providerProfiles(), (profile) => createProvider(profile, providerOptions));
   // GitHub Copilot allowed in Settings › Providers (before providers were profiles) is a Copilot profile on its own folder.
@@ -2922,7 +2926,7 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.release(sessionId);
       const paths = adapter.trashPaths(sessionId).filter((p) => existsSync(p));
       if (!paths.length) throw new RpcError('NOT_FOUND', 'No files found for this session');
-      await toTrash(paths, adapter.id === 'codex' ? { codexHome: adapter.home } : { copilotHome: adapter.home });
+      await toTrash(paths, adapter.id === 'codex' ? { codexHome: adapter.home } : adapter.id === 'gemini' ? { geminiDir: geminiDataDir(adapter.home) } : { copilotHome: adapter.home });
     } else {
       if (!hosts.has(sessionId) && liveList().some((l) => l.sessionId === sessionId)) {
         throw new RpcError('SESSION_BUSY_ELSEWHERE', 'This session is open in another Claude Code window. Close it there first.');

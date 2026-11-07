@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
+import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableGeminiSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath } from './trashGuard.ts';
 
 // In this platform's form (C:Usersme.claude on Windows): the guard only takes normalised absolute paths.
 const config = resolve('/Users/me/.claude');
@@ -94,6 +94,48 @@ describe('isTrashableCodexSession', () => {
       }
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isTrashableGeminiSession', () => {
+  it("allows what a Gemini session leaves in its project's folder, and nothing else", () => {
+    const gemini = realpathSync(mkdtempSync(join(tmpdir(), 'trash-gemini-')));
+    try {
+      const project = join(gemini, 'tmp', 'repo');
+      const chats = join(project, 'chats');
+      mkdirSync(join(chats, id), { recursive: true });
+      mkdirSync(join(project, 'logs'));
+      mkdirSync(join(project, 'tool-outputs', `session-${id}`), { recursive: true });
+      mkdirSync(join(project, id));
+      const file = 'session-2026-11-07T10-00-11111111.jsonl';
+      for (const name of [file, 'session-2026-02-20T16-12-11111111.json', `${file}.unreadable-1`, 'notes.jsonl']) writeFileSync(join(chats, name), '');
+      writeFileSync(join(project, 'logs', `session-${id}.jsonl`), '');
+      writeFileSync(join(project, '.project_root'), '/repo');
+      for (const allowed of [join(chats, file), join(chats, 'session-2026-02-20T16-12-11111111.json'), join(chats, id), join(project, 'logs', `session-${id}.jsonl`), join(project, 'tool-outputs', `session-${id}`), join(project, id)]) {
+        expect(isTrashableGeminiSession(allowed, gemini)).toBe(true);
+      }
+      // Not a backup or another file, the project or chats folder, Gemini's own files, or a file where a folder goes.
+      for (const refused of [join(chats, `${file}.unreadable-1`), join(chats, 'notes.jsonl'), chats, project, join(project, '.project_root'), join(gemini, 'settings.json'), join(gemini, 'tmp'), join(project, 'logs'), join(chats, id, 'x.jsonl')]) {
+        expect(isTrashableGeminiSession(refused, gemini)).toBe(false);
+      }
+      writeFileSync(join(chats, 'session-2026-11-07T11-00-22222222.jsonl'), '');
+      expect(isTrashableGeminiSession(join(chats, 'session-2026-11-07T11-00-22222222.jsonl'), gemini)).toBe(true);
+      // Not a path that isn't normalised, a relative one, or one outside the folder.
+      expect(isTrashableGeminiSession(`${chats}${sep}..${sep}chats${sep}${file}`, gemini)).toBe(false);
+      expect(isTrashableGeminiSession(join('tmp', 'repo', 'chats', file), gemini)).toBe(false);
+      if (canSymlink()) {
+        // A project folder that is a link to elsewhere, or a session file that is a link: refused.
+        const outside = join(gemini, 'elsewhere');
+        mkdirSync(join(outside, 'chats'), { recursive: true });
+        writeFileSync(join(outside, 'chats', file), '');
+        symlinkSync(outside, join(gemini, 'tmp', 'linked'));
+        expect(isTrashableGeminiSession(join(gemini, 'tmp', 'linked', 'chats', file), gemini)).toBe(false);
+        symlinkSync(join(outside, 'chats', file), join(chats, 'session-2026-11-07T12-00-33333333.jsonl'));
+        expect(isTrashableGeminiSession(join(chats, 'session-2026-11-07T12-00-33333333.jsonl'), gemini)).toBe(false);
+      }
+    } finally {
+      rmSync(gemini, { recursive: true, force: true });
     }
   });
 });

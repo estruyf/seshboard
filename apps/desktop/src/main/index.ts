@@ -35,7 +35,7 @@ import { loginItemsSettingsUrl, openAtLoginFrom } from './loginItem.ts';
 import { notificationPermission, notificationSettingsUrl } from './notificationPermission.ts';
 import { Cancelled, commandFolders, folderFromArgv, installShellCommand, pathCheck, readShellCommand, removeShellCommand, SHELL_COMMAND_NAMES, shellCommandDir, shellCommandPlan, type ShellCommandPlan } from './shellCommand.ts';
 import { ThemeStore } from './themes.ts';
-import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
+import { isConfigDir, isTrashableCodexSession, isTrashableCopilotSession, isTrashableGeminiSession, isTrashableInstructionFile, isTrashableMemoryFile, isTrashableRepoFile, isTrashableSessionPath, isTrashableThemeFile } from './trashGuard.ts';
 import { Updater } from './updater.ts';
 import { acceptsPreviewRemote, updatesDisabledReason } from './updateState.ts';
 import { guarded } from './guarded.ts';
@@ -538,7 +538,7 @@ function openSession(sessionId: string): void {
 }
 
 async function handleEngineRequest(message: unknown): Promise<unknown> {
-  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; on?: unknown } | null;
+  const request = message as { type?: unknown; id?: unknown; key?: unknown; paths?: unknown; repoRoot?: unknown; configDir?: unknown; memoryDir?: unknown; instructionsRoot?: unknown; copilotHome?: unknown; codexHome?: unknown; geminiDir?: unknown; on?: unknown } | null;
   // Keep awake until done: a session with the flag on works, or the last one finished.
   if (request?.type === 'keep-awake') {
     sessionsAwake.apply(request.on === true);
@@ -570,6 +570,7 @@ async function handleEngineRequest(message: unknown): Promise<unknown> {
     if (typeof request.memoryDir === 'string' || typeof request.instructionsRoot === 'string') return await trashMemoryForEngine(request.id, request.paths, request.memoryDir, request.instructionsRoot);
     if (typeof request.copilotHome === 'string') return await trashCopilotForEngine(request.id, request.paths, request.copilotHome);
     if (typeof request.codexHome === 'string') return await trashCodexForEngine(request.id, request.paths, request.codexHome);
+    if (typeof request.geminiDir === 'string') return await trashGeminiForEngine(request.id, request.paths, request.geminiDir);
     return await trashForEngine(request.id, request.paths, request.repoRoot, request.configDir);
   } catch (error) {
     return { type: 'trash-result', id: request.id, error: (error as Error).message };
@@ -609,6 +610,17 @@ async function trashCodexForEngine(id: number, requested: unknown[], codexHome: 
   const refused = paths.filter((p) => !isTrashableCodexSession(p, codexHome));
   if (refused.length > 0 || paths.length !== requested.length) {
     return { type: 'trash-result', id, error: `Refusing to move files outside Codex's sessions folders: ${refused.join(', ')}` };
+  }
+  for (const path of paths) await shell.trashItem(path);
+  return { type: 'trash-result', id };
+}
+
+/** Moves what a Google Gemini CLI session left to the Trash after checking each is its, in the profile's `.gemini` folder. */
+async function trashGeminiForEngine(id: number, requested: unknown[], geminiDir: string): Promise<unknown> {
+  const paths = requested.filter((p): p is string => typeof p === 'string');
+  const refused = paths.filter((p) => !isTrashableGeminiSession(p, geminiDir));
+  if (refused.length > 0 || paths.length !== requested.length) {
+    return { type: 'trash-result', id, error: `Refusing to move files outside Gemini's project folders: ${refused.join(', ')}` };
   }
   for (const path of paths) await shell.trashItem(path);
   return { type: 'trash-result', id };
@@ -3511,6 +3523,155 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
     return `ok: offered, added without a sign in, Codex is ready; New session on it with Codex's models (${models.filter(Boolean).join(', ')}), efforts and modes, and Start said the demo has no Codex CLI; its session has Codex's mark, its steps, a message box, its 5-hour and weekly windows, Fork and Ask, a ⋯ menu with Compact, Tools and Rename, and Tools lists github and linear without switches and its hook (${hookText})`;
   } finally {
     // Back as it was: the Codex profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
+    if (profileId) {
+      await openPage('profiles');
+      await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
+      await js(`document.querySelector('[data-profile="${profileId}"] [data-remove-profile]')?.click()`);
+      const confirm = "[...document.querySelectorAll('[role=alertdialog] button, [role=dialog] button')].find((b) => b.textContent.trim() === 'Remove')";
+      if (await waitInPage(win, `!!${confirm}`, 3_000)) await js(`${confirm}.click()`);
+      await waitInPage(win, `!${markedRow}`, 10_000);
+    }
+    if (!scopeWasAll && (await openPage('sidebar'))) {
+      if (await waitInPage(win, `${scope}?.getAttribute('aria-checked') === 'true'`, 3_000)) await js(`${scope}?.click()`);
+    }
+    await js("document.querySelector('[data-close-settings]')?.click()");
+    if (addedProject) await removeProjectInProjects(win, addedProject);
+  }
+}
+
+/**
+ * Google Gemini (#272). Settings › Profiles offers Gemini CLI found on this computer; Add profile on Gemini uses its own
+ * folder and, signed in there already (the demo home's `settings.json` and `google_accounts.json`), skips the sign in:
+ * Gemini is ready. Its session in the sidebar has Gemini's mark, its tool calls as steps (its file read as a Read), a
+ * message box, and a ⋯ menu with Open in Gemini CLI and without Rename. New session on it has Gemini's mark, its models
+ * and its four modes; Start says what the demo's Gemini says (it runs nothing). The demo's Gemini is made up
+ * (SESHBOARD_STUB_GEMINI): installed, signed in, two sessions in `~/.gemini`, and an ACP agent that refuses to run a
+ * session. Elsewhere the step is skipped: it never reaches a real Gemini. The profile and the project it added are
+ * removed again.
+ */
+async function runGeminiStep(win: BrowserWindow): Promise<string> {
+  if (!process.env.SESHBOARD_SMOKE_DEMO || process.env.SESHBOARD_STUB_GEMINI !== '1') return 'ok: skipped, only with the demo\'s made-up Gemini (npm run smoke:demo)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const markedRow = "document.querySelector('[data-session-id]:has([data-provider-mark=\"gemini\"])')";
+  const scope = "document.querySelector('[data-settings-page=\"sidebar\"] [data-session-scope]')";
+  const page = "document.querySelector('[data-settings-page=\"profiles\"]')";
+  const offer = `${page}?.querySelector('[data-provider-offer="gemini"]')`;
+  const openPage = async (section: string) => {
+    await js("document.querySelector('[data-settings]') || document.querySelector('[data-open-settings]')?.click()");
+    if (!(await waitInPage(win, `document.querySelector('[data-settings] [data-settings-section="${section}"]')`, 3_000))) return false;
+    await js(`document.querySelector('[data-settings] [data-settings-section="${section}"]').click()`);
+    return waitInPage(win, `!!document.querySelector('[data-settings-page="${section}"]')`, 3_000);
+  };
+  // Gemini's sessions started outside Seshboard show only with sessions from other apps shown.
+  if (!(await openPage('sidebar'))) return 'no Sidebar page in Settings';
+  if (!(await waitInPage(win, `!!${scope}`, 3_000))) return 'no Show sessions from other apps switch';
+  const scopeWasAll = (await js(`${scope}.getAttribute('aria-checked') === 'true'`)) as boolean;
+  if (!scopeWasAll) await js(`${scope}.click()`);
+  let profileId: string | null = null;
+  let addedProject: string | null = null;
+  const nsv = '[data-new-session-view]';
+  const box = `document.querySelector('${nsv} [data-composer]')`;
+  try {
+    // 1. The offer: its sessions, and new ones.
+    if (!(await openPage('profiles'))) return 'no Profiles page in Settings';
+    if (!(await waitInPage(win, `!!${offer}`, 15_000))) return 'no offer for Gemini CLI in Settings › Profiles';
+    const offerText = (await js(`${offer}.textContent`)) as string;
+    if (!/Google Gemini CLI is on this (Mac|PC)/.test(offerText) || !offerText.includes('see its 2 sessions here and start new ones')) return `the Gemini offer reads ${JSON.stringify(offerText)}`;
+    // 2. Add profile on Gemini: its own folder, signed in there already, so no sign in.
+    await js(`${offer}.querySelector('[data-provider-offer-add]').click()`);
+    if (!(await waitInPage(win, `${page}.querySelector('[data-new-profile-tool="gemini"]')?.getAttribute('aria-checked') === 'true'`, 3_000))) return 'Add Gemini profile did not open Add profile with Gemini picked';
+    if (!(await waitInPage(win, `!${page}.querySelector('[data-add-profile-next]').disabled`, 10_000))) return 'Next stays off for Gemini (the demo Gemini was not found)';
+    await js(`${page}.querySelector('[data-add-profile-next]').click()`);
+    const folderField = `${page}.querySelector('[data-new-profile-folder]')`;
+    if (!(await waitInPage(win, `/^~[\\\\/]\\.gemini$/.test(${folderField}?.value ?? '')`, 3_000))) return `Add profile with Gemini offers ${String(await js(`${folderField}?.value`))}, not ~/.gemini`;
+    if (!(await waitInPage(win, `!!${page}.querySelector('[data-new-profile-signed-in]')`, 5_000))) return "Add profile with Gemini doesn't say it is signed in already";
+    await js(`${page}.querySelector('[data-add-profile-submit]').click()`);
+    // 3. Gemini is ready, and who it is signed in as.
+    const ready = `${page}.querySelector('[data-profile-ready]')`;
+    if (!(await waitInPage(win, `${ready}?.textContent.includes('Gemini is ready')`, 10_000))) return 'adding the profile did not end on Gemini is ready';
+    profileId = (await js(`${ready}.dataset.profileReady`)) as string;
+    if (!(await waitInPage(win, `${ready}.querySelector('[data-profile-ready-account]')?.textContent.includes('demo-user@example.com')`, 10_000))) return "Gemini is ready doesn't say who it is signed in as";
+    await js(`${ready}.querySelector('[data-profile-ready-done]').click()`);
+    await js("document.querySelector('[data-close-settings]')?.click()");
+
+    // 4. Its session: Gemini's mark, its tool calls as steps, a message box, and its ⋯ menu.
+    if (!(await waitInPage(win, `!!${markedRow}`, 15_000))) return 'no Gemini session showed in the sidebar after adding the profile';
+    const id = (await js(`${markedRow}.dataset.sessionId`)) as string;
+    const view = `document.querySelector('[data-current-session="${id}"]')`;
+    await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+    if (!(await waitInPage(win, `!!${view}?.querySelector('[data-composer]')`, 10_000))) return 'the Gemini session has no message box';
+    if (await js(`!!${view}.querySelector('[data-read-only-session]')`)) return 'the Gemini session says it is read-only';
+    const fold = `${view}.querySelector('[data-activity] > button')`;
+    if (!(await waitInPage(win, `!!${fold}`, 10_000))) return 'the Gemini transcript shows no tool activity';
+    if ((await js(`${fold}.getAttribute('aria-expanded')`)) !== 'true') await js(`${fold}.click()`);
+    const steps = `[...${view}.querySelectorAll('[data-activity] [data-step]')].map((s) => s.textContent.trim())`;
+    if (!(await waitInPage(win, `${steps}.some((t) => t.includes('total.ts'))`, 5_000))) return `the Gemini transcript's steps have no read of total.ts (${JSON.stringify(await js(steps))})`;
+    await shot(win, 'gemini-session.png');
+    await js(`${view}.querySelector('[data-more-menu]').click()`);
+    const cli = "document.querySelector('[role=menu] [data-open-provider-cli=\"gemini\"]')";
+    const menuOk = await waitInPage(win, `!!${cli}`, 3_000);
+    const renames = (await js("!!document.querySelector('[role=menu] [data-rename-session]')")) as boolean;
+    pressKey(win, 'Escape');
+    if (!menuOk) return "the Gemini session's ⋯ menu has no Open in Gemini CLI";
+    if (renames) return "the Gemini session's ⋯ menu offers Rename, which Gemini CLI has no way to do";
+
+    // 5. New session on the Gemini profile, with Gemini's mark, models and modes.
+    await js("document.querySelector('[data-new-session]')?.click()");
+    const chip = `document.querySelector('${nsv} [data-profile-select]')`;
+    if (!(await waitInPage(win, `!!${chip}`, 5_000))) return 'New session has no profile chip';
+    const folderOf = `document.querySelector('${nsv} [data-folder-select]')?.dataset.value`;
+    if (!(await js(`!!${folderOf}`))) {
+      await js(`document.querySelector('${nsv} [data-add-folder]')?.click()`);
+      if (!(await waitInPage(win, "!!document.querySelector('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')", 5_000))) return 'New session has no project to add';
+      addedProject = (await js(
+        "(() => { const all = [...document.querySelectorAll('[data-add-project-dialog] [data-known-project][data-added=\"false\"]')].map((e) => e.dataset.knownProject); return all.find((r) => /acme-store$/.test(r)) ?? all[0]; })()",
+      )) as string;
+      await js(`document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)}).click()`);
+      if (!(await waitInPage(win, `document.querySelector(${JSON.stringify(`[data-known-project=${JSON.stringify(addedProject)}]`)})?.dataset.added === 'true'`, 3_000))) return 'the project was not added';
+      pressKey(win, 'Escape');
+      await waitInPage(win, "!document.querySelector('[data-add-project-dialog]')", 3_000);
+      if (!(await js(`${folderOf} === ${JSON.stringify(addedProject)}`))) {
+        if (!(await waitInPage(win, `!!document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)})`, 3_000))) return 'the added project is not offered in New session';
+        await js(`document.querySelector(${JSON.stringify(`${nsv} [data-folder-option=${JSON.stringify(addedProject)}]`)}).click()`);
+      }
+      if (!(await waitInPage(win, `${folderOf} === ${JSON.stringify(addedProject)}`, 5_000))) return 'New session did not pick the added project';
+    }
+    await js(`${chip}.click()`);
+    const choice = `document.querySelector('[data-menu="profile"] [data-choice=${JSON.stringify(profileId)}]')`;
+    if (!(await waitInPage(win, `!!${choice}`, 3_000))) return "New session's profile menu has no Gemini profile";
+    await js(`${choice}.click()`);
+    if (!(await waitInPage(win, `${chip}?.dataset.value === ${JSON.stringify(profileId)}`, 3_000))) return 'New session did not take the Gemini profile';
+    if (!(await waitInPage(win, `${box}?.placeholder === 'What should Gemini work on?'`, 5_000))) return `New session with Gemini asks ${JSON.stringify(await js(`${box}?.placeholder`))}`;
+    if (!(await waitInPage(win, `!!document.querySelector('${nsv} [data-chip-provider="gemini"]')`, 3_000))) return 'New session with the Gemini profile has no Gemini mark';
+    const menuChoices = async (name: string) => {
+      await js(`document.querySelector('${nsv} [data-${name}-select]')?.click()`);
+      const open = await waitInPage(win, `!!document.querySelector('[data-menu="${name}"]')`, 3_000);
+      const values = open ? ((await js(`[...document.querySelectorAll('[data-menu="${name}"] [data-choice]')].map((b) => b.dataset.choice)`)) as string[]) : [];
+      pressKey(win, 'Escape');
+      await waitInPage(win, `!document.querySelector('[data-menu="${name}"]')`, 2_000);
+      return values;
+    };
+    // Gemini CLI's own list before a session ran (the demo's Gemini runs none), and its four modes.
+    const models = await menuChoices('model');
+    if (!models.includes('auto') || !models.includes('gemini-2.5-pro')) return `New session's model menu with Gemini lists ${JSON.stringify(models)}`;
+    const modes = await menuChoices('mode');
+    if (modes.join(',') !== 'default,acceptEdits,plan,auto') return `New session's mode menu with Gemini lists ${JSON.stringify(modes)}`;
+    await shot(win, 'new-session-gemini.png');
+    // Start: the demo's Gemini refuses, and New session says so. The worktree off, so nothing is made first.
+    const toggle = `document.querySelector('${nsv} [data-worktree-switch]')`;
+    if (await js(`${toggle}?.getAttribute('aria-checked') === 'true'`)) await js(`${toggle}.click()`);
+    await js(`${box}.focus()`);
+    await win.webContents.insertText('Smoke: a prompt for Gemini');
+    const start = `document.querySelector('${nsv} [data-composer-submit]')`;
+    if (!(await waitInPage(win, `!!${start} && !${start}.disabled`, 5_000))) return "typing in New session with Gemini didn't make Start usable";
+    await js(`${start}.click()`);
+    const refused = await waitInPage(win, "document.body.innerText.includes('The demo has no Gemini CLI to run sessions')", 10_000);
+    const said = refused ? '' : String(await js("[...document.querySelectorAll('[role=alert], [role=status], [data-toast]')].map((e) => e.textContent).join(' | ')"));
+    await setFieldValue(win, `${nsv} [data-composer]`, '');
+    if (!refused) return `Start with the demo's Gemini didn't say it has no Gemini CLI to run sessions (${said || 'nothing said'})`;
+    return `ok: offered, added without a sign in, Gemini is ready; its session has Gemini's mark, its steps, a message box and Open in Gemini CLI; New session on it with Gemini's models (${models.join(', ')}) and modes, and Start said the demo has no Gemini CLI`;
+  } finally {
+    // Back as it was: the Gemini profile removed (its folder and sessions stay on disk), the sidebar's scope, the project.
     if (profileId) {
       await openPage('profiles');
       await js(`document.querySelector('[data-profile-ready-done]')?.click()`);
@@ -13741,6 +13902,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   // After the steps that need New session on no folder: picking the project it adds is remembered.
   await step('providers: Copilot CLI offered in Settings › Profiles, added in two screens, Copilot is ready, New session says what switching turned off, set as the project profile, its session and ⋯ menu (never started), removed again', () => runProvidersStep(win), { timeoutMs: 90_000 });
   await step('codex: Codex CLI offered and added without a sign in, Codex is ready, New session with its models, efforts and modes (Start refused by the demo), its session with a message box, removed again', () => runCodexStep(win), { timeoutMs: 90_000 });
+  await step('gemini: Gemini CLI offered and added without a sign in, Gemini is ready, its session with its steps, a message box and Open in Gemini CLI, New session with its models and modes (Start refused by the demo), removed again', () => runGeminiStep(win), { timeoutMs: 90_000 });
   // After projects and profiles: it adds a project (removed again), and New session may stay on its folder.
   await step('new session layout: three columns, two and stacked by the width, no page scroll, Add to queue at the focus limit', () => runNewSessionLayoutStep(win), { timeoutMs: 90_000 });
   await step('add a project in New session: the Add project dialog, a typed path, Tab, ↩, and a refused drop', () => runAddFolderStep(win));

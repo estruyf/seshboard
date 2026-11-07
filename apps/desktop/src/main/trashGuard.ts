@@ -30,6 +30,43 @@ export function isTrashableCopilotSession(path: string, copilotHome: string): bo
   }
 }
 
+/** A Gemini CLI session's file in a project's `chats` folder: `session-<timestamp>-<first 8 of its id>.jsonl` (`.json` before). */
+const GEMINI_SESSION_FILE = /^session-[0-9A-Za-z-]+\.jsonl?$/;
+
+/**
+ * What a Google Gemini CLI session leaves in a project's folder (`<.gemini>/tmp/<project>/`), as Gemini's own delete
+ * removes it: its file in `chats/`, its subagents' folder `chats/<id>`, its log `logs/session-<id>.jsonl`, its tool
+ * outputs `tool-outputs/session-<id>` and its own folder `<id>`. Each must be named with the session's id (a UUID)
+ * where Gemini names it so, be a real file or folder (never a link) as Gemini makes it, and the project's folder must
+ * really be inside `tmp`.
+ */
+export function isTrashableGeminiSession(path: string, geminiDir: string): boolean {
+  if (resolve(path) !== path || resolve(geminiDir) !== geminiDir || geminiDir === sep) return false;
+  const tmp = join(geminiDir, 'tmp');
+  if (!path.startsWith(tmp + sep)) return false;
+  const [project, ...rest] = path.slice(tmp.length + 1).split(sep);
+  if (!project || project.startsWith('.') || !rest.length) return false;
+  const [first, second, ...more] = rest;
+  if (more.length) return false;
+  let kind: 'file' | 'folder';
+  if (first === 'chats' && second && GEMINI_SESSION_FILE.test(second)) kind = 'file';
+  else if (first === 'chats' && second && SESSION_FOLDER.test(second)) kind = 'folder';
+  else if (first === 'logs' && second && /^session-[0-9a-f-]{36}\.jsonl$/i.test(second) && SESSION_FOLDER.test(second.slice(8, -6))) kind = 'file';
+  else if (first === 'tool-outputs' && second && second.startsWith('session-') && SESSION_FOLDER.test(second.slice(8))) kind = 'folder';
+  else if (first && !second && SESSION_FOLDER.test(first)) kind = 'folder';
+  else return false;
+  try {
+    const projectDir = join(tmp, project);
+    if (realpathSync(dirname(path)) !== join(realpathSync(tmp), dirname(path).slice(tmp.length + 1))) return false;
+    if (lstatSync(projectDir, { throwIfNoEntry: false })?.isSymbolicLink()) return false;
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    return kind === 'file' ? (stat?.isFile() ?? false) : (stat?.isDirectory() ?? false);
+  } catch {
+    // A missing folder, ENOTDIR, EACCES or a link loop: refuse rather than fail the request.
+    return false;
+  }
+}
+
 /** A Codex rollout file's name: `rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex compressed it. */
 const CODEX_ROLLOUT = /^rollout-[0-9A-Za-z.-]+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl(?:\.zst)?$/i;
 

@@ -4,7 +4,7 @@ import type { OptionalProvider, ProviderQuota, SessionProvider } from '@seshboar
  * How a provider's usage comes: Copilot's premium requests (`providers.quota`), or plan windows as Claude Code's
  * (`usage.get`: Codex's rate limits, its 5-hour and weekly windows). A new provider must say.
  */
-export const USAGE_KIND: Record<OptionalProvider, 'quota' | 'plan'> = { copilot: 'quota', codex: 'plan' };
+export const USAGE_KIND: Record<OptionalProvider, 'quota' | 'plan'> = { copilot: 'quota', codex: 'plan', gemini: 'quota' };
 
 /** Whether a profile's usage is plan windows (`usage.get`): Claude Code's, and Codex's. */
 export const hasPlanUsage = (provider: SessionProvider): boolean => provider === 'claude' || USAGE_KIND[provider] === 'plan';

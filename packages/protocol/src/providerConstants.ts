@@ -2,17 +2,17 @@
  * The agents Seshboard reads sessions from. Claude Code is always on; the others stay hidden until a profile of theirs
  * is added in Settings › Profiles. Kept free of zod for the renderer.
  */
-export const SESSION_PROVIDERS = ['claude', 'copilot', 'codex'] as const;
+export const SESSION_PROVIDERS = ['claude', 'copilot', 'codex', 'gemini'] as const;
 export type SessionProvider = (typeof SESSION_PROVIDERS)[number];
 
 /** The providers besides Claude Code, which can be allowed or not. */
-export const OPTIONAL_PROVIDERS = ['copilot', 'codex'] as const satisfies readonly SessionProvider[];
+export const OPTIONAL_PROVIDERS = ['copilot', 'codex', 'gemini'] as const satisfies readonly SessionProvider[];
 export type OptionalProvider = (typeof OPTIONAL_PROVIDERS)[number];
 
-export const PROVIDER_NAMES: Record<SessionProvider, string> = { claude: 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex' };
+export const PROVIDER_NAMES: Record<SessionProvider, string> = { claude: 'Claude Code', copilot: 'GitHub Copilot', codex: 'OpenAI Codex', gemini: 'Google Gemini' };
 
 /** The short name in copy around the message box ("What should Copilot work on?"). */
-export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: 'Claude', copilot: 'Copilot', codex: 'Codex' };
+export const PROVIDER_SHORT_NAMES: Record<SessionProvider, string> = { claude: 'Claude', copilot: 'Copilot', codex: 'Codex', gemini: 'Gemini' };
 
 /** Who works in a session of a provider this build doesn't know (a newer computer's), at the start of a sentence. */
 export const UNKNOWN_AGENT = 'The agent';
