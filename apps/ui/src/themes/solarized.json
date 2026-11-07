@@ -40,7 +40,11 @@
       "profile-purple": "#6c71c4",
       "profile-red": "#dc322f",
       "profile-orange": "#cb4b16",
-      "profile-gray": "#93a1a1"
+      "profile-gray": "#93a1a1",
+      "working-plug-a": "#d33682",
+      "working-plug-b": "#dc322f",
+      "working-plug-c": "#2aa198",
+      "working-plug-d": "#268bd2"
     },
     "syntax": "solarized-light"
   },
@@ -81,7 +85,11 @@
       "profile-purple": "#6c71c4",
       "profile-red": "#dc322f",
       "profile-orange": "#cb4b16",
-      "profile-gray": "#93a1a1"
+      "profile-gray": "#93a1a1",
+      "working-plug-a": "#d33682",
+      "working-plug-b": "#dc322f",
+      "working-plug-c": "#2aa198",
+      "working-plug-d": "#268bd2"
     },
     "terminal": {
       "background": "#001f27",

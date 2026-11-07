@@ -97,6 +97,9 @@ export function deriveTokens(mode: ThemeMode, tokens: Pick<ThemeTokens, 'text' |
   };
 }
 
+/** Below this OKLCH chroma a colour reads as grey, and its hue means nothing. */
+const GREY_CHROMA = 0.04;
+
 /** A hue that reads as blue (OKLCH degrees), where an accent can double as link and unread colour. */
 const isBlueish = (color: Oklch) => color.c > 0.06 && color.h >= 215 && color.h <= 285;
 
@@ -137,6 +140,14 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
   const blue = isBlueish(acc) ? solvedHex(acc, canvasOnly, CONTRAST.status, away) : keepHue(demo.link, CONTRAST.status);
   const ok = keepHue(demo.ok, CONTRAST.status);
   const error = keepHue(demo.error, CONTRAST.status);
+
+  // Demo Time's cables sit around its yellow light: turned round the hue wheel as far as this accent is from that
+  // yellow, they sit the same way around this theme's light. A grey accent has no hue to follow and keeps Demo Time's.
+  const turn = acc.c >= GREY_CHROMA ? acc.h - toOklch(read(demo.accent)).h : 0;
+  const cable = (token: 'working-plug-a' | 'working-plug-b' | 'working-plug-c' | 'working-plug-d') => {
+    const color = toOklch(read(demo[token]));
+    return solvedHex({ ...color, h: (((color.h + turn) % 360) + 360) % 360 }, canvasOnly, CONTRAST.mark, away);
+  };
 
   // The terminal panel is always dark: a little darker than a dark canvas, in the same hue.
   const terminalL = mode === 'dark' ? Math.min(0.18, base.l - 0.036) : 0.173;
@@ -193,13 +204,14 @@ export function generateTokens(mode: ThemeMode, canvas: string, accent: string):
     'chart-turns': demo['chart-turns'],
     'chart-shipped': demo['chart-shipped'],
     // The working mark: holes a step from the canvas (warm on a light one, as the accent), a light in the theme's
-    // accent (see `workingLight`), and the icon's cable colours, darkened only where they would wash out on the canvas.
+    // accent (see `workingLight`), and the icon's cable colours turned to the accent (see `cable`), darkened only where
+    // they would wash out on the canvas.
     'working-hole': hex(surface(steps.hole, mode === 'light' ? 2 : 0)),
     ...workingLight(mode, canvas, accent),
-    'working-plug-a': keepHue(demo['working-plug-a'], CONTRAST.mark),
-    'working-plug-b': keepHue(demo['working-plug-b'], CONTRAST.mark),
-    'working-plug-c': keepHue(demo['working-plug-c'], CONTRAST.mark),
-    'working-plug-d': keepHue(demo['working-plug-d'], CONTRAST.mark),
+    'working-plug-a': cable('working-plug-a'),
+    'working-plug-b': cable('working-plug-b'),
+    'working-plug-c': cable('working-plug-c'),
+    'working-plug-d': cable('working-plug-d'),
   };
   return { ...tokens, ...deriveTokens(mode, { text, 'accent-ink': accentInk, ok, error }) };
 }

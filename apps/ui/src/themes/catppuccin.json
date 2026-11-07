@@ -42,7 +42,11 @@
       "profile-purple": "#8839ef",
       "profile-red": "#d20f39",
       "profile-orange": "#c24a06",
-      "profile-gray": "#7c7f93"
+      "profile-gray": "#7c7f93",
+      "working-plug-a": "#ea76cb",
+      "working-plug-b": "#e64553",
+      "working-plug-c": "#209fb5",
+      "working-plug-d": "#1e66f5"
     },
     "syntax": "catppuccin-latte"
   },
@@ -84,7 +88,11 @@
       "profile-purple": "#cba6f7",
       "profile-red": "#f38ba8",
       "profile-orange": "#fab387",
-      "profile-gray": "#9399b2"
+      "profile-gray": "#9399b2",
+      "working-plug-a": "#f5c2e7",
+      "working-plug-b": "#eba0ac",
+      "working-plug-c": "#74c7ec",
+      "working-plug-d": "#89b4fa"
     },
     "terminal": {
       "background": "#11111b",
