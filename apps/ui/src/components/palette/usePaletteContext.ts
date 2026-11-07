@@ -31,6 +31,7 @@ import { useTerminals } from '../../state/terminalsStore.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { activeComposer, useComposerTargets } from '../../state/composerTargets.ts';
 import { draftRoot } from '../../state/drafts.ts';
+import { useDiffComments } from '../../state/diffCommentsStore.ts';
 import { useSavedPrompts } from '../savedPrompts/savedPromptsStore.ts';
 import { useProjectActionList } from '../actions/useActions.ts';
 import { APP_TERMINAL, appTerminalFolder, ownerSession, terminalOwner } from '../terminal/appTerminal.ts';
@@ -124,6 +125,7 @@ export function usePaletteContext(): PaletteContext {
   const editors = useHosts((s) => s.editors);
   const computers = useComputers((s) => s.status?.computers);
   const lastWritten = useLastWritten((s) => s.paths);
+  const comments = useDiffComments((s) => s.comments);
 
   const pageRoot = useProjectPage((s) => s.root);
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
@@ -221,6 +223,7 @@ export function usePaletteContext(): PaletteContext {
     newSession: view === 'new-session' ? newSessionInfo : null,
     questionsDir,
     composer,
+    reviewComments: id ? (comments[id]?.length ?? 0) : 0,
     prompts: composer ? savedPrompts.map((p) => ({ id: p.id, name: p.name, scope: p.scope })) : [],
     canContinueInVSCode: editors.some((e) => e.id === 'vscode'),
     cloneEnabled,

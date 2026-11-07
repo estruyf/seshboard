@@ -1,4 +1,4 @@
-import { CircleX, ClipboardPaste, FileText, Folder, Link2, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
+import { CircleX, ClipboardPaste, FileText, Folder, Link2, MessageSquareText, Pencil, ScrollText, SquareTerminal, TextQuote, TextSelect, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ContextItem, WorktreePullRequest } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -16,6 +16,7 @@ const TEXT_ICON: Record<Extract<ContextItem, { kind: 'text' }>['source'], Lucide
   output: ScrollText,
   paste: ClipboardPaste,
   checks: CircleX,
+  review: MessageSquareText,
 };
 
 const iconFor = (item: Extract<ContextItem, { kind: 'file' | 'text' }>): LucideIcon => (item.kind === 'text' ? TEXT_ICON[item.source] : item.directory ? Folder : item.range ? TextSelect : FileText);
@@ -23,8 +24,8 @@ const iconFor = (item: Extract<ContextItem, { kind: 'file' | 'text' }>): LucideI
 
 /**
  * The context tray: files, lines and text added to the message, as removable chips above it. Nothing goes to Claude
- * until you send; files go as references (Claude reads them), text as it is. A long paste is a card that shows its
- * start; a click opens it to read or edit.
+ * until you send; files go as references (Claude reads them), text as it is. A long paste, and review comments from
+ * Changes, are a card that shows its start; a click opens it to read or edit.
  */
 export function ContextTray({ chips, cwd, onRemove, onEditText, className = '' }: { chips: readonly ContextChip[]; cwd: string | null; onRemove(id: string): void; onEditText(id: string, text: string): void; className?: string }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -46,7 +47,8 @@ export function ContextTray({ chips, cwd, onRemove, onEditText, className = '' }
       )}
       {chips.map((chip) => {
         const { label, detail } = chipLabel(chip, cwd);
-        if (chip.kind === 'text' && chip.source === 'paste') return <PastedCard key={chip.id} label={label} detail={detail} text={chip.text} onOpen={() => setEditing(chip.id)} onRemove={() => onRemove(chip.id)} />;
+        if (chip.kind === 'text' && (chip.source === 'paste' || chip.source === 'review'))
+          return <PastedCard key={chip.id} kind={chip.source} label={label} detail={detail} text={chip.text} onOpen={() => setEditing(chip.id)} onRemove={() => onRemove(chip.id)} />;
         if (chip.kind === 'session') return <LinkedSessionChip key={chip.id} sessionId={chip.sessionId} label={chip.label} onRemove={() => onRemove(chip.id)} />;
         if (chip.kind === 'github') return <GithubChip key={chip.id} item={chip} root={cwd} onRemove={() => onRemove(chip.id)} />;
         const Icon = iconFor(chip);
@@ -171,9 +173,9 @@ function GithubChip({ item, root, onRemove }: { item: Extract<ContextChip, { kin
 }
 
 /** A pasted text: its first lines in small type, "Pasted" under them, and Edit and Remove on hover or focus. */
-function PastedCard({ label, detail, text, onOpen, onRemove }: { label: string; detail: string; text: string; onOpen(): void; onRemove(): void }) {
+function PastedCard({ kind, label, detail, text, onOpen, onRemove }: { kind: 'paste' | 'review'; label: string; detail: string; text: string; onOpen(): void; onRemove(): void }) {
   return (
-    <li className="group relative h-20 w-36 shrink-0" data-context-chip="paste" data-tooltip={`${label} · ${detail}`}>
+    <li className="group relative h-20 w-36 shrink-0" data-context-chip={kind} data-tooltip={`${label} · ${detail}`}>
       <button
         type="button"
         onClick={onOpen}
@@ -185,7 +187,7 @@ function PastedCard({ label, detail, text, onOpen, onRemove }: { label: string; 
           {pastePreview(text)}
         </span>
         <span className="flex items-center justify-between gap-1">
-          <span className="rounded border border-edge px-1 text-meta font-medium tracking-wide text-muted uppercase">Pasted</span>
+          <span className="rounded border border-edge px-1 text-meta font-medium tracking-wide text-muted uppercase">{kind === 'review' ? 'Review' : 'Pasted'}</span>
           <Pencil size={11} className="text-muted opacity-0 group-focus-within:opacity-100 group-hover:opacity-100" aria-hidden />
         </span>
       </button>

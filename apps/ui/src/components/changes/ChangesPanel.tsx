@@ -1,11 +1,14 @@
 import { trashName } from '../../lib/platform.ts';
-import { ChevronRight, ExternalLink, Maximize2, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
-import { memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { ChevronRight, ExternalLink, Maximize2, MessageSquareText, Minimize2, RefreshCw, TriangleAlert, Undo2, WrapText, X } from 'lucide-react';
+import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { joinPath, type ChangedFile, type ChangesBase, type GitChanges } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { claim, release } from '../../lib/inFlight.ts';
+import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
 import { parseUnifiedDiff } from '../../lib/unifiedDiff.ts';
+import { useComposerTargets } from '../../state/composerTargets.ts';
+import { useDiffComments, useSessionComments } from '../../state/diffCommentsStore.ts';
 import { useMemoryView } from '../../state/memoryStore.ts';
 import { useOverlay } from '../../state/overlayStore.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
@@ -17,6 +20,9 @@ import { Notice } from '../ui/Notice.tsx';
 import { SegmentedControl } from '../ui/SegmentedControl.tsx';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
 import { CHANGES_DEFAULT_WIDTH, CHANGES_MAX_SHARE, CHANGES_MIN_WIDTH, changesWidthForKey, clampChangesWidth } from './changesWidth.ts';
+import { CommentCard, CommentEditor } from './DiffCommentParts.tsx';
+import { anchorOf, reviewSummary, targetFromRows, type CommentTarget, type DiffComment } from './diffComments.ts';
+import { submitReview } from './submitReview.ts';
 
 const WIDTH_KEY = 'ui.changesWidth';
 
@@ -73,7 +79,7 @@ let changesLoads = 0;
 const lineCounts = (added: number, removed: number) => `${added} ${added === 1 ? 'line' : 'lines'} added, ${removed} removed`;
 
 /** One file's diff, loaded when it's opened. */
-const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: string; cwd: string; base: ChangesBase; path: string; version: string }) {
+const FileDiff = memo(function FileDiff({ id, sessionId, root, cwd, base, path, version }: { id: string; sessionId: string; root: string; cwd: string; base: ChangesBase; path: string; version: string }) {
   const connection = useEngineConnection();
   const client = connection.status === 'connected' ? connection.client : null;
   const [state, setState] = useState<{ diff: string; truncated: boolean } | { error: string } | null>(null);
@@ -91,6 +97,73 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
   }, [client, cwd, base, path, version]);
   const rows = useMemo(() => (state && 'diff' in state ? parseUnifiedDiff(state.diff) : []), [state]);
   const wrap = useOverlay((s) => s.diffWrap);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Review comments on this file, each at its lines (wherever Claude's edits moved them), or stale once they are gone.
+  const all = useSessionComments(sessionId);
+  const comments = useMemo(() => all.filter((c) => c.root === root && c.path === path), [all, root, path]);
+  const anchors = useMemo(() => new Map(comments.map((c) => [c.id, rows.length ? anchorOf(c, rows) : null])), [comments, rows]);
+  useEffect(() => {
+    // The message names the lines where they are now.
+    const moves = comments.flatMap((c) => {
+      const anchor = anchors.get(c.id);
+      return anchor && (anchor.start !== c.start || anchor.end !== c.end) ? [{ id: c.id, start: anchor.start, end: anchor.end }] : [];
+    });
+    if (moves.length) useDiffComments.getState().move(sessionId, moves);
+  }, [anchors, comments, sessionId]);
+
+  // Lines picked for a new comment: dragged over the line numbers (rows, while the button is down), then the lines
+  // themselves, so the editor stays with them when the diff reloads. Shift-click extends from where the last pick began.
+  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  const [target, setTarget] = useState<CommentTarget | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const pickFrom = useRef<number | null>(null);
+  const targetAnchor = useMemo(() => (target && rows.length ? anchorOf(target, rows) : null), [target, rows]);
+  // Read when the button comes up, which can be before the next render.
+  const dragRef = useRef(drag);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const dragTo = (next: { from: number; to: number } | null) => {
+    dragRef.current = next;
+    setDrag(next);
+  };
+  const pickDown = (event: MouseEvent, index: number) => {
+    if (event.button !== 0) return;
+    // A drag over the numbers picks lines, not text.
+    event.preventDefault();
+    const from = event.shiftKey && pickFrom.current !== null ? pickFrom.current : index;
+    pickFrom.current = from;
+    dragTo({ from, to: index });
+    const up = () => {
+      window.removeEventListener('mouseup', up);
+      const picked = dragRef.current;
+      dragTo(null);
+      if (!picked) return;
+      setTarget(targetFromRows(rowsRef.current, picked.from, picked.to));
+      setEditing(null);
+    };
+    window.addEventListener('mouseup', up);
+  };
+
+  // ⌘⇧M with lines of this diff selected: a comment on them.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!matches(event, 'changes.comment')) return;
+      const selection = window.getSelection();
+      const rowOf = (node: Node | null | undefined) => (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-diff-row]');
+      const [a, b] = [rowOf(selection?.anchorNode), rowOf(selection?.focusNode)];
+      if (!selection || selection.isCollapsed || !a || !b || !containerRef.current?.contains(a) || !containerRef.current.contains(b)) return;
+      const picked = targetFromRows(rows, Number(a.dataset.diffRow), Number(b.dataset.diffRow));
+      if (!picked) return;
+      event.preventDefault();
+      selection.removeAllRanges();
+      pickFrom.current = Number(a.dataset.diffRow);
+      setTarget(picked);
+      setEditing(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [rows]);
 
   if (!state)
     return (
@@ -115,24 +188,71 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
   // The diff sits on the conversation's surface, inset in the panel's darker one (the code surface is the panel's own
   // colour in dark mode): set apart without a line.
   const gutter = 'sticky left-0 z-[1] flex shrink-0 self-stretch bg-bg';
+  const picked = drag ? { first: Math.min(drag.from, drag.to), last: Math.max(drag.from, drag.to) } : targetAnchor;
+  const { add, edit, remove } = useDiffComments.getState();
+  const editor = (t: CommentTarget) => (
+    <CommentEditor
+      key="editor"
+      target={t}
+      onSave={(body) => {
+        add(sessionId, root, path, t, body);
+        setTarget(null);
+      }}
+      onCancel={() => setTarget(null)}
+    />
+  );
+  const card = (comment: DiffComment, stale: boolean) =>
+    editing === comment.id ? (
+      <CommentEditor
+        key={comment.id}
+        target={comment}
+        initial={comment.body}
+        onSave={(body) => {
+          edit(sessionId, comment.id, body);
+          setEditing(null);
+        }}
+        onCancel={() => setEditing(null)}
+      />
+    ) : (
+      <CommentCard key={comment.id} comment={comment} stale={stale} onEdit={() => (setEditing(comment.id), setTarget(null))} onRemove={() => remove(sessionId, comment.id)} />
+    );
+  const under = (i: number) => [...comments.filter((c) => anchors.get(c.id)?.last === i).map((c) => card(c, false)), ...(target && targetAnchor?.last === i ? [editor(target)] : [])];
+  const stale = comments.filter((c) => !anchors.get(c.id));
   return (
-    <div id={id} className="mx-1 mb-1 overflow-x-auto overscroll-x-contain rounded-md bg-bg font-mono text-ui select-text" data-file-diff data-diff-wrap={wrap}>
+    <div ref={containerRef} id={id} className="@container/diff mx-1 mb-1 overflow-x-auto overscroll-x-contain rounded-md bg-bg font-mono text-ui select-text" data-file-diff data-diff-wrap={wrap}>
       <div className={wrap ? '' : 'w-max min-w-full'}>
-        {rows.map((row, i) =>
-          row.kind === 'hunk' ? (
-            <div key={i} className={`bg-border/30 px-3 text-faint ${wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>
+        {/* Comments whose lines are gone show first, with the lines they quote. */}
+        {stale.map((c) => card(c, true))}
+        {target && !targetAnchor && editor(target)}
+        {rows.map((row, i) => (
+          <Fragment key={i}>
+          {row.kind === 'hunk' ? (
+            <div key={i} data-diff-row={i} className={`bg-border/30 px-3 text-faint ${wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>
               @@ {row.text}
             </div>
           ) : row.kind === 'note' ? (
-            <div key={i} className="px-3 text-faint italic">
+            <div key={i} data-diff-row={i} className="px-3 text-faint italic">
               {row.text}
             </div>
           ) : (
-            <div key={i} className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`}>
+            <div
+              key={i}
+              data-diff-row={i}
+              data-diff-picked={(picked && i >= picked.first && i <= picked.last) || undefined}
+              className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed text-text/80' : 'text-muted'}`}
+              onMouseEnter={drag ? () => dragRef.current && dragTo({ ...dragRef.current, to: i }) : undefined}
+            >
               {/* The gutter is opaque (it covers lines scrolling under it), so it repeats the row's tint. */}
               <span className={gutter}>
-                <span className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed' : ''}`}>
-                  <span className="w-9 shrink-0 pr-1.5 text-right text-faint/70 select-none">{row.newLine ?? row.oldLine}</span>
+                <span className={`flex ${row.kind === 'add' ? 'bg-diff-added' : row.kind === 'del' ? 'bg-diff-removed' : ''} ${picked && i >= picked.first && i <= picked.last ? 'shadow-[inset_2px_0_0_var(--color-accent-ink)]' : ''}`}>
+                  <span
+                    className={`w-9 shrink-0 cursor-pointer pr-1.5 text-right select-none hover:text-accent-ink ${picked && i >= picked.first && i <= picked.last ? 'font-semibold text-accent-ink' : 'text-faint/70'}`}
+                    onMouseDown={(e) => pickDown(e, i)}
+                    data-tooltip={`Comment on this line (drag or Shift-click for more, or select lines and press ${formatKeys(keysFor('changes.comment'))})`}
+                    data-diff-line
+                  >
+                    {row.newLine ?? row.oldLine}
+                  </span>
                   <span className={`w-4 shrink-0 text-center select-none ${row.kind === 'add' ? 'text-ok' : row.kind === 'del' ? 'text-error' : 'text-faint'}`}>
                     {row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' '}
                   </span>
@@ -140,8 +260,10 @@ const FileDiff = memo(function FileDiff({ id, cwd, base, path, version }: { id: 
               </span>
               <span className={`pr-3 ${wrap ? 'min-w-0 break-all whitespace-pre-wrap' : 'whitespace-pre'}`}>{row.text || ' '}</span>
             </div>
-          ),
-        )}
+          )}
+          {under(i)}
+          </Fragment>
+        ))}
         {state.truncated && <div className="px-3 py-1 text-muted">… diff shortened (too long to show in full)</div>}
       </div>
     </div>
@@ -205,6 +327,15 @@ export function ChangesPanel({
   // The header's and footer's hairlines show only while files scroll under them.
   const listRef = useRef<HTMLDivElement>(null);
   const listEdge = useScrollEdge(listRef);
+  const comments = useSessionComments(sessionId);
+  const commentsOn = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of comments) if (c.root === changes?.root) counts.set(c.path, (counts.get(c.path) ?? 0) + 1);
+    return counts;
+  }, [comments, changes?.root]);
+  // Submit fills the message box, so it needs one (a session another tool runs may have none).
+  const hasComposer = useComposerTargets((s) => sessionId in s.boxes);
+  const [clearing, setClearing] = useState(false);
 
   /**
    * Paths being staged or unstaged right now. A second click (a double click on a box, Stage all twice) waits
@@ -413,6 +544,13 @@ export function ChangesPanel({
                     </span>
                     <span className="sr-only">{lineCounts(file.additions, file.deletions)}</span>
                   </span>
+                  {(commentsOn.get(file.path) ?? 0) > 0 && (
+                    <span className="flex shrink-0 items-center gap-0.5 text-meta text-accent-ink tabular-nums" data-file-comments={commentsOn.get(file.path)}>
+                      <MessageSquareText size={11} aria-hidden />
+                      <span aria-hidden>{commentsOn.get(file.path)}</span>
+                      <span className="sr-only">{commentsOn.get(file.path) === 1 ? '1 comment' : `${commentsOn.get(file.path)} comments`}</span>
+                    </span>
+                  )}
                   {/* Shown on hover, and while the row has keyboard focus so Tab can reach them. */}
                   <span className="hidden shrink-0 items-center group-focus-within:flex group-hover:flex">
                     {file.status !== 'deleted' && changes.root && (
@@ -431,15 +569,38 @@ export function ChangesPanel({
                     )}
                   </span>
                 </div>
-                {isOpen && <FileDiff id={diffId} cwd={cwd} base={base} path={file.path} version={`${load}:${file.additions}:${file.deletions}:${file.staged}`} />}
+                {isOpen && <FileDiff id={diffId} sessionId={sessionId} root={changes.root} cwd={cwd} base={base} path={file.path} version={`${load}:${file.additions}:${file.deletions}:${file.staged}`} />}
               </div>
             );
           })
         )}
       </div>
 
+      {comments.length > 0 && (
+        <div className="edge-t flex h-10 shrink-0 items-center gap-2 px-3 text-ui" data-scrolled={!listEdge.atBottom || undefined} data-review-bar>
+          <MessageSquareText size={13} className="shrink-0 text-accent-ink" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-meta text-muted" data-review-count={comments.length}>
+            {reviewSummary(comments)}
+          </span>
+          <Button variant="quiet" size="sm" onClick={() => setClearing(true)} data-review-clear>
+            Clear
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!hasComposer}
+            onClick={() => submitReview(sessionId, cwd)}
+            data-tooltip={hasComposer ? 'Put the comments in the message box, to read and send' : 'This session has no message box'}
+            data-review-submit
+          >
+            Submit
+          </Button>
+        </div>
+      )}
+
       {editable && files.length > 0 && client && (
-        <div className="edge-t flex h-10 shrink-0 items-center gap-2 px-3 text-ui" data-scrolled={!listEdge.atBottom || undefined} data-changes-footer>
+        // Under the review bar, that bar carries the line where files scroll under.
+        <div className={`${comments.length > 0 ? '' : 'edge-t'} flex h-10 shrink-0 items-center gap-2 px-3 text-ui`} data-scrolled={!listEdge.atBottom || undefined} data-changes-footer>
           <Button variant="quiet" size="sm" onClick={() => stage(files.map((f) => f.path), !allStaged, allStaged ? 'unstage the files' : 'stage the files')} aria-busy={staging.size > 0 || undefined} data-stage-all>
             {allStaged ? 'Unstage all' : 'Stage all'}
           </Button>
@@ -448,6 +609,17 @@ export function ChangesPanel({
             Revert all…
           </Button>
         </div>
+      )}
+
+      {clearing && (
+        <ConfirmDialog
+          title={comments.length === 1 ? 'Remove the comment?' : `Remove ${comments.length} comments?`}
+          danger
+          confirmLabel="Remove"
+          body={<p>{comments.length === 1 ? 'It is' : 'They are'} not sent to Claude.</p>}
+          onConfirm={async () => useDiffComments.getState().clear(sessionId)}
+          onClose={() => setClearing(false)}
+        />
       )}
 
       {reverting && client && (

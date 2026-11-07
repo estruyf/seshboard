@@ -192,7 +192,7 @@ function parseContext(value: unknown): ContextItem[] {
     else if (raw.kind === 'session' && typeof raw.sessionId === 'string' && raw.sessionId && typeof raw.label === 'string' && raw.label.trim()) out.push({ kind: 'session', sessionId: raw.sessionId, label: raw.label });
     else if (raw.kind === 'github' && (raw.type === 'issue' || raw.type === 'pr') && Number.isInteger(raw.number) && (raw.number as number) > 0 && typeof raw.repo === 'string' && /^[\w.-]+\/[\w.-]+$/.test(raw.repo) && typeof raw.title === 'string' && typeof raw.url === 'string' && raw.url.startsWith('https://github.com/'))
       out.push({ kind: 'github', type: raw.type, number: raw.number as number, repo: raw.repo, title: raw.title, url: raw.url });
-    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks')) {
+    else if (raw.kind === 'text' && typeof raw.label === 'string' && typeof raw.text === 'string' && (raw.source === 'selection' || raw.source === 'problems' || raw.source === 'terminal' || raw.source === 'output' || raw.source === 'paste' || raw.source === 'checks' || raw.source === 'review')) {
       out.push({
         kind: 'text',
         source: raw.source,

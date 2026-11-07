@@ -220,6 +220,7 @@ describe('the shortcut registry', () => {
       'find.next': [SESSION, HOME],
       'find.previous': [SESSION, HOME],
       'changes.toggle': [SESSION, at({ view: 'session' })],
+      'changes.comment': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'commands.toggle': [SESSION, at({ view: 'session' })],
       'ask.open': [SESSION, at({ view: 'session' })],

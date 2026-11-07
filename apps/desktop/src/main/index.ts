@@ -22,6 +22,7 @@ import { adoptLegacyEnv, cameFromSwitchboard, legacyDataFolder } from './rename.
 import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, parseDeepLink } from './deepLink.ts';
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
+import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
@@ -13626,6 +13627,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
     return activity.steps ? `ok: ${summary}` : `failed: ${summary}`;
   });
   await step('changes panel', () => runChangesStep(win));
+  await step('diff comments: comment on lines in Changes, edit, keep after closing, submit to the message box', () => runDiffCommentsStep(win, (name) => shot(win, name)));
   await step('fewer lines: the header line only while scrolled, Changes on the sidebar surface, a fade over the composer', () => runFewerLinesStep(win));
   await step('branch button', () => runBranchStep(win));
   await step('open in menu', () => runOpenInStep(win));

@@ -52,7 +52,7 @@ export function chipLabel(item: ContextItem, cwd: string | null): { label: strin
     const range = item.range ? `:${lines(item.range)}` : '';
     return { label: `${basename(item.path)}${range}`, detail: item.range ? `${where}, lines ${lines(item.range)}` : where };
   }
-  if (item.source === 'paste') return { label: item.label, detail: pasteSize(item.text) };
+  if (item.source === 'paste' || item.source === 'review') return { label: item.label, detail: pasteSize(item.text) };
   const where = item.path ? relativeTo(item.path, cwd) + (item.range ? `, lines ${lines(item.range)}` : '') : null;
   const size = item.text.split('\n').length;
   return { label: item.label, detail: [where, size === 1 ? '1 line of text' : `${size} lines of text`].filter(Boolean).join(' · ') };
