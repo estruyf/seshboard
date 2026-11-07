@@ -42,7 +42,11 @@
       "profile-purple": "#b48ead",
       "profile-red": "#dc858d",
       "profile-orange": "#d08770",
-      "profile-gray": "#8891a3"
+      "profile-gray": "#8891a3",
+      "working-plug-a": "#b48ead",
+      "working-plug-b": "#bf616a",
+      "working-plug-c": "#ebcb8b",
+      "working-plug-d": "#d08770"
     },
     "terminal": {
       "background": "#242933",
