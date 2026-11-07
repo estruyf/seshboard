@@ -22,6 +22,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Compacting no longer looks stuck.** The patch panel next to **Compacting the conversation** now pulses, so a long compact shows it is still going.
 - **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
 
 ## [1.3.0] - 2026-11-05
