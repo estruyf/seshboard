@@ -301,6 +301,7 @@ On Windows and Linux, ⌘ is Ctrl, ⌥ is Alt and ⇧ is Shift, and the app show
 | ⌥-click | Run a code block and give Claude its output (on a code block's Run button; It runs in a tab of its own; when it ends, Claude gets the exit code and the end of what it printed) |
 | ⇧-click | Open a file link the other way (on a file in the conversation; A click does what Settings › Conversation sets; this does the other) |
 | ⌘⇧D | Show or hide Changes |
+| ⌘⇧M | Comment on the selected lines (in a diff in Changes; Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box) |
 | ⌘⇧K | Show or hide Agents (The agents Claude started in this session, beside the conversation) |
 | ⌘⇧E | Show or hide Commands (The commands Claude runs in the background, with their output) |
 |  | Ask about this session (No key by default: use the Ask button next to Send, the command palette, or /btw) |

@@ -15,7 +15,7 @@ export type LineRange = z.infer<typeof LineRange>;
  * - `file`: a file or folder by reference, optionally a range of lines. Claude reads it itself, so a large
  *   selection stays small.
  * - `text`: text that isn't a file on disk, or not as it is on disk: a selection with unsaved changes,
- *   problems, terminal output, a long paste into the message box (`paste`), or a failed check's log (`checks`).
+ *   problems, terminal output, a long paste into the message box (`paste`), a failed check's log (`checks`), or review comments on lines in Changes (`review`).
  *   `path` and `range` say where it came from, when it came from a file.
  * - `session`: another session, linked with `@`; the engine adds a brief about it when the message goes to Claude.
  * - `github`: an issue or pull request, attached with `#`; the engine adds its title, link, labels and text (and a pull
@@ -29,7 +29,7 @@ const FileItem = z.object({
 });
 const TextItem = z.object({
   kind: z.literal('text'),
-  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks']),
+  source: z.enum(['selection', 'problems', 'terminal', 'output', 'paste', 'checks', 'review']),
   /** What the chip says, such as "Problems in auth.ts". */
   label: z.string().trim().min(1).max(200),
   text: z.string().max(MAX_PROMPT_LENGTH),

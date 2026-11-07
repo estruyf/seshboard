@@ -167,6 +167,7 @@ const PLANS: Record<string, Plan> = {
   'switch-branch': 'here',
   'stage-all': 'here',
   'revert-all': 'here',
+  'submit-review': 'here',
   'finish-worktree': 'here',
   'edit-actions': 'here',
   'new-action': 'here',

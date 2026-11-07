@@ -136,6 +136,8 @@ export interface PaletteContext {
   prompts: Array<{ id: string; name: string; scope: PromptScope }>;
   /** The message box Add context… adds to (the session's, or New session's), once its folder is known. */
   composer: { key: string; cwd: string } | null;
+  /** Review comments on lines in the open session's Changes, not submitted yet. */
+  reviewComments: number;
   /** VS Code is installed, so a session can continue in its Claude Code extension. */
   canContinueInVSCode: boolean;
   /** Clone from GitHub is on (Settings › Projects): "New session from a GitHub repository…". */

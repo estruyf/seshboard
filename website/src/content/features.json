@@ -192,6 +192,11 @@
       "page": "terminal-changes-git/git"
     },
     {
+      "id": "palette:submit-review",
+      "name": "Submit review comments",
+      "page": "terminal-changes-git/changes"
+    },
+    {
       "id": "palette:delete-session",
       "name": "Delete session…",
       "page": "sessions/sidebar"
@@ -870,6 +875,11 @@
       "id": "shortcut:changes.toggle",
       "name": "changes.toggle",
       "page": "command-palette"
+    },
+    {
+      "id": "shortcut:changes.comment",
+      "name": "changes.comment",
+      "page": "terminal-changes-git/changes"
     },
     {
       "id": "shortcut:agents.toggle",
@@ -4895,6 +4905,11 @@
       "id": "feature:new-session-width",
       "name": "New session uses the width of the window",
       "page": "new-session/form"
+    },
+    {
+      "id": "feature:diff-comments",
+      "name": "Comment on lines in a diff in Changes, and submit the comments to the message box",
+      "page": "terminal-changes-git/changes"
     }
   ]
 }

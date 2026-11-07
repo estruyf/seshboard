@@ -57,6 +57,7 @@ import {
   PencilLine,
   Maximize2,
   MessageCircleQuestion,
+  MessageSquareText,
   MessagesSquare,
   Monitor,
   Moon,
@@ -232,6 +233,8 @@ export interface PaletteApi {
   syncWithRemote(): void;
   stageAll(): void;
   revertAll(): void;
+  /** The review comments on lines in Changes, into the message box. */
+  submitReview(): void;
   runAction(id: string): void;
   /** Puts a saved prompt in the message box on screen, to fill in. */
   usePrompt(scope: PromptScope, id: string): void;
@@ -920,6 +923,15 @@ export const COMMANDS: PaletteCommand[] = [
     keywords: 'git github pr ci checks actions failed red build tests logs',
     when: (ctx) => inGit(ctx) && ctx.git!.failingChecks > 0 && ctx.composer !== null,
     run: (api) => api.sessionRequest('fix-checks'),
+  },
+  {
+    id: 'submit-review',
+    title: (ctx) => (ctx.reviewComments === 1 ? 'Submit review comment' : `Submit ${ctx.reviewComments} review comments`),
+    group: 'git',
+    icon: MessageSquareText,
+    keywords: 'changes diff lines feedback comments review send message',
+    when: (ctx) => hasSession(ctx) && ctx.reviewComments > 0 && ctx.composer !== null,
+    run: (api) => api.submitReview(),
   },
   { id: 'sync', title: 'Sync with remote', group: 'git', icon: RefreshCw, keywords: 'git pull push fetch', when: (ctx) => inGit(ctx) && ctx.git!.hasRemote, run: (api) => api.syncWithRemote() },
   { id: 'switch-branch', title: 'Switch branch…', group: 'git', icon: GitBranch, keywords: 'git checkout', when: (ctx) => inGit(ctx) && !session(ctx)!.isWorktree && !session(ctx)!.running, run: (api) => api.sessionRequest('branch-menu') },

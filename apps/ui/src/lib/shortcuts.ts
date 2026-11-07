@@ -985,6 +985,15 @@ export const SHORTCUTS = [
     when: inSession,
   },
   {
+    id: "changes.comment",
+    keys: ["mod+shift+m"],
+    action: "Comment on the selected lines",
+    section: "session",
+    context: "In a diff in Changes",
+    note: "Or click a line number, and drag or Shift-click for more. Submit puts the comments in the message box",
+    when: inSession,
+  },
+  {
     id: "agents.toggle",
     keys: ["mod+shift+k"],
     action: "Show or hide Agents",

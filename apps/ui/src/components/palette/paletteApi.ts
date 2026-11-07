@@ -37,6 +37,7 @@ import { ownerSession } from '../terminal/appTerminal.ts';
 import { useThemes } from '../../state/themeStore.ts';
 import { useWhy } from '../../state/whyStore.ts';
 import { useComposerTargets } from '../../state/composerTargets.ts';
+import { submitReview as submitReviewComments } from '../changes/submitReview.ts';
 import { useSavedPromptsStore } from '../savedPrompts/savedPromptsStore.ts';
 import { sameScope } from '../savedPrompts/fillModel.ts';
 
@@ -282,6 +283,7 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
         // The checkout changed under the session view: its Changes panel and git button read it again.
         useCheckoutBranches.getState().switched();
       }),
+    submitReview: () => sessionId && submitReviewComments(sessionId, cwd),
     revertAll: () =>
       cwd &&
       call('read the changes', async (c) => {

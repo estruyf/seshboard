@@ -69,6 +69,7 @@ function context(over: Partial<PaletteContext> = {}): PaletteContext {
     questionsDir: '/data/questions',
     cloneEnabled: false,
     composer: null,
+    reviewComments: 0,
     canContinueInVSCode: false,
     computers: [],
     ...over,
@@ -364,6 +365,20 @@ describe('when(): git, actions, terminal, panes', () => {
     expect(api.openUrl).toHaveBeenCalledWith('https://github.com/o/r/pull/123');
     command.run!(api, inSession({}, { git }));
     expect(api.sessionRequest).toHaveBeenCalledWith('create-pr');
+  });
+
+  it('submits review comments while there are some and the message box is on screen', () => {
+    const box = { key: 's1', cwd: '/work/app' };
+    expect(ids(inSession({}, { reviewComments: 2 }))).not.toContain('submit-review');
+    expect(ids(inSession({}, { reviewComments: 0, composer: box }))).not.toContain('submit-review');
+    const ctx = inSession({}, { reviewComments: 2, composer: box });
+    const command = COMMANDS.find((c) => c.id === 'submit-review')!;
+    expect(ids(ctx)).toContain('submit-review');
+    expect(titleOf(command, ctx)).toBe('Submit 2 review comments');
+    expect(titleOf(command, { ...ctx, reviewComments: 1 })).toBe('Submit review comment');
+    const api = { submitReview: vi.fn() } as unknown as PaletteApi;
+    command.run!(api, ctx);
+    expect(api.submitReview).toHaveBeenCalled();
   });
 
   it('finishes a worktree instead of switching branch in one', () => {
