@@ -1607,6 +1607,11 @@
       "page": "settings"
     },
     {
+      "id": "feature:gemini-sessions",
+      "name": "Google Gemini sessions: Settings: Profiles offers Gemini CLI when it finds it (Add Gemini profile, Not now); Add profile with Gemini as the tool uses Gemini CLI's own folder (~/.gemini), skips sign in when it is signed in already (else gemini in Seshboard's terminal); its sessions show in the sidebar with Gemini's mark, in search, catch-up and on the phone, with their transcript, tool calls, diffs and subagents (Agents); New session, the queue, schedules, triggers and pipeline steps start them over Gemini CLI's ACP agent with Gemini's models and the four permission modes (Ask before edits, Accept edits, Plan mode, Auto mode), and the message box continues them; Gemini CLI's slash commands in the / list; Delete moves its files to the Trash",
+      "page": "settings"
+    },
+    {
       "id": "settings:vscode",
       "name": "Settings: VS Code",
       "page": "settings"
