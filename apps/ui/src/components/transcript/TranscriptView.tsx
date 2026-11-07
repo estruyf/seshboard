@@ -237,7 +237,7 @@ function StreamingBlock({ sessionId, since, showIndicator, live }: { sessionId: 
   }
   if (!running || !showIndicator) return null;
   const label = workingLabel({ waiting: live.waitingSince !== null, compacting, block });
-  const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'still' : 'working';
+  const panel: WorkingState = live.waitingSince !== null ? 'waiting' : compacting ? 'compacting' : 'working';
   return (
     <div className="mx-auto max-w-3xl px-6 pt-3 pb-2" data-streaming data-compacting={compacting && live.waitingSince === null ? '' : undefined}>
       <SpinnerSlot sessionId={sessionId} message={label}>

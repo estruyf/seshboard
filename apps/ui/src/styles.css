@@ -621,9 +621,22 @@ html[data-quick-start-window] body {
 .working-panel[data-working-state='working'] .jack-glow {
   animation-name: working-glow;
 }
-/* Compacting, and every state with Reduce motion: the five free jacks softly lit, without glow, as the Dock's still frame. */
-.working-panel[data-working-state='still'] .jack-light {
+/*
+ * Compacting: the five free jacks lit as the Dock's still frame, pulsing together, so a long compact never looks stuck
+ * and still reads apart from the moving light. With Reduce motion they hold the still frame, as every state does.
+ */
+.working-panel[data-working-state='compacting'] .jack-light {
   opacity: 0.8;
+  animation: working-compacting 1.6s ease-in-out infinite;
+}
+@keyframes working-compacting {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 /* Waiting for you: all five lit in the needs-you colour. */
 .working-panel[data-working-state='waiting'] .jack-light {
@@ -698,6 +711,9 @@ html[data-quick-start-window] body {
   }
   .working-panel[data-working-state='working'] .jack-glow {
     visibility: hidden;
+  }
+  .working-panel[data-working-state='compacting'] .jack-light {
+    animation: none;
   }
   /* Spinners keep turning (they mean "busy"); everything else stops moving. */
   *:not(.animate-spin),

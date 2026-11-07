@@ -9608,7 +9608,7 @@ async function runCompactingStep(win: BrowserWindow): Promise<string> {
 
 /**
  * The working mark under a reply (WorkingPanel), on a stand-in session: the patch panel on the working line with its
- * light moving, its still frame while compacting, and lit in the needs-you colour while a permission prompt waits.
+ * light moving, all its jacks pulsing while compacting, and lit in the needs-you colour while a permission prompt waits.
  * Follows the theme (Forest's plugs are its icon's). Takes the working line in light and in dark, as it is and zoomed,
  * and in Forest and Signal (working-panel-light.png, working-panel-dark@3x.png, working-panel-forest-dark@3x.png, …).
  */
@@ -9662,15 +9662,16 @@ async function runWorkingPanelStep(win: BrowserWindow): Promise<string> {
     updatePreferences({ themeId });
     nativeTheme.themeSource = scheme;
     host('running', true);
-    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'still' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the still panel';
-    if ((await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName !== 'none').length`)) !== 0) return 'the still panel kept moving';
+    if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'compacting' && ${panel}.closest('[data-streaming]').innerText.includes('Compacting')`, 5_000))) return 'Compacting did not show the compacting panel';
+    const pulsing = (await js(`[...${panel}.querySelectorAll('.jack-light')].filter((l) => getComputedStyle(l).animationName === 'working-compacting').length`)) as number;
+    if (pulsing !== 5) return `the compacting panel pulsed ${pulsing} jacks, not 5`;
     host('running', false);
     host('needs-you');
     if (!(await waitInPage(win, `${panel}?.dataset.workingState === 'waiting' && ${panel}.closest('[data-streaming]').innerText.includes('Waiting for you')`, 5_000))) {
       const seen = await js(`document.querySelector('[data-current-session="${standIn}"] [data-streaming]')?.innerText ?? 'no working line'`).catch(() => 'unknown');
       return `a permission prompt did not show the waiting panel (${JSON.stringify(seen)})`;
     }
-    return `ok: the working line showed the patch panel (9 jacks, ${moving} moving, 16px, hidden from screen readers) and no dots, still while compacting, and waiting while a permission prompt was held`;
+    return `ok: the working line showed the patch panel (9 jacks, ${moving} moving, 16px, hidden from screen readers) and no dots, pulsing while compacting, and waiting while a permission prompt was held`;
   } finally {
     if (preferences.get().themeId !== themeId) updatePreferences({ themeId });
     nativeTheme.themeSource = scheme;
@@ -13687,7 +13688,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('queue: start by itself after a clean finish, not after an error', () => runQueueAutoStartStep(win));
   await step('compacting: the status stays after switching to another session and back', () => runCompactingStep(win));
   await step('fast mode: a toggle with a tooltip on models that have it, /fast, why it is blocked, and from New session', () => runFastModeStep(win));
-  await step('working panel: the patch panel on the working line, still while compacting, waiting on a permission', () => runWorkingPanelStep(win));
+  await step('working panel: the patch panel on the working line, pulsing while compacting, waiting on a permission', () => runWorkingPanelStep(win));
   await step('menu bar: the icon says needs you, the panel lists what needs you, works and finished', () => runMenuBarPanelStep(win));
   await step('menu bar: Allow on a waiting session moves it to Working', () => runMenuBarAllowStep());
   await step('menu bar: new work starts in the background, the main window stays where it was', () => runMenuBarNewWorkStep(win));
