@@ -3,7 +3,7 @@
  * one MessagePort per window; everything the UI needs goes over those ports.
  */
 import { readFileSync } from 'node:fs';
-import { createEngine, demoCodex, demoCopilot, type DemoUsage, type TrashScope } from '@seshboard/engine';
+import { createEngine, demoCodex, demoCopilot, demoGemini, type DemoUsage, type TrashScope } from '@seshboard/engine';
 import { RemoteAppUpdate } from '@seshboard/protocol';
 import { appIconKey, ARCHIVE_AFTER_DAYS, clampDays, DEFAULT_AUTO_MODEL, DELETE_AFTER_DAYS, sanitizeAutoModel } from '@seshboard/protocol/bridge';
 import { mainPortTransport } from '../shared/mainPortTransport.ts';
@@ -90,6 +90,9 @@ const engine = createEngine({
   // The smoke test and the screenshots: a made-up Codex CLI, signed in, whose app-server answers in the process from the
   // demo home's rollout files. Nothing reaches a real Codex.
   ...(process.env.SESHBOARD_STUB_CODEX === '1' ? { codex: demoCodex() } : {}),
+  // The smoke test and the screenshots: a made-up Gemini CLI, signed in by the demo home's files, whose ACP agent refuses
+  // to run a session. Nothing reaches a real Gemini.
+  ...(process.env.SESHBOARD_STUB_GEMINI === '1' ? { gemini: demoGemini() } : {}),
   // The smoke test and the screenshots: Clone from GitHub clones from a folder of local repositories, never the network.
   ...(process.env.SESHBOARD_CLONE_SOURCE ? { cloneSource: process.env.SESHBOARD_CLONE_SOURCE } : {}),
 });
