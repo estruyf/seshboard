@@ -210,7 +210,8 @@ export function diffEdits(diff: string): Array<{ old_string: string; new_string:
     });
 }
 
-export type Tool = { name: string; input: Loose };
+/** `app`: the MCP App the call shows (`McpAppCall`), carried on the block for `normaliseMessage`. */
+export type Tool = { name: string; input: Loose; app?: { server: string; resourceUri: string; callId: string | null; result: unknown } };
 type Result = { text: string; isError: boolean; images?: Block[] } | null;
 
 /**
@@ -390,7 +391,7 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
   const note = (text: string) => out.push(message('system', id, ended, { role: 'system', content: [{ type: 'text', text }] }));
   const tools = (calls: Array<{ id: string; tool: Tool; result: Result }>) => {
     if (!calls.length) return;
-    assistant(calls.map(({ id: callId, tool }) => ({ type: 'tool_use', id: callId, name: tool.name, input: tool.input })));
+    assistant(calls.map(({ id: callId, tool }) => ({ type: 'tool_use', id: callId, name: tool.name, input: tool.input, ...(tool.app ? { app: tool.app } : {}) })));
     const results = calls.flatMap(({ id: callId, result: own }) => {
       // A tool still running in a turn that ended (stopped, failed) never finishes: without a result it would wait for
       // one for good. Plans have no status and stay without one, and so does a turn whose status is missing.
@@ -461,7 +462,11 @@ function convertItem(turn: Turn, item: Loose, id: string, context: CodexContext,
         const text = output.text || (structured !== undefined && structured !== null ? JSON.stringify(structured, null, 2) : '');
         result = { text, isError: item.status === 'failed', images: output.images };
       }
-      tool({ name: `mcp__${str(item.server) ?? 'unknown'}__${str(item.tool) ?? 'unknown'}`, input }, result);
+      // A tool with an MCP App: its page draws the call, with the result as the server sent it.
+      const page = str(obj(item.mcpAppUi).resourceUri) ?? str(item.mcpAppResourceUri);
+      const server = str(item.server) ?? 'unknown';
+      const app = page?.startsWith('ui://') ? { server, resourceUri: page, callId: str(item.id), result: item.result ?? null } : undefined;
+      tool({ name: `mcp__${server}__${str(item.tool) ?? 'unknown'}`, input, ...(app ? { app } : {}) }, result);
       break;
     }
     case 'webSearch': {

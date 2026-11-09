@@ -19,7 +19,8 @@ const LOADING_STEP_MS = 1_800;
 
 const darkQuery = () => matchMedia('(prefers-color-scheme: dark)');
 
-function useDark(): boolean {
+/** Whether the window is in dark mode now (it follows View › Appearance). */
+export function useDark(): boolean {
   const [dark, setDark] = useState(() => darkQuery().matches);
   useEffect(() => {
     const query = darkQuery();

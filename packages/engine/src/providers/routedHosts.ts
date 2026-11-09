@@ -119,6 +119,19 @@ export class RoutedHostManager extends HostManager {
     return other ? other.mcp(sessionId, server, action) : super.mcp(sessionId, server, action);
   }
 
+  /** MCP Apps are a provider's (Codex's): Claude Code's sessions have none yet. */
+  mcpAppResource(sessionId: string, server: string, uri: string, callId: string | null): Promise<unknown[]> {
+    const other = this.providerFor(sessionId);
+    if (!other) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return other.mcpAppResource(sessionId, server, uri, callId);
+  }
+
+  mcpAppCall(sessionId: string, server: string, tool: string, args: unknown, confirmed: boolean): Promise<unknown> {
+    const other = this.providerFor(sessionId);
+    if (!other) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return other.mcpAppCall(sessionId, server, tool, args, confirmed);
+  }
+
   override upNextLists(): Array<{ sessionId: string; queue: QueuedMessage[] }> {
     return [...super.upNextLists(), ...(this.providers?.upNextLists() ?? [])];
   }

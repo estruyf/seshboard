@@ -22,7 +22,8 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
 import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
-import type { CheapAnswer, DriverSession, ProviderAdapter } from './provider.ts';
+import type { CheapAnswer, DriverSession, ProviderAdapter, ProviderDriver } from './provider.ts';
+import { mcpAppToolPolicy } from './mcpApps.ts';
 
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
@@ -304,6 +305,31 @@ export class ProviderHosts {
     const host = this.hosts.get(sessionId);
     if (!host?.session) throw new RpcError('NOT_RUNNING', 'This session is not running in Seshboard');
     await host.session.mcp(server, action);
+  }
+
+  /** An MCP App's page, or another resource it reads, from the session's MCP server. */
+  async mcpAppResource(sessionId: string, server: string, uri: string, callId: string | null): Promise<unknown[]> {
+    return this.mcpApps(sessionId).resource({ sessionId, server, uri, callId });
+  }
+
+  /**
+   * A tool an MCP App calls on its own server. Only one the server lets apps call; one that isn't read-only waits for
+   * `confirmed` (you said yes in the app's frame), so a page never changes things behind your back.
+   */
+  async mcpAppCall(sessionId: string, server: string, tool: string, args: unknown, confirmed: boolean): Promise<unknown> {
+    const apps = this.mcpApps(sessionId);
+    const policy = mcpAppToolPolicy(tool, (await apps.tools({ sessionId, server }))[tool]);
+    if (!policy) throw new RpcError('NOT_FOUND', `${server} has no tool called ${tool}`);
+    if (!policy.callable) throw new RpcError('NOT_ALLOWED', `${server} doesn't let its app use ${policy.title}`);
+    if (!policy.readOnly && !confirmed) throw new RpcError('NEEDS_CONFIRMATION', policy.title);
+    this.deps.log('info', `MCP App of ${server} in ${sessionId} called ${tool}`);
+    return apps.callTool({ sessionId, server, tool, arguments: args });
+  }
+
+  private mcpApps(sessionId: string): NonNullable<ProviderDriver['mcpApps']> {
+    const apps = this.adapterOf(this.deps.profileOf(sessionId))?.driver?.mcpApps;
+    if (!apps) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return apps;
   }
 
   /** Answers a permission request of a provider's session. False when the request isn't one of theirs. */

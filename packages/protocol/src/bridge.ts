@@ -14,6 +14,7 @@ import {
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
+import type { McpAppCsp } from "./visuals.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -34,6 +35,7 @@ export const REMOTE_LOG_FILE = "remote.log";
 
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
+  mcpAppDocument: "seshboard:mcp-app-document",
   requestEnginePort: "seshboard:request-engine-port",
   enginePort: "seshboard:engine-port",
   engineRestarted: "seshboard:engine-restarted",
@@ -1057,6 +1059,11 @@ export interface SeshboardBridge {
   removeTheme(id: string): Promise<void>;
   /** Saves a copy of any theme as a new imported one ("<name> 2"). Resolves to its id. */
   duplicateTheme(id: string): Promise<string>;
+  /**
+   * Serves an MCP App's page from an address of its own (`seshboard-visual://app/…`), with a Content-Security-Policy
+   * from the origins it declared (`csp`) and nothing else. Resolves to that address, for a sandboxed frame.
+   */
+  mcpAppDocument(html: string, csp: McpAppCsp | null): Promise<string>;
   /** Native save dialog for a theme, then writes `content` (validated again). Resolves to the path, or null when cancelled. */
   exportTheme(fileName: string, content: string): Promise<string | null>;
   openThemesFolder(): void;

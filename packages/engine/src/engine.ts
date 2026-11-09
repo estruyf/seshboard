@@ -3559,6 +3559,8 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.mcp(sessionId, server, action);
       return {};
     },
+    'mcpApp.resource': async ({ sessionId, server, uri, callId }) => ({ contents: (await hosts.mcpAppResource(sessionId, server, uri, callId)) as never[] }),
+    'mcpApp.callTool': async ({ sessionId, server, tool, arguments: args, confirmed }) => (await hosts.mcpAppCall(sessionId, server, tool, args, confirmed)) as never,
     'session.prewarm': ({ cwd, profileId, effort }) => {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);

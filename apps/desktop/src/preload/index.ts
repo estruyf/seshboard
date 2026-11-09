@@ -92,6 +92,7 @@ const bridge: SeshboardBridge = {
   removeTheme: (id) => theme({ kind: 'remove', id }) as Promise<void>,
   duplicateTheme: (id) => theme({ kind: 'duplicate', id }) as Promise<string>,
   exportTheme: (fileName, content) => theme({ kind: 'export', fileName, content }) as Promise<string | null>,
+  mcpAppDocument: (html, csp) => ipcRenderer.invoke(IpcChannel.mcpAppDocument, html, csp) as Promise<string>,
   openThemesFolder: () => void theme({ kind: 'open-folder' }),
   showThemeFile: (id) => void theme({ kind: 'show-file', id }),
   listSounds: () => ipcRenderer.invoke(IpcChannel.listSounds) as Promise<SoundList>,

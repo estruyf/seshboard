@@ -183,6 +183,14 @@ export const ImageRef = z.object({
 });
 export type ImageRef = z.infer<typeof ImageRef>;
 
+/**
+ * A tool call that has an MCP App (a page the MCP server draws for it, `ui://…`): the server, the page, the
+ * provider's own id of the call (for reading the page it scopes), and the call's result as the server sent it
+ * (`content`, `structuredContent`), which the page gets. Codex's sessions have it.
+ */
+export const McpAppCall = z.object({ server: z.string(), resourceUri: z.string(), callId: z.string().nullable(), result: z.json().nullable() });
+export type McpAppCall = z.infer<typeof McpAppCall>;
+
 export const TranscriptBlock = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('thinking'), text: z.string() }),
@@ -193,6 +201,7 @@ export const TranscriptBlock = z.discriminatedUnion('type', [
     /** Tool input with long strings shortened (see `truncated`). */
     input: z.json(),
     truncated: z.boolean(),
+    app: McpAppCall.optional(),
   }),
   z.object({
     type: z.literal('tool_result'),
