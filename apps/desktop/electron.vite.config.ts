@@ -51,6 +51,8 @@ export default defineConfig({
           index: resolve(here, 'src/main/index.ts'),
           // Runs in an Electron utilityProcess, off the main thread.
           engine: resolve(here, 'src/engine/index.ts'),
+          // The visualize MCP server agents start (Seshboard's binary run as Node, over stdio).
+          visualize: resolve(here, 'src/visualize/index.ts'),
         },
       },
     },

@@ -26,6 +26,7 @@ import { ToolDetails, ToolImages, type ToolItem } from './ToolDetails.tsx';
 import { messageImageSlots } from './imageLayout.ts';
 import { TranscriptImage } from './TranscriptImage.tsx';
 import { VisualBlock } from './VisualBlock.tsx';
+import { McpAppBlock } from './McpAppBlock.tsx';
 import { visualOf } from './visuals.ts';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { editHunks, toolSummary } from './toolSummary.ts';
@@ -361,11 +362,14 @@ function BuiltInItem({
     case 'tool':
       if (item.name === 'TodoWrite') return <TodoRow item={item} className={indent} />;
       if (item.name === 'ExitPlanMode') return <PlanCard item={item} />;
+      // A visual draws from the call's own code, also when its server is an MCP App (Seshboard's `visualize`, in Codex):
+      // that needs no server, so it shows in a session that has ended too. One cut short, or whose call failed, is a step.
       if (item.name === VISUAL_TOOL) {
-        // A visual whose code was cut short, or whose call failed, is a step like any other.
         const visual = item.inputTruncated || item.result?.isError ? null : visualOf(item.input);
         if (visual) return <VisualBlock id={item.id} visual={visual} sessionId={sessionId} />;
       }
+      // Another MCP App draws the call with its server's page; a failed call is a step like any other.
+      if (item.app && !item.subagent && !item.result?.isError) return <McpAppBlock item={item} app={item.app} cwd={cwd} sessionId={sessionId} />;
       if (item.name === 'AskUserQuestion') {
         const answered = answeredQuestions(item);
         if (answered) return <AnsweredQuestions questions={answered} />;

@@ -34,7 +34,7 @@ export class CopilotLive {
         break;
       case 'tool.execution_start': {
         const name = str(data.toolName);
-        if (!sub && name && !isHiddenTool(name)) this.delta('tool', claudeTool(name, data.arguments).name);
+        if (!sub && name && !isHiddenTool(name)) this.delta('tool', claudeTool(name, data.arguments, data).name);
         break;
       }
       case 'session.usage_info': {

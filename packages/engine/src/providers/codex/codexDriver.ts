@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Effort, ImageAttachment, LogLevel, ModelOption, PermissionDecision, PermissionMode, PermissionRequest } from '@seshboard/protocol';
+import { RpcError } from '@seshboard/protocol';
 import { effortsOf } from '../copilot/copilotActions.ts';
 import { ASK_TIMEOUT_MS, READ_ONLY_REASON } from '../../host/sideQuestions.ts';
 import type { DriverEvents, DriverSession, DriverSessionConfig, DriverStatus, ProviderDriver } from '../provider.ts';
@@ -397,6 +398,20 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
 
     capabilities: (cwd: string) => folderCapabilities(cwd),
 
+    mcpApps: {
+      // With the thread when it is loaded here, so the read goes through its own connection to the server.
+      resource: async ({ sessionId, server: name, uri, callId }) =>
+        (await server.request('mcpServer/resource/read', { server: name, uri, ...(running.has(sessionId) ? { threadId: sessionId } : {}), ...(callId ? { originCallId: callId } : {}) })).contents,
+      async tools({ sessionId, server: name }) {
+        if (!running.has(sessionId)) throw new RpcError('NOT_RUNNING', 'Continue the session to use this.');
+        return (await mcpServers(sessionId)).find((s) => s.name === name)?.tools ?? {};
+      },
+      async callTool({ sessionId, server: name, tool, arguments: args }) {
+        if (!running.has(sessionId)) throw new RpcError('NOT_RUNNING', 'Continue the session to use this.');
+        return server.request('mcpServer/tool/call', { threadId: sessionId, server: name, tool, arguments: args });
+      },
+    },
+
     async start(config: DriverSessionConfig, events: DriverEvents): Promise<DriverSession> {
       // Wired from now on, while `thread/start` runs too: an Ask or a session ending meanwhile doesn't unwire it.
       const done = use();
@@ -452,7 +467,9 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
           resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
-        const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request({});
+        // Seshboard's own servers (Visuals in replies) join the ones in Codex's config, for this thread.
+        const own = config.mcpServers && Object.keys(config.mcpServers).length ? { config: { mcp_servers: config.mcpServers } } : {};
+        const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request(own);
         threadModel = response.model ?? threadModel;
         loaded = true;
         // The thread lives in this process: it must not stop for being idle while the session runs here.

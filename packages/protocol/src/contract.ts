@@ -574,6 +574,22 @@ export const contract = {
       params: z.object({ sessionId: SessionId, server: z.string().max(200), action: z.enum(['enable', 'disable', 'reconnect']) }),
       result: z.object({}),
     },
+    /**
+     * An MCP App's page (or another resource it asks for) from the session's MCP server, as `resources/read` gives it.
+     * `callId`: the tool call it draws, so the server can scope it. Sessions of a provider with MCP Apps (Codex).
+     */
+    'mcpApp.resource': {
+      params: z.object({ sessionId: SessionId, server: z.string().max(200), uri: z.string().max(4096), callId: z.string().max(200).nullable() }),
+      result: z.object({ contents: z.array(z.json()) }),
+    },
+    /**
+     * A tool an MCP App calls on its own server (`tools/call`), in a session running here. Only tools the server lets
+     * apps call. A tool that isn't read-only fails with `NEEDS_CONFIRMATION` until `confirmed`: the app asks you first.
+     */
+    'mcpApp.callTool': {
+      params: z.object({ sessionId: SessionId, server: z.string().max(200), tool: z.string().max(200), arguments: z.json(), confirmed: z.boolean().default(false) }),
+      result: z.json(),
+    },
     /** Starts a Claude Code process for a folder ahead of time so the first message answers faster. */
     'session.prewarm': {
       // The effort the new session will start with: Claude Code reads it only at startup.

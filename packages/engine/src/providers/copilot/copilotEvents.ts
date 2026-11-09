@@ -54,8 +54,12 @@ export const isHiddenTool = (name: string) => HIDDEN_TOOLS.has(name);
  * Copilot's tools with a Claude Code counterpart, renamed (and their input reshaped) so the transcript shows them with
  * the same cards: the command of a shell call, the diff of an edit, the file of a read.
  */
-export function claudeTool(name: string, args: unknown): { name: string; input: Record<string, unknown> } {
+export function claudeTool(name: string, args: unknown, mcp?: { mcpServerName?: unknown; mcpToolName?: unknown }): { name: string; input: Record<string, unknown> } {
   const a = obj(args);
+  // An MCP server's tool takes Claude Code's name for it, so it reads the same (and a visual draws, `mcp__visualize__…`).
+  const server = str(mcp?.mcpServerName);
+  const tool = str(mcp?.mcpToolName);
+  if (server && tool) return { name: `mcp__${server}__${tool}`, input: a };
   const path = str(a.path);
   switch (name) {
     case 'bash':
@@ -143,7 +147,7 @@ export class CopilotConverter {
             if (summary?.trim() && summary.trim() !== text?.trim()) content.push({ type: 'text', text: summary });
             continue;
           }
-          const tool = claudeTool(name, r.arguments);
+          const tool = claudeTool(name, r.arguments, r);
           content.push({ type: 'tool_use', id, name: tool.name, input: tool.input });
         }
         return content.length ? [{ ...base, type: 'assistant', message: { role: 'assistant', model: str(data.model) ?? undefined, content } }] : [];

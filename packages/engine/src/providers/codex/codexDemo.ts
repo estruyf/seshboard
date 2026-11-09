@@ -90,11 +90,81 @@ export const CODEX_DEMO_THREADS: readonly DemoThread[] = [
           durationMs: 2400,
           ...at(4),
         },
+        // The CI server's MCP App: a card for the run, drawn in the conversation (the smoke test's "MCP App").
+        {
+          type: 'mcpToolCall',
+          id: 'call_ci',
+          server: 'ci',
+          tool: 'show_run',
+          status: 'completed',
+          arguments: { run: 4821 },
+          mcpAppUi: { resourceUri: CODEX_DEMO_APP_URI, preferredModelDisplayMode: 'inline' },
+          result: { content: [{ type: 'text', text: 'Run 4821: 213 passed, 1 failed' }], structuredContent: { run: 4821, passed: 213, failed: ['orders.test.ts > sorts by date'] } },
+          error: null,
+          ...at(4),
+        },
         { type: 'agentMessage', id: 'a1', text: 'The test builds its dates in local time, and CI runs in UTC. Build them with `Date.UTC` and it passes in both.', ...at(5) },
       ]),
     ],
   },
 ];
+
+/** The demo CI server's MCP App page. */
+export const CODEX_DEMO_APP_URI = 'ui://ci/run';
+
+/**
+ * The demo's MCP App: a CI run as a card. It speaks the MCP Apps protocol by hand (no SDK): it asks to initialize,
+ * takes the host's theme, shows the run from the call's result, reports its size, and has a button that sends a
+ * message and one that calls a tool (refused while the session isn't running here, as in the demo).
+ */
+const CODEX_DEMO_APP = `<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+body { margin: 0; font: var(--font-text-md-size, 13px) var(--font-sans, system-ui); color: var(--color-text-primary, #111); }
+.card { padding: 12px 14px; }
+.failed { color: var(--color-text-danger, #c00); margin: 6px 0; padding-left: 18px; }
+.row { display: flex; gap: 8px; }
+button { font: inherit; padding: 4px 10px; border: 1px solid var(--color-border-primary, #ccc); border-radius: var(--border-radius-md, 6px); background: var(--color-background-secondary, #f5f5f5); color: inherit; }
+#status { margin-top: 6px; color: var(--color-text-secondary, #666); }
+</style></head>
+<body><div class="card" id="card">
+<div id="title">Loading the run</div>
+<ul class="failed" id="failed"></ul>
+<div class="row"><button id="ask" type="button">Ask about the failure</button><button id="rerun" type="button">Run again</button></div>
+<div id="status"></div>
+</div>
+<script>
+let next = 0;
+const waiting = new Map();
+const send = (method, params) => new Promise((resolve, reject) => { const id = ++next; waiting.set(id, { resolve, reject }); parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*'); });
+const notify = (method, params) => parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+const theme = (context) => { for (const [name, value] of Object.entries(context?.styles?.variables ?? {})) document.documentElement.style.setProperty(name, value); if (context?.theme) document.documentElement.dataset.theme = context.theme; };
+const card = document.getElementById('card');
+new ResizeObserver(() => notify('ui/notifications/size-changed', { width: card.offsetWidth, height: Math.ceil(card.getBoundingClientRect().height) })).observe(card);
+window.addEventListener('message', (event) => {
+  const message = event.data;
+  if (!message || message.jsonrpc !== '2.0') return;
+  if (message.id !== undefined && waiting.has(message.id)) { const pending = waiting.get(message.id); waiting.delete(message.id); return message.error ? pending.reject(message.error) : pending.resolve(message.result); }
+  if (message.method === 'ui/notifications/tool-input') document.body.dataset.run = String(message.params.arguments.run);
+  if (message.method === 'ui/notifications/host-context-changed') theme(message.params);
+  if (message.method === 'ui/notifications/tool-result') {
+    const run = message.params.structuredContent;
+    document.getElementById('title').textContent = 'Run ' + run.run + ': ' + run.passed + ' passed, ' + run.failed.length + ' failed';
+    for (const name of run.failed) { const item = document.createElement('li'); item.textContent = name; document.getElementById('failed').append(item); }
+    document.body.dataset.result = 'shown';
+  }
+});
+document.getElementById('ask').addEventListener('click', () => send('ui/message', { role: 'user', content: { type: 'text', text: 'Why does orders.test.ts fail on CI?' } }));
+document.getElementById('rerun').addEventListener('click', () => send('tools/call', { name: 'rerun', arguments: { run: 4821 } }).then(
+  () => { document.body.dataset.rerun = 'ran'; },
+  (error) => { document.body.dataset.rerun = 'refused'; document.getElementById('status').textContent = error.message; },
+));
+send('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'CI run', version: '1' }, appCapabilities: {} }).then((result) => {
+  theme(result.hostContext);
+  document.body.dataset.host = result.hostInfo.name;
+  notify('ui/notifications/initialized', {});
+});
+</script></body></html>`;
 
 /** A rollout file's first line, as Codex CLI writes it (`session_meta`). The demo app-server reads the folder from it. */
 export function codexDemoRollout(thread: Pick<DemoThread, 'id'>, cwd: string, time: Date): string {
@@ -270,6 +340,9 @@ function demoAppServer(options: AppServerOptions): AppServer {
       }
       case 'config/mcpServer/reload':
         return {};
+      case 'mcpServer/resource/read':
+        if (params.server !== 'ci' || params.uri !== CODEX_DEMO_APP_URI) throw new Error(`no resource ${String(params.uri)}`);
+        return { contents: [{ uri: CODEX_DEMO_APP_URI, mimeType: 'text/html;profile=mcp-app', text: CODEX_DEMO_APP, _meta: { ui: { prefersBorder: false } } }], originCallId: params.originCallId ?? null };
       case 'thread/name/set': {
         const thread = await find(String(params.threadId));
         DEMO_NAMES.set(thread.id, String(params.name ?? '').trim() || thread.name || '');

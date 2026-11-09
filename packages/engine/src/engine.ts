@@ -207,6 +207,7 @@ import { PipelineRunner, type StepHold } from './pipelines/runner.ts';
 import { findNamed, runActionsFirst, runCommand } from './pipelines/actionsFirst.ts';
 import { checkoutStamp, commitAndOpen, previewPush } from './pipelines/push.ts';
 import pkg from '../package.json' with { type: 'json' };
+import type { McpStdioServer } from './providers/provider.ts';
 
 export interface EngineOptions {
   /** Where the app keeps its own data (the cache database lives here). */
@@ -417,6 +418,8 @@ export interface Engine {
   setShowMods(enabled: boolean): void;
   /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
   setChrome(enabled: boolean): void;
+  /** Visuals in replies: the `visualize` server new and resumed sessions get, or null when it is off. */
+  setVisuals(server: McpStdioServer | null): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
   setAppIcon(key: string): void;
   /** Whether paired phones may use the preview's remote app, from main: development and beta builds, or the Beta update channel. */
@@ -3559,6 +3562,8 @@ export function createEngine(options: EngineOptions): Engine {
       await hosts.mcp(sessionId, server, action);
       return {};
     },
+    'mcpApp.resource': async ({ sessionId, server, uri, callId }) => ({ contents: (await hosts.mcpAppResource(sessionId, server, uri, callId)) as never[] }),
+    'mcpApp.callTool': async ({ sessionId, server, tool, arguments: args, confirmed }) => (await hosts.mcpAppCall(sessionId, server, tool, args, confirmed)) as never,
     'session.prewarm': ({ cwd, profileId, effort }) => {
       if (questions.contains(cwd)) questions.ensure();
       const profile = profileId && profiles.has(profileId) ? profileId : folderProfile(cwd);
@@ -4643,6 +4648,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
+    setVisuals: (server) => hosts.setVisuals(server),
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),
     setAppUpdate: (update) => remote?.setAppUpdate(update),

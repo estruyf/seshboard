@@ -14,6 +14,7 @@ import {
 import { DEFAULT_AUTO_MODEL, sanitizeAutoModel, type AutoModelPrefs } from "./autoModel.ts";
 import { DEFAULT_CURRENCY, isCurrencyCode, type CurrencyCode } from "./costEstimate.ts";
 import { DEFAULT_APP_ICON, isAppIconKey, type AppIconKey } from "./appIcons.ts";
+import type { McpAppCsp } from "./visuals.ts";
 
 export * from "./retention.ts";
 export * from "./autoModel.ts";
@@ -34,6 +35,7 @@ export const REMOTE_LOG_FILE = "remote.log";
 
 /** IPC channel names shared by main and preload. */
 export const IpcChannel = {
+  mcpAppDocument: "seshboard:mcp-app-document",
   requestEnginePort: "seshboard:request-engine-port",
   enginePort: "seshboard:engine-port",
   engineRestarted: "seshboard:engine-restarted",
@@ -380,6 +382,12 @@ export interface Preferences {
    */
   chrome: boolean;
   /**
+   * Settings › General: "Visuals in replies". On, the sessions Seshboard starts or resumes (Claude Code's, Codex's and
+   * Copilot's) get its `visualize` MCP server, so the agent can draw a diagram or a small tool in its reply. Off by
+   * default: its two tools cost a few tokens in every turn.
+   */
+  agentVisuals: boolean;
+  /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
    * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
@@ -541,6 +549,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionModel: "",
   newSessionEffort: "",
   chrome: false,
+  agentVisuals: false,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -728,6 +737,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
+  if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))
@@ -1057,6 +1067,11 @@ export interface SeshboardBridge {
   removeTheme(id: string): Promise<void>;
   /** Saves a copy of any theme as a new imported one ("<name> 2"). Resolves to its id. */
   duplicateTheme(id: string): Promise<string>;
+  /**
+   * Serves an MCP App's page from an address of its own (`seshboard-visual://app/…`), with a Content-Security-Policy
+   * from the origins it declared (`csp`) and nothing else. Resolves to that address, for a sandboxed frame.
+   */
+  mcpAppDocument(html: string, csp: McpAppCsp | null): Promise<string>;
   /** Native save dialog for a theme, then writes `content` (validated again). Resolves to the path, or null when cancelled. */
   exportTheme(fileName: string, content: string): Promise<string | null>;
   openThemesFolder(): void;

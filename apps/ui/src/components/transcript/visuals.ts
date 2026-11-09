@@ -115,3 +115,76 @@ export function linkToOpen(url: unknown): string | null {
     return null;
   }
 }
+
+/**
+ * The MCP Apps spec's style variables (`hostContext.styles.variables`), from Seshboard's theme tokens, so an app's page
+ * can look like the conversation. Read where the frame is, like `visualThemeVars`; sent again when the theme changes.
+ * Sizes follow the app's type scale. A token the theme doesn't have is left out, and the page uses its own default.
+ */
+export function mcpAppStyleVariables(read: (variable: string) => string): Record<string, string> {
+  const sb = (name: string) => read(`--sb-${name}`).trim();
+  const bg = sb('bg');
+  const text = sb('text');
+  const tint = (colour: string) => mix(colour, 14, bg);
+  const edge = (colour: string) => mix(colour, 45, bg);
+  const roles = { info: sb('link'), danger: sb('error'), success: sb('ok'), warning: sb('caution') };
+  const vars: Record<string, string> = {
+    '--color-background-primary': bg,
+    '--color-background-secondary': sb('code-bg'),
+    '--color-background-tertiary': sb('sidebar'),
+    '--color-background-inverse': text,
+    '--color-background-ghost': 'transparent',
+    '--color-background-disabled': mix(text, 6, bg),
+    '--color-text-primary': text,
+    '--color-text-secondary': sb('muted'),
+    '--color-text-tertiary': sb('faint'),
+    '--color-text-inverse': bg,
+    '--color-text-ghost': sb('muted'),
+    '--color-text-disabled': mix(text, 35, bg),
+    '--color-border-primary': mix(text, 22, bg),
+    '--color-border-secondary': sb('border'),
+    '--color-border-tertiary': mix(text, 6, bg),
+    '--color-border-inverse': bg,
+    '--color-border-ghost': 'transparent',
+    '--color-border-disabled': sb('border'),
+    '--color-ring-primary': sb('focus-ring'),
+    '--color-ring-secondary': sb('border'),
+    '--color-ring-inverse': bg,
+    '--font-sans': read('--font-sans').trim(),
+    '--font-mono': read('--font-mono').trim(),
+    '--font-weight-normal': '400',
+    '--font-weight-medium': '500',
+    '--font-weight-semibold': '600',
+    '--font-weight-bold': '700',
+    '--font-text-xs-size': '11px',
+    '--font-text-sm-size': '12px',
+    '--font-text-md-size': '13.5px',
+    '--font-text-lg-size': '15px',
+    '--font-text-xs-line-height': '1.4',
+    '--font-text-sm-line-height': '1.45',
+    '--font-text-md-line-height': '1.55',
+    '--font-text-lg-line-height': '1.55',
+    '--font-heading-xs-size': '13.5px',
+    '--font-heading-sm-size': '15px',
+    '--font-heading-md-size': '17px',
+    '--font-heading-lg-size': '20px',
+    '--font-heading-xl-size': '24px',
+    '--font-heading-2xl-size': '28px',
+    '--font-heading-3xl-size': '34px',
+    ...Object.fromEntries(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'].map((size) => [`--font-heading-${size}-line-height`, '1.3'])),
+    '--border-radius-xs': '2px',
+    '--border-radius-sm': '4px',
+    '--border-radius-md': '6px',
+    '--border-radius-lg': '10px',
+    '--border-radius-xl': '14px',
+    '--border-radius-full': '9999px',
+    '--border-width-regular': '1px',
+  };
+  for (const [role, colour] of Object.entries(roles)) {
+    vars[`--color-background-${role}`] = tint(colour);
+    vars[`--color-text-${role}`] = colour;
+    vars[`--color-border-${role}`] = edge(colour);
+    vars[`--color-ring-${role}`] = colour;
+  }
+  return Object.fromEntries(Object.entries(vars).filter(([, value]) => value !== ''));
+}
