@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { ConversationView, FileLinkClick, NewSessionMode, ProjectOrder, QuickActionsShow, SidebarCollapsed, SidebarStyle, ResumeAtLimit, StartupView, ToolActivity, TurnDetails, WhileWorking } from '@seshboard/protocol/bridge';
 import { GLOBAL_MODE_DETAIL, MODE_CHOICES, MODE_LABEL } from '../lib/modes.ts';
+import { VISUALS_DETAIL } from './general/visualsCopy.ts';
 import { formatTurnTime } from './transcript/turnFormat.ts';
 import { usePreferences } from '../state/preferencesStore.ts';
 import { MemorySettings } from './memory/MemorySettings.tsx';
@@ -543,6 +544,13 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               checked={prefs.chrome}
               attr="data-chrome-setting"
               onChange={(chrome) => update({ chrome })}
+            />
+            <Toggle
+              label="Visuals in replies"
+              detail={VISUALS_DETAIL}
+              checked={prefs.agentVisuals}
+              attr="data-agent-visuals-setting"
+              onChange={(agentVisuals) => update({ agentVisuals })}
             />
           </Section>
           <Section title="Quitting">

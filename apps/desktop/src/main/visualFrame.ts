@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { VISUAL_CDNS, VISUAL_FONT_HOSTS, VISUAL_SCHEME, type McpAppCsp } from '@seshboard/protocol/client';
+import { MCP_APP_PROTOCOL_VERSION, VISUAL_CDNS, VISUAL_FONT_HOSTS, VISUAL_SCHEME, type McpAppCsp } from '@seshboard/protocol/client';
 
 /**
  * The page a visual from Claude (`show_widget`) is drawn in, served from `seshboard-visual://frame/`. The conversation
@@ -109,12 +109,12 @@ ${rampRules()}
 `;
 
 /**
- * Runs in the frame. Messages from the conversation: `render` (once) with the code and the theme, `theme` when it
- * changes. Messages to it: `ready`, `drawn` and `height` as it lays out, `prompt` and `link` from the visual.
+ * What draws a visual, in both of its pages: its scripts run once the whole code is in place, `sendPrompt` and
+ * `openLink` work from a click or a key in it, a link goes to the browser, and its size is reported. Each page puts
+ * `send` before it: how these reach the host (`size`, `drawn`, `prompt`, `link`).
  */
-const SCRIPT = `(() => {
+const RUNNER = `
   const root = document.getElementById('root');
-  const post = (message) => parent.postMessage(message, '*');
   let drawn = false;
   let last = -1;
   const measure = () => Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height));
@@ -122,26 +122,25 @@ const SCRIPT = `(() => {
     const height = measure();
     if (!drawn || height === last) return;
     last = height;
-    post({ type: 'height', height });
+    send.size(height);
   };
   new ResizeObserver(report).observe(root);
 
-  const applyTheme = (theme) => {
-    if (!theme || typeof theme !== 'object') return;
-    const vars = theme.vars && typeof theme.vars === 'object' ? theme.vars : {};
-    for (const [name, value] of Object.entries(vars)) {
+  const setVars = (vars) => {
+    for (const [name, value] of Object.entries(vars && typeof vars === 'object' ? vars : {})) {
       if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
     }
-    if (theme.scheme === 'dark' || theme.scheme === 'light') {
-      document.documentElement.style.colorScheme = theme.scheme;
-      document.documentElement.dataset.mode = theme.scheme;
-    }
+  };
+  const setScheme = (scheme) => {
+    if (scheme !== 'dark' && scheme !== 'light') return;
+    document.documentElement.style.colorScheme = scheme;
+    document.documentElement.dataset.mode = scheme;
   };
 
   // Only from something you did in the visual (a click, a key), never by itself as it loads.
   const used = () => !navigator.userActivation || navigator.userActivation.isActive;
-  window.sendPrompt = (text) => used() && post({ type: 'prompt', text: String(text) });
-  window.openLink = (url) => used() && post({ type: 'link', url: String(url) });
+  window.sendPrompt = (text) => used() && send.prompt(String(text));
+  window.openLink = (url) => used() && send.link(String(url));
   // A link opens in the browser, never in the frame.
   document.addEventListener('click', (event) => {
     const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
@@ -151,7 +150,10 @@ const SCRIPT = `(() => {
   });
 
   // Scripts run once the whole code is in place, in order: one loaded from a CDN finishes before the next starts.
+  let rendered = false;
   const run = async (code) => {
+    if (rendered || typeof code !== 'string' || !code.trim()) return;
+    rendered = true;
     if (/\\bti ti-/.test(code)) {
       const icons = document.createElement('link');
       icons.rel = 'stylesheet';
@@ -180,21 +182,127 @@ const SCRIPT = `(() => {
     await new Promise((done) => requestAnimationFrame(() => done()));
     drawn = true;
     last = measure();
-    post({ type: 'drawn', height: last });
+    send.drawn(last);
   };
+`;
 
-  let rendered = false;
+/**
+ * Seshboard's own frame. Messages from the conversation: `render` (once) with the code and the theme, `theme` when it
+ * changes. Messages to it: `ready`, `drawn` and `height` as it lays out, `prompt` and `link` from the visual.
+ */
+const SCRIPT = `(() => {
+  const post = (message) => parent.postMessage(message, '*');
+  const send = {
+    size: (height) => post({ type: 'height', height }),
+    drawn: (height) => post({ type: 'drawn', height }),
+    prompt: (text) => post({ type: 'prompt', text }),
+    link: (url) => post({ type: 'link', url }),
+  };
+${RUNNER}
+  const applyTheme = (theme) => {
+    if (!theme || typeof theme !== 'object') return;
+    setVars(theme.vars);
+    setScheme(theme.scheme);
+  };
   window.addEventListener('message', (event) => {
     if (event.source !== parent || !event.data || typeof event.data !== 'object') return;
     const message = event.data;
     if (message.type === 'theme') applyTheme(message.theme);
-    else if (message.type === 'render' && !rendered && typeof message.code === 'string') {
-      rendered = true;
+    else if (message.type === 'render' && typeof message.code === 'string') {
       applyTheme(message.theme);
       void run(message.code);
     }
   });
   post({ type: 'ready' });
+})();`;
+
+/**
+ * The MCP Apps spec's style variables a host may send, as the names a visual uses (its guide's): the page takes either.
+ * Pairs of [the visual's name, the spec's name].
+ */
+const SPEC_VARIABLES: ReadonlyArray<readonly [string, string]> = [
+  ['--text-primary', '--color-text-primary'],
+  ['--text-secondary', '--color-text-secondary'],
+  ['--text-muted', '--color-text-tertiary'],
+  ['--text-disabled', '--color-text-disabled'],
+  ['--surface-0', '--color-background-primary'],
+  ['--surface-1', '--color-background-secondary'],
+  ['--surface-2', '--color-background-primary'],
+  ['--surface-3', '--color-background-primary'],
+  ['--border', '--color-border-secondary'],
+  ['--border-strong', '--color-border-primary'],
+  ['--border-stronger', '--color-border-primary'],
+  ['--bg-accent', '--color-background-info'],
+  ['--text-accent', '--color-text-info'],
+  ['--border-accent', '--color-border-info'],
+  ...(['danger', 'success', 'warning'] as const).flatMap((role) => [
+    [`--bg-${role}`, `--color-background-${role}`] as const,
+    [`--text-${role}`, `--color-text-${role}`] as const,
+    [`--border-${role}`, `--color-border-${role}`] as const,
+  ]),
+  ['--radius', '--border-radius-md'],
+];
+
+/**
+ * What a visual looks like in a host that sends no theme (or only part of one): neutral greys and a blue accent, in
+ * light and dark by the host's theme (`data-mode`) or else the system's.
+ */
+const APP_DEFAULTS = `
+:root { --text-primary: light-dark(#1f1e1d, #f2f1ed); --text-secondary: light-dark(#5e5d59, #b4b2a9); --text-muted: light-dark(#87867f, #888780); --text-disabled: light-dark(#b4b2a9, #5f5e5a); --surface-0: light-dark(#f5f4ef, #1f1e1d); --surface-1: light-dark(#faf9f5, #262624); --surface-2: light-dark(#ffffff, #30302e); --surface-3: light-dark(#ffffff, #3a3a37); --border: light-dark(rgb(31 30 29 / 0.12), rgb(242 241 237 / 0.12)); --border-strong: light-dark(rgb(31 30 29 / 0.22), rgb(242 241 237 / 0.22)); --border-stronger: light-dark(rgb(31 30 29 / 0.4), rgb(242 241 237 / 0.4)); --bg-accent: light-dark(#e6f1fb, #0c447c); --text-accent: light-dark(#185fa5, #85b7eb); --border-accent: light-dark(#85b7eb, #185fa5); --bg-danger: light-dark(#fcebeb, #791f1f); --text-danger: light-dark(#a32d2d, #f09595); --border-danger: light-dark(#f09595, #a32d2d); --bg-success: light-dark(#eaf3de, #27500a); --text-success: light-dark(#3b6d11, #97c459); --border-success: light-dark(#97c459, #3b6d11); --bg-warning: light-dark(#faeeda, #633806); --text-warning: light-dark(#854f0b, #ef9f27); --border-warning: light-dark(#ef9f27, #854f0b); --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif; --font-mono: ui-monospace, Menlo, Consolas, monospace; }
+`;
+
+/**
+ * The visual as an MCP App (`ui://visualize/widget`), for any host that speaks the spec (Seshboard, and others): it
+ * asks to initialize, takes the host's theme (the spec's variables, as the visual's names), draws the call's
+ * `widget_code` from `ui/notifications/tool-input`, and sends `sendPrompt` as `ui/message` and `openLink` as
+ * `ui/open-link`.
+ */
+const APP_SCRIPT = `(() => {
+  let next = 0;
+  const waiting = new Map();
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = ++next;
+    waiting.set(id, { resolve, reject });
+    parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+  });
+  const notify = (method, params) => parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+  const size = (height) => notify('ui/notifications/size-changed', { width: Math.ceil(document.documentElement.getBoundingClientRect().width), height });
+  const send = {
+    size,
+    drawn: size,
+    prompt: (text) => void request('ui/message', { role: 'user', content: { type: 'text', text } }).catch(() => {}),
+    link: (url) => void request('ui/open-link', { url }).catch(() => {}),
+  };
+${RUNNER}
+  const SPEC = ${JSON.stringify(SPEC_VARIABLES)};
+  const applyHost = (context) => {
+    if (!context || typeof context !== 'object') return;
+    const vars = context.styles && context.styles.variables && typeof context.styles.variables === 'object' ? context.styles.variables : {};
+    const ours = {};
+    for (const [name, spec] of SPEC) if (typeof vars[spec] === 'string' && vars[spec]) ours[name] = vars[spec];
+    for (const name of ['--font-sans', '--font-mono']) if (typeof vars[name] === 'string' && vars[name]) ours[name] = vars[name];
+    setVars({ ...vars, ...ours });
+    setScheme(context.theme);
+  };
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || !event.data || event.data.jsonrpc !== '2.0') return;
+    const message = event.data;
+    if (message.id !== undefined && waiting.has(message.id)) {
+      const pending = waiting.get(message.id);
+      waiting.delete(message.id);
+      return message.error ? pending.reject(message.error) : pending.resolve(message.result);
+    }
+    if (message.method === 'ui/notifications/tool-input') void run(message.params && message.params.arguments && message.params.arguments.widget_code);
+    else if (message.method === 'ui/notifications/host-context-changed') applyHost(message.params);
+    else if (message.method === 'ui/resource-teardown' && message.id !== undefined) parent.postMessage({ jsonrpc: '2.0', id: message.id, result: {} }, '*');
+  });
+  request('ui/initialize', { protocolVersion: ${JSON.stringify(MCP_APP_PROTOCOL_VERSION)}, appInfo: { name: 'Visual', version: '1' }, appCapabilities: { availableDisplayModes: ['inline'] } }).then(
+    (result) => {
+      applyHost(result && result.hostContext);
+      notify('ui/notifications/initialized', {});
+    },
+    () => {},
+  );
 })();`;
 
 /** The frame page: the policy first, so it covers everything after it. */
@@ -214,6 +322,33 @@ export function visualFrameHtml(): string {
 </html>
 `;
 }
+
+/**
+ * The visual as an MCP App's page (what the `visualize` server serves at `ui://visualize/widget`): the same styles and
+ * drawing as the frame page, defaults for a host that sends no theme, and the MCP Apps protocol instead of
+ * Seshboard's. Its policy is the host's, from the origins the server declares (`VISUAL_APP_CSP`).
+ */
+export function visualAppHtml(): string {
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>${APP_DEFAULTS}${STYLES}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>${APP_SCRIPT}</script>
+</body>
+</html>
+`;
+}
+
+/** The origins the visual's MCP App declares (`_meta.ui.csp`): the CDNs for scripts, styles and fonts, and Google Fonts. */
+export const VISUAL_APP_CSP = {
+  resourceDomains: [...VISUAL_CDNS, VISUAL_FONT_HOSTS.styles, VISUAL_FONT_HOSTS.files],
+  connectDomains: [...VISUAL_CDNS],
+};
 
 /** Whether a URL is a visual's frame page. */
 export const isVisualFrameUrl = (url: string | null | undefined): boolean => typeof url === 'string' && url.startsWith(`${VISUAL_SCHEME}:`);

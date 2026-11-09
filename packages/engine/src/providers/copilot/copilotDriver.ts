@@ -68,6 +68,8 @@ export interface CopilotSessionOptions {
   enableConfigDiscovery?: boolean;
   /** False: a repository's hooks stay out of a helper's session. */
   enableFileHooks?: boolean;
+  /** MCP servers of Seshboard's, besides the user's own (Visuals in replies). */
+  mcpServers?: Record<string, { type: 'local'; command: string; args: string[]; env: Record<string, string>; tools: string[] }>;
   systemMessage?: { mode: 'replace'; content: string };
   clientName: string;
   onPermissionRequest(request: Record<string, unknown>, invocation: { sessionId: string }): Promise<PermissionAnswer>;
@@ -455,13 +457,16 @@ export function copilotDriver(options: CopilotDriverOptions): CopilotDriver {
       /** The model it runs on (null: Copilot's `auto` before it picks one), which an effort change keeps. */
       let model = config.model;
       // A read-only step: Accept edits and Auto mode approve only reads by themselves; every other request is asked.
-      const approves = (request: Record<string, unknown>) => approvesItself(mode, request) && (!config.readOnly || request.kind === 'read');
+      // Seshboard's own `visualize` server only draws in the conversation: its tools never ask.
+      const ownTool = (request: Record<string, unknown>) => request.kind === 'mcp' && typeof request.serverName === 'string' && config.mcpServers?.[request.serverName] !== undefined;
+      const approves = (request: Record<string, unknown>) => ownTool(request) || (approvesItself(mode, request) && (!config.readOnly || request.kind === 'read'));
       const sessionOptions: CopilotSessionOptions = {
         workingDirectory: config.cwd,
         ...modelOptions(config.model),
         ...(config.model && config.effort && !isTierModel(config.model) ? { reasoningEffort: config.effort } : {}),
         streaming: true,
         clientName: SESHBOARD_CLIENT,
+        ...(config.mcpServers ? { mcpServers: Object.fromEntries(Object.entries(config.mcpServers).map(([name, server]) => [name, { type: 'local' as const, ...server, tools: ['*'] }])) } : {}),
         // For Rewind. On a resume it starts only when the session still has a baseline: earlier turns can't be restored.
         enableFileChangeTracking: true,
         onPermissionRequest: (request) =>

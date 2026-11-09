@@ -23,7 +23,7 @@ import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, pa
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
-import { checkCodexMcpApp, runVisualsStep } from './visualsSmoke.ts';
+import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
@@ -296,6 +296,12 @@ function updatePreferences(patch: unknown): void {
 }
 
 /** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
+/**
+ * Seshboard's `visualize` MCP server (`src/visualize/`), as an agent starts it: this app's own binary run as Node, so
+ * it needs no Node on the computer, on its bundle next to this one (inside the app's archive when packaged).
+ */
+const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
@@ -314,6 +320,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
+  engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -13679,6 +13687,9 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
       restoreScheme: (colorScheme) => updatePreferences({ colorScheme }),
       shot: (name) => shot(win, name),
     }),
+  );
+  await step('visualize server: runs as this app, lists its tools, gives its guide and MCP App page; Visuals in replies saves', () =>
+    runVisualizeServerStep(win, { server: visualizeServer(), enabled: () => preferences.get().agentVisuals, setEnabled: (agentVisuals) => updatePreferences({ agentVisuals }) }),
   );
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
