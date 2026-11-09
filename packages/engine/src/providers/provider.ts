@@ -117,6 +117,13 @@ export interface DriverEvents {
   tasks?(tasks: BackgroundTask[]): void;
 }
 
+/** An MCP server an agent starts as a process and talks to over stdio (Seshboard's `visualize`). */
+export interface McpStdioServer {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
 export interface DriverSessionConfig {
   cwd: string;
   /** Resume this session; a new one when missing. */
@@ -128,6 +135,8 @@ export interface DriverSessionConfig {
   permissionMode: PermissionMode;
   /** Only tools that read (a pipeline's read-only step): the driver approves nothing else by itself, whatever the mode. */
   readOnly?: boolean;
+  /** MCP servers of Seshboard's the session gets besides its own, by name (Visuals in replies: `visualize`). */
+  mcpServers?: Record<string, McpStdioServer>;
 }
 
 /** One running session of a provider. */

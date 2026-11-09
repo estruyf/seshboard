@@ -2,6 +2,7 @@ import { RpcError, type Capabilities, type Effort, type ImageAttachment, type Pe
 import { HostManager } from '../host/hostManager.ts';
 import type { AskResult, AskText } from '../host/sideQuestions.ts';
 import type { ProviderHosts } from './providerHosts.ts';
+import type { McpStdioServer } from './provider.ts';
 
 /**
  * Claude Code's host manager, with the session-level methods routed: a provider's session (GitHub Copilot) goes to
@@ -117,6 +118,12 @@ export class RoutedHostManager extends HostManager {
   override async mcp(sessionId: string, server: string, action: 'enable' | 'disable' | 'reconnect'): Promise<void> {
     const other = this.providerRunning(sessionId);
     return other ? other.mcp(sessionId, server, action) : super.mcp(sessionId, server, action);
+  }
+
+  /** Visuals in replies: Claude Code's sessions and the providers' get the server alike. */
+  override setVisuals(server: McpStdioServer | null): void {
+    super.setVisuals(server);
+    this.providers?.setVisuals(server);
   }
 
   /** MCP Apps are a provider's (Codex's): Claude Code's sessions have none yet. */

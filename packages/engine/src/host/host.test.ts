@@ -1195,6 +1195,24 @@ describe('HostManager', () => {
     t.manager.closeAll();
   });
 
+  it('starts sessions with the visualize server while Visuals in replies is on, and drops a warm process when it changes', async () => {
+    const t = setup();
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    await t.manager.prewarm('/work/app', 'default');
+    t.manager.setVisuals(null);
+    expect(t.warmups[0]!.closed).toBe(false);
+    t.manager.setVisuals(visualize);
+    await until(() => t.warmups[0]!.closed);
+    const id = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, id) === 'idle');
+    expect(t.queries[0]!.options.mcpServers).toEqual({ visualize: { type: 'stdio', ...visualize } });
+    t.manager.setVisuals(null);
+    const other = await t.manager.create({ ...base, cwd: '/w', prompt: 'hello' });
+    await until(() => lastState(t.infos, other) === 'idle');
+    expect(t.queries[1]!.options.mcpServers).toBeUndefined();
+    t.manager.closeAll();
+  });
+
   it('drops a pre-warm still starting when Use Claude in Chrome changes', async () => {
     const t = setup();
     const starting = t.manager.prewarm('/work/app', 'default');
@@ -1659,6 +1677,15 @@ describe('buildOptions', () => {
     claudePath: '/bin/claude',
     canUseTool: async () => ({ behavior: 'deny', message: '' }),
   };
+  it("gives the session Seshboard's visualize server with its tools allowed, never a read-only one", () => {
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const options = buildOptions({ ...config, visualize }, () => {});
+    expect(options.mcpServers).toEqual({ visualize: { type: 'stdio', ...visualize } });
+    expect(options.allowedTools).toEqual(['mcp__visualize__read_me', 'mcp__visualize__show_widget']);
+    expect(buildOptions({ ...config, visualize, readOnly: true }, () => {}).mcpServers).toBeUndefined();
+    expect(buildOptions(config, () => {}).mcpServers).toBeUndefined();
+  });
+
   it('maps a new worktree session onto Claude Code options', () => {
     const options = buildOptions(config, () => {});
     expect(options).toMatchObject({

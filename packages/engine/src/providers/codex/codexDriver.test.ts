@@ -79,6 +79,14 @@ function setup(extra: { turnStart?: (params: Record<string, unknown>) => unknown
 }
 
 describe('codexDriver', () => {
+  it("gives a thread Seshboard's own MCP servers in its config", async () => {
+    const { server, driver } = setup();
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const session = await driver.start({ cwd: CWD, model: null, permissionMode: 'default', mcpServers: { visualize } }, recorder().events);
+    expect(server.calls[0]).toMatchObject({ method: 'thread/start', params: { config: { mcp_servers: { visualize } } } });
+    await session.close();
+  });
+
   it('starts a thread in the folder with the mode, holds the server while it runs, and lets go when closed', async () => {
     const { server, driver } = setup();
     const { events } = recorder();

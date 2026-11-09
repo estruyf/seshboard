@@ -467,7 +467,9 @@ export function codexDriver(options: CodexDriverOptions): CodexDriver {
         const common = { cwd: config.cwd, approvalPolicy, sandbox, ...(model ? { model } : {}) };
         const request = (extra: { config?: Record<string, unknown> }) =>
           resume ? resumeWhenClosed(() => server.request('thread/resume', { threadId: resume, ...common, ...extra, excludeTurns: true })) : server.request('thread/start', { ...common, ...extra });
-        const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request({});
+        // Seshboard's own servers (Visuals in replies) join the ones in Codex's config, for this thread.
+        const own = config.mcpServers && Object.keys(config.mcpServers).length ? { config: { mcp_servers: config.mcpServers } } : {};
+        const response = config.readOnly ? await withoutMcp(config.cwd, (noMcp) => request({ config: noMcp })) : await request(own);
         threadModel = response.model ?? threadModel;
         loaded = true;
         // The thread lives in this process: it must not stop for being idle while the session runs here.

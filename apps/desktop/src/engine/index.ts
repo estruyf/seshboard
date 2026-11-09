@@ -201,6 +201,13 @@ process.parentPort.on('message', (event) => {
     engine.setRemotePreview((data as { enabled?: unknown }).enabled === true);
     return;
   }
+  // Settings › General › Visuals in replies: the `visualize` server to start, or null.
+  if (data?.type === 'visuals') {
+    const server = (data as { server?: { command?: unknown; args?: unknown; env?: unknown } | null }).server;
+    const valid = server && typeof server.command === 'string' && Array.isArray(server.args) && server.args.every((a) => typeof a === 'string') && server.env && typeof server.env === 'object';
+    engine.setVisuals(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
+    return;
+  }
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);

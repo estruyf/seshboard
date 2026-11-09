@@ -382,6 +382,12 @@ export interface Preferences {
    */
   chrome: boolean;
   /**
+   * Settings › General: "Visuals in replies". On, the sessions Seshboard starts or resumes (Claude Code's, Codex's and
+   * Copilot's) get its `visualize` MCP server, so the agent can draw a diagram or a small tool in its reply. Off by
+   * default: its two tools cost a few tokens in every turn.
+   */
+  agentVisuals: boolean;
+  /**
    * Settings › General: "Keep this Mac awake" ("this PC" elsewhere). On, the computer doesn't go to sleep while
    * Seshboard is open, so schedules, triggers and remote access keep working; the display can still sleep. macOS
    * runs `caffeinate -s` (on power only), Windows and Linux use Electron's sleep blocker. Off by default.
@@ -543,6 +549,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   newSessionModel: "",
   newSessionEffort: "",
   chrome: false,
+  agentVisuals: false,
   keepAwake: false,
   autoUpdate: true,
   updateChannel: "stable",
@@ -730,6 +737,7 @@ export function sanitizePreferences(input: unknown): Partial<Preferences> {
   if (oneOf(NEW_SESSION_EFFORTS, raw.newSessionEffort))
     out.newSessionEffort = raw.newSessionEffort;
   if (typeof raw.chrome === "boolean") out.chrome = raw.chrome;
+  if (typeof raw.agentVisuals === "boolean") out.agentVisuals = raw.agentVisuals;
   if (typeof raw.keepAwake === "boolean") out.keepAwake = raw.keepAwake;
   if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
   if (oneOf(["stable", "beta"] as const, raw.updateChannel))

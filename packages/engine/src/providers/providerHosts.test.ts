@@ -72,6 +72,19 @@ function setup(stored: StoredUpNext[] = [], extra: Partial<ProviderHostsDeps> = 
 
 const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'now') => hosts.send({ sessionId: ID, text, attachments: [], ...(mode ? { mode } : {}) });
 
+describe('ProviderHosts visuals', () => {
+  it("starts and resumes sessions with the visualize server while it is on, and read-only ones without", async () => {
+    const started: Array<Record<string, unknown> | undefined> = [];
+    const { hosts, driver } = setup();
+    const start = driver.start.bind(driver);
+    driver.start = (config, events) => (started.push(config.mcpServers), start(config, events));
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    hosts.setVisuals(visualize);
+    await send(hosts, 'draw it');
+    expect(started).toEqual([{ visualize }]);
+  });
+});
+
 describe('ProviderHosts MCP Apps', () => {
   const tools: Record<string, unknown> = {
     list_items: { annotations: { readOnlyHint: true } },
