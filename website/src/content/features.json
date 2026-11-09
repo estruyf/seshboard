@@ -4925,6 +4925,11 @@
       "id": "feature:diff-comments",
       "name": "Comment on lines in a diff in Changes, and submit the comments to the message box",
       "page": "terminal-changes-git/changes"
+    },
+    {
+      "id": "feature:scroll-memory",
+      "name": "Switching back to a session opens it where you were reading",
+      "page": "sessions/conversation"
     }
   ]
 }
