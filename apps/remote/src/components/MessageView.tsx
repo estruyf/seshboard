@@ -163,13 +163,16 @@ function ToolRun({ call, result, live = false }: { call: ToolUse; result: { text
       {open && (
         <div className="mt-1 flex flex-col gap-1">
           {diff ? (
-            <pre className="overflow-x-auto rounded-lg bg-code p-2 font-mono text-meta">
-              {diff.map((line, i) => (
-                <div key={i} className={line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}>
-                  {line.kind} {line.text}
-                </div>
-              ))}
-            </pre>
+            // The rows take the widest line's width, so their colour runs on when the diff scrolls sideways.
+            <div className="overflow-x-auto overscroll-x-contain rounded-lg bg-code py-2">
+              <pre className="w-max min-w-full font-mono text-meta">
+                {diff.map((line, i) => (
+                  <div key={i} className={`px-2 ${line.kind === '+' ? 'bg-diff-added' : 'bg-diff-removed'}`}>
+                    {line.kind} {line.text}
+                  </div>
+                ))}
+              </pre>
+            </div>
           ) : (
             <pre className="overflow-x-auto rounded-lg bg-code p-2 font-mono text-meta whitespace-pre-wrap">{JSON.stringify(input, null, 2)}</pre>
           )}

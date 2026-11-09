@@ -29,6 +29,7 @@ All notable changes to Seshboard are listed here. Each release is also on the [r
 
 ### Fixed
 
+- **Remote: an edit's diff stays coloured when you scroll it sideways.** On the phone, the green and red lines of an Edit in the conversation stopped at the edge of the box once you scrolled to a long line.
 - **Compacting no longer looks stuck.** The patch panel next to **Compacting the conversation** now pulses, so a long compact shows it is still going.
 - **`file:///` links in Claude's replies work.** Clicking one did nothing. It now opens the file as any file link does, as **Settings › Conversation › Clicking a file link** says. On Windows, links to a path such as `E:/repos/notes.md` work too.
 
