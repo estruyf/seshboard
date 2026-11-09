@@ -4,7 +4,7 @@ import { useMods } from '../../state/modsStore.ts';
 import { ModReplaced, useExpectedHooked } from '../mods/ModReplaced.tsx';
 import { replaceableOf } from '../mods/modReplace.ts';
 import { memo, useId, useMemo, useState, type ReactNode } from 'react';
-import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs } from '@seshboard/protocol/client';
+import { isAbsolutePath, parseActionResults, parseBriefs, parseGithubBlocks, parseRunBriefs, VISUAL_TOOL } from '@seshboard/protocol/client';
 import { LinkedSessions } from './LinkedSessions.tsx';
 import { GithubAttached } from './GithubAttached.tsx';
 import { ActionResults, LinkedRuns } from '../pipelines/RunPromptRows.tsx';
@@ -25,6 +25,8 @@ import { useRemote } from '../../state/remoteStore.ts';
 import { ToolDetails, ToolImages, type ToolItem } from './ToolDetails.tsx';
 import { messageImageSlots } from './imageLayout.ts';
 import { TranscriptImage } from './TranscriptImage.tsx';
+import { VisualBlock } from './VisualBlock.tsx';
+import { visualOf } from './visuals.ts';
 import { parseTodos, TodoList } from './TodoList.tsx';
 import { editHunks, toolSummary } from './toolSummary.ts';
 import { memoryWriteOf } from './memoryWrites.ts';
@@ -359,6 +361,11 @@ function BuiltInItem({
     case 'tool':
       if (item.name === 'TodoWrite') return <TodoRow item={item} className={indent} />;
       if (item.name === 'ExitPlanMode') return <PlanCard item={item} />;
+      if (item.name === VISUAL_TOOL) {
+        // A visual whose code was cut short, or whose call failed, is a step like any other.
+        const visual = item.inputTruncated || item.result?.isError ? null : visualOf(item.input);
+        if (visual) return <VisualBlock id={item.id} visual={visual} sessionId={sessionId} />;
+      }
       if (item.name === 'AskUserQuestion') {
         const answered = answeredQuestions(item);
         if (answered) return <AnsweredQuestions questions={answered} />;

@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptMessage } from '@seshboard/protocol/client';
+import { VISUAL_TOOL, type ImageRef, type TranscriptMessage } from '@seshboard/protocol/client';
 import { answeredQuestions } from './questionAnswers.ts';
 
 export interface ToolResultView {
@@ -201,13 +201,13 @@ export type ActivityGroup = { kind: 'activity'; key: string; items: DisplayItem[
 export type RenderItem = DisplayItem | ActivityGroup;
 
 /**
- * Plans and questions you answered stay visible; everything else Claude does between messages can be summarised. A
- * question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
+ * Plans, questions you answered and Claude's visuals stay visible; everything else Claude does between messages can be
+ * summarised. A question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
  */
 const isActivity = (item: DisplayItem) =>
   item.kind === 'thinking' ||
   item.kind === 'agent-report' ||
-  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && answeredQuestions(item) === null) ||
+  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && item.name !== VISUAL_TOOL && answeredQuestions(item) === null) ||
   ((item.kind === 'text' || item.kind === 'user') && item.subagent);
 
 const NO_FOLDED: ReadonlySet<string> = new Set();

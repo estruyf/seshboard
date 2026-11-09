@@ -81,6 +81,16 @@ describe('groupActivity', () => {
     expect(grouped.map((g) => (g.kind === 'activity' ? `group(${g.items.map((i) => i.key).join(',')})` : g.key))).toEqual(['t1', 'group(a,th,b)', 't2', 'c', 'group(d)']);
     expect(grouped[1]!.key).toBe('activity:a');
   });
+
+  it("keeps Claude's visuals between the text, and their setup in the steps", () => {
+    const grouped = groupActivity([
+      text('t1', 'Here is the flow.'),
+      tool('a', 'mcp__visualize__read_me', { modules: ['diagram'] }),
+      tool('b', 'mcp__visualize__show_widget', { title: 'flow', widget_code: '<svg></svg>' }),
+      text('t2', 'The suffixes in the visual are examples.'),
+    ]);
+    expect(grouped.map((g) => (g.kind === 'activity' ? `group(${g.items.map((i) => i.key).join(',')})` : g.key))).toEqual(['t1', 'group(a)', 'b', 't2']);
+  });
 });
 
 describe('activitySummary', () => {
@@ -108,6 +118,8 @@ describe('stepLabel', () => {
     expect(stepLabel(tool('1', 'Bash', { description: 'Only stop when scrolling up' }), null).present).toBe('Only stop when scrolling up');
     expect(stepLabel(tool('1', 'Bash', { description: 'Rerun the smoke test' }), null).present).toBe('Rerunning the smoke test');
     expect(stepLabel(tool('1', 'Bash', { description: 'Read the file' }), null).present).toBe('Reading the file');
+    expect(stepLabel(tool('1', 'mcp__visualize__show_widget', {}), null)).toEqual({ past: 'Draw a visual', present: 'Drawing a visual' });
+    expect(stepLabel(tool('1', 'mcp__visualize__read_me', {}), null).past).toBe('Read how to draw visuals');
   });
 
   it('names a command without a description by what it runs, not its script', () => {

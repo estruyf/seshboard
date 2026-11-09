@@ -85,6 +85,19 @@ describe('normaliseMessage', () => {
     expect(m.blocks[3]).toEqual({ type: 'unknown', kind: 'some_future_block' });
   });
 
+  it("keeps a visual's code whole", () => {
+    const code = `<div>${'x'.repeat(LIMITS.toolInputString * 5)}</div>`;
+    const m = normaliseMessage({
+      type: 'assistant',
+      uuid: 'a1',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'tool_use', id: 't1', name: 'mcp__visualize__show_widget', input: { title: 'chart', widget_code: code } }] },
+    });
+    const tool = m.blocks[0];
+    expect(tool).toMatchObject({ type: 'tool_use', truncated: false });
+    expect(tool?.type === 'tool_use' && (tool.input as { widget_code: string }).widget_code).toBe(code);
+  });
+
   it('flattens tool results and clips long output', () => {
     const m = normaliseMessage({
       type: 'user',

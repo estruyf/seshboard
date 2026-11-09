@@ -26,6 +26,8 @@ const csp = [
   "img-src 'self' data:",
   "font-src 'self' data:",
   "connect-src 'self'",
+  // Claude's visuals, each in a sandboxed frame from main (VISUAL_SCHEME in packages/protocol/src/visuals.ts).
+  "frame-src 'self' seshboard-visual:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
