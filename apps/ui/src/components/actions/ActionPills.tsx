@@ -1,6 +1,6 @@
-import { Check, ChevronDown, Pencil, Play, Plus, Settings2, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, Globe, Pencil, Play, Plus, Settings2, Trash2 } from 'lucide-react';
 import { useState, type KeyboardEvent, type MouseEvent } from 'react';
-import type { ListedAction } from '@seshboard/protocol/client';
+import { shortUrl, type ListedAction } from '@seshboard/protocol/client';
 import { contextMenuPoint, isContextMenuKey, type ContextMenuPoint } from '../../lib/contextMenu.ts';
 import { Menu, useMenu, type MenuEntry } from '../Menu.tsx';
 import { actionContextItems, splitActionPills, type ActionCommand } from './actionPills.ts';
@@ -8,6 +8,9 @@ import { Notice } from '../ui/Notice.tsx';
 import { Pill } from '../ui/Pill.tsx';
 import { ACTION_ICON, formatShortcut } from './useActions.ts';
 import type { ActionsMenu } from './useActionsMenu.tsx';
+import { useTerminals } from '../../state/terminalsStore.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { terminalOffer } from '../webPreview/serverOffers.ts';
 
 const MENU_WIDTH = 240;
 
@@ -26,7 +29,16 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
   const more = useMenu();
   /** The action whose context menu is open, and where. */
   const [context, setContext] = useState<{ action: ListedAction; at: ContextMenuPoint } | null>(null);
-  const { openEditor } = menu;
+  const { openEditor, sessionId } = menu;
+  const terminals = useTerminals((s) => s.terminals);
+  /** The address of the server an action started in this session, while it runs. */
+  const offerOf = (action: ListedAction) => {
+    for (const terminal of terminals.values()) {
+      const url = terminal.sessionId === sessionId && terminal.actionId === action.id ? terminalOffer(terminal) : null;
+      if (url) return url;
+    }
+    return null;
+  };
   // A session without a known project folder can't keep actions.
   if (!openEditor) return null;
   const { pills, more: rest } = splitActionPills(menu.actions);
@@ -92,22 +104,36 @@ export function ActionPills({ actions: menu }: { actions: ActionsMenu }) {
       {pills.map((action) => {
         const Icon = ACTION_ICON[action.icon];
         const shortcut = action.shortcut ? formatShortcut(action.shortcut) : null;
+        const offer = offerOf(action);
         return (
-          <Pill
-            key={action.id}
-            icon={<Icon size={12} className="shrink-0" aria-hidden />}
-            kbd={action.shortcut ?? undefined}
-            onClick={() => menu.run(action)}
-            onContextMenu={onPillContextMenu(action)}
-            onKeyDown={onPillKey(action)}
-            data-action-pill={action.id}
-            data-tooltip={`${whatItRuns(action)}${shortcut ? ` (${shortcut})` : ''}`}
-            aria-label={action.name}
-            // In a narrow pane only the icon shows.
-            className="max-w-44 @max-[860px]:px-2"
-          >
-            <span className="truncate @max-[860px]:sr-only">{action.name}</span>
-          </Pill>
+          <span key={action.id} className="flex min-w-0 items-center gap-0.5">
+            <Pill
+              icon={<Icon size={12} className="shrink-0" aria-hidden />}
+              kbd={action.shortcut ?? undefined}
+              onClick={() => menu.run(action)}
+              onContextMenu={onPillContextMenu(action)}
+              onKeyDown={onPillKey(action)}
+              data-action-pill={action.id}
+              data-tooltip={`${whatItRuns(action)}${shortcut ? ` (${shortcut})` : ''}`}
+              aria-label={action.name}
+              // In a narrow pane only the icon shows.
+              className="max-w-44 @max-[860px]:px-2"
+            >
+              <span className="truncate @max-[860px]:sr-only">{action.name}</span>
+            </Pill>
+            {/* The action started a dev server: one click shows it beside the conversation. */}
+            {offer && (
+              <Pill
+                ghost
+                icon={<Globe size={12} aria-hidden />}
+                onClick={() => useWebPreview.getState().open(sessionId, offer)}
+                data-tooltip={`Open preview of ${shortUrl(offer)}`}
+                aria-label={`Open preview of ${shortUrl(offer)}`}
+                className="px-1.5!"
+                data-action-preview={action.id}
+              />
+            )}
+          </span>
         );
       })}
       {rest.length > 0 ? (

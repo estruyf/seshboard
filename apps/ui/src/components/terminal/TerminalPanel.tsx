@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Folder, Maximize2, Minimize2, PanelBottom, PanelRight, Plus, RotateCcw, Sparkles, Square, SquareTerminal, Timer, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, Globe, Maximize2, Minimize2, PanelBottom, PanelRight, Plus, RotateCcw, Sparkles, Square, SquareTerminal, Timer, X } from 'lucide-react';
 import { useEffect, useId, useMemo, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { TerminalInfo, TerminalKind } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
@@ -13,6 +13,9 @@ import { maxBottomHeight, maxRightWidth, PANEL_MIN_HEIGHT, PANEL_MIN_WIDTH, PANE
 import { actionCommand, elapsedLabel, runStatus, tabStatus, type RunTimes } from './terminalStatus.ts';
 import { XTerm } from './XTerm.tsx';
 import { formatKeys, keysFor, matches } from '../../lib/shortcuts.ts';
+import { shortUrl } from '@seshboard/protocol/client';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
+import { terminalOffer } from '../webPreview/serverOffers.ts';
 
 /**
  * Terminals for one session: login shells in its folder, project actions, and the Claude Code TUI
@@ -91,6 +94,9 @@ export function TerminalPanel({
 
   const terminals = useMemo(() => [...all.values()].filter((t) => t.sessionId === sessionId).sort((a, b) => a.startedAt - b.startedAt), [all, sessionId]);
   const active = terminals.find((t) => t.id === activeId) ?? terminals.at(-1);
+  // A dev server the tab started, shown beside the conversation in the session's web preview (not outside a session).
+  const preview = sessionId ? terminalOffer(active) : null;
+  const openPreview = () => sessionId && preview && useWebPreview.getState().open(sessionId, preview);
 
   // The run strip shows the action's command from its definition; look again whenever another action tab comes up (it may have been edited).
   const { actions, reload: reloadActions } = useProjectActionList(projectRoot);
@@ -336,6 +342,12 @@ export function TerminalPanel({
             )}
             <Button variant="quiet" size="sm" iconOnly icon={<Plus size={13} />} data-new-terminal onClick={() => void open('shell')} disabled={!canOpen} aria-label="New terminal tab" className="shrink-0" />
           </div>
+          {/* A shell that started a dev server offers its page here; an action's run strip offers it instead. */}
+          {preview && active?.kind !== 'action' && (
+            <Button size="sm" icon={<Globe size={11} aria-hidden />} onClick={openPreview} data-tooltip={`Show ${shortUrl(preview)} beside the conversation`} className="shrink-0" data-terminal-open-preview={preview}>
+              Open preview
+            </Button>
+          )}
           {!tabs && buttons}
         </div>
 
@@ -375,6 +387,8 @@ export function TerminalPanel({
             folder={tildify(active.cwd, home)}
             onStop={() => void stop(active)}
             onRestart={() => void restart(active)}
+            preview={preview}
+            onPreview={openPreview}
           />
         )}
 
@@ -414,6 +428,8 @@ function RunStrip({
   folder,
   onStop,
   onRestart,
+  preview,
+  onPreview,
 }: {
   terminal: TerminalInfo;
   run: RunTimes | null;
@@ -421,6 +437,9 @@ function RunStrip({
   folder: string;
   onStop(): void;
   onRestart(): void;
+  /** The address of the server it started, while it runs. */
+  preview: string | null;
+  onPreview(): void;
 }) {
   const running = terminal.exitCode === null;
   const now = useTicker(running);
@@ -452,6 +471,11 @@ function RunStrip({
         <span className="truncate font-mono">{folder}</span>
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
+        {preview && (
+          <Button size="sm" icon={<Globe size={11} aria-hidden />} onClick={onPreview} data-tooltip={`Show ${shortUrl(preview)} beside the conversation`} data-terminal-open-preview={preview}>
+            Open preview
+          </Button>
+        )}
         <Button size="sm" icon={<RotateCcw size={11} aria-hidden />} onClick={onRestart} data-tooltip={running ? 'Stop it and run it again' : 'Run it again'} data-terminal-restart>
           Restart
         </Button>

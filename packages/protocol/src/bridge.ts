@@ -87,6 +87,7 @@ export const IpcChannel = {
   showSession: "seshboard:show-session",
   forwardKeys: "seshboard:forward-keys",
   keysForwarded: "seshboard:keys-forwarded",
+  webPreviewKeys: "seshboard:web-preview-keys",
   showInMain: "seshboard:show-in-main",
   mainRequested: "seshboard:main-requested",
   popoutsChanged: "seshboard:popouts-changed",
@@ -164,6 +165,12 @@ export interface ForwardedKeys {
   ctrlKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
+}
+
+/** An app shortcut typed in the web preview's page, which main took from the page: `contentsId` is the page's. */
+export interface WebPreviewKeys {
+  contentsId: number;
+  keys: ForwardedKeys;
 }
 
 /**
@@ -1138,6 +1145,8 @@ export interface SeshboardBridge {
   forwardKeys(keys: ForwardedKeys): void;
   /** In the main window: keys a pop-out handed over. */
   onKeysForwarded(listener: (keys: ForwardedKeys) => void): () => void;
+  /** An app shortcut typed in a web preview's page in this window (`<webview>`, whose keys the window never sees). */
+  onWebPreviewKeys(listener: (keys: WebPreviewKeys) => void): () => void;
   /** From a pop-out: brings the main window to the front and shows this view there (Settings, Usage, a project, New session). */
   showInMain(request: MainWindowRequest): void;
   /** In the main window: a view a pop-out asked it to show. */

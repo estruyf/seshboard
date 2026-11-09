@@ -1,0 +1,54 @@
+---
+title: Web preview
+description: See your running dev server beside the conversation, without switching to a browser.
+sidebar:
+  badge: New
+---
+
+import Kbd from '../../../components/Kbd.astro';
+import Related from '../../../components/Related.astro';
+
+When Claude changes a web app, you want to see the result. Start your dev server from a project action or the terminal, and its page opens in a **Web** tab on the right, next to the conversation. No window to switch to, no tab to find.
+
+## Open it
+
+Seshboard reads what your dev server prints, such as Vite's `Local: http://localhost:5173/`. While the server runs, **Open preview** shows in these places:
+
+- the run strip of the action's terminal tab;
+- the top of a terminal tab where you started the server yourself;
+- a globe next to the action's pill, above the message box;
+- the output of a background command Claude started, in the [Commands panel](/sessions/commands/).
+
+The **Web** button in the session's header also shows while a server runs. <Kbd shortcut="web.toggle" /> or **Open web preview** in the [command palette](/command-palette/) opens the tab on the newest server in the session. With no server running, the tab opens empty and you can type an address.
+
+## The toolbar
+
+- **Back** and **Forward** go through the pages you visited.
+- **Reload** loads the page again, and turns into **Stop** while a page loads. <Kbd keys="mod+r" /> in the page does the same, and **Reload web preview** is in the palette.
+- The address bar takes `localhost:3000`, `127.0.0.1:8000/docs` or just a port, such as `5173`.
+- **Phone width** shows the page 390 pixels wide, in the middle of the tab.
+- **Open in browser** opens the page in your own browser.
+
+If nothing answers at the address, the tab says **Nothing is running at** that address, with **Retry**.
+
+## Only this computer
+
+The tab shows pages from this computer only: `localhost`, names that end in `.localhost`, `127.0.0.1` and `[::1]`. An address on `0.0.0.0` opens as `localhost`. Any other link, a new window and a sign-in that goes to another site open in your browser instead, and the page stays where it was. The address bar refuses other addresses.
+
+The page has its own storage, apart from Seshboard's, so it cannot read anything of yours. Sign-ins in the page last between runs. The page cannot ask for your camera, microphone, location or notifications, and it cannot download files. A dev server's own certificate for `https://localhost` works, even when your computer does not trust it.
+
+## Keys
+
+The app's shortcuts work while the page has the focus: <Kbd shortcut="palette.commands" first /> opens the palette, for example. Copy, cut, paste, select all, undo and redo stay the page's.
+
+## Behind another tab
+
+The **Web** tab shares the right side with **Changes**, **Ask**, the terminal and the rest. Put another tab in front, or open another session, and the page keeps running, with its scroll and what you typed, until you come back. **Close web preview** (the **X**) or <Kbd keys="escape" /> closes it.
+
+A session in [its own window](/sessions/own-window/) takes its web preview along, and the page loads again there.
+
+Sessions on another computer have no web preview.
+
+## Related
+
+<Related pages={['projects/actions', 'terminal-changes-git/terminal', 'sessions/commands', 'sessions/file-preview']} />

@@ -21,6 +21,7 @@ const SESSION: PaletteSession = {
   prompts: 0,
   hasReply: false,
   unsent: 0,
+  web: false,
 };
 
 /** Home, connected, nothing open: the context every test changes a little. */

@@ -36,7 +36,7 @@ describe('reading task output', () => {
   it('reads a short file whole', () => {
     const file = join(tasksDir(), 'b1.output');
     writeFileSync(file, 'building…\ndone\n');
-    expect(readTaskOutput(file)).toEqual({ text: 'building…\ndone\n', size: Buffer.byteLength('building…\ndone\n'), truncated: false, missing: false });
+    expect(readTaskOutput(file)).toEqual({ text: 'building…\ndone\n', size: Buffer.byteLength('building…\ndone\n'), truncated: false, missing: false, urls: [] });
   });
 
   it('keeps only the end of a long file, from the first whole line', () => {
@@ -46,6 +46,15 @@ describe('reading task output', () => {
     expect(out.truncated).toBe(true);
     expect(out.size).toBe(29);
     expect(out.text).toBe('line three\n');
+  });
+
+  it("finds a dev server's address at the start of a long file", () => {
+    const file = join(tasksDir(), 'b3.output');
+    writeFileSync(file, `  ➜  Local:   http://localhost:5173/\n${'hmr update /src/App.tsx\n'.repeat(40)}`);
+    const out = readTaskOutput(file, 100);
+    expect(out.truncated).toBe(true);
+    expect(out.text).not.toContain('5173');
+    expect(out.urls).toEqual(['http://localhost:5173/']);
   });
 
   it('says a file is missing rather than failing', () => {

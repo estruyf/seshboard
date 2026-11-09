@@ -17,5 +17,9 @@ export const TerminalInfo = z.object({
   /** Null while running. */
   exitCode: z.number().nullable(),
   startedAt: z.number(),
+  /** For `action`: the project action it runs, so its pill can find it. */
+  actionId: z.string().optional(),
+  /** Local addresses the current run printed (a dev server's), `Local:` first. Empty or missing: none yet. */
+  urls: z.array(z.string()).optional(),
 });
 export type TerminalInfo = z.infer<typeof TerminalInfo>;

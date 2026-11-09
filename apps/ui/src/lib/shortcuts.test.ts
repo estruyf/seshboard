@@ -82,7 +82,7 @@ describe('shortcuts', () => {
     for (const key of ['cmd+k', 'cmd+f', 'cmd+g', 'cmd+\\', 'cmd+,', 'cmd+shift+f', 'cmd+shift+h', 'cmd+shift+d', 'cmd+shift+l', 'cmd+enter']) expect(reservedShortcuts().has(key)).toBe(true);
     expect(reservedShortcuts().has(shortcutFromEvent(press('K', { metaKey: true }))!)).toBe(true);
     expect(reservedShortcuts().has(shortcutFromEvent(press(',', { metaKey: true }))!)).toBe(true);
-    expect(reservedShortcuts().has('cmd+shift+b')).toBe(false);
+    expect(reservedShortcuts().has('cmd+shift+i')).toBe(false);
   });
 });
 
@@ -223,6 +223,7 @@ describe('the shortcut registry', () => {
       'changes.comment': [SESSION, at({ view: 'session' })],
       'agents.toggle': [SESSION, at({ view: 'session' })],
       'commands.toggle': [SESSION, at({ view: 'session' })],
+      'web.toggle': [SESSION, at({ view: 'session' })],
       'ask.open': [SESSION, at({ view: 'session' })],
       'transcript.file-link-other': [SESSION, HOME],
       'transcript.run-send': [SESSION, HOME],

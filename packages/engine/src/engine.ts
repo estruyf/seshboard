@@ -2189,8 +2189,8 @@ export function createEngine(options: EngineOptions): Engine {
   memoryWatcher.watch(null, [memory.personal().dir]);
 
   /** Runs an action's command in a terminal tab of the session and returns the terminal id. */
-  const runShellAction = async (sessionId: string, cwd: string, name: string, command: string) =>
-    (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)) })).id;
+  const runShellAction = async (sessionId: string, cwd: string, name: string, command: string, actionId?: string) =>
+    (await terminals.open({ sessionId, cwd, kind: 'action', command, title: name, cols: 100, rows: 20, fork: false, env: profileEnv(sessionProfile(sessionId)), ...(actionId ? { actionId } : {}) })).id;
   /** Terminals started by `actions.run`, so Restart can look the action up again. */
   const actionRuns = new Map<string, { sessionId: string; projectRoot: string; cwd: string; id: string }>();
   /** Terminals whose runs report back to their session when they end: a code block run with its output, or an action set to. */
@@ -3669,7 +3669,7 @@ export function createEngine(options: EngineOptions): Engine {
       }
       const runIn = action.cwd === 'project-root' ? projectRoot : cwd;
       const command = expandCommand(action.command, vars, await terminals.shell());
-      const terminalId = await runShellAction(sessionId, runIn, action.name, command);
+      const terminalId = await runShellAction(sessionId, runIn, action.name, command, action.id);
       actionRuns.set(terminalId, { sessionId, projectRoot, cwd, id });
       if (action.sendOutput) runReports.set(terminalId, { sessionId, command, action: action.name });
       return { kind: 'terminal' as const, terminalId };

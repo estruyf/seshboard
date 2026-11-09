@@ -15,6 +15,8 @@ import { useOverlay } from '../../state/overlayStore.ts';
 import { isAskOpen } from '../../state/askStore.ts';
 import { isAgentsOpen, toggleAgentsPanel } from '../../state/agentsPanelStore.ts';
 import { isCommandsOpen, toggleCommandsPanel } from '../../state/commandsPanelStore.ts';
+import { isWebOpen, useWebPreview } from '../../state/webPreviewStore.ts';
+import { sessionServerOffers } from '../webPreview/serverOffers.ts';
 import { isChangesOpen, toggleChangesPanel } from '../../state/changesPanelStore.ts';
 import { toggleTerminalPanel } from '../../state/rightPanelStore.ts';
 import { readOnlyFork } from '../../state/githubOriginStore.ts';
@@ -222,6 +224,14 @@ export function createPaletteApi(ctx: PaletteContext, client: EngineClient | nul
     toggleCommands: () => {
       const id = useSessions.getState().selectedId;
       if (id) toggleCommandsPanel(id, isChangesOpen(id) || isAskOpen(id) || isAgentsOpen(id));
+    },
+    openWeb: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) useWebPreview.getState().open(id, isWebOpen(id) ? null : (sessionServerOffers(useTerminals.getState().terminals.values(), id)[0]?.url ?? null));
+    },
+    reloadWeb: () => {
+      const id = useSessions.getState().selectedId;
+      if (id) useWebPreview.getState().reload(id);
     },
     // After the palette's own close, so the Tools dialog isn't closed along with it.
     showTools: () => setTimeout(() => useOverlay.getState().show('tools')),

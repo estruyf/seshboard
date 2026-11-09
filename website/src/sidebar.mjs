@@ -45,6 +45,7 @@ export const sidebar = [
     items: [
       'sessions/conversation',
       'sessions/file-preview',
+      'sessions/web-preview',
       'permissions',
       'sessions/ask',
       'sessions/linking',

@@ -37,6 +37,8 @@ export interface PaletteSession {
   hasReply: boolean;
   /** Claude Code failed before it got this many of your messages: Try again sends them. */
   unsent: number;
+  /** Its web preview's tab is open (Reload web preview). */
+  web: boolean;
 }
 
 /** The session's checkout, once read (null outside git, or until it has been read). */

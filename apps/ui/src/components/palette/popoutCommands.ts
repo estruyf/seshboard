@@ -147,6 +147,8 @@ const PLANS: Record<string, Plan> = {
   'new-terminal-tab': 'here',
   'toggle-agents': 'here',
   'toggle-commands': 'here',
+  'open-web-preview': 'here',
+  'reload-web-preview': 'here',
   'toggle-changes': 'here',
   tools: 'here',
   'open-in-editor': 'here',

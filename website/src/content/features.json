@@ -787,6 +787,16 @@
       "page": "sessions/commands"
     },
     {
+      "id": "palette:open-web-preview",
+      "name": "Open web preview",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "palette:reload-web-preview",
+      "name": "Reload web preview",
+      "page": "sessions/web-preview"
+    },
+    {
       "id": "palette:toggle-changes",
       "name": "Toggle changes",
       "page": "terminal-changes-git/changes"
@@ -890,6 +900,11 @@
       "id": "shortcut:commands.toggle",
       "name": "commands.toggle",
       "page": "sessions/commands"
+    },
+    {
+      "id": "shortcut:web.toggle",
+      "name": "web.toggle",
+      "page": "sessions/web-preview"
     },
     {
       "id": "shortcut:ask.open",
@@ -2650,6 +2665,16 @@
       "id": "feature:file-preview-panel",
       "name": "File preview in the side panel or a dialog, with line numbers and the linked lines marked",
       "page": "sessions/file-preview"
+    },
+    {
+      "id": "feature:web-preview",
+      "name": "Web preview: your running dev server beside the conversation, with back, forward, reload, an address bar and phone width",
+      "page": "sessions/web-preview"
+    },
+    {
+      "id": "feature:web-preview-offers",
+      "name": "Open preview from a project action, a terminal tab or a background command that started a dev server",
+      "page": "sessions/web-preview"
     },
     {
       "id": "feature:file-link-click",

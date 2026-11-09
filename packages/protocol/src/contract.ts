@@ -506,11 +506,12 @@ export const contract = {
     'session.keepAwake': { params: z.object({ sessionId: SessionId, on: z.boolean() }), result: z.object({}) },
     /**
      * The end of what a background command printed, from the output file Claude Code named in the transcript (the
-     * engine reads only task output files). `missing`: no such file, yet or any more.
+     * engine reads only task output files). `missing`: no such file, yet or any more. `urls`: local addresses a dev
+     * server printed, from the start of the file too, for the web preview.
      */
     'session.taskOutput': {
       params: z.object({ sessionId: SessionId, outputFile: AbsolutePath }),
-      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean() }),
+      result: z.object({ text: z.string(), size: z.number(), truncated: z.boolean(), missing: z.boolean(), urls: z.array(z.string()) }),
     },
     /**
      * A new session with this one's conversation up to and including `messageUuid`. `editOf`: the prompt Edit and resend

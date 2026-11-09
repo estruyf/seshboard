@@ -1,6 +1,7 @@
-import { CircleAlert, Copy, ScrollText, Square, X } from 'lucide-react';
+import { CircleAlert, Copy, Globe, ScrollText, Square, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import type { BackgroundTask } from '@seshboard/protocol/client';
+import { shortUrl, type BackgroundTask } from '@seshboard/protocol/client';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
 import { useCommandsPanel } from '../../state/commandsPanelStore.ts';
 import { ASK_MAX_SHARE, ASK_MIN_WIDTH, askWidthForKey } from '../ask/askWidth.ts';
 import { formatDuration, useTicker } from '../transcript/ActivityGroup.tsx';
@@ -82,6 +83,8 @@ function CommandRow({ run, selected, now, onPick }: { run: CommandRun; selected:
 function CommandOutput({ sessionId, run }: { sessionId: string; run: CommandRun }) {
   const out = useTaskOutput(sessionId, run.outputFile, run.state === 'running');
   const text = useMemo(() => plainOutput(out.text), [out.text]);
+  // A dev server it started, while it runs: one click shows its page beside the conversation.
+  const preview = run.state === 'running' ? (out.urls[0] ?? null) : null;
   const boxRef = useRef<HTMLPreElement>(null);
   // Follows the end while you're at the end; scrolled up to read, it stays where you are.
   const atEnd = useRef(true);
@@ -124,8 +127,13 @@ function CommandOutput({ sessionId, run }: { sessionId: string; run: CommandRun 
             Last part of {sizeText(out.size)}
           </span>
         )}
+        {preview && (
+          <Button size="sm" className="ml-auto" icon={<Globe size={11} aria-hidden />} onClick={() => useWebPreview.getState().open(sessionId, preview)} data-tooltip={`Show ${shortUrl(preview)} beside the conversation`} data-command-open-preview={preview}>
+            Open preview
+          </Button>
+        )}
         {empty === null && (
-          <Button variant="quiet" size="sm" className="ml-auto" icon={<Copy size={12} aria-hidden />} onClick={copy} data-tooltip="Copy the output shown" data-command-copy={copied ? 'copied' : ''}>
+          <Button variant="quiet" size="sm" className={preview ? '' : 'ml-auto'} icon={<Copy size={12} aria-hidden />} onClick={copy} data-tooltip="Copy the output shown" data-command-copy={copied ? 'copied' : ''}>
             {copied ? 'Copied' : 'Copy'}
           </Button>
         )}

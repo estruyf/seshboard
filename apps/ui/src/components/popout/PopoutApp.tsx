@@ -42,6 +42,7 @@ import { TranscriptView } from '../transcript/TranscriptView.tsx';
 import { ToastLayer } from '../ui/Toast.tsx';
 import { TooltipLayer } from '../ui/Tooltip.tsx';
 import { useUsageSync } from '../UsageBand.tsx';
+import { WebPreviewHost } from '../webPreview/WebPreviewHost.tsx';
 
 /**
  * The app's own shortcuts, which need the sidebar, the list of sessions or another session: pressed in a pop-out, they
@@ -105,6 +106,7 @@ export function PopoutApp({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex h-full">
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">{shown && <TranscriptView sessionId={sessionId} leading={false} />}</main>
+      <WebPreviewHost />
       {overlay === 'palette' && <CommandPalette />}
       {overlay === 'shortcuts' && <ShortcutsSheet />}
       <SelectionMenu />
