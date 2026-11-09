@@ -3258,6 +3258,8 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session's tray has no premium requests on its right (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
     }
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
+    // Its call to Seshboard's visualize server, which Copilot names its own way, draws as a visual (#289).
+    if (!(await waitInPage(win, `!!${view}.querySelector('[data-visual] [data-visual-state="drawn"]')`, 10_000))) return "the Copilot session's show_widget call did not draw as a visual";
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,

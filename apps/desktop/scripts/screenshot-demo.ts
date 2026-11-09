@@ -426,6 +426,15 @@ const ATTACHED_ISSUE = [
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
 /** Plain colour PNGs, each its own shape, for the demo's images. */
+/** The Copilot demo's visual: the cart total's three steps as an SVG in the ramp classes. */
+const CART_VISUAL = `<svg width="100%" viewBox="0 0 680 100" role="img"><title>Cart total</title><desc>Lines are summed, then rounded to whole cents.</desc>
+  <g class="c-gray"><rect x="40" y="30" width="160" height="44" rx="4" /><text x="120" y="57" text-anchor="middle" class="th">Cart lines</text></g>
+  <line x1="200" y1="52" x2="260" y2="52" class="arr" />
+  <g class="c-teal"><rect x="260" y="30" width="160" height="44" rx="4" /><text x="340" y="57" text-anchor="middle" class="th">Sum of price × qty</text></g>
+  <line x1="420" y1="52" x2="480" y2="52" class="arr" />
+  <g class="c-purple"><rect x="480" y="30" width="160" height="44" rx="4" /><text x="560" y="57" text-anchor="middle" class="th">Math.round</text></g>
+</svg>`;
+
 /** A visual with an SVG in the theme's colours, a slider and a button that asks Claude (`sendPrompt`). */
 const CHECKOUT_VISUAL = `<div style="display: flex; flex-direction: column; gap: 12px; padding: 4px 0">
   <svg width="100%" viewBox="0 0 520 80" role="img" aria-label="Checkout flow">
@@ -712,6 +721,16 @@ function writeCopilotDemo(home: string, cwd: string, at: number): string {
       data: { model: 'gpt-5.3-codex', content: '', toolRequests: [{ toolCallId: 'call_edit', name: 'edit', arguments: { path: file, old_str: 'return lines.reduce(', new_str: 'return Math.round(lines.reduce(' } }] },
     },
     { type: 'tool.execution_complete', data: { toolCallId: 'call_edit', success: true, result: { content: 'File edited.' } } },
+    // A visual through Seshboard's visualize server, as Copilot names an MCP tool (the smoke test's "providers").
+    {
+      type: 'assistant.message',
+      data: {
+        model: 'gpt-5.3-codex',
+        content: 'Here is where the rounding happens.',
+        toolRequests: [{ toolCallId: 'call_visual', name: 'visualize-show_widget', mcpServerName: 'visualize', mcpToolName: 'show_widget', arguments: { title: 'cart_total', loading_messages: ['Drawing the total'], widget_code: CART_VISUAL } }],
+      },
+    },
+    { type: 'tool.execution_complete', data: { toolCallId: 'call_visual', success: true, result: { content: 'The visual is shown to the user in the conversation, where you called show_widget.' } } },
     { type: 'assistant.message', data: { model: 'gpt-5.3-codex', content: 'The total is now rounded to whole cents.', toolRequests: [] } },
   ].map((event, i) => ({ ...event, id: randomUUID(), timestamp: time(i * 4) }));
   writeFileSync(join(dir, 'events.jsonl'), `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
