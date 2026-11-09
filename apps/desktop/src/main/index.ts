@@ -9,7 +9,7 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChann
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
-import { previewKind, VISUAL_SCHEME, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
@@ -23,12 +23,12 @@ import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, pa
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
-import { runVisualsStep } from './visualsSmoke.ts';
+import { checkCodexMcpApp, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
-import { isVisualFrameUrl, visualFrameResponse } from './visualFrame.ts';
+import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -438,6 +438,15 @@ const recordedScheduleRuns: ScheduleRunEvent[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
+
+/** MCP App pages, each served from an address of its own with the policy its server declared. */
+const mcpAppDocuments = new McpAppDocuments();
+/** An app's page is an HTML document; anything this large is not one worth drawing. */
+const MAX_APP_PAGE = 5 * 1024 * 1024;
+ipcMain.handle(IpcChannel.mcpAppDocument, (_event, html: unknown, csp: unknown) => {
+  if (typeof html !== 'string' || html.length > MAX_APP_PAGE) throw new Error('Not an MCP App page');
+  return mcpAppDocuments.add(html, csp && typeof csp === 'object' ? (csp as McpAppCsp) : null);
+});
 
 ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
 ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
@@ -3454,6 +3463,11 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
       5_000,
     );
     if (!forkAsk) return 'the Codex session has no Fork on its replies, or no Ask';
+
+    // 4b. Its other session draws the CI server's MCP App in the conversation (#289).
+    const appProblem = await checkCodexMcpApp(win);
+    if (appProblem) return appProblem;
+    await shot(win, 'codex-mcp-app.png');
 
     // 5. New session on the Codex profile, with Codex's mark, models, efforts and modes.
     await js("document.querySelector('[data-new-session]')?.click()");
@@ -13821,7 +13835,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  protocol.handle(VISUAL_SCHEME, visualFrameResponse);
+  protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

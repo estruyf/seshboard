@@ -214,6 +214,18 @@ export interface ProviderDriver {
    * when this resolves. `onSession` names it before it exists (to keep it out of the sidebar). Never throws.
    */
   askCheap?(params: { system: string; prompt: string; onSession(sessionId: string): void }): Promise<CheapAnswer>;
+  /**
+   * MCP Apps (pages an MCP server draws for its tool calls), when the provider shows them (Codex's). A page can be read
+   * for any of its sessions; a tool call needs the session running here.
+   */
+  mcpApps?: {
+    /** A resource of the session's server, as `resources/read` gives it (`contents`). `callId`: the call it draws. */
+    resource(params: { sessionId: string; server: string; uri: string; callId: string | null }): Promise<unknown[]>;
+    /** The server's tools by name, as it lists them (for what an app may call). */
+    tools(params: { sessionId: string; server: string }): Promise<Record<string, unknown>>;
+    /** Calls one of them; resolves with the `CallToolResult`. */
+    callTool(params: { sessionId: string; server: string; tool: string; arguments: unknown }): Promise<unknown>;
+  };
   /** Stops the provider's runtime (the app quits). */
   dispose(): Promise<void>;
 }

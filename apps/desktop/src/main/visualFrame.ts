@@ -1,4 +1,5 @@
-import { VISUAL_CDNS, VISUAL_FONT_HOSTS, VISUAL_SCHEME } from '@seshboard/protocol/client';
+import { randomUUID } from 'node:crypto';
+import { VISUAL_CDNS, VISUAL_FONT_HOSTS, VISUAL_SCHEME, type McpAppCsp } from '@seshboard/protocol/client';
 
 /**
  * The page a visual from Claude (`show_widget`) is drawn in, served from `seshboard-visual://frame/`. The conversation
@@ -217,11 +218,66 @@ export function visualFrameHtml(): string {
 /** Whether a URL is a visual's frame page. */
 export const isVisualFrameUrl = (url: string | null | undefined): boolean => typeof url === 'string' && url.startsWith(`${VISUAL_SCHEME}:`);
 
-/** What main answers for `seshboard-visual://…`: the frame page at `frame/`, nothing anywhere else. */
-export function visualFrameResponse(request: Request): Response {
+/** An origin an MCP App may declare: http(s) or ws(s), a host with an optional `*.` and port. Nothing wider. */
+const DECLARED_ORIGIN = /^(?:https?|wss?):\/\/(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*(?::\d{1,5})?$/i;
+const MAX_ORIGINS = 32;
+
+/** The origins of one list that are origins: a page can't widen its policy with `*`, `'unsafe-eval'` or a `;`. */
+const origins = (list: unknown): string[] => (Array.isArray(list) ? list.filter((o): o is string => typeof o === 'string' && o.length <= 256 && DECLARED_ORIGIN.test(o)).slice(0, MAX_ORIGINS) : []);
+
+/**
+ * An MCP App page's policy, from what its server declared (`_meta.ui.csp`) and the spec's restrictive default for
+ * the rest: inline scripts and styles, and only the origins it named for loading, connecting, frames and its base URL.
+ */
+export function mcpAppCsp(declared: McpAppCsp | null): string {
+  const load = origins(declared?.resourceDomains).join(' ');
+  const or = (list: unknown, none: string) => origins(list).join(' ') || none;
+  return [
+    "default-src 'none'",
+    `script-src 'unsafe-inline' ${load}`.trim(),
+    `style-src 'unsafe-inline' ${load}`.trim(),
+    `img-src data: blob: ${load}`.trim(),
+    `font-src data: ${load}`.trim(),
+    `media-src data: blob: ${load}`.trim(),
+    `connect-src ${or(declared?.connectDomains, "'none'")}`,
+    `frame-src ${or(declared?.frameDomains, "'none'")}`,
+    `base-uri ${or(declared?.baseUriDomains, "'none'")}`,
+    "object-src 'none'",
+    "form-action 'none'",
+  ].join('; ');
+}
+
+/** How many app pages are kept to serve: a frame loads its page once, so older ones are only for a reload. */
+const MAX_APP_DOCUMENTS = 64;
+
+/** The MCP App pages main serves at `seshboard-visual://app/<id>`, each with its own policy, the newest kept. */
+export class McpAppDocuments {
+  private readonly pages = new Map<string, { html: string; csp: string }>();
+
+  /** Keeps a page and returns its address. */
+  add(html: string, declared: McpAppCsp | null): string {
+    const id = randomUUID();
+    this.pages.set(id, { html, csp: mcpAppCsp(declared) });
+    for (const old of this.pages.keys()) {
+      if (this.pages.size <= MAX_APP_DOCUMENTS) break;
+      this.pages.delete(old);
+    }
+    return `${VISUAL_SCHEME}://app/${id}`;
+  }
+
+  get(id: string): { html: string; csp: string } | undefined {
+    return this.pages.get(id);
+  }
+}
+
+/**
+ * What main answers for `seshboard-visual://…`: the visual frame page at `frame/`, an MCP App's page at `app/<id>`
+ * with its own policy, nothing anywhere else.
+ */
+export function visualFrameResponse(request: Request, apps?: McpAppDocuments): Response {
   const url = new URL(request.url);
-  if (url.host !== 'frame' || (url.pathname !== '/' && url.pathname !== '')) return new Response('Not found', { status: 404 });
-  return new Response(visualFrameHtml(), {
-    headers: { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': visualFrameCsp(), 'cache-control': 'no-store' },
-  });
+  const html = (body: string, csp: string) => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': csp, 'cache-control': 'no-store' } });
+  if (url.host === 'frame' && (url.pathname === '/' || url.pathname === '')) return html(visualFrameHtml(), visualFrameCsp());
+  const page = url.host === 'app' ? apps?.get(url.pathname.slice(1)) : undefined;
+  return page ? html(page.html, page.csp) : new Response('Not found', { status: 404 });
 }

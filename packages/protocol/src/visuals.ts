@@ -26,3 +26,20 @@ export const VISUAL_CDNS = ['https://cdnjs.cloudflare.com', 'https://cdn.jsdeliv
 
 /** Google Fonts, which the desktop app also allows: its stylesheets and its font files, never scripts. */
 export const VISUAL_FONT_HOSTS = { styles: 'https://fonts.googleapis.com', files: 'https://fonts.gstatic.com' } as const;
+
+/**
+ * The origins an MCP App's page declares it needs (`_meta.ui.csp` on its resource): what it may connect to, load
+ * scripts, styles, images and fonts from, put in frames, and use as its base URL. Nothing else is allowed.
+ */
+export interface McpAppCsp {
+  connectDomains?: string[];
+  resourceDomains?: string[];
+  frameDomains?: string[];
+  baseUriDomains?: string[];
+}
+
+/** The MIME type of an MCP App's page. */
+export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
+
+/** The MCP Apps protocol version Seshboard speaks with an app's page (`ui/initialize`). */
+export const MCP_APP_PROTOCOL_VERSION = '2026-01-26';

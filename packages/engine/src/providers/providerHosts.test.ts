@@ -72,6 +72,44 @@ function setup(stored: StoredUpNext[] = [], extra: Partial<ProviderHostsDeps> = 
 
 const send = (hosts: ProviderHosts, text: string, mode?: 'queue' | 'steer' | 'now') => hosts.send({ sessionId: ID, text, attachments: [], ...(mode ? { mode } : {}) });
 
+describe('ProviderHosts MCP Apps', () => {
+  const tools: Record<string, unknown> = {
+    list_items: { annotations: { readOnlyHint: true } },
+    create_item: { annotations: { title: 'Create item' } },
+    delete_all: { _meta: { ui: { visibility: ['model'] } } },
+  };
+  const withApps = () => {
+    const ran: string[] = [];
+    const { hosts, driver } = setup();
+    driver.mcpApps = {
+      resource: async ({ uri, callId }) => [{ uri, mimeType: 'text/html;profile=mcp-app', text: `<p>${callId}</p>` }],
+      tools: async () => tools,
+      callTool: async ({ tool }) => (ran.push(tool), { content: [] }),
+    };
+    return { hosts, ran };
+  };
+
+  it("reads an app's page from its server", async () => {
+    const { hosts } = withApps();
+    expect(await hosts.mcpAppResource(ID, 'items', 'ui://items/list', 'call-1')).toEqual([{ uri: 'ui://items/list', mimeType: 'text/html;profile=mcp-app', text: '<p>call-1</p>' }]);
+  });
+
+  it('runs a read-only tool at once, asks first for one that changes things, and never runs one apps may not call', async () => {
+    const { hosts, ran } = withApps();
+    await hosts.mcpAppCall(ID, 'items', 'list_items', {}, false);
+    await expect(hosts.mcpAppCall(ID, 'items', 'create_item', {}, false)).rejects.toMatchObject({ code: 'NEEDS_CONFIRMATION', message: 'Create item' });
+    await hosts.mcpAppCall(ID, 'items', 'create_item', {}, true);
+    await expect(hosts.mcpAppCall(ID, 'items', 'delete_all', {}, true)).rejects.toMatchObject({ code: 'NOT_ALLOWED' });
+    await expect(hosts.mcpAppCall(ID, 'items', 'missing', {}, true)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(ran).toEqual(['list_items', 'create_item']);
+  });
+
+  it('says a provider without MCP Apps has none', async () => {
+    const { hosts } = setup();
+    await expect(hosts.mcpAppResource(ID, 'items', 'ui://items/list', null)).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+  });
+});
+
 describe('ProviderHosts session actions', () => {
   it('keeps the effort while it is not running and resumes with it; another model drops it', async () => {
     const { hosts, calls, settings, last } = setup();

@@ -96,3 +96,57 @@ export async function runVisualsStep(win: BrowserWindow, options: { demo: boolea
     if (options.back) await js(`document.querySelector('[data-session-id="${options.back}"]')?.click()`);
   }
 }
+
+/** Polls a condition in a frame (an app's page, which the window's own scripts can't reach). */
+async function untilInFrame(frame: WebFrameMain, expression: string, timeoutMs: number): Promise<unknown> {
+  const started = performance.now();
+  for (;;) {
+    const value: unknown = await frame.executeJavaScript(expression).catch(() => null);
+    if (value || performance.now() - started > timeoutMs) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * The demo's second Codex session has an MCP App (the CI server's run card, `codexDemo.ts`): its page draws between the
+ * text, gets Seshboard's theme and the call's input and result over the MCP Apps protocol, grows to its size, can't
+ * reach a site it didn't declare, puts a message in the message box (for you to send), and is refused a tool call while
+ * the session doesn't run here. Read-only: the message box is emptied again. Null when it all works, else what failed.
+ */
+export async function checkCodexMcpApp(win: BrowserWindow): Promise<string | null> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const id = (await js(`[...document.querySelectorAll('[data-session-id]')].find((row) => row.querySelector('[data-provider-mark="codex"]') && row.textContent.includes('orders test'))?.dataset.sessionId ?? null`)) as string | null;
+  if (!id) return 'the demo Codex session with an MCP App is not in the sidebar';
+  const view = `document.querySelector('[data-current-session="${id}"]')`;
+  await js(`document.querySelector('[data-session-id="${id}"]')?.click()`);
+  if (!(await waitInPage(win, `!!${view}?.querySelector('[data-mcp-app] [data-mcp-app-frame]')`, 10_000))) {
+    return `the MCP App did not open (${String(await js(`${view}?.querySelector('[data-mcp-app]')?.innerText.slice(0, 160) ?? 'no app block'`))})`;
+  }
+  if (await js(`!!${view}.querySelector('[data-mcp-app]').closest('[data-steps]')`)) return 'the MCP App is folded into the steps';
+  let frame: WebFrameMain | undefined;
+  const started = performance.now();
+  while (!frame && performance.now() - started < 5_000) {
+    frame = win.webContents.mainFrame.framesInSubtree.find((f) => f.url.startsWith('seshboard-visual://app/'));
+    if (!frame) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (!frame) return 'no frame on the MCP App page';
+  if (!(await untilInFrame(frame, 'document.body?.dataset.result === "shown" && document.body.dataset.host === "Seshboard"', 5_000))) return 'the MCP App did not initialize with Seshboard and show the call result';
+  if ((await frame.executeJavaScript('document.body.dataset.run')) !== '4821') return 'the MCP App did not get the call input';
+  if (!(await frame.executeJavaScript("getComputedStyle(document.documentElement).getPropertyValue('--color-text-primary').trim()"))) return 'the MCP App has no theme variables';
+  if (!(await waitInPage(win, `${view}.querySelector('[data-mcp-app-frame]').getBoundingClientRect().height > 60`, 3_000))) return 'the MCP App frame did not grow to its page';
+  if ((await frame.executeJavaScript("fetch('https://example.com/').then(() => 'loaded', () => 'blocked')")) !== 'blocked') return 'the MCP App could reach a site it did not declare';
+
+  const composer = `${view}.querySelector('[data-composer]')`;
+  const before = (await js(`${composer}?.value ?? null`)) as string | null;
+  if (before === null) return 'the Codex session has no message box';
+  try {
+    await frame.executeJavaScript("document.getElementById('ask').click()", true);
+    if (!(await waitInPage(win, `${composer}.value.includes('Why does orders.test.ts fail on CI?')`, 3_000))) return "the MCP App's message did not go in the message box";
+    await frame.executeJavaScript("document.getElementById('rerun').click()", true);
+    const rerun = await untilInFrame(frame, 'document.body.dataset.rerun ?? null', 3_000);
+    if (rerun !== 'refused') return `the MCP App's tool call ${rerun === 'ran' ? 'ran' : 'got no answer'} while the session doesn't run here`;
+  } finally {
+    await setFieldValue(win, `[data-current-session="${id}"] [data-composer]`, before);
+  }
+  return null;
+}
