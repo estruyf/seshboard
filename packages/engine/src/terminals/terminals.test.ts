@@ -139,6 +139,32 @@ describe('TerminalManager', () => {
     ]);
   });
 
+  it("puts a dev server's address on the terminal's info, and only the current run's", async () => {
+    const fake = fakeSpawn();
+    const { manager, changes } = setup(fake.spawn);
+    const info = await manager.open({ sessionId: 's1', cwd: tempDir(), kind: 'action', command: 'npm run dev', title: 'Dev', cols: 80, rows: 24, fork: false, actionId: 'dev' });
+    expect(info).toMatchObject({ actionId: 'dev', urls: [] });
+    fake.emit('  VITE ready\r\n  ➜  Local:   http://local');
+    fake.emit('host:5173/\r\n  ➜  Network: http://192.168.1.4:5173/\r\n');
+    await until(() => (manager.list()[0]!.urls ?? []).length > 0);
+    expect(manager.list()[0]!.urls).toEqual(['http://localhost:5173/']);
+    expect(changes.at(-1)![0]!.urls).toEqual(['http://localhost:5173/']);
+    // More output with the same address says nothing new.
+    const seen = changes.length;
+    fake.emit('  ➜  Local:   http://localhost:5173/\r\n');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(changes.length).toBe(seen);
+  });
+
+  it('finds no address in the Claude Code TUI', async () => {
+    const fake = fakeSpawn();
+    const { manager } = setup(fake.spawn);
+    await manager.open({ sessionId: 's1', cwd: tempDir(), kind: 'claude', cols: 80, rows: 24, fork: false });
+    fake.emit('Local: http://localhost:5173/\r\n');
+    await new Promise((r) => setTimeout(r, 30));
+    expect(manager.list()[0]!.urls).toEqual([]);
+  });
+
   it('keeps an enclosing Claude Code out of the environment', async () => {
     const fake = fakeSpawn();
     const env = { PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_USE_BEDROCK: '1', SHELL: '/bin/zsh' };

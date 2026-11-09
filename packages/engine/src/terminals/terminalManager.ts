@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import type { LogLevel, TerminalInfo, TerminalKind } from '@seshboard/protocol';
 import { userShell, type UserShell } from '../system/shell.ts';
+import { keepUrlLines, scanChunk, serverUrls } from './serverUrls.ts';
 
 /** The slice of node-pty's IPty the manager uses (injectable for tests). */
 export interface Pty {
@@ -73,6 +74,9 @@ interface Terminal {
   lastOutputAt: number | undefined;
   /** A restart that is still spawning: another Restart in the meantime (quick clicks) gets this one. */
   restarting?: Promise<TerminalInfo>;
+  /** The current run's lines that may hold a server's address, and the unfinished line after them (`scanChunk`). */
+  urlLines: string[];
+  urlCarry: string;
 }
 
 /**
@@ -143,6 +147,8 @@ export class TerminalManager {
     title?: string;
     /** Added to the login-shell environment, e.g. the session's CLAUDE_CONFIG_DIR. */
     env?: Record<string, string>;
+    /** For `action`: the project action's id. */
+    actionId?: string;
   }): Promise<TerminalInfo> {
     if (!existsSync(params.cwd)) throw new Error(`Folder not found: ${params.cwd}`);
     const baseEnv = await this.options.env();
@@ -184,6 +190,8 @@ export class TerminalManager {
         rows: params.rows,
         exitCode: null,
         startedAt: Date.now(),
+        ...(params.actionId ? { actionId: params.actionId } : {}),
+        urls: [],
       },
       spawn: { file, args, cwd: params.cwd, env, ...(params.kind === 'action' ? { command: params.command } : {}) },
       stopTimers: [],
@@ -194,6 +202,8 @@ export class TerminalManager {
       stopped: false,
       pending: '',
       timer: undefined,
+      urlLines: [],
+      urlCarry: '',
     } as Partial<Terminal> as Terminal;
     await this.start(terminal);
     this.terminals.set(terminal.info.id, terminal);
@@ -287,6 +297,10 @@ export class TerminalManager {
     this.flush(terminal);
     terminal.runFrom = terminal.flushed;
     terminal.stopped = false;
+    // A new run offers only the addresses it prints itself.
+    terminal.urlLines = [];
+    terminal.urlCarry = '';
+    if (terminal.info.urls?.length) terminal.info = { ...terminal.info, urls: [] };
     const pty = (await this.spawnPty)(file, args, { name: 'xterm-256color', cols: terminal.info.cols, rows: terminal.info.rows, cwd, env });
     let resolveExit!: (code: number) => void;
     terminal.exited = new Promise<number>((resolve) => (resolveExit = resolve));
@@ -438,6 +452,20 @@ export class TerminalManager {
       terminal.replayLength -= terminal.replay.shift()!.length;
     }
     this.options.onData(terminal.info.id, data);
+    if (terminal.info.kind !== 'claude') this.findUrls(terminal, data);
+  }
+
+  /** A dev server's address in the output goes on the terminal's info, so its tab and pill can offer a preview. */
+  private findUrls(terminal: Terminal, data: string): void {
+    const { lines, carry } = scanChunk(terminal.urlCarry, data);
+    terminal.urlCarry = carry;
+    if (lines.length === 0) return;
+    terminal.urlLines = keepUrlLines(terminal.urlLines, lines);
+    const urls = serverUrls(terminal.urlLines.join('\n'));
+    const before = terminal.info.urls ?? [];
+    if (urls.length === before.length && urls.every((url, i) => url === before[i])) return;
+    terminal.info = { ...terminal.info, urls };
+    this.changed();
   }
 
   private changed(): void {

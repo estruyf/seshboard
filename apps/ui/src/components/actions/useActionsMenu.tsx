@@ -16,6 +16,8 @@ import { appKeyInTerminal, sameShortcut } from '../../lib/shortcuts.ts';
 import { ACTION_ICON, formatShortcut, shortcutFromEvent, useProjectActionList } from './useActions.ts';
 
 export interface ActionsMenu {
+  /** The session the actions run in. */
+  sessionId: string;
   entries: MenuEntry[];
   overlays: ReactNode;
   error: string | null;
@@ -131,7 +133,7 @@ export function useActionsMenu({
 
   const edit = (action: ListedAction) => setEditor({ action });
   const askDelete = (action: ListedAction) => setDeleting(action);
-  if (!projectRoot) return { entries: [], overlays: null, error: null, actions: [], run, openEditor: null, edit, askDelete, status: null };
+  if (!projectRoot) return { sessionId, entries: [], overlays: null, error: null, actions: [], run, openEditor: null, edit, askDelete, status: null };
   const openEditor = () => setEditor({ action: null });
   const entries: MenuEntry[] = [
     { heading: 'Project actions' },
@@ -216,5 +218,5 @@ export function useActionsMenu({
       )}
     </>
   );
-  return { entries, overlays, error, actions, run, openEditor, edit, askDelete, status };
+  return { sessionId, entries, overlays, error, actions, run, openEditor, edit, askDelete, status };
 }

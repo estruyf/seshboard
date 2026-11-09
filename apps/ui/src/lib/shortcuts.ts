@@ -1010,6 +1010,14 @@ export const SHORTCUTS = [
     note: "The commands Claude runs in the background, with their output",
   },
   {
+    id: "web.toggle",
+    keys: ["mod+shift+b"],
+    action: "Show or hide the web preview",
+    section: "session",
+    when: inSession,
+    note: "Your running dev server beside the conversation",
+  },
+  {
     id: "ask.open",
     keys: [],
     action: "Ask about this session",

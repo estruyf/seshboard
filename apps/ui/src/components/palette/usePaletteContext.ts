@@ -42,6 +42,7 @@ import type { PaletteContext, PaletteGit, PaletteSession, PaletteView } from './
 import { useComputers } from '../../state/computersStore.ts';
 import { localSessionId } from '../../state/remoteSelection.ts';
 import { popoutSession } from '../../state/popoutsStore.ts';
+import { useWebPreview } from '../../state/webPreviewStore.ts';
 
 /** The checkout's state for the git commands, read once when the palette opens (null outside git). */
 function useGitState(cwd: string | null, busy: boolean, readOnly: boolean): PaletteGit | null {
@@ -131,6 +132,7 @@ export function usePaletteContext(): PaletteContext {
   const view: PaletteView = mainView === 'new' ? 'new-session' : mainView === 'settings' ? 'settings' : mainView === 'projects' ? 'projects' : mainView === 'project' ? 'project' : mainView === 'usage' ? 'usage' : mainView === 'upcoming' ? 'upcoming' : mainView === 'activity' ? 'activity' : mainView === 'remote' ? 'home' : selectedId ? 'session' : 'home';
   // A session on another computer in the active pane has none of a local one's commands; the panes' commands stay.
   const id = view === 'session' ? localSessionId(selectedId) : null;
+  const webOpen = useWebPreview((s) => (id ? s.sessions.has(id) : false));
 
   const catchUps = useCatchUp((s) => s.cards);
   const collapsedCatchUps = useCatchUp((s) => s.collapsed);
@@ -161,8 +163,9 @@ export function usePaletteContext(): PaletteContext {
       prompts: ownDigest?.prompts.length ?? 0,
       hasReply: !!ownDigest?.lastReply,
       unsent: host?.state === 'error' ? (host.unsent ?? 0) : 0,
+      web: webOpen,
     };
-  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded]);
+  }, [id, sessions, live, hosts, permissions, models, digest, catchUps, collapsedCatchUps, prefs.catchUpSummaries, prefs.catchUpFolded, webOpen]);
 
   // A quick question has no project (no actions, no "New session in …") and no git.
   const question = isQuestionsFolder(session?.projectRoot ?? session?.cwd, questionsDir);

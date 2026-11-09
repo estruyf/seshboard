@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState } from '@seshboard/protocol/bridge';
+import { ENGINE_PORT_MESSAGE, IpcChannel, MENU_BAR_QUERY, POPOUT_QUERY, QUICK_START_QUERY, type MenuBarCommand, type QuickStartKey, type QuickStartStatus, type AppInfo, type DraftsChange, type ForwardedKeys, type MainWindowRequest, type DeepLinkMessage, type NotificationPermission, type OpenAtLogin, type PickedPath, type Preferences, type RendererReadyReport, type SessionView, type SaveImageRequest, type ShellCommandResult, type SoundList, type SeshboardBridge, type ThemeCommand, type UpdateState, type WebPreviewKeys } from '@seshboard/protocol/bridge';
 import type { ThemeFileCheck, ThemeState } from '@seshboard/protocol/theme-format';
 
 // MessagePorts can't cross contextBridge, so forward them to the page with window.postMessage.
@@ -154,6 +154,11 @@ const bridge: SeshboardBridge = {
     const handler = (_event: unknown, keys: ForwardedKeys) => listener(keys);
     ipcRenderer.on(IpcChannel.keysForwarded, handler);
     return () => ipcRenderer.off(IpcChannel.keysForwarded, handler);
+  },
+  onWebPreviewKeys(listener) {
+    const handler = (_event: unknown, keys: WebPreviewKeys) => listener(keys);
+    ipcRenderer.on(IpcChannel.webPreviewKeys, handler);
+    return () => ipcRenderer.off(IpcChannel.webPreviewKeys, handler);
   },
   showInMain: (request) => ipcRenderer.send(IpcChannel.showInMain, request),
   onMainRequest(listener) {

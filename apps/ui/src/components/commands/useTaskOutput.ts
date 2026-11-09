@@ -12,12 +12,14 @@ export interface TaskOutputState {
   truncated: boolean;
   /** No file (yet, or any more). */
   missing: boolean;
+  /** Local addresses a dev server printed, for the web preview. */
+  urls: string[];
   /** Read at least once. */
   loaded: boolean;
   error: string | null;
 }
 
-const INITIAL: TaskOutputState = { text: '', size: 0, truncated: false, missing: false, loaded: false, error: null };
+const INITIAL: TaskOutputState = { text: '', size: 0, truncated: false, missing: false, urls: [], loaded: false, error: null };
 
 /**
  * The end of a background command's output, read through the engine: every second while it runs, once more when it

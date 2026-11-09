@@ -12,6 +12,7 @@ const none = (): ViewSlices => ({
   terminalOpen: new Set(),
   terminalMaximized: new Set(),
   terminalTab: new Map(),
+  web: new Map(),
 });
 
 const closed: SessionViewState = {
@@ -26,6 +27,7 @@ const closed: SessionViewState = {
   terminal: false,
   terminalMaximized: false,
   terminalTab: null,
+  web: null,
 };
 
 const busy: SessionViewState = {
@@ -40,6 +42,7 @@ const busy: SessionViewState = {
   terminal: true,
   terminalMaximized: true,
   terminalTab: 'term-3',
+  web: { url: 'http://localhost:5173/', phone: true },
 };
 
 describe('collecting a session view', () => {
@@ -58,6 +61,7 @@ describe('collecting a session view', () => {
       terminalOpen: new Set(['a']),
       terminalMaximized: new Set(['a']),
       terminalTab: new Map([['a', 'term-3']]),
+      web: new Map([['a', { url: 'http://localhost:5173/', phone: true, seq: 4 }]]),
     };
     expect(collectView('a', slices)).toEqual(busy);
     expect(collectView('c', slices)).toEqual({ ...closed, tab: 'ask' });
@@ -150,6 +154,22 @@ describe('applying a session view', () => {
   it('leaves the terminal tab alone when the view has none', () => {
     const before: ViewSlices = { ...none(), terminalTab: new Map([['a', 'term-1']]) };
     expect(applyView('a', closed, before).terminalTab).toBe(before.terminalTab);
+  });
+});
+
+describe('the web preview in a view', () => {
+  it('loads the page again only when the address changed', () => {
+    const before = { ...none(), web: new Map([['a', { url: 'http://localhost:5173/', phone: false, seq: 4 }]]) };
+    expect(applyView('a', { ...closed, web: { url: 'http://localhost:5173/', phone: false } }, before).web).toBe(before.web);
+    const moved = applyView('a', { ...closed, web: { url: 'http://localhost:5173/about', phone: false } }, before).web.get('a');
+    expect(moved).toEqual({ url: 'http://localhost:5173/about', phone: false, seq: 5 });
+    expect(applyView('a', closed, before).web.has('a')).toBe(false);
+  });
+
+  it('reads a view without it as closed', () => {
+    const { web: _, ...older } = busy;
+    expect(parseView(JSON.parse(JSON.stringify(older)))?.web).toBeNull();
+    expect(parseView({ ...busy, web: { url: 7, phone: true } })?.web).toBeNull();
   });
 });
 

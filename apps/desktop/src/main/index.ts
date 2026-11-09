@@ -29,6 +29,8 @@ import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
 import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
+import { installWebPreviewGuards } from './webPreview.ts';
+import { runWebPreviewStep } from './webPreviewSmoke.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -1182,6 +1184,8 @@ const webPreferences = (): Electron.WebPreferences => ({
   contextIsolation: true,
   nodeIntegration: false,
   spellcheck: false,
+  // The web preview's `<webview>`; installWebPreviewGuards checks every one before it attaches.
+  webviewTag: true,
 });
 
 /**
@@ -1992,6 +1996,8 @@ async function runSendNowLive(win: BrowserWindow): Promise<string> {
 let crashedAt = 0;
 /** The session the smoke steps work in (the newest one with messages). */
 let smokeSessionId: string | null = null;
+/** Outside addresses the web preview sent to the browser, recorded instead in a scripted run. */
+const webPreviewOutside: string[] = [];
 /** What was on screen when the steps finished, for the report (not checked). */
 let rendering: Record<string, number> = {};
 // npm run smoke -- --only "<pattern>": only the steps whose label matches (case-insensitive), to check one while building.
@@ -13845,6 +13851,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('project action added through the editor and run in a terminal tab', () => runActionStep(win));
   await step('action terminal', () => runActionTerminalStep(win));
   await step('action menu', () => runActionMenuStep(win));
+  await step("web preview: an action's server offered on its run strip and pill, its page beside the conversation, outside links to the browser", () => runWebPreviewStep(win, { shot: (name) => shot(win, name), addAction: (name, command) => addAction(win, name, command), outside: webPreviewOutside, popoutOf: (id) => popouts.get(id) }));
   await step('settings › notifications: both switches, the blocked notice, a test notification, a sound per moment, ▶, hover and the volume (recorded, never heard)', () => runNotificationsStep(win));
   await step('projects', () => runProjectsStep(win), { timeoutMs: 60_000 });
   await step('profiles', () => runProfilesStep(win));
@@ -13910,6 +13917,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 
 app.whenReady().then(() => {
   protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
+  installWebPreviewGuards((url) => (scripted ? webPreviewOutside.push(url) : void shell.openExternal(url)));
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

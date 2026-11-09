@@ -37,6 +37,7 @@ import { SessionHud } from './components/sidebar/SessionHud.tsx';
 import { EngineStalledNotice } from './components/EngineStalledNotice.tsx';
 import { SidebarShell } from './components/sidebar/SidebarShell.tsx';
 import { SplitPanes } from './components/split/SplitPanes.tsx';
+import { WebPreviewHost } from './components/webPreview/WebPreviewHost.tsx';
 import { useReadyReport } from './engine/useReadyReport.ts';
 import { useLaterSync } from './state/laterStore.ts';
 import { useSchedulesSync } from './state/schedulesStore.ts';
@@ -303,6 +304,7 @@ export function App() {
         </AppTerminalFrame>
       </div>
       <QuitPrompt />
+      <WebPreviewHost />
       <LinkError />
       {overlay === 'search' && <SearchDialog />}
       {overlay === 'palette' && <CommandPalette />}

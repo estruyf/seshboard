@@ -1,8 +1,8 @@
 import { releaseUnread } from '../../state/keptUnread.ts';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
+import { AppWindow, ArrowDown, Bot, ChevronDown, CircleAlert, Coffee, Eye, FileDiff, GitBranch, Globe, ListTodo, LoaderCircle, MessageCircleQuestion, ScrollText, SquareArrowDownLeft, SquareTerminal, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand } from '@seshboard/protocol/client';
+import { isAbsolutePath, otherProviderOf, pathInside, projectPrBase, PROVIDER_NAMES, type ChangesBase, type GitChanges, type ImageAttachment, type PermissionRequest, type ProviderFeature, type RewindResult, type SendMode, type SlashCommand, shortUrl } from '@seshboard/protocol/client';
 import { useEngineConnection } from '../../engine/useEngine.ts';
 import { clearFindHighlights, rangesIn, setFindHighlights } from '../../lib/findHighlights.ts';
 import { fastCommand, fastModeFace } from '../../lib/fastMode.ts';
@@ -119,6 +119,9 @@ import { FileLinksProvider } from './FileLink.tsx';
 import { StreamingMarkdown } from './Markdown.tsx';
 import { AgentsPanel } from '../agents/AgentsPanel.tsx';
 import { FilePreviewPanel } from '../filePreview/FilePreviewPanel.tsx';
+import { WebPreviewPanel } from '../webPreview/WebPreviewPanel.tsx';
+import { sessionServerOffers } from '../webPreview/serverOffers.ts';
+import { toggleWebPanel, useSessionWeb } from '../../state/webPreviewStore.ts';
 import { PreviewOpenerContext, type OpenPreview } from '../filePreview/previewOpener.ts';
 import { useFilePreview, useSessionPreview } from '../../state/filePreviewStore.ts';
 import { agentsToggleStep } from '../../state/agentsPanel.ts';
@@ -555,6 +558,11 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // And a file opened from a link in this session, unless the preview was detached to a dialog.
   const previewTarget = useSessionPreview(sessionId);
   const showPreview = previewTarget !== null;
+  // And the web preview: the session's dev server beside the conversation, while its tab is open.
+  const web = useSessionWeb(sessionId);
+  const showWeb = web !== null;
+  const allTerminals = useTerminals((s) => s.terminals);
+  const serverOffers = useMemo(() => sessionServerOffers(allTerminals.values(), sessionId), [allTerminals, sessionId]);
   const openPreviewHere = useCallback<OpenPreview>((path, line, endLine) => useFilePreview.getState().open(path, { sessionId, line, endLine }), [sessionId]);
   // The terminal docks below or on the right. On the right it is a tab like the others, so opening Changes, Ask,
   // Agents or Commands next to it keeps it there. Maximized, it takes the whole view: the conversation (and the other panels) stay
@@ -577,7 +585,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
     () => (sessionMods.state.attached ? shownMods(modPrefs, profileId, sessionMods.panes.panes) : []),
     [sessionMods.state.attached, sessionMods.panes.panes, modPrefs, profileId],
   );
-  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
+  const right = rightPanel({ changes: showChanges, ask: ask.open, agents: showAgents, commands: showCommands, preview: showPreview, web: showWeb, terminal: terminalOnRight }, rightTab, modPanes.map((p) => p.id));
   const modPaneFront = paneOfTab(right.tab);
   const frontPane = modPaneFront === null ? null : (modPanes.find((p) => p.id === modPaneFront) ?? null);
   // Open panels share the right side as tabs: the one in front shows, the others wait behind it. The header's buttons say which.
@@ -586,15 +594,18 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const agentsFront = right.tabs && showAgents ? right.tab === 'agents' : undefined;
   const commandsFront = right.tabs && showCommands ? right.tab === 'commands' : undefined;
   const previewFront = right.tabs && showPreview ? right.tab === 'preview' : undefined;
+  const webFront = right.tabs && showWeb ? right.tab === 'web' : undefined;
   const terminalFront = right.tabs && terminalOnRight ? right.tab === 'terminal' : undefined;
   const panesOpen = modPanes.length > 0;
   // A pop-out can be narrower than a panel and a usable conversation together: then the panel takes the whole view,
   // and the header's buttons (or the panel's ×) bring the conversation back.
   const narrowPanel = inPopout && (right.open.length > 0 || whyRequest !== null) && !terminalMaximized && bodyWidth !== null && bodyWidth < NARROW_POPOUT_PANEL;
-  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
-  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || terminalOnRight || panesOpen);
-  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || terminalOnRight || panesOpen);
-  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || terminalOnRight || panesOpen);
+  const toggleChangesHere = () => toggleChangesPanel(sessionId, ask.open || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleAskHere = () => toggleAskPanel(client, sessionId, showChanges || showAgents || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleAgentsHere = () => toggleAgentsPanel(sessionId, showChanges || ask.open || showCommands || showPreview || showWeb || terminalOnRight || panesOpen);
+  const toggleCommandsHere = () => toggleCommandsPanel(sessionId, showChanges || ask.open || showAgents || showPreview || showWeb || terminalOnRight || panesOpen);
+  // The Web button, ⌘⇧B and the palette: opened, it starts on the newest server running in the session.
+  const toggleWebHere = () => toggleWebPanel(sessionId, right.open.some((tab) => tab !== 'web'), serverOffers[0]?.url ?? null);
   // The header's Preview button, there only while a file is open: to the front, or closed.
   const togglePreviewHere = () => {
     const step = agentsToggleStep(showPreview, right.tab === 'preview', right.open.length > 1);
@@ -664,6 +675,10 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
       if (active && isShortcut(event, 'commands.toggle')) {
         event.preventDefault();
         toggleCommandsHere();
+      }
+      if (active && isShortcut(event, 'web.toggle')) {
+        event.preventDefault();
+        toggleWebHere();
       }
       // ⌘F finds in this conversation (the terminal keeps its own keys).
       if (active && isShortcut(event, 'find') && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
@@ -1573,9 +1588,9 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           quiet
           className="no-drag"
           data-panel-toggles
-          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
+          pressed={[...(changesOpen ? ['changes' as const] : []), ...(ask.open ? ['ask' as const] : []), ...(agentsState.open ? ['agents' as const] : []), ...(commandsState.open ? ['commands' as const] : []), ...(showPreview ? ['preview' as const] : []), ...(showWeb ? ['web' as const] : []), ...(panelOpen ? ['terminal' as const] : [])]}
           onToggle={(panel) =>
-            panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : panel === 'preview' ? togglePreviewHere() : toggleTerminalPanel(sessionId)
+            panel === 'changes' ? toggleChangesHere() : panel === 'ask' ? toggleAskHere() : panel === 'agents' ? toggleAgentsHere() : panel === 'commands' ? toggleCommandsHere() : panel === 'preview' ? togglePreviewHere() : panel === 'web' ? toggleWebHere() : toggleTerminalPanel(sessionId)
           }
           segments={[
             ...(cwd && isRepo
@@ -1662,6 +1677,24 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
                     front: previewFront,
                     expanded: previewFront !== false,
                     data: { 'data-toggle-preview': true },
+                  },
+                ]
+              : []),
+            // Only while a dev server runs in the session, or the tab is open: the shortcut and the palette open it any time.
+            ...(showWeb || serverOffers.length > 0
+              ? [
+                  {
+                    value: 'web' as const,
+                    label: 'Web',
+                    icon: <Globe size={14} aria-hidden />,
+                    iconOnly: true,
+                    dot: !showWeb,
+                    tooltip: `${webFront === false ? 'Bring the web preview to the front' : showWeb ? 'Hide web preview' : `Preview ${shortUrl(serverOffers[0]!.url)}`} (${formatKeys(keysFor('web.toggle'))})`,
+                    ariaLabel: `${webFront === false ? 'Bring the web preview to the front' : showWeb ? 'Hide web preview' : `Preview ${shortUrl(serverOffers[0]!.url)}`} (${formatKeys(keysFor('web.toggle'))})`,
+                    kbd: keysFor('web.toggle'),
+                    front: webFront,
+                    expanded: showWeb && webFront !== false,
+                    data: { 'data-toggle-web': true },
                   },
                 ]
               : []),
@@ -2341,6 +2374,17 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
           <PreviewOpenerContext.Provider value={openPreviewHere}>
             <FilePreviewPanel key={previewTarget.path} sessionId={sessionId} target={previewTarget} width={rightWidth} onWidth={setRightWidth} tabs={right.tabs ? rightTabs : undefined} />
           </PreviewOpenerContext.Provider>
+        )}
+        {/* Its page lives outside this view (webPreviewPages.ts), so it keeps running while another tab is in front. */}
+        {!whyRequest && right.tab === 'web' && web && !terminalMaximized && (
+          <WebPreviewPanel
+            sessionId={sessionId}
+            web={web}
+            offers={serverOffers}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            tabs={right.tabs ? rightTabs : undefined}
+          />
         )}
       </div>
     </div>
