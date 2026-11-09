@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
+import { skimMarks,
   inheritedDefault,
   inheritedPermissionMode,
   isAbsolutePath,
@@ -208,6 +208,8 @@ function remoteTurn(role: RemoteMessage['role'], blocks: RemoteBlock[]): Pick<Re
   if (role === 'system') {
     return { role, blocks: blocks.map((b) => (b.type === 'unknown' ? { type: 'text' as const, text: NOTICE_LABELS[b.kind] ?? b.kind.replace(/_/g, ' ') } : b)) };
   }
+  // Skim's keep line is for the desktop's fade; the phone shows the reply without it.
+  if (role === 'assistant') return { role, blocks: blocks.map((b) => (b.type === 'text' ? { ...b, text: skimMarks(b.text).text } : b)) };
   if (role !== 'user' || blocks.some((b) => b.type === 'tool_result')) return { role, blocks };
   const text = blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n\n');
   const trimmed = text.trimStart();

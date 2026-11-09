@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, statSync
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
+  SKIM_MARKS_PROMPT,
   agentName,
   BACKUP_SECTIONS,
   BUILTIN_PROFILE_ID,
@@ -155,7 +156,6 @@ import { CatchUpService } from './catchUp/catchUpService.ts';
 import { ActivityService } from './activity/activityService.ts';
 import { stubDaySummary } from './activity/daySummary.ts';
 import { CatchUpStore, CatchUpUsageStore } from './catchUp/catchUpStore.ts';
-import { providerScope, SKIM_SYSTEM_PROMPT, SkimHighlights, SkimUsageStore, stubSkim, USAGE_WINDOW_MS } from './skim/skimHighlights.ts';
 import { stubAnswer, Summarizer } from './catchUp/summary.ts';
 import { COMMIT_SYSTEM_PROMPT, commitContext, commitMessageInput, parseCommitMessage, stubCommitMessage } from './git/commitMessage.ts';
 import { ProjectRegistry, type FolderActivity } from './projects/projectRegistry.ts';
@@ -418,6 +418,8 @@ export interface Engine {
   setShowMods(enabled: boolean): void;
   /** Settings › General › Use Claude in Chrome, from main: sessions started or resumed after it changes get `--chrome`. */
   setChrome(enabled: boolean): void;
+  /** Settings › Conversation › Let the agent mark its key sentences: for sessions started or resumed from now on. */
+  setSkimMarks(enabled: boolean): void;
   /** Visuals in replies: the `visualize` server new and resumed sessions get, or null when it is off. */
   setVisuals(server: McpStdioServer | null): void;
   /** Settings › Theme › App icon, from main: the colourway paired phones show (an `AppIconKey`, Graphite with the phone's switch off). */
@@ -1204,8 +1206,11 @@ export function createEngine(options: EngineOptions): Engine {
     return profileId ? providerProfiles.adapter(profileId) : undefined;
   };
   /** Other providers' sessions (GitHub Copilot), run through their drivers, reporting like Claude Code's hosts. */
+  /** Main sends Settings › Conversation › Let the agent mark its key sentences at start and after each change. */
+  let skimMarksOn = true;
   const providerHosts = new ProviderHosts({
     providers: () => providerProfiles.adapters(),
+    appendSystem: () => (skimMarksOn ? SKIM_MARKS_PROMPT : null),
     profileOf: providerProfileOf,
     sessionCwd: (id) => sessions.get(id)?.cwd ?? null,
     openElsewhere: async (adapter, id) => (await adapter.inUse?.(id)) ?? false,
@@ -1356,36 +1361,6 @@ export function createEngine(options: EngineOptions): Engine {
     startMs: 15_000,
     answerMs: 30_000,
     ...(options.stubCatchUp ? { stub: stubCommitMessage } : {}),
-  });
-  // --- Skim ---------------------------------------------------------------------------------------------------------
-  const skimUsage = new SkimUsageStore(cache.db);
-  const isClaudeSession = (sessionId: string) => profiles.runtimes().some((p) => p.id === sessionProfile(sessionId));
-  /** Picks the sentences Skim keeps in a reply: a long reply is more to read than a catch-up, so it has longer. */
-  const skimWriter = new Summarizer({
-    sdk,
-    env: envFor,
-    claudePath: async () => (await claude)?.path,
-    ephemeral,
-    record: (profileId, entry) => {
-      skimUsage.record({ ...entry, scope: scopeOf(profiles.runtime(profileId).configDir) });
-      broadcast('usage.tokens', { profileIds: [profileId], scan: null });
-    },
-    log,
-    what: 'Skim highlights',
-    startMs: 15_000,
-    answerMs: 15_000,
-    ...(options.stubCatchUp ? { stub: stubSkim } : {}),
-  });
-  const skimHighlights = new SkimHighlights({
-    db: cache.db,
-    canAsk: (sessionId) => isClaudeSession(sessionId) || providerHosts.canAskCheap(sessionId),
-    // Another provider's session stays on its own account, on the cheapest model there.
-    ask: async (sessionId, input) => {
-      if (isClaudeSession(sessionId)) return skimWriter.ask(sessionProfile(sessionId), sessionId, input, SKIM_SYSTEM_PROMPT);
-      const { answer, model, tokens } = await providerHosts.askCheap(sessionId, SKIM_SYSTEM_PROMPT, input);
-      if (model) skimUsage.record({ id: randomUUID(), scope: providerScope(sessionProfile(sessionId)), at: Date.now(), model, sessionId, tokens });
-      return answer;
-    },
   });
   // --- Activity -----------------------------------------------------------------------------------------------------
   /** Main sends Settings › Conversation › Activity's "Write the day in short with Haiku" at start and after each change. */
@@ -2943,7 +2918,6 @@ export function createEngine(options: EngineOptions): Engine {
     signIns.forget(sessionId);
     triggerWatcher?.released(sessionId);
     catchUp.forget(sessionId);
-    skimHighlights.forget(sessionId);
     upNext.save(sessionId, []);
     askStore.forget(sessionId);
     providerNotes.forget(sessionId);
@@ -4424,10 +4398,6 @@ export function createEngine(options: EngineOptions): Engine {
       return {};
     },
     'companion.status': () => companion?.status() ?? { listening: false, clients: 0, error: null },
-    'skim.highlights': (params) => skimHighlights.get(params),
-    // A provider without a driver (Codex, read-only) has no cheap model to ask: null, as for one without `cheapModel`.
-    'skim.model': async ({ sessionId }) => ({ model: isClaudeSession(sessionId) ? 'Haiku' : providerAdapterOf(sessionId)?.driver ? ((await providerHosts.cheapModel(sessionId))?.name ?? null) : null }),
-    'skim.usage': ({ profileId }) => skimUsage.totals(providerScope(profileId), Date.now() - USAGE_WINDOW_MS),
     'catchup.get': ({ sessionId }) => ({ catchUp: catchUp.get(sessionId) }),
     'catchup.list': () => ({ catchUps: catchUp.list() }),
     'catchup.build': async ({ sessionId }) => {
@@ -4648,6 +4618,10 @@ export function createEngine(options: EngineOptions): Engine {
     },
     setShowMods: (enabled) => hosts.setShowMods(enabled),
     setChrome: (enabled) => hosts.setChrome(enabled),
+    setSkimMarks: (enabled) => {
+      skimMarksOn = enabled;
+      hosts.setSkimMarks(enabled);
+    },
     setVisuals: (server) => hosts.setVisuals(server),
     setAppIcon: (key) => remote?.setAppIcon(key),
     setRemotePreview: (enabled) => remote?.setPreviewApp(enabled),

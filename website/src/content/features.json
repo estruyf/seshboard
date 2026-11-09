@@ -4047,8 +4047,8 @@
       "page": "sessions/conversation"
     },
     {
-      "id": "feature:skim-highlights",
-      "name": "Skim highlights: Haiku picks the sentences to keep in a long reply and the rest fade, off until you try it, with its tokens in Usage; Copilot sessions use the cheapest model on the Copilot account",
+      "id": "feature:skim-marks",
+      "name": "Skim marks: the agent ends a long reply with a hidden line naming its key sentences, and Skim fades the rest",
       "page": "sessions/conversation"
     },
     {

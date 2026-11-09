@@ -80,3 +80,4 @@ export type * from './pipelineSchema.ts';
 export * from './filePreview.ts';
 export * from './triggerOrigin.ts';
 export * from './visuals.ts';
+export * from './skimMarks.ts';

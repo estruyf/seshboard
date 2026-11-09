@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { parseMarkdown, type Block, type Inline } from '../lib/markdown.ts';
 import { healMarkdown, splitBlocks } from '../lib/streamingMarkdown.ts';
+import { withoutSkimMarks } from '@seshboard/protocol/remote-client';
 import { toast } from './Toasts.tsx';
 
 const PROSE = 'markdown flex min-w-0 flex-col gap-2 text-body break-words';
@@ -24,7 +25,8 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
  * closed so they never show raw.
  */
 export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { text: string }) {
-  const parts = useMemo(() => splitBlocks(text), [text]);
+  // Skim's keep line, while it is written, never shows.
+  const parts = useMemo(() => splitBlocks(withoutSkimMarks(text)), [text]);
   return (
     <div className={PROSE}>
       {parts.map((part, i) => (

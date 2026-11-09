@@ -1,6 +1,6 @@
 import { ArrowUp, Clock, Copy, EyeOff, MessageCircleQuestion, Plus, Quote, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { MAX_SIDE_QUESTION_LENGTH } from '@seshboard/protocol/client';
+import { MAX_SIDE_QUESTION_LENGTH, skimMarks } from '@seshboard/protocol/client';
 import { agoText } from '../../lib/format.ts';
 import { currentThread, lastQuestion, threadRows, type AskEntry, type SessionAsk } from '../../state/ask.ts';
 import { useAsk } from '../../state/askStore.ts';
@@ -332,13 +332,13 @@ function Item({ item, onRetry, onQuote }: { item: AskEntry; onRetry(): void; onQ
           </>
         ) : (
           <>
-            <Markdown text={item.answer} />
+            <Markdown text={skimMarks(item.answer).text} />
             <div className="mt-1 -ml-1.5 flex items-center gap-0.5">
               <Button
                 variant="quiet"
                 size="sm"
                 icon={<Copy size={12} aria-hidden />}
-                onClick={() => void navigator.clipboard.writeText(item.answer).then(() => flashCopied('Copied'), () => {})}
+                onClick={() => void navigator.clipboard.writeText(skimMarks(item.answer).text).then(() => flashCopied('Copied'), () => {})}
                 data-tooltip="Copy the answer as markdown"
                 data-ask-copy={copied ? 'copied' : ''}
               >

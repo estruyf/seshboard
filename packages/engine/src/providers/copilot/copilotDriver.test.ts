@@ -58,13 +58,11 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
   const reads: Array<string | undefined> = [];
   /** Auto's routing preferences the runtime lists (none: a runtime without them). */
   const auto: { tiers?: CopilotAutoTier[] } = {};
-  /** What `listModels` answers instead of the one model most tests want. */
-  const priced: { models?: Awaited<ReturnType<CopilotSdkClient['listModels']>> } = {};
   const client: CopilotSdkClient = {
     start: async () => void calls.push('start'),
     stop: async () => void calls.push('stop'),
     getAuthStatus: async () => auth,
-    listModels: async () => priced.models ?? [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high', 'turbo'], defaultReasoningEffort: 'medium' }],
+    listModels: async () => [{ id: 'gpt-5-mini', name: 'GPT-5 mini', capabilities: { supports: { reasoningEffort: true } }, supportedReasoningEfforts: ['low', 'medium', 'high', 'turbo'], defaultReasoningEffort: 'medium' }],
     createSession: async (o) => ((options = o), calls.push(`create:${o.workingDirectory}:${o.model ?? '-'}`), session),
     resumeSession: async (id, o) => ((options = o), calls.push(`resume:${id}`), session),
     deleteSession: async (id) => void calls.push(`delete:${id}`),
@@ -79,7 +77,7 @@ function fakeSdk(auth: { isAuthenticated: boolean; statusMessage?: string; login
   };
   const created: Array<{ cliPath: string }> = [];
   const createClient: CreateCopilotClient = async (o) => (created.push(o), client);
-  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options!, rewind, tasks, pages, reads, auto, priced };
+  return { calls, created, createClient, emit: (event: CopilotEvent) => handler?.(event), options: () => options!, rewind, tasks, pages, reads, auto };
 }
 
 function recorder() {
@@ -358,37 +356,6 @@ describe('Copilot session actions', () => {
     expect(texts).toEqual([{ delta: 'Two files.' }]);
     // Let go, and gone: the fork was only for this question.
     expect(sdk.calls.slice(-2)).toEqual(['disconnect', 'delete:f0']);
-  });
-
-  it('asks the cheapest model with no tools and no context, and leaves nothing behind', async () => {
-    const sdk = fakeSdk();
-    sdk.priced.models = [
-      { id: 'big', name: 'Big', policy: { state: 'enabled' }, billing: { tokenPrices: { inputPrice: 200, outputPrice: 1000 } } },
-      { id: 'small', name: 'Small', policy: { state: 'enabled' }, billing: { tokenPrices: { inputPrice: 10, outputPrice: 50 } }, supportedReasoningEfforts: ['low', 'high'] },
-    ];
-    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
-    expect(await driver.cheapModel()).toEqual({ id: 'small', name: 'Small' });
-    const named: string[] = [];
-    const asked = driver.askCheap({ system: 'Pick.', prompt: 'The reply', onSession: (id) => named.push(id) });
-    await vi.waitFor(() => expect(sdk.calls).toContain('send:The reply:0'));
-    expect(sdk.options()).toMatchObject({ model: 'small', reasoningEffort: 'low', availableTools: [], enableConfigDiscovery: false, enableFileHooks: false, systemMessage: { mode: 'replace', content: 'Pick.' } });
-    expect(sdk.options().sessionId).toBe(named[0]);
-    sdk.emit({ type: 'assistant.usage', data: { inputTokens: 400, outputTokens: 20, cacheReadTokens: 3, cost: 1 } });
-    sdk.emit({ type: 'assistant.message', id: 'a1', data: { content: '{"keep":[1]}' } });
-    sdk.emit({ type: 'session.idle', data: {} });
-    expect(await asked).toEqual({ answer: '{"keep":[1]}', model: 'small', tokens: { input: 400, output: 20, cacheRead: 3, cacheWrite: 0 } });
-    expect(sdk.calls.slice(-2)).toEqual(['disconnect', `delete:${named[0]}`]);
-  });
-
-  it('makes no call when no model is cheap enough', async () => {
-    const sdk = fakeSdk();
-    sdk.priced.models = [{ id: 'big', name: 'Big', billing: { multiplier: 1 } }];
-    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
-    expect(await driver.cheapModel()).toBeNull();
-    const named: string[] = [];
-    expect(await driver.askCheap({ system: 'Pick.', prompt: 'The reply', onSession: (id) => named.push(id) })).toMatchObject({ answer: null, model: null });
-    expect(named).toEqual([]);
-    expect(sdk.calls.some((call) => call.startsWith('create:'))).toBe(false);
   });
 
   it('reads events and open sessions through the runtime only once it runs, and forks', async () => {

@@ -4,9 +4,9 @@ import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
 /**
- * Which sentences of a reply Skim fades. Haiku picks the ones to keep (Settings › Conversation, off by default), since
- * only a model can weigh a sentence against what you asked. This file numbers the sentences for it, and has the last word:
- * a sentence that says something failed, was skipped or isn't finished, or asks something, stays whatever Haiku picked.
+ * Which sentences of a reply Skim fades. The agent names the ones to keep in a hidden last line (Skim's marks, see
+ * `@seshboard/protocol`'s `skimMarks`), since only the writer knows what it meant. This file finds those sentences, and
+ * has the last word: a sentence that says something failed, was skipped or isn't finished, or asks something, stays.
  */
 
 /** A question, to you or not. */
@@ -20,13 +20,10 @@ const UNFINISHED =
 
 const MUST_STAY = [QUESTION, FAILURE, SKIPPED, UNFINISHED];
 
-/** The fewest sentences worth asking Haiku about: a shorter reply has nothing to skim. */
-export const SKIM_MIN_SENTENCES = 8;
-
 /** Under this share faded, a reply looks the same: the button and the count would be more to read than they save. */
 const MIN_FADED_SHARE = 0.1;
 
-/** Whether a sentence stays whatever Haiku picked. */
+/** Whether a sentence stays whatever the keep line says. */
 export function mustStay(sentence: string): boolean {
   const text = sentence.replace(/’/g, "'");
   return MUST_STAY.some((rule) => rule.test(text));
@@ -94,34 +91,23 @@ function paragraphsOf(nodes: readonly RootContent[]): Paragraph[] {
 
 const parse = (markdown: string) => unified().use(remarkParse).use(remarkGfm).parse(markdown);
 
-/** A reply as Haiku reads it, and how many sentences it numbered. */
-export interface SkimOutline {
-  text: string;
-  total: number;
+/** A reply's sentences in paragraphs and lists, in the order `fadeTree` numbers them (sentence 1 first). */
+export function replySentences(markdown: string): string[] {
+  return paragraphsOf(parse(markdown).children).flatMap((paragraph) => sentencesOf(paragraph).filter(counts).map((sentence) => sentence.text.trim()));
 }
 
-/**
- * Numbers a reply's sentences as `fadeTree` does, so Haiku's numbers mean the same sentences. Headings stay for context;
- * what never fades (code, tables, quotes) goes as a word, since Haiku has nothing to pick there.
- */
-export function skimOutline(markdown: string): SkimOutline {
-  const lines: string[] = [];
-  let total = 0;
-  const walk = (nodes: readonly RootContent[], prefix: string) => {
-    for (const node of nodes) {
-      if (node.type === 'paragraph') {
-        for (const sentence of sentencesOf(node).filter(counts)) lines.push(`${prefix}[${++total}] ${sentence.text.trim()}`);
-      } else if (node.type === 'list') {
-        for (const item of node.children) walk(item.children, `${prefix}- `);
-      } else if (node.type === 'heading') {
-        lines.push(`${'#'.repeat(node.depth)} ${node.children.map(plainText).join('')}`);
-      } else if (node.type === 'code' || node.type === 'table' || node.type === 'blockquote') {
-        lines.push(`(${node.type})`);
-      }
-    }
-  };
-  walk(parse(markdown).children, '');
-  return { text: lines.join('\n'), total };
+/** Text to compare a quote with: case, quotes, Markdown marks and spacing don't count. */
+const comparable = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[*_`"'“”‘’]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** The numbers of the sentences a keep line quotes the start of. A quote that matches no sentence keeps nothing. */
+export function keepFromMarks(sentences: readonly string[], quotes: readonly string[]): number[] {
+  const starts = quotes.map(comparable).filter((quote) => quote.length >= 3);
+  return sentences.flatMap((sentence, i) => (starts.some((start) => comparable(sentence).startsWith(start)) ? [i + 1] : []));
 }
 
 /** A faded sentence. `data` makes it a span with the faint colour; it starts as emphasis since that is a node that holds text. */
@@ -137,7 +123,7 @@ export interface FadeCount {
 }
 
 /**
- * Fades every sentence not in `keep` (numbered from 1, as in `skimOutline`) that may fade, in place, and says how many.
+ * Fades every sentence not in `keep` (numbered from 1, as in `replySentences`) that may fade, in place, and says how many.
  * When all or nearly none would fade, nothing does: a reply needs something to stand out, and a change too small to see
  * isn't worth a button.
  */

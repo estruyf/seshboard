@@ -22,7 +22,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
 import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
-import type { CheapAnswer, DriverSession, DriverSessionConfig, McpStdioServer, ProviderAdapter, ProviderDriver } from './provider.ts';
+import type { DriverSession, DriverSessionConfig, McpStdioServer, ProviderAdapter, ProviderDriver } from './provider.ts';
 import { mcpAppToolPolicy } from './mcpApps.ts';
 
 export interface ProviderHostsDeps {
@@ -41,6 +41,8 @@ export interface ProviderHostsDeps {
   links?: { expand(sessionId: string, text: string): string; warm(text: string): Promise<void> };
   /** Keeps what a session showed that its provider doesn't write to its file (`DriverEvents.messages`' `keep`). */
   keepNotes?(sessionId: string, messages: RawSessionMessage[]): void;
+  /** Text for after the provider's own system prompt, at each start and resume (Skim's marks); null for none. */
+  appendSystem?(): string | null;
   /** Seshboard's own throwaway sessions (Ask's forks), which the sidebar never lists. */
   ephemeral?: { add(sessionId: string): void };
   /** A session is a pipeline's read-only step: when it resumes, only tools that read run. */
@@ -134,7 +136,7 @@ export class ProviderHosts {
     host.readOnly = params.readOnly === true;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...this.ownServers(host.readOnly) }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...this.ownServers(host.readOnly), ...this.appended() }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -241,21 +243,10 @@ export class ProviderHosts {
     return { answer: result.answer, ...(result.error ? { error: result.error } : {}), usage: [] };
   }
 
-  /** The account's cheap model for a session's provider; null when it has none, or no way to call one. */
-  async cheapModel(sessionId: string): Promise<{ id: string; name: string } | null> {
-    return (await this.adapterOf(this.deps.profileOf(sessionId))?.driver?.cheapModel?.()) ?? null;
-  }
-
-  /** Whether a session's provider can answer through a cheap model at all. */
-  canAskCheap(sessionId: string): boolean {
-    return !!this.adapterOf(this.deps.profileOf(sessionId))?.driver?.askCheap;
-  }
-
-  /** One question to a session's provider's cheap model, on its own account; its throwaway session never shows. */
-  async askCheap(sessionId: string, system: string, prompt: string): Promise<CheapAnswer> {
-    const driver = this.adapterOf(this.deps.profileOf(sessionId))?.driver;
-    if (!driver?.askCheap) return { answer: null, model: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
-    return driver.askCheap({ system, prompt, onSession: (id) => this.deps.ephemeral?.add(id) });
+  /** What goes after the provider's system prompt now, as a start's config. */
+  private appended(): { appendSystem?: string } {
+    const text = this.deps.appendSystem?.();
+    return text ? { appendSystem: text } : {};
   }
 
   /** Stops one of a session's background tasks. */
@@ -418,7 +409,7 @@ export class ProviderHosts {
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...this.ownServers(host.readOnly) }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...this.ownServers(host.readOnly), ...this.appended() }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });

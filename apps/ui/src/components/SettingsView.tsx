@@ -341,18 +341,11 @@ function SectionPage({ section, scrollRef }: { section: SettingsSection; scrollR
               </RadioGroup>
             </div>
             <Toggle
-              label="Fade less important sentences with Haiku"
-              detail="In Skim, Haiku reads your message and the session's last long reply, and picks the sentences to keep. The rest fade. Failures, skipped work and questions never fade. This uses your plan, and the tokens show under Usage."
-              checked={prefs.skimHighlights}
-              attr="data-skim-highlights-setting"
-              onChange={(skimHighlights) => update({ skimHighlights, skimHighlightsAsked: true })}
-            />
-            <Toggle
-              label="Fade less important sentences in Copilot sessions"
-              detail="The same, for GitHub Copilot's sessions, with the cheapest model your account has. This uses your Copilot account, not your Claude plan. Without a cheap model, replies stay whole."
-              checked={prefs.skimHighlightsCopilot}
-              attr="data-skim-highlights-copilot-setting"
-              onChange={(skimHighlightsCopilot) => update({ skimHighlightsCopilot, skimHighlightsCopilotAsked: true })}
+              label="Let the agent mark its key sentences"
+              detail="In Skim, the agent ends a long reply with a hidden line that names its key sentences, and the rest fade. It costs a few tokens per turn, and applies to sessions started or resumed from now on. In a terminal, the line shows as a comment."
+              checked={prefs.skimMarks}
+              attr="data-skim-marks-setting"
+              onChange={(skimMarks) => update({ skimMarks })}
             />
             <Toggle
               label="Show prompt outline"

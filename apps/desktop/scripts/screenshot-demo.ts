@@ -267,6 +267,9 @@ const READING_SECOND = [
   '```',
   '',
   'If all three behave, the old shipping and tax endpoints can go in the next release. I would remove them in a separate change, so that if something does go wrong, undoing it is one revert and not a search through a larger diff.',
+  '',
+  // Skim's marks: the line Seshboard asks the agent to end a long reply with. The app hides it and fades the rest.
+  '<!-- keep: "The cart is fetched once" | "The time until the first stable total" | "One more thing changed" -->',
 ].join('\n');
 
 const numbered = (text: string) =>
@@ -562,6 +565,8 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
         '```',
         '',
         'All 6 theme tests pass. Want me to add a keyboard shortcut for switching themes too?',
+        '',
+        '<!-- keep: "Dark mode is in" | "The Settings page has a new" | "`src/lib/theme.ts` now has" | "All 6 theme tests pass" -->',
       ].join('\n'),
     );
   hero.write(configDir, 'Add dark mode toggle to settings');

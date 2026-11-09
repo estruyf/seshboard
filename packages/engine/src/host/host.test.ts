@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
+import { SKIM_MARKS_PROMPT, RpcError, type ModelOption, type PermissionRequest, type QueuedMessage, type SessionHostInfo, type StreamDelta } from '@seshboard/protocol';
 import type { RawSessionMessage } from '../claude/transcript.ts';
 import { openCacheDatabase } from '../db/database.ts';
 import { HostManager, type HostManagerDeps, type SdkRuntime } from './hostManager.ts';
@@ -1684,6 +1684,11 @@ describe('buildOptions', () => {
     expect(options.allowedTools).toEqual(['mcp__visualize__read_me', 'mcp__visualize__show_widget']);
     expect(buildOptions({ ...config, visualize, readOnly: true }, () => {}).mcpServers).toBeUndefined();
     expect(buildOptions(config, () => {}).mcpServers).toBeUndefined();
+  });
+
+  it("appends Skim's instruction to Claude Code's prompt only when it is on", () => {
+    expect(buildOptions({ ...config, skimMarks: true }, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code', append: SKIM_MARKS_PROMPT });
+    expect(buildOptions(config, () => {}).systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
   });
 
   it('maps a new worktree session onto Claude Code options', () => {

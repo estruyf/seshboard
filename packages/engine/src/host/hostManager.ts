@@ -31,7 +31,7 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import { describeSuggestions, RECHECK_MESSAGE, recheckAfterModeChange } from './permissions.ts';
 import { readCapabilities } from './capabilities.ts';
 import type { ModsEvents, ModsSurface } from './modsSurface.ts';
-import { buildOptions, SessionHost, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
+import { buildOptions, SessionHost, systemPromptFor, toModelOption, type HostConfig, type StartQuery, type TurnOutcome } from './sessionHost.ts';
 import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REASON, sumByModel, type AskResult, type AskText, type AskUsage } from './sideQuestions.ts';
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
@@ -249,6 +249,7 @@ export class HostManager {
   private chrome = false;
   /** Visuals in replies (Settings › General): the `visualize` server sessions, and the pre-warmed process, start with. */
   private visualize: McpStdioServer | null = null;
+  private skimMarks = true;
   private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -824,7 +825,7 @@ export class HostManager {
         env,
         pathToClaudeCodeExecutable: claudePath,
         settingSources: ['user', 'project', 'local'],
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        systemPrompt: systemPromptFor(this.skimMarks),
         includePartialMessages: true,
         maxTurns: ASK_MAX_TURNS,
         permissionMode: 'default',
@@ -939,6 +940,16 @@ export class HostManager {
     this.discardWarm();
   }
 
+  /**
+   * Let the agent mark its key sentences, on or off. Claude Code reads its system prompt at startup, so running
+   * sessions keep what they started with, and the warm process is dropped.
+   */
+  setSkimMarks(enabled: boolean): void {
+    if (enabled === this.skimMarks) return;
+    this.skimMarks = enabled;
+    this.discardWarm();
+  }
+
   /** The mods surface of a running session (NOT_RUNNING otherwise). */
   mods(sessionId: string): ModsSurface {
     return this.require(sessionId).mods;
@@ -1031,6 +1042,7 @@ export class HostManager {
         worktree: null,
         chrome: this.chrome,
         visualize: this.visualize,
+        skimMarks: this.skimMarks,
         env,
         claudePath,
         canUseTool: (...args) => (route.canUseTool ? route.canUseTool(...args) : Promise.resolve({ behavior: 'deny', message: 'Not ready' })),
@@ -1119,7 +1131,7 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome, visualize: this.visualize },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome, visualize: this.visualize, skimMarks: this.skimMarks },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),

@@ -105,7 +105,6 @@ function combine(rows: readonly MergedRow[]): MergedRow[] {
     if (into.autoRouting || row.autoRouting) into.autoRouting = { picks: (into.autoRouting?.picks ?? 0) + (row.autoRouting?.picks ?? 0) };
     if (into.sideQuestions || row.sideQuestions) into.sideQuestions = { asked: (into.sideQuestions?.asked ?? 0) + (row.sideQuestions?.asked ?? 0) };
     if (into.catchUpSummaries || row.catchUpSummaries) into.catchUpSummaries = { calls: (into.catchUpSummaries?.calls ?? 0) + (row.catchUpSummaries?.calls ?? 0) };
-    if (into.skimHighlights || row.skimHighlights) into.skimHighlights = { calls: (into.skimHighlights?.calls ?? 0) + (row.skimHighlights?.calls ?? 0) };
   }
   return [...byKey.values()].map((v) => v.row);
 }

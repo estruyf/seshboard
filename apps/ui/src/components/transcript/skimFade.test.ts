@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { describe, expect, it } from 'vitest';
-import { fadeCountOf, mustStay, remarkSkimFade, skimOutline, splitSentences } from './skimFade.ts';
+import { fadeCountOf, keepFromMarks, mustStay, remarkSkimFade, replySentences, splitSentences } from './skimFade.ts';
 
 const render = (text: string, keep: number[]) => renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: [remarkGfm, [remarkSkimFade, { keep }]] }, text));
 const fadedIn = (html: string) => [...html.matchAll(/<span class="text-faint" data-skim-faded="true">(.*?)<\/span>/g)].map((m) => m[1]!.trim());
@@ -47,23 +47,30 @@ describe('splitSentences', () => {
   });
 });
 
-describe('skimOutline', () => {
-  it('numbers sentences in paragraphs and lists, and keeps headings for context', () => {
-    expect(skimOutline('# Title\n\nOne here. Two here.\n\n- Three here.\n  - Four here.')).toEqual({
-      text: '# Title\n[1] One here.\n[2] Two here.\n- [3] Three here.\n- - [4] Four here.',
-      total: 4,
-    });
+describe('replySentences', () => {
+  it('lists the sentences in paragraphs and lists, in order', () => {
+    expect(replySentences('# Title\n\nOne here. Two here.\n\n- Three here.\n  - Four here.')).toEqual(['One here.', 'Two here.', 'Three here.', 'Four here.']);
   });
   it('puts inline code and link text in the sentence, without ending it there', () => {
-    expect(skimOutline('Look at `a.b` and [the docs](https://example.com/a.b) now. Done.')).toEqual({ text: '[1] Look at a.b and the docs now.\n[2] Done.', total: 2 });
+    expect(replySentences('Look at `a.b` and [the docs](https://example.com/a.b) now. Done.')).toEqual(['Look at a.b and the docs now.', 'Done.']);
   });
-  it('gives no numbers to code, tables and quotes', () => {
-    expect(skimOutline('```\ncode.\n```\n\n| A. |\n|---|\n| B. |\n\n> Quote.\n\nRows stay.')).toEqual({ text: '(code)\n(table)\n(blockquote)\n[1] Rows stay.', total: 1 });
+  it('leaves out code, tables and quotes', () => {
+    expect(replySentences('```\ncode.\n```\n\n| A. |\n|---|\n| B. |\n\n> Quote.\n\nRows stay.')).toEqual(['Rows stay.']);
   });
   it('numbers the same sentences the fade does', () => {
     const reply = 'One here. `two.ts` here.\n\n- Three here.\n\n```\nnot this.\n```\n\nFour here. Five here.';
-    expect(skimOutline(reply).total).toBe(5);
+    expect(replySentences(reply)).toHaveLength(5);
     expect(fadedIn(render(reply, [1, 3, 5]))).toEqual(['<code>two.ts</code> here.', 'Four here.']);
+  });
+});
+
+describe('keepFromMarks', () => {
+  const sentences = replySentences('Deleting works. It moves the **transcript** to the Trash. A dialog explains it.\n\n- `Delete` is not committed yet.');
+  it('finds the sentences a keep line quotes the start of, whatever the case and the Markdown', () => {
+    expect(keepFromMarks(sentences, ['it moves the transcript', 'Delete is not'])).toEqual([2, 4]);
+  });
+  it('keeps nothing for a quote that matches no start, or one too short to tell', () => {
+    expect(keepFromMarks(sentences, ['explains it', 'A'])).toEqual([]);
   });
 });
 

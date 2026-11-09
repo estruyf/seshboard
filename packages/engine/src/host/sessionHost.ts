@@ -1,6 +1,6 @@
 import { randomUUID, type UUID } from 'node:crypto';
 import type { CanUseTool, HookCallback, ModelInfo, Options, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { cacheTtlOf, type CacheTtl } from '@seshboard/protocol';
+import { cacheTtlOf, SKIM_MARKS_PROMPT, type CacheTtl } from '@seshboard/protocol';
 import type {
   Effort,
   HostState,
@@ -104,7 +104,16 @@ export interface HostConfig {
   visualize?: McpStdioServer | null;
   /** Only tools that read (`isReadOnlyTool`), through a PreToolUse hook: a read-only pipeline step (#179). */
   readOnly?: boolean;
+  /** Let the agent mark its key sentences (Settings › Conversation): `SKIM_MARKS_PROMPT` goes after Claude Code's prompt. */
+  skimMarks?: boolean;
 }
+
+/**
+ * Claude Code's own system prompt, with Skim's instruction after it when on. A fork (Ask about this session) takes the
+ * same, so the prompt cache still matches.
+ */
+export const systemPromptFor = (skimMarks: boolean | undefined): Options['systemPrompt'] =>
+  skimMarks ? { type: 'preset', preset: 'claude_code', append: SKIM_MARKS_PROMPT } : { type: 'preset', preset: 'claude_code' };
 
 /** Said instead of the SDK's own error when no `claude` was found, so the fix is clear. */
 export const CLAUDE_MISSING_MESSAGE = 'Claude Code isn’t installed, or Seshboard can’t find it. Install it, then try again.';
@@ -160,7 +169,7 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
     // Session state events drive the status dot; they are opt-in.
     env: { ...config.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1' },
     pathToClaudeCodeExecutable: config.claudePath,
-    systemPrompt: { type: 'preset', preset: 'claude_code' },
+    systemPrompt: systemPromptFor(config.skimMarks),
     settingSources: ['user', 'project', 'local'],
     includePartialMessages: true,
     enableFileCheckpointing: true,

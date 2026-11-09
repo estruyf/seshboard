@@ -924,4 +924,9 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX provider_forks_profile ON provider_forks (profile_id);
   `,
+  // Skim's fade by Haiku gave way to the agent's own keep line: its answers and usage go.
+  `
+  DROP TABLE IF EXISTS skim_highlights;
+  DROP TABLE IF EXISTS skim_usage;
+  `,
 ];

@@ -137,6 +137,8 @@ export interface DriverSessionConfig {
   readOnly?: boolean;
   /** MCP servers of Seshboard's the session gets besides its own, by name (Visuals in replies: `visualize`). */
   mcpServers?: Record<string, McpStdioServer>;
+  /** Text for after the provider's own system prompt (Skim's marks), for a driver that takes it. */
+  appendSystem?: string;
 }
 
 /** One running session of a provider. */
@@ -177,13 +179,6 @@ export interface DriverSession {
   close(): Promise<void>;
 }
 
-/** What `askCheap` answered and used; `model` is null when no call was made. */
-export interface CheapAnswer {
-  answer: string | null;
-  model: string | null;
-  tokens: TokenCounts;
-}
-
 export interface ProviderDriver {
   /**
    * Seshboard's permission modes this provider has, with what each means for it (its own words where it differs from
@@ -216,13 +211,6 @@ export interface ProviderDriver {
    * the sidebar); it is gone when this resolves. `spent`: what the answer cost in the provider's unit.
    */
   ask?(params: { sessionId: string; cwd: string; model: string | null; prompt: string; onText(text: AskText): void; onFork(forkId: string): void }): Promise<{ answer: string | null; error?: string; spent: number }>;
-  /** The account's cheapest model when it is cheap enough for a call per reply; null otherwise. */
-  cheapModel?(): Promise<{ id: string; name: string } | null>;
-  /**
-   * One question to `cheapModel`, with no tools and none of the session's context, from a throwaway session that is gone
-   * when this resolves. `onSession` names it before it exists (to keep it out of the sidebar). Never throws.
-   */
-  askCheap?(params: { system: string; prompt: string; onSession(sessionId: string): void }): Promise<CheapAnswer>;
   /**
    * MCP Apps (pages an MCP server draws for its tool calls), when the provider shows them (Codex's). A page can be read
    * for any of its sessions; a tool call needs the session running here.

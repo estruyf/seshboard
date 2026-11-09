@@ -208,6 +208,11 @@ process.parentPort.on('message', (event) => {
     engine.setVisuals(valid ? { command: server.command as string, args: server.args as string[], env: server.env as Record<string, string> } : null);
     return;
   }
+  // Settings › Conversation › Let the agent mark its key sentences.
+  if (data?.type === 'skimMarks') {
+    engine.setSkimMarks((data as { enabled?: unknown }).enabled !== false);
+    return;
+  }
   // Settings › General › Use Claude in Chrome.
   if (data?.type === 'chrome') {
     engine.setChrome((data as { enabled?: unknown }).enabled === true);

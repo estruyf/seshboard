@@ -24,16 +24,6 @@ export function ProviderUsagePanel({ profileId, provider, refresh }: { profileId
     };
   }, [client, profileId, refresh]);
 
-  const [skim, setSkim] = useState<{ calls: number; tokens: number } | null>(null);
-  useEffect(() => {
-    if (!client) return;
-    let current = true;
-    void client.call('skim.usage', { profileId }).then((used) => current && setSkim(used), () => {});
-    return () => {
-      current = false;
-    };
-  }, [client, profileId, refresh]);
-
   const name = PROVIDER_NAMES[provider];
   const shown = state?.profileId === profileId ? state : null;
   if (!shown || !shown.quota) {
@@ -77,11 +67,6 @@ export function ProviderUsagePanel({ profileId, provider, refresh }: { profileId
       </article>
       <p className="self-start text-meta text-muted">
         {name} counts premium requests per account, for every session it runs, in Seshboard or elsewhere, and Ask about this session too. A model can cost less or more than one request per message.
-        {!!skim?.calls && (
-          <span className="mt-1 block" data-provider-skim-usage>
-            Skim highlights used {skim.tokens.toLocaleString()} tokens on {skim.calls.toLocaleString()} {skim.calls === 1 ? 'reply' : 'replies'} in the last 30 days.
-          </span>
-        )}
       </p>
     </div>
   );

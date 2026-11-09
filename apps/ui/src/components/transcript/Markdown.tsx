@@ -1,6 +1,7 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import type { PluggableList } from 'unified';
+import { withoutSkimMarks } from '@seshboard/protocol/client';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock.tsx';
 import { FileLink } from './FileLink.tsx';
@@ -124,7 +125,8 @@ export const Markdown = memo(function Markdown({ text, variant = 'chat', keep = 
  * unclosed markers (`**bold`, `` `code ``, half a link) closed so they never show raw.
  */
 export const StreamingMarkdown = memo(function StreamingMarkdown({ text, variant = 'chat' }: { text: string; variant?: MarkdownVariant }) {
-  const blocks = useMemo(() => splitBlocks(text), [text]);
+  // Skim's keep line, while it is written, never shows.
+  const blocks = useMemo(() => splitBlocks(withoutSkimMarks(text)), [text]);
   return (
     <div className={proseOf(variant)}>
       {blocks.map((block, i) => (

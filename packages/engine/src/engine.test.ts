@@ -203,8 +203,6 @@ describe('engine over a MessagePort', () => {
     await client.call('session.send', { sessionId: id, text: 'hi', attachments: [], fork: false });
     expect(server.calls.filter((c) => c.method !== 'thread/list' && c.method !== 'thread/read' && c.method !== 'account/read' && c.method !== 'model/list').map((c) => c.method)).toEqual(['thread/resume', 'turn/start']);
     expect(server.calls.find((c) => c.method === 'turn/start')!.params).toMatchObject({ threadId: id, input: [{ type: 'text', text: 'hi' }], sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
-    // No cheap model for Skim.
-    expect(await client.call('skim.model', { sessionId: id })).toEqual({ model: null });
 
     // New session with the Codex profile starts a thread in the folder, with the model picked.
     const created = await client.call('session.create', { cwd: dataDir, prompt: 'Add a test', profileId, model: 'gpt-5-mini', permissionMode: 'acceptEdits' });

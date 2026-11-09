@@ -1,4 +1,4 @@
-import { VISUAL_TOOL, type ImageRef, type McpAppCall, type TranscriptMessage } from '@seshboard/protocol/client';
+import { skimMarks, VISUAL_TOOL, type ImageRef, type McpAppCall, type TranscriptMessage } from '@seshboard/protocol/client';
 import { answeredQuestions } from './questionAnswers.ts';
 
 export interface ToolResultView {
@@ -33,7 +33,7 @@ export interface ReplyUsage {
 export type DisplayItem =
   | { kind: 'user'; key: string; at: number | null; text: string; images: ImageRef[]; subagent: boolean }
   | { kind: 'command'; key: string; at: number | null; name: string; args: string }
-  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true }
+  | { kind: 'text'; key: string; at: number | null; text: string; subagent: boolean; usage?: ReplyUsage; failed?: true; /** What the reply's keep line quoted (Skim's marks); `text` is without the line. */ marks?: string[] }
   | { kind: 'thinking'; key: string; at: number | null; text: string; usage?: ReplyUsage }
   | {
       kind: 'tool';
@@ -171,7 +171,10 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
       const key = `${message.uuid}:${i}`;
       switch (block.type) {
         case 'text':
-          if (block.text.trim()) items.push({ kind: 'text', key, at, text: block.text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}) });
+          if (block.text.trim()) {
+            const { text, quotes } = skimMarks(block.text);
+            items.push({ kind: 'text', key, at, text, subagent, ...extra, ...(API_ERROR.test(block.text) ? failed : {}), ...(quotes?.length ? { marks: quotes } : {}) });
+          }
           break;
         case 'thinking':
           if (block.text.trim()) items.push({ kind: 'thinking', key, at, text: block.text, ...extra });

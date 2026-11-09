@@ -1505,20 +1505,6 @@ export const contract = {
       result: z.object({ summary: ActivitySummary.nullable(), state: ActivitySummaryState }),
     },
 
-    // --- Skim -----------------------------------------------------------------------------------
-    /**
-     * The sentences to keep in a finished reply, numbered as in `outline`. A stored answer comes back at once. `ask`: without
-     * one, Haiku reads `message` and `outline` (the renderer sends it only while the setting is on, for a session's last reply).
-     */
-    'skim.highlights': {
-      params: z.object({ sessionId: SessionId, replyKey: z.string().min(1).max(500), total: z.number().int().positive(), ask: z.boolean(), message: z.string().default(''), outline: z.string().default('') }),
-      result: z.object({ state: z.enum(['ready', 'none', 'failed']), keep: z.array(z.number().int().positive()).nullable() }),
-    },
-    /** The model that picks a session's sentences, by name; null when its account has none cheap enough, which means no offer. */
-    'skim.model': { params: z.object({ sessionId: SessionId }), result: z.object({ model: z.string().nullable() }) },
-    /** What Skim's picks used in the last 30 days on another provider's profile, whose Usage view has no token rows. */
-    'skim.usage': { params: z.object({ profileId: z.string().min(1) }), result: z.object({ calls: z.number(), tokens: z.number() }) },
-
     // --- Catch-up ------------------------------------------------------------------------------
     /** A session's catch-up: the briefing on its last turn (null when it has none, or a new turn started since). */
     'catchup.get': { params: z.object({ sessionId: SessionId }), result: z.object({ catchUp: CatchUp.nullable() }) },
