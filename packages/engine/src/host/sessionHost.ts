@@ -29,6 +29,7 @@ import { ModsSurface, type ModsEvents } from './modsSurface.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitStop, type LimitStop, type RateLimitUpdate } from '../usageLimit/usageLimit.ts';
 import { isSignInError } from '../signIn/signInError.ts';
+import type { McpStdioServer } from '../providers/provider.ts';
 
 /** Starts the Claude Code process for a host. Real hosts use the SDK's `query()` (or a pre-warmed one). */
 export type StartQuery = (args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query | Promise<Query>;
@@ -99,6 +100,8 @@ export interface HostConfig {
   showMods?: boolean;
   /** Use Claude in Chrome (Settings › General): start Claude Code with `--chrome`. Off unless said otherwise. */
   chrome?: boolean;
+  /** Visuals in replies (Settings › General): Seshboard's `visualize` MCP server, with its two tools allowed. */
+  visualize?: McpStdioServer | null;
   /** Only tools that read (`isReadOnlyTool`), through a PreToolUse hook: a read-only pipeline step (#179). */
   readOnly?: boolean;
 }
@@ -148,6 +151,9 @@ export function resultOutcome(message: Extract<SDKMessage, { type: 'result' }>):
 }
 const STREAM_FLUSH_MS = 30;
 
+/** The tools of Seshboard's `visualize` server, as Claude Code names them: allowed without asking. */
+const VISUALIZE_TOOLS = ['mcp__visualize__read_me', 'mcp__visualize__show_widget'];
+
 export function buildOptions(config: HostConfig, log: HostEvents['log']): Options {
   const options: Options = {
     cwd: config.cwd,
@@ -192,6 +198,11 @@ export function buildOptions(config: HostConfig, log: HostEvents['log']): Option
   // The SDK passes a null value as a bare flag: `--chrome`.
   if (config.chrome) extraArgs.chrome = null;
   if (Object.keys(extraArgs).length > 0) options.extraArgs = extraArgs;
+  // Its tools only draw in the conversation, so they never ask; a read-only session gets nothing of Seshboard's.
+  if (config.visualize && !config.readOnly) {
+    options.mcpServers = { visualize: { type: 'stdio', ...config.visualize } };
+    options.allowedTools = VISUALIZE_TOOLS;
+  }
   return options;
 }
 

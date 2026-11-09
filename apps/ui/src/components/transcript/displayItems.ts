@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptMessage } from '@seshboard/protocol/client';
+import { VISUAL_TOOL, type ImageRef, type McpAppCall, type TranscriptMessage } from '@seshboard/protocol/client';
 import { answeredQuestions } from './questionAnswers.ts';
 
 export interface ToolResultView {
@@ -46,6 +46,8 @@ export type DisplayItem =
       result: ToolResultView | null;
       subagent: boolean;
       usage?: ReplyUsage;
+      /** The MCP App that draws this call (Codex's), when it has one. */
+      app?: McpAppCall;
     }
   | { kind: 'notice'; key: string; at: number | null; text: string }
   /**
@@ -185,6 +187,7 @@ export function buildDisplayItems(messages: readonly TranscriptMessage[]): Displ
             inputTruncated: block.truncated,
             result: results.get(block.id) ?? null,
             subagent,
+            ...(block.app ? { app: block.app } : {}),
             ...extra,
           });
           break;
@@ -201,13 +204,13 @@ export type ActivityGroup = { kind: 'activity'; key: string; items: DisplayItem[
 export type RenderItem = DisplayItem | ActivityGroup;
 
 /**
- * Plans and questions you answered stay visible; everything else Claude does between messages can be summarised. A
- * question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
+ * Plans, questions you answered, Claude's visuals and MCP Apps stay visible; everything else Claude does between messages can be
+ * summarised. A question still waiting for you is a step until you answer: its card is under the conversation meanwhile.
  */
 const isActivity = (item: DisplayItem) =>
   item.kind === 'thinking' ||
   item.kind === 'agent-report' ||
-  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && answeredQuestions(item) === null) ||
+  (item.kind === 'tool' && item.name !== 'ExitPlanMode' && item.name !== VISUAL_TOOL && !(item.app && !item.subagent) && answeredQuestions(item) === null) ||
   ((item.kind === 'text' || item.kind === 'user') && item.subagent);
 
 const NO_FOLDED: ReadonlySet<string> = new Set();

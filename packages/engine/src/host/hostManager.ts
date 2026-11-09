@@ -36,6 +36,7 @@ import { ASK_MAX_TURNS, ASK_TIMEOUT_MS, isReadOnlyTool, readUsage, READ_ONLY_REA
 import { createMemorySessionSettings, type SessionSettingsStore } from './sessionSettings.ts';
 import { summarise, type StoredUpNext } from './upNextStore.ts';
 import { limitPrefixes, type LimitStop } from '../usageLimit/usageLimit.ts';
+import type { McpStdioServer } from '../providers/provider.ts';
 
 /** The two SDK entry points the manager needs; injected so tests can fake Claude Code. */
 export interface SdkRuntime {
@@ -246,6 +247,8 @@ export class HostManager {
   private showMods = true;
   /** Use Claude in Chrome (Settings › General): sessions, and the pre-warmed process, start with `--chrome`. */
   private chrome = false;
+  /** Visuals in replies (Settings › General): the `visualize` server sessions, and the pre-warmed process, start with. */
+  private visualize: McpStdioServer | null = null;
   private readonly modAsks = new Map<string, (answer: ModPromptAnswer | null) => void>();
 
   constructor(private readonly deps: HostManagerDeps) {
@@ -926,6 +929,16 @@ export class HostManager {
     this.discardWarm();
   }
 
+  /**
+   * Visuals in replies on (with the server to start) or off. As with Chrome, Claude Code reads its MCP servers at
+   * startup: running sessions keep what they started with, and the warm process is dropped.
+   */
+  setVisuals(server: McpStdioServer | null): void {
+    if (JSON.stringify(server) === JSON.stringify(this.visualize)) return;
+    this.visualize = server;
+    this.discardWarm();
+  }
+
   /** The mods surface of a running session (NOT_RUNNING otherwise). */
   mods(sessionId: string): ModsSurface {
     return this.require(sessionId).mods;
@@ -1017,6 +1030,7 @@ export class HostManager {
         effort,
         worktree: null,
         chrome: this.chrome,
+        visualize: this.visualize,
         env,
         claudePath,
         canUseTool: (...args) => (route.canUseTool ? route.canUseTool(...args) : Promise.resolve({ behavior: 'deny', message: 'Not ready' })),
@@ -1105,7 +1119,7 @@ export class HostManager {
         }
       : (args) => sdk.query(args);
     const host = new SessionHost(
-      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome },
+      { ...config, env, claudePath, canUseTool, limitPrefixes: limitPrefixes(sdk), showMods: this.showMods, chrome: this.chrome, visualize: this.visualize },
       {
         info: (info) => this.onInfo(host, info),
         stream: (delta) => this.deps.onStream(delta),

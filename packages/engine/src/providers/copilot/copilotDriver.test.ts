@@ -251,6 +251,18 @@ describe('copilotDriver', () => {
 });
 
 describe('Copilot session actions', () => {
+  it("gives the session Seshboard's own MCP servers, whose tools never ask", async () => {
+    const sdk = fakeSdk();
+    const driver = copilotDriver({ binary, env, createClient: sdk.createClient });
+    const visualize = { command: '/Apps/Seshboard', args: ['/Apps/visualize.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const session = await driver.start({ cwd: '/w', model: null, permissionMode: 'default', mcpServers: { visualize } }, recorder().events);
+    expect(sdk.options()).toMatchObject({ mcpServers: { visualize: { type: 'local', ...visualize, tools: ['*'] } } });
+    await expect(sdk.options().onPermissionRequest({ kind: 'mcp', serverName: 'visualize', toolName: 'show_widget' }, { sessionId: session.sessionId })).resolves.toEqual({ kind: 'approve-once' });
+    // Another server's tool still asks.
+    const other = sdk.options().onPermissionRequest({ requestId: 'm1', kind: 'mcp', serverName: 'github', toolName: 'create_issue' }, { sessionId: session.sessionId });
+    expect(await Promise.race([other.then(() => 'answered'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 20))])).toBe('waiting');
+  });
+
   it('starts with file-change tracking and the effort, and sets effort on the model it runs', async () => {
     const sdk = fakeSdk();
     const driver = copilotDriver({ binary, env, createClient: sdk.createClient });

@@ -5,11 +5,11 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from 'node:os';
 import { createConnection } from 'node:net';
 import { basename, join, resolve, sep } from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, MessageChannelMain, nativeImage, Notification, nativeTheme, powerMonitor, powerSaveBlocker, protocol, screen, shell, systemPreferences, Tray, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { DEFAULT_PREFERENCES, IMAGE_EXTENSIONS, IpcChannel, MENU_BAR_QUERY, NOTIFICATION_PAUSES, pauseUntil, QUICK_START_QUERY, REMOTE_LOG_FILE, isSoundId, isThemeId, POPOUT_QUERY, resolveSound, sanitizePreferences, type AppInfo, type DeepLinkMessage, type MainWindowRequest, type MenuBarCommand, type NotificationPause, type NotificationPermission, type OpenAtLogin, type Preferences, type RendererReadyReport, type SessionView, type ShellCommandResult, type ThemeCommand, type UpdateCommand, type UpdateState } from '@seshboard/protocol/bridge';
 import { isAbsolutePath, isLocalAbsolutePath, isSameOrInside } from '@seshboard/protocol/paths';
 import type { RemoteContract } from '@seshboard/protocol';
-import { previewKind, type ScheduleRunEvent } from '@seshboard/protocol/client';
+import { previewKind, VISUAL_SCHEME, type McpAppCsp, type ScheduleRunEvent } from '@seshboard/protocol/client';
 import { COMPANION_DIR, COMPANION_INFO_FILE, COMPANION_PROTOCOL, createRpcClient, lineTransport, type CompanionContract, type CompanionInfo } from '@seshboard/protocol/companion-client';
 import { BUILT_IN_THEMES } from '../../../ui/src/themes/index.ts';
 import { AppIcon } from './appIcon.ts';
@@ -23,10 +23,12 @@ import { DEEP_LINK_SCHEME, isShowLink, LEGACY_DEEP_LINK_SCHEME, linkFromArgv, pa
 import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
+import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
 import { closeRemotePhone, runPhoneCatchUpStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
+import { isVisualFrameUrl, McpAppDocuments, visualFrameResponse } from './visualFrame.ts';
 import { RendererQueue } from './rendererQueue.ts';
 import { runScreenshotTour } from './screenshotTour.ts';
 import { SmokeRun } from './smokeRunner.ts';
@@ -44,6 +46,9 @@ import { placePopout, placeWindow, POPOUT_MIN, POPOUT_SIZE, WindowStateStore } f
 import { MOD_KEY_PROPERTY, MOD_MODIFIER, platformModifiers } from './smokeKeys.ts';
 
 const here = import.meta.dirname;
+// Claude's visuals are drawn in a page of their own (`visualFrame.ts`). Standard and secure, like https: so URLs in it
+// resolve and it may load the CDNs' scripts. It must be named before the app is ready.
+protocol.registerSchemesAsPrivileged([{ scheme: VISUAL_SCHEME, privileges: { standard: true, secure: true } }]);
 // Variables named before the rename (SWITCHBOARD_…) still count, before anything reads them.
 adoptLegacyEnv(process.env);
 const smokeOutDir = process.env.SESHBOARD_SMOKE_OUT;
@@ -291,6 +296,12 @@ function updatePreferences(patch: unknown): void {
 }
 
 /** Settings the engine acts on: Settings › Sessions (the archive days, which the VS Code companion lists by, and deleting), Auto model, catch-up summaries, mods and Claude in Chrome. */
+/**
+ * Seshboard's `visualize` MCP server (`src/visualize/`), as an agent starts it: this app's own binary run as Node, so
+ * it needs no Node on the computer, on its bundle next to this one (inside the app's archive when packaged).
+ */
+const visualizeServer = () => ({ command: process.execPath, args: [join(here, 'visualize.js')], env: { ELECTRON_RUN_AS_NODE: '1' } });
+
 function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'retention', archiveAfterDays: prefs.archiveAfterDays, deleteArchived: prefs.deleteArchived, doneOnMerge: prefs.doneOnMerge });
   // Settings › Conversation › Auto model: the queue routes its prompts in the engine, with these.
@@ -309,6 +320,8 @@ function sendEngineSettings(prefs: Preferences): void {
   engine?.sendStanding({ type: 'mods', show: prefs.showMods });
   // Settings › General › Use Claude in Chrome: sessions started or resumed from now on get --chrome.
   engine?.sendStanding({ type: 'chrome', enabled: prefs.chrome });
+  // Settings › General › Visuals in replies: sessions started or resumed from now on get the visualize server.
+  engine?.sendStanding({ type: 'visuals', server: prefs.agentVisuals ? visualizeServer() : null });
   // The focus limit: a queued item that starts by itself waits for a free slot instead of asking.
   engine?.sendStanding({ type: 'focus', limit: prefs.focusLimit, countExternal: prefs.focusCountExternal });
   // Settings › Theme › App icon: the colourway paired phones show, or Graphite with "Use it on your phone too" off.
@@ -433,6 +446,15 @@ const recordedScheduleRuns: ScheduleRunEvent[] = [];
 /** Sounds the smoke run would have played (it never makes a sound). */
 const recordedSounds: Array<{ id: string; volume: number }> = [];
 const sounds = new SoundPlayer(smokeOutDir ? { record: (sound) => void recordedSounds.push(sound) } : {});
+
+/** MCP App pages, each served from an address of its own with the policy its server declared. */
+const mcpAppDocuments = new McpAppDocuments();
+/** An app's page is an HTML document; anything this large is not one worth drawing. */
+const MAX_APP_PAGE = 5 * 1024 * 1024;
+ipcMain.handle(IpcChannel.mcpAppDocument, (_event, html: unknown, csp: unknown) => {
+  if (typeof html !== 'string' || html.length > MAX_APP_PAGE) throw new Error('Not an MCP App page');
+  return mcpAppDocuments.add(html, csp && typeof csp === 'object' ? (csp as McpAppCsp) : null);
+});
 
 ipcMain.handle(IpcChannel.listSounds, () => sounds.list());
 ipcMain.on(IpcChannel.playSound, (_event, id: unknown, volume: unknown) => {
@@ -1266,6 +1288,10 @@ function loadRenderer(win: BrowserWindow, popout?: string, panelPage: 'menubar' 
   });
   win.webContents.on('will-navigate', (event, url) => {
     if (url !== win.webContents.getURL()) event.preventDefault();
+  });
+  // A visual's frame stays on its page: its links go to the browser through the conversation, never into the frame.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame && isVisualFrameUrl(details.frame?.url) && !isVisualFrameUrl(details.url)) details.preventDefault();
   });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
@@ -3232,6 +3258,8 @@ async function runProvidersStep(win: BrowserWindow): Promise<string> {
       return `the Copilot session's tray has no premium requests on its right (${String(await js(`${ring}?.dataset.tooltip ?? 'none'`))})`;
     }
     if (!(await waitInPage(win, `${view}.querySelectorAll('[data-message-actions]').length > 0 || ${view}.querySelectorAll('[data-tool]').length > 0`, 5_000))) return 'the Copilot transcript showed nothing';
+    // Its call to Seshboard's visualize server, which Copilot names its own way, draws as a visual (#289).
+    if (!(await waitInPage(win, `!!${view}.querySelector('[data-visual] [data-visual-state="drawn"]')`, 10_000))) return "the Copilot session's show_widget call did not draw as a visual";
     await js(`${view}.querySelector('[data-more-menu]').click()`);
     const menuOk = await waitInPage(
       win,
@@ -3445,6 +3473,11 @@ async function runCodexStep(win: BrowserWindow): Promise<string> {
       5_000,
     );
     if (!forkAsk) return 'the Codex session has no Fork on its replies, or no Ask';
+
+    // 4b. Its other session draws the CI server's MCP App in the conversation (#289).
+    const appProblem = await checkCodexMcpApp(win);
+    if (appProblem) return appProblem;
+    await shot(win, 'codex-mcp-app.png');
 
     // 5. New session on the Codex profile, with Codex's mark, models, efforts and modes.
     await js("document.querySelector('[data-new-session]')?.click()");
@@ -13696,6 +13729,19 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('reading mode: Read, outline, Esc and back land on the reply', () => runReadModeStep(win), { timeoutMs: 60_000 });
   await step('answered question: the question and your answer stay in the conversation', () => runAnsweredQuestionStep(win));
   await step('image viewer: arrows go through a reply, right-click copies the image', () => runImageViewerStep(win));
+  await step("inline visual: Claude's visual draws between the text, its controls work, sendPrompt fills the message box", () =>
+    runVisualsStep(win, {
+      demo: Boolean(process.env.SESHBOARD_SMOKE_DEMO),
+      back: smokeSessionId,
+      setScheme: (scheme) => setColorScheme(win, scheme),
+      scheme: () => preferences.get().colorScheme,
+      restoreScheme: (colorScheme) => updatePreferences({ colorScheme }),
+      shot: (name) => shot(win, name),
+    }),
+  );
+  await step('visualize server: runs as this app, lists its tools, gives its guide and MCP App page; Visuals in replies saves', () =>
+    runVisualizeServerStep(win, { server: visualizeServer(), enabled: () => preferences.get().agentVisuals, setEnabled: (agentVisuals) => updatePreferences({ agentVisuals }) }),
+  );
   await step('remember this', () => runRememberStep(win));
   await step('selection toolbar', () => runSelectionToolbarStep(win));
   await step('run code blocks', () => runCodeRunStep(win));
@@ -13851,6 +13897,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  protocol.handle(VISUAL_SCHEME, (request) => visualFrameResponse(request, mcpAppDocuments));
   // Packaged builds take the icon from the bundle's icon.icns, unless another colourway was chosen; in development the
   // Dock gets Graphite's, which is build/icon.png.
   appIcon.apply(preferences.get().appIcon);

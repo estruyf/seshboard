@@ -2792,6 +2792,21 @@
       "page": "terminal-changes-git/changes"
     },
     {
+      "id": "feature:inline-visuals",
+      "name": "Claude's visuals in the conversation: diagrams and widgets from the Claude desktop app, drawn between the text",
+      "page": "sessions/conversation"
+    },
+    {
+      "id": "feature:agent-visuals",
+      "name": "Visuals in replies: Claude Code, Codex and Copilot sessions can draw diagrams and small tools (Settings › General)",
+      "page": "settings"
+    },
+    {
+      "id": "feature:mcp-apps",
+      "name": "MCP Apps in Codex sessions: a tool's page drawn in the conversation, with its buttons and your theme",
+      "page": "sessions/conversation"
+    },
+    {
       "id": "feature:install-dmg",
       "name": "Install from the DMG",
       "page": "getting-started/install"

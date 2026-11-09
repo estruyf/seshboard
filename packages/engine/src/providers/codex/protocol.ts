@@ -189,7 +189,11 @@ export type McpToolCallItem = ItemTimes & {
   tool: string;
   status: 'inProgress' | 'completed' | 'failed';
   arguments: unknown;
-  result: { content: unknown[]; structuredContent: unknown } | null;
+  /** The tool's MCP App page and how it prefers to show; missing in older history, and for a tool whose display mode isn't set. */
+  mcpAppUi?: { resourceUri: string; preferredModelDisplayMode: string } | null;
+  /** The page when `mcpAppUi` is missing (older clients' field). */
+  mcpAppResourceUri?: string;
+  result: { content: unknown[]; structuredContent: unknown; _meta?: unknown } | null;
   error: { message: string } | null;
 };
 export type WebSearchItem = ItemTimes & {
@@ -356,6 +360,10 @@ export interface DriveMethods {
     result: { data: McpServerStatus[]; nextCursor: string | null };
   };
   'model/list': { params: { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }; result: { data: Model[]; nextCursor: string | null } };
+  /** An MCP server's resource (an MCP App's page): `originCallId` scopes it to the call that shows it. */
+  'mcpServer/resource/read': { params: { server: string; uri: string; threadId?: string | null; originCallId?: string | null }; result: { contents: unknown[]; originCallId: string | null } };
+  /** Calls an MCP server's tool for a loaded thread, outside a turn (an MCP App's button). */
+  'mcpServer/tool/call': { params: { threadId: string; server: string; tool: string; arguments?: unknown }; result: { content: unknown[]; structuredContent?: unknown; isError?: boolean; _meta?: unknown } };
 }
 
 export type Methods = ReadMethods & DriveMethods & UsageMethods;

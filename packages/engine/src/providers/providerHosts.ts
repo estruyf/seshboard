@@ -22,7 +22,8 @@ import type { RawSessionMessage } from '../claude/transcript.ts';
 import type { TurnOutcome } from '../host/sessionHost.ts';
 import { summarise, type StoredUpNext } from '../host/upNextStore.ts';
 import { isReadOnlyTool, READ_ONLY_REASON, type AskResult, type AskText } from '../host/sideQuestions.ts';
-import type { CheapAnswer, DriverSession, ProviderAdapter } from './provider.ts';
+import type { CheapAnswer, DriverSession, DriverSessionConfig, McpStdioServer, ProviderAdapter, ProviderDriver } from './provider.ts';
+import { mcpAppToolPolicy } from './mcpApps.ts';
 
 export interface ProviderHostsDeps {
   /** The allowed providers that can run sessions (have a driver). */
@@ -133,7 +134,7 @@ export class ProviderHosts {
     host.readOnly = params.readOnly === true;
     let session: DriverSession;
     try {
-      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly }, this.eventsFor(host));
+      session = await adapter.driver.start({ cwd: params.cwd, model: params.model, effort, permissionMode, readOnly: host.readOnly, ...this.ownServers(host.readOnly) }, this.eventsFor(host));
     } catch (error) {
       throw new RpcError('PROVIDER_FAILED', (error as Error).message);
     }
@@ -306,6 +307,43 @@ export class ProviderHosts {
     await host.session.mcp(server, action);
   }
 
+  /** Visuals in replies (Settings › General): the `visualize` server sessions start or resume with, or null. */
+  private visualize: McpStdioServer | null = null;
+
+  setVisuals(server: McpStdioServer | null): void {
+    this.visualize = server;
+  }
+
+  /** Seshboard's own MCP servers for a session it starts; a read-only one gets none. */
+  private ownServers(readOnly: boolean | undefined): Pick<DriverSessionConfig, 'mcpServers'> {
+    return this.visualize && !readOnly ? { mcpServers: { visualize: this.visualize } } : {};
+  }
+
+  /** An MCP App's page, or another resource it reads, from the session's MCP server. */
+  async mcpAppResource(sessionId: string, server: string, uri: string, callId: string | null): Promise<unknown[]> {
+    return this.mcpApps(sessionId).resource({ sessionId, server, uri, callId });
+  }
+
+  /**
+   * A tool an MCP App calls on its own server. Only one the server lets apps call; one that isn't read-only waits for
+   * `confirmed` (you said yes in the app's frame), so a page never changes things behind your back.
+   */
+  async mcpAppCall(sessionId: string, server: string, tool: string, args: unknown, confirmed: boolean): Promise<unknown> {
+    const apps = this.mcpApps(sessionId);
+    const policy = mcpAppToolPolicy(tool, (await apps.tools({ sessionId, server }))[tool]);
+    if (!policy) throw new RpcError('NOT_FOUND', `${server} has no tool called ${tool}`);
+    if (!policy.callable) throw new RpcError('NOT_ALLOWED', `${server} doesn't let its app use ${policy.title}`);
+    if (!policy.readOnly && !confirmed) throw new RpcError('NEEDS_CONFIRMATION', policy.title);
+    this.deps.log('info', `MCP App of ${server} in ${sessionId} called ${tool}`);
+    return apps.callTool({ sessionId, server, tool, arguments: args });
+  }
+
+  private mcpApps(sessionId: string): NonNullable<ProviderDriver['mcpApps']> {
+    const apps = this.adapterOf(this.deps.profileOf(sessionId))?.driver?.mcpApps;
+    if (!apps) throw new RpcError('UNSUPPORTED', 'This session has no MCP Apps');
+    return apps;
+  }
+
   /** Answers a permission request of a provider's session. False when the request isn't one of theirs. */
   respond(requestId: string, decision: PermissionDecision): boolean {
     const sessionId = this.requests.get(requestId);
@@ -380,7 +418,7 @@ export class ProviderHosts {
     const host = this.track(sessionId, adapter, cwd, model, permissionMode, 'starting', effort);
     host.readOnly = this.deps.readOnly?.(sessionId) ?? false;
     try {
-      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly }, this.eventsFor(host));
+      host.session = await adapter.driver.start({ cwd, model, effort, permissionMode, resume: sessionId, readOnly: host.readOnly, ...this.ownServers(host.readOnly) }, this.eventsFor(host));
     } catch (error) {
       this.hosts.delete(sessionId);
       this.update(host, { state: 'closed' });

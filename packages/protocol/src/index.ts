@@ -72,3 +72,4 @@ export * from './pipelineSchema.ts';
 export * from './filePreview.ts';
 export * from './remoteSessionsCheck.ts';
 export * from './triggerOrigin.ts';
+export * from './visuals.ts';
