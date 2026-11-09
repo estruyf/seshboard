@@ -35,44 +35,36 @@ const mix = (colour: string, percent: number, base: string) => (colour && base ?
 /**
  * The desktop app's CSS variables, from Seshboard's theme tokens, so a visual looks like the rest of the conversation
  * and follows the theme. `read` gives a variable's value where the frame is (`getComputedStyle(frame)`), which also
- * covers a subtree that swaps the tokens. A token the theme doesn't have is left out.
+ * covers a subtree that swaps the tokens. A token the theme doesn't have is left out. The surfaces follow the desktop
+ * app's roles: 0 the page, 1 a tinted tile, 2 a raised card, 3 a popover. Sizes, short names and the SVG colour ramps
+ * don't depend on the theme: the frame's page has them (`apps/desktop/src/main/visualFrame.ts`).
  */
 export function visualThemeVars(read: (variable: string) => string): Record<string, string> {
   const sb = (name: string) => read(`--sb-${name}`).trim();
   const bg = sb('bg');
-  const raised = sb('code-bg');
   const text = sb('text');
+  const role = (name: string, colour: string) => ({ [`--bg-${name}`]: mix(colour, 14, bg), [`--text-${name}`]: colour, [`--border-${name}`]: mix(colour, 45, bg) });
   const vars: Record<string, string> = {
     '--text-primary': text,
     '--text-secondary': sb('muted'),
     '--text-muted': sb('faint'),
+    '--text-disabled': mix(text, 30, bg),
     '--surface-0': bg,
-    '--surface-1': raised,
-    '--surface-2': mix(text, 8, raised),
+    '--surface-1': sb('code-bg'),
+    '--surface-2': sb('card'),
+    '--surface-3': sb('popover'),
     '--border': sb('border'),
     '--border-strong': mix(text, 22, bg),
+    '--border-stronger': mix(text, 40, bg),
+    ...role('accent', sb('accent-ink')),
     '--bg-accent': mix(sb('accent'), 18, bg),
-    '--text-accent': sb('accent-ink'),
-    '--bg-danger': mix(sb('error'), 14, bg),
-    '--text-danger': sb('error'),
-    '--bg-success': mix(sb('ok'), 14, bg),
-    '--text-success': sb('ok'),
-    '--bg-warning': mix(sb('caution'), 14, bg),
-    '--text-warning': sb('caution'),
-    '--radius': '8px',
+    ...role('danger', sb('error')),
+    ...role('success', sb('ok')),
+    ...role('warning', sb('caution')),
+    '--fill-accent': sb('accent'),
+    '--on-accent': sb('on-accent'),
     '--font-sans': read('--font-sans').trim(),
     '--font-mono': read('--font-mono').trim(),
-    // The SVG colour classes (`c-blue`): the profile colours, and three chart colours for the hues they don't have.
-    '--c-gray': sb('profile-gray'),
-    '--c-blue': sb('profile-blue'),
-    '--c-green': sb('profile-green'),
-    '--c-purple': sb('profile-purple'),
-    '--c-red': sb('profile-red'),
-    '--c-orange': sb('profile-orange'),
-    '--c-amber': sb('profile-yellow'),
-    '--c-teal': sb('chart-input'),
-    '--c-coral': sb('chart-shipped'),
-    '--c-pink': sb('chart-cache-write'),
   };
   return Object.fromEntries(Object.entries(vars).filter(([, value]) => value !== ''));
 }

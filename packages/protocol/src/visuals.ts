@@ -23,3 +23,6 @@ export const VISUAL_FRAME_URL = `${VISUAL_SCHEME}://frame/`;
 
 /** Where a visual may load scripts, styles and fonts from, as the desktop app allows. */
 export const VISUAL_CDNS = ['https://cdnjs.cloudflare.com', 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://esm.sh'] as const;
+
+/** Google Fonts, which the desktop app also allows: its stylesheets and its font files, never scripts. */
+export const VISUAL_FONT_HOSTS = { styles: 'https://fonts.googleapis.com', files: 'https://fonts.gstatic.com' } as const;

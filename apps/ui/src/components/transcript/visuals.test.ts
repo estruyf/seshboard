@@ -16,13 +16,14 @@ describe('visuals', () => {
   });
 
   it("maps the theme's tokens to the desktop app's variables, and leaves out what the theme lacks", () => {
-    const tokens: Record<string, string> = { '--sb-text': '#111', '--sb-muted': '#555', '--sb-bg': '#fff', '--sb-code-bg': '#eee', '--sb-error': '#d00', '--sb-profile-blue': '#00f', '--font-sans': ' Inter, sans-serif' };
+    const tokens: Record<string, string> = { '--sb-text': '#111', '--sb-muted': '#555', '--sb-bg': '#fff', '--sb-code-bg': '#eee', '--sb-error': '#d00', '--sb-card': '#fafafa', '--font-sans': ' Inter, sans-serif' };
     const vars = visualThemeVars((name) => tokens[name] ?? '');
     expect(vars['--text-primary']).toBe('#111');
     expect(vars['--surface-0']).toBe('#fff');
-    expect(vars['--surface-2']).toBe('color-mix(in srgb, #111 8%, #eee)');
+    expect(vars['--surface-2']).toBe('#fafafa');
+    expect(vars['--border-danger']).toBe('color-mix(in srgb, #d00 45%, #fff)');
     expect(vars['--bg-danger']).toBe('color-mix(in srgb, #d00 14%, #fff)');
-    expect(vars['--c-blue']).toBe('#00f');
+    expect(vars).not.toHaveProperty('--surface-3');
     expect(vars['--font-sans']).toBe('Inter, sans-serif');
     expect(vars).not.toHaveProperty('--text-muted');
     expect(vars).not.toHaveProperty('--bg-success');
