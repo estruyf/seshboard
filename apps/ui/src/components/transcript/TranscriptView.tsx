@@ -61,6 +61,7 @@ import { LargeContextNotice } from '../session/LargeContextNotice.tsx';
 import { effectiveDock, rightBlocked } from '../terminal/terminalLayout.ts';
 import { useHeight } from '../ui/useHeight.ts';
 import { useScrollEdge } from '../ui/useScrollEdge.ts';
+import { anchorAt, recallScroll, rememberScroll } from './scrollMemory.ts';
 import { PANE_HEADER } from '../ui/paneHeader.ts';
 import { useWidth } from '../ui/useWidth.ts';
 import { BranchMenu } from '../worktree/BranchMenu.tsx';
@@ -780,7 +781,13 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const scrollRef = useRef<HTMLDivElement>(null);
   // The header's hairline shows only while the conversation scrolls under it.
   const transcriptEdge = useScrollEdge(scrollRef);
+  // Coming back to a session opens it where you were reading (scrollMemory.ts), unless search opens it at a message.
+  const [returnTo] = useState(() => (useOverlay.getState().focusMessage?.sessionId === sessionId ? null : recallScroll(sessionId)));
+  const restoreTo = useRef(returnTo);
+  // The heights measured last time, so the list has its real height before the rows render again.
+  const [knownSizes] = useState(() => [...(returnTo?.sizes ?? [])].map(([key, size], index) => ({ key, size, index, start: 0, end: size, lane: 0 })));
   const virtualizer = useVirtualizer({
+    initialMeasurementsCache: knownSizes,
     count: renderItems.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 72,
@@ -796,8 +803,8 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   // Following the end stops as soon as *you* scroll up (wheel, trackpad, keys, scrollbar), even by a
   // few pixels: new output must not pull you back down. The list also moves itself while rows are
   // measured, and that must never count as leaving. Getting back to the very end, by any means
-  // (or with Jump to latest), follows again.
-  const stickToBottom = useRef(true);
+  // (or with Jump to latest), follows again. A session you come back to where you left it doesn't follow.
+  const stickToBottom = useRef(returnTo === null);
   // Away from the end while not following: shows Jump to latest.
   const [away, setAway] = useState(false);
   const syncAway = () => {
@@ -851,11 +858,46 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const spot = restoreTo.current;
+    if (spot) {
+      if (status !== 'ready' || renderItems.length === 0) return;
+      restoreTo.current = null;
+      const index = renderItems.findIndex((item) => item.key === spot.key);
+      // The row is gone (the conversation was rewound): start at the end, as a session you haven't read in does.
+      if (index === -1) {
+        follow(true);
+        el.scrollTop = el.scrollHeight;
+        return;
+      }
+      // Sets scrollTop itself, like jumpToPrompt, and settles over the next frames as the rows around it are measured.
+      const place = () => {
+        virtualizer.getTotalSize(); // brings the measurements up to date
+        const start = virtualizer.measurementsCache[index]?.start;
+        if (start !== undefined) el.scrollTop = start + spot.offset;
+      };
+      place();
+      requestAnimationFrame(() => {
+        place();
+        requestAnimationFrame(place);
+      });
+      syncAway();
+      return;
+    }
     if (stickToBottom.current && renderItems.length > 0) {
       el.scrollTop = el.scrollHeight;
       requestAnimationFrame(() => stickToBottom.current && (el.scrollTop = el.scrollHeight));
     } else syncAway();
-  }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer]);
+  }, [renderItems.length, totalSize, streamingText, permissions.length, virtualizer, status]);
+  // Leaving the session (another one takes this pane): keep where you were reading, or nothing when at the end.
+  useEffect(
+    () => () => {
+      // Left before it loaded: the spot from last time still holds.
+      if (restoreTo.current) return rememberScroll(sessionId, restoreTo.current);
+      const anchor = stickToBottom.current ? null : anchorAt(virtualizer.measurementsCache, lastScrollTop.current);
+      rememberScroll(sessionId, anchor && { ...anchor, sizes: new Map([...virtualizer.itemSizeCache].map(([key, size]) => [String(key), size])) });
+    },
+    [sessionId, virtualizer],
+  );
   // The view shrinks when the message box grows (a long prompt, an attachment, a permission card),
   // and the browser keeps scrollTop without a scroll event, so the last lines slide under the box.
   // The "Working…" line below the list grows the end the same way: on a session's first message it

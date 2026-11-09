@@ -6646,6 +6646,54 @@ async function runPromptOutlineStep(win: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Switching sessions keeps where you were reading, read-only: the open session scrolled up comes back with the same row
+ * at the top after another session took the view, and one left at its end comes back at its end. Switches to the first
+ * other session that isn't running, and leaves the open session at its end.
+ */
+async function runScrollMemoryStep(win: BrowserWindow): Promise<string> {
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const home = smokeSessionId;
+  if (!home) return 'no session to switch from';
+  const scroller = `document.querySelector('[data-current-session="${home}"] [data-transcript]')`;
+  // The row at the top of the view and how far its top is above the view's.
+  const topRow = `(() => { const el = ${scroller}; const box = el.getBoundingClientRect(); const row = [...el.querySelectorAll('[data-transcript-item]')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).find((r) => r.getBoundingClientRect().bottom > box.top + 1); return row ? { index: row.dataset.index, offset: Math.round(box.top - row.getBoundingClientRect().top) } : null; })()`;
+  const atEnd = `(() => { const el = ${scroller}; return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 8; })()`;
+  const switchTo = async (id: string) => {
+    await js(`document.querySelector('[data-session-list] [data-session-id="${id}"]')?.click()`);
+    return waitInPage(win, `!!document.querySelector('[data-current-session="${id}"] [data-transcript-item]')`, 5_000);
+  };
+  const running = await runningSessions();
+  if (!running) return 'failed: could not ask the engine which sessions are running, so none is safe to open';
+  const rows = (await js("[...document.querySelectorAll('[data-session-list] [data-session-id]')].map((row) => row.dataset.sessionId)")) as string[];
+  const other = rows.find((id) => id !== home && !running.ids.has(id));
+  if (!other) return 'ok: no other session to switch to';
+  try {
+    if (!(await waitInPage(win, `(() => { const el = ${scroller}; return !!el && el.scrollHeight > el.clientHeight * 2; })()`, 3_000))) return 'ok: the open session is too short to scroll';
+    // Scrolling up with the wheel stops following the end; then to the middle, as reading would.
+    await js(`(() => { const el = ${scroller}; el.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true })); el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) / 2); })()`);
+    await settle(win, 300);
+    const before = (await js(topRow)) as { index: string; offset: number } | null;
+    if (!before) return 'no row at the top of the view after scrolling up';
+    if (!(await switchTo(other))) return 'did not switch to another session';
+    if (!(await switchTo(home))) return 'did not switch back';
+    const same = `(() => { const now = ${topRow}; return !!now && now.index === ${JSON.stringify(before.index)} && Math.abs(now.offset - ${before.offset}) <= 4; })()`;
+    if (!(await waitInPage(win, same, 3_000))) return `back in the session, row ${JSON.stringify(await js(topRow))} is at the top, not ${JSON.stringify(before)}`;
+    if (!(await waitInPage(win, `!!document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]')`, 2_000))) return 'Jump to latest is missing after coming back up the conversation';
+
+    // Left at its end, it comes back at its end.
+    await js(`document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]').click()`);
+    if (!(await waitInPage(win, atEnd, 2_000))) return 'Jump to latest did not reach the end';
+    if (!(await switchTo(other))) return 'did not switch to another session the second time';
+    if (!(await switchTo(home))) return 'did not switch back the second time';
+    if (!(await waitInPage(win, atEnd, 3_000))) return 'a session left at its end came back above it';
+    return `ok: came back with row ${before.index} at the top (${before.offset}px into it), and at the end when left there`;
+  } finally {
+    await switchTo(home);
+    await js(`document.querySelector('[data-current-session="${home}"] [data-jump-to-latest]')?.click()`);
+  }
+}
+
+/**
  * Every message has a Copy button (Markdown for Claude's replies, which also have Copy as rich text), and the text
  * of prompts, commands and replies can be selected. Read-only: it doesn't click Copy, which would replace the clipboard.
  */
@@ -13640,6 +13688,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('file preview', () => runFilePreviewStep(win));
   await step('long prompts', () => runLongPromptStep(win));
   await step('prompt outline: marks, a click and Next prompt', () => runPromptOutlineStep(win), { timeoutMs: 60_000 });
+  await step('scroll memory: a session comes back where you were reading, or at its end', () => runScrollMemoryStep(win));
   await step('copy messages', () => runCopyMessageStep(win));
   await step('reply actions', () => runReplyActionsStep(win));
   await step('under each reply: the turn line on hover with the actions, its tokens, Nothing hides it', () => runTurnMetaStep(win), { timeoutMs: 60_000 });
