@@ -426,6 +426,26 @@ const ATTACHED_ISSUE = [
 
 /** `home` is an empty folder to build in; a new temporary one by default (by its long name on Windows, as Claude Code records it). */
 /** Plain colour PNGs, each its own shape, for the demo's images. */
+/** A visual with an SVG in the theme's colours, a slider and a button that asks Claude (`sendPrompt`). */
+const CHECKOUT_VISUAL = `<div style="display: flex; flex-direction: column; gap: 12px; padding: 4px 0">
+  <svg width="100%" viewBox="0 0 520 80" role="img" aria-label="Checkout flow">
+    <g class="c-blue"><rect x="10" y="20" width="140" height="40" rx="8" /><text x="80" y="45" text-anchor="middle" class="t">Cart</text></g>
+    <line x1="150" y1="40" x2="190" y2="40" class="arr" />
+    <g class="c-teal"><rect x="190" y="20" width="140" height="40" rx="8" /><text x="260" y="45" text-anchor="middle" class="t">Payments</text></g>
+    <line x1="330" y1="40" x2="370" y2="40" class="arr" />
+    <g class="c-amber"><rect x="370" y="20" width="140" height="40" rx="8" /><text x="440" y="45" text-anchor="middle" class="t">Orders</text></g>
+  </svg>
+  <label style="display: flex; gap: 8px; align-items: center; color: var(--text-secondary)">Payment retries <input id="retries" type="range" min="0" max="5" value="2" /> <output id="retries-value">2</output></label>
+  <div><button id="ask" type="button">Ask about the retries</button></div>
+</div>
+<script>
+  const range = document.getElementById('retries');
+  const shown = document.getElementById('retries-value');
+  range.addEventListener('input', () => { shown.textContent = range.value; });
+  document.getElementById('ask').addEventListener('click', () => sendPrompt(\`Why does the payment step retry \${range.value} times?\`));
+  document.body.dataset.scripted = 'yes';
+</script>`;
+
 const YELLOW_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAQklEQVR4nO3OQQ0AIAwAsfnCvwP8gAuOR5MK6Jy9vjL5QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkNBjF4safw8qIqCKAAAAAElFTkSuQmCC';
 const GREEN_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAGAAAAAwCAIAAABhdOiYAAAAZElEQVR4nO3QMQ0AIADAMOziAaeYwQGc7GgyAUvH3EuXxveDeIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBwgQIAAAQoHCBAgQIDCAQIECBCgcIAAAQIEKBygRwfkzIHS+1UEqQAAAABJRU5ErkJggg==';
 const BLUE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAADAAAABgCAIAAADU7mYnAAAAY0lEQVR4nO3OMQ0AIBAAsTeIUgSy4oJjaFIBnbXPVyYfCAkJCdUDISEhoXogJCQkVA+EhISE6oGQkJBQPRASEhKqB0JCQkL1QEhISKgeCAkJCdUDISEhoXogJCQkVA+EhIQeu1a0z//LyywRAAAAAElFTkSuQmCC';
@@ -612,6 +632,14 @@ export function createDemoWorld(home =realpathSync.native(mkdtempSync(join(tmpdi
     .readImage(`${acme}/public/banners/tall.png`, BLUE_PNG)
     .say('That one is sharp too.')
     .write(configDir, 'Check the banner sizes');
+
+  // A visual between the text of a reply, as the Claude desktop app writes it (the smoke test's "inline visual").
+  new Transcript(acme, 'main', now - 7 * HOUR)
+    .user('Show me how a checkout request goes through the services.')
+    .tool('mcp__visualize__read_me', { modules: ['diagram'] }, 'Use the c-* colour classes for boxes, and sendPrompt() for follow-ups.')
+    .tool('mcp__visualize__show_widget', { title: 'checkout_flow', loading_messages: ['Laying out the services', 'Drawing the arrows'], widget_code: CHECKOUT_VISUAL }, 'Visual shown.', 'Here is the flow from the cart to the order.')
+    .say('Each box is a service in `src/services`. The retry count is an example value: press the button to ask about it.')
+    .write(configDir, 'Show the checkout flow');
 
   // How heavy each one was, and on which model, for the Usage view.
   const usage: Record<string, TranscriptUsage> = {

@@ -1,4 +1,4 @@
-import type { ImageRef, TranscriptBlock, TranscriptMessage } from '@seshboard/protocol';
+import { VISUAL_TOOL, type ImageRef, type TranscriptBlock, type TranscriptMessage } from '@seshboard/protocol';
 import { usageCounts } from '../usage/transcriptUsage.ts';
 import { imageSize } from './imageSize.ts';
 
@@ -23,6 +23,8 @@ export const LIMITS = {
   toolResult: 8_000,
   /** Per string inside a tool input (e.g. the content of a Write). */
   toolInputString: 4_000,
+  /** A visual's HTML or SVG (`VISUAL_TOOL`) is drawn in the conversation, so it is kept whole, like prose. */
+  visualInputString: 200_000,
 } as const;
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
@@ -100,8 +102,9 @@ function normaliseBlock(block: RawBlock, imageId: string, sink: ImageSink | unde
     case 'tool_use':
     case 'server_tool_use':
     case 'mcp_tool_use': {
-      const { value, truncated } = clipJson(block.input ?? {}, LIMITS.toolInputString);
-      return { type: 'tool_use', id: String(block.id ?? ''), name: String(block.name ?? 'unknown'), input: value, truncated };
+      const name = String(block.name ?? 'unknown');
+      const { value, truncated } = clipJson(block.input ?? {}, name === VISUAL_TOOL ? LIMITS.visualInputString : LIMITS.toolInputString);
+      return { type: 'tool_use', id: String(block.id ?? ''), name, input: value, truncated };
     }
     case 'tool_result':
     case 'mcp_tool_result': {

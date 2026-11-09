@@ -36,7 +36,23 @@ const idle = (fn: () => void) => {
  * With a `preview` (a markdown block, rendered), the block opens on the preview and a
  * Preview | Source switch sits in a header above it, next to the copy button.
  */
-export const CodeBlock = memo(function CodeBlock({ code, language, preview, wrap = false }: { code: string; language: string | undefined; preview?: ReactNode; wrap?: boolean }) {
+export const CodeBlock = memo(function CodeBlock({
+  code,
+  language,
+  preview,
+  wrap = false,
+  label,
+  copyLabel,
+}: {
+  code: string;
+  language: string | undefined;
+  preview?: ReactNode;
+  wrap?: boolean;
+  /** With a `preview`: the header's name, instead of the language (a visual's title). */
+  label?: string;
+  /** What the copy button says; "Copy markdown" for a preview, "Copy code" otherwise. */
+  copyLabel?: string;
+}) {
   // Tagged with the code it was made from: while a block is still streaming, the
   // highlight lags behind and showing it would hide the newest lines.
   const [copied, flash] = useFlash(1_500);
@@ -74,13 +90,13 @@ export const CodeBlock = memo(function CodeBlock({ code, language, preview, wrap
       size="sm"
       iconOnly
       icon={copied ? <Check size={13} className="text-ok" aria-hidden /> : <Copy size={12} aria-hidden />}
-      aria-label={copied ? 'Copied' : preview ? 'Copy markdown' : 'Copy code'}
+      aria-label={copied ? 'Copied' : (copyLabel ?? (preview ? 'Copy markdown' : 'Copy code'))}
       onClick={() => void navigator.clipboard.writeText(code).then(() => flash('Copied'), () => {})}
       data-code-copy
     />
   );
 
-  if (preview) return <PreviewBlock language={language} source={source} preview={preview} copyButton={copyButton} />;
+  if (preview) return <PreviewBlock language={language} label={label} source={source} preview={preview} copyButton={copyButton} />;
 
   return (
     // Clipped, not hidden: `overflow-hidden` would make the block its own scroller and keep the buttons from sticking.
@@ -133,13 +149,17 @@ const VIEWS = [
  * button (always shown, so the switch is found without hovering; it sticks to the top while
  * the block scrolls past), then the preview or the highlighted source. The preview sits on the conversation's background, as prose.
  */
-function PreviewBlock({ language, source, preview, copyButton }: { language: string | undefined; source: ReactNode; preview: ReactNode; copyButton: ReactNode }) {
+function PreviewBlock({ language, label, source, preview, copyButton }: { language: string | undefined; label?: string; source: ReactNode; preview: ReactNode; copyButton: ReactNode }) {
   const [view, setView] = useState<View>('preview');
   return (
     <div className="code-block my-2 overflow-clip rounded-md border border-border" data-code-preview-block>
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-border bg-code py-1 pr-1 pl-3">
-        {language && <span className="mr-auto text-[10px] text-faint uppercase select-none">{language}</span>}
-        <SegmentedControl<View> mode="radio" size="sm" label="Show as" value={view} onChange={setView} segments={VIEWS} className={language ? '' : 'ml-auto'} />
+        {label ? (
+          <span className="mr-auto min-w-0 truncate text-ui text-muted select-none">{label}</span>
+        ) : (
+          language && <span className="mr-auto text-[10px] text-faint uppercase select-none">{language}</span>
+        )}
+        <SegmentedControl<View> mode="radio" size="sm" label="Show as" value={view} onChange={setView} segments={VIEWS} className={label || language ? '' : 'ml-auto'} />
         {copyButton}
       </div>
       {view === 'preview' ? (

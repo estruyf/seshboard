@@ -88,7 +88,7 @@ import { boxPlaceholder } from '../composer/trayFold.ts';
 import { liveLabel, StatusDot } from '../StatusDot.tsx';
 import { formatDuration, useTicker } from './ActivityGroup.tsx';
 import { WorkingPanel, type WorkingState } from '../ui/WorkingPanel.tsx';
-import { workingLabel } from './workingLabel.ts';
+import { usingLabel, workingLabel } from './workingLabel.ts';
 import { BackgroundTaskList } from './BackgroundTaskList.tsx';
 import { agentForTask } from './agentRuns.ts';
 import { useAgentRuns } from './useAgentRuns.ts';
@@ -688,7 +688,7 @@ export function TranscriptView({ sessionId, tiled = false, active = true, leadin
   const streamKind = useHosts((s) => s.streaming.get(sessionId)?.kind ?? null);
   const streamTool = useHosts((s) => (s.streaming.get(sessionId)?.kind === 'tool' ? s.streaming.get(sessionId)!.text : null));
   const activeLabel =
-    live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? `Using ${streamTool}` : null;
+    live?.status === 'needs-you' ? 'Waiting for you' : streamKind === 'thinking' ? 'Thinking' : streamKind === 'tool' && streamTool ? usingLabel(streamTool) : null;
   // When your last message went in, for the "9s · Thinking" timer.
   // Turns: the line under each finished one, and the working line's numbers for the open one.
   const agentTokens = useAgentTokens(client, sessionId, items, working);
