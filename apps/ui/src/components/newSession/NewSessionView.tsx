@@ -1606,6 +1606,8 @@ function LocalNewSession() {
                   </span>
                   <ChoiceMenu
                     name="workspace"
+                    // The branch beside it truncates instead: "Current checkout" stays readable.
+                    fixed
                     value={useWorktree && !noWorktree ? 'worktree' : 'current'}
                     onChange={(workspace) => update({ workspace })}
                     // Worktrees and branches are Claude Code's options: another provider works in the folder as it is.

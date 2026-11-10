@@ -476,6 +476,7 @@ export function RemoteNewSession({ client, computer }: { client: RpcClient<Contr
                   </span>
                   <ChoiceMenu
                     name="remote-workspace"
+                    fixed
                     value={worktree ? 'worktree' : 'current'}
                     onChange={(where) => change({ worktree: where === 'worktree' })}
                     // Another provider there without worktrees works in the folder as it is.

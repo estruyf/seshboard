@@ -58,6 +58,7 @@ export function ChoiceMenu<T extends string>({
   mono = false,
   extra,
   actions,
+  fixed = false,
   children,
 }: {
   /** `data-menu` on the panel, and `data-<name>-select` on the pill, for the smoke test. */
@@ -78,6 +79,8 @@ export function ChoiceMenu<T extends string>({
   align?: 'left' | 'right';
   /** A small chevron after the pill's content, to read as a dropdown. */
   chevron?: boolean;
+  /** Keeps the pill at its full width in a row that runs out of room, so the pills beside it shrink instead. */
+  fixed?: boolean;
   /** Placeholder of a search field over the choices, which filters them by label. */
   search?: string;
   /** Choice labels in the monospace font (branch names). */
@@ -147,7 +150,7 @@ export function ChoiceMenu<T extends string>({
   };
 
   return (
-    <div ref={ref} className="relative min-w-0" onKeyDown={open ? onKeyDown : undefined}>
+    <div ref={ref} className={`relative ${fixed ? 'shrink-0' : 'min-w-0'}`} onKeyDown={open ? onKeyDown : undefined}>
       <button
         ref={trigger}
         type="button"
