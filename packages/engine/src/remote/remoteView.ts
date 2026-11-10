@@ -12,6 +12,7 @@ import { skimMarks,
   type PermissionRequest,
   type ProfileDefaults,
   type ProjectDefaults,
+  type RemoteArchivedSession,
   type RemoteBlock,
   type RemoteMessage,
   type RemotePrompt,
@@ -29,7 +30,7 @@ import { skimMarks,
   type WorktreeBase,
   otherProviderOf,
 } from '@seshboard/protocol';
-import { companionSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
+import { companionSessions, doneSessions, promptsFor, sessionsFor, type SessionSources } from '../companion/companionSessions.ts';
 
 /**
  * What a phone sees, made from what the engine knows: pure functions, so what leaves the computer is easy to check.
@@ -116,6 +117,48 @@ export function remoteSessions(sources: SessionSources, options: ListOptions): R
   const now = options.now ?? Date.now();
   const runs = remoteRuns(options.runs, new Set(sessions.map((s) => s.id)), { projectNames: options.projectNames, archiveAfterDays: options.archiveAfterDays, now, origins, ...(sources.kept ? { kept: sources.kept } : {}) });
   return { sessions, prompts, runs };
+}
+
+/** The most sessions in Done a phone gets. */
+export const REMOTE_ARCHIVED_LIMIT = 50;
+
+/**
+ * The sessions in Done (the sidebar's Archived), most recently done first, so a phone can reopen one it archived by
+ * mistake. A pipeline step's session whose parent is in Done too goes with it: reopening the parent brings it back.
+ */
+export function remoteArchived(sources: SessionSources, options: Pick<ListOptions, 'archiveAfterDays' | 'scope' | 'projectNames' | 'profiles' | 'runs' | 'now'>): RemoteArchivedSession[] {
+  const done = doneSessions(sources, { scope: options.scope, archiveAfterDays: options.archiveAfterDays, ...(options.now ? { now: options.now } : {}) });
+  const ids = new Set(done.map((d) => d.summary.id));
+  const stepParent = new Map<string, string>();
+  const steps = new Map<string, Set<string>>();
+  for (const { run, steps: runSteps } of options.runs ?? []) {
+    if (!run.parentSessionId) continue;
+    const parent = run.parentSessionId;
+    for (const step of runSteps) {
+      if (!step.sessionId) continue;
+      stepParent.set(step.sessionId, parent);
+      steps.set(parent, (steps.get(parent) ?? new Set()).add(step.sessionId));
+    }
+  }
+  const profiles = options.profiles && options.profiles.length > 1 ? new Map(options.profiles.map(({ id, name, color }) => [id, { id, name, color }])) : null;
+  return done
+    .filter((d) => {
+      const parent = d.summary.parentId ?? stepParent.get(d.summary.id);
+      return !parent || !ids.has(parent);
+    })
+    .slice(0, REMOTE_ARCHIVED_LIMIT)
+    .map((d) => ({
+      id: d.summary.id,
+      title: d.title,
+      projectId: projectIdOf(d.summary.projectRoot),
+      projectName: options.projectNames.get(d.summary.projectRoot) ?? lastSegment(d.summary.projectRoot),
+      branch: d.branch,
+      updatedAt: d.summary.updatedAt,
+      archivedAt: d.archivedAt,
+      inactive: d.inactive,
+      profile: profiles?.get(d.summary.profileId) ?? null,
+      steps: steps.get(d.summary.id)?.size ?? 0,
+    }));
 }
 
 /** The most runs a phone gets. */

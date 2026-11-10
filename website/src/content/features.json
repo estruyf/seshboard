@@ -1702,6 +1702,16 @@
       "page": "other-computers"
     },
     {
+      "id": "feature:computers-done",
+      "name": "Other computers: their sessions in Done show under this sidebar's Done with the computer's chip; a click reopens one there and opens it, and its menu has Reopen",
+      "page": "other-computers"
+    },
+    {
+      "id": "feature:remote-done",
+      "name": "Remote app: Done sessions (⋯ menu, drawer, palette) lists the sessions in Done on every computer, with a search, and Reopen puts one back in the list",
+      "page": "remote-access"
+    },
+    {
       "id": "feature:remote-quote",
       "name": "Remote app: Quote under a reply, and the Quote pill over selected text (also in Read)",
       "page": "remote-access"

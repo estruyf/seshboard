@@ -9,8 +9,8 @@ export type NotifyState = 'on' | 'off' | 'unavailable';
 export type MoreItem = { id: 'theme' } | { id: 'notifications'; state: 'On' | 'Off' } | { id: 'refresh' } | { id: 'archived' } | { id: 'settings' } | { id: 'separator' };
 
 /**
- * Theme (inline Auto, Dark and Light), Notifications with its state, then Refresh and Show archived (only when the
- * list can show archived sessions), then All settings. The same with one computer or several: the computers are in
+ * Theme (inline Auto, Dark and Light), Notifications with its state, then Refresh and Done sessions (only when a
+ * connected computer can list them), then All settings. The same with one computer or several: the computers are in
  * the drawer's computer row and on the Settings page.
  */
 export function moreItems({ notifications, archived }: { notifications: NotifyState; archived: boolean }): MoreItem[] {

@@ -1,4 +1,4 @@
-import { isMine, REMOTE_FEATURE_STARTED_BY, runOfParent, triggerOriginOf, type ClaudeProfile, type Computer, type ProfileColor, type RemoteRun, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
+import { isMine, REMOTE_FEATURE_STARTED_BY, runOfParent, triggerOriginOf, type ClaudeProfile, type Computer, type ProfileColor, type RemoteArchivedSession, type RemoteRun, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
 import { agoText } from '../lib/format.ts';
 import { remoteRowId } from './remoteSelection.ts';
 import type { SessionRowData } from './sessionsStore.ts';
@@ -45,6 +45,11 @@ export interface RemoteRowInfo {
   treeRunId?: string | null;
   /** The name of the trigger that started it there (the bolt on its row); null when none did. */
   trigger?: string | null;
+  /**
+   * In Done on that computer (`sessions.archived`): it can't be read from here, only reopened (with `steps`, the
+   * sessions its pipeline runs started, which come back with it). `inactive`: it went there by itself.
+   */
+  done?: { inactive: boolean; steps: number } | null;
 }
 
 /**
@@ -195,15 +200,73 @@ export function remoteRunRow(computer: RowComputer, { run }: RemoteRunState): Se
 }
 
 /**
+ * What a computer's Done depends on in its list: which sessions it lists. A session that leaves the list went to Done
+ * (or out of scope), one that joins it may have come back from there. Status changes don't move anything.
+ */
+export const doneKey = (list: Pick<RemoteSessions, 'sessions'>): string =>
+  list.sessions
+    .map((s) => s.id)
+    .sort()
+    .join(' ');
+
+/**
+ * A session in Done on another computer as a sidebar row, under this computer's Done. Reopen is all it offers: that
+ * computer doesn't let anything else reach a session in Done. Never under a parent, never a tree's head (the computer
+ * reopens a pipeline's parent with its run's tree itself).
+ */
+export function remoteDoneRow(computer: RowComputer, session: RemoteArchivedSession): SessionRowData {
+  const mine = isMine(session.id, null, { mineHere: computer.mineHere ?? [] });
+  return {
+    id: remoteRowId({ computerId: computer.id, sessionId: session.id }),
+    title: session.title,
+    projectRoot: remoteProjectKey(computer.id, session.projectId),
+    updatedAt: session.updatedAt,
+    branch: session.branch,
+    isWorktree: false,
+    live: null,
+    summary: null,
+    pinned: false,
+    archivedAt: session.archivedAt,
+    restoredAt: null,
+    unread: false,
+    inApp: true,
+    error: false,
+    profileId: '',
+    remote: {
+      computerId: computer.id,
+      computerName: computer.name,
+      sessionId: session.id,
+      projectId: session.projectId,
+      projectName: session.projectName,
+      status: null,
+      waitingTool: null,
+      workingSince: null,
+      profile: session.profile,
+      offline: computer.state !== 'connected',
+      lastSeen: computer.lastSeen,
+      parentRowId: null,
+      mine,
+      // Done doesn't say who started it.
+      startedBy: null,
+      treeRunId: null,
+      done: { inactive: session.inactive, steps: session.steps },
+    },
+  };
+}
+
+/**
  * Every remote session as sidebar rows, from each computer's last list. A computer that went offline keeps its last
  * list (its rows dimmed); one that was forgotten has no list any more, so its rows go.
  */
-export function remoteRows(computers: readonly RowComputer[], lists: ReadonlyMap<string, RemoteSessions>): SessionRowData[] {
+export function remoteRows(computers: readonly RowComputer[], lists: ReadonlyMap<string, RemoteSessions>, done: ReadonlyMap<string, readonly RemoteArchivedSession[]> = new Map()): SessionRowData[] {
   return computers.flatMap((computer) => {
     const list = lists.get(computer.id);
     if (!list) return [];
     const runs = list.runs ?? [];
-    return [...list.sessions.map((session) => remoteRow(computer, session, list.prompts, runs)), ...runs.filter((state) => !state.run.parentSessionId).map((state) => remoteRunRow(computer, state))];
+    // Done is read apart from the list: a session reopened a moment ago is in the new list before Done is read again.
+    const listed = new Set(list.sessions.map((s) => s.id));
+    const doneRows = (done.get(computer.id) ?? []).filter((s) => !listed.has(s.id)).map((s) => remoteDoneRow(computer, s));
+    return [...list.sessions.map((session) => remoteRow(computer, session, list.prompts, runs)), ...runs.filter((state) => !state.run.parentSessionId).map((state) => remoteRunRow(computer, state)), ...doneRows];
   });
 }
 

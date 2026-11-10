@@ -154,6 +154,28 @@ export const RemoteSessions = z.object({
 });
 export type RemoteSessions = z.infer<typeof RemoteSessions>;
 
+/**
+ * A session in Done (the sidebar's Archived): archived by hand or after the archive days. A phone only lists these
+ * and reopens them (`session.setFlags` with `archived: false`); it can't read them. With `REMOTE_FEATURE_ARCHIVED`.
+ */
+export const RemoteArchivedSession = z.object({
+  id: z.string(),
+  title: z.string(),
+  projectId: ProjectId,
+  projectName: z.string(),
+  branch: z.string().nullable(),
+  updatedAt: z.number(),
+  /** When it went to Done: when it was archived, or for one archived by itself, its last activity plus the archive days. */
+  archivedAt: z.number(),
+  /** It went to Done by itself, after the archive days without activity, rather than marked done. */
+  inactive: z.boolean(),
+  /** The Claude profile it ran with; null while there is only one profile. */
+  profile: RemoteSessionProfile.nullable(),
+  /** The sessions its pipeline runs started, which come back with it. */
+  steps: z.number().int().nonnegative(),
+});
+export type RemoteArchivedSession = z.infer<typeof RemoteArchivedSession>;
+
 export const RemoteProject = z.object({ id: ProjectId, name: z.string() });
 export type RemoteProject = z.infer<typeof RemoteProject>;
 
@@ -408,6 +430,8 @@ export const remoteContract = {
       }),
     },
     'sessions.list': { params: z.object({}), result: RemoteSessions },
+    /** The sessions in Done, most recently done first. With `REMOTE_FEATURE_ARCHIVED`. */
+    'sessions.archived': { params: z.object({}), result: z.object({ sessions: z.array(RemoteArchivedSession) }) },
     'projects.list': { params: z.object({}), result: z.object({ projects: z.array(RemoteProject) }) },
     /** The branches New session offers for the project's folder, read from git each time. With `REMOTE_FEATURE_BRANCHES`. */
     'projects.branches': { params: z.object({ projectId: ProjectId }), result: RemoteBranches },
@@ -489,7 +513,10 @@ export const remoteContract = {
     'session.markRead': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
     /** Marks a session unread again: Undo after a swipe marked it read. With `REMOTE_FEATURE_MARK_UNREAD`. */
     'session.markUnread': { params: z.object({ sessionId: SessionId }), result: z.object({}) },
-    /** Pins or archives a session; an archived one leaves the phone's list. */
+    /**
+     * Pins or archives a session; an archived one leaves the phone's list. `archived: false` also reopens a session in
+     * Done (`sessions.archived`), with its pipeline runs' sessions.
+     */
     'session.setFlags': { params: z.object({ sessionId: SessionId, pinned: z.boolean().optional(), archived: z.boolean().optional() }), result: z.object({}) },
     /** The model of a running session (null: the default). */
     'session.setModel': { params: z.object({ sessionId: SessionId, model: z.string().min(1).max(200).nullable() }), result: z.object({}) },

@@ -1,4 +1,4 @@
-import { isSameOrInside, listedInMainList, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@seshboard/protocol';
+import { archivedSince, isSameOrInside, listedInMainList, type CompanionSession, type CompanionStatus, type LiveSession, type PermissionRequest, type SessionHostInfo, type SessionSummary } from '@seshboard/protocol';
 
 /** What the engine knows about sessions: transcripts, running processes, and the ones this app runs. */
 export interface SessionSources {
@@ -77,6 +77,52 @@ export interface ListingOptions {
   scope?: 'switchboard' | 'all';
   /** Settings › Sessions: finished sessions are archived after this many days. */
   archiveAfterDays: number;
+}
+
+/** A session in the sidebar's Done (Archived), with when it went there. */
+export interface DoneSession {
+  summary: SessionSummary;
+  title: string;
+  branch: string | null;
+  archivedAt: number;
+  /** It went there by itself, after the archive days, rather than marked done. */
+  inactive: boolean;
+}
+
+/**
+ * The sessions Seshboard's sidebar lists under Done, under its scope, most recently done first: those whose transcript
+ * is indexed (a session still starting is never done). Every indexed session in scope is in one of the two: here or
+ * in `companionSessions`, with the same rule (`listedInSidebar`, which leaves reminders out as it does).
+ */
+export function doneSessions(sources: SessionSources, { now = Date.now(), scope = 'all', archiveAfterDays }: Omit<ListingOptions, 'keep'>): DoneSession[] {
+  const live = new Map(sources.live.map((l) => [l.sessionId, l]));
+  const hosts = new Map(sources.hosts.map((h) => [h.sessionId, h]));
+  const out: DoneSession[] = [];
+  for (const summary of sources.summaries) {
+    const l = live.get(summary.id) ?? null;
+    const host = hosts.get(summary.id);
+    if (scope === 'switchboard' && !(summary.inApp || l?.origin === 'app')) continue;
+    const status = companionStatus(summary, l, host);
+    const updatedAt = Math.max(summary.updatedAt, l && l.status !== 'idle' ? (l.updatedAt ?? 0) : 0);
+    const archivedAt = archivedSince(
+      {
+        attention: status === 'needs-you' || status === 'error',
+        working: status === 'working',
+        pinned: summary.pinned,
+        archivedAt: summary.archivedAt,
+        restoredAt: summary.restoredAt,
+        unread: summary.unread,
+        updatedAt,
+        openInApp: activeHost(host) || l?.origin === 'app',
+        keep: sources.kept?.has(summary.id) ?? false,
+      },
+      now,
+      archiveAfterDays,
+    );
+    if (archivedAt === null) continue;
+    out.push({ summary, title: summary.customTitle ?? (l?.name || summary.title), branch: summary.worktree?.branch ?? realBranch(summary.gitBranch), archivedAt, inactive: archivedAt !== summary.archivedAt });
+  }
+  return out.sort((a, b) => b.archivedAt - a.archivedAt);
 }
 
 /**

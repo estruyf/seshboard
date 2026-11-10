@@ -14,8 +14,9 @@ const NONE: Computer[] = [];
 export function useRemoteRowSplit(): { shown: SessionRowData[]; hidden: SessionRowData[] } {
   const computers = useComputers((s) => s.status?.computers ?? NONE);
   const lists = useComputers((s) => s.lists);
+  const done = useComputers((s) => s.done);
   const scopes = useComputers((s) => s.scopes);
-  return useMemo(() => splitByScope(remoteRows(computers, lists), scopes), [computers, lists, scopes]);
+  return useMemo(() => splitByScope(remoteRows(computers, lists, done), scopes), [computers, lists, done, scopes]);
 }
 
 /** The remote sessions the Mine / All filters show, as sidebar rows. */
@@ -25,8 +26,8 @@ export function useRemoteRows(): SessionRowData[] {
 
 /** The same, read once (for keys and palette commands). */
 export function currentRemoteRows(): SessionRowData[] {
-  const { status, lists, scopes } = useComputers.getState();
-  return splitByScope(remoteRows(status?.computers ?? NONE, lists), scopes).shown;
+  const { status, lists, done, scopes } = useComputers.getState();
+  return splitByScope(remoteRows(status?.computers ?? NONE, lists, done), scopes).shown;
 }
 
 /** Every computer's pipeline runs in the ids of their sidebar rows (`remoteTreeRuns`), for the sidebar's tree. */

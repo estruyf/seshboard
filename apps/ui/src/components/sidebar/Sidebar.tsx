@@ -984,6 +984,8 @@ export function Sidebar() {
   const rowClick = (event: MouseEvent, data: SessionRowData) => {
     if (data.remote) {
       setPicks(NO_PICKS);
+      // In Done there, it can't be read: a click reopens it, then opens it.
+      if (data.remote.done) return menus.openRemoteDone(data, { beside: event.altKey });
       return openRow(data.id, { beside: event.altKey });
     }
     if (modKey(event)) togglePicked(data.id);

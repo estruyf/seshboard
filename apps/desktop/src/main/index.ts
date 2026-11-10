@@ -24,7 +24,7 @@ import { Notifier, type RecordedAlert } from './notifier.ts';
 import { setFieldValue, settle, until, waitInPage } from './pageDriver.ts';
 import { runDiffCommentsStep } from './diffCommentsSmoke.ts';
 import { checkCodexMcpApp, runVisualizeServerStep, runVisualsStep } from './visualsSmoke.ts';
-import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
+import { closeRemotePhone, runPhoneCatchUpStep, runPhoneComposerStep, runPhoneDoneStep, runPhoneDrawerNewStep, runPhoneDrawerStep, runPhoneMoreStep, runPhoneOptionsStep, runPhoneProviderStep, runPhoneQuoteStep, runPhoneSessionMoreStep, runPhoneSettingsThemeStep, runPhoneStartStep, runPhoneTriggerStep } from './remotePhoneSmoke.ts';
 import { PreferencesStore } from './preferences.ts';
 import { QuitGuard } from './quitGuard.ts';
 import { ReloadLimiter } from './reloadLimiter.ts';
@@ -5287,6 +5287,75 @@ async function runComputerUpdateStep(win: BrowserWindow): Promise<string> {
   pressKey(win, 'Escape');
   if (!removed) return 'the computer did not go after Remove';
   return `ok: "${behind}", Update asked first with Update when it’s idle focused, "${waiting}" then Cancel update, Check for updates then "${checked}"; ⋯ has ${items.join(', ')}; removed again`;
+}
+
+/**
+ * Done on another computer: Done in a remote row's menu takes "Upgrade to Node 24" (which no other step uses) out of
+ * the list, and it shows under this sidebar's Done with that computer's chip and "Done"; its menu has Reopen, and a
+ * click reopens it there and opens it. It pairs the demo computer (All, to list the others' sessions) and removes it.
+ */
+async function runRemoteDoneStep(win: BrowserWindow): Promise<string> {
+  const linkFile = process.env.SESHBOARD_SMOKE_COMPUTER_LINK;
+  if (!linkFile) return 'ok: skipped, no second computer (run through npm run smoke)';
+  const js = (code: string) => win.webContents.executeJavaScript(code);
+  const click = (selector: string) => js(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+  if (!(await until(() => existsSync(linkFile), 20_000))) return 'the second computer wrote no pairing link';
+  if (!(await js("Boolean(document.querySelector('[data-settings]'))"))) await click('[data-open-settings]');
+  if (!(await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000))) return 'Settings has no Remote section';
+  await click('[data-settings-section="remote"]');
+  if (!(await waitInPage(win, "document.querySelector('[data-computers-link]')", 5_000))) return 'Settings › Remote has no field for another computer’s link';
+  await setFieldValue(win, '[data-computers-link]', readFileSync(linkFile, 'utf8').trim());
+  await click('[data-computers-add]');
+  const settingsRow = '[data-computer][data-computer-state="connected"]';
+  if (!(await waitInPage(win, `document.querySelector('${settingsRow}')`, 20_000))) return 'the second computer did not connect';
+  const computerId = (await js(`document.querySelector('${settingsRow}').dataset.computer`)) as string;
+  pressKey(win, 'Escape');
+  if (!(await waitInPage(win, "!document.querySelector('[data-settings]')", 3_000))) await js("document.querySelector('[data-close-settings]')?.click()");
+  const result = await (async () => {
+    // All: the demo's sessions weren't started from here.
+    if (!(await waitInPage(win, "document.querySelector('[data-computers-strip] [data-computer-menu-button]')", 10_000))) return 'the computer has no chip in the sidebar';
+    await click('[data-computers-strip] [data-computer-menu-button]');
+    if (!(await waitInPage(win, "document.querySelector('[data-computer-scope-menu] [data-computer-scope-option=\"all\"]')", 3_000))) return 'the chip’s menu has no All';
+    await click('[data-computer-scope-menu] [data-computer-scope-option="all"]');
+    pressKey(win, 'Escape');
+    // The search narrows the list to the one session, Done included, so the virtualised list has it on screen.
+    await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', 'Upgrade to Node 24');
+    const row = `[...document.querySelectorAll('[data-session-list] [data-remote-row=${JSON.stringify(computerId)}]')].find((r) => r.innerText.includes('Upgrade to Node 24'))`;
+    if (!(await waitInPage(win, `${row} && ${row}.dataset.archived !== 'true'`, 10_000))) return 'the search did not find "Upgrade to Node 24" on the other computer';
+    const menu = async () => {
+      await js(`(() => { const row = ${row}; const r = row.getBoundingClientRect(); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 10 })); })()`);
+      return waitInPage(win, "document.querySelector('[role=menu] [role=menuitem]')", 3_000);
+    };
+    if (!(await menu())) return 'the remote row’s menu did not open';
+    if (!(await js("Boolean(document.querySelector('[role=menu] [data-remote-archive]'))"))) return 'the remote row’s menu has no Done';
+    await click('[role=menu] [data-remote-archive]');
+    if (!(await waitInPage(win, `${row}?.dataset.archived === 'true' && ${row}.dataset.doneReason === 'done'`, 10_000))) return `"Upgrade to Node 24" did not show under Done (${await js(`${row}?.outerHTML.slice(0, 200) ?? 'no row'`)})`;
+    await shot(win, 'remote-done.png');
+    if (!(await menu())) return 'the done row’s menu did not open';
+    const items = (await js("[...document.querySelectorAll('[role=menu] [role=menuitem]')].map((i) => i.innerText.split('\\n')[0]).join(', ')")) as string;
+    if (!(await js("Boolean(document.querySelector('[role=menu] [data-remote-reopen]')) && !document.querySelector('[role=menu] [data-remote-archive], [role=menu] [data-remote-open]')"))) return `the done row’s menu has ${items}`;
+    pressKey(win, 'Escape');
+    await waitInPage(win, "!document.querySelector('[role=menu]')", 2_000);
+    await js(`${row}.click()`);
+    if (!(await waitInPage(win, `${row}?.dataset.archived !== 'true' && document.querySelector('[data-remote-reopened-toast]')`, 10_000))) return 'a click did not reopen it';
+    if (!(await waitInPage(win, `${row}?.getAttribute('aria-current') === 'true'`, 5_000))) return 'the click reopened it but did not open it';
+    return `ok: Done took "Upgrade to Node 24" to this sidebar’s Done; its menu has ${items}; a click reopened and opened it`;
+  })();
+  // Clean up: the search cleared, the computer removed through ⋯ › Remove….
+  await setFieldValue(win, 'input[aria-label="Search sessions by title, project or branch"]', '');
+  await click('[data-open-settings]');
+  await waitInPage(win, `document.querySelector('[data-settings-section="remote"]')`, 3_000);
+  await click('[data-settings-section="remote"]');
+  await waitInPage(win, `document.querySelector('${settingsRow} [data-computer-more]')`, 5_000);
+  await click(`${settingsRow} [data-computer-more]`);
+  await waitInPage(win, "document.querySelector('[role=menu] [data-computer-forget]')", 3_000);
+  await click('[role=menu] [data-computer-forget]');
+  await waitInPage(win, "document.querySelector('[data-confirm-strip] [data-confirm]')", 2_000);
+  await click('[data-confirm-strip] [data-confirm]');
+  const removed = await waitInPage(win, "!document.querySelector('[data-computer]')", 5_000);
+  pressKey(win, 'Escape');
+  if (!removed && result.startsWith('ok:')) return 'the computer did not go after Remove';
+  return result;
 }
 
 async function runOtherComputerStep(win: BrowserWindow): Promise<string> {
@@ -13914,6 +13983,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('connected to this Mac: a test phone connects, its row, toast and details, Revoke disconnects it', () => runConnectedDevicesStep(win), { timeoutMs: 45_000 });
   await step('other computers: a remote session in the sidebar with its chip, the violet line and "on …", its page from Open, the terminal disabled, New session runs there', () => runOtherComputerStep(win), { timeoutMs: 60_000 });
   await step('other computers: Settings › Remote updates an older computer, asks with sessions working, waits for idle, checks for updates', () => runComputerUpdateStep(win), { timeoutMs: 45_000 });
+  await step('other computers: Done on a remote session shows it under this Done, Reopen in its menu, a click reopens and opens it', () => runRemoteDoneStep(win), { timeoutMs: 60_000 });
   await step('computers strip: one line, neutral chips, Mine as a person, the menu from a right-click, "+N" in a narrow sidebar', () => runComputersStripStep(win), { timeoutMs: 75_000 });
   // The remote app on a phone, in a window of its own (remotePhoneSmoke.ts). The first of these to run pairs it, which
   // waits for Vite's first build of the app on a fresh runner.
@@ -13921,6 +13991,7 @@ async function runSmokeStep(win: BrowserWindow | null): Promise<void> {
   await step('remote app on a phone: New session from the drawer in a session', runPhoneDrawerNewStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: Settings switches the theme, Back returns to Home in it', runPhoneSettingsThemeStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: ⋯ › All settings opens Settings', runPhoneMoreStep, { timeoutMs: 75_000 });
+  await step('remote app on a phone: Done takes a session out of the list, the Done page lists it, Reopen puts it back', runPhoneDoneStep, { timeoutMs: 75_000 });
   await step('remote app on a phone: what a trigger started has the bolt and says which trigger', () => runPhoneTriggerStep(shot), { timeoutMs: 75_000 });
   await step("remote app on a phone: a finished session's catch-up shows the prompt's title without #", runPhoneCatchUpStep, { timeoutMs: 75_000 });
   await step("remote app on a phone: a session's ⋯ has Ask about this session", runPhoneSessionMoreStep, { timeoutMs: 75_000 });

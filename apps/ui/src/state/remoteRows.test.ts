@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_PIPELINES, REMOTE_FEATURE_STARTED_BY, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
+import { BUILT_IN_PIPELINES, REMOTE_FEATURE_STARTED_BY, type RemoteArchivedSession, type RemoteRunState, type RemoteSession, type RemoteSessions } from '@seshboard/protocol/client';
 import { sidebarForest } from './pipelineTree.ts';
 import {
   filterBySource,
@@ -10,6 +10,7 @@ import {
   onlyThereLine,
   remoteProfileColor,
   remoteProjectKey,
+  doneKey,
   remoteRows,
   remoteRowStatus,
   remoteTreeRuns,
@@ -23,7 +24,7 @@ import {
   toggleSource,
 } from './remoteRows.ts';
 import type { SessionRowData } from './sessionsStore.ts';
-import { buildListRows, buildSessionList, groupsFor, isActive, rowStatus } from './sidebarRows.ts';
+import { archivedSince, buildListRows, buildSessionList, doneReason, doneReasonLabel, groupsFor, isActive, rowStatus } from './sidebarRows.ts';
 
 const HOUR = 3_600_000;
 const NOW = new Date(2026, 9, 15, 15, 0).getTime();
@@ -112,6 +113,38 @@ describe('remote rows', () => {
     expect(remoteRows([], lists)).toEqual([]);
     // Connected but not listed yet: nothing to show.
     expect(remoteRows([mystic], new Map())).toEqual([]);
+  });
+});
+
+describe('Done on another computer', () => {
+  const done = (id: string, extra: Partial<RemoteArchivedSession> = {}): RemoteArchivedSession => ({ id, title: `Done ${id}`, projectId: '0123456789abcdef', projectName: 'involv-timesheet', branch: 'main', updatedAt: NOW - 30 * HOUR, archivedAt: NOW - 2 * HOUR, inactive: false, profile: null, steps: 0, ...extra });
+  const lists = new Map([['m1', { sessions: [session('s1', 'idle')], prompts: [] } satisfies RemoteSessions]]);
+
+  it('lists its sessions in Done under this computer’s Done, saying why each went there', () => {
+    const rows = remoteRows([mystic], lists, new Map([['m1', [done('d1'), done('d2', { inactive: true, archivedAt: NOW - HOUR })]]]));
+    const { active, archived } = buildSessionList(rows, { search: '', project: null, now: NOW, archiveAfterDays: 3 });
+    expect(active.map((r) => r.id)).toEqual(['remote:m1:s1']);
+    expect(archived.map((r) => r.id)).toEqual(['remote:m1:d1', 'remote:m1:d2']);
+    const [byHand, inactive] = archived;
+    expect(byHand!.remote).toMatchObject({ computerName: 'mystic', sessionId: 'd1', status: null, treeRunId: null, done: { inactive: false, steps: 0 } });
+    expect(isActive(byHand!, NOW, 3)).toBe(false);
+    expect(archivedSince(byHand!, NOW, 3)).toBe(NOW - 2 * HOUR);
+    expect(doneReasonLabel(doneReason(byHand!, NOW, 3)!)).toBe('Done');
+    expect(doneReasonLabel(doneReason(inactive!, NOW, 3)!)).toBe('Inactive 1 day');
+  });
+
+  it('shows a session reopened a moment ago once, in the list, before Done is read again', () => {
+    const rows = remoteRows([mystic], lists, new Map([['m1', [done('s1'), done('d1')]]]));
+    expect(rows.map((r) => [r.id, isActive(r, NOW, 3)])).toEqual([
+      ['remote:m1:s1', true],
+      ['remote:m1:d1', false],
+    ]);
+  });
+
+  it('reads Done again only when a session leaves the list or joins it', () => {
+    const before = doneKey({ sessions: [session('b', 'idle'), session('a', 'working')] });
+    expect(doneKey({ sessions: [session('a', 'idle'), session('b', 'needs-you')] })).toBe(before);
+    expect(doneKey({ sessions: [session('a', 'idle')] })).not.toBe(before);
   });
 });
 
